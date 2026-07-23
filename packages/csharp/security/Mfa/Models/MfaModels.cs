@@ -57,7 +57,7 @@ namespace Bricks4Agent.Security.Mfa.Models
         /// <summary>
         /// TOTP secret (Base32 encoded, encrypted at rest)
         /// </summary>
-        public string TotpSecret { get; set; }
+        public string? TotpSecret { get; set; }
 
         /// <summary>
         /// Whether TOTP is verified and active
@@ -67,12 +67,12 @@ namespace Bricks4Agent.Security.Mfa.Models
         /// <summary>
         /// Email for OTP delivery (may differ from login email)
         /// </summary>
-        public string OtpEmail { get; set; }
+        public string? OtpEmail { get; set; }
 
         /// <summary>
         /// Phone number for SMS OTP
         /// </summary>
-        public string OtpPhone { get; set; }
+        public string? OtpPhone { get; set; }
 
         /// <summary>
         /// Number of remaining recovery codes
@@ -128,7 +128,7 @@ namespace Bricks4Agent.Security.Mfa.Models
         /// <summary>
         /// Hashed recovery code
         /// </summary>
-        public string CodeHash { get; set; }
+        public string? CodeHash { get; set; }
 
         /// <summary>
         /// Whether this code has been used
@@ -164,7 +164,7 @@ namespace Bricks4Agent.Security.Mfa.Models
         /// <summary>
         /// OTP code (hashed)
         /// </summary>
-        public string CodeHash { get; set; }
+        public string? CodeHash { get; set; }
 
         /// <summary>
         /// Method used to send this OTP
@@ -174,7 +174,7 @@ namespace Bricks4Agent.Security.Mfa.Models
         /// <summary>
         /// Destination (email or phone)
         /// </summary>
-        public string Destination { get; set; }
+        public string? Destination { get; set; }
 
         /// <summary>
         /// When this OTP expires
@@ -207,12 +207,12 @@ namespace Bricks4Agent.Security.Mfa.Models
         /// <summary>
         /// Email for OTP delivery (if using Email method)
         /// </summary>
-        public string OtpEmail { get; set; }
+        public string? OtpEmail { get; set; }
 
         /// <summary>
         /// Phone for SMS OTP (if using SMS method)
         /// </summary>
-        public string OtpPhone { get; set; }
+        public string? OtpPhone { get; set; }
     }
 
     /// <summary>
@@ -228,7 +228,7 @@ namespace Bricks4Agent.Security.Mfa.Models
         /// <summary>
         /// Error message if failed
         /// </summary>
-        public string Error { get; set; }
+        public string? Error { get; set; }
 
         /// <summary>
         /// MFA method being set up
@@ -238,22 +238,22 @@ namespace Bricks4Agent.Security.Mfa.Models
         /// <summary>
         /// TOTP secret (only for TOTP method)
         /// </summary>
-        public string TotpSecret { get; set; }
+        public string? TotpSecret { get; set; }
 
         /// <summary>
         /// QR code URI for authenticator apps (only for TOTP method)
         /// </summary>
-        public string QrCodeUri { get; set; }
+        public string? QrCodeUri { get; set; }
 
         /// <summary>
         /// Recovery codes (shown once during setup)
         /// </summary>
-        public List<string> RecoveryCodes { get; set; }
+        public List<string>? RecoveryCodes { get; set; }
 
         /// <summary>
         /// Message for user
         /// </summary>
-        public string Message { get; set; }
+        public string? Message { get; set; }
     }
 
     /// <summary>
@@ -264,7 +264,7 @@ namespace Bricks4Agent.Security.Mfa.Models
         /// <summary>
         /// MFA code entered by user
         /// </summary>
-        public string Code { get; set; }
+        public string Code { get; set; } = string.Empty;
 
         /// <summary>
         /// MFA method used
@@ -290,7 +290,7 @@ namespace Bricks4Agent.Security.Mfa.Models
         /// <summary>
         /// Error message if failed
         /// </summary>
-        public string Error { get; set; }
+        public string? Error { get; set; }
 
         /// <summary>
         /// Whether user is locked out
@@ -339,32 +339,32 @@ namespace Bricks4Agent.Security.Mfa.Models
         /// <summary>
         /// Temporary token for MFA verification step
         /// </summary>
-        public string MfaToken { get; set; }
+        public string? MfaToken { get; set; }
 
         /// <summary>
         /// Available MFA methods for this user
         /// </summary>
-        public List<MfaMethod> AvailableMethods { get; set; }
+        public List<MfaMethod>? AvailableMethods { get; set; }
 
         /// <summary>
         /// Final access token (only after MFA verified)
         /// </summary>
-        public string AccessToken { get; set; }
+        public string? AccessToken { get; set; }
 
         /// <summary>
         /// Refresh token (only after MFA verified)
         /// </summary>
-        public string RefreshToken { get; set; }
+        public string? RefreshToken { get; set; }
 
         /// <summary>
         /// User info (only after MFA verified)
         /// </summary>
-        public UserInfo User { get; set; }
+        public UserInfo? User { get; set; }
 
         /// <summary>
         /// Error message if failed
         /// </summary>
-        public string Error { get; set; }
+        public string? Error { get; set; }
     }
 
     /// <summary>
@@ -373,9 +373,9 @@ namespace Bricks4Agent.Security.Mfa.Models
     public class UserInfo
     {
         public int Id { get; set; }
-        public string Name { get; set; }
-        public string Email { get; set; }
-        public string Role { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public string Role { get; set; } = string.Empty;
         public bool MfaEnabled { get; set; }
     }
 
@@ -387,17 +387,17 @@ namespace Bricks4Agent.Security.Mfa.Models
         /// <summary>
         /// User's display name
         /// </summary>
-        public string Name { get; set; }
+        public string Name { get; set; } = string.Empty;
 
         /// <summary>
         /// User's email (used for login)
         /// </summary>
-        public string Email { get; set; }
+        public string Email { get; set; } = string.Empty;
 
         /// <summary>
         /// Password
         /// </summary>
-        public string Password { get; set; }
+        public string Password { get; set; } = string.Empty;
 
         /// <summary>
         /// Whether to enable MFA during registration
@@ -423,7 +423,7 @@ namespace Bricks4Agent.Security.Mfa.Models
         /// <summary>
         /// Error message if failed
         /// </summary>
-        public string Error { get; set; }
+        public string? Error { get; set; }
 
         /// <summary>
         /// New user ID
@@ -433,12 +433,12 @@ namespace Bricks4Agent.Security.Mfa.Models
         /// <summary>
         /// MFA setup info (if MFA was enabled)
         /// </summary>
-        public MfaSetupResponse MfaSetup { get; set; }
+        public MfaSetupResponse? MfaSetup { get; set; }
 
         /// <summary>
         /// Message for user
         /// </summary>
-        public string Message { get; set; }
+        public string? Message { get; set; }
     }
 
     #endregion

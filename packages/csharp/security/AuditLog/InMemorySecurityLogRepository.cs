@@ -93,7 +93,7 @@ namespace Bricks4Agent.Security.AuditLog
         }
 
         /// <inheritdoc />
-        public SecurityLogEntry GetById(long id)
+        public SecurityLogEntry? GetById(long id)
         {
             _logs.TryGetValue(id, out var entry);
             return entry;
@@ -187,7 +187,7 @@ namespace Bricks4Agent.Security.AuditLog
                 {
                     return ids
                         .Select(id => _logs.TryGetValue(id, out var log) ? log : null)
-                        .Where(x => x != null)
+                        .OfType<SecurityLogEntry>()
                         .OrderBy(x => x.Timestamp)
                         .ToList();
                 }
@@ -218,7 +218,7 @@ namespace Bricks4Agent.Security.AuditLog
                         .OrderByDescending(x => x)
                         .Take(count)
                         .Select(id => _logs.TryGetValue(id, out var log) ? log : null)
-                        .Where(x => x != null)
+                        .OfType<SecurityLogEntry>()
                         .ToList();
                 }
             }
@@ -239,7 +239,7 @@ namespace Bricks4Agent.Security.AuditLog
                         .OrderByDescending(x => x)
                         .Take(count)
                         .Select(id => _logs.TryGetValue(id, out var log) ? log : null)
-                        .Where(x => x != null)
+                        .OfType<SecurityLogEntry>()
                         .ToList();
                 }
             }
@@ -299,14 +299,17 @@ namespace Bricks4Agent.Security.AuditLog
                 .Take(10)
                 .Select(g => new IpActivitySummary
                 {
-                    IpAddressHash = g.Key,
+                    IpAddressHash = g.Key!,
                     IpAddressMasked = g.First().IpAddress,
                     TotalRequests = g.Count(),
                     FailedAttempts = g.Count(x => x.Outcome == EventOutcome.Failure),
                     SuccessfulAttempts = g.Count(x => x.Outcome == EventOutcome.Success),
                     FirstSeen = g.Min(x => x.Timestamp),
                     LastSeen = g.Max(x => x.Timestamp),
-                    Countries = g.Where(x => !string.IsNullOrEmpty(x.CountryCode)).Select(x => x.CountryCode).Distinct().ToList()
+                    Countries = g.Where(x => !string.IsNullOrEmpty(x.CountryCode))
+                        .Select(x => x.CountryCode!)
+                        .Distinct()
+                        .ToList()
                 })
                 .ToList();
 
@@ -318,7 +321,7 @@ namespace Bricks4Agent.Security.AuditLog
                 .Take(10)
                 .Select(g => new IpActivitySummary
                 {
-                    IpAddressHash = g.Key,
+                    IpAddressHash = g.Key!,
                     IpAddressMasked = g.First().IpAddress,
                     FailedAttempts = g.Count(),
                     FirstSeen = g.Min(x => x.Timestamp),
@@ -329,7 +332,7 @@ namespace Bricks4Agent.Security.AuditLog
             // By country
             stats.ByCountry = logs
                 .Where(x => !string.IsNullOrEmpty(x.CountryCode))
-                .GroupBy(x => x.CountryCode)
+                .GroupBy(x => x.CountryCode!)
                 .ToDictionary(g => g.Key, g => g.Count());
 
             // By hour of day
@@ -340,7 +343,7 @@ namespace Bricks4Agent.Security.AuditLog
             // By device type
             stats.ByDeviceType = logs
                 .Where(x => !string.IsNullOrEmpty(x.DeviceType))
-                .GroupBy(x => x.DeviceType)
+                .GroupBy(x => x.DeviceType!)
                 .ToDictionary(g => g.Key, g => g.Count());
 
             return stats;
@@ -368,13 +371,13 @@ namespace Bricks4Agent.Security.AuditLog
                 LastFailedLogin = loginLogs.Where(x => x.EventType == SecurityEventType.LoginFailed).Max(x => (DateTime?)x.Timestamp),
                 UniqueIps = logs.Where(x => !string.IsNullOrEmpty(x.IpAddressHash)).Select(x => x.IpAddressHash).Distinct().Count(),
                 UniqueDevices = logs.Where(x => !string.IsNullOrEmpty(x.Fingerprint)).Select(x => x.Fingerprint).Distinct().Count(),
-                RecentIps = logs.Where(x => !string.IsNullOrEmpty(x.IpAddress)).Select(x => x.IpAddress).Distinct().Take(5).ToList(),
-                RecentCountries = logs.Where(x => !string.IsNullOrEmpty(x.CountryCode)).Select(x => x.CountryCode).Distinct().Take(5).ToList()
+                RecentIps = logs.Where(x => !string.IsNullOrEmpty(x.IpAddress)).Select(x => x.IpAddress!).Distinct().Take(5).ToList(),
+                RecentCountries = logs.Where(x => !string.IsNullOrEmpty(x.CountryCode)).Select(x => x.CountryCode!).Distinct().Take(5).ToList()
             };
         }
 
         /// <inheritdoc />
-        public IpActivitySummary GetIpActivity(string ipAddressHash, DateTime? since = null)
+        public IpActivitySummary? GetIpActivity(string ipAddressHash, DateTime? since = null)
         {
             if (string.IsNullOrEmpty(ipAddressHash))
                 return null;
@@ -396,7 +399,7 @@ namespace Bricks4Agent.Security.AuditLog
                 SuccessfulAttempts = logs.Count(x => x.Outcome == EventOutcome.Success),
                 FirstSeen = logs.Min(x => x.Timestamp),
                 LastSeen = logs.Max(x => x.Timestamp),
-                Countries = logs.Where(x => !string.IsNullOrEmpty(x.CountryCode)).Select(x => x.CountryCode).Distinct().ToList()
+                Countries = logs.Where(x => !string.IsNullOrEmpty(x.CountryCode)).Select(x => x.CountryCode!).Distinct().ToList()
             };
         }
 
@@ -493,7 +496,7 @@ namespace Bricks4Agent.Security.AuditLog
             }
         }
 
-        private void Cleanup(object state)
+        private void Cleanup(object? state)
         {
             var cutoff = DateTime.UtcNow.AddDays(-_retentionDays);
             DeleteOlderThan(cutoff);
@@ -584,7 +587,7 @@ namespace Bricks4Agent.Security.AuditLog
         }
 
         /// <inheritdoc />
-        public LoginRecord GetById(long id)
+        public LoginRecord? GetById(long id)
         {
             _records.TryGetValue(id, out var record);
             return record;
@@ -596,9 +599,9 @@ namespace Bricks4Agent.Security.AuditLog
             List<long> ids;
             lock (_indexLock)
             {
-                if (!_userIndex.TryGetValue(userId, out ids))
+                if (!_userIndex.TryGetValue(userId, out var indexedIds))
                     return new LoginHistoryResult { Page = page, PageSize = pageSize };
-                ids = ids.ToList(); // Copy
+                ids = indexedIds.ToList(); // Copy
             }
 
             var totalCount = ids.Count;
@@ -610,7 +613,7 @@ namespace Bricks4Agent.Security.AuditLog
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
                 .Select(id => _records.TryGetValue(id, out var r) ? r : null)
-                .Where(x => x != null)
+                .OfType<LoginRecord>()
                 .ToList();
 
             return new LoginHistoryResult
@@ -631,9 +634,9 @@ namespace Bricks4Agent.Security.AuditLog
             List<long> ids;
             lock (_indexLock)
             {
-                if (!_ipIndex.TryGetValue(ipAddressHash, out ids))
+                if (!_ipIndex.TryGetValue(ipAddressHash, out var indexedIds))
                     return new LoginHistoryResult { Page = page, PageSize = pageSize };
-                ids = ids.ToList();
+                ids = indexedIds.ToList();
             }
 
             var totalCount = ids.Count;
@@ -645,7 +648,7 @@ namespace Bricks4Agent.Security.AuditLog
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
                 .Select(id => _records.TryGetValue(id, out var r) ? r : null)
-                .Where(x => x != null)
+                .OfType<LoginRecord>()
                 .ToList();
 
             return new LoginHistoryResult
@@ -668,7 +671,8 @@ namespace Bricks4Agent.Security.AuditLog
                 return ids
                     .OrderByDescending(x => x)
                     .Select(id => _records.TryGetValue(id, out var r) ? r : null)
-                    .Where(x => x != null && !x.Success)
+                    .OfType<LoginRecord>()
+                    .Where(x => !x.Success)
                     .Take(count)
                     .ToList();
             }
@@ -688,7 +692,8 @@ namespace Bricks4Agent.Security.AuditLog
                 return ids
                     .OrderByDescending(x => x)
                     .Select(id => _records.TryGetValue(id, out var r) ? r : null)
-                    .Where(x => x != null && !x.Success)
+                    .OfType<LoginRecord>()
+                    .Where(x => !x.Success)
                     .Take(count)
                     .ToList();
             }
@@ -705,7 +710,8 @@ namespace Bricks4Agent.Security.AuditLog
                 return ids
                     .OrderByDescending(x => x)
                     .Select(id => _records.TryGetValue(id, out var r) ? r : null)
-                    .Where(x => x != null && x.Success)
+                    .OfType<LoginRecord>()
+                    .Where(x => x.Success)
                     .Take(count)
                     .ToList();
             }
@@ -747,8 +753,9 @@ namespace Bricks4Agent.Security.AuditLog
 
                 return ids
                     .Select(id => _records.TryGetValue(id, out var r) ? r : null)
-                    .Where(x => x != null && !string.IsNullOrEmpty(x.Fingerprint))
-                    .Select(x => x.Fingerprint)
+                    .OfType<LoginRecord>()
+                    .Where(x => !string.IsNullOrEmpty(x.Fingerprint))
+                    .Select(x => x.Fingerprint!)
                     .Distinct()
                     .ToList();
             }
@@ -800,7 +807,7 @@ namespace Bricks4Agent.Security.AuditLog
             }
         }
 
-        private void Cleanup(object state)
+        private void Cleanup(object? state)
         {
             var cutoff = DateTime.UtcNow.AddDays(-_retentionDays);
             DeleteOlderThan(cutoff);
@@ -845,7 +852,7 @@ namespace Bricks4Agent.Security.AuditLog
         }
 
         /// <inheritdoc />
-        public SecurityAlertConfig GetAlertConfig(int id)
+        public SecurityAlertConfig? GetAlertConfig(int id)
         {
             _configs.TryGetValue(id, out var config);
             return config;
@@ -876,7 +883,7 @@ namespace Bricks4Agent.Security.AuditLog
         }
 
         /// <inheritdoc />
-        public SecurityAlert GetAlert(long id)
+        public SecurityAlert? GetAlert(long id)
         {
             _alerts.TryGetValue(id, out var alert);
             return alert;

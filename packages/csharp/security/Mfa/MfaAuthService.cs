@@ -53,7 +53,7 @@ namespace Bricks4Agent.Security.Mfa
         /// <summary>
         /// Regenerate recovery codes
         /// </summary>
-        List<string> RegenerateRecoveryCodes(int userId, string verificationCode);
+        List<string>? RegenerateRecoveryCodes(int userId, string verificationCode);
 
         /// <summary>
         /// Request email OTP for MFA
@@ -304,7 +304,7 @@ namespace Bricks4Agent.Security.Mfa
         }
 
         /// <inheritdoc />
-        public List<string> RegenerateRecoveryCodes(int userId, string verificationCode)
+        public List<string>? RegenerateRecoveryCodes(int userId, string verificationCode)
         {
             // Verify current code first
             var config = _mfaService.GetMfaStatus(userId);
@@ -462,7 +462,7 @@ namespace Bricks4Agent.Security.Mfa
             return Convert.ToBase64String(bytes);
         }
 
-        private static List<MfaMethod> GetAvailableMfaMethods(UserMfaConfig config)
+        private static List<MfaMethod> GetAvailableMfaMethods(UserMfaConfig? config)
         {
             var methods = new List<MfaMethod>();
 
@@ -484,7 +484,7 @@ namespace Bricks4Agent.Security.Mfa
             return methods;
         }
 
-        private (bool IsValid, string Error) ValidateRegistration(RegisterWithMfaRequest request)
+        private (bool IsValid, string? Error) ValidateRegistration(RegisterWithMfaRequest request)
         {
             if (request == null)
                 return (false, "Request is required");
@@ -542,13 +542,12 @@ namespace Bricks4Agent.Security.Mfa
                 rng.GetBytes(salt);
             }
 
-            using var pbkdf2 = new Rfc2898DeriveBytes(
+            var hash = Rfc2898DeriveBytes.Pbkdf2(
                 password,
                 salt,
                 Iterations,
-                HashAlgorithmName.SHA256);
-
-            var hash = pbkdf2.GetBytes(HashSize);
+                HashAlgorithmName.SHA256,
+                HashSize);
 
             return $"{Iterations}.{Convert.ToBase64String(salt)}.{Convert.ToBase64String(hash)}";
         }
@@ -565,13 +564,12 @@ namespace Bricks4Agent.Security.Mfa
                 var salt = Convert.FromBase64String(parts[1]);
                 var hash = Convert.FromBase64String(parts[2]);
 
-                using var pbkdf2 = new Rfc2898DeriveBytes(
+                var computedHash = Rfc2898DeriveBytes.Pbkdf2(
                     password,
                     salt,
                     iterations,
-                    HashAlgorithmName.SHA256);
-
-                var computedHash = pbkdf2.GetBytes(hash.Length);
+                    HashAlgorithmName.SHA256,
+                    hash.Length);
 
                 return CryptographicEquals(hash, computedHash);
             }
@@ -612,7 +610,7 @@ namespace Bricks4Agent.Security.Mfa
         public int RecoveryCodesRemaining { get; set; }
         public DateTime? EnabledAt { get; set; }
         public DateTime? LastVerifiedAt { get; set; }
-        public List<MfaMethod> AvailableMethods { get; set; }
+        public List<MfaMethod> AvailableMethods { get; set; } = new();
     }
 
     /// <summary>
@@ -620,8 +618,8 @@ namespace Bricks4Agent.Security.Mfa
     /// </summary>
     public interface IUserRepository
     {
-        UserModel GetUserById(int id);
-        UserModel GetUserByEmail(string email);
+        UserModel? GetUserById(int id);
+        UserModel? GetUserByEmail(string email);
         bool EmailExists(string email);
         int CreateUser(UserCreateModel model);
         void UpdateLastLogin(int userId);
@@ -633,11 +631,11 @@ namespace Bricks4Agent.Security.Mfa
     public class UserModel
     {
         public int Id { get; set; }
-        public string Name { get; set; }
-        public string Email { get; set; }
-        public string PasswordHash { get; set; }
-        public string Role { get; set; }
-        public string Status { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public string PasswordHash { get; set; } = string.Empty;
+        public string Role { get; set; } = string.Empty;
+        public string Status { get; set; } = string.Empty;
     }
 
     /// <summary>
@@ -645,10 +643,10 @@ namespace Bricks4Agent.Security.Mfa
     /// </summary>
     public class UserCreateModel
     {
-        public string Name { get; set; }
-        public string Email { get; set; }
-        public string PasswordHash { get; set; }
-        public string Role { get; set; }
-        public string Status { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public string PasswordHash { get; set; } = string.Empty;
+        public string Role { get; set; } = string.Empty;
+        public string Status { get; set; } = string.Empty;
     }
 }

@@ -15,7 +15,7 @@ namespace Bricks4Agent.Security.AccountLock
         private readonly RequestDelegate _next;
         private readonly AccountLockMiddlewareOptions _options;
 
-        public AccountLockMiddleware(RequestDelegate next, AccountLockMiddlewareOptions options = null)
+        public AccountLockMiddleware(RequestDelegate next, AccountLockMiddlewareOptions? options = null)
         {
             _next = next;
             _options = options ?? new AccountLockMiddlewareOptions();
@@ -71,10 +71,18 @@ namespace Bricks4Agent.Security.AccountLock
 
         private static string GetClientIp(HttpContext context)
         {
-            return context.Request.Headers["CF-Connecting-IP"].ToString()
-                ?? context.Request.Headers["X-Real-IP"].ToString()
-                ?? context.Request.Headers["X-Forwarded-For"].ToString()?.Split(',')[0]?.Trim()
-                ?? context.Connection.RemoteIpAddress?.ToString();
+            var connectingIp = context.Request.Headers["CF-Connecting-IP"].ToString();
+            if (!string.IsNullOrWhiteSpace(connectingIp))
+                return connectingIp;
+
+            var realIp = context.Request.Headers["X-Real-IP"].ToString();
+            if (!string.IsNullOrWhiteSpace(realIp))
+                return realIp;
+
+            var forwardedIp = context.Request.Headers["X-Forwarded-For"].ToString().Split(',')[0].Trim();
+            return !string.IsNullOrWhiteSpace(forwardedIp)
+                ? forwardedIp
+                : context.Connection.RemoteIpAddress?.ToString() ?? string.Empty;
         }
 
         private static int? GetUserId(ClaimsPrincipal user)
@@ -137,7 +145,7 @@ namespace Bricks4Agent.Security.AccountLock
         /// </summary>
         public static IApplicationBuilder UseAccountLockCheck(
             this IApplicationBuilder app,
-            AccountLockMiddlewareOptions options = null)
+            AccountLockMiddlewareOptions? options = null)
         {
             return app.UseMiddleware<AccountLockMiddleware>(options ?? new AccountLockMiddlewareOptions());
         }

@@ -142,62 +142,62 @@ namespace Bricks4Agent.Security.AuditLog.Models
         /// <summary>
         /// Username or email (for display, partially masked)
         /// </summary>
-        public string Username { get; set; }
+        public string? Username { get; set; }
 
         /// <summary>
         /// Client IP address (partially masked for privacy)
         /// </summary>
-        public string IpAddress { get; set; }
+        public string? IpAddress { get; set; }
 
         /// <summary>
         /// Full IP address hash (for searching)
         /// </summary>
-        public string IpAddressHash { get; set; }
+        public string? IpAddressHash { get; set; }
 
         /// <summary>
         /// User agent string
         /// </summary>
-        public string UserAgent { get; set; }
+        public string? UserAgent { get; set; }
 
         /// <summary>
         /// Device fingerprint
         /// </summary>
-        public string Fingerprint { get; set; }
+        public string? Fingerprint { get; set; }
 
         /// <summary>
         /// Session ID (if applicable)
         /// </summary>
-        public string SessionId { get; set; }
+        public string? SessionId { get; set; }
 
         /// <summary>
         /// Request ID for correlation
         /// </summary>
-        public string RequestId { get; set; }
+        public string? RequestId { get; set; }
 
         /// <summary>
         /// Event description
         /// </summary>
-        public string Message { get; set; }
+        public string? Message { get; set; }
 
         /// <summary>
         /// Additional details (JSON format)
         /// </summary>
-        public string Details { get; set; }
+        public string? Details { get; set; }
 
         /// <summary>
         /// Target resource (e.g., endpoint, entity)
         /// </summary>
-        public string Resource { get; set; }
+        public string? Resource { get; set; }
 
         /// <summary>
         /// HTTP method (if applicable)
         /// </summary>
-        public string HttpMethod { get; set; }
+        public string? HttpMethod { get; set; }
 
         /// <summary>
         /// Request path
         /// </summary>
-        public string RequestPath { get; set; }
+        public string? RequestPath { get; set; }
 
         /// <summary>
         /// Response status code
@@ -212,27 +212,27 @@ namespace Bricks4Agent.Security.AuditLog.Models
         /// <summary>
         /// Geographic location (if available)
         /// </summary>
-        public string Location { get; set; }
+        public string? Location { get; set; }
 
         /// <summary>
         /// Country code (if available)
         /// </summary>
-        public string CountryCode { get; set; }
+        public string? CountryCode { get; set; }
 
         /// <summary>
         /// Browser info
         /// </summary>
-        public string Browser { get; set; }
+        public string? Browser { get; set; }
 
         /// <summary>
         /// Operating system
         /// </summary>
-        public string OperatingSystem { get; set; }
+        public string? OperatingSystem { get; set; }
 
         /// <summary>
         /// Device type
         /// </summary>
-        public string DeviceType { get; set; }
+        public string? DeviceType { get; set; }
 
         /// <summary>
         /// Whether this is from a known bot
@@ -242,7 +242,7 @@ namespace Bricks4Agent.Security.AuditLog.Models
         /// <summary>
         /// Related log entries (e.g., for tracking attack patterns)
         /// </summary>
-        public string CorrelationId { get; set; }
+        public string? CorrelationId { get; set; }
 
         /// <summary>
         /// Tags for categorization
@@ -258,25 +258,25 @@ namespace Bricks4Agent.Security.AuditLog.Models
         public long Id { get; set; }
         public DateTime Timestamp { get; set; }
         public int? UserId { get; set; }
-        public string Username { get; set; }
-        public string IpAddress { get; set; }
-        public string IpAddressHash { get; set; }
+        public string? Username { get; set; }
+        public string? IpAddress { get; set; }
+        public string? IpAddressHash { get; set; }
         public bool Success { get; set; }
-        public string FailureReason { get; set; }
-        public string UserAgent { get; set; }
-        public string Browser { get; set; }
-        public string OperatingSystem { get; set; }
-        public string DeviceType { get; set; }
-        public string Location { get; set; }
-        public string CountryCode { get; set; }
-        public string SessionId { get; set; }
+        public string? FailureReason { get; set; }
+        public string? UserAgent { get; set; }
+        public string? Browser { get; set; }
+        public string? OperatingSystem { get; set; }
+        public string? DeviceType { get; set; }
+        public string? Location { get; set; }
+        public string? CountryCode { get; set; }
+        public string? SessionId { get; set; }
         public bool MfaRequired { get; set; }
         public bool MfaVerified { get; set; }
-        public string MfaMethod { get; set; }
-        public string Fingerprint { get; set; }
+        public string? MfaMethod { get; set; }
+        public string? Fingerprint { get; set; }
         public bool IsNewDevice { get; set; }
         public bool IsSuspicious { get; set; }
-        public string SuspiciousReason { get; set; }
+        public string? SuspiciousReason { get; set; }
     }
 
     /// <summary>
@@ -297,12 +297,12 @@ namespace Bricks4Agent.Security.AuditLog.Models
         /// <summary>
         /// Filter by event types
         /// </summary>
-        public List<SecurityEventType> EventTypes { get; set; }
+        public List<SecurityEventType>? EventTypes { get; set; }
 
         /// <summary>
         /// Filter by severity levels
         /// </summary>
-        public List<SecuritySeverity> Severities { get; set; }
+        public List<SecuritySeverity>? Severities { get; set; }
 
         /// <summary>
         /// Filter by outcome
@@ -317,42 +317,42 @@ namespace Bricks4Agent.Security.AuditLog.Models
         /// <summary>
         /// Filter by username (partial match)
         /// </summary>
-        public string Username { get; set; }
+        public string? Username { get; set; }
 
         /// <summary>
         /// Filter by IP address hash
         /// </summary>
-        public string IpAddressHash { get; set; }
+        public string? IpAddressHash { get; set; }
 
         /// <summary>
         /// Filter by session ID
         /// </summary>
-        public string SessionId { get; set; }
+        public string? SessionId { get; set; }
 
         /// <summary>
         /// Filter by correlation ID
         /// </summary>
-        public string CorrelationId { get; set; }
+        public string? CorrelationId { get; set; }
 
         /// <summary>
         /// Filter by request ID
         /// </summary>
-        public string RequestId { get; set; }
+        public string? RequestId { get; set; }
 
         /// <summary>
         /// Search in message
         /// </summary>
-        public string SearchText { get; set; }
+        public string? SearchText { get; set; }
 
         /// <summary>
         /// Filter by tags
         /// </summary>
-        public List<string> Tags { get; set; }
+        public List<string>? Tags { get; set; }
 
         /// <summary>
         /// Filter by country code
         /// </summary>
-        public string CountryCode { get; set; }
+        public string? CountryCode { get; set; }
 
         /// <summary>
         /// Only suspicious events
@@ -464,8 +464,8 @@ namespace Bricks4Agent.Security.AuditLog.Models
     /// </summary>
     public class IpActivitySummary
     {
-        public string IpAddressMasked { get; set; }
-        public string IpAddressHash { get; set; }
+        public string? IpAddressMasked { get; set; }
+        public string? IpAddressHash { get; set; }
         public int TotalRequests { get; set; }
         public int FailedAttempts { get; set; }
         public int SuccessfulAttempts { get; set; }
@@ -482,7 +482,7 @@ namespace Bricks4Agent.Security.AuditLog.Models
     public class UserActivitySummary
     {
         public int UserId { get; set; }
-        public string Username { get; set; }
+        public string? Username { get; set; }
         public int TotalLogins { get; set; }
         public int FailedLogins { get; set; }
         public DateTime? LastLogin { get; set; }
@@ -501,15 +501,15 @@ namespace Bricks4Agent.Security.AuditLog.Models
     public class SecurityAlertConfig
     {
         public int Id { get; set; }
-        public string Name { get; set; }
-        public string Description { get; set; }
+        public string? Name { get; set; }
+        public string? Description { get; set; }
         public SecurityEventType EventType { get; set; }
         public SecuritySeverity MinSeverity { get; set; }
         public int ThresholdCount { get; set; }
         public int ThresholdMinutes { get; set; }
         public bool IsEnabled { get; set; }
-        public string NotificationChannels { get; set; } // JSON: ["email", "slack", "webhook"]
-        public string Recipients { get; set; } // JSON array of emails/endpoints
+        public string? NotificationChannels { get; set; } // JSON: ["email", "slack", "webhook"]
+        public string? Recipients { get; set; } // JSON array of emails/endpoints
         public DateTime CreatedAt { get; set; }
         public DateTime? LastTriggered { get; set; }
     }
@@ -521,15 +521,15 @@ namespace Bricks4Agent.Security.AuditLog.Models
     {
         public long Id { get; set; }
         public int ConfigId { get; set; }
-        public string AlertName { get; set; }
+        public string? AlertName { get; set; }
         public SecuritySeverity Severity { get; set; }
-        public string Message { get; set; }
-        public string Details { get; set; }
+        public string? Message { get; set; }
+        public string? Details { get; set; }
         public DateTime TriggeredAt { get; set; }
         public bool IsAcknowledged { get; set; }
         public int? AcknowledgedByUserId { get; set; }
         public DateTime? AcknowledgedAt { get; set; }
-        public string AcknowledgementNote { get; set; }
+        public string? AcknowledgementNote { get; set; }
         public List<long> RelatedLogIds { get; set; } = new();
     }
 }

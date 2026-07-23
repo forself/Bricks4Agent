@@ -18,6 +18,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../../broker/Broker.csproj" />
+    <ProjectReference Include="../../security/Mfa/Mfa.csproj" />
     <ProjectReference Include="../../function-pool/FunctionPool.csproj" />
     <ProjectReference Include="../../worker-sdk/WorkerSdk.csproj" />
     <ProjectReference Include="../../workers/file-worker/FileWorker.csproj" />

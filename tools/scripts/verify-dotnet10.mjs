@@ -109,7 +109,7 @@ for (const project of net10Projects) {
             '--nologo',
             '--verbosity',
             'quiet',
-            '--warnaserror:NU1510;NU1901;NU1902;NU1903;NU1904',
+            '--warnaserror',
         ],
         {
             cwd: repoRoot,

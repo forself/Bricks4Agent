@@ -49,7 +49,7 @@ namespace Bricks4Agent.Security.Mfa
         /// <summary>
         /// Get MFA status for a user
         /// </summary>
-        UserMfaConfig GetMfaStatus(int userId);
+        UserMfaConfig? GetMfaStatus(int userId);
 
         /// <summary>
         /// Check if MFA is required for user
@@ -65,7 +65,7 @@ namespace Bricks4Agent.Security.Mfa
     public class MfaService : IMfaService
     {
         private readonly IMfaRepository _repository;
-        private readonly IEmailService _emailService;
+        private readonly IEmailService? _emailService;
         private readonly MfaOptions _options;
         private readonly string _appName;
 
@@ -78,8 +78,8 @@ namespace Bricks4Agent.Security.Mfa
 
         public MfaService(
             IMfaRepository repository,
-            IEmailService emailService = null,
-            MfaOptions options = null)
+            IEmailService? emailService = null,
+            MfaOptions? options = null)
         {
             _repository = repository ?? throw new ArgumentNullException(nameof(repository));
             _emailService = emailService;
@@ -109,7 +109,7 @@ namespace Bricks4Agent.Security.Mfa
                         return new MfaSetupResponse { Success = false, Error = "Unsupported MFA method" };
                 }
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 return new MfaSetupResponse { Success = false, Error = "Failed to initiate MFA setup" };
             }
@@ -175,7 +175,8 @@ namespace Bricks4Agent.Security.Mfa
 
             bool isValid = method switch
             {
-                MfaMethod.Totp => TotpGenerator.ValidateCode(config.TotpSecret, code),
+                MfaMethod.Totp => !string.IsNullOrEmpty(config.TotpSecret)
+                    && TotpGenerator.ValidateCode(config.TotpSecret, code),
                 MfaMethod.Email => VerifyEmailOtp(userId, code),
                 _ => false
             };
@@ -222,7 +223,8 @@ namespace Bricks4Agent.Security.Mfa
 
             bool isValid = method switch
             {
-                MfaMethod.Totp => TotpGenerator.ValidateCode(config.TotpSecret, code),
+                MfaMethod.Totp => !string.IsNullOrEmpty(config.TotpSecret)
+                    && TotpGenerator.ValidateCode(config.TotpSecret, code),
                 MfaMethod.Email => VerifyEmailOtp(userId, code),
                 _ => false
             };
@@ -405,7 +407,7 @@ namespace Bricks4Agent.Security.Mfa
         }
 
         /// <inheritdoc />
-        public UserMfaConfig GetMfaStatus(int userId)
+        public UserMfaConfig? GetMfaStatus(int userId)
         {
             return _repository.GetUserMfaConfig(userId);
         }
@@ -419,7 +421,7 @@ namespace Bricks4Agent.Security.Mfa
 
         #region Private Helpers
 
-        private MfaVerificationResult CheckLockout(UserMfaConfig config)
+        private MfaVerificationResult? CheckLockout(UserMfaConfig config)
         {
             if (config.LockedUntil.HasValue && config.LockedUntil > DateTime.UtcNow)
             {
@@ -524,14 +526,14 @@ namespace Bricks4Agent.Security.Mfa
     /// </summary>
     public interface IMfaRepository
     {
-        UserMfaConfig GetUserMfaConfig(int userId);
+        UserMfaConfig? GetUserMfaConfig(int userId);
         void SaveUserMfaConfig(UserMfaConfig config);
         void DeleteRecoveryCodes(int userId);
         void SaveRecoveryCode(MfaRecoveryCode code);
-        MfaRecoveryCode GetRecoveryCode(int userId, string codeHash);
+        MfaRecoveryCode? GetRecoveryCode(int userId, string codeHash);
         void MarkRecoveryCodeUsed(MfaRecoveryCode code);
         void SaveOtpCode(MfaOtpCode code);
-        MfaOtpCode GetValidOtpCode(int userId, string codeHash, MfaMethod method);
+        MfaOtpCode? GetValidOtpCode(int userId, string codeHash, MfaMethod method);
         void MarkOtpCodeUsed(MfaOtpCode code);
     }
 

@@ -332,13 +332,12 @@ public static class BCryptHelper
             rng.GetBytes(salt);
         }
 
-        using var pbkdf2 = new System.Security.Cryptography.Rfc2898DeriveBytes(
+        var hash = System.Security.Cryptography.Rfc2898DeriveBytes.Pbkdf2(
             password,
             salt,
             Iterations,
-            System.Security.Cryptography.HashAlgorithmName.SHA256);
-
-        var hash = pbkdf2.GetBytes(HashSize);
+            System.Security.Cryptography.HashAlgorithmName.SHA256,
+            HashSize);
         return $"{Iterations}.{Convert.ToBase64String(salt)}.{Convert.ToBase64String(hash)}";
     }
 
@@ -356,13 +355,12 @@ public static class BCryptHelper
             var salt = Convert.FromBase64String(parts[1]);
             var hash = Convert.FromBase64String(parts[2]);
 
-            using var pbkdf2 = new System.Security.Cryptography.Rfc2898DeriveBytes(
+            var computedHash = System.Security.Cryptography.Rfc2898DeriveBytes.Pbkdf2(
                 password,
                 salt,
                 iterations,
-                System.Security.Cryptography.HashAlgorithmName.SHA256);
-
-            var computedHash = pbkdf2.GetBytes(hash.Length);
+                System.Security.Cryptography.HashAlgorithmName.SHA256,
+                hash.Length);
             return CryptographicEquals(hash, computedHash);
         }
         catch

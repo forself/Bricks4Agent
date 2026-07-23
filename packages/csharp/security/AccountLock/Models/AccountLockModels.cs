@@ -113,7 +113,7 @@ namespace Bricks4Agent.Security.AccountLock.Models
         /// <summary>
         /// Username/email for display
         /// </summary>
-        public string Username { get; set; }
+        public string? Username { get; set; }
 
         /// <summary>
         /// Type of lock
@@ -128,12 +128,12 @@ namespace Bricks4Agent.Security.AccountLock.Models
         /// <summary>
         /// Reason for the lock
         /// </summary>
-        public string Reason { get; set; }
+        public string? Reason { get; set; }
 
         /// <summary>
         /// Detailed description
         /// </summary>
-        public string Description { get; set; }
+        public string? Description { get; set; }
 
         /// <summary>
         /// When the lock was created
@@ -158,12 +158,12 @@ namespace Bricks4Agent.Security.AccountLock.Models
         /// <summary>
         /// Who/what unlocked the account
         /// </summary>
-        public string UnlockedBy { get; set; }
+        public string? UnlockedBy { get; set; }
 
         /// <summary>
         /// Reason for unlock
         /// </summary>
-        public string UnlockReason { get; set; }
+        public string? UnlockReason { get; set; }
 
         /// <summary>
         /// Admin user ID who created the lock (for manual locks)
@@ -173,12 +173,12 @@ namespace Bricks4Agent.Security.AccountLock.Models
         /// <summary>
         /// Admin username who created the lock
         /// </summary>
-        public string LockedByUsername { get; set; }
+        public string? LockedByUsername { get; set; }
 
         /// <summary>
         /// IP address that triggered the lock
         /// </summary>
-        public string TriggerIpAddress { get; set; }
+        public string? TriggerIpAddress { get; set; }
 
         /// <summary>
         /// Number of failed attempts that led to this lock
@@ -188,12 +188,12 @@ namespace Bricks4Agent.Security.AccountLock.Models
         /// <summary>
         /// Related IP address (for IP-scoped locks)
         /// </summary>
-        public string LockedIpAddress { get; set; }
+        public string? LockedIpAddress { get; set; }
 
         /// <summary>
         /// Additional metadata (JSON)
         /// </summary>
-        public string Metadata { get; set; }
+        public string? Metadata { get; set; }
 
         /// <summary>
         /// Check if this lock is currently in effect
@@ -221,12 +221,12 @@ namespace Bricks4Agent.Security.AccountLock.Models
         /// <summary>
         /// IP address being locked
         /// </summary>
-        public string IpAddress { get; set; }
+        public string? IpAddress { get; set; }
 
         /// <summary>
         /// IP address hash for searching
         /// </summary>
-        public string IpAddressHash { get; set; }
+        public string? IpAddressHash { get; set; }
 
         /// <summary>
         /// Type of lock
@@ -236,7 +236,7 @@ namespace Bricks4Agent.Security.AccountLock.Models
         /// <summary>
         /// Reason for the lock
         /// </summary>
-        public string Reason { get; set; }
+        public string? Reason { get; set; }
 
         /// <summary>
         /// When the lock was created
@@ -261,7 +261,7 @@ namespace Bricks4Agent.Security.AccountLock.Models
         /// <summary>
         /// Who unlocked
         /// </summary>
-        public string UnlockedBy { get; set; }
+        public string? UnlockedBy { get; set; }
 
         /// <summary>
         /// Admin user ID who created the lock
@@ -291,14 +291,14 @@ namespace Bricks4Agent.Security.AccountLock.Models
     {
         public long LockId { get; set; }
         public int UserId { get; set; }
-        public string Username { get; set; }
+        public string? Username { get; set; }
         public LockType LockType { get; set; }
         public LockScope Scope { get; set; }
-        public string Reason { get; set; }
+        public string? Reason { get; set; }
         public DateTime LockedAt { get; set; }
         public DateTime? ExpiresAt { get; set; }
         public DateTime? UnlockedAt { get; set; }
-        public string UnlockedBy { get; set; }
+        public string? UnlockedBy { get; set; }
         public TimeSpan Duration => (UnlockedAt ?? DateTime.UtcNow) - LockedAt;
         public bool WasAutoExpired { get; set; }
     }
@@ -316,7 +316,7 @@ namespace Bricks4Agent.Security.AccountLock.Models
         /// <summary>
         /// Username
         /// </summary>
-        public string Username { get; set; }
+        public string? Username { get; set; }
 
         /// <summary>
         /// Whether the account is currently locked
@@ -341,7 +341,7 @@ namespace Bricks4Agent.Security.AccountLock.Models
         /// <summary>
         /// Most severe active lock
         /// </summary>
-        public AccountLockRecord PrimaryLock => ActiveLocks?.Count > 0
+        public AccountLockRecord? PrimaryLock => ActiveLocks?.Count > 0
             ? ActiveLocks.OrderBy(l => l.Scope).ThenBy(l => l.ExpiresAt ?? DateTime.MaxValue).First()
             : null;
 
@@ -381,12 +381,12 @@ namespace Bricks4Agent.Security.AccountLock.Models
         /// <summary>
         /// Reason for locking
         /// </summary>
-        public string Reason { get; set; }
+        public string? Reason { get; set; }
 
         /// <summary>
         /// Detailed description
         /// </summary>
-        public string Description { get; set; }
+        public string? Description { get; set; }
 
         /// <summary>
         /// Duration in minutes (null = permanent)
@@ -396,7 +396,7 @@ namespace Bricks4Agent.Security.AccountLock.Models
         /// <summary>
         /// Specific IP to lock (for IP-scoped locks)
         /// </summary>
-        public string IpAddress { get; set; }
+        public string? IpAddress { get; set; }
 
         /// <summary>
         /// Whether to invalidate all existing sessions
@@ -432,7 +432,7 @@ namespace Bricks4Agent.Security.AccountLock.Models
         /// <summary>
         /// Reason for unlocking
         /// </summary>
-        public string Reason { get; set; }
+        public string? Reason { get; set; }
     }
 
     /// <summary>
@@ -443,7 +443,7 @@ namespace Bricks4Agent.Security.AccountLock.Models
         /// <summary>
         /// IP address to lock
         /// </summary>
-        public string IpAddress { get; set; }
+        public string? IpAddress { get; set; }
 
         /// <summary>
         /// Type of lock
@@ -453,7 +453,7 @@ namespace Bricks4Agent.Security.AccountLock.Models
         /// <summary>
         /// Reason
         /// </summary>
-        public string Reason { get; set; }
+        public string? Reason { get; set; }
 
         /// <summary>
         /// Duration in minutes (null = permanent)
@@ -540,7 +540,7 @@ namespace Bricks4Agent.Security.AccountLock.Models
         /// <summary>
         /// Reason for lock
         /// </summary>
-        public string Reason { get; set; }
+        public string? Reason { get; set; }
 
         /// <summary>
         /// When the lock expires
@@ -555,16 +555,16 @@ namespace Bricks4Agent.Security.AccountLock.Models
         /// <summary>
         /// The active lock (if any)
         /// </summary>
-        public AccountLockRecord ActiveLock { get; set; }
+        public AccountLockRecord? ActiveLock { get; set; }
 
         /// <summary>
         /// User-friendly message
         /// </summary>
-        public string Message { get; set; }
+        public string? Message { get; set; }
 
         public static LockCheckResult NotLocked() => new() { IsLocked = false };
 
-        public static LockCheckResult Locked(AccountLockRecord lockRecord, string message = null) => new()
+        public static LockCheckResult Locked(AccountLockRecord lockRecord, string? message = null) => new()
         {
             IsLocked = true,
             LockType = lockRecord.LockType,
@@ -636,7 +636,7 @@ namespace Bricks4Agent.Security.AccountLock.Models
     public class UserLockSummary
     {
         public int UserId { get; set; }
-        public string Username { get; set; }
+        public string? Username { get; set; }
         public int LockCount { get; set; }
         public DateTime? LastLockAt { get; set; }
         public bool IsCurrentlyLocked { get; set; }
