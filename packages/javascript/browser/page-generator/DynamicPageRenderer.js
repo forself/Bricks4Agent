@@ -9,7 +9,7 @@ import { DynamicFormRenderer } from './DynamicFormRenderer.js';
 import { DynamicDetailRenderer } from './DynamicDetailRenderer.js';
 import { DynamicListRenderer } from './DynamicListRenderer.js';
 import { DynamicToolRenderer } from './DynamicToolRenderer.js';
-import { CustomComponentRegistry } from '../custom_components/CustomComponentRegistry.js';
+import { isDeclarativeListDefinition, normalizeQueryDefinition } from './QueryDefinitionAdapter.js';
 
 export class DynamicPageRenderer {
     /**
@@ -23,6 +23,7 @@ export class DynamicPageRenderer {
      * @param {Function} options.onAction - 操作回調（list 模式）
      * @param {Function} options.onBack - 返回回調（detail 模式）
      * @param {Function} options.onEdit - 編輯回調（detail 模式）
+     * @param {Function} options.onPermissionCheck - 權限 UX gate (permissionKey, page, definition) => boolean|Promise<boolean>
      * @param {number} options.pageSize - 每頁筆數（list 模式）
      */
     constructor(options = {}) {
@@ -36,6 +37,9 @@ export class DynamicPageRenderer {
             onAction: null,
             onBack: null,
             onEdit: null,
+            onPermissionCheck: null,
+            onDownload: null,
+            confirmDownload: null,
             pageSize: 20,
             customComponents: null,
             customComponentRegistry: null,
@@ -46,7 +50,9 @@ export class DynamicPageRenderer {
             ...options
         };
 
-        if (options.mode === undefined && options.definition?.type === 'tool') {
+        if (options.mode === undefined && isDeclarativeListDefinition(options.definition)) {
+            this.options.mode = 'list';
+        } else if (options.mode === undefined && options.definition?.type === 'tool') {
             this.options.mode = 'tool';
         }
 
@@ -54,13 +60,20 @@ export class DynamicPageRenderer {
         this._renderer = null;
         this._customComponentRegistry = this.options.customComponentRegistry || null;
         this._ownsCustomComponentRegistry = false;
+        this._permissionState = { checked: false, allowed: true, error: null };
     }
 
     /**
      * 初始化並建構渲染器
      */
     async init() {
-        const { definition, mode, data } = this.options;
+        const allowed = await this._checkPermission();
+        if (!allowed) return this;
+
+        const definition = isDeclarativeListDefinition(this.options.definition)
+            ? normalizeQueryDefinition(this.options.definition)
+            : this.options.definition;
+        const { mode, data } = this.options;
         await this._prepareCustomComponents();
 
         switch (mode) {
@@ -95,6 +108,8 @@ export class DynamicPageRenderer {
                     definition,
                     onSearch: this.options.onSearch,
                     onAction: this.options.onAction,
+                    onDownload: this.options.onDownload,
+                    confirmDownload: this.options.confirmDownload,
                     pageSize: this.options.pageSize,
                 });
                 await this._renderer.init();
@@ -131,6 +146,7 @@ export class DynamicPageRenderer {
         const source = this.options.customComponents;
         if (!source) return;
 
+        const { CustomComponentRegistry } = await import('../custom_components/CustomComponentRegistry.js');
         const createsRegistry = !this._customComponentRegistry;
         const registry = this._customComponentRegistry || new CustomComponentRegistry({
             registerWithFactory: false,
@@ -163,6 +179,30 @@ export class DynamicPageRenderer {
 
     getCustomComponentRegistry() {
         return this._customComponentRegistry;
+    }
+
+    async _checkPermission() {
+        const definition = this.options.definition || {};
+        const permissionKey = definition.page?.permissionKey || definition.permissionKey || null;
+        const hook = this.options.onPermissionCheck;
+
+        if (!permissionKey || typeof hook !== 'function') {
+            this._permissionState = { checked: false, allowed: true, error: null };
+            return true;
+        }
+
+        try {
+            const allowed = await hook(permissionKey, definition.page || {}, definition);
+            this._permissionState = { checked: true, allowed: allowed !== false, error: null };
+            return this._permissionState.allowed;
+        } catch (error) {
+            this._permissionState = { checked: true, allowed: false, error };
+            return false;
+        }
+    }
+
+    getPermissionState() {
+        return { ...this._permissionState };
     }
 
     getRenderer() {

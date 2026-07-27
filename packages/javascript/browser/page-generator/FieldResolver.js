@@ -60,6 +60,10 @@ export class FieldResolver {
 
         // date
         this._typeMap.set('date', (def) => this._createDatePicker(def));
+        this._typeMap.set('rocDate', (def) => this._createDatePicker({
+            ...def,
+            format: 'taiwan',
+        }));
 
         // time
         this._typeMap.set('time', (def) => this._createTimePicker(def));
@@ -281,10 +285,18 @@ export class FieldResolver {
     _createDatePicker(def) {
         const { DatePicker } = this._getModule('DatePicker');
         const opts = {
-            placeholder: def.label,
+            placeholder: def.placeholder || def.label,
             disabled: def.isReadonly,
             required: def.isRequired,
         };
+        if (def.format) opts.format = def.format;
+        if (def.fieldType === 'rocDate' && !opts.format) opts.format = 'taiwan';
+        if (def.min) opts.min = def.min;
+        if (def.max) opts.max = def.max;
+        if (def.maxYearOffset !== null && def.maxYearOffset !== undefined && !opts.max) {
+            const year = new Date().getFullYear() + Number(def.maxYearOffset || 0);
+            opts.max = new Date(year, 11, 31);
+        }
         if (def.defaultValue === 'today') opts.value = new Date();
         else if (def.defaultValue) opts.value = def.defaultValue;
         return new DatePicker(opts);
@@ -522,6 +534,7 @@ export class FieldResolver {
      * 解析靜態選項
      */
     _resolveStaticOptions(def) {
+        if (Array.isArray(def.options)) return def.options;
         if (!def.optionsSource) return [];
         if (def.optionsSource.type === 'static' && Array.isArray(def.optionsSource.items)) {
             return def.optionsSource.items;

@@ -226,6 +226,12 @@ export const FieldRenderers = {
             <div id="${field.name}-picker"></div>
         </div>`,
 
+    [FieldTypes.ROCDATE]: (field) => `
+        <div class="form-group">
+            <label for="${field.name}">${field.label || field.name}${field.required ? ' *' : ''}</label>
+            <div id="${field.name}-picker"></div>
+        </div>`,
+
     [FieldTypes.TIME]: (field) => `
         <div class="form-group">
             <label for="${field.name}">${field.label || field.name}${field.required ? ' *' : ''}</label>
@@ -747,6 +753,7 @@ export default ${className};
     _needsComponentInit(definition) {
         const componentFields = [
             FieldTypes.DATE,
+            FieldTypes.ROCDATE,
             FieldTypes.COLOR,
             FieldTypes.RICHTEXT,
             FieldTypes.CANVAS,
@@ -768,11 +775,12 @@ export default ${className};
         for (const field of definition.fields || []) {
             switch (field.type) {
                 case FieldTypes.DATE:
+                case FieldTypes.ROCDATE:
                     code += `
         // 初始化日期選擇器: ${field.name}
         this._${field.name}Picker = new DatePicker(this.$('#${field.name}-picker'), {
             value: this._data.form.${field.name},
-            onChange: (date) => {
+            ${field.type === FieldTypes.ROCDATE ? "format: 'taiwan',\n            " : ''}onChange: (date) => {
                 this._data.form.${field.name} = date;
             }
         });

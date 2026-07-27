@@ -10,6 +10,7 @@
 import { escapeHtml } from '../../utils/security.js';
 import { TextInput } from '../TextInput/index.js';
 import { Dropdown } from '../Dropdown/index.js';
+import { MultiSelectDropdown } from '../MultiSelectDropdown/index.js';
 import { DatePicker } from '../DatePicker/index.js';
 import { NumberInput } from '../NumberInput/index.js';
 
@@ -19,6 +20,7 @@ export class SearchForm {
         TEXT: 'text',
         NUMBER: 'number',
         SELECT: 'select',
+        MULTISELECT: 'multiselect',
         DATE: 'date',
         DATE_RANGE: 'dateRange',
         CHECKBOX: 'checkbox'
@@ -48,15 +50,18 @@ export class SearchForm {
             showReset: true,
             searchText: Locale.t('searchForm.searchText'),
             resetText: Locale.t('searchForm.resetText'),
+            requiredMark: '*',
             onSearch: null,
             onReset: null,
             onChange: null,
+            onValidationError: null,
             ...options
         };
 
         this._values = { ...this.options.values };
         this._expanded = false;
         this._fieldComponents = new Map();
+        this._fieldErrorElements = new Map();
         this.element = null;
 
         this._create();
@@ -177,7 +182,7 @@ export class SearchForm {
                     const required = document.createElement('span');
                     required.className = 'required';
                     required.style.cssText = 'color: var(--cl-danger); margin-left: 2px;';
-                    required.textContent = '*';
+                    required.textContent = this.options.requiredMark;
                     label.appendChild(required);
                 }
                 fieldEl.appendChild(label);
@@ -189,6 +194,12 @@ export class SearchForm {
             inputContainer.style.cssText = 'min-height: 36px;';
             this._createFieldInput(inputContainer, field);
             fieldEl.appendChild(inputContainer);
+
+            const errorEl = document.createElement('span');
+            errorEl.className = 'search-form-field-error';
+            errorEl.style.cssText = 'display:none;font-size:var(--cl-font-size-sm);color:var(--cl-danger);';
+            fieldEl.appendChild(errorEl);
+            if (field.key) this._fieldErrorElements.set(field.key, errorEl);
 
             container.appendChild(fieldEl);
         });
@@ -212,10 +223,26 @@ export class SearchForm {
                 this._fieldComponents.set(key, dropdown);
                 break;
 
+            case SearchForm.FIELD_TYPES.MULTISELECT:
+                const multiSelect = new MultiSelectDropdown({
+                    items: fieldOptions || [],
+                    placeholder: placeholder || Locale.t('searchForm.selectPlaceholder'),
+                    values: Array.isArray(currentValue) ? currentValue : [],
+                    width: width || '100%',
+                    onChange: (values) => this._handleChange(key, values)
+                });
+                multiSelect.mount(container);
+                this._fieldComponents.set(key, multiSelect);
+                break;
+
             case SearchForm.FIELD_TYPES.DATE:
                 const datePicker = new DatePicker({
                     value: currentValue,
                     placeholder: placeholder || Locale.t('searchForm.datePlaceholder'),
+                    format: field.format,
+                    min: field.min,
+                    max: field.max,
+                    required: field.required === true,
                     onChange: (value) => this._handleChange(key, value)
                 });
                 datePicker.mount(container);
@@ -328,6 +355,7 @@ export class SearchForm {
 
     _handleChange(key, value) {
         this._values[key] = value;
+        this._clearFieldError(key);
 
         if (this.options.onChange) {
             this.options.onChange(key, value, this._values);
@@ -341,13 +369,15 @@ export class SearchForm {
         // 驗證必填
         const { fields } = this.options;
         for (const field of fields) {
+            this._clearFieldError(field.key);
             if (field.required) {
                 const value = values[field.key];
                 if (value === undefined || value === null || value === '') {
-                    const component = this._fieldComponents.get(field.key);
-                    if (component?.setError) {
-                        component.setError(Locale.t('searchForm.requiredError'));
-                    }
+                    this._setFieldError(
+                        field.key,
+                        field.requiredMessage || this.options.requiredMessage || Locale.t('searchForm.requiredError')
+                    );
+                    this.options.onValidationError?.(field);
                     return;
                 }
             }
@@ -367,14 +397,38 @@ export class SearchForm {
             const defaultValue = this.options.values[key] ?? '';
             if (component.setValue) {
                 component.setValue(defaultValue);
+            } else if (component.setValues) {
+                component.setValues(Array.isArray(defaultValue) ? defaultValue : []);
             }
-            if (component.clearError) {
-                component.clearError();
-            }
+            this._clearFieldError(key);
         });
 
         if (this.options.onReset) {
             this.options.onReset();
+        }
+    }
+
+    _setFieldError(key, message) {
+        const component = this._fieldComponents.get(key);
+        if (component?.setError) {
+            component.setError(message);
+        }
+        const errorEl = this._fieldErrorElements.get(key);
+        if (errorEl) {
+            errorEl.textContent = message || '';
+            errorEl.style.display = message ? 'block' : 'none';
+        }
+    }
+
+    _clearFieldError(key) {
+        const component = this._fieldComponents.get(key);
+        if (component?.clearError) {
+            component.clearError();
+        }
+        const errorEl = this._fieldErrorElements.get(key);
+        if (errorEl) {
+            errorEl.textContent = '';
+            errorEl.style.display = 'none';
         }
     }
 
@@ -386,6 +440,8 @@ export class SearchForm {
         this._fieldComponents.forEach((component, key) => {
             if (component.getValue) {
                 values[key] = component.getValue();
+            } else if (component.getValues) {
+                values[key] = component.getValues();
             }
         });
 
@@ -398,6 +454,8 @@ export class SearchForm {
             const component = this._fieldComponents.get(key);
             if (component?.setValue) {
                 component.setValue(value);
+            } else if (component?.setValues) {
+                component.setValues(Array.isArray(value) ? value : []);
             }
         });
         return this;
@@ -405,7 +463,7 @@ export class SearchForm {
 
     getValue(key) {
         const component = this._fieldComponents.get(key);
-        return component?.getValue?.() ?? this._values[key];
+        return component?.getValue?.() ?? component?.getValues?.() ?? this._values[key];
     }
 
     setValue(key, value) {
@@ -413,6 +471,8 @@ export class SearchForm {
         const component = this._fieldComponents.get(key);
         if (component?.setValue) {
             component.setValue(value);
+        } else if (component?.setValues) {
+            component.setValues(Array.isArray(value) ? value : []);
         }
         return this;
     }
@@ -442,6 +502,7 @@ export class SearchForm {
             }
         });
         this._fieldComponents.clear();
+        this._fieldErrorElements.clear();
         this.element?.remove();
         this.element = null;
     }

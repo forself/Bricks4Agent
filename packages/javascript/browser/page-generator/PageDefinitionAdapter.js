@@ -15,6 +15,7 @@
  */
 
 import { ComponentMapping } from './PageDefinition.js';
+import { isDeclarativeListDefinition, isQueryDefinition, normalizeQueryDefinition } from './QueryDefinitionAdapter.js';
 
 // ============================================================
 // PageDefinitionAdapter 類別
@@ -31,8 +32,11 @@ export class PageDefinitionAdapter {
     static toOldFormat(newDef) {
         if (!newDef) return null;
 
-        const page = newDef.page || {};
-        const fields = newDef.fields || [];
+        const normalizedDef = isDeclarativeListDefinition(newDef)
+            ? normalizeQueryDefinition(newDef)
+            : newDef;
+        const page = normalizedDef.page || {};
+        const fields = normalizedDef.fields || [];
         const entity = page.entity || '';
         const view = page.view || '';
 
@@ -60,24 +64,22 @@ export class PageDefinitionAdapter {
 
         // 建立 API 端點（以 entity 為基底）
         const apiBase = entity ? `/api/${entity}` : '/api/data';
+        const api = PageDefinitionAdapter._convertApiToOld(normalizedDef, apiBase);
 
         return {
             name,
             type,
-            description: page.pageName || '',
+            description: page.title || page.pageName || '',
             components,
             services: [],
             fields: oldFields,
-            api: {
-                list: apiBase,
-                get: apiBase,
-                create: apiBase,
-                update: apiBase,
-                delete: apiBase
-            },
+            api,
             behaviors: {
+                ...(normalizedDef.behaviors || {}),
                 fieldTriggers: Object.keys(fieldTriggers).length > 0 ? fieldTriggers : {}
             },
+            table: normalizedDef.table || undefined,
+            fixtures: normalizedDef.fixtures || undefined,
             styles: {
                 layout: 'single',
                 theme: 'default'
@@ -154,6 +156,25 @@ export class PageDefinitionAdapter {
             dependsOn: field.dependsOn || null,
             component: field.component || null
         };
+
+        PageDefinitionAdapter._copyKnownFieldProperties(field, result, [
+            'placeholder',
+            'payload',
+            'omitWhenEmpty',
+            'pairWith',
+            'separator',
+            'min',
+            'max',
+            'maxYearOffset',
+            'listOrder',
+            'isSearchable',
+            'width',
+            'hidden',
+            'format',
+            'isSelectionKey',
+            'sortable',
+            'sortOrder',
+        ]);
 
         if (field.componentOptions && typeof field.componentOptions === 'object') {
             result.config = result.config || {};
@@ -245,9 +266,41 @@ export class PageDefinitionAdapter {
         if (!view) return 'form';
 
         const v = view.toLowerCase();
+        if (v === 'query') return 'list';
         if (v.includes('list')) return 'list';
         if (v.includes('detail')) return 'detail';
         return 'form';
+    }
+
+    static _convertApiToOld(definition, apiBase) {
+        const source = definition.api || {};
+        if (isQueryDefinition(definition)) {
+            return {
+                list: source.searchlist?.legacyPath || source.searchlist?.url || apiBase,
+                get: source.get?.legacyPath || source.get || apiBase,
+                create: source.create?.legacyPath || source.create || apiBase,
+                update: source.update?.legacyPath || source.update || apiBase,
+                delete: source.delete?.legacyPath || source.delete || apiBase,
+                searchlist: source.searchlist ? { ...source.searchlist } : undefined,
+                download: source.download ? { ...source.download } : undefined,
+            };
+        }
+
+        return {
+            list: source.list || apiBase,
+            get: source.get || apiBase,
+            create: source.create || apiBase,
+            update: source.update || apiBase,
+            delete: source.delete || apiBase,
+        };
+    }
+
+    static _copyKnownFieldProperties(source, target, keys) {
+        for (const key of keys) {
+            if (source[key] !== undefined) {
+                target[key] = source[key];
+            }
+        }
     }
 
     /**

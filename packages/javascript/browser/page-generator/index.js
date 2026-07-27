@@ -24,6 +24,15 @@ export {
 
 // 格式轉換器
 export { PageDefinitionAdapter } from './PageDefinitionAdapter.js';
+export {
+    isQueryDefinition,
+    normalizeQueryDefinition,
+    getQuerySearchFields,
+    getQueryColumns,
+    validateQueryDefinition,
+    buildQueryPayload,
+    buildDownloadRequest,
+} from './QueryDefinitionAdapter.js';
 
 // 動態頁面渲染引擎（Layer 2-4）
 export { TriggerEngine } from './TriggerEngine.js';

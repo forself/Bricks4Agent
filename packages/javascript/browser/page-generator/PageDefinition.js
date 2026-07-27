@@ -8,6 +8,7 @@
  */
 
 import { validateToolPageDefinition } from './ToolPageDefinition.js';
+import { isDeclarativeListDefinition, validateQueryDefinition } from './QueryDefinitionAdapter.js';
 
 /**
  * 頁面定義 Schema
@@ -101,6 +102,7 @@ export const FieldTypes = {
 
     // 日期時間
     DATE: 'date',
+    ROCDATE: 'rocDate',
     TIME: 'time',
     DATETIME: 'datetime',
 
@@ -157,6 +159,7 @@ export const PageTypes = {
 export const ComponentMapping = {
     // 欄位類型 -> 元件名稱
     [FieldTypes.DATE]: 'DatePicker',
+    [FieldTypes.ROCDATE]: 'DatePicker',
     [FieldTypes.DATETIME]: 'DateTimeInput',
     [FieldTypes.COLOR]: 'ColorPicker',
     [FieldTypes.IMAGE]: 'ImageViewer',
@@ -261,6 +264,9 @@ export function validateDefinition(definition) {
     }
     if (typeDescriptor?.get || typeDescriptor?.set) {
         return { valid: false, errors: ['definition.type must be a data property.'] };
+    }
+    if (isDeclarativeListDefinition(definition)) {
+        return validateQueryDefinition(definition);
     }
     if (typeDescriptor?.value === PageTypes.TOOL) {
         return validateToolPageDefinition(definition);
