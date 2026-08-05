@@ -8,6 +8,7 @@ const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, '..', '..');
 const uiRoot = path.join(repoRoot, 'packages', 'javascript', 'browser', 'ui_components');
 const customComponentsRoot = path.join(repoRoot, 'packages', 'javascript', 'browser', 'custom_components');
+const pageGeneratorRoot = path.join(repoRoot, 'packages', 'javascript', 'browser', 'page-generator');
 const customStudioRoot = path.join(repoRoot, 'tools', 'custom-component-studio');
 const failOnViolations = process.argv.includes('--fail-on-violations');
 
@@ -27,11 +28,13 @@ function walk(dir, out = []) {
 const files = [
     ...walk(uiRoot),
     ...walk(customComponentsRoot),
+    ...walk(pageGeneratorRoot),
     ...walk(customStudioRoot),
 ]
     .filter((filePath) => {
         const normalized = filePath.replaceAll('\\', '/');
-        return !normalized.endsWith('/theme.css')
+        return !normalized.includes('/page-generator/examples/')
+            && !normalized.endsWith('/theme.css')
             && !normalized.endsWith('/themes/default.css')
             // 顏色資料來源檔(調色盤最近色計算需要 hex 數值,非樣式),比照 theme.css 排除
             && !normalized.endsWith('/editor/richtext-palette.js')
@@ -66,6 +69,16 @@ const rules = [
         id: 'font-family',
         description: 'Use var(--cl-font-family) instead of hardcoded font stacks.',
         pattern: /\bfont-family\s*:\s*[^;]*(?:-apple-system|BlinkMacSystemFont|'Segoe UI'|Roboto|'Helvetica Neue'|Arial|sans-serif|Consolas|Monaco|monospace|Microsoft JhengHei|SimSun)/g
+    },
+    {
+        id: 'font-size-literal',
+        description: 'Use a --cl-font-size-* token instead of pixel font sizes.',
+        pattern: /\bfont-size\s*:\s*\d+(?:\.\d+)?px\b/g
+    },
+    {
+        id: 'named-color',
+        description: 'Use a --cl-* color token instead of named CSS colors.',
+        pattern: /\b(?:color|background(?:-color)?|border(?:-[a-z-]+)?-color)\s*:\s*(?:white|black|red|blue|green|gr[ae]y)\b/gi
     },
     {
         id: 'shadow-radius-literal',
@@ -104,7 +117,7 @@ for (const filePath of files) {
 const totalViolations = findings.reduce((sum, finding) => sum + finding.count, 0);
 const filesWithViolations = new Set(findings.map((finding) => finding.filePath)).size;
 
-console.log(`Scanned ${files.length} UI component source files.`);
+console.log(`Scanned ${files.length} UI/runtime source files.`);
 console.log(`Found ${totalViolations} style-rule hits across ${filesWithViolations} files.`);
 
 if (findings.length > 0) {

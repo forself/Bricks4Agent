@@ -52,8 +52,8 @@ export class FieldResolver {
         // number
         this._typeMap.set('number', (def) => this._createNumberInput(def));
 
-        // textarea(原生)/ memo,plaintext(TextArea 元件)/ slider(Slider 元件)
-        this._typeMap.set('textarea', (def) => this._createTextarea(def));
+        // textarea / memo / plaintext 全部交由 B4A TextArea 元件。
+        this._typeMap.set('textarea', (def) => this._createTextArea(def));
         this._typeMap.set('memo', (def) => this._createTextArea(def));
         this._typeMap.set('plaintext', (def) => this._createTextArea(def));
         this._typeMap.set('slider', (def) => this._createSlider(def));
@@ -196,7 +196,7 @@ export class FieldResolver {
         const { TextInput } = this._getModule('TextInput');
         const opts = {
             type,
-            placeholder: def.label,
+            placeholder: def.placeholder || def.label,
             disabled: def.isReadonly,
             required: def.isRequired,
         };
@@ -235,51 +235,19 @@ export class FieldResolver {
 
     _createTextArea(def) {
         const { TextArea } = this._getModule('TextArea');
-        const opts = { label: def.label, disabled: def.isReadonly, readonly: def.isReadonly };
+        // FormField already renders the field label. Keeping TextArea's own label
+        // empty prevents generated forms from displaying it twice.
+        const opts = {
+            label: '',
+            placeholder: def.placeholder || '',
+            rows: Number(def.rows || def.componentOptions?.rows || 4),
+            required: def.isRequired,
+            disabled: def.isReadonly,
+            readonly: def.isReadonly,
+        };
         if (def.validation && def.validation.maxLength != null) opts.maxLength = def.validation.maxLength;
         if (def.defaultValue != null) opts.value = String(def.defaultValue);
         return new TextArea(opts);
-    }
-
-    _createTextarea(def) {
-        // 原生 textarea 包裝
-        const wrapper = {
-            element: null,
-            _textarea: null,
-            mount(container) {
-                const target = typeof container === 'string' ? document.querySelector(container) : container;
-                if (target) target.appendChild(this.element);
-                return this;
-            },
-            destroy() {
-                this.element?.remove();
-            },
-            getValue() { return this._textarea.value; },
-            setValue(v) { this._textarea.value = v || ''; },
-            clear() { this._textarea.value = ''; },
-            options: {}
-        };
-
-        const el = document.createElement('div');
-        const textarea = document.createElement('textarea');
-        textarea.placeholder = def.label || '';
-        textarea.readOnly = !!def.isReadonly;
-        textarea.required = !!def.isRequired;
-        textarea.style.cssText = `
-            width:100%;min-height:80px;padding:8px 12px;border: 1px solid var(--cl-border);
-            border-radius:6px;font-size:14px;font-family:inherit;resize:vertical;
-            outline:none;transition:border-color 0.2s;box-sizing:border-box;
-        `;
-        textarea.addEventListener('focus', () => { textarea.style.borderColor = 'var(--cl-primary)'; });
-        textarea.addEventListener('blur', () => { textarea.style.borderColor = 'var(--cl-border)'; });
-
-        if (def.validation?.maxLength) textarea.maxLength = def.validation.maxLength;
-        if (def.defaultValue) textarea.value = def.defaultValue;
-
-        el.appendChild(textarea);
-        wrapper.element = el;
-        wrapper._textarea = textarea;
-        return wrapper;
     }
 
     _createDatePicker(def) {
@@ -317,7 +285,7 @@ export class FieldResolver {
         const { Dropdown } = this._getModule('Dropdown');
         const opts = {
             variant: 'searchable',
-            placeholder: `請選擇${def.label}`,
+            placeholder: def.placeholder || `請選擇${def.label}`,
             disabled: def.isReadonly,
             items: this._resolveStaticOptions(def),
         };
@@ -342,7 +310,8 @@ export class FieldResolver {
     _createCheckbox(def) {
         const { Checkbox } = this._getModule('Checkbox');
         const opts = {
-            label: def.label,
+            // FormField owns the field label; the checkbox remains the control.
+            label: def.componentOptions?.controlLabel || '',
             disabled: def.isReadonly,
             checked: def.defaultValue === 'true',
         };
@@ -394,7 +363,17 @@ export class FieldResolver {
 
     _createBatchUploader(def) {
         const { BatchUploader } = this._getModule('BatchUploader');
-        return new BatchUploader({});
+        const componentOptions = def.componentOptions || {};
+        const validation = def.validation || {};
+        const opts = {
+            ...componentOptions,
+            multiple: componentOptions.multiple ?? validation.multiple ?? true,
+            maxFiles: componentOptions.maxFiles ?? validation.maxItems ?? 10,
+            maxFileSize: componentOptions.maxFileSize ?? validation.maxFileSize ?? 10 * 1024 * 1024,
+            allowedExtensions: componentOptions.allowedExtensions ?? validation.allowedExtensions ?? null,
+            autoUpload: componentOptions.autoUpload ?? false,
+        };
+        return new BatchUploader(opts);
     }
 
     _createHiddenInput(def) {

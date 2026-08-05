@@ -354,5 +354,3 @@ node tools/form-application-studio/generate.mjs --schema tools/form-application-
 ```
 
 若使用外部資料庫，連線字串必須經環境變數傳入；參數與產物契約見 [工具 README](tools/form-application-studio/README.md)。驗收執行 `npm run test:form-designer:all`。
-</content>
-</invoke>

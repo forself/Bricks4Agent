@@ -46,6 +46,11 @@
       "alternative_components": [],
       "status": "supported"
     },
+    "rocDate": {
+      "default_component": "DatePicker",
+      "alternative_components": [],
+      "status": "supported"
+    },
     "time": {
       "default_component": "TimePicker",
       "alternative_components": [],

@@ -62,6 +62,7 @@ export class Link {
     static _sanitizeHref(href) {
         const value = String(href ?? '').trim();
         if (!value) return '';
+        if (value.startsWith('//')) return '';
         if (value.startsWith('/') || value.startsWith('#') || value.startsWith('?')) return value;
         try {
             const url = new URL(value, 'https://local.invalid');

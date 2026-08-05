@@ -61,4 +61,3 @@ Full details: [AGENT-UI-GUIDE.md](AGENT-UI-GUIDE.md) §8.
 - Component calling convention + React-rewrite playbook: [AGENT-UI-GUIDE.md](AGENT-UI-GUIDE.md)
 - SPA generator manual: [AGENT.md](AGENT.md)
 - Page generator: [page-generator/README.md](packages/javascript/browser/page-generator/README.md)
-</content>

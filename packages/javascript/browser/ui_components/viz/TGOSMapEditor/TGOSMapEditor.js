@@ -21,13 +21,13 @@ export class TGOSMapEditor extends OSMMapEditor {
     static TILE_LAYERS = {
         emap: {
             url: 'https://wmts.nlsc.gov.tw/wmts/EMAP/default/GoogleMapsCompatible/{z}/{y}/{x}',
-            attribution: '© <a href="https://maps.nlsc.gov.tw/" target="_blank">內政部國土測繪中心</a>',
+            attribution: '© <a href="https://maps.nlsc.gov.tw/" target="_blank" rel="noopener noreferrer">內政部國土測繪中心</a>',
             name: '臺灣通用電子地圖',
             maxZoom: 19
         },
         photo: {
             url: 'https://wmts.nlsc.gov.tw/wmts/PHOTO2/default/GoogleMapsCompatible/{z}/{y}/{x}',
-            attribution: '© <a href="https://maps.nlsc.gov.tw/" target="_blank">內政部國土測繪中心</a>',
+            attribution: '© <a href="https://maps.nlsc.gov.tw/" target="_blank" rel="noopener noreferrer">內政部國土測繪中心</a>',
             name: '通用正射影像',
             maxZoom: 19
         }

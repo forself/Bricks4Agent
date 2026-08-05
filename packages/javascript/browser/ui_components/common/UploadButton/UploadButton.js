@@ -340,6 +340,11 @@ export class UploadButton {
                 .catch((err) => {
                     console.error('上傳失敗:', err);
                     this._setLoading(false);
+                    const detail = String(err?.message || '').trim();
+                    ModalPanel.alert({
+                        title: '上傳失敗',
+                        message: detail ? `上傳失敗：${detail}` : '上傳失敗，請檢查檔案內容後再試。'
+                    });
                 });
         }
     }

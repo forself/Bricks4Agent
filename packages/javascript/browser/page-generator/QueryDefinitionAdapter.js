@@ -268,7 +268,7 @@ export function getUiActions(definition, options = {}) {
     const explicit = Array.isArray(definition?.actions)
         ? definition.actions.map((action, index) => normalizeUiAction(action, index, definition))
         : [];
-    const actions = [...downloads, ...explicit];
+    const actions = [...downloads, ...explicit].sort((left, right) => Number(left.order ?? 1000) - Number(right.order ?? 1000));
     if (!options.placement) return actions;
     return actions.filter((action) => action.placement === options.placement);
 }
@@ -324,6 +324,7 @@ export function buildActionRequest(definition, actionOrId, options = {}) {
         selectionKey,
         columns,
         searchValues: options.searchValues || {},
+        now: options.now instanceof Date ? options.now : new Date(),
     };
     const payloadTemplate = {
         ...(apiAction?.payloadDefaults || {}),
@@ -335,7 +336,7 @@ export function buildActionRequest(definition, actionOrId, options = {}) {
     return {
         id: action.id || action.key || '',
         type: action.type || inferActionType(action.key || ''),
-        legacyPath: action.legacyPath || action.url || '',
+        legacyPath: resolveRouteTemplate(action.legacyPath || action.url || '', context),
         method: action.method || 'POST',
         fileName: action.fileName ? formatDownloadFileName(action.fileName, options.now || new Date()) : '',
         payload: resolvePayloadTemplate(payloadTemplate, context),
@@ -593,6 +594,12 @@ function resolvePayloadTemplate(template, context) {
         if (template.startsWith('$search.')) {
             return context.searchValues?.[template.slice('$search.'.length)];
         }
+        if (template.startsWith('$modal.')) {
+            return context.searchValues?.[template.slice('$modal.'.length)];
+        }
+        if (template === '$now') {
+            return context.now.toISOString();
+        }
         return template;
     }
     if (Array.isArray(template)) {
@@ -601,6 +608,13 @@ function resolvePayloadTemplate(template, context) {
             .filter((value) => value !== undefined);
     }
     if (typeof template === 'object') {
+        if (Object.keys(template).length === 1
+            && Object.prototype.hasOwnProperty.call(template, '$selectionMap')) {
+            return context.selectedRows.map((row) => resolvePayloadTemplate(
+                template.$selectionMap,
+                { ...context, row },
+            ));
+        }
         const result = {};
         for (const [key, value] of Object.entries(template)) {
             const resolved = resolvePayloadTemplate(value, context);

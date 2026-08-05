@@ -4,6 +4,7 @@ import { pathToFileURL } from 'node:url';
 import { validateDefinition } from '../PageDefinition.js';
 import { PageDefinitionAdapter } from '../PageDefinitionAdapter.js';
 import { DynamicPageRenderer } from '../DynamicPageRenderer.js';
+import { DynamicListRenderer } from '../DynamicListRenderer.js';
 import {
     buildActionRequest,
     buildDownloadRequest,
@@ -464,6 +465,25 @@ export async function runQueryExtV1Tests() {
             row: gangAdvanceDefinition.fixtures.sampleRow,
             columns,
         }), '/search/TIMGang/G001');
+    });
+
+    await t('list links reject protocol-relative URLs while keeping internal routes', () => {
+        const renderer = new DynamicListRenderer({ definition: gangAdvanceDefinition });
+        const baseColumn = { fieldName: 'GangID', fieldType: 'text' };
+        const row = gangAdvanceDefinition.fixtures.sampleRow;
+
+        const unsafe = renderer._formatCellValue({
+            ...baseColumn,
+            link: { route: '//example.invalid/{GangID}' },
+        }, row.GangID, row);
+        assert.equal(unsafe, row.GangID);
+
+        const safe = renderer._formatCellValue({
+            ...baseColumn,
+            link: { route: '/search/TIMGang/{GangID}' },
+        }, row.GangID, row);
+        assert.match(safe.__html, /^<span data-field-link-host="" data-link-label="G001"><\/span>$/);
+        assert.doesNotMatch(safe.__html, /<a\b/i);
     });
 
     await t('ext-v2 supports backend ROC strings and client-side western-to-ROC columns', () => {

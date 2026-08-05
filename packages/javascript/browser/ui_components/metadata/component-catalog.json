@@ -1699,7 +1699,8 @@
         "usable": true,
         "usage_mode": "field_direct",
         "supported_field_types": [
-          "date"
+          "date",
+          "rocDate"
         ],
         "supported_page_types": [
           "form",
@@ -6096,7 +6097,8 @@
         "usable": true,
         "usage_mode": "field_direct",
         "supported_field_types": [
-          "date"
+          "date",
+          "rocDate"
         ],
         "supported_page_types": [
           "form",

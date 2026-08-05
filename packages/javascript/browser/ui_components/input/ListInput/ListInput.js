@@ -191,7 +191,7 @@ export class ListInput {
         deleteBtn.type = 'button';
         deleteBtn.textContent = 'x';
         deleteBtn.title = Locale.t('listInput.removeItem');
-        deleteBtn.style.cssText = 'width:24px;height:24px;border:none;background:transparent;color:var(--cl-text-placeholder);font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;border-radius:var(--cl-radius-round);padding:0;line-height:1;';
+        deleteBtn.style.cssText = 'width:24px;height:24px;border:none;background:transparent;color:var(--cl-text-placeholder);font-size:var(--cl-font-size-2xl);cursor:pointer;display:flex;align-items:center;justify-content:center;border-radius:var(--cl-radius-round);padding:0;line-height:1;';
         deleteBtn.addEventListener('click', () => this._removeItem(index));
         itemContainer.appendChild(deleteBtn);
 

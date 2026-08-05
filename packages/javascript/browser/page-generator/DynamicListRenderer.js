@@ -6,6 +6,8 @@
  */
 
 import { escapeHtml, raw } from '../ui_components/utils/security.js';
+import { BasicButton } from '../ui_components/common/BasicButton/BasicButton.js';
+import { Link } from '../ui_components/common/Link/Link.js';
 import {
     buildActionRequest,
     buildDownloadRequest,
@@ -56,10 +58,16 @@ export class DynamicListRenderer {
         this._isDeclarativeList = false;
         this._querySearchFields = [];
         this._queryColumns = [];
+        this._tableColumns = [];
         this._searchPanelOpen = true;
         this._searchPanelBody = null;
+        this._searchPanelToggle = null;
+        this._searchPanelLabels = null;
         this._tableClickHandler = null;
         this._modalElement = null;
+        this._modalComponents = [];
+        this._controlComponents = [];
+        this._renderedActionComponents = [];
 
         /** @type {Map<string, Object>} 模組快取 */
         this._modules = new Map();
@@ -115,13 +123,13 @@ export class DynamicListRenderer {
         this._buildDataTable(definition.fields || [], definition);
 
         // 分頁
-        if (!this._isQuery) {
+        if (!this._isDeclarativeList) {
             this._buildPagination(definition);
         }
     }
 
     _buildPageHeader(definition) {
-        const title = definition?.page?.title || definition?.description || '';
+        const title = definition?.page?.heading || definition?.page?.title || definition?.description || '';
         if (!title) return;
 
         const header = document.createElement('div');
@@ -246,22 +254,30 @@ export class DynamicListRenderer {
         title.textContent = collapse.panelTitle || '查詢條件';
         header.appendChild(title);
 
-        const toggle = document.createElement('button');
-        toggle.type = 'button';
-        toggle.className = 'dynamic-list__search-toggle';
+        const toggleComponent = new BasicButton({
+            type: BasicButton.TYPES.CUSTOM,
+            variant: 'plain',
+            showIcon: false,
+            customLabel: collapse.collapseLabel || collapse.toggleLabel || '查詢條件收合',
+            onClick: () => this._setSearchPanelOpen(!this._searchPanelOpen),
+        });
+        this._controlComponents.push(toggleComponent);
+        const toggle = toggleComponent.element;
+        toggle.classList.add('dynamic-list__search-toggle');
         toggle.style.cssText = 'background:transparent;border:1px solid var(--cl-border-light);border-radius:var(--cl-radius-sm);color:var(--cl-primary);cursor:pointer;padding:6px 10px;font-size:var(--cl-font-size-md);';
-        toggle.textContent = collapse.toggleLabel || '查詢條件收合';
-        header.appendChild(toggle);
+        toggleComponent.mount(header);
 
         const body = document.createElement('div');
         body.className = 'dynamic-list__search-panel-body';
         this._searchPanelOpen = collapse.initialOpen !== false;
         body.style.display = this._searchPanelOpen ? '' : 'none';
         this._searchPanelBody = body;
-
-        toggle.addEventListener('click', () => {
-            this._setSearchPanelOpen(!this._searchPanelOpen);
-        });
+        this._searchPanelToggle = toggle;
+        const collapseLabel = collapse.collapseLabel || collapse.toggleLabel || '查詢條件收合';
+        const expandLabel = collapse.expandLabel
+            || (collapseLabel.includes('收合') ? collapseLabel.replace('收合', '展開') : '查詢條件展開');
+        this._searchPanelLabels = { collapse: collapseLabel, expand: expandLabel };
+        this._syncSearchPanelToggle();
 
         this._searchForm.mount(body);
         panel.appendChild(header);
@@ -293,6 +309,7 @@ export class DynamicListRenderer {
             : fields
                 .filter(def => def.listOrder > 0)
                 .sort((a, b) => a.listOrder - b.listOrder);
+        this._tableColumns = tableColumns;
 
         const columns = tableColumns.map(def => ({
             key: def.fieldName,
@@ -304,13 +321,18 @@ export class DynamicListRenderer {
         }));
 
         // 操作列
-        if ((!this._isQuery && this.options.onAction) || rowActions.length > 0) {
+        if ((!this._isDeclarativeList && !this._isQuery && this.options.onAction) || rowActions.length > 0) {
             columns.push({
                 key: '_actions',
                 title: table.actionColumnTitle || '操作',
                 width: '140px',
                 sortable: false,
-                render: (_, row) => rowActions.length > 0 ? this._renderActionButtons(rowActions) : this._renderActions(row)
+                // DataTable escapes ordinary strings by design. Row actions are
+                // renderer-owned, fully escaped markup, so opt in explicitly;
+                // otherwise every row button is displayed as literal HTML text.
+                render: (_, row) => raw(rowActions.length > 0
+                    ? this._renderActionButtons(rowActions, row)
+                    : this._renderActions(row)?.__html || '')
             });
         }
 
@@ -334,11 +356,14 @@ export class DynamicListRenderer {
         if (selectionActions.length > 0) {
             dataTableOptions.customToolbarSelect = () => this._renderActionButtons(selectionActions);
         }
+        dataTableOptions.onRender = root => this._mountActionControls(root);
+
+        const tableTitle = this._formatTableTitle(table, initialRows.length);
 
         this._dataTable = new DataTable({
             columns,
             data: initialRows,
-            title: this._isDeclarativeList ? formatTitleTemplate(table, initialRows.length) : (table.title || ''),
+            title: tableTitle,
             pagination: this._isDeclarativeList ? true : false, // 舊 list 用獨立 Pagination；query/adminList 對齊 DataTable labels/options
             pageSize: this.options.pageSize,
             striped: true,
@@ -417,6 +442,21 @@ export class DynamicListRenderer {
         if (this._searchPanelBody) {
             this._searchPanelBody.style.display = this._searchPanelOpen ? '' : 'none';
         }
+        this._syncSearchPanelToggle();
+    }
+
+    _syncSearchPanelToggle() {
+        if (!this._searchPanelToggle) return;
+        const labels = this._searchPanelLabels || {};
+        const label = this._searchPanelOpen
+            ? (labels.collapse || '查詢條件收合')
+            : (labels.expand || '查詢條件展開');
+        const labelElement = this._searchPanelToggle.querySelector('.basic-btn__label');
+        if (labelElement) labelElement.textContent = label;
+        else this._searchPanelToggle.textContent = label;
+        this._searchPanelToggle.setAttribute('title', label);
+        this._searchPanelToggle.setAttribute('aria-label', label);
+        this._searchPanelToggle.setAttribute('aria-expanded', String(this._searchPanelOpen));
     }
 
     _resolveMaxDate(def) {
@@ -441,13 +481,113 @@ export class DynamicListRenderer {
         };
     }
 
-    _renderActionButtons(actions) {
-        return actions.map((action) => {
+    _renderActionButtons(actions, row = null) {
+        return actions.filter(action => !matchesCondition(action.hiddenWhen, row)).map((action) => {
             const id = action.id || action.apiAction || action.key;
             const label = action.label || id;
-            const actionClass = action.type === 'export' ? 'dynamic-list__download' : 'dynamic-list__action';
-            return `<button type="button" class="${actionClass}" data-action-id="${escapeHtml(id)}">${escapeHtml(label)}</button>`;
+            return `<span class="dynamic-list__action-host" data-dynamic-action-host="${escapeHtml(id)}" data-action-label="${escapeHtml(label)}"></span>`;
         }).join('');
+    }
+
+    _mountActionControls(root) {
+        this._renderedActionComponents.splice(0).forEach(component => component.destroy?.());
+        if (!root) return;
+
+        root.querySelectorAll('[data-dynamic-action-host]').forEach(host => {
+            const actionId = host.dataset.dynamicActionHost || '';
+            const action = this._findUiAction(actionId);
+            if (!action) return;
+            const label = action.label || host.dataset.actionLabel || actionId;
+            const row = this._rowFromButton(host);
+            const isRowAction = Boolean(host.closest('tbody tr'));
+            if ((action.type === 'link' || action.type === 'create') && action.route) {
+                const href = toRuntimeRoute(resolveRouteTemplate(action.route, {
+                    row,
+                    columns: this._queryColumns,
+                    searchValues: this._searchForm?.getValues?.() || {},
+                }));
+                if (!isSafeRouteHref(href)) return;
+                const link = new Link({
+                    text: label,
+                    href,
+                    scope: action.target === '_blank' ? Link.SCOPES.EXTERNAL : Link.SCOPES.INTERNAL,
+                });
+                link.element.dataset.actionId = actionId;
+                link.mount(host);
+                link.element.classList.add(isRowAction ? 'dynamic-list__row-action' : 'dynamic-list__action');
+                link.element.dataset.actionId = actionId;
+                this._renderedActionComponents.push(link);
+                return;
+            }
+            const button = new BasicButton({
+                type: BasicButton.TYPES.CUSTOM,
+                variant: 'plain',
+                showIcon: action.appearance === 'legacy-icon',
+                icon: action.icon || action.type || actionId,
+                customLabel: label,
+                disabled: host.dataset.actionDisabled === 'true',
+                onClick: event => {
+                    event?.stopPropagation?.();
+                    void this._handleUiAction(actionId, button.element);
+                },
+            });
+            button.element.classList.add(action.type === 'export'
+                ? 'dynamic-list__download'
+                : (isRowAction ? 'dynamic-list__row-action' : 'dynamic-list__action'));
+            if (isRowAction && action.icon) button.element.classList.add('dynamic-list__row-action--icon');
+            if (action.appearance === 'legacy-icon') button.element.classList.add('dynamic-list__action--legacy-icon');
+            button.element.dataset.actionId = actionId;
+            button.element.title = label;
+            button.mount(host);
+            this._renderedActionComponents.push(button);
+        });
+
+        root.querySelectorAll('[data-legacy-action-host]').forEach(host => {
+            const action = host.dataset.legacyActionHost || '';
+            const label = host.dataset.actionLabel || action;
+            const button = new BasicButton({
+                type: BasicButton.TYPES.CUSTOM,
+                variant: 'plain',
+                showIcon: false,
+                customLabel: label,
+                onClick: event => {
+                    event?.stopPropagation?.();
+                    this.options.onAction?.(action, this._rowFromButton(button.element));
+                },
+            });
+            button.element.classList.add('dynamic-list__row-action');
+            button.element.dataset.legacyAction = action;
+            button.mount(host);
+            this._renderedActionComponents.push(button);
+        });
+
+        root.querySelectorAll('[data-field-link-host]').forEach(host => {
+            const rowIndex = Number(host.closest('tr')?.dataset?.rowIndex);
+            const columnIndex = Number(host.closest('td')?.dataset?.col);
+            const row = Number.isInteger(rowIndex) ? this._rows[rowIndex] : null;
+            const field = Number.isInteger(columnIndex) ? this._tableColumns[columnIndex] : null;
+            if (!row || !field?.link) return;
+            const href = toRuntimeRoute(resolveRouteTemplate(field.link.to || field.link.route || '', {
+                row,
+                columns: this._queryColumns,
+                searchValues: this._searchForm?.getValues?.() || {},
+            }));
+            if (!isSafeRouteHref(href)) return;
+            const link = new Link({
+                text: host.dataset.linkLabel || '',
+                href,
+                scope: field.link.target === '_blank' ? Link.SCOPES.EXTERNAL : Link.SCOPES.INTERNAL,
+            });
+            link.mount(host);
+            this._renderedActionComponents.push(link);
+        });
+    }
+
+    _formatTableTitle(table = {}, count = 0) {
+        const titleText = this._isDeclarativeList ? formatTitleTemplate(table, count) : (table.title || '');
+        return table.titleNote
+            ? raw(`<span class="dynamic-list__table-title">${escapeHtml(titleText)}</span><span class="dynamic-list__table-note">${escapeHtml(table.titleNote)}</span>`)
+            : titleText;
     }
 
     async _handleUiAction(actionId, button) {
@@ -455,12 +595,27 @@ export class DynamicListRenderer {
         if (!action) return null;
         const row = this._rowFromButton(button);
 
+        if (action.type === 'modal' || action.modal) {
+            return this._openModal(action, row);
+        }
+
         if (action.type === 'export') {
             return this.downloadSelected({ actionId: action.id });
         }
 
-        if (action.type === 'modal' || action.modal) {
-            return this._openModal(action, row);
+        if ((action.type === 'link' || action.type === 'create') && action.route) {
+            const href = toRuntimeRoute(resolveRouteTemplate(action.route, {
+                row,
+                columns: this._queryColumns,
+                searchValues: this._searchForm?.getValues?.() || {},
+            }));
+            if (!isSafeRouteHref(href)) return null;
+            if (action.target === '_blank') {
+                window.open(href, '_blank', 'noopener,noreferrer');
+            } else {
+                window.location.hash = href.startsWith('#') ? href.slice(1) : href;
+            }
+            return { id: action.id || actionId, type: 'link', route: href };
         }
 
         const request = buildActionRequest(this._definition, action, {
@@ -477,9 +632,14 @@ export class DynamicListRenderer {
 
     _findUiAction(actionId) {
         const actions = getUiActions(this._definition);
-        const direct = actions.find((action) => action.id === actionId || action.apiAction === actionId || action.key === actionId);
+        // A page may intentionally expose multiple UI actions backed by one
+        // API contract (for example publish vs transfer with distinct
+        // payload flags). Prefer the exact UI id so label/title/visibility do
+        // not get borrowed from the first action sharing the apiAction id.
+        const direct = actions.find((action) => action.id === actionId || action.key === actionId)
+            || actions.find((action) => action.apiAction === actionId);
         if (direct) return direct;
-        for (const column of this._queryColumns) {
+        for (const column of this._tableColumns.length ? this._tableColumns : this._queryColumns) {
             const action = column.action;
             if (!action) continue;
             const id = action.id || action.apiAction || `${column.fieldName}-action`;
@@ -509,26 +669,57 @@ export class DynamicListRenderer {
 
         const overlay = document.createElement('div');
         overlay.className = 'dynamic-list__modal-overlay';
-        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;z-index:1000;';
+        overlay.style.cssText = 'position:fixed;inset:0;background:var(--cl-bg-overlay-medium);display:flex;align-items:center;justify-content:center;z-index:1000;';
 
         const panel = document.createElement('section');
         panel.className = 'dynamic-list__modal';
-        panel.style.cssText = 'width:min(560px,92vw);max-height:86vh;overflow:auto;background:var(--cl-bg);border:1px solid var(--cl-border);border-radius:var(--cl-radius-md);box-shadow:var(--cl-shadow-lg);padding:16px;';
+        panel.style.cssText = 'width:min(520px,92vw);max-height:86vh;overflow:auto;background:var(--cl-bg);border:1px solid var(--cl-border);border-radius:10px;box-shadow:var(--cl-shadow-lg);padding:0;';
 
         const title = document.createElement('h3');
-        title.textContent = modal.title || action.label || '';
-        title.style.cssText = 'margin:0 0 16px;font-size:var(--cl-font-size-xl);color:var(--cl-text);';
+        title.style.cssText = 'margin:0;padding:20px;font-size:var(--cl-font-size-xl);font-weight:700;color:var(--cl-text-inverse);background:var(--cl-primary);text-align:left;display:flex;align-items:center;gap:8px;';
+        if (action.appearance === 'legacy-icon' && action.icon) {
+            const titleIcon = document.createElement('span');
+            titleIcon.setAttribute('aria-hidden', 'true');
+            titleIcon.textContent = legacyActionGlyph(action.icon);
+            titleIcon.style.cssText = 'display:inline-block;margin-right:8px;';
+            title.appendChild(titleIcon);
+        }
+        title.appendChild(document.createTextNode(modal.title || action.label || ''));
+        const titleCloseComponent = new BasicButton({
+            type: BasicButton.TYPES.CUSTOM,
+            variant: 'plain',
+            showIcon: false,
+            customLabel: '×',
+            ariaLabel: '關閉',
+            onClick: () => this._closeModal(),
+        });
+        const titleClose = titleCloseComponent.element;
+        titleClose.setAttribute('aria-label', '關閉');
+        titleClose.style.cssText = 'margin-left:auto;border:0;background:transparent;color:var(--cl-text-inverse);font:inherit;line-height:1;cursor:pointer;';
+        titleCloseComponent.mount(title);
+        this._modalComponents.push(titleCloseComponent);
         panel.appendChild(title);
 
         const form = document.createElement('form');
         form.className = 'dynamic-list__modal-form';
-        form.style.cssText = 'display:grid;gap:12px;';
+        form.style.cssText = 'display:grid;gap:12px;min-height:420px;box-sizing:border-box;padding:24px 20px 16px;';
+        const descriptions = Array.isArray(modal.description) ? modal.description : (modal.description ? [modal.description] : []);
+        for (const description of descriptions) {
+            const paragraph = document.createElement('p');
+            paragraph.className = 'dynamic-list__modal-description';
+            paragraph.textContent = description;
+            paragraph.style.cssText = 'margin:0;color:var(--cl-text);font-size:var(--cl-font-size-md);';
+            form.appendChild(paragraph);
+        }
         const values = {};
         for (const field of modal.fields || []) {
             const fieldName = field.name || field.fieldName;
             if (!fieldName) continue;
             const fieldType = field.type || field.fieldType || 'text';
-            const initial = row?.[fieldName] ?? field.defaultValue ?? field.default ?? '';
+            const configuredInitial = field.defaultValue ?? field.default ?? '';
+            const initial = row?.[fieldName] ?? (configuredInitial === '$todayRoc'
+                ? formatRocDateTime(new Date()).split(' ')[0]
+                : configuredInitial);
             values[fieldName] = initial;
             const wrap = document.createElement('label');
             wrap.style.cssText = fieldType === 'hidden' ? 'display:none;' : 'display:grid;gap:4px;font-size:var(--cl-font-size-md);color:var(--cl-text);';
@@ -541,18 +732,28 @@ export class DynamicListRenderer {
         }
 
         const footer = document.createElement('div');
-        footer.style.cssText = 'display:flex;justify-content:flex-end;gap:8px;margin-top:8px;';
-        const submit = document.createElement('button');
+        footer.style.cssText = 'display:flex;justify-content:flex-end;align-self:end;gap:8px;margin-top:auto;padding-top:8px;';
+        const submitComponent = new BasicButton({
+            type: BasicButton.TYPES.SAVE,
+            variant: 'primary',
+            showIcon: false,
+            customLabel: modal.submitText || '送出',
+        });
+        const submit = submitComponent.element;
         submit.type = 'submit';
-        submit.textContent = modal.submitText || '送出';
-        submit.style.cssText = 'padding:8px 16px;border:1px solid var(--cl-primary);background:var(--cl-primary);color:var(--cl-text-inverse);border-radius:var(--cl-radius-sm);cursor:pointer;';
-        const cancel = document.createElement('button');
-        cancel.type = 'button';
-        cancel.textContent = modal.cancelText || '取消';
-        cancel.style.cssText = 'padding:8px 16px;border:1px solid var(--cl-border);background:var(--cl-bg);color:var(--cl-text);border-radius:var(--cl-radius-sm);cursor:pointer;';
-        cancel.addEventListener('click', () => this._closeModal());
-        footer.appendChild(submit);
-        footer.appendChild(cancel);
+        submit.style.cssText = 'padding:8px 16px;border:1px solid var(--cl-success);background:var(--cl-success);color:var(--cl-text-inverse);border-radius:var(--cl-radius-sm);cursor:pointer;';
+        submitComponent.mount(footer);
+        const cancelComponent = new BasicButton({
+            type: BasicButton.TYPES.CANCEL,
+            variant: 'danger',
+            showIcon: false,
+            customLabel: modal.cancelText || '取消',
+            onClick: () => this._closeModal(),
+        });
+        const cancel = cancelComponent.element;
+        cancel.style.cssText = 'padding:8px 16px;border:1px solid var(--cl-danger);background:var(--cl-danger);color:var(--cl-text-inverse);border-radius:var(--cl-radius-sm);cursor:pointer;';
+        cancelComponent.mount(footer);
+        this._modalComponents.push(submitComponent, cancelComponent);
         form.appendChild(footer);
 
         form.addEventListener('submit', (event) => {
@@ -566,8 +767,14 @@ export class DynamicListRenderer {
                     searchValues: values,
                 })
                 : null;
-            this.options.onAction?.(action.id, row, request);
-            this._closeModal();
+            const result = this.options.onAction?.(action.id, row, request);
+            Promise.resolve(result)
+                .then(value => {
+                    // Upload validation/cancel returns null. Keep the legacy
+                    // import window open so the user can correct the file.
+                    if (value !== null && value !== false) this._closeModal();
+                })
+                .catch(() => { /* failure message is rendered by the page runtime */ });
         });
 
         panel.appendChild(form);
@@ -580,7 +787,9 @@ export class DynamicListRenderer {
     _createModalFieldControl(field, fieldName, initial, values) {
         const fieldType = field.type || field.fieldType || 'text';
         const options = resolveFieldOptions(field, this._definition);
-        const inputStyle = 'width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--cl-border);border-radius:var(--cl-radius-sm);font:inherit;';
+        const requestedWidth = String(field.componentOptions?.width || '100%');
+        const inputWidth = /^\d+(?:\.\d+)?(?:px|%)$/.test(requestedWidth) ? requestedWidth : '100%';
+        const inputStyle = `width:${inputWidth};box-sizing:border-box;padding:8px 10px;border:1px solid var(--cl-border);border-radius:var(--cl-radius-sm);font:inherit;`;
         const setScalarValue = (value) => { values[fieldName] = value; };
 
         if (fieldType === 'select' || fieldType === 'multiselect') {
@@ -655,13 +864,18 @@ export class DynamicListRenderer {
         input.placeholder = field.placeholder || '';
         input.readOnly = field.readOnly === true || field.isReadonly === true;
         input.required = field.required === true;
+        if (field.accept && input.tagName !== 'TEXTAREA') input.accept = field.accept;
         if (input.tagName !== 'TEXTAREA') input.type = modalInputType(fieldType);
+        if (input.tagName === 'TEXTAREA') input.rows = Number(field.componentOptions?.rows) || 3;
         input.style.cssText = inputStyle;
-        input.addEventListener('input', () => { values[fieldName] = input.value; });
+        input.addEventListener('input', () => {
+            values[fieldName] = fieldType === 'file' ? (input.files?.[0] || null) : input.value;
+        });
         return input;
     }
 
     _closeModal() {
+        this._modalComponents.splice(0).forEach(component => component.destroy?.());
         this._modalElement?.remove();
         this._modalElement = null;
     }
@@ -670,7 +884,7 @@ export class DynamicListRenderer {
         const action = getUiActions(this._definition).find((item) => item.type === 'export');
         const label = action?.label || '匯出Excel';
         const id = action?.id || 'download';
-        return `<button type="button" class="dynamic-list__download" data-action-id="${escapeHtml(id)}">${escapeHtml(label)}</button>`;
+        return `<span class="dynamic-list__action-host" data-dynamic-action-host="${escapeHtml(id)}" data-action-label="${escapeHtml(label)}"></span>`;
     }
 
     _formatCellValue(def, value, row) {
@@ -680,18 +894,17 @@ export class DynamicListRenderer {
                 id: def.action.id || def.action.apiAction || `${def.fieldName}-action`,
                 label: def.action.label || displayValue || def.label,
             };
-            return raw(`<button type="button" class="dynamic-list__row-action" data-action-id="${escapeHtml(action.id)}">${escapeHtml(action.label)}</button>`);
+            const disabled = matchesCondition(def.action.disabledWhen, row);
+            return raw(`<span class="dynamic-list__action-host" data-dynamic-action-host="${escapeHtml(action.id)}" data-action-label="${escapeHtml(action.label)}" data-action-icon="${def.action.icon ? 'true' : 'false'}" data-action-disabled="${disabled ? 'true' : 'false'}"></span>`);
         }
         if (def.link) {
-            const href = resolveRouteTemplate(def.link.to || def.link.route || '', {
+            const href = toRuntimeRoute(resolveRouteTemplate(def.link.to || def.link.route || '', {
                 row,
                 columns: this._queryColumns,
                 searchValues: this._searchForm?.getValues?.() || {},
-            });
+            }));
             if (isSafeRouteHref(href)) {
-                const target = def.link.target ? ` target="${escapeHtml(def.link.target)}"` : '';
-                const rel = def.link.target === '_blank' ? ' rel="noopener noreferrer"' : '';
-                return raw(`<a href="${escapeHtml(href)}"${target}${rel}>${escapeHtml(displayValue)}</a>`);
+                return raw(`<span data-field-link-host="" data-link-label="${escapeHtml(displayValue)}"></span>`);
             }
         }
         if (def.format === 'raw') {
@@ -703,7 +916,7 @@ export class DynamicListRenderer {
             }
             return value === null || value === undefined ? '' : String(value);
         }
-        if (value === null || value === undefined || value === '') return '—';
+        if (value === null || value === undefined || value === '') return displayValue;
 
         switch (def.fieldType) {
             case 'checkbox':
@@ -713,7 +926,7 @@ export class DynamicListRenderer {
                 const bgColor = isTrue ? 'var(--cl-success-light)' : 'var(--cl-bg-secondary)';
                 const fgColor = isTrue ? 'var(--cl-success)' : 'var(--cl-grey)';
                 const badge = document.createElement('span');
-                badge.style.cssText = `padding:2px 6px;border-radius:3px;font-size:12px;background:${bgColor};color:${fgColor};`;
+                badge.style.cssText = `padding:2px 6px;border-radius:var(--cl-radius-xs);font-size:var(--cl-font-size-sm);background:${bgColor};color:${fgColor};`;
                 badge.textContent = isTrue ? '是' : '否';
                 return badge;
             }
@@ -731,8 +944,9 @@ export class DynamicListRenderer {
             case 'color': {
                 // CSP-safe：createElement + style.cssText（嚴格 style-src 會剝除 HTML style 屬性）
                 const swatch = document.createElement('span');
-                swatch.style.cssText = 'display:inline-block;width:14px;height:14px;border-radius:3px;border:1px solid var(--cl-border);vertical-align:middle;';
-                swatch.style.background = String(value);
+                swatch.style.cssText = 'display:inline-block;width:14px;height:14px;border-radius:var(--cl-radius-xs);border:1px solid var(--cl-border);vertical-align:middle;';
+                const color = String(value).trim();
+                swatch.style.background = /^#[0-9a-f]{3,8}$/i.test(color) ? color : 'transparent';
                 return swatch;
             }
             default:
@@ -742,9 +956,10 @@ export class DynamicListRenderer {
 
     _resolveDisplayValue(def, value) {
         if (def.lookup || def.optionsSource || (Array.isArray(def.options) && def.options.length > 0)) {
-            return resolveLookupLabel(def, value, this._definition);
+            const resolved = resolveLookupLabel(def, value, this._definition);
+            return resolved === '' ? (def.fallback ?? def.lookup?.fallback ?? '') : resolved;
         }
-        if (value === null || value === undefined) return '';
+        if (value === null || value === undefined || value === '') return def.fallback ?? '';
         return String(value);
     }
 
@@ -755,7 +970,7 @@ export class DynamicListRenderer {
             { name: 'delete', text: '刪除', color: 'var(--cl-danger)' }
         ];
         return raw(`<div class="dynamic-list__row-actions">${
-            actions.map(({ name, text }) => `<button type="button" class="dynamic-list__row-action" data-legacy-action="${escapeHtml(name)}">${escapeHtml(text)}</button>`).join('')
+            actions.map(({ name, text }) => `<span class="dynamic-list__action-host" data-legacy-action-host="${escapeHtml(name)}" data-action-label="${escapeHtml(text)}"></span>`).join('')
         }</div>`);
     }
 
@@ -787,8 +1002,14 @@ export class DynamicListRenderer {
         const request = this.buildDownloadRequest(options);
         if (!request) return null;
         if (request.selectionKey && request.selectionValues.length === 0) return null;
+        if (options.outputExtension && /^\.[A-Za-z0-9]+$/.test(options.outputExtension)) {
+            request.fileName = String(request.fileName || 'TIM_download')
+                .replace(/\.[^.]+$/, options.outputExtension);
+        }
 
-        const confirmed = await this._confirmDownload(request.confirmText);
+        const confirmed = options.skipConfirm === true
+            ? true
+            : await this._confirmDownload(request.confirmText);
         if (!confirmed) return null;
 
         if (typeof this.options.onDownload === 'function') {
@@ -842,10 +1063,10 @@ export class DynamicListRenderer {
      * @param {number} total - 總筆數
      */
     setData(rows, total) {
-        this._rows = Array.isArray(rows) ? rows : [];
+        this._rows = Array.isArray(rows) ? rows.map(row => this._normalizeRow(row)) : [];
         this._total = total ?? this._rows.length;
         if (this._isDeclarativeList && this._dataTable) {
-            this._dataTable.title = formatTitleTemplate(this._definition?.table || {}, this._total);
+            this._dataTable.title = this._formatTableTitle(this._definition?.table || {}, this._total);
         }
         if (this._dataTable?.setData) {
             this._dataTable.setData(this._rows);
@@ -878,6 +1099,16 @@ export class DynamicListRenderer {
         }
     }
 
+    _normalizeRow(row) {
+        if (!row || Array.isArray(row) || typeof row !== 'object') return row;
+        const normalized = { ...row };
+        for (const column of this._queryColumns) {
+            if (!column.sourceKey || normalized[column.fieldName] !== undefined) continue;
+            normalized[column.fieldName] = normalized[column.sourceKey];
+        }
+        return normalized;
+    }
+
     mount(container) {
         const target = typeof container === 'string' ? document.querySelector(container) : container;
         if (target && this.element) target.appendChild(this.element);
@@ -885,6 +1116,8 @@ export class DynamicListRenderer {
     }
 
     destroy() {
+        this._renderedActionComponents.splice(0).forEach(component => component.destroy?.());
+        this._controlComponents.splice(0).forEach(component => component.destroy?.());
         this._searchForm?.destroy?.();
         this._dataTable?.destroy?.();
         this._pagination?.destroy?.();
@@ -898,6 +1131,8 @@ export class DynamicListRenderer {
         }
         this._rows = [];
         this._searchPanelBody = null;
+        this._searchPanelToggle = null;
+        this._searchPanelLabels = null;
     }
 }
 
@@ -917,7 +1152,39 @@ function modalInputType(fieldType) {
 
 function isSafeRouteHref(href) {
     if (typeof href !== 'string' || href.length === 0) return false;
-    return href.startsWith('/') || href.startsWith('#') || /^https?:\/\//i.test(href);
+    return (href.startsWith('/') && !href.startsWith('//'))
+        || href.startsWith('#')
+        || /^https?:\/\//i.test(href);
+}
+
+function toRuntimeRoute(href) {
+    if (typeof href !== 'string') return '';
+    if (href.startsWith('/') && !href.startsWith('//')) return `#${href}`;
+    return href;
+}
+
+function matchesCondition(condition, row) {
+    if (!condition || !row) return false;
+    const field = condition.field || condition.key;
+    if (!field) return false;
+    if (Object.prototype.hasOwnProperty.call(condition, 'equals')) {
+        return String(row[field] ?? '') === String(condition.equals ?? '');
+    }
+    if (Array.isArray(condition.in)) return condition.in.map(String).includes(String(row[field] ?? ''));
+    return false;
+}
+
+function legacyActionIcon(icon) {
+    const glyph = legacyActionGlyph(icon);
+    return `<span class="dynamic-list__action-icon" aria-hidden="true">${escapeHtml(glyph)}</span>`;
+}
+
+function legacyActionGlyph(icon) {
+    const glyphs = {
+        add: '＋', download: '⇩', upload: '⇧', excel: '▦', word: 'W', trash: '▰',
+        link: '↗', export: '⇩', import: '⇧', api: '●', magic: '✦',
+    };
+    return glyphs[String(icon || '').toLowerCase()] || '●';
 }
 
 export default DynamicListRenderer;

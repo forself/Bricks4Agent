@@ -42,6 +42,8 @@ export class BatchUploader {
             allowedExtensions: null,
             autoUpload: false,
             multiple: true,
+            selectionOnly: false,
+            compact: false,
             uploadMode: 'sequential',
             headers: {},
             onFileAdded: null,
@@ -80,19 +82,24 @@ export class BatchUploader {
      * Initialize the component
      */
     _init() {
-        const container = typeof this.options.container === 'string'
-            ? document.querySelector(this.options.container)
-            : this.options.container;
-
-        if (!container) {
-            throw new Error('BatchUploader: Container not found');
-        }
-
-        this.container = container;
+        this.container = null;
         this.element = this._createElement();
-        this.container.appendChild(this.element);
-
         this._bindEvents();
+        if (this.options.container) this.mount(this.options.container);
+    }
+
+    /**
+     * Mount after construction, matching the other B4A form components and
+     * allowing FieldResolver/PageGenerator to create upload fields first.
+     */
+    mount(container) {
+        const target = typeof container === 'string'
+            ? document.querySelector(container)
+            : container;
+        if (!target) throw new Error('BatchUploader: Container not found');
+        this.container = target;
+        target.appendChild(this.element);
+        return this;
     }
 
     /**
@@ -103,6 +110,8 @@ export class BatchUploader {
 
         const wrapper = document.createElement('div');
         wrapper.className = 'batch-uploader';
+        if (this.options.selectionOnly) wrapper.classList.add('batch-uploader--selection-only');
+        if (this.options.compact) wrapper.classList.add('batch-uploader--compact');
         wrapper.style.cssText = `
             font-family: var(--cl-font-family);
             width: 100%;
@@ -114,7 +123,7 @@ export class BatchUploader {
         dropzone.style.cssText = `
             border: 2px dashed var(--cl-border);
             border-radius: var(--cl-radius-lg);
-            padding: 40px 20px;
+            padding: ${this.options.compact ? '12px 16px' : '40px 20px'};
             text-align: center;
             cursor: pointer;
             transition: all var(--cl-transition-slow);
@@ -124,7 +133,11 @@ export class BatchUploader {
         const dropzoneContent = document.createElement('div');
         const dropzoneIconWrap = document.createElement('div');
         dropzoneIconWrap.style.cssText = 'margin-bottom: 12px;';
-        this._dropzoneIcon = new Icon({ name: 'cloud-upload', size: 48, color: 'var(--cl-text-placeholder)' });
+        this._dropzoneIcon = new Icon({
+            name: 'cloud-upload',
+            size: this.options.compact ? 24 : 48,
+            color: 'var(--cl-text-placeholder)'
+        });
         this._dropzoneIcon.mount(dropzoneIconWrap);
         const dropzoneText = document.createElement('p');
         dropzoneText.textContent = labels.dropzone;
@@ -779,12 +792,16 @@ export class BatchUploader {
      * Clear all files
      */
     clear() {
+        const removed = [...this.files];
         this._fileIcons?.forEach((icons) => icons.forEach((icon) => icon.destroy()));
         this._fileIcons?.clear();
         this.files = [];
         this.fileList.innerHTML = '';
         this.uploadedCount = 0;
         this.failedCount = 0;
+        if (this.options.onFileRemoved) {
+            removed.forEach(fileItem => this.options.onFileRemoved(fileItem));
+        }
         this._updateUI();
     }
 
@@ -795,7 +812,7 @@ export class BatchUploader {
         const hasFiles = this.files.length > 0;
         const hasPending = this.files.some(f => f.status === 'pending' || f.status === 'error');
 
-        this.actionsBar.style.display = hasFiles ? 'flex' : 'none';
+        this.actionsBar.style.display = !this.options.selectionOnly && hasFiles ? 'flex' : 'none';
         this.uploadBtn.disabled = this.isUploading || !hasPending;
         this.uploadBtn.textContent = this.isUploading
             ? this.options.labels.uploading

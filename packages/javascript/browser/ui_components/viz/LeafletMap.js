@@ -186,7 +186,7 @@ export class LeafletMap {
             'nlsc': {
                 url: 'https://wmts.nlsc.gov.tw/wmts/EMAP/default/GoogleMapsCompatible/{z}/{y}/{x}',
                 options: {
-                    attribution: '© <a href="https://maps.nlsc.gov.tw/" target="_blank">國土測繪中心</a>',
+                    attribution: '© <a href="https://maps.nlsc.gov.tw/" target="_blank" rel="noopener noreferrer">國土測繪中心</a>',
                     maxZoom: 20,
                     crossOrigin: 'anonymous'
                 }
@@ -195,7 +195,7 @@ export class LeafletMap {
             'nlsc-photo': {
                 url: 'https://wmts.nlsc.gov.tw/wmts/PHOTO2/default/GoogleMapsCompatible/{z}/{y}/{x}',
                 options: {
-                    attribution: '© <a href="https://maps.nlsc.gov.tw/" target="_blank">國土測繪中心</a>',
+                    attribution: '© <a href="https://maps.nlsc.gov.tw/" target="_blank" rel="noopener noreferrer">國土測繪中心</a>',
                     maxZoom: 20,
                     crossOrigin: 'anonymous'
                 }

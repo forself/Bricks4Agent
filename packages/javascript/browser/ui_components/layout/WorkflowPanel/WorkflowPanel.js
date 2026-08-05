@@ -299,7 +299,7 @@ export class WorkflowPanel {
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 20px;
+            font-size: var(--cl-font-size-2xl);
             box-shadow: ${isCurrent ? `0 0 0 4px ${stage.color}40` : 'none'};
             transition: all var(--cl-transition-slow);
         `;

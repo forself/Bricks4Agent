@@ -1,9 +1,16 @@
 import { ChainedInput } from '../ChainedInput/index.js';
-import { mockApi } from '../utils/mockApi.js';
 
 import Locale from '../../i18n/index.js';
 export class OrganizationInput extends ChainedInput {
     constructor(options = {}) {
+        const loadUnits = options.loadUnits;
+        const getUnits = async (parentId) => {
+            if (typeof loadUnits !== 'function') {
+                throw new Error('OrganizationInput requires a real loadUnits data loader.');
+            }
+            const units = await loadUnits(parentId);
+            return units.map(u => ({ value: u?.value ?? u?.id, label: u?.label ?? u?.name }));
+        };
         const fields = [
             {
                 name: 'level1',
@@ -12,10 +19,7 @@ export class OrganizationInput extends ChainedInput {
                 placeholder: Locale.t('organizationInput.placeholder'),
                 required: true,
                 flex: 1,
-                loadOptions: async () => {
-                    const units = await mockApi.getUnitList('');
-                    return units.map(u => ({ value: u.id, label: u.name }));
-                }
+                loadOptions: async () => getUnits('')
             },
             {
                 name: 'level2',
@@ -26,8 +30,7 @@ export class OrganizationInput extends ChainedInput {
                 hideWhenEmpty: true,
                 loadOptions: async (parentId) => {
                     if (!parentId) return [];
-                    const units = await mockApi.getUnitList(parentId);
-                    return units.map(u => ({ value: u.id, label: u.name }));
+                    return getUnits(parentId);
                 }
             },
             {
@@ -39,8 +42,7 @@ export class OrganizationInput extends ChainedInput {
                 hideWhenEmpty: true,
                 loadOptions: async (parentId) => {
                     if (!parentId) return [];
-                    const units = await mockApi.getUnitList(parentId);
-                    return units.map(u => ({ value: u.id, label: u.name }));
+                    return getUnits(parentId);
                 }
             },
             {
@@ -52,8 +54,7 @@ export class OrganizationInput extends ChainedInput {
                 hideWhenEmpty: true,
                 loadOptions: async (parentId) => {
                     if (!parentId) return [];
-                    const units = await mockApi.getUnitList(parentId);
-                    return units.map(u => ({ value: u.id, label: u.name }));
+                    return getUnits(parentId);
                 }
             }
         ];

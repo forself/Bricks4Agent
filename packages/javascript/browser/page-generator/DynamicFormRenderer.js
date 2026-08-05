@@ -6,6 +6,7 @@
  */
 
 import { FormRow } from '../ui_components/layout/FormRow/FormRow.js';
+import { BasicButton } from '../ui_components/common/BasicButton/BasicButton.js';
 import { FieldResolver } from './FieldResolver.js';
 import { TriggerEngine } from './TriggerEngine.js';
 
@@ -36,6 +37,7 @@ export class DynamicFormRenderer {
 
         /** @type {FormRow[]} */
         this._rows = [];
+        this._buttonComponents = [];
 
         this.element = null;
     }
@@ -103,25 +105,33 @@ export class DynamicFormRenderer {
         footer.style.cssText = 'display:flex;justify-content:flex-end;gap:8px;margin-top:24px;padding-top:16px;border-top:1px solid var(--cl-border-light);';
 
         if (this.options.onCancel) {
-            const cancelBtn = document.createElement('button');
-            cancelBtn.type = 'button';
-            cancelBtn.textContent = '取消';
-            cancelBtn.style.cssText = 'padding:8px 20px;border: 1px solid var(--cl-border);background: var(--cl-bg);border-radius:6px;cursor:pointer;font-size:14px;';
-            cancelBtn.addEventListener('click', () => this.options.onCancel());
-            footer.appendChild(cancelBtn);
+            const cancel = new BasicButton({
+                type: BasicButton.TYPES.CANCEL,
+                variant: 'plain',
+                showIcon: false,
+                customLabel: '取消',
+                onClick: () => this.options.onCancel(),
+            });
+            const cancelBtn = cancel.element;
+            cancelBtn.style.cssText = 'padding:8px 20px;border: 1px solid var(--cl-border);background: var(--cl-bg);border-radius:var(--cl-radius-md);cursor:pointer;font-size:var(--cl-font-size-lg);';
+            cancel.mount(footer);
+            this._buttonComponents.push(cancel);
         }
 
         if (this.options.onSave) {
-            const saveBtn = document.createElement('button');
-            saveBtn.type = 'button';
-            saveBtn.textContent = '儲存';
-            saveBtn.style.cssText = 'padding:8px 20px;border:none;background: var(--cl-primary);color:white;border-radius:6px;cursor:pointer;font-size:14px;';
-            saveBtn.addEventListener('click', () => {
-                if (this.validate()) {
-                    this.options.onSave(this.getValues());
-                }
+            const save = new BasicButton({
+                type: BasicButton.TYPES.SAVE,
+                variant: 'primary',
+                showIcon: false,
+                customLabel: '儲存',
+                onClick: () => {
+                    if (this.validate()) this.options.onSave(this.getValues());
+                },
             });
-            footer.appendChild(saveBtn);
+            const saveBtn = save.element;
+            saveBtn.style.cssText = 'padding:8px 20px;border:none;background: var(--cl-primary);color:var(--cl-text-inverse);border-radius:var(--cl-radius-md);cursor:pointer;font-size:var(--cl-font-size-lg);';
+            save.mount(footer);
+            this._buttonComponents.push(save);
         }
 
         return footer;
@@ -177,8 +187,6 @@ export class DynamicFormRenderer {
         if (!definition?.fields) return true;
 
         definition.fields.forEach(def => {
-            if (!def.isRequired) return;
-
             const entry = this._fieldInstances.get(def.fieldName);
             if (!entry) return;
 
@@ -195,12 +203,25 @@ export class DynamicFormRenderer {
             const isEmpty = value === null || value === undefined || value === '' ||
                 (Array.isArray(value) && value.length === 0);
 
-            if (isEmpty) {
-                formField.setError(`${def.label}為必填`);
+            if (def.isRequired && isEmpty) {
+                formField.setError(def.requiredMessage || `${def.label}為必填`);
                 valid = false;
-            } else {
-                formField.clearError();
+                return;
             }
+            if (!isEmpty && def.pattern) {
+                let matches = false;
+                try {
+                    matches = new RegExp(def.pattern).test(String(value));
+                } catch {
+                    matches = false;
+                }
+                if (!matches) {
+                    formField.setError(def.validationMessage || `${def.label}格式不正確`);
+                    valid = false;
+                    return;
+                }
+            }
+            formField.clearError();
         });
 
         return valid;
@@ -214,6 +235,7 @@ export class DynamicFormRenderer {
 
     destroy() {
         this._triggerEngine.destroy();
+        this._buttonComponents.splice(0).forEach(button => button.destroy?.());
         this._rows.forEach(row => row.destroy());
         this._rows = [];
         this._fieldInstances.clear();

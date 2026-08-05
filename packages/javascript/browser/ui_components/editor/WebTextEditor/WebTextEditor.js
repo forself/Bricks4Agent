@@ -17,7 +17,7 @@ import { ButtonGroup } from '../../common/ButtonGroup/index.js';
 import { ColorPicker } from '../../common/ColorPicker/index.js';
 import { UploadButton } from '../../common/UploadButton/index.js';
 import { SimpleDialog } from '../../common/Dialog/index.js';
-import { escapeHtml, sanitizeUrl } from '../../utils/security.js';
+import { escapeHtml, sanitizeHTML, sanitizeUrl } from '../../utils/security.js';
 import { WebPainter } from '../../viz/WebPainter/index.js';
 import { NumberInput } from '../../form/NumberInput/index.js';
 import { nearestColorClass, nearestSizeClass, alignClass, nearestLhClass, RT_GROUPS } from '../richtext-palette.js';
@@ -1097,7 +1097,7 @@ export class WebTextEditor {
             btn.innerHTML = icon;
             btn.title = title || '';
             btn.style.cssText = `
-                background: transparent; border: none; color: var(--cl-border); font-size: 15px; cursor: pointer;
+                background: transparent; border: none; color: var(--cl-border); font-size: var(--cl-font-size-lg); cursor: pointer;
                 padding: 4px; min-width: 26px; height: 26px; border-radius: var(--cl-radius-sm);
                 display: flex; align-items: center; justify-content: center; transition: background var(--cl-transition-fast);
             `;
@@ -1236,6 +1236,7 @@ export class WebTextEditor {
                 a.href = safeUrl;
                 a.id = this.fixingId; // 保持 ID 以便繼續編輯
                 a.target = '_blank';
+                a.rel = 'noopener noreferrer';
                 // 複製樣式
                 a.style.cssText = el.style.cssText;
                 // 移動內容
@@ -1558,7 +1559,7 @@ export class WebTextEditor {
     }
 
     setContent(html) {
-        this.editor.innerHTML = html;
+        this.editor.innerHTML = sanitizeHTML(String(html ?? ''));
     }
 
     getHTML() {
@@ -1615,7 +1616,7 @@ export class WebTextEditor {
             }
             
             // 還原 HTML
-            this.editor.innerHTML = state.html;
+            this.editor.innerHTML = sanitizeHTML(String(state.html));
             
             // 還原 WebPainter 資料 (如果 dataset 在 HTML 中還原不完整)
             if (state.painterData) {
@@ -2431,6 +2432,7 @@ export class WebTextEditor {
             ModalPanel.alert({ message: Locale.t('webTextEditor.printError') });
             return;
         }
+        printWindow.opener = null;
 
         const content = this.editor.innerHTML;
         const styles = `

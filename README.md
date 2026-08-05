@@ -106,4 +106,3 @@ verifiable while new builds use the current static PBKDF2 API.
 - [CLAUDE.md](CLAUDE.md) — Claude Code rules for this repo
 - [page-generator/README.md](packages/javascript/browser/page-generator/README.md) — page generator details
 - [templates/spa/README.md](templates/spa/README.md) — SPA template
-</content>

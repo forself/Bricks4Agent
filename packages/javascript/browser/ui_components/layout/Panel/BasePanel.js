@@ -155,6 +155,7 @@ export class BasePanel {
                 const closeBtn = document.createElement('button');
                 closeBtn.className = 'panel__close';
                 closeBtn.type = 'button';
+                closeBtn.setAttribute('aria-label', '關閉');
                 this._closeIcon = new Icon({
                     name: 'close',
                     size: 16,

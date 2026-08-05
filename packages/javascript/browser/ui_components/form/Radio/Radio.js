@@ -145,6 +145,15 @@ export class Radio {
         this._updateVisual();
     }
 
+    setDisabled(disabled) {
+        const nextDisabled = Boolean(disabled);
+        this.options.disabled = nextDisabled;
+        this.input.disabled = nextDisabled;
+        this.element.style.cursor = nextDisabled ? 'not-allowed' : 'pointer';
+        this.element.style.opacity = nextDisabled ? '0.6' : '1';
+        return this;
+    }
+
     mount(container) {
         const target = typeof container === 'string' ? document.querySelector(container) : container;
         if (target) target.appendChild(this.element);
@@ -215,6 +224,11 @@ export class Radio {
             });
         };
 
+        group.setDisabled = (disabled) => {
+            radios.forEach(radio => radio.setDisabled(disabled));
+            return group;
+        };
+
         // 添加 mount 方法
         group.mount = (container) => {
             const target = typeof container === 'string' ? document.querySelector(container) : container;
@@ -222,6 +236,11 @@ export class Radio {
                 target.appendChild(group);
             }
             return group;
+        };
+
+        group.destroy = () => {
+            radios.forEach(radio => radio.destroy());
+            group.remove();
         };
 
         return group;

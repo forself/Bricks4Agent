@@ -389,6 +389,8 @@ export class SearchForm {
     }
 
     _handleReset() {
+        // Restore the form's internal state before projecting defaults back to controls.
+        this._values = { ...this.options.values };
         // 重設所有值
         this._values = { ...this.options.values };
 
@@ -402,6 +404,8 @@ export class SearchForm {
             }
             this._clearFieldError(key);
         });
+
+        this._updateVisibility();
 
         if (this.options.onReset) {
             this.options.onReset();

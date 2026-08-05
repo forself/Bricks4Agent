@@ -1,9 +1,10 @@
 /**
- * RegionMap — 台灣著色地圖(Canvas 版;SVG 禁用政策下的重寫,API 向後相容)。
+ * RegionMap — 台灣著色地圖。
  *
- * 架構:自管 Canvas(不繼承 CanvasChart,因 CanvasChart 預設 padding/title DOM 結構
+ * 預設架構:自管 Canvas(不繼承 CanvasChart,因 CanvasChart 預設 padding/title DOM 結構
  * 與地圖全出血置中需求衝突;但複用 theme-bus resolveTokens / onThemeChange 訂閱,
  * 以及與 CanvasChart 相同的 addRegion / _hitTest path 分支邏輯)。
+ * 設定 legacyCatalog 時改用資產地圖模式，在舊版 PNG 上以可存取按鈕還原統計點位與點擊行為。
  *
  * 技術要點:
  * - Path2D 直接吃原 SVG path 字串(d 屬性一字不改)
@@ -13,6 +14,7 @@
  * - 顏色全走 resolveTokens token(禁硬編)
  */
 import { onThemeChange, resolveTokens, FALLBACK_PAINT } from '../../utils/theme-bus.js';
+import { LEGACY_REGION_MAP_LAYOUTS, legacyRegionMapImageUrl } from './LegacyRegionMapLayouts.js';
 
 /* ── 台灣區域資料(43 條 SVG path 字串,viewBox 0 0 400 700)────────────────── */
 const REGIONS_DATA = [
@@ -55,6 +57,9 @@ export class RegionMap {
      * @param {Function} options.onChange - 選取變更回調
      * @param {boolean} options.showLabels - 顯示標籤
      * @param {boolean} options.showValues - 顯示數值
+     * @param {'jurisdiction'|'city'|null} options.legacyCatalog - 舊版警政轄區或行政區資產目錄
+     * @param {string} options.legacyView - 舊版縣市畫面代碼
+     * @param {string} options.unit - 資產地圖數值單位
      */
     constructor(options = {}) {
         this.options = {
@@ -71,8 +76,13 @@ export class RegionMap {
             showValues: false,
             labelFontSize: 12,
             valueFontSize: 10,
+            legacyCatalog: null,
+            legacyView: '00',
+            unit: '',
             ...options
         };
+
+        this._legacyMode = Boolean(this.options.legacyCatalog);
 
         this.regions = new Map();        // code → { name, paths: Path2D[] }
         this.selectedRegion = null;
@@ -82,6 +92,13 @@ export class RegionMap {
         this._offTheme = null;
         this._resizeObserver = null;
         this._raf = 0;
+
+        if (this._legacyMode) {
+            this._buildLegacyDom();
+            this._offTheme = onThemeChange(() => this._renderLegacy());
+            this._renderLegacy();
+            return;
+        }
 
         this._buildDom();
         this._buildPaths();
@@ -95,6 +112,85 @@ export class RegionMap {
     }
 
     /* ── DOM 建構 ──────────────────────────────────────────────────────── */
+
+    _buildLegacyDom() {
+        const el = document.createElement('div');
+        el.className = 'region-map region-map--legacy';
+        el.setAttribute('role', 'group');
+        el.setAttribute('aria-label', '台灣行政區統計地圖');
+        el.style.cssText = [
+            'position: relative;',
+            'width: min(100%, 400px);',
+            'aspect-ratio: 4 / 3;',
+            'margin: 0 auto;',
+            'overflow: hidden;',
+            'background: var(--cl-bg);'
+        ].join(' ');
+
+        const image = document.createElement('img');
+        image.className = 'region-map__legacy-image';
+        image.alt = '台灣行政區域圖';
+        image.style.cssText = 'display:block;width:100%;height:100%;object-fit:contain;';
+
+        const markers = document.createElement('div');
+        markers.className = 'region-map__legacy-markers';
+        markers.style.cssText = 'position:absolute;inset:0;';
+
+        el.append(image, markers);
+        this.element = el;
+        this.legacyImage = image;
+        this.legacyMarkers = markers;
+    }
+
+    _legacyLayout() {
+        return LEGACY_REGION_MAP_LAYOUTS?.[this.options.legacyCatalog]?.[String(this.options.legacyView || '00')] || null;
+    }
+
+    _renderLegacy() {
+        if (!this._legacyMode || this._destroyed || !this.legacyImage || !this.legacyMarkers) return;
+        const layout = this._legacyLayout();
+        this.legacyMarkers.replaceChildren();
+        if (!layout) {
+            this.legacyImage.removeAttribute('src');
+            this.legacyImage.alt = '找不到舊版行政區地圖';
+            return;
+        }
+
+        this.legacyImage.src = legacyRegionMapImageUrl(this.options.legacyCatalog, layout.image);
+        this.legacyImage.alt = `台灣行政區域圖－${this.options.legacyView}`;
+        for (const marker of layout.markers) {
+            const row = this.options.data?.[marker.code] || {};
+            const value = row.value ?? 0;
+            const label = row.label || marker.code;
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'region-map__legacy-marker';
+            button.dataset.regionCode = marker.code;
+            button.setAttribute('aria-label', `${label} ${value}${this.options.unit || ''}`);
+            button.textContent = `${value}${this.options.unit || ''}`;
+            const position = ['position:absolute;', 'padding:0;', 'border:0;', 'background:transparent;',
+                'color:var(--cl-text);', 'font:700 15px/1.2 var(--cl-font-family-cjk,var(--cl-font-family));',
+                'cursor:pointer;', 'white-space:nowrap;', 'text-shadow:0 1px 0 var(--cl-bg);'];
+            for (const edge of ['top', 'bottom']) {
+                if (Number.isFinite(marker[edge])) position.push(`${edge}:${marker[edge] / 3}%;`);
+            }
+            for (const edge of ['left', 'right']) {
+                if (Number.isFinite(marker[edge])) position.push(`${edge}:${marker[edge] / 4}%;`);
+            }
+            if (this.selectedRegion === marker.code) {
+                position.push('color:var(--cl-primary-dark);', 'text-decoration:underline;');
+            }
+            button.style.cssText = position.join('');
+            button.addEventListener('click', () => {
+                const previous = this.selectedRegion;
+                this.selectedRegion = marker.code;
+                if (previous !== marker.code) this._renderLegacy();
+                if (this.options.onClick) this.options.onClick(marker.code);
+                if (this.options.onChange) this.options.onChange({ code: marker.code, name: label });
+            });
+            this.legacyMarkers.appendChild(button);
+        }
+    }
 
     _buildDom() {
         const el = document.createElement('div');
@@ -220,6 +316,10 @@ export class RegionMap {
     /* ── 渲染管線 ─────────────────────────────────────────────────────── */
 
     render() {
+        if (this._legacyMode) {
+            this._renderLegacy();
+            return;
+        }
         if (this._renderScheduled || this._destroyed) return;
         this._renderScheduled = true;
         this._raf = requestAnimationFrame(() => {
@@ -399,6 +499,12 @@ export class RegionMap {
         this.render();
     }
 
+    /** Switch the legacy image/layout while preserving the current data and callbacks. */
+    setLegacyView(view) {
+        this.options.legacyView = String(view || '00');
+        this.render();
+    }
+
     /** 設定顏色比例尺並重繪。 */
     setColorScale(colorScale) {
         this.options.colorScale = colorScale;
@@ -466,6 +572,13 @@ export class RegionMap {
 
     destroy() {
         this._destroyed = true;
+        if (this._legacyMode) {
+            if (this._offTheme) this._offTheme();
+            this.legacyMarkers?.replaceChildren();
+            this.element?.remove();
+            this.element = null;
+            return;
+        }
         cancelAnimationFrame(this._raf);
         if (this._offTheme) this._offTheme();
         if (this._resizeObserver) this._resizeObserver.disconnect();

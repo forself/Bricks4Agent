@@ -6,7 +6,19 @@ import { Icon } from '../../common/Icon/index.js';
 function normalizeDate(value) {
     if (!value) return null;
 
-    const date = value instanceof Date ? value : new Date(value);
+    // Date-only values are business dates, not instants. Parsing an ISO-looking
+    // value through `new Date(string)` may apply a UTC offset and move the date.
+    let date;
+    if (value instanceof Date) {
+        date = value;
+    } else if (typeof value === 'string') {
+        const match = value.trim().match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+        date = match
+            ? new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
+            : new Date(value);
+    } else {
+        date = new Date(value);
+    }
     if (Number.isNaN(date.getTime())) return null;
 
     return new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -461,7 +473,7 @@ export class DatePicker {
                 border-radius: var(--cl-radius-sm);
                 cursor: ${isDisabled ? 'not-allowed' : 'pointer'};
                 font-size: var(--cl-font-size-sm);
-                background: ${isSelected ? 'var(--cl-primary)' : isToday ? 'var(--cl-primary-light)' : 'transparent'};
+                background: ${isSelected ? 'var(--cl-primary)' : 'transparent'};
                 color: ${isDisabled ? 'var(--cl-border-dark)' : isSelected ? 'var(--cl-text-inverse)' : 'var(--cl-text)'};
                 ${isToday && !isSelected ? 'font-weight:600;' : ''}
                 ${isDisabled ? 'opacity:0.5;' : ''}
@@ -514,7 +526,57 @@ export class DatePicker {
                 this.close();
             }
         };
+        this._onViewportChange = () => {
+            if (this.snapshot().open) this._positionCalendar();
+        };
         document.addEventListener('click', this._onDocumentClick);
+        window.addEventListener('resize', this._onViewportChange);
+        window.addEventListener('scroll', this._onViewportChange, true);
+    }
+
+    _getCalendarVerticalBounds() {
+        let top = 8;
+        let bottom = Math.max(top, window.innerHeight - 8);
+        let ancestor = this.element?.parentElement;
+
+        while (ancestor && ancestor !== document.body && ancestor !== document.documentElement) {
+            const style = window.getComputedStyle(ancestor);
+            const clipsY = [style.overflow, style.overflowY]
+                .some(value => /^(auto|scroll|hidden|clip)$/.test(value));
+            if (clipsY) {
+                const rect = ancestor.getBoundingClientRect();
+                top = Math.max(top, rect.top);
+                bottom = Math.min(bottom, rect.bottom);
+            }
+            ancestor = ancestor.parentElement;
+        }
+
+        return { top, bottom };
+    }
+
+    _positionCalendar() {
+        if (!this.calendar || !this.inputWrapper || !this.snapshot().open) return;
+
+        this.calendar.style.top = '100%';
+        this.calendar.style.bottom = 'auto';
+        this.calendar.style.marginTop = '4px';
+        this.calendar.style.marginBottom = '0';
+
+        const inputRect = this.inputWrapper.getBoundingClientRect();
+        const calendarRect = this.calendar.getBoundingClientRect();
+        const calendarHeight = calendarRect.height || this.calendar.scrollHeight || 0;
+        const bounds = this._getCalendarVerticalBounds();
+        const spaceBelow = bounds.bottom - inputRect.bottom - 4;
+        const spaceAbove = inputRect.top - bounds.top - 4;
+        const placeAbove = calendarHeight > spaceBelow && spaceAbove > spaceBelow;
+
+        if (placeAbove) {
+            this.calendar.style.top = 'auto';
+            this.calendar.style.bottom = '100%';
+            this.calendar.style.marginTop = '0';
+            this.calendar.style.marginBottom = '4px';
+        }
+        this.calendar.dataset.placement = placeAbove ? 'top' : 'bottom';
     }
 
     _syncLegacyFields(state) {
@@ -551,6 +613,7 @@ export class DatePicker {
         }
 
         this._renderCalendar();
+        if (state.open) this._positionCalendar();
     }
 
     _isDateInRange(date) {
@@ -678,6 +741,10 @@ export class DatePicker {
         this.send('DESTROY');
         if (this._onDocumentClick) {
             document.removeEventListener('click', this._onDocumentClick);
+        }
+        if (this._onViewportChange) {
+            window.removeEventListener('resize', this._onViewportChange);
+            window.removeEventListener('scroll', this._onViewportChange, true);
         }
         if (this.element?.parentNode) {
             this.element.remove();

@@ -20,10 +20,11 @@ export class DynamicPageRenderer {
      * @param {Function} options.onSave - 儲存回調（form 模式）
      * @param {Function} options.onCancel - 取消回調（form 模式）
      * @param {Function} options.onSearch - 搜尋回調（list 模式）
-     * @param {Function} options.onAction - 操作回調（list 模式）
+     * @param {Function} options.onAction - 操作回調（list/detail 模式）
      * @param {Function} options.onBack - 返回回調（detail 模式）
      * @param {Function} options.onEdit - 編輯回調（detail 模式）
      * @param {Function} options.onPermissionCheck - 權限 UX gate (permissionKey, page, definition) => boolean|Promise<boolean>
+     * @param {Object} options.routeParams - 路由參數（detail 模式）
      * @param {number} options.pageSize - 每頁筆數（list 模式）
      */
     constructor(options = {}) {
@@ -40,6 +41,7 @@ export class DynamicPageRenderer {
             onPermissionCheck: null,
             onDownload: null,
             confirmDownload: null,
+            routeParams: {},
             pageSize: 20,
             customComponents: null,
             customComponentRegistry: null,
@@ -97,8 +99,10 @@ export class DynamicPageRenderer {
                 this._renderer = new DynamicDetailRenderer({
                     definition,
                     data: data || {},
+                    routeParams: this.options.routeParams || {},
                     onBack: this.options.onBack,
                     onEdit: this.options.onEdit,
+                    onAction: this.options.onAction,
                 });
                 break;
             }

@@ -43,6 +43,10 @@ export class RelationChart extends CanvasChart {
         this._controls = null;
         this._groupOrder = new Map();
         this._linkRefs = [];
+        this.viewport = { x: 0, y: 0, scale: 1 };
+        this.isPanning = false;
+        this._pointerDown = null;
+        this._moved = false;
 
         this._bindGraphEvents();
         this._bindTooltipHover();
@@ -92,14 +96,20 @@ export class RelationChart extends CanvasChart {
         for (const l of this.links) {
             const s = byId.get(l.source);
             const t = byId.get(l.target);
-            if (s && t && s !== t) this._linkRefs.push([s, t]);
+            if (s && t && s !== t) this._linkRefs.push([s, t, l]);
         }
     }
 
     _nodeColor(node, index) {
+        const custom = this.options.getNodeColor?.(node, index);
+        if (custom) return custom;
         return node.group == null
             ? categoricalColor(index)
             : categoricalColor(this._groupOrder.get(node.group) ?? 0);
+    }
+
+    _nodeRadius() {
+        return Math.max(4, Number(this.options.nodeRadius) || NODE_R);
     }
 
     /* ── 模擬迴圈(tick → 重繪;destroy 停 rAF)── */
@@ -182,6 +192,7 @@ export class RelationChart extends CanvasChart {
         this.height = h;
         const nodes = this.nodes || [];
         if (!nodes.length) return;
+        const nodeRadius = this._nodeRadius();
 
         this._ensureControls();
         this._prepFrame();
@@ -191,6 +202,10 @@ export class RelationChart extends CanvasChart {
             '--cl-text-placeholder', '--cl-bg', '--cl-primary',
             '--cl-bg-overlay-soft', '--cl-text-heading'
         ]);
+
+        ctx.save();
+        ctx.translate(this.viewport.x, this.viewport.y);
+        ctx.scale(this.viewport.scale, this.viewport.scale);
 
         // 連線
         ctx.save();
@@ -212,7 +227,7 @@ export class RelationChart extends CanvasChart {
         ctx.shadowOffsetY = 1;
         nodes.forEach((node, i) => {
             ctx.beginPath();
-            ctx.arc(node.x, node.y, NODE_R, 0, Math.PI * 2);
+            ctx.arc(node.x, node.y, nodeRadius, 0, Math.PI * 2);
             ctx.fillStyle = this._nodeColor(node, i);
             ctx.fill();
             ctx.lineWidth = 2;
@@ -222,13 +237,34 @@ export class RelationChart extends CanvasChart {
         ctx.restore();
 
         // 節點標籤(碟面反白字,沿用原版 11px 粗體置中)
-        ctx.font = this.font(11, 700);
+        ctx.font = this.font(Number(this.options.labelFontSize) || 11, 700);
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillStyle = t['--cl-bg'];
         for (const node of nodes) {
             ctx.fillText(String(node.label || node.id || ''), node.x, node.y);
         }
+
+        if (typeof this.options.getNodeBadges === 'function') {
+            ctx.font = this.font(12);
+            ctx.fillStyle = t['--cl-text-heading'];
+            for (const node of nodes) {
+                const badges = this.options.getNodeBadges(node);
+                const label = Array.isArray(badges) ? badges.filter(Boolean).join('') : String(badges || '');
+                if (label) ctx.fillText(label, node.x, node.y + nodeRadius + 10);
+            }
+        }
+
+        ctx.font = this.font(8);
+        ctx.fillStyle = t['--cl-text-heading'];
+        for (const [source, target, link] of this._linkRefs) {
+            const value = link?.value;
+            if (value !== undefined && value !== null && value !== '') {
+                ctx.fillText(String(value), (source.x + target.x) / 2, (source.y + target.y) / 2);
+            }
+        }
+
+        ctx.restore();
 
         // 圖例
         if (this.options.showLegend) this._drawLegend(ctx, w, h, t);
@@ -287,6 +323,20 @@ export class RelationChart extends CanvasChart {
         label.appendChild(checkbox);
         label.appendChild(document.createTextNode(Locale.t('relationChart.hoverTooltip')));
         controls.appendChild(label);
+
+        const makeButton = (text, title, action) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.textContent = text;
+            button.title = title;
+            button.setAttribute('aria-label', title);
+            button.style.cssText = 'margin-left:6px;padding:2px 7px;border:1px solid var(--cl-border);border-radius:var(--cl-radius-sm);background:var(--cl-bg);color:var(--cl-text);cursor:pointer;';
+            button.addEventListener('click', action);
+            controls.appendChild(button);
+        };
+        makeButton('＋', '放大', () => this.zoomBy(1.2));
+        makeButton('－', '縮小', () => this.zoomBy(1 / 1.2));
+        makeButton('重設', '重設檢視', () => this.resetViewport());
         this._canvasWrap.appendChild(controls);
 
         this._controls = controls;
@@ -296,11 +346,13 @@ export class RelationChart extends CanvasChart {
     /* ── 命中(自管;圓形距離判定,由後往前=最上層優先)── */
 
     _pickNode(x, y) {
+        const point = this._screenToWorld(x, y);
+        const radius = this._nodeRadius();
         for (let i = this.nodes.length - 1; i >= 0; i--) {
             const n = this.nodes[i];
             if (n.x === undefined) continue;
-            const dx = x - n.x, dy = y - n.y;
-            if (dx * dx + dy * dy <= NODE_R * NODE_R) return n;
+            const dx = point.x - n.x, dy = point.y - n.y;
+            if (dx * dx + dy * dy <= radius * radius) return n;
         }
         return null;
     }
@@ -314,25 +366,46 @@ export class RelationChart extends CanvasChart {
 
         c.addEventListener('mousedown', (e) => {
             const node = this._pickNode(e.offsetX, e.offsetY);
-            if (!node || this.draggingNode) return;
-            e.preventDefault();                        // 防選字
-
-            this.draggingNode = node;
-            this.isDragging = true;
+            if (this.draggingNode || this.isPanning) return;
+            e.preventDefault();
+            this._pointerDown = { x: e.offsetX, y: e.offsetY, node };
+            this._moved = false;
+            if (node) {
+                this.draggingNode = node;
+                this.isDragging = true;
+            } else {
+                this.isPanning = true;
+            }
             this._cancelHide();
-            this._hideDetail();                        // 開拖即收 tooltip
-            c.style.cursor = 'move';
+            this._hideDetail();
+            c.style.cursor = node ? 'move' : 'grabbing';
 
-            // 立即吸附游標(沿用原版)
-            node.x = e.offsetX;
-            node.y = e.offsetY;
+            if (node) {
+                const point = this._screenToWorld(e.offsetX, e.offsetY);
+                node.x = point.x;
+                node.y = point.y;
+            }
         });
 
         c.addEventListener('mousemove', (e) => {
+            if (this._pointerDown) {
+                const dx = e.offsetX - this._pointerDown.x;
+                const dy = e.offsetY - this._pointerDown.y;
+                if (dx * dx + dy * dy > 9) this._moved = true;
+            }
             if (this.draggingNode) {
                 e.preventDefault();
-                this.draggingNode.x = e.offsetX;
-                this.draggingNode.y = e.offsetY;
+                const point = this._screenToWorld(e.offsetX, e.offsetY);
+                this.draggingNode.x = point.x;
+                this.draggingNode.y = point.y;
+                return;
+            }
+            if (this.isPanning && this._pointerDown) {
+                e.preventDefault();
+                this.viewport.x += e.offsetX - this._pointerDown.x;
+                this.viewport.y += e.offsetY - this._pointerDown.y;
+                this._pointerDown.x = e.offsetX;
+                this._pointerDown.y = e.offsetY;
                 return;
             }
             const node = this._pickNode(e.offsetX, e.offsetY);
@@ -354,14 +427,18 @@ export class RelationChart extends CanvasChart {
             }
         });
 
-        c.addEventListener('mouseup', () => this._endDrag());
+        c.addEventListener('mouseup', () => this._endPointer());
         c.addEventListener('mouseleave', () => {
-            this._endDrag();
+            this._endPointer(true);
             if (this._hoverNode) {
                 this._hoverNode = null;
                 this._scheduleHide();
             }
         });
+        c.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            this.zoomBy(e.deltaY < 0 ? 1.12 : 1 / 1.12, e.offsetX, e.offsetY);
+        }, { passive: false });
     }
 
     _bindTooltipHover() {
@@ -370,11 +447,22 @@ export class RelationChart extends CanvasChart {
         this._tooltip.addEventListener('mouseleave', () => this._scheduleHide());
     }
 
-    _endDrag() {
-        if (!this.draggingNode) return;
+    _endPointer(cancelClick = false) {
+        const clickedNode = this.draggingNode;
+        const shouldClick = !cancelClick && clickedNode && !this._moved;
         this.draggingNode = null;
         this.isDragging = false;
+        this.isPanning = false;
+        this._pointerDown = null;
         this.canvas.style.cursor = 'default';
+        if (shouldClick) this.options.onNodeClick?.(clickedNode);
+    }
+
+    _screenToWorld(x, y) {
+        return {
+            x: (x - this.viewport.x) / this.viewport.scale,
+            y: (y - this.viewport.y) / this.viewport.scale,
+        };
     }
 
     _scheduleHide() {
@@ -406,6 +494,7 @@ export class RelationChart extends CanvasChart {
         const labelText = node.label ? String(node.label) : '';
         const groupText = node.group == null ? '' : String(node.group);
         const idText = node.id == null ? '' : String(node.id);
+        const detail = this.options.getNodeTooltip?.(node);
 
         const wrap = document.createElement('div');
         wrap.className = 'rc-tip';
@@ -434,25 +523,11 @@ export class RelationChart extends CanvasChart {
             p.appendChild(document.createTextNode(' ' + v));
             info.appendChild(p);
         };
-        row('ID', idText);
-        row('Type', 'Entity Node');
-        row('Status', 'Active');
-        row('Description', `Node representing ${labelText} in the network.`);
+        const rows = Array.isArray(detail)
+            ? detail
+            : (detail && typeof detail === 'object' ? Object.entries(detail) : [['ID', idText]]);
+        rows.forEach(([key, value]) => row(String(key), value == null || value === '' ? '-' : String(value)));
         wrap.appendChild(info);
-
-        const actions = document.createElement('div');
-        actions.className = 'rc-tip-actions';
-        actions.style.cssText = 'margin-top:12px; text-align:right;';
-        const btn = document.createElement('button');
-        btn.setAttribute('data-action', 'copy-id');
-        btn.dataset.nodeId = idText;
-        btn.textContent = 'Copy ID';
-        btn.style.cssText = 'padding:4px 10px; background:var(--cl-border-medium); color:var(--cl-text); border:none; border-radius:var(--cl-radius-sm); cursor:pointer; font-size:var(--cl-font-size-sm);';
-        btn.addEventListener('click', () => {
-            console.log('Action on ' + btn.dataset.nodeId);
-        });
-        actions.appendChild(btn);
-        wrap.appendChild(actions);
 
         tip.appendChild(wrap);
         tip.style.display = 'block';
@@ -467,6 +542,22 @@ export class RelationChart extends CanvasChart {
         if (patch.nodes) this.nodes = patch.nodes;
         if (patch.links) this.links = patch.links;
         super.update(patch);
+    }
+
+    zoomBy(factor, centerX = this.width / 2, centerY = this.height / 2) {
+        const oldScale = this.viewport.scale;
+        const nextScale = Math.max(0.25, Math.min(4, oldScale * Number(factor || 1)));
+        const worldX = (centerX - this.viewport.x) / oldScale;
+        const worldY = (centerY - this.viewport.y) / oldScale;
+        this.viewport.scale = nextScale;
+        this.viewport.x = centerX - worldX * nextScale;
+        this.viewport.y = centerY - worldY * nextScale;
+        return this;
+    }
+
+    resetViewport() {
+        this.viewport = { x: 0, y: 0, scale: 1 };
+        return this;
     }
 
     destroy() {

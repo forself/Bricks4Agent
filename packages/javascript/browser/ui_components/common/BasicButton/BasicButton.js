@@ -241,7 +241,10 @@ export class BasicButton {
 
     _createElement() {
         const { type, showIcon, customLabel, disabled, variant, fullWidth } = this.options;
-        const iconConfig = BasicButton.ICONS[type] || BasicButton.ICONS.confirm;
+        const defaultIconConfig = BasicButton.ICONS[type] || BasicButton.ICONS.confirm;
+        const iconConfig = this.options.icon
+            ? { ...defaultIconConfig, icon: this.options.icon }
+            : defaultIconConfig;
         const sizeStyles = this._getSizeStyles();
         const variantStyles = this._getVariantStyles(iconConfig);
         const isIconOnly = variant === 'icon';

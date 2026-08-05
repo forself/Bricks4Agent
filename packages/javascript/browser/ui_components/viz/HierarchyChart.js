@@ -50,33 +50,37 @@ export class HierarchyChart extends OrgChart {
             if (nested) nested.style.cssText = 'width:100%; height:400px; background:var(--cl-bg-input); border:1px solid var(--cl-border-medium); border-radius:var(--cl-radius-lg)';
         }
 
-        // 3. Instantiate Org Chart inside the container
-        // Need requestAnimationFrame to ensure DOM is ready
-        requestAnimationFrame(() => {
+        // 3. Load the real node detail before instantiating the nested chart.
+        requestAnimationFrame(async () => {
             const container = document.getElementById('nested-org-chart-container');
             if (container) {
-                // Mock Data for the Unit
-                // In real app, fetch by node.id
-                const mockMemberData = {
-                    id: 'M1', label: '部門經理', title: 'Manager One',
-                    children: [
-                        { id: 'S1', label: '資深專員', title: 'Senior A' },
-                        {
-                            id: 'S2', label: '資深專員', title: 'Senior B',
-                            children: [
-                                { id: 'J1', label: '助理', title: 'Junior X' }
-                            ]
-                        }
-                    ]
-                };
-
-                new OrgChart({
-                    container: container,
-                    root: mockMemberData,
-                    width: '100%',
-                    height: '100%'
-                });
+                const loader = this.options?.loadNodeDetail;
+                if (typeof loader !== 'function') {
+                    container.dataset.dataError = 'missing-node-detail-loader';
+                    container.textContent = '未設定組織明細資料來源。';
+                    return;
+                }
+                try {
+                    const root = await loader(node);
+                    if (!root) throw new Error('組織明細沒有資料。');
+                    this._nestedDetailChart?.destroy?.();
+                    this._nestedDetailChart = new OrgChart({
+                        container,
+                        root,
+                        width: '100%',
+                        height: '100%'
+                    });
+                } catch (error) {
+                    container.dataset.dataError = 'node-detail-load-failed';
+                    container.textContent = error?.message || '組織明細載入失敗。';
+                }
             }
         });
+    }
+
+    destroy() {
+        this._nestedDetailChart?.destroy?.();
+        this._nestedDetailChart = null;
+        super.destroy?.();
     }
 }

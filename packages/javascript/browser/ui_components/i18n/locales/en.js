@@ -264,6 +264,21 @@ export default {
         lastPage: 'Last Page'
     },
 
+    /** DynamicDetailRenderer */
+    dynamicDetail: {
+        action: 'Action',
+        actions: 'Actions',
+        attachments: 'Attachments',
+        history: 'History',
+        media: 'Media',
+        subtable: 'Detail table',
+        source: 'Source',
+        tableName: 'Table',
+        tablePk: 'Primary key',
+        emptyTable: 'No records',
+        emptyValue: '-'
+    },
+
     /** ModalPanel */
     modalPanel: {
         confirmTitle: 'Confirm',

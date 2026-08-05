@@ -199,12 +199,27 @@ export class ModalPanel extends BasePanel {
             cancelText = Locale.t('modalPanel.cancelText'),
             onConfirm = () => { },
             onCancel = () => { },
+            onClose = null,
             ...rest
         } = options;
+
+        let settled = false;
+        const finishCancel = () => {
+            if (settled) return;
+            settled = true;
+            onCancel();
+            onClose?.();
+        };
 
         const modal = new ModalPanel({
             title,
             closable: true,
+            // Confirmation dialogs must remain open until the user explicitly
+            // chooses an outcome.  In particular, a confirm created from a
+            // click handler must not be closed again when that same click
+            // reaches the document-level outside-click listener.
+            autoClose: false,
+            onClose: finishCancel,
             ...rest
         });
 
@@ -231,10 +246,11 @@ export class ModalPanel extends BasePanel {
 
         cancelBtn.addEventListener('click', () => {
             modal.close();
-            onCancel();
         });
 
         confirmBtn.addEventListener('click', () => {
+            if (settled) return;
+            settled = true;
             modal.close();
             onConfirm();
         });

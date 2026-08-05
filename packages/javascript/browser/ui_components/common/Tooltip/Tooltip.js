@@ -19,6 +19,7 @@
  */
 
 import { nextUid } from '../../utils/uid.js';
+import { sanitizeHTML } from '../../utils/security.js';
 
 export class Tooltip {
     /* ------------------------------------------------------------------ */
@@ -215,7 +216,7 @@ export class Tooltip {
             const body = this._el.querySelector('.cl-tooltip__body');
             if (body) {
                 if (this.options.html) {
-                    body.innerHTML = text;
+                    body.innerHTML = sanitizeHTML(text);
                 } else {
                     body.textContent = text;
                 }
@@ -312,7 +313,7 @@ export class Tooltip {
         body.className = 'cl-tooltip__body';
         body.style.cssText = 'background: var(--cl-bg-dark); color: var(--cl-text-inverse); font-family: var(--cl-font-family); font-size: var(--cl-font-size-sm); line-height: 1.45; padding: 6px 10px; border-radius: var(--cl-radius-sm); box-shadow: var(--cl-shadow-md); word-wrap: break-word; overflow-wrap: break-word;';
         if (this.options.html) {
-            body.innerHTML = this.options.text;
+            body.innerHTML = sanitizeHTML(this.options.text);
         } else {
             body.textContent = this.options.text;
         }

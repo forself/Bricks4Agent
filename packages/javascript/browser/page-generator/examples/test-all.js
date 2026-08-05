@@ -10,6 +10,7 @@ import { FieldTypes, PageTypes } from '../PageDefinition.js';
 import { DiaryEditorDefinition } from './DiaryEditorDefinition.js';
 import { ContactFormDefinition } from './ContactFormDefinition.js';
 import { runQueryExtV1Tests } from './test-query-ext-v1.js';
+import { runDetailExtTests } from './test-detail-ext.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
@@ -161,6 +162,20 @@ try {
     }
     allPassed = false;
     results.push({ name: 'QueryExtV1', success: false, error: 'query ext-v1 tests failed' });
+}
+
+console.log('\n--- Detail ext runtime helpers ---');
+try {
+    const detailResults = await runDetailExtTests();
+    detailResults.forEach((result) => console.log(`OK: ${result.name}`));
+    results.push({ name: 'DetailExt', success: true, lines: detailResults.length, size: 'tests' });
+} catch (error) {
+    console.log(error.message);
+    for (const result of error.results || []) {
+        if (!result.pass) console.log(`  - ${result.name}: ${result.error?.message || result.error}`);
+    }
+    allPassed = false;
+    results.push({ name: 'DetailExt', success: false, error: 'detail ext tests failed' });
 }
 
 console.log('\n--- Component path audit ---');

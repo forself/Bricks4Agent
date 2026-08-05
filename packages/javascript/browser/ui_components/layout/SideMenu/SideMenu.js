@@ -93,6 +93,7 @@ export class SideMenu {
             itemEl.className = 'side-menu-item';
             itemEl.dataset.id = item.id;
             itemEl.dataset.title = item.text;
+            itemEl.dataset.level = String(level);
 
             const link = document.createElement('a');
             link.className = 'side-menu-link';

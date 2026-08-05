@@ -217,7 +217,9 @@ export class ToastPanel extends BasePanel {
 
     static show(message, options = {}) {
         const toast = new ToastPanel(options);
-        toast.setContent(message);
+        const content = document.createElement('span');
+        content.textContent = String(message ?? '');
+        toast.setContent(content);
         toast.show();
         return toast;
     }

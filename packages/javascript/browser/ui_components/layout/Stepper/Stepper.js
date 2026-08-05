@@ -40,6 +40,7 @@ export class Stepper {
         this.options = {
             steps: [],
             current: 0,
+            complete: false,
             clickable: false,
             direction: 'horizontal',
             size: 'medium',
@@ -91,7 +92,7 @@ export class Stepper {
     }
 
     _render() {
-        const { steps, direction, size, clickable } = this.options;
+        const { steps, direction, size, clickable, complete } = this.options;
         const { current, errors, visibility } = this._state.snapshot();
         const horizontal = direction !== 'vertical';
         const circle = size === 'small' ? 24 : 32;
@@ -107,8 +108,8 @@ export class Stepper {
         this.element.textContent = '';
 
         steps.forEach((step, i) => {
-            const isDone = i < current;
-            const isActive = i === current;
+            const isDone = complete || i < current;
+            const isActive = !complete && i === current;
             const isError = errors.includes(i);
 
             const color = isError ? 'var(--cl-danger)'

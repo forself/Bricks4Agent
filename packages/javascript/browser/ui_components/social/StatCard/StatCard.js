@@ -73,7 +73,7 @@ export class StatCard {
         if (icon) {
             icon.style.cssText =
                 'width: 48px; height: 48px; border-radius: var(--cl-radius-xl); display: flex;' +
-                ' align-items: center; justify-content: center; font-size: 22px; flex-shrink: 0;' +
+                ' align-items: center; justify-content: center; font-size: var(--cl-font-size-3xl); flex-shrink: 0;' +
                 ` background: ${this._getIconBackground(this.options.color)}; color: ${this.options.color};`;
         }
         const content = el.querySelector('.social-stat-card__content');

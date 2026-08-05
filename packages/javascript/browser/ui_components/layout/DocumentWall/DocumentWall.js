@@ -28,6 +28,7 @@ export class DocumentWall {
             onDescription: null,
             onEdit: null,
             onDelete: null,
+            onBatchDownload: null,
             ...options
         };
 
@@ -226,6 +227,11 @@ export class DocumentWall {
 
         const selectedDocs = this.documents.filter(d => this.selectedIds.has(d.id));
 
+        if (typeof this.options.onBatchDownload === 'function') {
+            await this.options.onBatchDownload(selectedDocs);
+            return;
+        }
+
         // 進入 loading 狀態
         const originalText = this.downloadLabel?.textContent || '';
         if (this.downloadLabel) this.downloadLabel.textContent = Locale.t('documentWall.packing');
@@ -234,22 +240,12 @@ export class DocumentWall {
         try {
             const zip = new SimpleZip();
 
-            // 由於 src 可能是假連結，這裡做個簡單與 PhotoWall 類似的 fetch 處理
-            // 如果是真實連結，應該 fetch blob
             for (const doc of selectedDocs) {
-                if (doc.src?.startsWith('http')) {
-                    try {
-                        const blob = await fetch(doc.src).then(r => r.blob());
-                        zip.addFile(doc.title, blob); // 假設 title 包含副檔名或自動偵測
-                    } catch (e) {
-                        console.warn(`無法載入文件 "${doc.title}":`, e);
-                        // Fallback for demo: create text file
-                        zip.addFile(doc.title + '.txt', `Mock content for ${doc.title}`);
-                    }
-                } else {
-                    // Fallback
-                    zip.addFile(doc.title + '.txt', `Mock content for ${doc.title}\nDescription: ${doc.description}`);
-                }
+                if (!doc.src) throw new Error(`Document "${doc.title}" has no download source.`);
+                const response = await fetch(doc.src, { credentials: 'same-origin' });
+                if (!response.ok) throw new Error(`Document "${doc.title}" download failed (${response.status}).`);
+                const blob = await response.blob();
+                zip.addFile(doc.fileName || doc.title, blob);
             }
 
             const zipBlob = await zip.generateAsync();

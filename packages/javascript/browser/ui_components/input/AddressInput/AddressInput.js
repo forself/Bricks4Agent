@@ -1,9 +1,16 @@
 import { ChainedInput } from '../ChainedInput/index.js';
-import { mockApi } from '../utils/mockApi.js';
 
 import Locale from '../../i18n/index.js';
 export class AddressInput extends ChainedInput {
     constructor(options = {}) {
+        const loadCities = options.loadCities;
+        const loadDistricts = options.loadDistricts;
+        const requireLoader = (loader, name) => {
+            if (typeof loader !== 'function') {
+                throw new Error(`AddressInput requires a real ${name} data loader.`);
+            }
+            return loader;
+        };
         const fields = [
             {
                 name: 'city',
@@ -12,10 +19,7 @@ export class AddressInput extends ChainedInput {
                 placeholder: Locale.t('addressInput.cityPlaceholder'),
                 required: true,
                 flex: 1,
-                loadOptions: async () => {
-                    const cities = await mockApi.getCities();
-                    return cities;
-                }
+                loadOptions: async () => requireLoader(loadCities, 'loadCities')()
             },
             {
                 name: 'district',
@@ -26,8 +30,8 @@ export class AddressInput extends ChainedInput {
                 flex: 1,
                 loadOptions: async (cityValue) => {
                     if (!cityValue) return [];
-                    const districts = await mockApi.getDistricts(cityValue);
-                    return districts.map(d => ({ value: d, label: d }));
+                    const districts = await requireLoader(loadDistricts, 'loadDistricts')(cityValue);
+                    return districts.map(d => ({ value: d?.value ?? d, label: d?.label ?? d }));
                 }
             },
             {

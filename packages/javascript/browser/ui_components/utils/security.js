@@ -128,6 +128,7 @@ export function sanitizeUrl(url) {
     // 白名單：允許的協議
     const safeProtocols = ['http:', 'https:', 'mailto:', 'tel:'];
     // 允許相對路徑和錨點
+    if (cleaned.startsWith('//')) return '';
     if (cleaned.startsWith('/') || cleaned.startsWith('#') || cleaned.startsWith('?')) {
         return cleaned;
     }
@@ -175,7 +176,9 @@ export function sanitizeHTML(html) {
 
     const safeUrlProtocols = ['http:', 'https:', 'mailto:'];
     // <img> 內的 data:image 不會執行 script,允許內嵌圖片
-    const imgDataRe = /^data:image\/(png|jpe?g|gif|webp|svg\+xml);base64,/i;
+    // SVG remains active XML when opened directly and is unnecessary for the
+    // TIM rich-text/image surfaces. Keep raster data URLs only.
+    const imgDataRe = /^data:image\/(png|jpe?g|gif|webp);base64,/i;
 
     function clean(node) {
         if (node.nodeType === 8) {
@@ -220,6 +223,10 @@ export function sanitizeHTML(html) {
                 if (name === 'href' || name === 'src') {
                     const cleanValue = attr.value.replace(/[\x00-\x1f]/g, '').trim();
                     const lower = cleanValue.toLowerCase();
+                    if (cleanValue.startsWith('//')) {
+                        node.removeAttribute(attr.name);
+                        return;
+                    }
                     if (name === 'src' && tagName === 'img' && imgDataRe.test(lower)) return;
                     const colonIdx = lower.indexOf(':');
                     if (colonIdx > 0 && !safeUrlProtocols.includes(lower.slice(0, colonIdx + 1))) {

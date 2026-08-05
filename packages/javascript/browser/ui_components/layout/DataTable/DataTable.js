@@ -31,6 +31,8 @@
  */
 
 import { escapeHtml, isRawHtml, raw } from '../../utils/security.js';
+import { Link } from '../../common/Link/index.js';
+import { Badge } from '../../common/Badge/index.js';
 
 import Locale from '../../i18n/index.js';
 
@@ -70,6 +72,18 @@ const DEFAULT_TEXT_LABELS = {
     body: { noMatch: Locale.t('dataTable.noMatch') },
     selectedRows: { text: Locale.t('dataTable.selectedUnit') },
 };
+
+export function linkCell(text, href, options = {}) {
+    const scope = options.external === false ? 'internal' : 'external';
+    const className = String(options.className || '').replace(/[^A-Za-z0-9_-]/g, ' ');
+    return raw(`<span data-b4a-link-cell="" data-link-text="${escapeHtml(String(text ?? ''))}" data-link-href="${escapeHtml(String(href ?? ''))}" data-link-scope="${scope}" data-link-class="${escapeHtml(className)}"></span>`);
+}
+
+export function badgeCell(text, options = {}) {
+    const variant = Object.values(Badge.VARIANTS).includes(options.variant) ? options.variant : Badge.VARIANTS.DEFAULT;
+    const className = String(options.className || '').replace(/[^A-Za-z0-9_-]/g, ' ');
+    return raw(`<span data-b4a-badge-cell="" data-badge-text="${escapeHtml(String(text ?? ''))}" data-badge-variant="${variant}" data-badge-class="${escapeHtml(className)}"></span>`);
+}
 
 export class DataTable {
     /**
@@ -136,6 +150,7 @@ export class DataTable {
         this._sortDir = null;
         this._selectedRows = [];
         this._hoveredRow = null;
+        this._cellComponents = [];
 
         // 合併 textLabels
         const tl = this.options.textLabels || {};
@@ -276,6 +291,7 @@ export class DataTable {
      * 銷毀表格
      */
     destroy() {
+        this._cellComponents.splice(0).forEach(component => component.destroy?.());
         if (this.container) {
             this.container.innerHTML = '';
         }
@@ -311,6 +327,7 @@ export class DataTable {
      * 渲染到 this.element
      */
     _renderToElement() {
+        this._cellComponents.splice(0).forEach(component => component.destroy?.());
         const sorted = this._getSortedData();
         const paginated = this._paginationEnabled ? this._getPaginatedData(sorted) : sorted;
         const visibleCols = this._getVisibleColumns();
@@ -389,6 +406,36 @@ export class DataTable {
         this.element.innerHTML = html;
         this._applyDynamicStyles(visibleCols);
         this._bindEvents(this.element);
+        this._hydrateCellComponents(this.element);
+        // Composite callers may mount B4A controls into cell hosts after every
+        // sort/page re-render. The callback receives the stable table root.
+        this.options.onRender?.(this.element, this);
+    }
+
+    _hydrateCellComponents(root) {
+        root.querySelectorAll('[data-b4a-link-cell]').forEach(host => {
+            const link = new Link({
+                text: host.dataset.linkText || '',
+                href: host.dataset.linkHref || '',
+                scope: host.dataset.linkScope === 'internal' ? Link.SCOPES.INTERNAL : Link.SCOPES.EXTERNAL,
+            });
+            const classes = String(host.dataset.linkClass || '').split(/\s+/).filter(Boolean);
+            link.mount(host);
+            if (classes.length) link.element.classList.add(...classes);
+            this._cellComponents.push(link);
+        });
+        root.querySelectorAll('[data-b4a-badge-cell]').forEach(host => {
+            const badge = new Badge({
+                text: host.dataset.badgeText || '',
+                variant: host.dataset.badgeVariant || Badge.VARIANTS.DEFAULT,
+                type: Badge.TYPES.TEXT,
+                size: Badge.SIZES.SMALL,
+            });
+            const classes = String(host.dataset.badgeClass || '').split(/\s+/).filter(Boolean);
+            badge.render(host);
+            if (classes.length) badge.element.classList.add(...classes);
+            this._cellComponents.push(badge);
+        });
     }
 
     /**

@@ -19,7 +19,9 @@ export class Dropdown {
             disabled: false,
             clearable: false,
             width: '100%', // RWD:未指定時跟隨容器寬(原固定 200px 在窄容器會溢出);呼叫端仍可傳固定寬
+            menuMinWidth: null,
             emptyText: Locale.t('dropdown.emptyText'),
+            footer: null,
             ...options
         };
 
@@ -55,11 +57,15 @@ export class Dropdown {
             CLOSE: (state) => ({
                 ...state,
                 open: false,
-                highlightIndex: -1
+                highlightIndex: -1,
+                // Search text is only a filter, never a selectable value. Clearing it
+                // when the menu closes restores the committed option label (or the
+                // placeholder) instead of displaying an uncommitted arbitrary string.
+                filterQuery: ''
             }),
             TOGGLE: (state) => (
                 state.open
-                    ? { ...state, open: false, highlightIndex: -1 }
+                    ? { ...state, open: false, highlightIndex: -1, filterQuery: '' }
                     : (state.availability === 'disabled'
                         ? state
                         : {
@@ -73,6 +79,7 @@ export class Dropdown {
             SET_VALUE: (state, payload) => ({
                 ...state,
                 selectedValue: payload?.value ?? null,
+                filterQuery: '',
                 open: false,
                 highlightIndex: -1
             }),
@@ -143,7 +150,7 @@ export class Dropdown {
     }
 
     _createElement() {
-        const { variant, placeholder, disabled, width } = this.options;
+        const { variant, placeholder, disabled, width, menuMinWidth } = this.options;
         const sizeStyles = this._getSizeStyles();
         const isSearchable = variant === Dropdown.VARIANTS.SEARCHABLE;
 
@@ -242,6 +249,7 @@ export class Dropdown {
             border-radius: var(--cl-radius-md);
             box-shadow: var(--cl-shadow-md);
             max-height: 240px;
+            min-width: ${menuMinWidth || '100%'};
             overflow-y: auto;
             z-index: 1000;
             display: none;
@@ -335,6 +343,7 @@ export class Dropdown {
                 font-size: var(--cl-font-size-md);
             `;
             menu.appendChild(empty);
+            this._appendFooter(menu);
             return;
         }
 
@@ -423,6 +432,16 @@ export class Dropdown {
 
             menu.appendChild(option);
         });
+        this._appendFooter(menu);
+    }
+
+    _appendFooter(menu) {
+        const footer = this.options.footer;
+        if (!footer) return;
+        const element = footer.element || footer;
+        if (!(element instanceof Element)) return;
+        element.classList.add('dropdown__footer');
+        menu.appendChild(element);
     }
 
     _clearSelection() {
@@ -519,11 +538,16 @@ export class Dropdown {
     }
 
     _selectItem(item) {
+        this.input?.blur?.();
         this.send('SET_VALUE', { value: item.value });
 
         if (this.options.onChange) {
             this.options.onChange(item.value, item);
         }
+        // Searchable inputs can regain focus after the clicked option is re-rendered.
+        // Close once more at the end of the event turn so a completed selection never
+        // leaves the suggestion menu covering the following form fields.
+        globalThis.queueMicrotask?.(() => this.close());
     }
 
     snapshot() {

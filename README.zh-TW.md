@@ -103,4 +103,3 @@ Playwright／Edge runtime，不為 CI 增加 npm dependency。
 - [CLAUDE.md](CLAUDE.md) — 本 repo 的 Claude Code 規則
 - [page-generator/README.md](packages/javascript/browser/page-generator/README.md) — 頁面生成器細節
 - [templates/spa/README.md](templates/spa/README.md) — SPA 範本
-</content>
