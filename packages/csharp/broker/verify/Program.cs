@@ -1616,6 +1616,152 @@ try
         }
     }
 
+    // ══════ 交易決策外部化成可查詢稽核證據(受治理 workload demo)══════
+    // 把一筆已執行 + 一筆被風控否決(DENIED)的交易決策寫成 SharedContextEntry,證明:
+    // ①決策狀態外部化、依 taskId 隔離 ②可用 rag_retrieve 查回(含「為何被否決」)
+    // ③風控否決本身成為可稽核、可檢索的治理證據。純 fixture、不碰私有交易碼。
+    var decisionRagDbPath = Path.Combine(sandboxRoot, "trading-decision-rag.db");
+    using (var decisionRagDb = BrokerDb.UseSqlite($"Data Source={decisionRagDbPath}"))
+    {
+        var initializer = new BrokerDbInitializer(decisionRagDb);
+        initializer.Initialize();
+
+        var decisionTaskId = "trading-decision-verify";
+        var decisionEmbedding = new FakeDecisionEmbeddingService();
+        var decisionRagPipeline = new RagPipelineService(new RagPipelineOptions
+        {
+            QueryRewriteEnabled = false,
+            RerankEnabled = false,
+            CacheEnabled = false
+        });
+        var decisionRagDispatcher = new InProcessDispatcher(
+            NullLogger<InProcessDispatcher>.Instance,
+            sandboxRoot,
+            db: decisionRagDb,
+            embeddingService: decisionEmbedding,
+            ragPipeline: decisionRagPipeline);
+
+        var decisionFixtureJson = JsonSerializer.Serialize(new[]
+        {
+            new
+            {
+                key = "BTC_LONG_20260624",
+                content = JsonSerializer.Serialize(new
+                {
+                    ts = "2026-06-24T10:30:00Z", symbol = "BTC-USDT", decision = "LONG",
+                    size = 0.5, entry = 63500, stop = 62000,
+                    reason = "ma_regime trend signal strength 0.82", status = "EXECUTED"
+                }),
+                tag = "trading_decision",
+                tags = new[] { "trading_decision", "executed" }
+            },
+            new
+            {
+                key = "ETH_REJECT_20260624",
+                content = JsonSerializer.Serialize(new
+                {
+                    ts = "2026-06-24T10:45:00Z", symbol = "ETH-USDT", decision = "REJECT",
+                    reason = "position_limit_exceeded current 0.8 max 1.0",
+                    risk_gate = "PositionLimitGate", status = "DENIED"
+                }),
+                tag = "trading_decision",
+                tags = new[] { "trading_decision", "denied" }
+            }
+        });
+
+        var decisionImportPayload = JsonSerializer.Serialize(new
+        {
+            route = "rag_import",
+            args = new { format = "json", tag = "trading_decision", data = decisionFixtureJson, task_id = decisionTaskId }
+        });
+        var decisionImportResult = await decisionRagDispatcher.DispatchAsync(new ApprovedRequest
+        {
+            RequestId = "req_decision_rag_import",
+            CapabilityId = "rag.import",
+            Route = "rag_import",
+            Payload = decisionImportPayload,
+            TaskId = decisionTaskId
+        });
+        AssertTrue(decisionImportResult.Success, $"trading-decision RAG import succeeds :: {decisionImportResult.ErrorMessage}");
+
+        // ① 決策狀態外部化(含被否決的決策)+ 記錄寫入者身份
+        var decisionEntries = decisionRagDb.GetAll<SharedContextEntry>()
+            .Where(e => e.TaskId == decisionTaskId)
+            .ToList();
+        AssertTrue(decisionEntries.Any(e => e.Key == "trading_decision:BTC_LONG_20260624" && e.ContentRef.Contains("LONG", StringComparison.Ordinal)), "trading-decision externalizes executed decision state");
+        AssertTrue(decisionEntries.Any(e => e.Key == "trading_decision:ETH_REJECT_20260624" && e.ContentRef.Contains("position_limit_exceeded", StringComparison.Ordinal)), "trading-decision externalizes risk-DENIED decision as auditable evidence");
+        AssertTrue(decisionEntries.All(e => e.AuthorPrincipalId == "system_rag_ingest"), "trading-decision entries record the ingest principal");
+
+        // ② rag_retrieve 查回已執行決策
+        var decisionFulltextPayload = JsonSerializer.Serialize(new
+        {
+            route = "rag_retrieve",
+            args = new { query = "BTC LONG ma_regime", mode = "fulltext", limit = 5, rewrite = false, rerank = false, tags = new[] { "trading_decision" } }
+        });
+        var decisionFulltextResult = await decisionRagDispatcher.DispatchAsync(new ApprovedRequest
+        {
+            RequestId = "req_decision_rag_fulltext",
+            CapabilityId = "rag.retrieve",
+            Route = "rag_retrieve",
+            Payload = decisionFulltextPayload,
+            TaskId = decisionTaskId
+        });
+        AssertTrue(decisionFulltextResult.Success, $"trading-decision fulltext retrieve succeeds :: {decisionFulltextResult.ErrorMessage}");
+        using (var doc = JsonDocument.Parse(decisionFulltextResult.ResultPayload ?? "{}"))
+        {
+            var keys = doc.RootElement.GetProperty("results").EnumerateArray().Select(i => i.GetProperty("key").GetString() ?? "").ToList();
+            AssertTrue(keys.Contains("trading_decision:BTC_LONG_20260624"), "trading-decision retrieve finds the executed decision");
+        }
+
+        // ③ 可查「為何被否決」—— 風控 DENIED 變可檢索證據
+        var rejectQueryPayload = JsonSerializer.Serialize(new
+        {
+            route = "rag_retrieve",
+            args = new { query = "position_limit_exceeded PositionLimitGate", mode = "fulltext", limit = 5, rewrite = false, rerank = false, tags = new[] { "trading_decision" } }
+        });
+        var rejectQueryResult = await decisionRagDispatcher.DispatchAsync(new ApprovedRequest
+        {
+            RequestId = "req_decision_rag_reject",
+            CapabilityId = "rag.retrieve",
+            Route = "rag_retrieve",
+            Payload = rejectQueryPayload,
+            TaskId = decisionTaskId
+        });
+        AssertTrue(rejectQueryResult.Success, $"trading-decision rejection retrieve succeeds :: {rejectQueryResult.ErrorMessage}");
+        using (var doc = JsonDocument.Parse(rejectQueryResult.ResultPayload ?? "{}"))
+        {
+            var keys = doc.RootElement.GetProperty("results").EnumerateArray().Select(i => i.GetProperty("key").GetString() ?? "").ToList();
+            AssertTrue(keys.FirstOrDefault() == "trading_decision:ETH_REJECT_20260624", "trading-decision retrieve surfaces why a trade was denied");
+        }
+
+        // ④ 語意檢索(離線假 embedding)回正向向量分
+        var decisionSemanticPayload = JsonSerializer.Serialize(new
+        {
+            route = "rag_retrieve",
+            args = new { query = "long bitcoin trend signal", mode = "semantic", limit = 5, threshold = 0.3, rewrite = false, rerank = false }
+        });
+        var decisionSemanticResult = await decisionRagDispatcher.DispatchAsync(new ApprovedRequest
+        {
+            RequestId = "req_decision_rag_semantic",
+            CapabilityId = "rag.retrieve",
+            Route = "rag_retrieve",
+            Payload = decisionSemanticPayload,
+            TaskId = decisionTaskId
+        });
+        AssertTrue(decisionSemanticResult.Success, $"trading-decision semantic retrieve succeeds :: {decisionSemanticResult.ErrorMessage}");
+        using (var doc = JsonDocument.Parse(decisionSemanticResult.ResultPayload ?? "{}"))
+        {
+            var first = doc.RootElement.GetProperty("results").EnumerateArray().FirstOrDefault();
+            AssertTrue(first.ValueKind == JsonValueKind.Object && first.GetProperty("key").GetString() == "trading_decision:BTC_LONG_20260624", "trading-decision semantic retrieve returns the executed decision");
+            AssertTrue(first.GetProperty("vector_score").GetSingle() > 0, "trading-decision semantic retrieve reports a positive vector score");
+        }
+
+        // ⑤ 租戶隔離:不同 taskId 看不到這些決策
+        AssertTrue(decisionEntries.Count == 2, "trading-decision entries are scoped to their taskId");
+        var otherTenant = decisionRagDb.GetAll<SharedContextEntry>().Where(e => e.TaskId == "trading-decision-other-tenant").ToList();
+        AssertTrue(otherTenant.Count == 0, "a different taskId sees none of the trading decisions (tenant isolation)");
+    }
+
     var coordinatorDbPath = Path.Combine(sandboxRoot, "coordinator-profile.db");
     using (var coordinatorDb = BrokerDb.UseSqlite($"Data Source={coordinatorDbPath}"))
     {
@@ -2838,6 +2984,43 @@ file sealed class FakeLegalEmbeddingService : EmbeddingService
         }
 
         return Task.FromResult<float[]?>(new[] { 0.0f, 0.0f, 1.0f });
+    }
+}
+
+file sealed class FakeDecisionEmbeddingService : EmbeddingService
+{
+    public FakeDecisionEmbeddingService()
+        : base(new EmbeddingOptions
+        {
+            Enabled = true,
+            Provider = "fake",
+            BaseUrl = "http://localhost:11434",
+            Model = "fake-decision-embedding",
+            Dimension = 4,
+            TimeoutSeconds = 1
+        })
+    {
+    }
+
+    public override Task<float[]?> EmbedAsync(string text)
+    {
+        // 已執行的 BTC LONG 決策 → 向量 A
+        if (text.Contains("BTC", StringComparison.Ordinal) ||
+            text.Contains("LONG", StringComparison.Ordinal) ||
+            text.Contains("trend", StringComparison.Ordinal))
+        {
+            return Task.FromResult<float[]?>(new[] { 1.0f, 0.0f, 0.5f, 0.0f });
+        }
+
+        // 被風控否決的 ETH 決策 → 向量 B
+        if (text.Contains("ETH", StringComparison.Ordinal) ||
+            text.Contains("REJECT", StringComparison.Ordinal) ||
+            text.Contains("position", StringComparison.Ordinal))
+        {
+            return Task.FromResult<float[]?>(new[] { 0.0f, 1.0f, 0.0f, 0.8f });
+        }
+
+        return Task.FromResult<float[]?>(new[] { 0.0f, 0.0f, 0.0f, 0.0f });
     }
 }
 
