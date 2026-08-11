@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Browser Action And Approval Model</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Browser Action And Approval Model</h1>
+<h2>Goal</h2>
+<p>Define the maximum action level and confirmation requirements for broker-governed browser tools.</p>
+<p>Identity mode answers:</p>
+<ul>
+<li>whose identity is used</li>
+</ul>
+<p>Session policy answers:</p>
+<ul>
+<li>how credentials and sessions are bound</li>
+</ul>
+<p>Site policy answers:</p>
+<ul>
+<li>which sites and origins the tool may touch</li>
+</ul>
+<p>Action policy answers:</p>
+<ul>
+<li>what the browser tool is actually allowed to do</li>
+<li>which levels require explicit human confirmation</li>
+</ul>
+<p>All four are required before browser tools can safely evolve toward assistant-grade operation.</p>
+<h2>Core Rule</h2>
+<p>Browser tools must not quietly grow from read-only retrieval into delegated action.</p>
+<p>The maximum action level must be explicit in registry definition data.</p>
+<h2>Action Policy Fields</h2>
+<p>The registry can now carry:</p>
+<ul>
+<li><code>max_action_level</code></li>
+<li><code>read</code></li>
+<li><code>navigate</code></li>
+<li><code>authenticate</code></li>
+<li><code>draft_action</code></li>
+<li><code>committed_action</code></li>
+<li><code>requires_human_confirmation_on</code></li>
+<li><code>allows_form_fill</code></li>
+<li><code>allows_submit</code></li>
+<li><code>allows_download</code></li>
+<li><code>allows_file_upload</code></li>
+</ul>
+<p>These fields belong to <code>browser_action_policy</code>.</p>
+<h2>Meaning Of Action Levels</h2>
+<h3><code>read</code></h3>
+<ul>
+<li>read already-loaded content</li>
+<li>extract text, metadata, or structured results</li>
+</ul>
+<h3><code>navigate</code></h3>
+<ul>
+<li>navigate between allowed pages</li>
+<li>follow links or broker-approved page transitions</li>
+</ul>
+<h3><code>authenticate</code></h3>
+<ul>
+<li>perform login or session-establishment steps</li>
+<li>may pass through interactive auth challenges depending on session policy</li>
+</ul>
+<h3><code>draft_action</code></h3>
+<ul>
+<li>populate forms or stage an action without committing external state</li>
+<li>should stop before final submission</li>
+</ul>
+<h3><code>committed_action</code></h3>
+<ul>
+<li>submit or confirm an action that changes external state</li>
+<li>highest-risk browser action class</li>
+</ul>
+<h2>Human Confirmation</h2>
+<p><code>requires_human_confirmation_on</code> lists action levels that must not proceed silently.</p>
+<p>Typical examples:</p>
+<ul>
+<li>anonymous tools: none</li>
+<li>system-account read tools: maybe none, or <code>authenticate</code> depending on policy</li>
+<li>user-delegated tools: often <code>authenticate</code>, <code>draft_action</code>, and always <code>committed_action</code></li>
+</ul>
+<p>This is a registry-visible requirement, not an implementation detail hidden in runtime code.</p>
+<h2>Capability Expectations</h2>
+<h3>Anonymous Public Read</h3>
+<ul>
+<li><code>max_action_level = navigate</code></li>
+<li><code>requires_human_confirmation_on = []</code></li>
+<li><code>allows_form_fill = false</code></li>
+<li><code>allows_submit = false</code></li>
+<li><code>allows_download = false</code></li>
+<li><code>allows_file_upload = false</code></li>
+</ul>
+<h3>System Account Read</h3>
+<ul>
+<li><code>max_action_level = authenticate</code></li>
+<li><code>requires_human_confirmation_on = []</code> or policy-driven</li>
+<li><code>allows_form_fill = false</code></li>
+<li><code>allows_submit = false</code></li>
+</ul>
+<h3>User Delegated Read</h3>
+<ul>
+<li><code>max_action_level = authenticate</code></li>
+<li><code>requires_human_confirmation_on = ["authenticate"]</code></li>
+<li><code>allows_form_fill = false</code></li>
+<li><code>allows_submit = false</code></li>
+</ul>
+<h2>Why This Matters</h2>
+<p>Without an explicit action model, browser tools drift into unsafe ambiguity:</p>
+<ul>
+<li>is this tool only reading?</li>
+<li>may it log in?</li>
+<li>may it fill a form?</li>
+<li>may it submit?</li>
+<li>when must the user be asked again?</li>
+</ul>
+<p>Those are governance questions and must be visible in broker-owned spec data.</p>
+<h2>Current Phase</h2>
+<p>Current implementation direction:</p>
+<ul>
+<li>broker registry can read and surface <code>browser_action_policy</code></li>
+<li>reference browser specs should declare action limits alongside identity/session/site policy</li>
+</ul>
+<p>Not yet implemented:</p>
+<ul>
+<li>runtime action gate enforcement</li>
+<li>DOM-level action policy engine</li>
+<li>form-staging checkpoints</li>
+<li>final-commit approval workflow</li>
+</ul>
+<h2>Rule</h2>
+<p>No browser tool definition is complete until it explicitly states:</p>
+<ol>
+<li>who it acts as</li>
+<li>how session/credentials are bound</li>
+<li>which sites it may touch</li>
+<li>what maximum action level it may reach</li>
+</ol>
+</main>
+</body>
+</html>

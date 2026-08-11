@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FormRow</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>FormRow</h1>
+<p>表單列佈局元件，使用 12 欄 CSS Grid 系統管理同一列的多個 FormField。</p>
+<h2>API</h2>
+<h3>Constructor</h3>
+<pre><code class="language-js">new FormRow(options?)
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>參數</th>
+<th>型別</th>
+<th>預設值</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>options.fields</code></td>
+<td><code>Array</code></td>
+<td><code>[]</code></td>
+<td>FormField 實例陣列</td>
+</tr>
+<tr>
+<td><code>options.gap</code></td>
+<td><code>string</code></td>
+<td><code>'16px'</code></td>
+<td>欄間距</td>
+</tr>
+</tbody>
+</table>
+<h3>方法</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>回傳</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>addField(formField)</code></td>
+<td><code>this</code></td>
+<td>新增 FormField</td>
+</tr>
+<tr>
+<td><code>getField(fieldName)</code></td>
+<td><code>FormField\|null</code></td>
+<td>依 fieldName 取得 FormField</td>
+</tr>
+<tr>
+<td><code>getFields()</code></td>
+<td><code>FormField[]</code></td>
+<td>取得所有 FormField</td>
+</tr>
+<tr>
+<td><code>mount(container)</code></td>
+<td><code>this</code></td>
+<td>掛載至容器（CSS 選擇器或 DOM 元素）</td>
+</tr>
+<tr>
+<td><code>destroy()</code></td>
+<td><code>void</code></td>
+<td>銷毀元件與所有子 FormField</td>
+</tr>
+</tbody>
+</table>
+<h3>屬性</h3>
+<table>
+<thead>
+<tr>
+<th>屬性</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>element</code></td>
+<td>根 DOM 元素（<code>div.form-row</code>）</td>
+</tr>
+</tbody>
+</table>
+<h2>使用範例</h2>
+<pre><code class="language-js">import { FormRow } from './FormRow.js';
+
+const row = new FormRow({
+    fields: [field1, field2, field3],
+    gap: '12px'
+});
+row.mount('#form-container');
+</code></pre>
+<h2>Demo</h2>
+<p>開啟 <code>demo.html</code> 直接在瀏覽器測試。</p>
+</main>
+</body>
+</html>

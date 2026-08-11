@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bricks4Agent Current Issues And Handoff</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Bricks4Agent Current Issues And Handoff</h1>
+<p>Date: 2026-03-29
+Status: active handoff report for current local branch state</p>
+<h2>1. Purpose</h2>
+<p>This file records:</p>
+<ul>
+<li>current working progress,</li>
+<li>open issues that still block reliable user-facing behavior,</li>
+<li>local-only changes that have not yet been pushed,</li>
+<li>immediate handoff steps for the next engineer or next iteration.</li>
+</ul>
+<p>It is not a broad architecture overview. For that, see:</p>
+<ul>
+<li><a href="/d:/Bricks4Agent/docs/reports/CurrentArchitectureAndProgress-2026-03-26.html">CurrentArchitectureAndProgress-2026-03-26.md</a></li>
+</ul>
+<h2>2. Current Local Git State</h2>
+<p>As of this handoff:</p>
+<ul>
+<li>branch: <code>main</code></li>
+<li>tracking: <code>origin/main</code></li>
+<li>local branch is ahead by <code>3</code> commits</li>
+</ul>
+<p>Local-only commits not yet pushed:</p>
+<ol>
+<li><code>75cf1be</code> <code>feat: add iterative system scaffold packaging flow</code></li>
+<li><code>4d7447a</code> <code>feat: default system scaffolds to custom component libraries</code></li>
+<li><code>38e1edb</code> <code>feat: support short line confirmations with y and n</code></li>
+</ol>
+<p>Current working tree:</p>
+<ul>
+<li>no tracked file modifications</li>
+<li>one unrelated untracked file remains outside this handoff scope:</li>
+<li><code>tw-11134207-7r98z-lrvkacg3kj4i83.webp</code></li>
+</ul>
+<h2>3. What Is Already Working</h2>
+<h3>3.1 LINE sidecar baseline</h3>
+<p>The current canonical local live path is:</p>
+<p><code>LINE webhook -&gt; ngrok -&gt; line-worker -&gt; broker /api/v1/high-level/line/process</code></p>
+<p>Canonical local ports:</p>
+<ul>
+<li>broker: <code>127.0.0.1:5361</code></li>
+<li>line-worker webhook: <code>127.0.0.1:5357</code></li>
+</ul>
+<p>Sidecar broker state is now persisted to:</p>
+<ul>
+<li><code>D:\Bricks4Agent\.run\line-sidecar\data\broker.db</code></li>
+</ul>
+<p>That persistence change matters because restart no longer wipes:</p>
+<ul>
+<li>local admin password state</li>
+<li>shared context documents</li>
+<li>broker profile memory</li>
+<li>future OAuth credentials stored in the sidecar DB</li>
+</ul>
+<h3>3.2 High-level production flow</h3>
+<p>The following are already operational:</p>
+<ul>
+<li>production draft creation</li>
+<li>project-name capture</li>
+<li>confirm / cancel flow</li>
+<li>short confirmations:</li>
+<li><code>confirm</code> or <code>y</code></li>
+<li><code>cancel</code> or <code>n</code></li>
+</ul>
+<h3>3.3 <code>code_gen</code> path</h3>
+<p><code>code_gen</code> no longer stops at <code>task / plan / handoff</code> only.</p>
+<p>After confirmation, the current implementation now generates a minimal website prototype in the managed project directory and reports:</p>
+<ul>
+<li>project root</li>
+<li>entry file</li>
+</ul>
+<p>This is not a full autonomous website factory, but it is no longer a fake execution path.</p>
+<h3>3.4 <code>system_scaffold</code> path</h3>
+<p>A first tranche of iterative scaffold generation has been added.</p>
+<p>Current behavior:</p>
+<ul>
+<li>high-level conversation can create a <code>system_scaffold</code> draft</li>
+<li>follow-up requirement messages can update the draft</li>
+<li>confirm triggers:</li>
+<li>requirement summary</li>
+<li>design-plan document</li>
+<li>scaffold files</li>
+<li>basic packaging into zip</li>
+<li>delivery attempt through the existing artifact delivery layer</li>
+</ul>
+<p>This tranche is intentionally limited. It is scaffold-oriented, not a full autonomous multi-iteration engineering factory yet.</p>
+<h3>3.5 UI component policy default</h3>
+<p>By default, <code>system_scaffold</code> now records:</p>
+<ul>
+<li><code>ui_components: custom_component_library</code></li>
+</ul>
+<p>This default is carried through:</p>
+<ul>
+<li>draft output</li>
+<li>design-plan</li>
+<li>iteration-state</li>
+<li>generated project README</li>
+</ul>
+<p>That matches the current project principle: prefer the in-repo custom component library unless the user explicitly asks for a different UI kit.</p>
+<h2>4. What Is Not Working Reliably Yet</h2>
+<h3>4.1 Google Drive upload in the current live sidecar</h3>
+<p>The Google Drive upload code is not globally broken.</p>
+<p>The current live problem is narrower:</p>
+<ul>
+<li>the running sidecar DB currently has no delegated Google Drive credential row</li>
+<li>therefore <code>shared_delegated</code> upload falls back to local-only artifact generation</li>
+<li>user-facing result becomes:</li>
+<li>file generated locally</li>
+<li>cloud upload incomplete</li>
+<li>no cloud link returned</li>
+</ul>
+<p>Confirmed current live state:</p>
+<ul>
+<li>local admin status works</li>
+<li>local admin login works</li>
+<li>Google Drive delivery configuration is present</li>
+<li>OAuth client JSON path is present</li>
+<li>default folder id is present</li>
+<li>but <code>google_drive_delegated_credentials</code> is currently empty in the live sidecar DB</li>
+</ul>
+<p>So the active blocker is:</p>
+<ul>
+<li>missing shared delegated OAuth credential in the current persistent broker DB</li>
+</ul>
+<p>It is not:</p>
+<ul>
+<li>a missing code path for upload</li>
+<li>a compile failure</li>
+<li>a missing default folder configuration</li>
+</ul>
+<h3>4.2 Frontend download path is still missing</h3>
+<p>There is still no broker-owned public download route for artifacts.</p>
+<p>The system currently depends on cloud delivery for user-friendly downloads.</p>
+<p>That means:</p>
+<ul>
+<li>if Google Drive upload is unavailable, user delivery becomes degraded</li>
+<li>local file generation may still succeed, but user download remains incomplete</li>
+</ul>
+<p>This is already documented as a missing frontend capability and should remain tracked as such.</p>
+<h3>4.3 LINE follow-up UX still needs more polish</h3>
+<p>Recent work added:</p>
+<ul>
+<li>short commands <code>y</code> and <code>n</code></li>
+<li>separate follow-up command messages</li>
+</ul>
+<p>But this area still needs more tightening:</p>
+<ul>
+<li>some older guide/help text may still mention only <code>confirm / cancel</code></li>
+<li>long or mixed guidance can still appear in some flows if a prompt path was not fully normalized</li>
+<li>this should be treated as UX debt, not as a completed area</li>
+</ul>
+<h3>4.4 <code>system_scaffold</code> is still first-tranche only</h3>
+<p>The current scaffold flow does not yet do all of the following:</p>
+<ul>
+<li>true multi-round implementation revision cycles</li>
+<li>full automated test-fix-test loops</li>
+<li>broker-owned download API</li>
+<li>full live validation through LINE ingress for every scaffold branch</li>
+</ul>
+<p>It is currently a real scaffold generator, but not yet the final end-state described in the design document.</p>
+<h2>5. Most Important Immediate Handoff Items</h2>
+<h3>5.1 Restore shared Google Drive owner credential</h3>
+<p>This is the top operational blocker for user-visible cloud delivery.</p>
+<p>Required action:</p>
+<ol>
+<li>Use local admin to generate a new Google Drive OAuth authorization URL for the shared owner binding.</li>
+<li>Complete the OAuth flow in browser.</li>
+<li>Confirm that a delegated credential row now exists in the persistent sidecar DB.</li>
+<li>Generate a new artifact and verify that:
+   - upload succeeds,
+   - a share link is produced,
+   - LINE receives the link.</li>
+</ol>
+<p>Why this matters:</p>
+<ul>
+<li>without this, document and scaffold packaging can succeed locally but still fail the actual user delivery expectation</li>
+</ul>
+<h3>5.2 Push the three local commits</h3>
+<p>The local branch is ahead by three commits. Those changes should not remain only on one machine indefinitely.</p>
+<p>Push candidates:</p>
+<ol>
+<li><code>75cf1be</code></li>
+<li><code>4d7447a</code></li>
+<li><code>38e1edb</code></li>
+</ol>
+<p>Do not forget:</p>
+<ul>
+<li>Windows PowerShell should not use <code>&amp;&amp;</code> for chained git commands</li>
+<li>use <code>;</code> or <code>if ($LASTEXITCODE -eq 0) { ... }</code></li>
+</ul>
+<h3>5.3 Add a broker-owned artifact download API</h3>
+<p>This is not optional long-term polish. It is a structural missing piece.</p>
+<p>Current delivery reality:</p>
+<ul>
+<li>local artifact generation exists</li>
+<li>Google Drive delivery exists when credential state is healthy</li>
+<li>direct broker-hosted download still does not exist</li>
+</ul>
+<p>Without that, the system has no first-party download path.</p>
+<h3>5.4 Continue <code>system_scaffold</code> from scaffold to iteration engine</h3>
+<p>The design already states that the feature must support:</p>
+<ul>
+<li>requirement analysis</li>
+<li>design planning</li>
+<li>implementation</li>
+<li>testing</li>
+<li>revision</li>
+<li>packaging and delivery</li>
+</ul>
+<p>The first tranche only covers the early scaffold version of that lifecycle.</p>
+<p>The next engineering step is to add:</p>
+<ul>
+<li>iteration records</li>
+<li>revision cycles</li>
+<li>explicit progress documents per phase</li>
+<li>clearer test-result gating before final package delivery</li>
+</ul>
+<h2>6. Verification Baseline For The Next Engineer</h2>
+<p>Before making more changes, re-run at least:</p>
+<pre><code class="language-powershell">dotnet build packages/csharp/broker/Broker.csproj -c Release --disable-build-servers -nodeReuse:false
+dotnet run --project packages/csharp/broker/verify/Broker.Verify.csproj
+</code></pre>
+<p>For sidecar runtime checks:</p>
+<pre><code class="language-powershell">powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\line-sidecar.ps1 status
+powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\line-sidecar.ps1 verify
+</code></pre>
+<p>For local admin status:</p>
+<ul>
+<li><code>http://127.0.0.1:5361/api/v1/local-admin/status</code></li>
+</ul>
+<p>For local admin console:</p>
+<ul>
+<li><code>http://127.0.0.1:5361/line-admin.html</code></li>
+</ul>
+<h2>7. Operational Notes</h2>
+<h3>7.1 Local admin password</h3>
+<p>Current working live password has previously been set to:</p>
+<ul>
+<li><code>AdminPass#2026</code></li>
+</ul>
+<p>This should not be treated as permanent. It is only noted here because some operational steps still depend on local admin access.</p>
+<h3>7.2 Google Drive mode</h3>
+<p>Current intended mode is:</p>
+<ul>
+<li><code>shared_delegated</code></li>
+</ul>
+<p>Meaning:</p>
+<ul>
+<li>all LINE users can deliver to the same Google Drive owner account</li>
+<li>Google does not need to know which LINE user originated the artifact</li>
+<li>user-level separation remains broker-side, not Drive-side</li>
+</ul>
+<h3>7.3 Documentation references</h3>
+<p>Relevant current documents:</p>
+<ul>
+<li><a href="/d:/Bricks4Agent/docs/reports/CurrentArchitectureAndProgress-2026-03-26.html">CurrentArchitectureAndProgress-2026-03-26.md</a></li>
+<li><a href="/d:/Bricks4Agent/docs/designs/HighLevelSystemScaffoldPackagingFlow.html">HighLevelSystemScaffoldPackagingFlow.md</a></li>
+<li><a href="/d:/Bricks4Agent/docs/manuals/line-sidecar-runbook.zh-TW.html">line-sidecar-runbook.zh-TW.md</a></li>
+<li><a href="/d:/Bricks4Agent/docs/manuals/line-sidecar-runbook.html">line-sidecar-runbook.md</a></li>
+</ul>
+<h2>8. Recommended Next Order</h2>
+<p>Recommended next order of work:</p>
+<ol>
+<li>restore shared Google Drive delegated credential in the live persistent sidecar DB</li>
+<li>validate end-to-end artifact upload and LINE delivery</li>
+<li>push the three local commits</li>
+<li>add a broker-owned download API</li>
+<li>extend <code>system_scaffold</code> into a real iteration engine with revision and test cycles</li>
+</ol>
+<h2>9. Honest Summary</h2>
+<p>The system is in a meaningful but uneven state.</p>
+<p>What is true:</p>
+<ul>
+<li>the control-plane direction is real</li>
+<li>the sidecar path is real</li>
+<li><code>code_gen</code> now performs actual artifact generation</li>
+<li><code>system_scaffold</code> is no longer just a plan</li>
+</ul>
+<p>What is also true:</p>
+<ul>
+<li>delivery still depends too much on cloud state being healthy</li>
+<li>first-party download is still missing</li>
+<li>scaffold generation is ahead of artifact delivery reliability</li>
+<li>some UX and progress/reporting paths are still not as clean as they should be</li>
+</ul>
+<p>This is not stalled work. It is active work with a few clear operational bottlenecks.</p>
+</main>
+</body>
+</html>

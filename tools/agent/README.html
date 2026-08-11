@@ -1,0 +1,427 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI Agent CLI</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>AI Agent CLI</h1>
+<p><code>tools/agent</code> is the local agent runtime and generation entrypoint for Bricks4Agent.</p>
+<p>It currently supports three distinct modes:</p>
+<ul>
+<li>local provider mode: the agent talks directly to an upstream LLM provider</li>
+<li>generation / pipeline mode: the agent drives CRUD and <code>project.json</code> generation helpers</li>
+<li>governed mode: the agent talks to a broker over JSON contracts and does not directly own execution authority</li>
+</ul>
+<p>This README describes the CLI itself. It does not describe the canonical LINE ingress path. The production-style LINE route is now:</p>
+<p><code>LINE webhook -&gt; ngrok public URL -&gt; line-worker -&gt; broker high-level coordinator</code></p>
+<p><code>--line-listen</code> is kept only as a legacy development path.</p>
+<h2>Requirements</h2>
+<ul>
+<li>Node.js 18+</li>
+<li>Ollama if you want fully local provider mode</li>
+<li>an API key for OpenAI-compatible mode</li>
+<li>a broker if you want governed mode</li>
+</ul>
+<h2>Provider Aliases</h2>
+<table>
+<thead>
+<tr>
+<th>Provider</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ollama</code></td>
+<td>Local Ollama, default host <code>http://localhost:11434</code></td>
+</tr>
+<tr>
+<td><code>openai</code></td>
+<td>OpenAI / OpenAI-compatible Responses API</td>
+</tr>
+<tr>
+<td><code>gemini</code></td>
+<td>Gemini OpenAI-compatible endpoint</td>
+</tr>
+<tr>
+<td><code>deepseek</code></td>
+<td>DeepSeek OpenAI-compatible endpoint</td>
+</tr>
+<tr>
+<td><code>groq</code></td>
+<td>Groq OpenAI-compatible endpoint</td>
+</tr>
+<tr>
+<td><code>mistral</code></td>
+<td>Mistral OpenAI-compatible endpoint</td>
+</tr>
+</tbody>
+</table>
+<p>If <code>--provider</code> is omitted, the CLI prefers an API-key-backed provider when a key is present; otherwise it falls back to <code>ollama</code>.</p>
+<h2>Quick Start</h2>
+<h3>Local Ollama</h3>
+<pre><code class="language-bash">ollama serve
+ollama pull llama3.1
+node tools/agent/agent.js
+</code></pre>
+<h3>OpenAI-compatible / cloud mode</h3>
+<pre><code class="language-bash">node tools/agent/agent.js --provider openai --api-key sk-xxx --model gpt-5.4-mini
+node tools/agent/agent.js --provider gemini --api-key AIza... --model gemini-2.0-flash
+</code></pre>
+<h3>One-shot run</h3>
+<pre><code class="language-bash">node tools/agent/agent.js --run &quot;Read AGENT.md and summarize the constraints&quot;
+</code></pre>
+<h3>List models</h3>
+<pre><code class="language-bash">node tools/agent/agent.js --list-models
+</code></pre>
+<h2>Generation / Pipeline Mode</h2>
+<h3>Generate <code>project.json</code></h3>
+<pre><code class="language-bash">node tools/agent/agent.js --generate --project-path projects/PhotoDiary
+node tools/agent/agent.js --generate --project-path projects/PhotoDiary --dry-run
+node tools/agent/agent.js --generate --project-path projects/PhotoDiary --validate
+</code></pre>
+<h3>CRUD pipeline</h3>
+<pre><code class="language-bash">node tools/agent/agent.js --pipeline crud --entity Product --fields &quot;[{\&quot;name\&quot;:\&quot;Name\&quot;,\&quot;type\&quot;:\&quot;string\&quot;},{\&quot;name\&quot;:\&quot;Price\&quot;,\&quot;type\&quot;:\&quot;decimal\&quot;}]&quot;
+</code></pre>
+<h2>Governed Mode</h2>
+<p>Governed mode means more than "tools go through the broker".</p>
+<p>In governed mode:</p>
+<ul>
+<li>tool requests go through the broker</li>
+<li>LLM health / model listing / chat also go through the broker</li>
+<li>the agent should not treat direct provider API keys as the canonical execution path</li>
+<li>the broker decides whether a request is allowed by session, role, grant, capability, scope, and policy</li>
+</ul>
+<h3>Important note about broker ports</h3>
+<p>The CLI code still defaults generic governed examples to <code>http://localhost:5000</code> when <code>BROKER_URL</code> is omitted. That is the generic broker default used by the agent runtime itself.</p>
+<p>If you are targeting the current Windows LINE sidecar broker, use:</p>
+<ul>
+<li><code>http://127.0.0.1:5361</code></li>
+</ul>
+<p>Do not assume the sidecar path and the generic agent default are the same thing.</p>
+<h3>Start governed mode</h3>
+<p>Generic broker example:</p>
+<pre><code class="language-bash">node tools/agent/agent.js \
+  --governed \
+  --broker-url http://localhost:5000 \
+  --broker-pub-key &lt;base64&gt; \
+  --principal-id prn_xxx \
+  --task-id task_xxx \
+  --role-id role_reader \
+  --run &quot;Read README.md&quot;
+</code></pre>
+<p>Current Windows sidecar broker example:</p>
+<pre><code class="language-bash">node tools/agent/agent.js \
+  --governed \
+  --broker-url http://127.0.0.1:5361 \
+  --broker-pub-key &lt;base64&gt; \
+  --principal-id prn_xxx \
+  --task-id task_xxx \
+  --role-id role_reader \
+  --run &quot;Inspect the repo&quot;
+</code></pre>
+<p>Environment-variable form:</p>
+<pre><code class="language-powershell">$env:BROKER_URL='http://127.0.0.1:5361'
+$env:BROKER_PUB_KEY='MFkwEwYH...'
+$env:BROKER_PRINCIPAL_ID='prn_xxx'
+$env:BROKER_TASK_ID='task_xxx'
+$env:BROKER_ROLE_ID='role_reader'
+node tools/agent/agent.js --governed
+</code></pre>
+<h3>Broker contract</h3>
+<p>Governed agent requests are broker-mediated JSON POST calls such as:</p>
+<ul>
+<li><code>POST /api/v1/sessions/register</code></li>
+<li><code>POST /api/v1/execution-requests/submit</code></li>
+<li><code>POST /api/v1/sessions/heartbeat</code></li>
+<li><code>POST /api/v1/sessions/close</code></li>
+<li><code>POST /api/v1/capabilities/list</code></li>
+<li><code>POST /api/v1/grants/list</code></li>
+<li><code>POST /api/v1/runtime/spec</code></li>
+<li><code>POST /api/v1/llm/health</code></li>
+<li><code>POST /api/v1/llm/models</code></li>
+<li><code>POST /api/v1/llm/chat</code></li>
+</ul>
+<p>Governed prompt context includes:</p>
+<ul>
+<li>current session information</li>
+<li>granted capabilities</li>
+<li><code>scope.paths</code> / <code>scope.routes</code></li>
+<li>broker URL and POST route contracts</li>
+<li>runtime spec such as default model, override policy, and tool-calling allowance</li>
+</ul>
+<h3>Capability layer and scope layer</h3>
+<ul>
+<li>capability layer: <code>capability_id</code></li>
+<li>scope layer: <code>scope.routes</code>, <code>scope.paths</code></li>
+</ul>
+<p>This means the question is not only "may this agent read a file", but "may this capability act on these routes and paths".</p>
+<h3>Governed-mode behavior</h3>
+<ul>
+<li><code>--provider</code>, <code>--api-key</code>, and <code>--host</code> are ignored in governed mode</li>
+<li><code>--list-models</code> goes through broker <code>/api/v1/llm/models</code></li>
+<li><code>AgentLoop</code> uses the governed executor as its effective provider</li>
+<li>LLM traffic is broker-mediated rather than agent-direct</li>
+</ul>
+<h2>Legacy Direct LINE Listener</h2>
+<p><code>--line-listen</code> still exists, but it is not the canonical production path.</p>
+<p>Use it only for development experiments where you explicitly want the agent process to poll LINE directly. The repo's current production-style ingress path is the worker-side bridge under:</p>
+<ul>
+<li><a href="/d:/Bricks4Agent/packages/csharp/workers/line-worker/README.html">packages/csharp/workers/line-worker/README.md</a></li>
+</ul>
+<h2>Podman Container</h2>
+<p>The minimal governed agent container is defined in:</p>
+<ul>
+<li><code>tools/agent/Containerfile</code></li>
+</ul>
+<h3>Build</h3>
+<pre><code class="language-bash">podman build -f tools/agent/Containerfile -t bricks4agent-agent:dev .
+</code></pre>
+<h3>Run</h3>
+<pre><code class="language-bash">podman run --rm -it \
+  -v %CD%:/workspace \
+  -e BROKER_URL=http://host.containers.internal:5000 \
+  -e BROKER_PUB_KEY=&lt;base64&gt; \
+  -e BROKER_PRINCIPAL_ID=prn_xxx \
+  -e BROKER_TASK_ID=task_xxx \
+  -e BROKER_ROLE_ID=role_reader \
+  -e AGENT_MODEL=llama3.1 \
+  -e AGENT_RUN=&quot;Read README.md and summarize key points&quot; \
+  bricks4agent-agent:dev
+</code></pre>
+<p>The container entrypoint accepts only the governed path:</p>
+<ul>
+<li><code>BROKER_URL</code>, <code>BROKER_PUB_KEY</code>, <code>BROKER_PRINCIPAL_ID</code>, and <code>BROKER_TASK_ID</code> are required</li>
+<li>direct provider API keys are not the intended formal execution path</li>
+<li><code>/workspace</code> is the default mounted workspace</li>
+<li>the entrypoint adds <code>--governed</code> and broker/session parameters automatically</li>
+<li><code>AGENT_RUN</code> executes one task; otherwise the container enters REPL</li>
+</ul>
+<p>See also:</p>
+<ul>
+<li><a href="/d:/Bricks4Agent/tools/agent/container/README.html">tools/agent/container/README.md</a></li>
+</ul>
+<h2>Verification</h2>
+<pre><code class="language-bash">npm run validate:agent-governed
+npm run validate:broker-scope
+npm run validate:broker-llm-proxy
+</code></pre>
+<p>These checks cover:</p>
+<ul>
+<li>governed prompt route and JSON-contract injection</li>
+<li>governed initialization avoiding direct provider use</li>
+<li>broker-mediated <code>health/models/chat</code></li>
+<li>live broker + fake upstream LLM session flow</li>
+<li>grant-filtered tool visibility</li>
+<li>local rejection of unauthorized capability usage</li>
+<li>broker validation of both capability and <code>scope.paths/scope.routes</code></li>
+</ul>
+<h2>Main Parameters</h2>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Short</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--run "&lt;prompt&gt;"</code></td>
+<td><code>-r</code></td>
+<td>One-shot run</td>
+</tr>
+<tr>
+<td><code>--model &lt;name&gt;</code></td>
+<td><code>-m</code></td>
+<td>Model name</td>
+</tr>
+<tr>
+<td><code>--provider &lt;type&gt;</code></td>
+<td><code>-P</code></td>
+<td>Local-provider mode provider</td>
+</tr>
+<tr>
+<td><code>--api-key &lt;key&gt;</code></td>
+<td><code>-k</code></td>
+<td>Local-provider mode API key</td>
+</tr>
+<tr>
+<td><code>--host &lt;url&gt;</code></td>
+<td><code>-H</code></td>
+<td>Override provider base URL</td>
+</tr>
+<tr>
+<td><code>--list-models</code></td>
+<td></td>
+<td>List models</td>
+</tr>
+<tr>
+<td><code>--no-stream</code></td>
+<td></td>
+<td>Disable streaming</td>
+</tr>
+<tr>
+<td><code>--force-react</code></td>
+<td></td>
+<td>Force ReAct XML</td>
+</tr>
+<tr>
+<td><code>--force-native</code></td>
+<td></td>
+<td>Force native tool-calling</td>
+</tr>
+<tr>
+<td><code>--max-iterations &lt;n&gt;</code></td>
+<td></td>
+<td>Max iterations</td>
+</tr>
+<tr>
+<td><code>--generate</code></td>
+<td><code>-g</code></td>
+<td>Run <code>project.json</code> generation</td>
+</tr>
+<tr>
+<td><code>--pipeline &lt;type&gt;</code></td>
+<td></td>
+<td>Run a named pipeline</td>
+</tr>
+<tr>
+<td><code>--project-path &lt;path&gt;</code></td>
+<td></td>
+<td>Target project path</td>
+</tr>
+<tr>
+<td><code>--dry-run</code></td>
+<td></td>
+<td>Validate without writing</td>
+</tr>
+<tr>
+<td><code>--validate</code></td>
+<td></td>
+<td>Validate only</td>
+</tr>
+<tr>
+<td><code>--force</code></td>
+<td></td>
+<td>Overwrite generated output</td>
+</tr>
+<tr>
+<td><code>--governed</code></td>
+<td></td>
+<td>Enable broker-governed mode</td>
+</tr>
+<tr>
+<td><code>--broker-url &lt;url&gt;</code></td>
+<td></td>
+<td>Broker base URL</td>
+</tr>
+<tr>
+<td><code>--broker-pub-key &lt;base64&gt;</code></td>
+<td></td>
+<td>Broker public key</td>
+</tr>
+<tr>
+<td><code>--principal-id &lt;id&gt;</code></td>
+<td></td>
+<td>Principal id</td>
+</tr>
+<tr>
+<td><code>--task-id &lt;id&gt;</code></td>
+<td></td>
+<td>Task id</td>
+</tr>
+<tr>
+<td><code>--role-id &lt;id&gt;</code></td>
+<td></td>
+<td>Role id</td>
+</tr>
+<tr>
+<td><code>--line-listen</code></td>
+<td></td>
+<td>Legacy development-only LINE listener</td>
+</tr>
+</tbody>
+</table>
+<h2>REPL Commands</h2>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/help</code></td>
+<td>Show help</td>
+</tr>
+<tr>
+<td><code>/model &lt;name&gt;</code></td>
+<td>Switch model</td>
+</tr>
+<tr>
+<td><code>/models</code></td>
+<td>List models</td>
+</tr>
+<tr>
+<td><code>/clear</code></td>
+<td>Clear history</td>
+</tr>
+<tr>
+<td><code>/history</code></td>
+<td>Show history</td>
+</tr>
+<tr>
+<td><code>/tools</code></td>
+<td>Show available tools</td>
+</tr>
+<tr>
+<td><code>/exit</code></td>
+<td>Exit</td>
+</tr>
+</tbody>
+</table>
+<h2>Layout</h2>
+<pre><code class="language-text">tools/agent/
+├── agent.js
+├── README.md
+├── lib/
+│   ├── agent-loop.js
+│   ├── repl.js
+│   ├── state-machine.js
+│   ├── tool-registry.js
+│   ├── governed-executor.js
+│   ├── broker-client.js
+│   ├── providers/
+│   │   ├── provider-factory.js
+│   │   ├── ollama-provider.js
+│   │   └── openai-provider.js
+│   ├── pipelines/
+│   ├── react-parser.js
+│   ├── streaming.js
+│   ├── responses-parser.js
+│   ├── safety.js
+│   └── utils.js
+└── tests/
+    └── test-governed-mode.js
+</code></pre>
+</main>
+</body>
+</html>

@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LoadingSpinner</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>LoadingSpinner</h1>
+<p>載入指示器元件，提供多種動畫樣式（spinner、dots、pulse、bar），支援全螢幕遮罩和行內模式。</p>
+<h2>API</h2>
+<h3>Constructor</h3>
+<pre><code class="language-js">new LoadingSpinner(options?)
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>參數</th>
+<th>型別</th>
+<th>預設值</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>options.variant</code></td>
+<td><code>string</code></td>
+<td><code>'spinner'</code></td>
+<td>樣式：<code>'spinner'</code>/<code>'dots'</code>/<code>'pulse'</code>/<code>'bar'</code></td>
+</tr>
+<tr>
+<td><code>options.size</code></td>
+<td><code>string</code></td>
+<td><code>'medium'</code></td>
+<td>尺寸：<code>'small'</code>/<code>'medium'</code>/<code>'large'</code></td>
+</tr>
+<tr>
+<td><code>options.color</code></td>
+<td><code>string</code></td>
+<td><code>'#2196F3'</code></td>
+<td>主色彩</td>
+</tr>
+<tr>
+<td><code>options.text</code></td>
+<td><code>string</code></td>
+<td><code>''</code></td>
+<td>載入文字</td>
+</tr>
+<tr>
+<td><code>options.overlay</code></td>
+<td><code>boolean</code></td>
+<td><code>false</code></td>
+<td>是否顯示全螢幕遮罩</td>
+</tr>
+<tr>
+<td><code>options.visible</code></td>
+<td><code>boolean</code></td>
+<td><code>true</code></td>
+<td>初始可見狀態</td>
+</tr>
+<tr>
+<td><code>options.zIndex</code></td>
+<td><code>number</code></td>
+<td><code>9999</code></td>
+<td>遮罩層級</td>
+</tr>
+</tbody>
+</table>
+<h3>靜態常數</h3>
+<ul>
+<li><code>LoadingSpinner.VARIANTS</code> — <code>{ SPINNER, DOTS, PULSE, BAR }</code></li>
+<li><code>LoadingSpinner.SIZES</code> — <code>{ SMALL, MEDIUM, LARGE }</code></li>
+</ul>
+<h3>方法</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>回傳</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>show()</code></td>
+<td><code>this</code></td>
+<td>顯示</td>
+</tr>
+<tr>
+<td><code>hide()</code></td>
+<td><code>this</code></td>
+<td>隱藏</td>
+</tr>
+<tr>
+<td><code>toggle()</code></td>
+<td><code>this</code></td>
+<td>切換顯示/隱藏</td>
+</tr>
+<tr>
+<td><code>isVisible()</code></td>
+<td><code>boolean</code></td>
+<td>是否可見</td>
+</tr>
+<tr>
+<td><code>setText(text)</code></td>
+<td><code>this</code></td>
+<td>設定載入文字</td>
+</tr>
+<tr>
+<td><code>mount(container)</code></td>
+<td><code>this</code></td>
+<td>掛載至容器</td>
+</tr>
+<tr>
+<td><code>destroy()</code></td>
+<td><code>void</code></td>
+<td>銷毀元件</td>
+</tr>
+</tbody>
+</table>
+<h3>靜態方法</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>回傳</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>LoadingSpinner.showOverlay(text?, options?)</code></td>
+<td><code>LoadingSpinner</code></td>
+<td>快速顯示全螢幕載入遮罩</td>
+</tr>
+</tbody>
+</table>
+<h2>使用範例</h2>
+<pre><code class="language-js">import { LoadingSpinner } from './LoadingSpinner.js';
+
+// 行內使用
+const spinner = new LoadingSpinner({ variant: 'dots', text: '載入中...' });
+spinner.mount('#container');
+
+// 全螢幕遮罩（靜態方法）
+const overlay = LoadingSpinner.showOverlay('資料載入中...');
+// 完成後銷毀
+overlay.destroy();
+</code></pre>
+<h2>Demo</h2>
+<p>開啟 <code>demo.html</code> 直接在瀏覽器測試。</p>
+</main>
+</body>
+</html>

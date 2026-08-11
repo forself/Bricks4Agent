@@ -1,0 +1,426 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MFA Authentication 多因子驗證模組</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>MFA Authentication 多因子驗證模組</h1>
+<p>完整的多因子驗證 (MFA) 解決方案，支援 TOTP、Email OTP 與復原碼。</p>
+<h2>特點</h2>
+<ul>
+<li><strong>TOTP 支援</strong> - 相容 Google Authenticator、Microsoft Authenticator、Authy 等</li>
+<li><strong>Email OTP</strong> - 透過電子郵件發送一次性驗證碼</li>
+<li><strong>復原碼</strong> - 10 組一次性備用碼，用於緊急存取</li>
+<li><strong>安全設計</strong> - 常數時間比較、帳號鎖定、速率限制</li>
+<li><strong>兩步驟登入</strong> - 先驗證密碼，再驗證 MFA</li>
+<li><strong>彈性整合</strong> - 可自訂儲存庫與郵件服務</li>
+</ul>
+<h2>快速開始</h2>
+<h3>1. 服務註冊 (Program.cs)</h3>
+<pre><code class="language-csharp">using YourNamespace.Security.Mfa;
+
+var builder = WebApplication.CreateBuilder(args);
+
+// MFA 服務
+builder.Services.AddSingleton&lt;IMfaRepository, InMemoryMfaRepository&gt;();
+builder.Services.AddSingleton&lt;IUserRepository, InMemoryUserRepository&gt;();
+builder.Services.AddSingleton&lt;IEmailService, SmtpEmailService&gt;(); // 或自訂實作
+builder.Services.AddSingleton&lt;IMfaService, MfaService&gt;();
+builder.Services.AddSingleton&lt;IMfaAuthService, MfaAuthService&gt;();
+
+// JWT 認證
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =&gt; { /* 配置 */ });
+
+var app = builder.Build();
+app.MapControllers();
+app.Run();
+</code></pre>
+<h3>2. 配置 (appsettings.json)</h3>
+<pre><code class="language-json">{
+  &quot;Jwt&quot;: {
+    &quot;Key&quot;: &quot;YourSuperSecretKeyAtLeast32Characters!&quot;,
+    &quot;Issuer&quot;: &quot;YourApp&quot;,
+    &quot;ExpirationMinutes&quot;: 60
+  },
+  &quot;Mfa&quot;: {
+    &quot;AppName&quot;: &quot;MyApp&quot;,
+    &quot;TokenExpirationMinutes&quot;: 5,
+    &quot;EnforceMfa&quot;: false
+  }
+}
+</code></pre>
+<h2>API 端點</h2>
+<h3>註冊</h3>
+<pre><code class="language-http">POST /api/auth/register
+Content-Type: application/json
+
+{
+  &quot;name&quot;: &quot;John Doe&quot;,
+  &quot;email&quot;: &quot;john@example.com&quot;,
+  &quot;password&quot;: &quot;SecurePass123!&quot;,
+  &quot;enableMfa&quot;: true,
+  &quot;mfaMethod&quot;: 1  // 1=TOTP, 2=Email
+}
+</code></pre>
+<p>回應 (啟用 MFA 時):</p>
+<pre><code class="language-json">{
+  &quot;success&quot;: true,
+  &quot;userId&quot;: 1,
+  &quot;mfaSetup&quot;: {
+    &quot;success&quot;: true,
+    &quot;method&quot;: 1,
+    &quot;totpSecret&quot;: &quot;JBSWY3DPEHPK3PXP&quot;,
+    &quot;qrCodeUri&quot;: &quot;otpauth://totp/MyApp:john@example.com?secret=JBSWY3DPEHPK3PXP&amp;issuer=MyApp&quot;
+  }
+}
+</code></pre>
+<h3>登入 (步驟 1 - 驗證密碼)</h3>
+<pre><code class="language-http">POST /api/auth/login
+Content-Type: application/json
+
+{
+  &quot;email&quot;: &quot;john@example.com&quot;,
+  &quot;password&quot;: &quot;SecurePass123!&quot;
+}
+</code></pre>
+<p>回應 (需要 MFA):</p>
+<pre><code class="language-json">{
+  &quot;success&quot;: true,
+  &quot;requiresMfa&quot;: true,
+  &quot;mfaToken&quot;: &quot;eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...&quot;,
+  &quot;availableMethods&quot;: [1, 99]  // 1=TOTP, 99=復原碼
+}
+</code></pre>
+<h3>登入 (步驟 2 - 驗證 MFA)</h3>
+<pre><code class="language-http">POST /api/auth/login/mfa
+Content-Type: application/json
+
+{
+  &quot;mfaToken&quot;: &quot;eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...&quot;,
+  &quot;code&quot;: &quot;123456&quot;,
+  &quot;method&quot;: 1
+}
+</code></pre>
+<p>回應:</p>
+<pre><code class="language-json">{
+  &quot;success&quot;: true,
+  &quot;accessToken&quot;: &quot;eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...&quot;,
+  &quot;refreshToken&quot;: &quot;...&quot;,
+  &quot;user&quot;: {
+    &quot;id&quot;: 1,
+    &quot;name&quot;: &quot;John Doe&quot;,
+    &quot;email&quot;: &quot;john@example.com&quot;,
+    &quot;role&quot;: &quot;user&quot;,
+    &quot;mfaEnabled&quot;: true
+  }
+}
+</code></pre>
+<h3>使用復原碼登入</h3>
+<pre><code class="language-http">POST /api/auth/login/mfa
+Content-Type: application/json
+
+{
+  &quot;mfaToken&quot;: &quot;eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...&quot;,
+  &quot;code&quot;: &quot;ABCD-EFGH-IJKL&quot;,
+  &quot;isRecoveryCode&quot;: true
+}
+</code></pre>
+<h3>啟用 MFA</h3>
+<pre><code class="language-http">POST /api/auth/mfa/enable
+Authorization: Bearer {accessToken}
+Content-Type: application/json
+
+{
+  &quot;method&quot;: 1
+}
+</code></pre>
+<p>回應:</p>
+<pre><code class="language-json">{
+  &quot;success&quot;: true,
+  &quot;method&quot;: 1,
+  &quot;totpSecret&quot;: &quot;JBSWY3DPEHPK3PXP&quot;,
+  &quot;qrCodeUri&quot;: &quot;otpauth://totp/MyApp:john@example.com?secret=...&quot;
+}
+</code></pre>
+<h3>驗證 MFA 設定</h3>
+<pre><code class="language-http">POST /api/auth/mfa/verify
+Authorization: Bearer {accessToken}
+Content-Type: application/json
+
+{
+  &quot;code&quot;: &quot;123456&quot;,
+  &quot;method&quot;: 1
+}
+</code></pre>
+<p>回應 (包含復原碼):</p>
+<pre><code class="language-json">{
+  &quot;success&quot;: true,
+  &quot;recoveryCodes&quot;: [
+    &quot;ABCD-EFGH-IJKL&quot;,
+    &quot;MNOP-QRST-UVWX&quot;,
+    &quot;...&quot;
+  ],
+  &quot;message&quot;: &quot;MFA enabled successfully. Please save your recovery codes.&quot;
+}
+</code></pre>
+<h3>停用 MFA</h3>
+<pre><code class="language-http">POST /api/auth/mfa/disable
+Authorization: Bearer {accessToken}
+Content-Type: application/json
+
+{
+  &quot;code&quot;: &quot;123456&quot;
+}
+</code></pre>
+<h3>重新產生復原碼</h3>
+<pre><code class="language-http">POST /api/auth/mfa/recovery-codes
+Authorization: Bearer {accessToken}
+Content-Type: application/json
+
+{
+  &quot;code&quot;: &quot;123456&quot;
+}
+</code></pre>
+<h3>取得 MFA 狀態</h3>
+<pre><code class="language-http">GET /api/auth/mfa/status
+Authorization: Bearer {accessToken}
+</code></pre>
+<h2>TOTP (Google Authenticator)</h2>
+<h3>產生 QR Code</h3>
+<p>使用回傳的 <code>qrCodeUri</code> 產生 QR Code:</p>
+<pre><code class="language-csharp">// 使用 QRCoder 套件
+using QRCoder;
+
+var qrGenerator = new QRCodeGenerator();
+var qrCodeData = qrGenerator.CreateQrCode(qrCodeUri, QRCodeGenerator.ECCLevel.Q);
+var qrCode = new PngByteQRCode(qrCodeData);
+var qrBytes = qrCode.GetGraphic(20);
+</code></pre>
+<p>或在前端使用 JavaScript:</p>
+<pre><code class="language-javascript">// 使用 qrcode.js
+QRCode.toDataURL(qrCodeUri, (err, url) =&gt; {
+  document.getElementById('qrcode').src = url;
+});
+</code></pre>
+<h3>手動輸入</h3>
+<p>如果使用者無法掃描 QR Code，可以手動輸入:</p>
+<ul>
+<li><strong>帳號</strong>: 使用者 Email</li>
+<li><strong>金鑰</strong>: <code>totpSecret</code> (Base32 編碼)</li>
+<li><strong>時間基礎</strong>: 30 秒</li>
+<li><strong>演算法</strong>: SHA1</li>
+</ul>
+<h2>安全機制</h2>
+<h3>帳號鎖定</h3>
+<ul>
+<li>連續失敗 5 次後鎖定 15 分鐘</li>
+<li>成功驗證後重置計數器</li>
+</ul>
+<h3>常數時間比較</h3>
+<p>所有驗證碼比較都使用常數時間演算法，防止計時攻擊:</p>
+<pre><code class="language-csharp">private static bool ConstantTimeEquals(string a, string b)
+{
+    if (a.Length != b.Length) return false;
+    var result = 0;
+    for (int i = 0; i &lt; a.Length; i++)
+    {
+        result |= a[i] ^ b[i];
+    }
+    return result == 0;
+}
+</code></pre>
+<h3>MFA Token</h3>
+<p>MFA Token 是短期 JWT (5 分鐘)，只能用於完成 MFA 驗證:</p>
+<pre><code class="language-json">{
+  &quot;mfa_user_id&quot;: &quot;123&quot;,
+  &quot;mfa_pending&quot;: &quot;true&quot;,
+  &quot;exp&quot;: 1234567890
+}
+</code></pre>
+<h3>復原碼</h3>
+<ul>
+<li>10 組一次性復原碼</li>
+<li>格式: <code>XXXX-XXXX-XXXX</code> (12 個英數字)</li>
+<li>使用後立即失效</li>
+<li>儲存時使用 SHA256 雜湊</li>
+</ul>
+<h2>自訂實作</h2>
+<h3>資料庫儲存</h3>
+<p>實作 <code>IMfaRepository</code> 介面:</p>
+<pre><code class="language-csharp">public class SqlMfaRepository : IMfaRepository
+{
+    private readonly AppDb _db;
+
+    public SqlMfaRepository(AppDb db)
+    {
+        _db = db;
+    }
+
+    public UserMfaConfig GetUserMfaConfig(int userId)
+    {
+        return _db.QueryFirst&lt;UserMfaConfig&gt;(
+            &quot;SELECT * FROM UserMfaConfigs WHERE UserId = @UserId&quot;,
+            new { UserId = userId });
+    }
+
+    public void SaveUserMfaConfig(UserMfaConfig config)
+    {
+        if (config.Id == 0)
+            _db.Insert(config);
+        else
+            _db.Update(config);
+    }
+
+    // ... 實作其他方法
+}
+</code></pre>
+<h3>郵件服務</h3>
+<p>實作 <code>IEmailService</code> 介面:</p>
+<pre><code class="language-csharp">public class SmtpEmailService : IEmailService
+{
+    private readonly SmtpClient _client;
+
+    public SmtpEmailService(IConfiguration config)
+    {
+        _client = new SmtpClient(config[&quot;Smtp:Host&quot;], int.Parse(config[&quot;Smtp:Port&quot;]));
+        _client.Credentials = new NetworkCredential(
+            config[&quot;Smtp:Username&quot;],
+            config[&quot;Smtp:Password&quot;]);
+        _client.EnableSsl = true;
+    }
+
+    public bool SendEmail(string to, string subject, string body)
+    {
+        try
+        {
+            var message = new MailMessage(&quot;noreply@yourapp.com&quot;, to, subject, body);
+            _client.Send(message);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+}
+</code></pre>
+<h2>前端整合範例</h2>
+<h3>React</h3>
+<pre><code class="language-jsx">import { useState } from 'react';
+
+function Login() {
+  const [step, setStep] = useState(1);
+  const [mfaToken, setMfaToken] = useState('');
+  const [mfaCode, setMfaCode] = useState('');
+
+  const handleLogin = async (email, password) =&gt; {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    });
+    const data = await res.json();
+
+    if (data.requiresMfa) {
+      setMfaToken(data.mfaToken);
+      setStep(2);
+    } else if (data.accessToken) {
+      // 登入成功
+      localStorage.setItem('token', data.accessToken);
+    }
+  };
+
+  const handleMfaVerify = async () =&gt; {
+    const res = await fetch('/api/auth/login/mfa', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        mfaToken,
+        code: mfaCode,
+        method: 1
+      })
+    });
+    const data = await res.json();
+
+    if (data.accessToken) {
+      localStorage.setItem('token', data.accessToken);
+    }
+  };
+
+  return step === 1 ? (
+    &lt;LoginForm onSubmit={handleLogin} /&gt;
+  ) : (
+    &lt;MfaForm
+      code={mfaCode}
+      onChange={setMfaCode}
+      onSubmit={handleMfaVerify}
+    /&gt;
+  );
+}
+</code></pre>
+<h2>資料庫結構</h2>
+<h3>UserMfaConfigs</h3>
+<pre><code class="language-sql">CREATE TABLE UserMfaConfigs (
+    Id INT PRIMARY KEY IDENTITY,
+    UserId INT NOT NULL UNIQUE,
+    IsEnabled BIT NOT NULL DEFAULT 0,
+    PrimaryMethod INT NOT NULL DEFAULT 1,
+    TotpSecret NVARCHAR(100),
+    TotpVerified BIT NOT NULL DEFAULT 0,
+    OtpEmail NVARCHAR(254),
+    OtpPhone NVARCHAR(20),
+    RecoveryCodesRemaining INT NOT NULL DEFAULT 0,
+    EnabledAt DATETIME2,
+    LastVerifiedAt DATETIME2,
+    FailedAttempts INT NOT NULL DEFAULT 0,
+    LockedUntil DATETIME2,
+    CreatedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+    UpdatedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+);
+</code></pre>
+<h3>MfaRecoveryCodes</h3>
+<pre><code class="language-sql">CREATE TABLE MfaRecoveryCodes (
+    Id INT PRIMARY KEY IDENTITY,
+    UserId INT NOT NULL,
+    CodeHash NVARCHAR(100) NOT NULL,
+    IsUsed BIT NOT NULL DEFAULT 0,
+    UsedAt DATETIME2,
+    CreatedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+    INDEX IX_UserId (UserId)
+);
+</code></pre>
+<h3>MfaOtpCodes</h3>
+<pre><code class="language-sql">CREATE TABLE MfaOtpCodes (
+    Id INT PRIMARY KEY IDENTITY,
+    UserId INT NOT NULL,
+    CodeHash NVARCHAR(100) NOT NULL,
+    Method INT NOT NULL,
+    Destination NVARCHAR(254),
+    ExpiresAt DATETIME2 NOT NULL,
+    IsUsed BIT NOT NULL DEFAULT 0,
+    CreatedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+    INDEX IX_UserId_ExpiresAt (UserId, ExpiresAt)
+);
+</code></pre>
+<h2>License</h2>
+<p>MIT</p>
+</main>
+</body>
+</html>

@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bricks4Agent Dev Code Signing 與 WDAC 補充策略</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Bricks4Agent Dev Code Signing 與 WDAC 補充策略</h1>
+<p>本文件說明如何在 Windows 開發機上建立 <code>Bricks4Agent Dev Code Signing</code> 流程，讓本機 build output 可以被簽章，並可選擇產生 WDAC / App Control for Business supplemental policy 來信任該 signer。</p>
+<h2>重要界線</h2>
+<ul>
+<li>Smart App Control 沒有單一 app allow-list。若目前封鎖來自 Smart App Control 內建策略，簽章可改善信任訊號，但不保證能被單機 allow-list 放行。</li>
+<li>WDAC supplemental policy 只能補到一個允許 supplemental 的 base policy。產生 policy 時必須提供 <code>BasePolicyId</code>。</li>
+<li>腳本預設不部署 WDAC policy。<code>Install-BricksWdacPolicy.ps1</code> 預設是 dry-run，只印出 <code>CiTool --update-policy</code> 命令。</li>
+<li>不要提交私鑰、PFX、憑證密碼或 <code>.run/</code> 產物。<code>.gitignore</code> 已忽略 <code>.run/</code>、<code>*.pfx</code>、<code>*.p12</code>。</li>
+<li>Signed WDAC base policy 風險很高；本流程只產生 supplemental policy，不建立 signed base policy。</li>
+</ul>
+<h2>腳本</h2>
+<table>
+<thead>
+<tr>
+<th>Script</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>tools/windows-signing/New-BricksDevCodeSigningCert.ps1</code></td>
+<td>建立或重用 CurrentUser code-signing cert，輸出 <code>.run/code-signing/Bricks4AgentDevCodeSigning.cer</code></td>
+</tr>
+<tr>
+<td><code>tools/windows-signing/Sign-BricksAssemblies.ps1</code></td>
+<td>只簽 repo 自家 <code>.csproj</code> 對應的 <code>bin/**/*.dll</code> / <code>bin/**/*.exe</code></td>
+</tr>
+<tr>
+<td><code>tools/windows-signing/New-BricksWdacSupplementalPolicy.ps1</code></td>
+<td>用已簽章 assemblies 產生 WDAC supplemental policy XML / CIP</td>
+</tr>
+<tr>
+<td><code>tools/windows-signing/Install-BricksWdacPolicy.ps1</code></td>
+<td>預設 dry-run；加 <code>-Deploy</code> 且 elevated 時才呼叫 <code>CiTool --update-policy</code></td>
+</tr>
+<tr>
+<td><code>tools/windows-signing/Repair-BricksWdacRuntimeTrust.ps1</code></td>
+<td>修復 <code>.run\line-sidecar</code> runtime trust：補簽自家 DLL/EXE、用 Publisher + Hash fallback 掃描 runtime、部署後驗證 policy active</td>
+</tr>
+</tbody>
+</table>
+<h2>建立開發簽章憑證</h2>
+<p>一般建立：</p>
+<pre><code class="language-powershell">npm run signing:cert
+</code></pre>
+<p>若要讓目前使用者信任此 dev cert：</p>
+<pre><code class="language-powershell">npm run signing:cert -- -TrustForCurrentUser
+</code></pre>
+<p>這會把 public cert 匯入 CurrentUser <code>TrustedPublisher</code> 與 <code>Root</code>。只適合本機開發機，不要用在正式發行。</p>
+<p>若需要匯出 PFX，必須明確提供密碼，並確認輸出留在 <code>.run/code-signing/</code>：</p>
+<pre><code class="language-powershell">$password = Read-Host &quot;PFX password&quot; -AsSecureString
+powershell -NoProfile -ExecutionPolicy Bypass `
+  -File tools/windows-signing/New-BricksDevCodeSigningCert.ps1 `
+  -ExportPfx `
+  -PfxPassword $password
+</code></pre>
+<h2>Build 後簽章 assemblies</h2>
+<p>先 build：</p>
+<pre><code class="language-powershell">dotnet build packages/csharp/ControlPlane.slnx
+</code></pre>
+<p>再簽章：</p>
+<pre><code class="language-powershell">npm run signing:assemblies
+</code></pre>
+<p>若環境可連外，可加 timestamp server：</p>
+<pre><code class="language-powershell">npm run signing:assemblies -- -TimestampServer http://timestamp.digicert.com
+</code></pre>
+<p>若要由簽章腳本先 build：</p>
+<pre><code class="language-powershell">npm run signing:assemblies -- -Build
+</code></pre>
+<p><code>Sign-BricksAssemblies.ps1</code> 會掃描 repo 內 <code>.csproj</code>，只簽自家 project assembly name 對應的 build output，不簽 NuGet 第三方 DLL。</p>
+<h2>SAC / WDAC 下執行 DB 驗證</h2>
+<p>在 Smart App Control / WDAC enforcement 環境中，不要在簽章後直接跑一般 <code>dotnet run</code> 驗證命令。<code>dotnet run</code> 預設會先 build，可能把剛簽好的 local assemblies 覆蓋成未簽章版本，導致 <code>0x800711C7</code>。</p>
+<p>請改用 signed validation 入口，它們會依序執行 build、sign、<code>dotnet run --no-build</code>：</p>
+<pre><code class="language-powershell">npm run validate:db:signed
+npm run test:dotnet:signed
+</code></pre>
+<p>可拆開執行：</p>
+<pre><code class="language-powershell">npm run validate:baseorm:signed
+npm run validate:baseorm-sync
+npm run validate:broker-scope:signed
+npm run test:broker:signed
+npm run test:unit:signed
+npm run test:integration:signed
+</code></pre>
+<p>若需要手動執行某個 verify project，順序必須維持：</p>
+<pre><code class="language-powershell">dotnet build packages/csharp/database/BaseOrm/net8/verify/BaseOrm.Verify.csproj
+npm run signing:assemblies
+dotnet run --no-build --project packages/csharp/database/BaseOrm/net8/verify/BaseOrm.Verify.csproj
+</code></pre>
+<h2>查詢 BasePolicyId</h2>
+<p>產生 supplemental policy 前，先確認要補到哪個 WDAC base policy。可用 elevated PowerShell：</p>
+<pre><code class="language-powershell">CiTool --list-policies -json
+</code></pre>
+<p>也可看 active policy 目錄：</p>
+<pre><code class="language-powershell">Get-ChildItem C:\Windows\System32\CodeIntegrity\CiPolicies\Active
+</code></pre>
+<p>把要補充的 base policy id 記下，例如：</p>
+<pre><code class="language-text">{D6D6C2D6-E8B6-4D8F-8223-14BE1DE562FF}
+</code></pre>
+<h2>產生 WDAC supplemental policy</h2>
+<p>先確保 assemblies 已簽章，再產生 policy：</p>
+<pre><code class="language-powershell">npm run signing:wdac-policy -- -BasePolicyId &quot;{YOUR-BASE-POLICY-ID}&quot; -ScanPath packages
+</code></pre>
+<p>輸出位置：</p>
+<pre><code class="language-text">.run/wdac/Bricks4Agent.DevCodeSigning.Supplemental.xml
+.run/wdac/{policy-id}.cip
+.run/wdac/Bricks4Agent.DevCodeSigning.Supplemental.scan.log
+</code></pre>
+<p>如果目前 Windows 沒有 <code>ConvertFrom-CIPolicy</code>，可只產 XML：</p>
+<pre><code class="language-powershell">npm run signing:wdac-policy -- -BasePolicyId &quot;{YOUR-BASE-POLICY-ID}&quot; -ScanPath packages -SkipConvert
+</code></pre>
+<h2>LINE sidecar 大量 DLL 被封鎖</h2>
+<p>若 <code>.run\line-sidecar</code> 啟動時看到大量 DLL 被安全性封鎖，或 Code Integrity event 顯示：</p>
+<pre><code class="language-text">did not meet the Enterprise signing level requirements
+</code></pre>
+<p>不要只反覆執行簽章。這通常代表 supplemental WDAC policy 沒有真的進入 active policy，或 runtime 內含未簽第三方 DLL，需要用 hash fallback 一起納入 policy。</p>
+<p>先用一般 PowerShell 產生修復資訊：</p>
+<pre><code class="language-powershell">npm run signing:wdac-repair
+</code></pre>
+<p>輸出中的 <code>IsActive</code> 若是 <code>false</code>，表示目前 <code>.cip</code> 還沒有被 WDAC 載入；此時封鎖會繼續發生。</p>
+<p>用系統管理員 PowerShell 部署並驗證 active policy：</p>
+<pre><code class="language-powershell">npm run signing:wdac-repair -- -Deploy
+</code></pre>
+<p>這個流程會：</p>
+<ul>
+<li>補簽 <code>.run\line-sidecar</code> 內自家 <code>.dll</code> / <code>.exe</code>。</li>
+<li>針對整個 <code>.run\line-sidecar</code> 產生 Publisher + Hash fallback WDAC supplemental policy。</li>
+<li>呼叫 <code>CiTool --update-policy</code>。</li>
+<li>檢查 <code>{policy-id}.cip</code> 是否出現在 <code>C:\Windows\System32\CodeIntegrity\CiPolicies\Active</code>。</li>
+</ul>
+<p>只有部署後 active policy 檢查通過，才代表 WDAC 真正信任目前 runtime。若 policy active 後仍被擋，再查最新 Code Integrity event，確認被擋的是哪個新路徑或新檔案版本。</p>
+<h2>主工作區完整測試 trust 修復</h2>
+<p>在 Smart App Control / WDAC enforcement 環境中，完整測試常見的封鎖點不只 <code>Broker.Tests.exe</code>，也可能是 <code>Unit.Tests.dll</code>、<code>Integration.Tests.dll</code>、<code>ExecutionAdapterWorker.dll</code>、<code>BrokerCore.dll</code> 等自家 assembly。若每次 build 後都要重新補 hash，代表信任邊界太窄；主工作區測試修復流程預設改用 Publisher-level trust 來信任 <code>Bricks4Agent Dev Code Signing</code> signer，Hash 只作為第三方 DLL 或特殊 apphost 的 fallback。</p>
+<p><code>New-BricksWdacSupplementalPolicy.ps1</code> 預設會移除 <code>Enabled:Audit Mode</code>，產生可實際放行的 enforced supplemental policy。只有需要觀察不放行時才加 <code>-AuditMode</code>。</p>
+<p>主工作區測試請使用專用入口產生 broker runtime、broker-tests、xUnit unit tests、xUnit integration tests 的 supplemental policy：</p>
+<pre><code class="language-powershell">npm run signing:wdac-repair-tests
+</code></pre>
+<p>輸出會列出四個 policy：</p>
+<ul>
+<li><code>.run\wdac\main-broker-debug\{policy-id}.cip</code></li>
+<li><code>.run\wdac\main-broker-tests\{policy-id}.cip</code></li>
+<li><code>.run\wdac\main-unit-tests\{policy-id}.cip</code></li>
+<li><code>.run\wdac\main-integration-tests\{policy-id}.cip</code></li>
+</ul>
+<p>若要直接部署，必須使用系統管理員 PowerShell：</p>
+<pre><code class="language-powershell">npm run signing:wdac-repair-tests -- -Deploy
+</code></pre>
+<p>部署後執行測試時不要再讓 test command 重新 build，避免覆蓋已簽章輸出。Broker console test 可直接跑：</p>
+<pre><code class="language-powershell">dotnet run --no-build --project packages/csharp/tests/broker-tests/Broker.Tests.csproj
+</code></pre>
+<p>若要跑完整 .NET 測試，優先使用 signed 入口；它們會先 build、簽章，再用 <code>--no-build</code> / <code>--no-restore</code> 執行：</p>
+<pre><code class="language-powershell">npm run test:unit:signed
+npm run test:integration:signed
+npm run test:broker:signed
+npm run test:dotnet:signed
+</code></pre>
+<p>若目前 active policy 尚未包含測試輸出，可先用整合入口部署後跑 broker console test：</p>
+<pre><code class="language-powershell">npm run test:broker:trusted
+</code></pre>
+<p>如果仍被封鎖，先查最新 Code Integrity event 的實際檔案路徑，再重新跑 <code>npm run signing:wdac-repair-tests -- -Deploy</code>。只要封鎖的是自家 assembly，目標是讓 Publisher-level policy 生效，而不是永久追逐每次 build 變動的 hash。</p>
+<h2>Broker.Tests.exe / 測試 apphost 被封鎖</h2>
+<p>若 <code>dotnet run --no-build --project packages/csharp/tests/broker-tests/Broker.Tests.csproj</code> 或 worktree 內的 <code>Broker.Tests.exe</code> 被封鎖，即使 <code>Get-AuthenticodeSignature</code> 顯示簽章有效，也代表目前 active policy 沒有涵蓋這個測試輸出路徑。測試 apphost 適合使用 hash-level supplemental policy。</p>
+<p>以 <code>baselogger-governance</code> worktree 的 broker-tests 輸出為例：</p>
+<pre><code class="language-powershell">npm run signing:wdac-repair -- `
+  -RuntimeRoot &quot;D:\Bricks4Agent\.worktrees\baselogger-governance\packages\csharp\tests\broker-tests\bin\Debug\net8.0&quot; `
+  -OutputDir &quot;.run\wdac\baselogger-worktree-broker-tests&quot; `
+  -PolicyLevel Hash
+</code></pre>
+<p>確認輸出中的 <code>IsActive</code>。若是 <code>false</code>，用系統管理員 PowerShell 部署：</p>
+<pre><code class="language-powershell">npm run signing:wdac-repair -- `
+  -RuntimeRoot &quot;D:\Bricks4Agent\.worktrees\baselogger-governance\packages\csharp\tests\broker-tests\bin\Debug\net8.0&quot; `
+  -OutputDir &quot;.run\wdac\baselogger-worktree-broker-tests&quot; `
+  -PolicyLevel Hash `
+  -Deploy
+</code></pre>
+<p>也可以部署已產生的 CIP：</p>
+<pre><code class="language-powershell">&quot;C:\WINDOWS\system32\CiTool.exe&quot; --update-policy &quot;D:\Bricks4Agent\.run\wdac\baselogger-worktree-broker-tests\{policy-id}.cip&quot; -json
+</code></pre>
+<p>部署後再重跑 <code>dotnet run --no-build</code>。如果 build 後測試 apphost 被覆蓋，hash 會改變，必須重新產生並部署該測試輸出的 hash policy。</p>
+<h2>Dry-run 部署檢查</h2>
+<p>預設不部署，只印出會執行的命令：</p>
+<pre><code class="language-powershell">npm run signing:wdac-install
+</code></pre>
+<p>指定 CIP：</p>
+<pre><code class="language-powershell">npm run signing:wdac-install -- -PolicyBinary &quot;.run/wdac/{policy-id}.cip&quot;
+</code></pre>
+<p>列出 active policies：</p>
+<pre><code class="language-powershell">npm run signing:wdac-install -- -ListActive
+</code></pre>
+<h2>部署 supplemental policy</h2>
+<p>部署必須使用 elevated PowerShell，且必須明確加 <code>-Deploy</code>：</p>
+<pre><code class="language-powershell">powershell -NoProfile -ExecutionPolicy Bypass `
+  -File tools/windows-signing/Install-BricksWdacPolicy.ps1 `
+  -PolicyBinary &quot;.run/wdac/{policy-id}.cip&quot; `
+  -Deploy `
+  -VerifyActive
+</code></pre>
+<p>部署後若仍被擋，查 Code Integrity event：</p>
+<pre><code class="language-powershell">Get-WinEvent -FilterHashtable @{
+  LogName = &quot;Microsoft-Windows-CodeIntegrity/Operational&quot;
+  StartTime = (Get-Date).AddHours(-2)
+} | Select-Object TimeCreated, Id, Message
+</code></pre>
+<h2>驗證流程</h2>
+<p>靜態流程驗證：</p>
+<pre><code class="language-powershell">npm run validate:code-signing-flow
+</code></pre>
+<p>簽章後可驗證自家 assemblies 是否都由預期 cert 簽過：</p>
+<pre><code class="language-powershell">npm run signing:assemblies -- -VerifyOnly
+</code></pre>
+<p>完整 DB / broker verify 可再跑：</p>
+<pre><code class="language-powershell">npm run validate:baseorm
+npm run validate:broker-scope
+</code></pre>
+<p>若仍看到 <code>Smart App Control Block</code> 或 <code>did not meet the Enterprise signing level requirements</code>，代表目前 active policy 仍未信任此 signer 或 supplemental policy 沒有作用於該 base policy。</p>
+</main>
+</body>
+</html>

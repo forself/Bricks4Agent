@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PaginationHelper - Pagination Utilities</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>PaginationHelper - Pagination Utilities</h1>
+<p>Comprehensive pagination utilities for handling paged results in API responses and database queries.</p>
+<h2>Features</h2>
+<ul>
+<li>Offset-based pagination (traditional page numbers)</li>
+<li>Cursor-based pagination (for large datasets)</li>
+<li>PagedResult wrapper with metadata</li>
+<li>IQueryable extension methods</li>
+<li>Pagination parameter validation</li>
+<li>Automatic total pages calculation</li>
+<li>DTO mapping support</li>
+</ul>
+<h2>Usage</h2>
+<h3>Basic Pagination</h3>
+<pre><code class="language-csharp">// In-memory list pagination
+var users = GetAllUsers(); // List&lt;User&gt;
+var pagedResult = PaginationHelper.CreatePagedResult(users, page: 1, pageSize: 10);
+
+// Access results
+var items = pagedResult.Items;
+var totalCount = pagedResult.TotalCount;
+var totalPages = pagedResult.TotalPages;
+var hasNext = pagedResult.HasNextPage;
+</code></pre>
+<h3>With IQueryable (Database Queries)</h3>
+<pre><code class="language-csharp">public async Task&lt;PagedResult&lt;User&gt;&gt; GetUsers(int page, int pageSize)
+{
+    var query = _context.Users
+        .Where(u =&gt; u.IsActive)
+        .OrderBy(u =&gt; u.Username);
+
+    // Use extension method
+    return query.ToPagedResult(page, pageSize);
+}
+</code></pre>
+<h3>In Controller with Extension Method</h3>
+<pre><code class="language-csharp">[HttpGet]
+public async Task&lt;IActionResult&gt; GetUsers([FromQuery] int page = 1, [FromQuery] int pageSize = 10)
+{
+    var query = _context.Users
+        .Where(u =&gt; u.IsActive)
+        .OrderBy(u =&gt; u.CreatedAt);
+
+    var result = query.ToPagedResult(page, pageSize);
+
+    return Success(result);
+}
+</code></pre>
+<h3>Using PaginationParams</h3>
+<pre><code class="language-csharp">[HttpGet]
+public async Task&lt;IActionResult&gt; GetUsers([FromQuery] PaginationParams pagination)
+{
+    // Validates and limits page size automatically
+    var query = _context.Users
+        .Where(u =&gt; u.IsActive);
+
+    var result = query.ToPagedResult(pagination.Page, pagination.PageSize);
+
+    return Success(result);
+}
+</code></pre>
+<h3>With Sorting</h3>
+<pre><code class="language-csharp">[HttpGet]
+public async Task&lt;IActionResult&gt; GetProducts([FromQuery] PaginationParams pagination)
+{
+    var query = _context.Products.AsQueryable();
+
+    // Apply sorting
+    if (!string.IsNullOrEmpty(pagination.SortBy))
+    {
+        query = pagination.SortBy.ToLower() switch
+        {
+            &quot;name&quot; =&gt; pagination.IsDescending
+                ? query.OrderByDescending(p =&gt; p.Name)
+                : query.OrderBy(p =&gt; p.Name),
+            &quot;price&quot; =&gt; pagination.IsDescending
+                ? query.OrderByDescending(p =&gt; p.Price)
+                : query.OrderBy(p =&gt; p.Price),
+            _ =&gt; query.OrderBy(p =&gt; p.Id)
+        };
+    }
+
+    var result = query.ToPagedResult(pagination.Page, pagination.PageSize);
+
+    return Success(result);
+}
+</code></pre>
+<h3>Mapping Results to DTOs</h3>
+<pre><code class="language-csharp">[HttpGet]
+public async Task&lt;IActionResult&gt; GetUsers([FromQuery] int page = 1, [FromQuery] int pageSize = 10)
+{
+    var query = _context.Users
+        .Where(u =&gt; u.IsActive);
+
+    var pagedUsers = query.ToPagedResult(page, pageSize);
+
+    // Map User entities to UserDto
+    var pagedDtos = pagedUsers.Map(user =&gt; new UserDto
+    {
+        Id = user.Id,
+        Username = user.Username,
+        Email = user.Email
+    });
+
+    return Success(pagedDtos);
+}
+</code></pre>
+<h3>Separate Pagination Metadata</h3>
+<pre><code class="language-csharp">[HttpGet]
+public async Task&lt;IActionResult&gt; GetProducts([FromQuery] PaginationParams pagination)
+{
+    var query = _context.Products;
+    var totalCount = await query.CountAsync();
+
+    var items = await query
+        .Paginate(pagination.Page, pagination.PageSize)
+        .ToListAsync();
+
+    var metadata = PaginationMetadata.Create(
+        pagination.Page,
+        pagination.PageSize,
+        totalCount
+    );
+
+    return Ok(new
+    {
+        Data = items,
+        Pagination = metadata
+    });
+}
+</code></pre>
+<h3>Response Format</h3>
+<p>Standard PagedResult response:</p>
+<pre><code class="language-json">{
+  &quot;items&quot;: [
+    { &quot;id&quot;: 1, &quot;name&quot;: &quot;Item 1&quot; },
+    { &quot;id&quot;: 2, &quot;name&quot;: &quot;Item 2&quot; }
+  ],
+  &quot;totalCount&quot;: 50,
+  &quot;page&quot;: 1,
+  &quot;pageSize&quot;: 10,
+  &quot;totalPages&quot;: 5,
+  &quot;hasPreviousPage&quot;: false,
+  &quot;hasNextPage&quot;: true,
+  &quot;firstItemIndex&quot;: 1,
+  &quot;lastItemIndex&quot;: 10
+}
+</code></pre>
+<p>Metadata-only response:</p>
+<pre><code class="language-json">{
+  &quot;data&quot;: [...],
+  &quot;pagination&quot;: {
+    &quot;page&quot;: 2,
+    &quot;pageSize&quot;: 10,
+    &quot;totalCount&quot;: 50,
+    &quot;totalPages&quot;: 5,
+    &quot;hasPreviousPage&quot;: true,
+    &quot;hasNextPage&quot;: true,
+    &quot;previousPage&quot;: 1,
+    &quot;nextPage&quot;: 3
+  }
+}
+</code></pre>
+<h3>Cursor-Based Pagination (for Large Datasets)</h3>
+<pre><code class="language-csharp">[HttpGet(&quot;cursor&quot;)]
+public async Task&lt;IActionResult&gt; GetProductsCursor(
+    [FromQuery] string cursor = null,
+    [FromQuery] int pageSize = 20)
+{
+    var query = _context.Products.OrderBy(p =&gt; p.Id);
+
+    // Apply cursor if provided
+    if (!string.IsNullOrEmpty(cursor) &amp;&amp; int.TryParse(cursor, out int lastId))
+    {
+        query = query.Where(p =&gt; p.Id &gt; lastId).OrderBy(p =&gt; p.Id);
+    }
+
+    // Fetch one extra to check if there are more pages
+    var items = await query.Take(pageSize + 1).ToListAsync();
+
+    var hasNextPage = items.Count &gt; pageSize;
+    if (hasNextPage)
+    {
+        items = items.Take(pageSize).ToList();
+    }
+
+    var result = CursorPaginationHelper.CreateCursorPagedResult(
+        items,
+        pageSize,
+        item =&gt; item.Id.ToString(),
+        hasNextPage
+    );
+
+    return Success(result);
+}
+</code></pre>
+<p>Cursor pagination response:</p>
+<pre><code class="language-json">{
+  &quot;items&quot;: [...],
+  &quot;nextCursor&quot;: &quot;123&quot;,
+  &quot;hasNextPage&quot;: true,
+  &quot;pageSize&quot;: 20
+}
+</code></pre>
+<h3>Complete Service Example</h3>
+<pre><code class="language-csharp">public class ProductService
+{
+    private readonly IUnitOfWork _unitOfWork;
+
+    public ProductService(IUnitOfWork unitOfWork)
+    {
+        _unitOfWork = unitOfWork;
+    }
+
+    public async Task&lt;PagedResult&lt;ProductDto&gt;&gt; GetProductsAsync(
+        string category = null,
+        decimal? minPrice = null,
+        decimal? maxPrice = null,
+        PaginationParams pagination = null)
+    {
+        pagination ??= new PaginationParams();
+
+        var query = _unitOfWork.Repository&lt;Product&gt;().Query();
+
+        // Apply filters
+        if (!string.IsNullOrEmpty(category))
+        {
+            query = query.Where(p =&gt; p.Category == category);
+        }
+
+        if (minPrice.HasValue)
+        {
+            query = query.Where(p =&gt; p.Price &gt;= minPrice.Value);
+        }
+
+        if (maxPrice.HasValue)
+        {
+            query = query.Where(p =&gt; p.Price &lt;= maxPrice.Value);
+        }
+
+        // Apply sorting
+        query = pagination.SortBy?.ToLower() switch
+        {
+            &quot;name&quot; =&gt; pagination.IsDescending
+                ? query.OrderByDescending(p =&gt; p.Name)
+                : query.OrderBy(p =&gt; p.Name),
+            &quot;price&quot; =&gt; pagination.IsDescending
+                ? query.OrderByDescending(p =&gt; p.Price)
+                : query.OrderBy(p =&gt; p.Price),
+            _ =&gt; query.OrderBy(p =&gt; p.Id)
+        };
+
+        // Get paged results
+        var pagedProducts = query.ToPagedResult(pagination.Page, pagination.PageSize);
+
+        // Map to DTOs
+        return pagedProducts.Map(p =&gt; new ProductDto
+        {
+            Id = p.Id,
+            Name = p.Name,
+            Price = p.Price,
+            Category = p.Category
+        });
+    }
+}
+</code></pre>
+<h3>Parameter Validation</h3>
+<pre><code class="language-csharp">// Manual validation
+var (validPage, validPageSize) = PaginationHelper.ValidatePaginationParams(
+    page: 0,        // Will be set to 1
+    pageSize: 200,  // Will be capped at 100 (default max)
+    maxPageSize: 100
+);
+
+// Automatic validation with PaginationParams
+var pagination = new PaginationParams
+{
+    Page = -5,      // Automatically set to 1
+    PageSize = 500  // Automatically capped at 100
+};
+</code></pre>
+<h2>PaginationParams Class</h2>
+<p>Query parameter binding for pagination:</p>
+<pre><code class="language-csharp">public class PaginationParams
+{
+    public int Page { get; set; } = 1;          // Auto-validates &gt;= 1
+    public int PageSize { get; set; } = 10;      // Auto-validates 1-100
+    public string SortBy { get; set; }
+    public string SortDirection { get; set; } = &quot;asc&quot;;
+    public bool IsDescending { get; }            // Computed property
+}
+</code></pre>
+<p>Usage:</p>
+<pre><code class="language-csharp">// Client sends: GET /api/products?page=2&amp;pageSize=20&amp;sortBy=price&amp;sortDirection=desc
+[HttpGet]
+public IActionResult Get([FromQuery] PaginationParams pagination)
+{
+    // pagination.Page = 2
+    // pagination.PageSize = 20
+    // pagination.SortBy = &quot;price&quot;
+    // pagination.IsDescending = true
+}
+</code></pre>
+<h2>Best Practices</h2>
+<ol>
+<li><strong>Always Validate Parameters</strong> - Use PaginationParams or ValidatePaginationParams</li>
+<li><strong>Set Maximum Page Size</strong> - Prevent abuse (default: 100)</li>
+<li><strong>Use Cursor Pagination for Large Datasets</strong> - Better performance than offset</li>
+<li><strong>Index Sort Columns</strong> - Ensure database indexes on sorted fields</li>
+<li><strong>Count Only When Needed</strong> - For very large tables, consider approximations</li>
+<li><strong>Cache Total Counts</strong> - For frequently accessed, slow-changing data</li>
+<li><strong>Provide Metadata</strong> - Help clients build pagination UI</li>
+</ol>
+<h2>Offset vs Cursor Pagination</h2>
+<h3>Offset (Page Number) - Best for:</h3>
+<ul>
+<li>Small to medium datasets</li>
+<li>Random page access needed</li>
+<li>UI shows page numbers</li>
+<li>Total count is useful</li>
+</ul>
+<h3>Cursor - Best for:</h3>
+<ul>
+<li>Very large datasets (millions of rows)</li>
+<li>Infinite scroll UI</li>
+<li>Real-time data (items being added/removed)</li>
+<li>Better performance with indexes</li>
+</ul>
+<h2>Dependencies</h2>
+<ul>
+<li>System.Linq</li>
+<li>.NET 6.0 or higher</li>
+<li>No external NuGet packages required</li>
+</ul>
+<h2>Benefits</h2>
+<ol>
+<li><strong>Consistent API Responses</strong> - Uniform pagination format</li>
+<li><strong>Performance</strong> - Efficient database queries with Skip/Take</li>
+<li><strong>Metadata</strong> - Complete pagination information for clients</li>
+<li><strong>Validation</strong> - Built-in parameter validation</li>
+<li><strong>Flexibility</strong> - Works with IQueryable, IEnumerable, and lists</li>
+<li><strong>Type Safety</strong> - Strongly-typed paged results</li>
+<li><strong>DTO Mapping</strong> - Easy transformation to DTOs</li>
+</ol>
+</main>
+</body>
+</html>

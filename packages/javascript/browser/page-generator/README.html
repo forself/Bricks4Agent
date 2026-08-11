@@ -1,0 +1,1732 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Page Generator</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Page Generator</h1>
+<p>頁面生成器模組 - 根據頁面定義 (PageDefinition) 自動生成頁面程式碼，或在瀏覽器端動態渲染頁面。</p>
+<h2>目前狀態與邊界</h2>
+<p>這個模組目前同時承擔兩條路徑：</p>
+<ul>
+<li>靜態程式碼生成</li>
+<li>執行期動態渲染</li>
+</ul>
+<p>但兩條路徑的成熟度與行為並不完全相同。</p>
+<p>根據目前程式碼：</p>
+<ul>
+<li><code>PageGenerator.js</code> 仍以字串模板產生頁面原始碼，不是 AST-based generator</li>
+<li><code>ComponentPaths</code> 仍是明確寫在程式中的路徑映射</li>
+<li><code>FieldResolver.js</code> 在遇到未知 <code>fieldType</code> 時會 <code>console.warn</code> 並回退成 text input</li>
+<li><code>PageGenerator.js</code> 對某些未知型別則會輸出 TODO 註記</li>
+</ul>
+<p>因此比較準確的理解是：</p>
+<ul>
+<li>動態渲染路徑是目前較完整、較實際可用的執行期路徑</li>
+<li>靜態生成路徑仍是實用工具，但不是通用程式編譯器</li>
+<li>新舊格式與靜態/動態雙軌仍在同一模組內並存</li>
+</ul>
+<p>閱讀這份 README 時，請把它當成「目前 API 與能力清單」，不要把它誤讀成「所有路徑都已同等成熟」。</p>
+<h2>模組目錄總覽</h2>
+<table>
+<thead>
+<tr>
+<th>檔案</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>PageDefinition.js</code></td>
+<td>頁面定義規格（FieldTypes、PageTypes、驗證函式）</td>
+</tr>
+<tr>
+<td><code>PageGenerator.js</code></td>
+<td>靜態程式碼生成器，從定義產生 BasePage 子類別原始碼</td>
+</tr>
+<tr>
+<td><code>PageDefinitionAdapter.js</code></td>
+<td>新舊格式雙向轉換器（AI 格式 ⟷ PageGenerator 格式）</td>
+</tr>
+<tr>
+<td><code>FieldResolver.js</code></td>
+<td>欄位推論引擎，將 30 種 fieldType 映射為 UI 元件實例</td>
+</tr>
+<tr>
+<td><code>TriggerEngine.js</code></td>
+<td>聯動行為引擎，8 個內建原子行為 + 自訂擴充</td>
+</tr>
+<tr>
+<td><code>DynamicFormRenderer.js</code></td>
+<td>動態表單渲染器，組合 FormField + FormRow + TriggerEngine</td>
+</tr>
+<tr>
+<td><code>DynamicDetailRenderer.js</code></td>
+<td>動態明細渲染器，以唯讀方式顯示 label + formatted value</td>
+</tr>
+<tr>
+<td><code>DynamicListRenderer.js</code></td>
+<td>動態列表渲染器，組合 SearchForm + DataTable + Pagination</td>
+</tr>
+<tr>
+<td><code>ToolPageDefinition.js</code></td>
+<td>宣告式工具頁 JSON schema 與安全驗證</td>
+</tr>
+<tr>
+<td><code>DynamicToolRenderer.js</code></td>
+<td>由 JSON、可信 commands 與 ComponentFactory 產生工具頁</td>
+</tr>
+<tr>
+<td><code>DynamicPageRenderer.js</code></td>
+<td>統一入口，依 mode 委派給 Form / Detail / List / Tool 渲染器</td>
+</tr>
+<tr>
+<td><code>index.js</code></td>
+<td>模組匯出入口</td>
+</tr>
+</tbody>
+</table>
+<h2>架構概念</h2>
+<pre><code>┌─ 靜態生成（建置期）─────────────────────────────┐
+│  PageDefinition (WHAT) + PageGenerator (HOW)    │
+│  → 生成 BasePage 子類別 .js 原始碼               │
+└─────────────────────────────────────────────────┘
+
+┌─ 動態渲染（執行期）─────────────────────────────┐
+│  PageDefinition JSON（新格式）                   │
+│    ↓                                            │
+│  PageDefinitionAdapter（格式轉換，可選）          │
+│    ↓                                            │
+│  DynamicPageRenderer (統一入口)                  │
+│    ├─ form   → DynamicFormRenderer              │
+│    │            ├─ FieldResolver (30 種推論)     │
+│    │            └─ TriggerEngine (聯動行為)      │
+│    ├─ detail → DynamicDetailRenderer            │
+│    ├─ list   → DynamicListRenderer              │
+│                 ├─ SearchForm                    │
+│                 ├─ DataTable                     │
+│                 └─ Pagination                    │
+│    └─ tool   → DynamicToolRenderer              │
+│                 ├─ ComponentFactory              │
+│                 ├─ trusted command registry      │
+│                 └─ state binding + provenance    │
+└─────────────────────────────────────────────────┘
+
+┌─ CLI 工具 ──────────────────────────────────────┐
+│  tools/page-gen.js                              │
+│  --mode static|dynamic|both                     │
+│  --def &lt;json-file&gt;                              │
+│  --validate / --list-types                      │
+└─────────────────────────────────────────────────┘
+</code></pre>
+<h2>安裝</h2>
+<p>此模組為 Bricks4Agent 的一部分，直接引用即可：</p>
+<pre><code class="language-javascript">// 靜態生成 API
+import {
+    PageGenerator,
+    FieldTypes,
+    PageTypes,
+    validateDefinition,
+    createDefaultDefinition
+} from '@component-library/page-generator';
+
+// 格式轉換
+import { PageDefinitionAdapter } from '@component-library/page-generator';
+
+// 動態渲染 API
+import {
+    DynamicPageRenderer,
+    DynamicFormRenderer,
+    DynamicDetailRenderer,
+    DynamicListRenderer,
+    DynamicToolRenderer,
+    validateToolPageDefinition,
+    FieldResolver,
+    TriggerEngine
+} from '@component-library/page-generator';
+</code></pre>
+<hr>
+<h2>兩種頁面定義格式</h2>
+<p>本系統支援兩種頁面定義格式，透過 <code>PageDefinitionAdapter</code> 相互轉換：</p>
+<h3>新格式（AI 生成格式）</h3>
+<p>用於 <code>DynamicPageRenderer</code> 動態渲染引擎與 CLI 工具。支援完整的佈局控制、聯動觸發、搜尋/列表設定。</p>
+<pre><code class="language-json">{
+  &quot;page&quot;: {
+    &quot;pageName&quot;: &quot;員工管理&quot;,
+    &quot;entity&quot;: &quot;employee&quot;,
+    &quot;view&quot;: &quot;adminList&quot;
+  },
+  &quot;fields&quot;: [
+    {
+      &quot;fieldName&quot;: &quot;name&quot;,
+      &quot;label&quot;: &quot;姓名&quot;,
+      &quot;fieldType&quot;: &quot;text&quot;,
+      &quot;formRow&quot;: 1,
+      &quot;formCol&quot;: 6,
+      &quot;listOrder&quot;: 2,
+      &quot;isRequired&quot;: true,
+      &quot;isReadonly&quot;: false,
+      &quot;isSearchable&quot;: true,
+      &quot;validation&quot;: { &quot;maxLength&quot;: 50 }
+    }
+  ]
+}
+</code></pre>
+<h3>舊格式（PageGenerator 格式）</h3>
+<p>用於 <code>PageGenerator</code> 靜態程式碼生成器。</p>
+<pre><code class="language-javascript">{
+    name: 'EmployeePage',
+    type: 'form',
+    fields: [
+        { name: 'name', type: 'text', label: '姓名', required: true }
+    ],
+    api: { get: '/api/employee', create: '/api/employee' }
+}
+</code></pre>
+<h3>格式對照表</h3>
+<table>
+<thead>
+<tr>
+<th>新格式</th>
+<th>舊格式</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>page.pageName</code></td>
+<td><code>description</code></td>
+<td>頁面中文名稱</td>
+</tr>
+<tr>
+<td><code>page.entity</code></td>
+<td>推斷為 <code>name</code>（加 "Page" 後綴）</td>
+<td>如 employee → EmployeePage</td>
+</tr>
+<tr>
+<td><code>page.view</code></td>
+<td>推斷為 <code>type</code>（list/detail/form）</td>
+<td>如 adminList → list</td>
+</tr>
+<tr>
+<td><code>field.fieldName</code></td>
+<td><code>field.name</code></td>
+<td>欄位技術名稱</td>
+</tr>
+<tr>
+<td><code>field.fieldType</code></td>
+<td><code>field.type</code></td>
+<td>欄位類型</td>
+</tr>
+<tr>
+<td><code>field.isRequired</code></td>
+<td><code>field.required</code></td>
+<td>是否必填</td>
+</tr>
+<tr>
+<td><code>field.defaultValue</code></td>
+<td><code>field.default</code></td>
+<td>預設值（新格式為字串）</td>
+</tr>
+<tr>
+<td><code>field.optionsSource.items</code></td>
+<td><code>field.options</code></td>
+<td>下拉選項</td>
+</tr>
+<tr>
+<td><code>field.triggers</code></td>
+<td><code>behaviors.fieldTriggers</code></td>
+<td>聯動行為</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>各模組 API</h2>
+<h3>PageDefinition</h3>
+<p>頁面定義規格，包含常數與驗證工具函式。</p>
+<p><strong>匯出常數：</strong></p>
+<table>
+<thead>
+<tr>
+<th>常數</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>FieldTypes</code></td>
+<td>欄位類型列舉（30 種，含基本、進階、複合輸入）</td>
+</tr>
+<tr>
+<td><code>PageTypes</code></td>
+<td>頁面類型列舉（form, list, detail, dashboard）</td>
+</tr>
+<tr>
+<td><code>ComponentMapping</code></td>
+<td>fieldType → 元件名稱映射表</td>
+</tr>
+<tr>
+<td><code>AvailableComponents</code></td>
+<td>可用元件清單（spa / packages）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>匯出函式：</strong></p>
+<table>
+<thead>
+<tr>
+<th>函式</th>
+<th>參數</th>
+<th>回傳</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>validateDefinition(definition)</code></td>
+<td><code>PageDefinition</code></td>
+<td><code>{ valid, errors }</code></td>
+<td>驗證頁面定義是否有效</td>
+</tr>
+<tr>
+<td><code>inferComponents(fields)</code></td>
+<td><code>FieldDef[]</code></td>
+<td><code>string[]</code></td>
+<td>從欄位推斷需要的元件</td>
+</tr>
+<tr>
+<td><code>createDefaultDefinition(name, type)</code></td>
+<td><code>string, string</code></td>
+<td><code>PageDefinition</code></td>
+<td>建立預設頁面定義</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h3>PageDefinitionAdapter</h3>
+<p>新舊格式雙向轉換器。所有方法均為靜態方法，無需實例化。</p>
+<pre><code class="language-javascript">import { PageDefinitionAdapter } from './PageDefinitionAdapter.js';
+
+// 新格式 → 舊格式（供 PageGenerator 使用）
+const oldDef = PageDefinitionAdapter.toOldFormat(newDefinition);
+
+// 舊格式 → 新格式（供 DynamicPageRenderer 使用）
+const newDef = PageDefinitionAdapter.toNewFormat(oldDefinition);
+</code></pre>
+<p><strong>靜態方法：</strong></p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>參數</th>
+<th>回傳</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>toOldFormat(newDef)</code></td>
+<td><code>Object</code></td>
+<td><code>Object</code></td>
+<td>新格式 → 舊格式</td>
+</tr>
+<tr>
+<td><code>toNewFormat(oldDef)</code></td>
+<td><code>Object</code></td>
+<td><code>Object</code></td>
+<td>舊格式 → 新格式</td>
+</tr>
+</tbody>
+</table>
+<p><strong>轉換細節：</strong></p>
+<ul>
+<li><code>page.entity</code> → PascalCase + "Page" 作為 <code>name</code>（例如 employee → EmployeePage）</li>
+<li><code>page.view</code> 含 "list" → <code>type: 'list'</code>，含 "detail" → <code>type: 'detail'</code>，其餘 → <code>type: 'form'</code></li>
+<li><code>fieldType: 'multiselect'</code> 在舊格式中映射為 <code>type: 'select'</code>（舊 PageGenerator 不區分）</li>
+<li><code>optionsSource.items</code> → <code>options</code> 陣列（static 型）</li>
+<li><code>triggers</code> 從各欄位收集至 <code>behaviors.fieldTriggers</code></li>
+<li><code>defaultValue</code> 自動進行字串 ⟷ 原生型別轉換（"true" ⟷ <code>true</code>）</li>
+</ul>
+<hr>
+<h3>PageGenerator</h3>
+<p>靜態程式碼生成器，從頁面定義產出完整的 BasePage 子類別原始碼。</p>
+<pre><code class="language-javascript">const generator = new PageGenerator(options);
+</code></pre>
+<p><strong>Constructor 參數：</strong></p>
+<table>
+<thead>
+<tr>
+<th>參數</th>
+<th>型別</th>
+<th>預設值</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>baseImportPath</code></td>
+<td><code>string</code></td>
+<td><code>'../core/BasePage.js'</code></td>
+<td>BasePage 的 import 路徑</td>
+</tr>
+</tbody>
+</table>
+<p><strong>公開方法：</strong></p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>參數</th>
+<th>回傳</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>generate(definition)</code></td>
+<td><code>PageDefinition</code></td>
+<td><code>{ code: string, errors: string[] }</code></td>
+<td>生成頁面程式碼</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h3>TriggerEngine</h3>
+<p>聯動行為執行引擎。管理欄位間的互動邏輯，每個 action 為原子操作，可自由組合。</p>
+<pre><code class="language-javascript">const engine = new TriggerEngine();
+</code></pre>
+<p><strong>Constructor 參數：</strong> 無</p>
+<p><strong>內建 8 個原子行為：</strong></p>
+<table>
+<thead>
+<tr>
+<th>Action</th>
+<th>說明</th>
+<th>params</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>clear</code></td>
+<td>清空目標值</td>
+<td>-</td>
+</tr>
+<tr>
+<td><code>setValue</code></td>
+<td>設定目標值</td>
+<td><code>{ value }</code> 或 <code>{ fromField }</code></td>
+</tr>
+<tr>
+<td><code>show</code></td>
+<td>顯示目標欄位</td>
+<td>-</td>
+</tr>
+<tr>
+<td><code>hide</code></td>
+<td>隱藏目標欄位</td>
+<td>-</td>
+</tr>
+<tr>
+<td><code>setReadonly</code></td>
+<td>設定唯讀狀態</td>
+<td><code>{ value: boolean }</code></td>
+</tr>
+<tr>
+<td><code>setRequired</code></td>
+<td>設定必填狀態</td>
+<td><code>{ value: boolean }</code></td>
+</tr>
+<tr>
+<td><code>reload</code></td>
+<td>觸發目標元件重新載入</td>
+<td>-</td>
+</tr>
+<tr>
+<td><code>reloadOptions</code></td>
+<td>重新載入目標欄位的下拉選項（API）</td>
+<td>-</td>
+</tr>
+</tbody>
+</table>
+<p><strong>公開方法：</strong></p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>參數</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>registerAction(name, handler)</code></td>
+<td><code>string, Function</code></td>
+<td>註冊自訂原子行為</td>
+</tr>
+<tr>
+<td><code>bind(fieldDefinitions, fieldInstances)</code></td>
+<td><code>Array, Map</code></td>
+<td>綁定欄位定義與元件實例，啟動觸發監聽</td>
+</tr>
+<tr>
+<td><code>execute(actionName, sourceFieldName, targetFieldName, params)</code></td>
+<td><code>string, string, string, Object</code></td>
+<td>手動執行單一原子行為</td>
+</tr>
+<tr>
+<td><code>unbind()</code></td>
+<td>-</td>
+<td>解除所有綁定</td>
+</tr>
+<tr>
+<td><code>destroy()</code></td>
+<td>-</td>
+<td>銷毀引擎（unbind + 清除註冊）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>觸發時機（trigger.on）：</strong> <code>change</code>、<code>check</code>、<code>uncheck</code>、<code>upload</code></p>
+<hr>
+<h3>FieldResolver</h3>
+<p>欄位推論引擎。將 fieldType 映射為實際 UI 元件實例，並包裝為 FormField。</p>
+<pre><code class="language-javascript">const resolver = new FieldResolver();
+</code></pre>
+<p><strong>Constructor 參數：</strong> 無</p>
+<p><strong>支援的 30 種 fieldType 映射：</strong></p>
+<table>
+<thead>
+<tr>
+<th>分類</th>
+<th>fieldType</th>
+<th>對應元件</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>基本</strong></td>
+<td><code>text</code></td>
+<td>TextInput (type=text)</td>
+</tr>
+<tr>
+<td></td>
+<td><code>email</code></td>
+<td>TextInput (type=email)</td>
+</tr>
+<tr>
+<td></td>
+<td><code>password</code></td>
+<td>TextInput (type=password)</td>
+</tr>
+<tr>
+<td></td>
+<td><code>number</code></td>
+<td>NumberInput</td>
+</tr>
+<tr>
+<td></td>
+<td><code>textarea</code></td>
+<td>原生 textarea 包裝</td>
+</tr>
+<tr>
+<td><strong>日期時間</strong></td>
+<td><code>date</code></td>
+<td>DatePicker</td>
+</tr>
+<tr>
+<td></td>
+<td><code>time</code></td>
+<td>TimePicker</td>
+</tr>
+<tr>
+<td></td>
+<td><code>datetime</code></td>
+<td>DateTimeInput</td>
+</tr>
+<tr>
+<td><strong>選擇</strong></td>
+<td><code>select</code></td>
+<td>Dropdown (searchable)</td>
+</tr>
+<tr>
+<td></td>
+<td><code>multiselect</code></td>
+<td>MultiSelectDropdown</td>
+</tr>
+<tr>
+<td></td>
+<td><code>checkbox</code></td>
+<td>Checkbox</td>
+</tr>
+<tr>
+<td></td>
+<td><code>toggle</code></td>
+<td>ToggleSwitch</td>
+</tr>
+<tr>
+<td></td>
+<td><code>radio</code></td>
+<td>Radio.createGroup</td>
+</tr>
+<tr>
+<td><strong>進階</strong></td>
+<td><code>color</code></td>
+<td>ColorPicker</td>
+</tr>
+<tr>
+<td></td>
+<td><code>image</code></td>
+<td>ImageViewer</td>
+</tr>
+<tr>
+<td></td>
+<td><code>file</code></td>
+<td>BatchUploader</td>
+</tr>
+<tr>
+<td></td>
+<td><code>richtext</code></td>
+<td>WebTextEditor</td>
+</tr>
+<tr>
+<td></td>
+<td><code>canvas</code></td>
+<td>DrawingBoard</td>
+</tr>
+<tr>
+<td><strong>服務</strong></td>
+<td><code>geolocation</code></td>
+<td>GeolocationService</td>
+</tr>
+<tr>
+<td></td>
+<td><code>weather</code></td>
+<td>WeatherService</td>
+</tr>
+<tr>
+<td><strong>複合輸入</strong></td>
+<td><code>address</code></td>
+<td>AddressInput（縣市/鄉鎮/地址聯動）</td>
+</tr>
+<tr>
+<td></td>
+<td><code>addresslist</code></td>
+<td>AddressListInput（多筆地址）</td>
+</tr>
+<tr>
+<td></td>
+<td><code>chained</code></td>
+<td>ChainedInput（通用聯動下拉）</td>
+</tr>
+<tr>
+<td></td>
+<td><code>list</code></td>
+<td>ListInput（動態列表輸入）</td>
+</tr>
+<tr>
+<td></td>
+<td><code>personinfo</code></td>
+<td>PersonInfoList（人員資訊列表）</td>
+</tr>
+<tr>
+<td></td>
+<td><code>phonelist</code></td>
+<td>PhoneListInput（電話列表）</td>
+</tr>
+<tr>
+<td></td>
+<td><code>socialmedia</code></td>
+<td>SocialMediaList（社群媒體列表）</td>
+</tr>
+<tr>
+<td></td>
+<td><code>organization</code></td>
+<td>OrganizationInput（組織層級輸入）</td>
+</tr>
+<tr>
+<td></td>
+<td><code>student</code></td>
+<td>StudentInput（學生資訊輸入）</td>
+</tr>
+<tr>
+<td><strong>隱藏</strong></td>
+<td><code>hidden</code></td>
+<td>原生 hidden input 包裝</td>
+</tr>
+</tbody>
+</table>
+<p><strong>公開方法：</strong></p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>參數</th>
+<th>回傳</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>preload()</code></td>
+<td>-</td>
+<td><code>Promise&lt;void&gt;</code></td>
+<td>預載入所有元件模組（必須在 resolve 前呼叫）</td>
+</tr>
+<tr>
+<td><code>registerComponent(name, factory)</code></td>
+<td><code>string, Function</code></td>
+<td>-</td>
+<td>註冊自訂元件工廠</td>
+</tr>
+<tr>
+<td><code>resolve(fieldDef)</code></td>
+<td><code>Object</code></td>
+<td><code>{ component, formField }</code></td>
+<td>解析單一欄位定義為元件 + FormField</td>
+</tr>
+<tr>
+<td><code>resolveAll(fieldDefs)</code></td>
+<td><code>Array</code></td>
+<td><code>Map&lt;string, { component, formField }&gt;</code></td>
+<td>批次解析所有欄位</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h3>DynamicFormRenderer</h3>
+<p>動態表單渲染器。從頁面定義 JSON 自動建構表單，含欄位解析、行列排版、聯動觸發、驗證。</p>
+<pre><code class="language-javascript">const form = new DynamicFormRenderer(options);
+await form.init();
+</code></pre>
+<p><strong>Constructor 參數：</strong></p>
+<table>
+<thead>
+<tr>
+<th>參數</th>
+<th>型別</th>
+<th>預設值</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>definition</code></td>
+<td><code>Object</code></td>
+<td><code>null</code></td>
+<td>頁面定義 JSON（含 page + fields）</td>
+</tr>
+<tr>
+<td><code>onSave</code></td>
+<td><code>Function</code></td>
+<td><code>null</code></td>
+<td>儲存回調 <code>(values) =&gt; void</code></td>
+</tr>
+<tr>
+<td><code>onCancel</code></td>
+<td><code>Function</code></td>
+<td><code>null</code></td>
+<td>取消回調 <code>() =&gt; void</code></td>
+</tr>
+<tr>
+<td><code>showButtons</code></td>
+<td><code>boolean</code></td>
+<td><code>true</code></td>
+<td>是否顯示底部按鈕</td>
+</tr>
+</tbody>
+</table>
+<p><strong>公開方法：</strong></p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>參數</th>
+<th>回傳</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>init()</code></td>
+<td>-</td>
+<td><code>Promise&lt;this&gt;</code></td>
+<td>初始化（預載入元件 + 建構 DOM）</td>
+</tr>
+<tr>
+<td><code>getValues()</code></td>
+<td>-</td>
+<td><code>Object</code></td>
+<td>取得所有欄位值 <code>{ fieldName: value }</code></td>
+</tr>
+<tr>
+<td><code>setValues(data)</code></td>
+<td><code>Object</code></td>
+<td>-</td>
+<td>設定欄位值</td>
+</tr>
+<tr>
+<td><code>validate()</code></td>
+<td>-</td>
+<td><code>boolean</code></td>
+<td>驗證所有必填欄位</td>
+</tr>
+<tr>
+<td><code>mount(container)</code></td>
+<td><code>string \| Element</code></td>
+<td><code>this</code></td>
+<td>掛載到容器</td>
+</tr>
+<tr>
+<td><code>destroy()</code></td>
+<td>-</td>
+<td>-</td>
+<td>銷毀渲染器</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h3>DynamicDetailRenderer</h3>
+<p>動態明細渲染器。從頁面定義 JSON 產生唯讀明細檢視，不實例化 form 元件，直接渲染 label + 格式化值。</p>
+<pre><code class="language-javascript">const detail = new DynamicDetailRenderer(options);
+</code></pre>
+<p><strong>Constructor 參數：</strong></p>
+<table>
+<thead>
+<tr>
+<th>參數</th>
+<th>型別</th>
+<th>預設值</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>definition</code></td>
+<td><code>Object</code></td>
+<td><code>null</code></td>
+<td>頁面定義 JSON</td>
+</tr>
+<tr>
+<td><code>data</code></td>
+<td><code>Object</code></td>
+<td><code>{}</code></td>
+<td>資料物件 <code>{ fieldName: value }</code></td>
+</tr>
+<tr>
+<td><code>onBack</code></td>
+<td><code>Function</code></td>
+<td><code>null</code></td>
+<td>返回按鈕回調</td>
+</tr>
+<tr>
+<td><code>onEdit</code></td>
+<td><code>Function</code></td>
+<td><code>null</code></td>
+<td>編輯按鈕回調</td>
+</tr>
+</tbody>
+</table>
+<p><strong>公開方法：</strong></p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>參數</th>
+<th>回傳</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>setData(data)</code></td>
+<td><code>Object</code></td>
+<td>-</td>
+<td>設定/更新資料（自動重新渲染）</td>
+</tr>
+<tr>
+<td><code>mount(container)</code></td>
+<td><code>string \| Element</code></td>
+<td><code>this</code></td>
+<td>掛載到容器</td>
+</tr>
+<tr>
+<td><code>destroy()</code></td>
+<td>-</td>
+<td>-</td>
+<td>銷毀渲染器</td>
+</tr>
+</tbody>
+</table>
+<p><strong>支援的格式化類型：</strong></p>
+<table>
+<thead>
+<tr>
+<th>fieldType</th>
+<th>格式化方式</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>date</code></td>
+<td>YYYY/MM/DD 日期字串</td>
+</tr>
+<tr>
+<td><code>datetime</code></td>
+<td>YYYY/MM/DD HH:MM</td>
+</tr>
+<tr>
+<td><code>checkbox</code> / <code>toggle</code></td>
+<td>是/否 色彩標籤</td>
+</tr>
+<tr>
+<td><code>select</code> / <code>radio</code></td>
+<td>顯示 label（非 value）</td>
+</tr>
+<tr>
+<td><code>multiselect</code></td>
+<td>多個藍色標籤</td>
+</tr>
+<tr>
+<td><code>color</code></td>
+<td>色塊 + 色碼</td>
+</tr>
+<tr>
+<td><code>image</code></td>
+<td>縮圖預覽</td>
+</tr>
+<tr>
+<td><code>password</code></td>
+<td>遮罩（••••••••）</td>
+</tr>
+<tr>
+<td><code>richtext</code></td>
+<td>HTML 內容截斷顯示</td>
+</tr>
+<tr>
+<td><code>canvas</code></td>
+<td>文字提示（繪圖內容）</td>
+</tr>
+<tr>
+<td><code>geolocation</code></td>
+<td>地址短名或座標</td>
+</tr>
+<tr>
+<td><code>weather</code></td>
+<td>圖示 + 溫度 + 描述</td>
+</tr>
+<tr>
+<td><code>address</code></td>
+<td>縣市 + 鄉鎮 + 地址</td>
+</tr>
+<tr>
+<td><code>addresslist</code> / <code>phonelist</code> / <code>socialmedia</code> / <code>personinfo</code></td>
+<td>編號列表</td>
+</tr>
+<tr>
+<td><code>organization</code></td>
+<td>層級路徑（/ 分隔）</td>
+</tr>
+<tr>
+<td><code>student</code></td>
+<td>學生/非學生 + 學校名</td>
+</tr>
+<tr>
+<td><code>chained</code> / <code>list</code></td>
+<td>編號列表</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h3>DynamicListRenderer</h3>
+<p>動態列表渲染器。從頁面定義 JSON 組合 SearchForm + DataTable + Pagination 三件元件。</p>
+<pre><code class="language-javascript">const list = new DynamicListRenderer(options);
+await list.init();
+</code></pre>
+<p><strong>Constructor 參數：</strong></p>
+<table>
+<thead>
+<tr>
+<th>參數</th>
+<th>型別</th>
+<th>預設值</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>definition</code></td>
+<td><code>Object</code></td>
+<td><code>null</code></td>
+<td>頁面定義 JSON</td>
+</tr>
+<tr>
+<td><code>onSearch</code></td>
+<td><code>Function</code></td>
+<td><code>null</code></td>
+<td>搜尋回調 <code>(filters, page, pageSize) =&gt; void</code></td>
+</tr>
+<tr>
+<td><code>onAction</code></td>
+<td><code>Function</code></td>
+<td><code>null</code></td>
+<td>操作回調 <code>(action, row) =&gt; void</code>（action: view/edit/delete）</td>
+</tr>
+<tr>
+<td><code>pageSize</code></td>
+<td><code>number</code></td>
+<td><code>20</code></td>
+<td>每頁筆數</td>
+</tr>
+</tbody>
+</table>
+<p><strong>公開方法：</strong></p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>參數</th>
+<th>回傳</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>init()</code></td>
+<td>-</td>
+<td><code>Promise&lt;this&gt;</code></td>
+<td>初始化（載入依賴元件 + 建構 DOM）</td>
+</tr>
+<tr>
+<td><code>setData(rows, total)</code></td>
+<td><code>Array, number</code></td>
+<td>-</td>
+<td>設定列表資料與總筆數</td>
+</tr>
+<tr>
+<td><code>mount(container)</code></td>
+<td><code>string \| Element</code></td>
+<td><code>this</code></td>
+<td>掛載到容器</td>
+</tr>
+<tr>
+<td><code>destroy()</code></td>
+<td>-</td>
+<td>-</td>
+<td>銷毀渲染器</td>
+</tr>
+</tbody>
+</table>
+<p><strong>欄位定義中的列表相關屬性：</strong>
+- <code>isSearchable: true</code> — 欄位出現在搜尋區
+- <code>listOrder: number</code> — 欄位在表格中的排序（&gt; 0 才顯示）</p>
+<hr>
+<h3>DynamicPageRenderer</h3>
+<p>統一入口渲染器。依 mode 自動委派給對應的 Form / Detail / List / Tool 渲染器；當 <code>definition.type === 'tool'</code> 且未指定 mode 時會自動使用 <code>tool</code>。</p>
+<pre><code class="language-javascript">const page = new DynamicPageRenderer(options);
+await page.init();
+</code></pre>
+<p><strong>Constructor 參數：</strong></p>
+<table>
+<thead>
+<tr>
+<th>參數</th>
+<th>型別</th>
+<th>預設值</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>definition</code></td>
+<td><code>Object</code></td>
+<td><code>null</code></td>
+<td>頁面定義 JSON</td>
+</tr>
+<tr>
+<td><code>mode</code></td>
+<td><code>string</code></td>
+<td><code>'form'</code></td>
+<td>渲染模式：<code>'form'</code> / <code>'detail'</code> / <code>'list'</code> / <code>'tool'</code></td>
+</tr>
+<tr>
+<td><code>data</code></td>
+<td><code>Object</code></td>
+<td><code>null</code></td>
+<td>資料（detail/form 編輯時使用）</td>
+</tr>
+<tr>
+<td><code>onSave</code></td>
+<td><code>Function</code></td>
+<td><code>null</code></td>
+<td>儲存回調（form 模式）</td>
+</tr>
+<tr>
+<td><code>onCancel</code></td>
+<td><code>Function</code></td>
+<td><code>null</code></td>
+<td>取消回調（form 模式）</td>
+</tr>
+<tr>
+<td><code>onSearch</code></td>
+<td><code>Function</code></td>
+<td><code>null</code></td>
+<td>搜尋回調（list 模式）</td>
+</tr>
+<tr>
+<td><code>onAction</code></td>
+<td><code>Function</code></td>
+<td><code>null</code></td>
+<td>操作回調（list 模式）</td>
+</tr>
+<tr>
+<td><code>onBack</code></td>
+<td><code>Function</code></td>
+<td><code>null</code></td>
+<td>返回回調（detail 模式）</td>
+</tr>
+<tr>
+<td><code>onEdit</code></td>
+<td><code>Function</code></td>
+<td><code>null</code></td>
+<td>編輯回調（detail 模式）</td>
+</tr>
+<tr>
+<td><code>pageSize</code></td>
+<td><code>number</code></td>
+<td><code>20</code></td>
+<td>每頁筆數（list 模式）</td>
+</tr>
+<tr>
+<td><code>commandRegistry</code></td>
+<td><code>Map \| Object</code></td>
+<td><code>null</code></td>
+<td>Tool 定義可引用的可信 command allowlist</td>
+</tr>
+<tr>
+<td><code>state</code></td>
+<td><code>Object</code></td>
+<td><code>{}</code></td>
+<td>Tool component bindings 的 JSON-compatible 初始狀態</td>
+</tr>
+<tr>
+<td><code>factory</code></td>
+<td><code>Object</code></td>
+<td><code>ComponentFactory</code></td>
+<td>Tool mode 使用的 factory；通常維持預設</td>
+</tr>
+<tr>
+<td><code>controlRegistry</code></td>
+<td><code>Map \| {records: Map}</code></td>
+<td><code>null</code></td>
+<td>收集 renderer 控制 provenance 的 registry</td>
+</tr>
+</tbody>
+</table>
+<p><strong>公開方法：</strong></p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>參數</th>
+<th>回傳</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>init()</code></td>
+<td>-</td>
+<td><code>Promise&lt;this&gt;</code></td>
+<td>初始化並建構渲染器</td>
+</tr>
+<tr>
+<td><code>getRenderer()</code></td>
+<td>-</td>
+<td><code>Renderer</code></td>
+<td>取得內部渲染器實例</td>
+</tr>
+<tr>
+<td><code>switchMode(mode, data)</code></td>
+<td><code>string, Object</code></td>
+<td><code>Promise&lt;this&gt;</code></td>
+<td>切換模式（銷毀舊渲染器，建立新的）</td>
+</tr>
+<tr>
+<td><code>mount(container)</code></td>
+<td><code>string \| Element</code></td>
+<td><code>this</code></td>
+<td>掛載到容器</td>
+</tr>
+<tr>
+<td><code>destroy()</code></td>
+<td>-</td>
+<td>-</td>
+<td>銷毀渲染器</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h3>Tool PageDefinition 與自舉工具頁</h3>
+<p>Tool 定義必須是純 JSON：</p>
+<pre><code class="language-json">{
+  &quot;schema_version&quot;: 1,
+  &quot;name&quot;: &quot;ExampleStudioPage&quot;,
+  &quot;type&quot;: &quot;tool&quot;,
+  &quot;root&quot;: {
+    &quot;type&quot;: &quot;group&quot;,
+    &quot;id&quot;: &quot;workspace&quot;,
+    &quot;children&quot;: [
+      {
+        &quot;type&quot;: &quot;component&quot;,
+        &quot;id&quot;: &quot;name-input&quot;,
+        &quot;component&quot;: &quot;TextInput&quot;,
+        &quot;options&quot;: { &quot;label&quot;: &quot;名稱&quot; },
+        &quot;bindings&quot;: { &quot;value&quot;: &quot;form.name&quot; },
+        &quot;events&quot;: { &quot;onChange&quot;: &quot;form.name-change&quot; }
+      }
+    ]
+  }
+}
+</code></pre>
+<p>支援的 node 為 <code>group</code>、<code>component</code>、<code>tabs</code>、<code>slot</code>。JSON 只能引用已註冊元件、safe dotted state path 與 allowlisted event；函式、getter、raw HTML、prototype-sensitive key、未知 command 或未知 component 都會在 <code>init()</code> 前 fail closed。</p>
+<pre><code class="language-javascript">const page = new DynamicPageRenderer({
+    definition,
+    commandRegistry: {
+        'form.name-change': ({ renderer }, value) =&gt; {
+            renderer.setState('form.name', value);
+        },
+    },
+    state: { form: { name: '' } },
+});
+await page.init();
+page.mount('#app');
+</code></pre>
+<p><code>DynamicToolRenderer</code> 提供 <code>getComponent(id)</code>、<code>getHost(id)</code>、<code>setState(path, value)</code>、<code>controlRecords</code> 與 <code>destroy()</code>。State 更新只套用到重疊 binding；有 setter 的正式元件保留 instance，沒有 setter 時只替換該 component，不重建 tabs 或整個工作區。元件 setter 若重畫內部控制，provenance 會同步更新。</p>
+<p><code>PageGenerator.generate()</code> 也接受 <code>type: "tool"</code>，輸出一個內嵌已驗證 definition、在 runtime 建立 <code>DynamicToolRenderer</code> 的靜態 wrapper class。Bricks4Agent Studio 的實際入口採 <code>DynamicPageRenderer</code> runtime 路徑，唯一頁面 JSON 位於 <code>tools/theme-studio/studio.page.json</code>；靜態 wrapper 另由 <code>ToolPageGenerator.test.js</code> 驗證。兩條路徑共用同一份 ToolPageDefinition 契約與 renderer。</p>
+<hr>
+<h2>使用範例</h2>
+<h3>靜態生成頁面程式碼</h3>
+<pre><code class="language-javascript">import { PageGenerator, validateDefinition, FieldTypes, PageTypes } from './index.js';
+
+const definition = {
+    name: 'ContactFormPage',
+    type: PageTypes.FORM,
+    description: '聯絡表單',
+    components: ['DatePicker', 'ToastPanel'],
+    fields: [
+        { name: 'title', type: FieldTypes.TEXT, label: '標題', required: true },
+        { name: 'date', type: FieldTypes.DATE, label: '日期' },
+        { name: 'content', type: FieldTypes.TEXTAREA, label: '內容', required: true }
+    ],
+    api: { create: '/api/contacts', get: '/api/contacts' }
+};
+
+const validation = validateDefinition(definition);
+if (!validation.valid) {
+    console.error('定義無效:', validation.errors);
+} else {
+    const generator = new PageGenerator({ baseImportPath: '../../core/BasePage.js' });
+    const result = generator.generate(definition);
+    console.log(result.code);
+}
+</code></pre>
+<h3>使用 PageDefinitionAdapter 轉換格式</h3>
+<pre><code class="language-javascript">import { PageDefinitionAdapter } from './PageDefinitionAdapter.js';
+
+// AI 生成的新格式定義
+const aiDefinition = {
+    page: { pageName: '員工管理', entity: 'employee', view: 'adminList' },
+    fields: [
+        { fieldName: 'name', label: '姓名', fieldType: 'text', formRow: 1, formCol: 6,
+          listOrder: 1, isRequired: true, isReadonly: false, isSearchable: true },
+        { fieldName: 'email', label: '信箱', fieldType: 'email', formRow: 1, formCol: 6,
+          listOrder: 2, isRequired: true, isReadonly: false, isSearchable: true }
+    ]
+};
+
+// 轉為舊格式 → 交給 PageGenerator 生成靜態 .js
+const oldDef = PageDefinitionAdapter.toOldFormat(aiDefinition);
+// oldDef.name === 'EmployeePage'
+// oldDef.type === 'list'
+
+// 反向轉換
+const roundTrip = PageDefinitionAdapter.toNewFormat(oldDef);
+</code></pre>
+<h3>動態渲染（統一入口）</h3>
+<pre><code class="language-javascript">import { DynamicPageRenderer } from './index.js';
+
+// 頁面定義 JSON（通常從 API 或 JSON 檔案載入）
+const definition = {
+    fields: [
+        { fieldName: 'name', fieldType: 'text', label: '姓名', isRequired: true, formRow: 1, formCol: 6 },
+        { fieldName: 'email', fieldType: 'email', label: '信箱', isRequired: true, formRow: 1, formCol: 6 },
+        { fieldName: 'role', fieldType: 'select', label: '角色', formRow: 2, formCol: 6,
+          optionsSource: { type: 'static', items: [
+            { value: 'admin', label: '管理員' },
+            { value: 'user', label: '使用者' }
+          ]}
+        },
+        { fieldName: 'isActive', fieldType: 'toggle', label: '啟用', formRow: 2, formCol: 6,
+          triggers: [
+            { on: 'uncheck', target: 'role', action: 'hide' },
+            { on: 'check', target: 'role', action: 'show' }
+          ]
+        }
+    ]
+};
+
+// 表單模式
+const page = new DynamicPageRenderer({
+    definition,
+    mode: 'form',
+    onSave: (values) =&gt; console.log('儲存:', values),
+    onCancel: () =&gt; history.back()
+});
+await page.init();
+page.mount('#app');
+
+// 切換到明細模式
+await page.switchMode('detail', { name: '王小明', email: 'wang@example.com' });
+
+// 切換到列表模式
+await page.switchMode('list');
+</code></pre>
+<h3>動態渲染（個別使用）</h3>
+<pre><code class="language-javascript">import { DynamicFormRenderer } from './index.js';
+
+const form = new DynamicFormRenderer({
+    definition,
+    onSave: (values) =&gt; fetch('/api/save', {
+        method: 'POST',
+        body: JSON.stringify(values)
+    })
+});
+await form.init();
+form.mount('#form-container');
+
+// 編輯模式：填入既有資料
+form.setValues({ name: '王小明', email: 'wang@example.com' });
+
+// 取值
+const data = form.getValues();
+
+// 驗證
+if (form.validate()) {
+    // 通過驗證
+}
+</code></pre>
+<h3>使用複合輸入元件</h3>
+<pre><code class="language-javascript">const definition = {
+    fields: [
+        // 地址輸入（含縣市/鄉鎮聯動）
+        { fieldName: 'homeAddress', fieldType: 'address', label: '住家地址',
+          formRow: 1, isRequired: true },
+
+        // 多筆電話
+        { fieldName: 'phones', fieldType: 'phonelist', label: '聯絡電話',
+          formRow: 2, validation: { maxItems: 5 } },
+
+        // 組織層級
+        { fieldName: 'org', fieldType: 'organization', label: '所屬組織',
+          formRow: 3 },
+
+        // 學生資訊
+        { fieldName: 'student', fieldType: 'student', label: '學生資訊',
+          formRow: 4 },
+
+        // 社群媒體列表
+        { fieldName: 'social', fieldType: 'socialmedia', label: '社群帳號',
+          formRow: 5 }
+    ]
+};
+</code></pre>
+<h3>自訂 TriggerEngine 行為</h3>
+<pre><code class="language-javascript">import { TriggerEngine } from './index.js';
+
+const engine = new TriggerEngine();
+
+// 註冊自訂行為
+engine.registerAction('highlight', (source, target, params) =&gt; {
+    target.formField.element.style.backgroundColor = params?.color || '#fff3cd';
+});
+</code></pre>
+<hr>
+<h2>CLI 工具（page-gen）</h2>
+<p>提供命令列介面操作頁面定義。詳見 <code>tools/page-gen.js</code>。</p>
+<pre><code class="language-bash"># 驗證定義
+node tools/page-gen.js --validate --def employee.json
+
+# 生成靜態 .js 頁面
+node tools/page-gen.js --def employee.json --mode static --output ./output/
+
+# 輸出動態渲染用 JSON
+node tools/page-gen.js --def employee.json --mode dynamic --output ./output/
+
+# 兩者都生成
+node tools/page-gen.js --def employee.json --mode both --output ./output/
+
+# 列出所有 fieldType
+node tools/page-gen.js --list-types
+
+# stdin 管道模式（AI 代理用）
+cat employee.json | node tools/page-gen.js --mode static --output ./output/
+</code></pre>
+<p>所有輸出皆為 JSON 格式（stdout），錯誤訊息輸出至 stderr。</p>
+<hr>
+<h2>Demo 進入點</h2>
+<pre><code>demos/page-generator/DynamicPage.html           — 動態渲染三模式展示
+demos/page-generator/AdapterDemo.html           — 格式轉換展示
+demos/page-generator/CompositeFieldsDemo.html   — 複合元件展示
+</code></pre>
+<h2>範例</h2>
+<p>查看 <code>examples/</code> 目錄：</p>
+<ul>
+<li><code>EmployeeDefinition.js</code> — 員工管理（新格式，完整功能展示）</li>
+<li><code>PersonnelDefinition.js</code> — 人事系統（新格式，複合輸入元件展示）</li>
+<li><code>DiaryEditorDefinition.js</code> — 日記編輯器（舊格式）</li>
+<li><code>ContactFormDefinition.js</code> — 聯絡表單（舊格式）</li>
+<li><code>test-generator.js</code> — 靜態生成測試</li>
+<li><code>test-all.js</code> — 完整測試腳本</li>
+</ul>
+<p>執行測試：</p>
+<pre><code class="language-bash">node examples/test-all.js
+</code></pre>
+<hr>
+<h2>欄位類型 (FieldTypes) — 完整 30 種</h2>
+<h3>基本類型</h3>
+<table>
+<thead>
+<tr>
+<th>fieldType</th>
+<th>說明</th>
+<th>對應元件</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>text</code></td>
+<td>單行文字</td>
+<td>TextInput</td>
+</tr>
+<tr>
+<td><code>email</code></td>
+<td>電子郵件</td>
+<td>TextInput (type=email)</td>
+</tr>
+<tr>
+<td><code>password</code></td>
+<td>密碼</td>
+<td>TextInput (type=password)</td>
+</tr>
+<tr>
+<td><code>number</code></td>
+<td>數字</td>
+<td>NumberInput</td>
+</tr>
+<tr>
+<td><code>textarea</code></td>
+<td>多行文字</td>
+<td>原生 textarea</td>
+</tr>
+</tbody>
+</table>
+<h3>日期時間</h3>
+<table>
+<thead>
+<tr>
+<th>fieldType</th>
+<th>說明</th>
+<th>對應元件</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>date</code></td>
+<td>日期</td>
+<td>DatePicker</td>
+</tr>
+<tr>
+<td><code>time</code></td>
+<td>時間</td>
+<td>TimePicker</td>
+</tr>
+<tr>
+<td><code>datetime</code></td>
+<td>日期時間</td>
+<td>DateTimeInput</td>
+</tr>
+</tbody>
+</table>
+<h3>選擇類型</h3>
+<table>
+<thead>
+<tr>
+<th>fieldType</th>
+<th>說明</th>
+<th>對應元件</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>select</code></td>
+<td>單選下拉</td>
+<td>Dropdown</td>
+</tr>
+<tr>
+<td><code>multiselect</code></td>
+<td>多選下拉</td>
+<td>MultiSelectDropdown</td>
+</tr>
+<tr>
+<td><code>checkbox</code></td>
+<td>核取方塊</td>
+<td>Checkbox</td>
+</tr>
+<tr>
+<td><code>toggle</code></td>
+<td>開關</td>
+<td>ToggleSwitch</td>
+</tr>
+<tr>
+<td><code>radio</code></td>
+<td>單選按鈕組</td>
+<td>Radio</td>
+</tr>
+</tbody>
+</table>
+<h3>進階類型</h3>
+<table>
+<thead>
+<tr>
+<th>fieldType</th>
+<th>說明</th>
+<th>對應元件</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>color</code></td>
+<td>顏色選擇</td>
+<td>ColorPicker</td>
+</tr>
+<tr>
+<td><code>image</code></td>
+<td>圖片顯示</td>
+<td>ImageViewer</td>
+</tr>
+<tr>
+<td><code>file</code></td>
+<td>檔案上傳</td>
+<td>BatchUploader</td>
+</tr>
+<tr>
+<td><code>richtext</code></td>
+<td>富文本</td>
+<td>WebTextEditor</td>
+</tr>
+<tr>
+<td><code>canvas</code></td>
+<td>畫布</td>
+<td>DrawingBoard</td>
+</tr>
+</tbody>
+</table>
+<h3>服務類型</h3>
+<table>
+<thead>
+<tr>
+<th>fieldType</th>
+<th>說明</th>
+<th>對應元件</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>geolocation</code></td>
+<td>地理位置</td>
+<td>GeolocationService</td>
+</tr>
+<tr>
+<td><code>weather</code></td>
+<td>天氣</td>
+<td>WeatherService</td>
+</tr>
+</tbody>
+</table>
+<h3>複合輸入元件</h3>
+<table>
+<thead>
+<tr>
+<th>fieldType</th>
+<th>說明</th>
+<th>對應元件</th>
+<th>繼承關係</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>address</code></td>
+<td>地址（縣市/鄉鎮/地址聯動）</td>
+<td>AddressInput</td>
+<td>← ChainedInput</td>
+</tr>
+<tr>
+<td><code>addresslist</code></td>
+<td>多筆地址列表</td>
+<td>AddressListInput</td>
+<td>← ListInput</td>
+</tr>
+<tr>
+<td><code>chained</code></td>
+<td>通用聯動下拉</td>
+<td>ChainedInput</td>
+<td>基底</td>
+</tr>
+<tr>
+<td><code>list</code></td>
+<td>動態列表輸入</td>
+<td>ListInput</td>
+<td>基底</td>
+</tr>
+<tr>
+<td><code>personinfo</code></td>
+<td>人員資訊列表</td>
+<td>PersonInfoList</td>
+<td>← ListInput</td>
+</tr>
+<tr>
+<td><code>phonelist</code></td>
+<td>電話列表</td>
+<td>PhoneListInput</td>
+<td>← ListInput</td>
+</tr>
+<tr>
+<td><code>socialmedia</code></td>
+<td>社群媒體列表</td>
+<td>SocialMediaList</td>
+<td>← ListInput</td>
+</tr>
+<tr>
+<td><code>organization</code></td>
+<td>組織層級（四級下拉）</td>
+<td>OrganizationInput</td>
+<td>← ChainedInput</td>
+</tr>
+<tr>
+<td><code>student</code></td>
+<td>學生資訊（含學校）</td>
+<td>StudentInput</td>
+<td>← ChainedInput</td>
+</tr>
+</tbody>
+</table>
+<h3>隱藏</h3>
+<table>
+<thead>
+<tr>
+<th>fieldType</th>
+<th>說明</th>
+<th>對應元件</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>hidden</code></td>
+<td>隱藏欄位</td>
+<td>原生 hidden input</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>頁面類型 (PageTypes)</h2>
+<table>
+<thead>
+<tr>
+<th>類型</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>FORM</code></td>
+<td>表單頁面（新增/編輯）</td>
+</tr>
+<tr>
+<td><code>LIST</code></td>
+<td>列表頁面</td>
+</tr>
+<tr>
+<td><code>DETAIL</code></td>
+<td>詳情頁面（唯讀）</td>
+</tr>
+<tr>
+<td><code>DASHBOARD</code></td>
+<td>儀表板</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>triggers 格式</h2>
+<p>每個欄位可定義 <code>triggers</code> 陣列，組合原子行為實現聯動：</p>
+<pre><code class="language-json">[
+  { &quot;on&quot;: &quot;change&quot;, &quot;target&quot;: &quot;district&quot;, &quot;action&quot;: &quot;reloadOptions&quot; },
+  { &quot;on&quot;: &quot;change&quot;, &quot;target&quot;: &quot;district&quot;, &quot;action&quot;: &quot;clear&quot; }
+]
+</code></pre>
+<p><strong>合法的 on 值：</strong> <code>change</code>、<code>check</code>、<code>uncheck</code>、<code>upload</code></p>
+<p><strong>合法的 action 值：</strong> <code>reloadOptions</code>、<code>show</code>、<code>hide</code>、<code>setReadonly</code>、<code>setRequired</code>、<code>reload</code>、<code>setValue</code>、<code>clear</code></p>
+<h3>常見聯動模式</h3>
+<p><strong>連動下拉（縣市→鄉鎮）：</strong></p>
+<pre><code class="language-json">{ &quot;fieldName&quot;: &quot;city&quot;, &quot;triggers&quot;: [
+  { &quot;on&quot;: &quot;change&quot;, &quot;target&quot;: &quot;district&quot;, &quot;action&quot;: &quot;reloadOptions&quot; },
+  { &quot;on&quot;: &quot;change&quot;, &quot;target&quot;: &quot;district&quot;, &quot;action&quot;: &quot;clear&quot; }
+]}
+</code></pre>
+<p><strong>勾選後顯示/必填：</strong></p>
+<pre><code class="language-json">{ &quot;fieldName&quot;: &quot;hasDeadline&quot;, &quot;triggers&quot;: [
+  { &quot;on&quot;: &quot;check&quot;, &quot;target&quot;: &quot;deadline&quot;, &quot;action&quot;: &quot;show&quot; },
+  { &quot;on&quot;: &quot;check&quot;, &quot;target&quot;: &quot;deadline&quot;, &quot;action&quot;: &quot;setRequired&quot;, &quot;params&quot;: { &quot;value&quot;: true } },
+  { &quot;on&quot;: &quot;uncheck&quot;, &quot;target&quot;: &quot;deadline&quot;, &quot;action&quot;: &quot;hide&quot; },
+  { &quot;on&quot;: &quot;uncheck&quot;, &quot;target&quot;: &quot;deadline&quot;, &quot;action&quot;: &quot;setRequired&quot;, &quot;params&quot;: { &quot;value&quot;: false } }
+]}
+</code></pre>
+<hr>
+<h2>optionsSource 格式</h2>
+<pre><code class="language-json">// 靜態選項
+{ &quot;type&quot;: &quot;static&quot;, &quot;items&quot;: [{&quot;value&quot;: &quot;hr&quot;, &quot;label&quot;: &quot;人力資源部&quot;}] }
+
+// API 動態載入
+{ &quot;type&quot;: &quot;api&quot;, &quot;endpoint&quot;: &quot;/api/data&quot;, &quot;params&quot;: { &quot;action&quot;: &quot;options&quot;, &quot;entity&quot;: &quot;department&quot; } }
+
+// API 連動載入（需搭配 dependsOn）
+{ &quot;type&quot;: &quot;api&quot;, &quot;endpoint&quot;: &quot;/api/data&quot;, &quot;params&quot;: { &quot;action&quot;: &quot;options&quot;, &quot;entity&quot;: &quot;district&quot; }, &quot;parentField&quot;: &quot;city&quot; }
+</code></pre>
+<hr>
+<h2>注意事項</h2>
+<ol>
+<li>動態渲染的 <code>DynamicFormRenderer</code> 和 <code>DynamicListRenderer</code> 須呼叫 <code>await init()</code> 才能使用（需預載入元件模組）</li>
+<li><code>DynamicDetailRenderer</code> 為同步建構，不需 <code>init()</code></li>
+<li>生成的靜態程式碼包含 TODO 註解，表示需要手動實作的部分</li>
+<li>所有元件必須來自 Bricks4Agent</li>
+<li>使用 <code>esc()</code> 和 <code>escAttr()</code> 防止 XSS</li>
+<li><code>PageDefinitionAdapter.toOldFormat()</code> 會自動從 <code>page.entity</code> 推導 PascalCase 頁面名稱</li>
+<li>複合輸入元件（address, phonelist 等）支援 <code>validation.maxItems</code> / <code>validation.minItems</code> 限制筆數</li>
+</ol>
+</main>
+</body>
+</html>

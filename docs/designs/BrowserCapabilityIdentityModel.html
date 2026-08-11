@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Browser Capability Identity Model</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Browser Capability Identity Model</h1>
+<h2>Goal</h2>
+<p>Define the first-level identity split for broker-governed browser tools.</p>
+<p>Browser tools must not be modeled only by function (<code>search</code>, <code>fetch</code>, <code>submit</code>).
+The first classification must be:</p>
+<ul>
+<li>whose identity is used</li>
+<li>whose credentials are used</li>
+<li>whose session is being created or reused</li>
+</ul>
+<p>This is the primary trust boundary for future assistant behavior.</p>
+<h2>Primary Identity Modes</h2>
+<h3>1. <code>anonymous</code></h3>
+<p>Meaning:</p>
+<ul>
+<li>the system does not log in</li>
+<li>no user account session is established</li>
+<li>no delegated personal identity is represented</li>
+</ul>
+<p>Typical use:</p>
+<ul>
+<li>public search</li>
+<li>public page fetch</li>
+<li>public comparison</li>
+</ul>
+<p>Properties:</p>
+<ul>
+<li>credential source: <code>none</code></li>
+<li>session owner: <code>none</code></li>
+<li>default risk: lowest of the browser classes</li>
+</ul>
+<h3>2. <code>system_account</code></h3>
+<p>Meaning:</p>
+<ul>
+<li>the platform logs in with a broker-owned or service-owned account</li>
+<li>the identity is not the end user</li>
+<li>credentials are never exposed to the user or to the model</li>
+</ul>
+<p>Typical use:</p>
+<ul>
+<li>platform integration accounts</li>
+<li>service-side dashboards</li>
+<li>broker-owned synchronization and collection jobs</li>
+</ul>
+<p>Properties:</p>
+<ul>
+<li>credential source: <code>system_vault</code></li>
+<li>session owner: <code>system</code></li>
+<li>audit must record which system principal or vault binding was used</li>
+</ul>
+<h3>3. <code>user_delegated</code></h3>
+<p>Meaning:</p>
+<ul>
+<li>the broker uses credentials, tokens, or session material explicitly granted by the user</li>
+<li>actions are performed as that user</li>
+<li>this is the basis for personal-assistant behavior</li>
+</ul>
+<p>Typical use:</p>
+<ul>
+<li>reading a user’s own tickets, bookings, or account history</li>
+<li>filling forms on behalf of the user</li>
+<li>delegated browsing of authenticated portals</li>
+</ul>
+<p>Properties:</p>
+<ul>
+<li>credential source: <code>user_grant</code></li>
+<li>session owner: <code>user</code></li>
+<li>audit and consent requirements are highest</li>
+</ul>
+<h2>Why Identity Comes Before Function</h2>
+<p>These actions may look similar at the DOM level:</p>
+<ul>
+<li>read a page</li>
+<li>click a result</li>
+<li>submit a form</li>
+</ul>
+<p>But they have completely different governance implications depending on identity mode:</p>
+<ul>
+<li>anonymous public fetch</li>
+<li>system-account authenticated read</li>
+<li>user-delegated authenticated write</li>
+</ul>
+<p>Therefore identity mode must be the first classification, before action level.</p>
+<h2>Secondary Axes</h2>
+<p>After identity mode, a browser tool may further classify:</p>
+<ul>
+<li>action level</li>
+<li><code>read</code></li>
+<li><code>navigate</code></li>
+<li><code>authenticate</code></li>
+<li><code>submit</code></li>
+<li>session lifetime</li>
+<li><code>ephemeral</code></li>
+<li><code>broker_managed</code></li>
+<li><code>user_bound</code></li>
+<li>confirmation policy</li>
+<li><code>not_required</code></li>
+<li><code>broker_policy</code></li>
+<li><code>user_required</code></li>
+</ul>
+<p>These are secondary to identity.</p>
+<h2>Tool Spec Representation</h2>
+<p>Browser-capable tool specs may include:</p>
+<pre><code class="language-json">{
+  &quot;browser_profile&quot;: {
+    &quot;identity_mode&quot;: &quot;anonymous&quot;,
+    &quot;credential_source&quot;: &quot;none&quot;,
+    &quot;session_owner&quot;: &quot;none&quot;,
+    &quot;allowed_actions&quot;: [&quot;read&quot;, &quot;navigate&quot;],
+    &quot;confirmation_policy&quot;: &quot;broker_policy&quot;
+  }
+}
+</code></pre>
+<p>This does not mean the tool is active.
+It only means the registry can now carry the required governance metadata.</p>
+<h2>Governance Expectations By Identity Mode</h2>
+<h3>Anonymous</h3>
+<ul>
+<li>may read public content</li>
+<li>must not silently escalate into authenticated access</li>
+<li>should default to ephemeral browser state</li>
+</ul>
+<h3>System Account</h3>
+<ul>
+<li>credentials must come from broker-owned secret storage</li>
+<li>the model never sees the raw credentials</li>
+<li>audit must record which system account binding was used</li>
+</ul>
+<h3>User Delegated</h3>
+<ul>
+<li>explicit user authorization is required</li>
+<li>session binding must be user-specific</li>
+<li>actions that change external state should normally require stronger confirmation</li>
+</ul>
+<h2>Current Implementation Direction</h2>
+<p>Current phase:</p>
+<ul>
+<li>define the identity model</li>
+<li>make the tool registry able to read and surface <code>browser_profile</code></li>
+<li>keep browser tools in <code>planned</code> state until execution/runtime policy is ready</li>
+</ul>
+<p>Not yet implemented:</p>
+<ul>
+<li>browser worker runtime</li>
+<li>credential vault integration</li>
+<li>session replay or session leasing</li>
+<li>delegated write flows</li>
+<li>DOM action policy engine</li>
+</ul>
+<h2>Rule</h2>
+<p>From this point onward, any browser tool proposal should answer this question first:</p>
+<blockquote>
+<p>Is this tool anonymous, system-account, or user-delegated?</p>
+</blockquote>
+<p>If that is not explicit, the browser tool definition is incomplete.</p>
+</main>
+</body>
+</html>

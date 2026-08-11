@@ -1,0 +1,385 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>遠端管理介面 (Remote Management Interface)</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>遠端管理介面 (Remote Management Interface)</h1>
+<h2>概述</h2>
+<p>遠端管理介面是一個跨平台的管理系統，提供 Web 和 App 版本，
+用於管理 Bricks4Agent 的所有安全模組、審核系統和系統配置。</p>
+<h2>系統架構</h2>
+<pre><code>┌─────────────────────────────────────────────────────────────────┐
+│                         客戶端層                                 │
+├─────────────────────────────────────────────────────────────────┤
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐  │
+│  │   Web App   │  │ Mobile App  │  │    Desktop App          │  │
+│  │   (React)   │  │  (Flutter)  │  │    (Electron)           │  │
+│  └─────────────┘  └─────────────┘  └─────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                         API 閘道層                               │
+├─────────────────────────────────────────────────────────────────┤
+│  - 認證 (JWT + MFA)                                             │
+│  - 限流                                                         │
+│  - 日誌                                                         │
+│  - 負載平衡                                                     │
+└─────────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                         服務層                                   │
+├───────────────┬───────────────┬───────────────┬─────────────────┤
+│ 安全管理服務  │ 審核管理服務  │ 系統監控服務  │ 使用者管理服務  │
+│ - 帳戶鎖定    │ - 三賢者系統  │ - 效能監控    │ - 角色權限      │
+│ - MFA 管理    │ - 審核佇列    │ - 錯誤追蹤    │ - 組織管理      │
+│ - 日誌查詢    │ - 結果查看    │ - 告警管理    │ - 稽核日誌      │
+└───────────────┴───────────────┴───────────────┴─────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                         資料層                                   │
+├───────────────┬───────────────┬─────────────────────────────────┤
+│  PostgreSQL   │    Redis      │           S3/MinIO              │
+│  (主資料庫)   │   (快取)      │         (檔案儲存)              │
+└───────────────┴───────────────┴─────────────────────────────────┘
+</code></pre>
+<h2>功能模組</h2>
+<h3>1. 儀表板 (Dashboard)</h3>
+<h4>1.1 總覽頁面</h4>
+<pre><code>┌─────────────────────────────────────────────────────────────┐
+│  📊 系統總覽                                    [即時] [日] │
+├─────────────┬─────────────┬─────────────┬───────────────────┤
+│  🔐 登入    │  ⚠️ 警示    │  🔒 鎖定    │  📝 審核          │
+│   1,234     │     12      │     45      │     28            │
+│   今日登入  │   未處理    │   活躍鎖定  │   待審核          │
+├─────────────┴─────────────┴─────────────┴───────────────────┤
+│                                                             │
+│  [登入趨勢圖 - 24小時]                                      │
+│  ████████████████████                                       │
+│                                                             │
+├─────────────────────────────────────────────────────────────┤
+│  最近活動                                     [查看全部 →]  │
+│  • user@example.com 登入成功 (MFA)          2 分鐘前       │
+│  • 192.168.1.100 被封鎖                     5 分鐘前       │
+│  • admin 解鎖了 john.doe                    10 分鐘前      │
+└─────────────────────────────────────────────────────────────┘
+</code></pre>
+<h4>1.2 即時監控</h4>
+<ul>
+<li>WebSocket 即時更新</li>
+<li>登入活動流</li>
+<li>安全事件流</li>
+<li>系統效能指標</li>
+</ul>
+<h3>2. 安全管理 (Security)</h3>
+<h4>2.1 帳戶鎖定管理</h4>
+<pre><code>┌─────────────────────────────────────────────────────────────┐
+│  🔒 帳戶鎖定管理                                            │
+├─────────────────────────────────────────────────────────────┤
+│  [搜尋用戶...] [類型 ▼] [狀態 ▼] [🔍 搜尋] [➕ 新增鎖定]   │
+├─────────────────────────────────────────────────────────────┤
+│  □ 用戶          │ 類型        │ 原因      │ 到期    │ 操作│
+│  ─────────────────────────────────────────────────────────  │
+│  □ john.doe      │ FailedLogin │ 5次失敗   │ 14分鐘  │ [解]│
+│  □ jane@test.com │ Manual      │ 可疑活動  │ 永久    │ [解]│
+│  □ user123       │ FailedMfa   │ MFA失敗   │ 28分鐘  │ [解]│
+├─────────────────────────────────────────────────────────────┤
+│  顯示 1-3 / 45 筆                    [&lt; 上一頁] [下一頁 &gt;]  │
+└─────────────────────────────────────────────────────────────┘
+</code></pre>
+<h4>2.2 IP 封鎖管理</h4>
+<ul>
+<li>封鎖的 IP 清單</li>
+<li>封鎖原因和到期時間</li>
+<li>地理位置顯示</li>
+<li>批次操作</li>
+</ul>
+<h4>2.3 MFA 管理</h4>
+<ul>
+<li>用戶 MFA 狀態總覽</li>
+<li>強制啟用/停用</li>
+<li>復原碼重置</li>
+<li>MFA 方法統計</li>
+</ul>
+<h3>3. 日誌中心 (Logs)</h3>
+<h4>3.1 安全日誌</h4>
+<pre><code>┌─────────────────────────────────────────────────────────────┐
+│  📋 安全日誌                                                │
+├─────────────────────────────────────────────────────────────┤
+│  時間範圍: [今天 ▼]  事件: [全部 ▼]  嚴重度: [全部 ▼]      │
+│  用戶: [___________]  IP: [___________]  [🔍 查詢] [📥 匯出]│
+├─────────────────────────────────────────────────────────────┤
+│  時間           │ 事件     │ 用戶      │ IP          │ 詳情│
+│  ─────────────────────────────────────────────────────────  │
+│  14:32:15      │ 🟢 登入  │ admin     │ 10.0.0.1    │ [&gt;] │
+│  14:31:02      │ 🔴 失敗  │ user1     │ 192.168.1.x │ [&gt;] │
+│  14:30:45      │ 🟡 MFA   │ john.doe  │ 172.16.x.x  │ [&gt;] │
+│  14:28:33      │ 🔴 鎖定  │ hacker    │ 203.0.113.x │ [&gt;] │
+└─────────────────────────────────────────────────────────────┘
+</code></pre>
+<h4>3.2 登入歷史</h4>
+<ul>
+<li>用戶登入記錄</li>
+<li>裝置/瀏覽器統計</li>
+<li>地理位置分佈</li>
+<li>異常登入偵測</li>
+</ul>
+<h4>3.3 稽核日誌</h4>
+<ul>
+<li>管理員操作記錄</li>
+<li>配置變更歷史</li>
+<li>資料存取記錄</li>
+</ul>
+<h3>4. 三賢者系統 (Three Sages)</h3>
+<h4>4.1 審核佇列</h4>
+<pre><code>┌─────────────────────────────────────────────────────────────┐
+│  ⚖️ 審核佇列                              [pending: 28]    │
+├─────────────────────────────────────────────────────────────┤
+│  ID          │ 類型  │ 提交者    │ 狀態      │ 分數  │ 操作│
+│  ─────────────────────────────────────────────────────────  │
+│  #REV-001    │ PR    │ dev1      │ 🔄 審核中 │ --    │ [&gt;] │
+│  #REV-002    │ Commit│ dev2      │ ✅ 通過   │ 85    │ [&gt;] │
+│  #REV-003    │ File  │ dev3      │ ❌ 駁回   │ 42    │ [&gt;] │
+│  #REV-004    │ PR    │ dev1      │ ⏳ 待審核 │ --    │ [&gt;] │
+└─────────────────────────────────────────────────────────────┘
+</code></pre>
+<h4>4.2 審核詳情</h4>
+<pre><code>┌─────────────────────────────────────────────────────────────┐
+│  審核報告 #REV-003                                          │
+├─────────────────────────────────────────────────────────────┤
+│  總分: 42/100  [❌ 駁回]                                    │
+│                                                             │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐           │
+│  │ 🛡️ 安全    │ │ 🏗️ 架構    │ │ ✨ 品質    │           │
+│  │   35/100   │ │   48/100   │ │   55/100   │           │
+│  │   ❌       │ │   ⚠️       │ │   ⚠️       │           │
+│  └─────────────┘ └─────────────┘ └─────────────┘           │
+├─────────────────────────────────────────────────────────────┤
+│  🔴 Critical (2)                                            │
+│  • SQL Injection at src/db/query.ts:45                     │
+│  • Hardcoded credential at src/config.ts:12                │
+│                                                             │
+│  🟠 High (3)                                                │
+│  • Missing input validation at src/api/user.ts:28          │
+│  • ...                                                      │
+└─────────────────────────────────────────────────────────────┘
+</code></pre>
+<h4>4.3 統計報表</h4>
+<ul>
+<li>通過率趨勢</li>
+<li>常見問題類型</li>
+<li>團隊改進建議</li>
+<li>審核效率分析</li>
+</ul>
+<h3>5. 系統設定 (Settings)</h3>
+<h4>5.1 安全配置</h4>
+<ul>
+<li>密碼政策</li>
+<li>MFA 設定</li>
+<li>會話設定</li>
+<li>鎖定規則</li>
+</ul>
+<h4>5.2 通知設定</h4>
+<ul>
+<li>Email 通知</li>
+<li>Slack 整合</li>
+<li>Webhook 配置</li>
+</ul>
+<h4>5.3 角色權限</h4>
+<ul>
+<li>角色管理</li>
+<li>權限矩陣</li>
+<li>API 金鑰管理</li>
+</ul>
+<h2>技術規格</h2>
+<h3>Web 版本 (React)</h3>
+<pre><code>src/
+├── components/
+│   ├── common/          # 共用元件
+│   ├── dashboard/       # 儀表板
+│   ├── security/        # 安全管理
+│   ├── logs/            # 日誌中心
+│   ├── review/          # 三賢者
+│   └── settings/        # 系統設定
+├── hooks/               # Custom hooks
+├── services/            # API 服務
+├── stores/              # 狀態管理 (Zustand)
+├── utils/               # 工具函數
+└── types/               # TypeScript 類型
+</code></pre>
+<h4>技術堆疊</h4>
+<ul>
+<li>React 18+</li>
+<li>TypeScript</li>
+<li>TailwindCSS</li>
+<li>Zustand (狀態管理)</li>
+<li>React Query (資料獲取)</li>
+<li>Recharts (圖表)</li>
+<li>React Router v6</li>
+</ul>
+<h3>Mobile App (Flutter)</h3>
+<pre><code>lib/
+├── core/
+│   ├── api/             # API 客戶端
+│   ├── auth/            # 認證邏輯
+│   └── utils/           # 工具函數
+├── features/
+│   ├── dashboard/
+│   ├── security/
+│   ├── logs/
+│   └── settings/
+├── shared/
+│   ├── widgets/         # 共用元件
+│   └── themes/          # 主題配置
+└── main.dart
+</code></pre>
+<h4>技術堆疊</h4>
+<ul>
+<li>Flutter 3.x</li>
+<li>Dart 3.x</li>
+<li>Riverpod (狀態管理)</li>
+<li>Dio (HTTP)</li>
+<li>FL Chart (圖表)</li>
+<li>支援 iOS 和 Android</li>
+</ul>
+<h3>API 設計</h3>
+<h4>認證 API</h4>
+<pre><code>POST   /api/v1/auth/login
+POST   /api/v1/auth/login/mfa
+POST   /api/v1/auth/logout
+POST   /api/v1/auth/refresh
+GET    /api/v1/auth/me
+</code></pre>
+<h4>帳戶鎖定 API</h4>
+<pre><code>GET    /api/v1/locks
+GET    /api/v1/locks/:id
+POST   /api/v1/locks/users/:userId
+DELETE /api/v1/locks/:id
+GET    /api/v1/locks/ips
+POST   /api/v1/locks/ips
+DELETE /api/v1/locks/ips/:id
+</code></pre>
+<h4>日誌 API</h4>
+<pre><code>POST   /api/v1/logs/query
+GET    /api/v1/logs/:id
+GET    /api/v1/logs/users/:userId/history
+GET    /api/v1/logs/statistics
+POST   /api/v1/logs/export
+</code></pre>
+<h4>審核 API</h4>
+<pre><code>GET    /api/v1/reviews
+GET    /api/v1/reviews/:id
+POST   /api/v1/reviews
+POST   /api/v1/reviews/:id/appeal
+GET    /api/v1/reviews/statistics
+</code></pre>
+<h3>即時通訊</h3>
+<p>使用 WebSocket 進行即時更新：</p>
+<pre><code class="language-typescript">// 事件類型
+type WSEvent =
+  | { type: 'login'; data: LoginEvent }
+  | { type: 'lock'; data: LockEvent }
+  | { type: 'alert'; data: AlertEvent }
+  | { type: 'review'; data: ReviewEvent };
+
+// 訂閱頻道
+ws.subscribe('security:*');      // 所有安全事件
+ws.subscribe('review:pending');  // 待審核通知
+ws.subscribe('alert:critical');  // 嚴重警示
+</code></pre>
+<h2>安全考量</h2>
+<h3>認證</h3>
+<ul>
+<li>JWT + Refresh Token</li>
+<li>強制 MFA (管理介面)</li>
+<li>IP 白名單 (可選)</li>
+<li>Session 管理</li>
+</ul>
+<h3>授權</h3>
+<ul>
+<li>RBAC 角色權限</li>
+<li>資源級權限</li>
+<li>操作審計</li>
+</ul>
+<h3>資料保護</h3>
+<ul>
+<li>HTTPS Only</li>
+<li>敏感資料加密</li>
+<li>日誌脫敏</li>
+<li>CORS 設定</li>
+</ul>
+<h2>部署架構</h2>
+<pre><code>┌─────────────────────────────────────────────────────────────┐
+│                      CDN (CloudFlare)                       │
+└─────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────┐
+│                   Load Balancer (Nginx)                     │
+└─────────────────────────────────────────────────────────────┘
+                    │                       │
+                    ▼                       ▼
+        ┌─────────────────┐     ┌─────────────────┐
+        │   Web Server    │     │   API Server    │
+        │   (Static)      │     │   (Node.js)     │
+        │   Port: 80/443  │     │   Port: 3000    │
+        └─────────────────┘     └─────────────────┘
+                                        │
+                    ┌───────────────────┼───────────────────┐
+                    ▼                   ▼                   ▼
+            ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+            │ PostgreSQL  │     │    Redis    │     │   MinIO     │
+            │  Primary    │     │   Cluster   │     │  (S3)       │
+            └─────────────┘     └─────────────┘     └─────────────┘
+</code></pre>
+<h2>實作順序</h2>
+<h3>Phase 1: 核心功能</h3>
+<ol>
+<li>API 服務基礎建設</li>
+<li>認證系統</li>
+<li>儀表板</li>
+<li>帳戶鎖定管理</li>
+</ol>
+<h3>Phase 2: 完整功能</h3>
+<ol start="5">
+<li>日誌中心</li>
+<li>MFA 管理</li>
+<li>系統設定</li>
+<li>通知系統</li>
+</ol>
+<h3>Phase 3: 進階功能</h3>
+<ol start="9">
+<li>三賢者整合</li>
+<li>即時監控</li>
+<li>報表匯出</li>
+<li>Mobile App</li>
+</ol>
+<h3>Phase 4: 優化</h3>
+<ol start="13">
+<li>效能優化</li>
+<li>安全加固</li>
+<li>自動化測試</li>
+<li>文件完善</li>
+</ol>
+</main>
+</body>
+</html>

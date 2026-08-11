@@ -227,7 +227,7 @@ public class PolicyEngineTests
     [Fact]
     public void Evaluate_AllRulesPass_Allows()
     {
-        var payload = """{"route":"file.read","args":{"path":"readme.md"}}""";
+        var payload = """{"route":"file.read","args":{"path":"readme.html"}}""";
         var result = _sut.Evaluate(MakeRequest(payload), MakeCapability(), MakeGrant(), MakeTask(),
             currentEpoch: 1, tokenEpoch: 1);
         result.Decision.Should().Be(PolicyDecision.Allow);

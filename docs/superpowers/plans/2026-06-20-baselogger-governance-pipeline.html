@@ -1,0 +1,1897 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BaseLogger Governance Pipeline Implementation Plan</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>BaseLogger Governance Pipeline Implementation Plan</h1>
+<blockquote>
+<p><strong>For agentic workers:</strong> REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (<code>- [ ]</code>) syntax for tracking.</p>
+</blockquote>
+<p><strong>Goal:</strong> Upgrade <code>packages/csharp/logging/BaseLogger</code> into a governed, pluggable logging pipeline that keeps <code>BaseLogger</code> as the package/namespace name while avoiding public API names that collide with system logging abstractions.</p>
+<p><strong>Architecture:</strong> Application code continues to depend on <code>Microsoft.Extensions.Logging.ILogger&lt;T&gt;</code>. <code>BaseLoggerProvider</code> adapts standard .NET logging events into <code>BaseLoggerEvent</code> records, then sends them through <code>BaseLoggerPipeline</code> for correlation, redaction, formatting, and sink dispatch. Broker-specific correlation and security rejection audit are separate middleware/services that reuse the same <code>broker_trace_id</code> without turning runtime logs into audit records.</p>
+<p><strong>Tech Stack:</strong> C# / .NET 8, Microsoft.Extensions.Logging, Microsoft.Extensions.Configuration, BaseOrm/SQLite for broker audit, xUnit + FluentAssertions + NSubstitute.</p>
+<hr>
+<h2>Scope</h2>
+<p>This plan implements the first production-grade BaseLogger slice:</p>
+<ul>
+<li>New non-conflicting public API names under <code>BaseLogger</code>.</li>
+<li>Standard <code>Microsoft.Extensions.Logging</code> provider integration.</li>
+<li>Redaction and correlation.</li>
+<li>Console, rolling-file, memory, and library-level database sinks.</li>
+<li>Broker correlation middleware and minimal security rejection audit recorder.</li>
+<li>Host setup for broker, rag-service, and worker programs.</li>
+<li>Tests and documentation updates.</li>
+</ul>
+<p>This plan does not implement OTLP/SIEM exporters or audit HMAC/external anchoring.</p>
+<h2>File Structure</h2>
+<p>Create focused BaseLogger files instead of expanding the existing monolithic <code>BaseLogger.cs</code>:</p>
+<ul>
+<li><code>packages/csharp/logging/BaseLogger/BaseLoggerSeverity.cs</code>
+  Severity enum with no name collision with <code>Microsoft.Extensions.Logging.LogLevel</code>.</li>
+<li><code>packages/csharp/logging/BaseLogger/BaseLoggerEvent.cs</code>
+  Redacted operational event schema.</li>
+<li><code>packages/csharp/logging/BaseLogger/BaseLoggerOptions.cs</code>
+  Configuration model for provider and sinks.</li>
+<li><code>packages/csharp/logging/BaseLogger/Correlation/BaseLoggerCorrelationContext.cs</code>
+  Correlation value object.</li>
+<li><code>packages/csharp/logging/BaseLogger/Correlation/IBaseLoggerCorrelationAccessor.cs</code>
+  Current correlation accessor contract.</li>
+<li><code>packages/csharp/logging/BaseLogger/Correlation/AsyncLocalBaseLoggerCorrelationAccessor.cs</code>
+  AsyncLocal-backed default accessor.</li>
+<li><code>packages/csharp/logging/BaseLogger/Formatting/IBaseLoggerFormatter.cs</code>
+  Formatter contract.</li>
+<li><code>packages/csharp/logging/BaseLogger/Formatting/BaseLoggerJsonFormatter.cs</code>
+  JSONL formatter.</li>
+<li><code>packages/csharp/logging/BaseLogger/Formatting/BaseLoggerTextFormatter.cs</code>
+  Human-readable formatter.</li>
+<li><code>packages/csharp/logging/BaseLogger/Redaction/IBaseLoggerRedactor.cs</code>
+  Redaction contract.</li>
+<li><code>packages/csharp/logging/BaseLogger/Redaction/DefaultBaseLoggerRedactor.cs</code>
+  Default secret and identifier redactor.</li>
+<li><code>packages/csharp/logging/BaseLogger/Sinks/IBaseLoggerSink.cs</code>
+  Sink contract.</li>
+<li><code>packages/csharp/logging/BaseLogger/Sinks/BaseLoggerMemorySink.cs</code>
+  Ring buffer sink.</li>
+<li><code>packages/csharp/logging/BaseLogger/Sinks/BaseLoggerConsoleSink.cs</code>
+  Console sink.</li>
+<li><code>packages/csharp/logging/BaseLogger/Sinks/BaseLoggerRollingFileSink.cs</code>
+  Size/retention rolling file sink.</li>
+<li><code>packages/csharp/logging/BaseLogger/Sinks/BaseLoggerDatabaseSink.cs</code>
+  BaseOrm-compatible database sink.</li>
+<li><code>packages/csharp/logging/BaseLogger/BaseLoggerPipeline.cs</code>
+  Pipeline that applies redaction, formats, dispatches, and isolates sink failures.</li>
+<li><code>packages/csharp/logging/BaseLogger/MicrosoftExtensions/BaseLoggerProvider.cs</code>
+  <code>ILoggerProvider</code> implementation.</li>
+<li><code>packages/csharp/logging/BaseLogger/MicrosoftExtensions/BaseLoggerMicrosoftLogger.cs</code>
+  Internal standard-logger adapter.</li>
+<li><code>packages/csharp/logging/BaseLogger/MicrosoftExtensions/BaseLoggerLoggingBuilderExtensions.cs</code>
+  <code>builder.Logging.AddBaseLogger(...)</code> integration.</li>
+</ul>
+<p>Modify existing files:</p>
+<ul>
+<li><code>packages/csharp/logging/BaseLogger/BaseLogger.csproj</code>
+  Add package references.</li>
+<li><code>packages/csharp/logging/BaseLogger/BaseLogger.cs</code>
+  Mark old <code>ILogger</code>, <code>Logger</code>, <code>LogLevel</code>, <code>LogEntry</code>, <code>ILogTarget</code>, and <code>Log</code> APIs obsolete after wrappers are wired to the new pipeline.</li>
+<li><code>packages/csharp/broker/Program.cs</code>
+  Add BaseLogger provider and correlation/audit services.</li>
+<li><code>packages/csharp/rag-service/Program.cs</code>
+  Add BaseLogger provider.</li>
+<li><code>packages/csharp/workers/*/Program.cs</code>
+  Add BaseLogger provider to workers that currently use console logging.</li>
+<li><code>packages/csharp/workers/line-worker/start-sidecar-stack.ps1</code>
+  Stop deleting previous log evidence and use retention-friendly run folders or rolling output path.</li>
+<li><code>docs/manuals/current-technical-manual.zh-TW.md</code>
+  Document BaseLogger runtime log vs audit boundaries.</li>
+<li><code>docs/manuals/current-user-manual.zh-TW.md</code>
+  Document where operators inspect logs.</li>
+<li><code>docs/reports/follow-up-planning.zh-TW.md</code>
+  Mark BaseLogger governance design as planned/ready for implementation.</li>
+</ul>
+<p>Tests:</p>
+<ul>
+<li>Create <code>packages/csharp/tests/unit/BaseLogger/BaseLoggerRedactorTests.cs</code></li>
+<li>Create <code>packages/csharp/tests/unit/BaseLogger/BaseLoggerPipelineTests.cs</code></li>
+<li>Create <code>packages/csharp/tests/unit/BaseLogger/BaseLoggerSinkTests.cs</code></li>
+<li>Create <code>packages/csharp/tests/unit/BaseLogger/BaseLoggerProviderTests.cs</code></li>
+<li>Create <code>packages/csharp/tests/unit/Core/BrokerCorrelationAndAuditTests.cs</code></li>
+</ul>
+<hr>
+<h3>Task 1: BaseLogger Core API And Project References</h3>
+<p><strong>Files:</strong>
+- Modify: <code>packages/csharp/logging/BaseLogger/BaseLogger.csproj</code>
+- Modify: <code>packages/csharp/tests/unit/Unit.Tests.csproj</code>
+- Create: <code>packages/csharp/logging/BaseLogger/BaseLoggerSeverity.cs</code>
+- Create: <code>packages/csharp/logging/BaseLogger/BaseLoggerEvent.cs</code>
+- Create: <code>packages/csharp/logging/BaseLogger/BaseLoggerOptions.cs</code>
+- Create: <code>packages/csharp/logging/BaseLogger/Correlation/BaseLoggerCorrelationContext.cs</code>
+- Create: <code>packages/csharp/logging/BaseLogger/Correlation/IBaseLoggerCorrelationAccessor.cs</code>
+- Create: <code>packages/csharp/logging/BaseLogger/Correlation/AsyncLocalBaseLoggerCorrelationAccessor.cs</code>
+- Test: <code>packages/csharp/tests/unit/BaseLogger/BaseLoggerPipelineTests.cs</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Add BaseLogger project references needed by provider/configuration</strong></li>
+</ul>
+<p>Modify <code>packages/csharp/logging/BaseLogger/BaseLogger.csproj</code>:</p>
+<pre><code class="language-xml">&lt;Project Sdk=&quot;Microsoft.NET.Sdk&quot;&gt;
+
+  &lt;PropertyGroup&gt;
+    &lt;TargetFramework&gt;net8.0&lt;/TargetFramework&gt;
+    &lt;ImplicitUsings&gt;enable&lt;/ImplicitUsings&gt;
+    &lt;Nullable&gt;enable&lt;/Nullable&gt;
+    &lt;RootNamespace&gt;BaseLogger&lt;/RootNamespace&gt;
+    &lt;PackageId&gt;BaseLogger&lt;/PackageId&gt;
+    &lt;Version&gt;1.0.0&lt;/Version&gt;
+    &lt;Description&gt;Bricks4Agent governed logging pipeline with Microsoft.Extensions.Logging provider integration.&lt;/Description&gt;
+    &lt;Authors&gt;Bricks4Agent&lt;/Authors&gt;
+  &lt;/PropertyGroup&gt;
+
+  &lt;ItemGroup&gt;
+    &lt;PackageReference Include=&quot;Microsoft.Extensions.Configuration.Abstractions&quot; Version=&quot;8.0.0&quot; /&gt;
+    &lt;PackageReference Include=&quot;Microsoft.Extensions.Configuration.Binder&quot; Version=&quot;8.0.2&quot; /&gt;
+    &lt;PackageReference Include=&quot;Microsoft.Extensions.Logging.Abstractions&quot; Version=&quot;8.0.3&quot; /&gt;
+  &lt;/ItemGroup&gt;
+
+&lt;/Project&gt;
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 2: Add a direct BaseLogger reference to the unit test project</strong></li>
+</ul>
+<p>Modify <code>packages/csharp/tests/unit/Unit.Tests.csproj</code> by adding this item inside the existing <code>ProjectReference</code> item group:</p>
+<pre><code class="language-xml">    &lt;ProjectReference Include=&quot;../../logging/BaseLogger/BaseLogger.csproj&quot; /&gt;
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 3: Write the failing core API test</strong></li>
+</ul>
+<p>Create <code>packages/csharp/tests/unit/BaseLogger/BaseLoggerPipelineTests.cs</code> with this initial test:</p>
+<pre><code class="language-csharp">using BaseLogger;
+
+namespace Unit.Tests.BaseLogger;
+
+public class BaseLoggerPipelineTests
+{
+    [Fact]
+    public void BaseLoggerEvent_CarriesCorrelationAndDoesNotUseSystemCollisionNames()
+    {
+        var ev = new BaseLoggerEvent
+        {
+            EventId = &quot;log_001&quot;,
+            TimestampUtc = new DateTimeOffset(2026, 6, 20, 0, 0, 0, TimeSpan.Zero),
+            Severity = BaseLoggerSeverity.Info,
+            Category = &quot;Broker.Runtime&quot;,
+            EventKind = &quot;runtime&quot;,
+            MessageTemplate = &quot;Hello {Name}&quot;,
+            RenderedMessage = &quot;Hello world&quot;,
+            TraceId = &quot;trace_123&quot;,
+            Component = &quot;broker&quot;
+        };
+
+        ev.TraceId.Should().Be(&quot;trace_123&quot;);
+        ev.Severity.Should().Be(BaseLoggerSeverity.Info);
+        typeof(BaseLoggerEvent).Name.Should().Be(&quot;BaseLoggerEvent&quot;);
+        typeof(BaseLoggerSeverity).Name.Should().Be(&quot;BaseLoggerSeverity&quot;);
+    }
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 4: Run the test to verify it fails</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter FullyQualifiedName~Unit.Tests.BaseLogger.BaseLoggerPipelineTests.BaseLoggerEvent_CarriesCorrelationAndDoesNotUseSystemCollisionNames
+</code></pre>
+<p>Expected: build fails because <code>BaseLoggerEvent</code> and <code>BaseLoggerSeverity</code> do not exist.</p>
+<ul>
+<li>[ ] <strong>Step 5: Add <code>BaseLoggerSeverity</code></strong></li>
+</ul>
+<p>Create <code>packages/csharp/logging/BaseLogger/BaseLoggerSeverity.cs</code>:</p>
+<pre><code class="language-csharp">namespace BaseLogger;
+
+public enum BaseLoggerSeverity
+{
+    Trace = 0,
+    Debug = 1,
+    Info = 2,
+    Warning = 3,
+    Error = 4,
+    Critical = 5,
+    None = 6
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 6: Add <code>BaseLoggerEvent</code></strong></li>
+</ul>
+<p>Create <code>packages/csharp/logging/BaseLogger/BaseLoggerEvent.cs</code>:</p>
+<pre><code class="language-csharp">namespace BaseLogger;
+
+public sealed class BaseLoggerEvent
+{
+    public string EventId { get; set; } = string.Empty;
+    public DateTimeOffset TimestampUtc { get; set; } = DateTimeOffset.UtcNow;
+    public BaseLoggerSeverity Severity { get; set; } = BaseLoggerSeverity.Info;
+    public string Category { get; set; } = string.Empty;
+    public string EventKind { get; set; } = &quot;runtime&quot;;
+    public string MessageTemplate { get; set; } = string.Empty;
+    public string RenderedMessage { get; set; } = string.Empty;
+    public string? Exception { get; set; }
+    public Dictionary&lt;string, object?&gt; Properties { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public string TraceId { get; set; } = string.Empty;
+    public string? SpanId { get; set; }
+    public string? PrincipalId { get; set; }
+    public string? TaskId { get; set; }
+    public string? SessionId { get; set; }
+    public string? RequestId { get; set; }
+    public string Component { get; set; } = string.Empty;
+    public int ProcessId { get; set; } = Environment.ProcessId;
+    public string ThreadId { get; set; } = Environment.CurrentManagedThreadId.ToString();
+    public string Source { get; set; } = string.Empty;
+    public string Sensitivity { get; set; } = &quot;internal&quot;;
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 7: Add options model</strong></li>
+</ul>
+<p>Create <code>packages/csharp/logging/BaseLogger/BaseLoggerOptions.cs</code>:</p>
+<pre><code class="language-csharp">namespace BaseLogger;
+
+public sealed class BaseLoggerOptions
+{
+    public bool Enabled { get; set; } = true;
+    public BaseLoggerSeverity MinimumSeverity { get; set; } = BaseLoggerSeverity.Info;
+    public string Format { get; set; } = &quot;json&quot;;
+    public string Component { get; set; } = &quot;app&quot;;
+    public string Source { get; set; } = &quot;&quot;;
+    public string RedactionProfile { get; set; } = &quot;production&quot;;
+    public BaseLoggerSinkOptions Sinks { get; set; } = new();
+}
+
+public sealed class BaseLoggerSinkOptions
+{
+    public BaseLoggerConsoleSinkOptions Console { get; set; } = new();
+    public BaseLoggerRollingFileSinkOptions RollingFile { get; set; } = new();
+    public BaseLoggerDatabaseSinkOptions Database { get; set; } = new();
+    public BaseLoggerMemorySinkOptions Memory { get; set; } = new();
+}
+
+public sealed class BaseLoggerConsoleSinkOptions
+{
+    public bool Enabled { get; set; } = true;
+}
+
+public sealed class BaseLoggerRollingFileSinkOptions
+{
+    public bool Enabled { get; set; }
+    public string Path { get; set; } = &quot;.run/logs/app.jsonl&quot;;
+    public long MaxFileSizeBytes { get; set; } = 10 * 1024 * 1024;
+    public int MaxFiles { get; set; } = 10;
+    public int RetentionDays { get; set; } = 14;
+}
+
+public sealed class BaseLoggerDatabaseSinkOptions
+{
+    public bool Enabled { get; set; }
+    public string TableName { get; set; } = &quot;operational_logs&quot;;
+}
+
+public sealed class BaseLoggerMemorySinkOptions
+{
+    public bool Enabled { get; set; } = true;
+    public int MaxEntries { get; set; } = 500;
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 8: Add correlation context and accessor</strong></li>
+</ul>
+<p>Create <code>packages/csharp/logging/BaseLogger/Correlation/BaseLoggerCorrelationContext.cs</code>:</p>
+<pre><code class="language-csharp">namespace BaseLogger.Correlation;
+
+public sealed class BaseLoggerCorrelationContext
+{
+    public string TraceId { get; set; } = string.Empty;
+    public string? TraceSource { get; set; }
+    public string? RequestId { get; set; }
+    public string? PrincipalId { get; set; }
+    public string? TaskId { get; set; }
+    public string? SessionId { get; set; }
+    public string? Component { get; set; }
+}
+</code></pre>
+<p>Create <code>packages/csharp/logging/BaseLogger/Correlation/IBaseLoggerCorrelationAccessor.cs</code>:</p>
+<pre><code class="language-csharp">namespace BaseLogger.Correlation;
+
+public interface IBaseLoggerCorrelationAccessor
+{
+    BaseLoggerCorrelationContext Current { get; set; }
+}
+</code></pre>
+<p>Create <code>packages/csharp/logging/BaseLogger/Correlation/AsyncLocalBaseLoggerCorrelationAccessor.cs</code>:</p>
+<pre><code class="language-csharp">namespace BaseLogger.Correlation;
+
+public sealed class AsyncLocalBaseLoggerCorrelationAccessor : IBaseLoggerCorrelationAccessor
+{
+    private static readonly AsyncLocal&lt;BaseLoggerCorrelationContext?&gt; CurrentContext = new();
+
+    public BaseLoggerCorrelationContext Current
+    {
+        get =&gt; CurrentContext.Value ??= new BaseLoggerCorrelationContext();
+        set =&gt; CurrentContext.Value = value ?? new BaseLoggerCorrelationContext();
+    }
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 9: Run the focused test to verify it passes</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter FullyQualifiedName~Unit.Tests.BaseLogger.BaseLoggerPipelineTests.BaseLoggerEvent_CarriesCorrelationAndDoesNotUseSystemCollisionNames
+</code></pre>
+<p>Expected: test passes.</p>
+<ul>
+<li>[ ] <strong>Step 10: Commit Task 1</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">git add packages/csharp/logging/BaseLogger/BaseLogger.csproj `
+  packages/csharp/tests/unit/Unit.Tests.csproj `
+  packages/csharp/logging/BaseLogger/BaseLoggerSeverity.cs `
+  packages/csharp/logging/BaseLogger/BaseLoggerEvent.cs `
+  packages/csharp/logging/BaseLogger/BaseLoggerOptions.cs `
+  packages/csharp/logging/BaseLogger/Correlation `
+  packages/csharp/tests/unit/BaseLogger/BaseLoggerPipelineTests.cs
+git commit -m &quot;feat: add BaseLogger governance core types&quot;
+</code></pre>
+<hr>
+<h3>Task 2: Redaction, Formatting, And Pipeline Dispatch</h3>
+<p><strong>Files:</strong>
+- Create: <code>packages/csharp/logging/BaseLogger/Redaction/IBaseLoggerRedactor.cs</code>
+- Create: <code>packages/csharp/logging/BaseLogger/Redaction/DefaultBaseLoggerRedactor.cs</code>
+- Create: <code>packages/csharp/logging/BaseLogger/Formatting/IBaseLoggerFormatter.cs</code>
+- Create: <code>packages/csharp/logging/BaseLogger/Formatting/BaseLoggerJsonFormatter.cs</code>
+- Create: <code>packages/csharp/logging/BaseLogger/Formatting/BaseLoggerTextFormatter.cs</code>
+- Create: <code>packages/csharp/logging/BaseLogger/Sinks/IBaseLoggerSink.cs</code>
+- Create: <code>packages/csharp/logging/BaseLogger/BaseLoggerPipeline.cs</code>
+- Test: <code>packages/csharp/tests/unit/BaseLogger/BaseLoggerRedactorTests.cs</code>
+- Test: <code>packages/csharp/tests/unit/BaseLogger/BaseLoggerPipelineTests.cs</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Add failing redactor tests</strong></li>
+</ul>
+<p>Create <code>packages/csharp/tests/unit/BaseLogger/BaseLoggerRedactorTests.cs</code>:</p>
+<pre><code class="language-csharp">using BaseLogger;
+using BaseLogger.Redaction;
+
+namespace Unit.Tests.BaseLogger;
+
+public class BaseLoggerRedactorTests
+{
+    [Fact]
+    public void Redact_ReturnsSecretMaskForSecretPropertyNames()
+    {
+        var redactor = new DefaultBaseLoggerRedactor();
+        var value = redactor.RedactProperty(&quot;Authorization&quot;, &quot;Bearer abc123&quot;);
+        value.Should().Be(&quot;[redacted]&quot;);
+    }
+
+    [Fact]
+    public void RedactEvent_MasksSecretPropertiesBeforeSinksSeeTheEvent()
+    {
+        var redactor = new DefaultBaseLoggerRedactor();
+        var ev = new BaseLoggerEvent
+        {
+            EventId = &quot;log_001&quot;,
+            RenderedMessage = &quot;token abc123&quot;,
+            Properties = new Dictionary&lt;string, object?&gt;
+            {
+                [&quot;api_key&quot;] = &quot;sk-test&quot;,
+                [&quot;message&quot;] = &quot;hello&quot;
+            }
+        };
+
+        var redacted = redactor.Redact(ev);
+
+        redacted.RenderedMessage.Should().Be(&quot;token [redacted]&quot;);
+        redacted.Properties[&quot;api_key&quot;].Should().Be(&quot;[redacted]&quot;);
+        redacted.Properties[&quot;message&quot;].Should().Be(&quot;hello&quot;);
+    }
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 2: Add failing pipeline dispatch test</strong></li>
+</ul>
+<p>Append to <code>packages/csharp/tests/unit/BaseLogger/BaseLoggerPipelineTests.cs</code>:</p>
+<pre><code class="language-csharp">    [Fact]
+    public void Write_DispatchesRedactedEventToSink()
+    {
+        var sink = new CapturingSink();
+        var pipeline = new BaseLoggerPipeline(
+            new BaseLoggerOptions { Component = &quot;broker&quot; },
+            new BaseLogger.Redaction.DefaultBaseLoggerRedactor(),
+            new BaseLogger.Formatting.BaseLoggerJsonFormatter(),
+            [sink]);
+
+        pipeline.Write(new BaseLoggerEvent
+        {
+            EventId = &quot;log_001&quot;,
+            Severity = BaseLoggerSeverity.Info,
+            Category = &quot;Test&quot;,
+            RenderedMessage = &quot;Authorization abc&quot;,
+            Properties = new Dictionary&lt;string, object?&gt; { [&quot;token&quot;] = &quot;secret&quot; }
+        });
+
+        sink.Events.Should().HaveCount(1);
+        sink.Events[0].RenderedMessage.Should().Be(&quot;Authorization [redacted]&quot;);
+        sink.Events[0].Properties[&quot;token&quot;].Should().Be(&quot;[redacted]&quot;);
+    }
+
+    private sealed class CapturingSink : BaseLogger.Sinks.IBaseLoggerSink
+    {
+        public List&lt;BaseLoggerEvent&gt; Events { get; } = new();
+        public void Write(BaseLoggerEvent ev) =&gt; Events.Add(ev);
+        public void Flush() { }
+        public void Dispose() { }
+    }
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 3: Run tests to verify they fail</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter FullyQualifiedName~Unit.Tests.BaseLogger
+</code></pre>
+<p>Expected: build fails because redaction, formatter, sink, and pipeline types do not exist.</p>
+<ul>
+<li>[ ] <strong>Step 4: Add redactor contract and default redactor</strong></li>
+</ul>
+<p>Create <code>packages/csharp/logging/BaseLogger/Redaction/IBaseLoggerRedactor.cs</code>:</p>
+<pre><code class="language-csharp">namespace BaseLogger.Redaction;
+
+public interface IBaseLoggerRedactor
+{
+    BaseLoggerEvent Redact(BaseLoggerEvent ev);
+    object? RedactProperty(string name, object? value);
+}
+</code></pre>
+<p>Create <code>packages/csharp/logging/BaseLogger/Redaction/DefaultBaseLoggerRedactor.cs</code>:</p>
+<pre><code class="language-csharp">using System.Security.Cryptography;
+using System.Text;
+using System.Text.RegularExpressions;
+
+namespace BaseLogger.Redaction;
+
+public sealed class DefaultBaseLoggerRedactor : IBaseLoggerRedactor
+{
+    private static readonly string[] SecretNameFragments =
+    [
+        &quot;token&quot;, &quot;secret&quot;, &quot;key&quot;, &quot;password&quot;, &quot;authorization&quot;, &quot;cookie&quot;, &quot;signature&quot;, &quot;credential&quot;
+    ];
+
+    private static readonly Regex SecretValuePattern = new(
+        &quot;(Bearer\\s+)[A-Za-z0-9._\\-]+|sk-[A-Za-z0-9_\\-]+|sk-ant-[A-Za-z0-9_\\-]+&quot;,
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    public BaseLoggerEvent Redact(BaseLoggerEvent ev)
+    {
+        var copy = new BaseLoggerEvent
+        {
+            EventId = ev.EventId,
+            TimestampUtc = ev.TimestampUtc,
+            Severity = ev.Severity,
+            Category = ev.Category,
+            EventKind = ev.EventKind,
+            MessageTemplate = RedactString(ev.MessageTemplate),
+            RenderedMessage = RedactString(ev.RenderedMessage),
+            Exception = ev.Exception == null ? null : RedactString(ev.Exception),
+            TraceId = ev.TraceId,
+            SpanId = ev.SpanId,
+            PrincipalId = RedactIdentifier(ev.PrincipalId),
+            TaskId = ev.TaskId,
+            SessionId = RedactIdentifier(ev.SessionId),
+            RequestId = ev.RequestId,
+            Component = ev.Component,
+            ProcessId = ev.ProcessId,
+            ThreadId = ev.ThreadId,
+            Source = ev.Source,
+            Sensitivity = ev.Sensitivity
+        };
+
+        foreach (var pair in ev.Properties)
+            copy.Properties[pair.Key] = RedactProperty(pair.Key, pair.Value);
+
+        return copy;
+    }
+
+    public object? RedactProperty(string name, object? value)
+    {
+        if (value == null)
+            return null;
+
+        if (IsSecretName(name))
+            return &quot;[redacted]&quot;;
+
+        if (name.Equals(&quot;user_id&quot;, StringComparison.OrdinalIgnoreCase) ||
+            name.Equals(&quot;principal_id&quot;, StringComparison.OrdinalIgnoreCase) ||
+            name.Equals(&quot;session_id&quot;, StringComparison.OrdinalIgnoreCase) ||
+            name.Equals(&quot;ip&quot;, StringComparison.OrdinalIgnoreCase) ||
+            name.Equals(&quot;remote_ip&quot;, StringComparison.OrdinalIgnoreCase))
+            return StableHash(value.ToString() ?? string.Empty);
+
+        return value is string text ? RedactString(text) : value;
+    }
+
+    private static bool IsSecretName(string name)
+        =&gt; SecretNameFragments.Any(fragment =&gt; name.Contains(fragment, StringComparison.OrdinalIgnoreCase));
+
+    private static string RedactString(string value)
+        =&gt; SecretValuePattern.Replace(value, match =&gt;
+            match.Value.StartsWith(&quot;Bearer &quot;, StringComparison.OrdinalIgnoreCase)
+                ? &quot;Bearer [redacted]&quot;
+                : &quot;[redacted]&quot;);
+
+    private static string? RedactIdentifier(string? value)
+        =&gt; string.IsNullOrWhiteSpace(value) || value.StartsWith(&quot;system:&quot;, StringComparison.OrdinalIgnoreCase)
+            ? value
+            : StableHash(value);
+
+    private static string StableHash(string value)
+    {
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(value));
+        return &quot;sha256:&quot; + Convert.ToHexString(hash)[..16].ToLowerInvariant();
+    }
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 5: Add formatter contracts and implementations</strong></li>
+</ul>
+<p>Create <code>packages/csharp/logging/BaseLogger/Formatting/IBaseLoggerFormatter.cs</code>:</p>
+<pre><code class="language-csharp">namespace BaseLogger.Formatting;
+
+public interface IBaseLoggerFormatter
+{
+    string Format(BaseLoggerEvent ev);
+}
+</code></pre>
+<p>Create <code>packages/csharp/logging/BaseLogger/Formatting/BaseLoggerJsonFormatter.cs</code>:</p>
+<pre><code class="language-csharp">using System.Text.Json;
+using System.Text.Json.Serialization;
+
+namespace BaseLogger.Formatting;
+
+public sealed class BaseLoggerJsonFormatter : IBaseLoggerFormatter
+{
+    private static readonly JsonSerializerOptions Options = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+    };
+
+    public string Format(BaseLoggerEvent ev) =&gt; JsonSerializer.Serialize(ev, Options);
+}
+</code></pre>
+<p>Create <code>packages/csharp/logging/BaseLogger/Formatting/BaseLoggerTextFormatter.cs</code>:</p>
+<pre><code class="language-csharp">namespace BaseLogger.Formatting;
+
+public sealed class BaseLoggerTextFormatter : IBaseLoggerFormatter
+{
+    public string Format(BaseLoggerEvent ev)
+    {
+        var trace = string.IsNullOrWhiteSpace(ev.TraceId) ? &quot;-&quot; : ev.TraceId;
+        return $&quot;[{ev.TimestampUtc:yyyy-MM-dd HH:mm:ss.fff}] [{ev.Severity}] [{ev.Category}] [trace={trace}] {ev.RenderedMessage}&quot;;
+    }
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 6: Add sink contract and pipeline</strong></li>
+</ul>
+<p>Create <code>packages/csharp/logging/BaseLogger/Sinks/IBaseLoggerSink.cs</code>:</p>
+<pre><code class="language-csharp">namespace BaseLogger.Sinks;
+
+public interface IBaseLoggerSink : IDisposable
+{
+    void Write(BaseLoggerEvent ev);
+    void Flush();
+}
+</code></pre>
+<p>Create <code>packages/csharp/logging/BaseLogger/BaseLoggerPipeline.cs</code>:</p>
+<pre><code class="language-csharp">using BaseLogger.Formatting;
+using BaseLogger.Redaction;
+using BaseLogger.Sinks;
+
+namespace BaseLogger;
+
+public sealed class BaseLoggerPipeline : IDisposable
+{
+    private readonly BaseLoggerOptions _options;
+    private readonly IBaseLoggerRedactor _redactor;
+    private readonly IBaseLoggerFormatter _formatter;
+    private readonly IReadOnlyList&lt;IBaseLoggerSink&gt; _sinks;
+    private bool _disposed;
+
+    public BaseLoggerPipeline(
+        BaseLoggerOptions options,
+        IBaseLoggerRedactor redactor,
+        IBaseLoggerFormatter formatter,
+        IEnumerable&lt;IBaseLoggerSink&gt; sinks)
+    {
+        _options = options;
+        _redactor = redactor;
+        _formatter = formatter;
+        _sinks = sinks.ToList();
+    }
+
+    public void Write(BaseLoggerEvent ev)
+    {
+        if (!_options.Enabled || ev.Severity &lt; _options.MinimumSeverity)
+            return;
+
+        ev.Component = string.IsNullOrWhiteSpace(ev.Component) ? _options.Component : ev.Component;
+        ev.Source = string.IsNullOrWhiteSpace(ev.Source) ? _options.Source : ev.Source;
+
+        var redacted = _redactor.Redact(ev);
+        _ = _formatter.Format(redacted);
+
+        foreach (var sink in _sinks)
+        {
+            try { sink.Write(redacted); }
+            catch { }
+        }
+    }
+
+    public void Flush()
+    {
+        foreach (var sink in _sinks)
+        {
+            try { sink.Flush(); }
+            catch { }
+        }
+    }
+
+    public void Dispose()
+    {
+        if (_disposed)
+            return;
+
+        Flush();
+        foreach (var sink in _sinks)
+            sink.Dispose();
+
+        _disposed = true;
+    }
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 7: Run BaseLogger tests</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter FullyQualifiedName~Unit.Tests.BaseLogger
+</code></pre>
+<p>Expected: BaseLogger tests pass.</p>
+<ul>
+<li>[ ] <strong>Step 8: Commit Task 2</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">git add packages/csharp/logging/BaseLogger/Redaction `
+  packages/csharp/logging/BaseLogger/Formatting `
+  packages/csharp/logging/BaseLogger/Sinks/IBaseLoggerSink.cs `
+  packages/csharp/logging/BaseLogger/BaseLoggerPipeline.cs `
+  packages/csharp/tests/unit/BaseLogger
+git commit -m &quot;feat: add BaseLogger pipeline redaction and formatting&quot;
+</code></pre>
+<hr>
+<h3>Task 3: Console, Memory, Rolling File, And Database Sinks</h3>
+<p><strong>Files:</strong>
+- Create: <code>packages/csharp/logging/BaseLogger/Sinks/BaseLoggerMemorySink.cs</code>
+- Create: <code>packages/csharp/logging/BaseLogger/Sinks/BaseLoggerConsoleSink.cs</code>
+- Create: <code>packages/csharp/logging/BaseLogger/Sinks/BaseLoggerRollingFileSink.cs</code>
+- Create: <code>packages/csharp/logging/BaseLogger/Sinks/BaseLoggerDatabaseSink.cs</code>
+- Test: <code>packages/csharp/tests/unit/BaseLogger/BaseLoggerSinkTests.cs</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Write failing sink tests</strong></li>
+</ul>
+<p>Create <code>packages/csharp/tests/unit/BaseLogger/BaseLoggerSinkTests.cs</code>:</p>
+<pre><code class="language-csharp">using BaseLogger;
+using BaseLogger.Formatting;
+using BaseLogger.Sinks;
+
+namespace Unit.Tests.BaseLogger;
+
+public class BaseLoggerSinkTests
+{
+    [Fact]
+    public void MemorySink_KeepsOnlyConfiguredRecentEvents()
+    {
+        var sink = new BaseLoggerMemorySink(maxEntries: 2);
+
+        sink.Write(Event(&quot;one&quot;));
+        sink.Write(Event(&quot;two&quot;));
+        sink.Write(Event(&quot;three&quot;));
+
+        sink.GetRecent(10).Select(e =&gt; e.RenderedMessage).Should().Equal(&quot;two&quot;, &quot;three&quot;);
+    }
+
+    [Fact]
+    public void RollingFileSink_RotatesWhenFileExceedsLimit()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), &quot;baselogger_&quot; + Guid.NewGuid().ToString(&quot;N&quot;));
+        Directory.CreateDirectory(dir);
+        var path = Path.Combine(dir, &quot;app.jsonl&quot;);
+        var sink = new BaseLoggerRollingFileSink(
+            path,
+            new BaseLoggerJsonFormatter(),
+            maxFileSizeBytes: 80,
+            maxFiles: 2,
+            retentionDays: 14);
+
+        sink.Write(Event(new string('a', 120)));
+        sink.Write(Event(new string('b', 120)));
+        sink.Flush();
+
+        File.Exists(path).Should().BeTrue();
+        File.Exists(Path.Combine(dir, &quot;app.1.jsonl&quot;)).Should().BeTrue();
+    }
+
+    [Fact]
+    public void DatabaseSink_RejectsUnsafeTableName()
+    {
+        Action act = () =&gt; new BaseLoggerDatabaseSink(new object(), &quot;logs;drop table audit_events&quot;);
+        act.Should().Throw&lt;ArgumentException&gt;();
+    }
+
+    private static BaseLoggerEvent Event(string message) =&gt; new()
+    {
+        EventId = Guid.NewGuid().ToString(&quot;N&quot;),
+        TimestampUtc = DateTimeOffset.UtcNow,
+        Severity = BaseLoggerSeverity.Info,
+        Category = &quot;Test&quot;,
+        RenderedMessage = message,
+        Component = &quot;test&quot;
+    };
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 2: Run sink tests to verify they fail</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter FullyQualifiedName~Unit.Tests.BaseLogger.BaseLoggerSinkTests
+</code></pre>
+<p>Expected: build fails because sink classes do not exist.</p>
+<ul>
+<li>[ ] <strong>Step 3: Add memory sink</strong></li>
+</ul>
+<p>Create <code>packages/csharp/logging/BaseLogger/Sinks/BaseLoggerMemorySink.cs</code>:</p>
+<pre><code class="language-csharp">namespace BaseLogger.Sinks;
+
+public sealed class BaseLoggerMemorySink : IBaseLoggerSink
+{
+    private readonly object _gate = new();
+    private readonly Queue&lt;BaseLoggerEvent&gt; _events = new();
+    private readonly int _maxEntries;
+
+    public BaseLoggerMemorySink(int maxEntries)
+    {
+        _maxEntries = Math.Max(1, maxEntries);
+    }
+
+    public void Write(BaseLoggerEvent ev)
+    {
+        lock (_gate)
+        {
+            _events.Enqueue(ev);
+            while (_events.Count &gt; _maxEntries)
+                _events.Dequeue();
+        }
+    }
+
+    public IReadOnlyList&lt;BaseLoggerEvent&gt; GetRecent(int count)
+    {
+        lock (_gate)
+        {
+            return _events.Reverse().Take(Math.Clamp(count, 1, _maxEntries)).Reverse().ToList();
+        }
+    }
+
+    public void Flush() { }
+    public void Dispose() { }
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 4: Add console sink</strong></li>
+</ul>
+<p>Create <code>packages/csharp/logging/BaseLogger/Sinks/BaseLoggerConsoleSink.cs</code>:</p>
+<pre><code class="language-csharp">using BaseLogger.Formatting;
+
+namespace BaseLogger.Sinks;
+
+public sealed class BaseLoggerConsoleSink : IBaseLoggerSink
+{
+    private readonly IBaseLoggerFormatter _formatter;
+    private readonly object _gate = new();
+
+    public BaseLoggerConsoleSink(IBaseLoggerFormatter formatter)
+    {
+        _formatter = formatter;
+    }
+
+    public void Write(BaseLoggerEvent ev)
+    {
+        lock (_gate)
+            Console.WriteLine(_formatter.Format(ev));
+    }
+
+    public void Flush() { }
+    public void Dispose() { }
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 5: Add rolling file sink</strong></li>
+</ul>
+<p>Create <code>packages/csharp/logging/BaseLogger/Sinks/BaseLoggerRollingFileSink.cs</code>:</p>
+<pre><code class="language-csharp">using System.Text;
+using BaseLogger.Formatting;
+
+namespace BaseLogger.Sinks;
+
+public sealed class BaseLoggerRollingFileSink : IBaseLoggerSink
+{
+    private readonly string _path;
+    private readonly IBaseLoggerFormatter _formatter;
+    private readonly long _maxFileSizeBytes;
+    private readonly int _maxFiles;
+    private readonly int _retentionDays;
+    private readonly object _gate = new();
+    private StreamWriter? _writer;
+    private long _currentSize;
+
+    public BaseLoggerRollingFileSink(
+        string path,
+        IBaseLoggerFormatter formatter,
+        long maxFileSizeBytes,
+        int maxFiles,
+        int retentionDays)
+    {
+        ValidatePath(path);
+        _path = path;
+        _formatter = formatter;
+        _maxFileSizeBytes = Math.Max(1024, maxFileSizeBytes);
+        _maxFiles = Math.Max(1, maxFiles);
+        _retentionDays = Math.Max(1, retentionDays);
+        EnsureWriter();
+    }
+
+    public void Write(BaseLoggerEvent ev)
+    {
+        lock (_gate)
+        {
+            EnsureWriter();
+            var text = _formatter.Format(ev);
+            var bytes = Encoding.UTF8.GetByteCount(text + Environment.NewLine);
+            if (_currentSize + bytes &gt; _maxFileSizeBytes)
+                Rotate();
+
+            _writer!.WriteLine(text);
+            _currentSize += bytes;
+        }
+    }
+
+    public void Flush()
+    {
+        lock (_gate)
+            _writer?.Flush();
+    }
+
+    public void Dispose()
+    {
+        lock (_gate)
+        {
+            _writer?.Dispose();
+            _writer = null;
+        }
+    }
+
+    private void EnsureWriter()
+    {
+        if (_writer != null)
+            return;
+
+        var dir = Path.GetDirectoryName(_path);
+        if (!string.IsNullOrWhiteSpace(dir))
+            Directory.CreateDirectory(dir);
+
+        _currentSize = File.Exists(_path) ? new FileInfo(_path).Length : 0;
+        _writer = new StreamWriter(_path, append: true, Encoding.UTF8);
+    }
+
+    private void Rotate()
+    {
+        _writer?.Dispose();
+        _writer = null;
+
+        var dir = Path.GetDirectoryName(_path) ?? &quot;.&quot;;
+        var name = Path.GetFileNameWithoutExtension(_path);
+        var ext = Path.GetExtension(_path);
+
+        for (var i = _maxFiles - 1; i &gt;= 1; i--)
+        {
+            var oldPath = Path.Combine(dir, $&quot;{name}.{i}{ext}&quot;);
+            var newPath = Path.Combine(dir, $&quot;{name}.{i + 1}{ext}&quot;);
+            if (File.Exists(newPath))
+                File.Delete(newPath);
+            if (File.Exists(oldPath))
+                File.Move(oldPath, newPath);
+        }
+
+        var first = Path.Combine(dir, $&quot;{name}.1{ext}&quot;);
+        if (File.Exists(first))
+            File.Delete(first);
+        if (File.Exists(_path))
+            File.Move(_path, first);
+
+        foreach (var file in Directory.GetFiles(dir, $&quot;{name}.*{ext}&quot;))
+        {
+            if (File.GetLastWriteTimeUtc(file) &lt; DateTime.UtcNow.AddDays(-_retentionDays))
+                File.Delete(file);
+        }
+
+        _currentSize = 0;
+        EnsureWriter();
+    }
+
+    private static void ValidatePath(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            throw new ArgumentException(&quot;Log path cannot be empty.&quot;, nameof(path));
+
+        var extension = Path.GetExtension(path).ToLowerInvariant();
+        if (extension is not &quot;.log&quot; and not &quot;.txt&quot; and not &quot;.json&quot; and not &quot;.jsonl&quot;)
+            throw new ArgumentException(&quot;Log path extension must be .log, .txt, .json, or .jsonl.&quot;, nameof(path));
+    }
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 6: Add database sink</strong></li>
+</ul>
+<p>Create <code>packages/csharp/logging/BaseLogger/Sinks/BaseLoggerDatabaseSink.cs</code>:</p>
+<pre><code class="language-csharp">using System.Text.Json;
+
+namespace BaseLogger.Sinks;
+
+public sealed class BaseLoggerDatabaseSink : IBaseLoggerSink
+{
+    private readonly dynamic _db;
+    private readonly string _tableName;
+    private bool _initialized;
+
+    public BaseLoggerDatabaseSink(object db, string tableName)
+    {
+        ValidateTableName(tableName);
+        _db = db;
+        _tableName = tableName;
+    }
+
+    public void Write(BaseLoggerEvent ev)
+    {
+        EnsureTable();
+        _db.Execute($@&quot;INSERT INTO {_tableName}
+            (event_id, timestamp_utc, severity, category, event_kind, rendered_message, trace_id, component, properties)
+            VALUES (@EventId, @TimestampUtc, @Severity, @Category, @EventKind, @RenderedMessage, @TraceId, @Component, @Properties)&quot;,
+            new
+            {
+                ev.EventId,
+                TimestampUtc = ev.TimestampUtc.UtcDateTime,
+                Severity = ev.Severity.ToString(),
+                ev.Category,
+                ev.EventKind,
+                ev.RenderedMessage,
+                ev.TraceId,
+                ev.Component,
+                Properties = JsonSerializer.Serialize(ev.Properties)
+            });
+    }
+
+    public void Flush() { }
+    public void Dispose() { }
+
+    private void EnsureTable()
+    {
+        if (_initialized)
+            return;
+
+        _db.Execute($@&quot;CREATE TABLE IF NOT EXISTS {_tableName} (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_id TEXT NOT NULL,
+            timestamp_utc TEXT NOT NULL,
+            severity TEXT NOT NULL,
+            category TEXT NOT NULL,
+            event_kind TEXT NOT NULL,
+            rendered_message TEXT NOT NULL,
+            trace_id TEXT,
+            component TEXT,
+            properties TEXT
+        )&quot;);
+        _db.Execute($&quot;CREATE INDEX IF NOT EXISTS ix_{_tableName}_trace ON {_tableName}(trace_id)&quot;);
+        _db.Execute($&quot;CREATE INDEX IF NOT EXISTS ix_{_tableName}_timestamp ON {_tableName}(timestamp_utc)&quot;);
+        _initialized = true;
+    }
+
+    private static void ValidateTableName(string tableName)
+    {
+        if (string.IsNullOrWhiteSpace(tableName))
+            throw new ArgumentException(&quot;Table name cannot be empty.&quot;, nameof(tableName));
+        if (!char.IsLetter(tableName[0]) &amp;&amp; tableName[0] != '_')
+            throw new ArgumentException(&quot;Table name must start with a letter or underscore.&quot;, nameof(tableName));
+        if (tableName.Any(ch =&gt; !char.IsLetterOrDigit(ch) &amp;&amp; ch != '_'))
+            throw new ArgumentException(&quot;Table name can only contain letters, digits, and underscores.&quot;, nameof(tableName));
+    }
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 7: Run sink tests</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter FullyQualifiedName~Unit.Tests.BaseLogger.BaseLoggerSinkTests
+</code></pre>
+<p>Expected: sink tests pass.</p>
+<ul>
+<li>[ ] <strong>Step 8: Commit Task 3</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">git add packages/csharp/logging/BaseLogger/Sinks `
+  packages/csharp/tests/unit/BaseLogger/BaseLoggerSinkTests.cs
+git commit -m &quot;feat: add BaseLogger operational sinks&quot;
+</code></pre>
+<hr>
+<h3>Task 4: Microsoft.Extensions.Logging Provider</h3>
+<p><strong>Files:</strong>
+- Create: <code>packages/csharp/logging/BaseLogger/MicrosoftExtensions/BaseLoggerProvider.cs</code>
+- Create: <code>packages/csharp/logging/BaseLogger/MicrosoftExtensions/BaseLoggerMicrosoftLogger.cs</code>
+- Create: <code>packages/csharp/logging/BaseLogger/MicrosoftExtensions/BaseLoggerLoggingBuilderExtensions.cs</code>
+- Test: <code>packages/csharp/tests/unit/BaseLogger/BaseLoggerProviderTests.cs</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Write failing provider tests</strong></li>
+</ul>
+<p>Create <code>packages/csharp/tests/unit/BaseLogger/BaseLoggerProviderTests.cs</code>:</p>
+<pre><code class="language-csharp">using BaseLogger;
+using BaseLogger.Correlation;
+using BaseLogger.MicrosoftExtensions;
+using BaseLogger.Sinks;
+using Microsoft.Extensions.Logging;
+
+namespace Unit.Tests.BaseLogger;
+
+public class BaseLoggerProviderTests
+{
+    [Fact]
+    public void Logger_WritesScopeAndCorrelationIntoBaseLoggerEvent()
+    {
+        var sink = new CapturingSink();
+        var accessor = new AsyncLocalBaseLoggerCorrelationAccessor
+        {
+            Current = new BaseLoggerCorrelationContext
+            {
+                TraceId = &quot;trace_provider&quot;,
+                PrincipalId = &quot;user_123&quot;,
+                Component = &quot;broker&quot;
+            }
+        };
+        using var provider = BaseLoggerProvider.CreateForTesting(sink, accessor);
+        var logger = provider.CreateLogger(&quot;Broker.Test&quot;);
+
+        using (logger.BeginScope(new Dictionary&lt;string, object?&gt; { [&quot;task_id&quot;] = &quot;task_123&quot; }))
+        {
+            logger.LogInformation(&quot;Hello {Name}&quot;, &quot;world&quot;);
+        }
+
+        sink.Events.Should().HaveCount(1);
+        sink.Events[0].TraceId.Should().Be(&quot;trace_provider&quot;);
+        sink.Events[0].Category.Should().Be(&quot;Broker.Test&quot;);
+        sink.Events[0].Properties[&quot;Name&quot;].Should().Be(&quot;world&quot;);
+        sink.Events[0].Properties[&quot;task_id&quot;].Should().Be(&quot;task_123&quot;);
+    }
+
+    private sealed class CapturingSink : IBaseLoggerSink
+    {
+        public List&lt;BaseLoggerEvent&gt; Events { get; } = new();
+        public void Write(BaseLoggerEvent ev) =&gt; Events.Add(ev);
+        public void Flush() { }
+        public void Dispose() { }
+    }
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 2: Run provider test to verify it fails</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter FullyQualifiedName~Unit.Tests.BaseLogger.BaseLoggerProviderTests
+</code></pre>
+<p>Expected: build fails because provider types do not exist.</p>
+<ul>
+<li>[ ] <strong>Step 3: Add provider</strong></li>
+</ul>
+<p>Create <code>packages/csharp/logging/BaseLogger/MicrosoftExtensions/BaseLoggerProvider.cs</code>:</p>
+<pre><code class="language-csharp">using BaseLogger.Correlation;
+using BaseLogger.Formatting;
+using BaseLogger.Redaction;
+using BaseLogger.Sinks;
+using Microsoft.Extensions.Logging;
+
+namespace BaseLogger.MicrosoftExtensions;
+
+public sealed class BaseLoggerProvider : ILoggerProvider, ISupportExternalScope
+{
+    private readonly BaseLoggerPipeline _pipeline;
+    private readonly IBaseLoggerCorrelationAccessor _correlationAccessor;
+    private IExternalScopeProvider _scopeProvider = new LoggerExternalScopeProvider();
+
+    public BaseLoggerProvider(
+        BaseLoggerPipeline pipeline,
+        IBaseLoggerCorrelationAccessor correlationAccessor)
+    {
+        _pipeline = pipeline;
+        _correlationAccessor = correlationAccessor;
+    }
+
+    public ILogger CreateLogger(string categoryName)
+        =&gt; new BaseLoggerMicrosoftLogger(categoryName, _pipeline, _correlationAccessor, _scopeProvider);
+
+    public void SetScopeProvider(IExternalScopeProvider scopeProvider)
+        =&gt; _scopeProvider = scopeProvider;
+
+    public void Dispose() =&gt; _pipeline.Dispose();
+
+    public static BaseLoggerProvider CreateForTesting(
+        IBaseLoggerSink sink,
+        IBaseLoggerCorrelationAccessor accessor)
+    {
+        var pipeline = new BaseLoggerPipeline(
+            new BaseLoggerOptions { Component = &quot;test&quot; },
+            new DefaultBaseLoggerRedactor(),
+            new BaseLoggerJsonFormatter(),
+            [sink]);
+        return new BaseLoggerProvider(pipeline, accessor);
+    }
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 4: Add internal Microsoft logger adapter</strong></li>
+</ul>
+<p>Create <code>packages/csharp/logging/BaseLogger/MicrosoftExtensions/BaseLoggerMicrosoftLogger.cs</code>:</p>
+<pre><code class="language-csharp">using BaseLogger.Correlation;
+using Microsoft.Extensions.Logging;
+
+namespace BaseLogger.MicrosoftExtensions;
+
+internal sealed class BaseLoggerMicrosoftLogger : ILogger
+{
+    private readonly string _category;
+    private readonly BaseLoggerPipeline _pipeline;
+    private readonly IBaseLoggerCorrelationAccessor _correlationAccessor;
+    private readonly IExternalScopeProvider _scopeProvider;
+
+    public BaseLoggerMicrosoftLogger(
+        string category,
+        BaseLoggerPipeline pipeline,
+        IBaseLoggerCorrelationAccessor correlationAccessor,
+        IExternalScopeProvider scopeProvider)
+    {
+        _category = category;
+        _pipeline = pipeline;
+        _correlationAccessor = correlationAccessor;
+        _scopeProvider = scopeProvider;
+    }
+
+    public IDisposable? BeginScope&lt;TState&gt;(TState state) where TState : notnull
+        =&gt; _scopeProvider.Push(state);
+
+    public bool IsEnabled(LogLevel logLevel) =&gt; logLevel != LogLevel.None;
+
+    public void Log&lt;TState&gt;(
+        LogLevel logLevel,
+        EventId eventId,
+        TState state,
+        Exception? exception,
+        Func&lt;TState, Exception?, string&gt; formatter)
+    {
+        if (!IsEnabled(logLevel))
+            return;
+
+        var correlation = _correlationAccessor.Current;
+        var properties = ExtractProperties(state);
+        _scopeProvider.ForEachScope((scope, target) =&gt; MergeScope(scope, target), properties);
+
+        var ev = new BaseLoggerEvent
+        {
+            EventId = string.IsNullOrWhiteSpace(eventId.Name)
+                ? Guid.NewGuid().ToString(&quot;N&quot;)
+                : eventId.Name!,
+            TimestampUtc = DateTimeOffset.UtcNow,
+            Severity = MapSeverity(logLevel),
+            Category = _category,
+            EventKind = properties.TryGetValue(&quot;event_kind&quot;, out var kind) ? kind?.ToString() ?? &quot;runtime&quot; : &quot;runtime&quot;,
+            MessageTemplate = state?.ToString() ?? string.Empty,
+            RenderedMessage = formatter(state, exception),
+            Exception = exception?.ToString(),
+            Properties = properties,
+            TraceId = FirstNonEmpty(correlation.TraceId, ReadString(properties, &quot;broker_trace_id&quot;)),
+            PrincipalId = FirstNonEmpty(correlation.PrincipalId, ReadString(properties, &quot;broker_principal_id&quot;)),
+            TaskId = FirstNonEmpty(correlation.TaskId, ReadString(properties, &quot;broker_task_id&quot;), ReadString(properties, &quot;task_id&quot;)),
+            SessionId = FirstNonEmpty(correlation.SessionId, ReadString(properties, &quot;broker_session_id&quot;)),
+            RequestId = FirstNonEmpty(correlation.RequestId, ReadString(properties, &quot;broker_request_id&quot;)),
+            Component = correlation.Component ?? &quot;&quot;,
+            Source = &quot;Microsoft.Extensions.Logging&quot;
+        };
+
+        _pipeline.Write(ev);
+    }
+
+    private static Dictionary&lt;string, object?&gt; ExtractProperties&lt;TState&gt;(TState state)
+    {
+        var result = new Dictionary&lt;string, object?&gt;(StringComparer.OrdinalIgnoreCase);
+        if (state is IEnumerable&lt;KeyValuePair&lt;string, object?&gt;&gt; pairs)
+        {
+            foreach (var pair in pairs)
+            {
+                if (pair.Key != &quot;{OriginalFormat}&quot;)
+                    result[pair.Key] = pair.Value;
+            }
+        }
+        return result;
+    }
+
+    private static void MergeScope(object? scope, Dictionary&lt;string, object?&gt; target)
+    {
+        if (scope is IEnumerable&lt;KeyValuePair&lt;string, object?&gt;&gt; pairs)
+        {
+            foreach (var pair in pairs)
+                target[pair.Key] = pair.Value;
+        }
+    }
+
+    private static string? ReadString(Dictionary&lt;string, object?&gt; values, string key)
+        =&gt; values.TryGetValue(key, out var value) ? value?.ToString() : null;
+
+    private static string FirstNonEmpty(params string?[] values)
+        =&gt; values.FirstOrDefault(value =&gt; !string.IsNullOrWhiteSpace(value)) ?? string.Empty;
+
+    private static BaseLoggerSeverity MapSeverity(LogLevel level) =&gt; level switch
+    {
+        LogLevel.Trace =&gt; BaseLoggerSeverity.Trace,
+        LogLevel.Debug =&gt; BaseLoggerSeverity.Debug,
+        LogLevel.Information =&gt; BaseLoggerSeverity.Info,
+        LogLevel.Warning =&gt; BaseLoggerSeverity.Warning,
+        LogLevel.Error =&gt; BaseLoggerSeverity.Error,
+        LogLevel.Critical =&gt; BaseLoggerSeverity.Critical,
+        _ =&gt; BaseLoggerSeverity.None
+    };
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 5: Add <code>AddBaseLogger</code> extension</strong></li>
+</ul>
+<p>Create <code>packages/csharp/logging/BaseLogger/MicrosoftExtensions/BaseLoggerLoggingBuilderExtensions.cs</code>:</p>
+<pre><code class="language-csharp">using BaseLogger.Correlation;
+using BaseLogger.Formatting;
+using BaseLogger.Redaction;
+using BaseLogger.Sinks;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
+
+namespace BaseLogger.MicrosoftExtensions;
+
+public static class BaseLoggerLoggingBuilderExtensions
+{
+    public static ILoggingBuilder AddBaseLogger(
+        this ILoggingBuilder builder,
+        IConfiguration configuration)
+    {
+        var options = configuration.GetSection(&quot;BaseLogger&quot;).Get&lt;BaseLoggerOptions&gt;() ?? new BaseLoggerOptions();
+        return builder.AddBaseLogger(options);
+    }
+
+    public static ILoggingBuilder AddBaseLogger(
+        this ILoggingBuilder builder,
+        BaseLoggerOptions options)
+    {
+        var accessor = new AsyncLocalBaseLoggerCorrelationAccessor();
+        var formatter = string.Equals(options.Format, &quot;text&quot;, StringComparison.OrdinalIgnoreCase)
+            ? new BaseLoggerTextFormatter()
+            : new BaseLoggerJsonFormatter();
+        var sinks = BuildSinks(options, formatter);
+        var pipeline = new BaseLoggerPipeline(options, new DefaultBaseLoggerRedactor(), formatter, sinks);
+        builder.AddProvider(new BaseLoggerProvider(pipeline, accessor));
+        return builder;
+    }
+
+    private static List&lt;IBaseLoggerSink&gt; BuildSinks(BaseLoggerOptions options, IBaseLoggerFormatter formatter)
+    {
+        var sinks = new List&lt;IBaseLoggerSink&gt;();
+        if (options.Sinks.Console.Enabled)
+            sinks.Add(new BaseLoggerConsoleSink(formatter));
+        if (options.Sinks.RollingFile.Enabled)
+            sinks.Add(new BaseLoggerRollingFileSink(
+                options.Sinks.RollingFile.Path,
+                formatter,
+                options.Sinks.RollingFile.MaxFileSizeBytes,
+                options.Sinks.RollingFile.MaxFiles,
+                options.Sinks.RollingFile.RetentionDays));
+        if (options.Sinks.Memory.Enabled)
+            sinks.Add(new BaseLoggerMemorySink(options.Sinks.Memory.MaxEntries));
+        return sinks;
+    }
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 6: Run provider tests</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter FullyQualifiedName~Unit.Tests.BaseLogger.BaseLoggerProviderTests
+</code></pre>
+<p>Expected: provider tests pass.</p>
+<ul>
+<li>[ ] <strong>Step 7: Commit Task 4</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">git add packages/csharp/logging/BaseLogger/MicrosoftExtensions `
+  packages/csharp/tests/unit/BaseLogger/BaseLoggerProviderTests.cs
+git commit -m &quot;feat: add Microsoft logging provider for BaseLogger&quot;
+</code></pre>
+<hr>
+<h3>Task 5: Broker Correlation Middleware And Security Rejection Audit</h3>
+<p><strong>Files:</strong>
+- Create: <code>packages/csharp/broker/Middleware/BrokerCorrelationMiddleware.cs</code>
+- Create: <code>packages/csharp/broker/Services/SecurityRejectionAuditRecorder.cs</code>
+- Modify: <code>packages/csharp/broker/Middleware/AuditMiddleware.cs</code>
+- Modify: <code>packages/csharp/broker/Middleware/ExceptionHandlingMiddleware.cs</code>
+- Modify: <code>packages/csharp/broker/Middleware/BodySizeLimitMiddleware.cs</code>
+- Modify: <code>packages/csharp/broker/Middleware/BrokerIpRateLimitMiddleware.cs</code>
+- Modify: <code>packages/csharp/broker/Middleware/EncryptionMiddleware.cs</code>
+- Modify: <code>packages/csharp/broker/Middleware/BrokerAuthMiddleware.cs</code>
+- Modify: <code>packages/csharp/broker/Middleware/WorkerIdentityAuthMiddleware.cs</code>
+- Test: <code>packages/csharp/tests/unit/Core/BrokerCorrelationAndAuditTests.cs</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Write failing broker correlation tests</strong></li>
+</ul>
+<p>Create <code>packages/csharp/tests/unit/Core/BrokerCorrelationAndAuditTests.cs</code>:</p>
+<pre><code class="language-csharp">using System.Net;
+using System.Text.Json;
+using Broker.Middleware;
+using Broker.Services;
+using BrokerCore.Data;
+using BrokerCore.Services;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging.Abstractions;
+using Unit.Tests.Helpers;
+
+namespace Unit.Tests.Core;
+
+public class BrokerCorrelationAndAuditTests
+{
+    [Fact]
+    public async Task CorrelationMiddleware_SetsBrokerTraceIdBeforeAuth()
+    {
+        var context = new DefaultHttpContext();
+        context.Request.Path = &quot;/api/v1/llm/chat&quot;;
+        context.Response.Body = new MemoryStream();
+        var nextCalled = false;
+        var sut = new BrokerCorrelationMiddleware(next =&gt;
+        {
+            nextCalled = true;
+            next.Items.ContainsKey(BrokerCorrelationMiddleware.TraceIdItemKey).Should().BeTrue();
+            return Task.CompletedTask;
+        }, NullLogger&lt;BrokerCorrelationMiddleware&gt;.Instance);
+
+        await sut.InvokeAsync(context);
+
+        nextCalled.Should().BeTrue();
+        context.Items[BrokerCorrelationMiddleware.TraceIdItemKey].Should().BeOfType&lt;string&gt;();
+    }
+
+    [Fact]
+    public async Task ExceptionMiddleware_ReturnsSameBrokerTraceId()
+    {
+        var context = new DefaultHttpContext();
+        context.Request.Path = &quot;/api/v1/runtime/spec&quot;;
+        context.Response.Body = new MemoryStream();
+        context.Items[BrokerCorrelationMiddleware.TraceIdItemKey] = &quot;trace_error&quot;;
+        var sut = new ExceptionHandlingMiddleware(
+            _ =&gt; throw new InvalidOperationException(&quot;secret detail&quot;),
+            NullLogger&lt;ExceptionHandlingMiddleware&gt;.Instance);
+
+        await sut.InvokeAsync(context);
+
+        context.Response.Body.Position = 0;
+        using var doc = await JsonDocument.ParseAsync(context.Response.Body);
+        doc.RootElement.GetProperty(&quot;traceId&quot;).GetString().Should().Be(&quot;trace_error&quot;);
+        doc.RootElement.ToString().Should().NotContain(&quot;secret detail&quot;);
+    }
+
+    [Fact]
+    public async Task BodySizeLimit_RecordsSecurityRejectionAudit()
+    {
+        using var db = TestDb.CreateInMemory();
+        var audit = new AuditService(db);
+        var recorder = new SecurityRejectionAuditRecorder(audit);
+        var context = new DefaultHttpContext();
+        context.Request.Method = HttpMethods.Post;
+        context.Request.Path = &quot;/api/v1/llm/chat&quot;;
+        context.Request.ContentLength = 2048;
+        context.Connection.RemoteIpAddress = IPAddress.Parse(&quot;203.0.113.99&quot;);
+        context.Items[BrokerCorrelationMiddleware.TraceIdItemKey] = &quot;trace_reject&quot;;
+        context.Response.Body = new MemoryStream();
+        var sut = new BodySizeLimitMiddleware(
+            _ =&gt; Task.CompletedTask,
+            maxBodyBytes: 16,
+            NullLogger&lt;BodySizeLimitMiddleware&gt;.Instance,
+            recorder);
+
+        await sut.InvokeAsync(context);
+
+        context.Response.StatusCode.Should().Be(StatusCodes.Status413PayloadTooLarge);
+        var events = audit.GetTraceEvents(&quot;trace_reject&quot;);
+        events.Should().Contain(e =&gt; e.EventType == &quot;SECURITY_REJECTION&quot;);
+        events.Single(e =&gt; e.EventType == &quot;SECURITY_REJECTION&quot;).Details.Should().Contain(&quot;body_too_large&quot;);
+    }
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 2: Run broker tests to verify they fail</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter FullyQualifiedName~Unit.Tests.Core.BrokerCorrelationAndAuditTests
+</code></pre>
+<p>Expected: build fails because middleware/recorder types and constructor overloads do not exist.</p>
+<ul>
+<li>[ ] <strong>Step 3: Add correlation middleware</strong></li>
+</ul>
+<p>Create <code>packages/csharp/broker/Middleware/BrokerCorrelationMiddleware.cs</code>:</p>
+<pre><code class="language-csharp">namespace Broker.Middleware;
+
+public sealed class BrokerCorrelationMiddleware
+{
+    public const string TraceIdItemKey = &quot;broker_trace_id&quot;;
+    public const string TraceSourceItemKey = &quot;broker_trace_source&quot;;
+    public const string RequestIdItemKey = &quot;broker_request_id&quot;;
+
+    private readonly RequestDelegate _next;
+    private readonly ILogger&lt;BrokerCorrelationMiddleware&gt; _logger;
+
+    public BrokerCorrelationMiddleware(RequestDelegate next, ILogger&lt;BrokerCorrelationMiddleware&gt; logger)
+    {
+        _next = next;
+        _logger = logger;
+    }
+
+    public async Task InvokeAsync(HttpContext context)
+    {
+        var traceId = context.Request.Headers.TryGetValue(&quot;X-Broker-Trace-Id&quot;, out var header) &amp;&amp;
+                      !string.IsNullOrWhiteSpace(header.FirstOrDefault())
+            ? header.First()!
+            : context.TraceIdentifier;
+
+        context.Items[TraceIdItemKey] = traceId;
+        context.Items[TraceSourceItemKey] = context.Request.Headers.ContainsKey(&quot;X-Broker-Trace-Id&quot;) ? &quot;header&quot; : &quot;server&quot;;
+        context.Items[RequestIdItemKey] = context.TraceIdentifier;
+
+        using (_logger.BeginScope(new Dictionary&lt;string, object?&gt;
+        {
+            [&quot;broker_trace_id&quot;] = traceId,
+            [&quot;broker_request_id&quot;] = context.TraceIdentifier,
+            [&quot;path&quot;] = context.Request.Path.Value ?? &quot;&quot;
+        }))
+        {
+            await _next(context);
+        }
+    }
+}
+
+public static class BrokerCorrelationMiddlewareExtensions
+{
+    public static IApplicationBuilder UseBrokerCorrelation(this IApplicationBuilder builder)
+        =&gt; builder.UseMiddleware&lt;BrokerCorrelationMiddleware&gt;();
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 4: Add security rejection audit recorder</strong></li>
+</ul>
+<p>Create <code>packages/csharp/broker/Services/SecurityRejectionAuditRecorder.cs</code>:</p>
+<pre><code class="language-csharp">using System.Net;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
+using Broker.Middleware;
+using BrokerCore.Services;
+
+namespace Broker.Services;
+
+public sealed class SecurityRejectionAuditRecorder
+{
+    private readonly IAuditService _auditService;
+
+    public SecurityRejectionAuditRecorder(IAuditService auditService)
+    {
+        _auditService = auditService;
+    }
+
+    public void Record(HttpContext context, int statusCode, string reasonCode)
+    {
+        var traceId = context.Items.TryGetValue(BrokerCorrelationMiddleware.TraceIdItemKey, out var trace)
+            ? trace as string ?? context.TraceIdentifier
+            : context.TraceIdentifier;
+
+        var details = JsonSerializer.Serialize(new
+        {
+            method = context.Request.Method,
+            path = context.Request.Path.Value ?? &quot;&quot;,
+            status_code = statusCode,
+            reason_code = reasonCode,
+            client_hash = HashClient(context.Connection.RemoteIpAddress),
+            component = &quot;broker&quot;
+        });
+
+        _auditService.RecordEvent(
+            traceId,
+            &quot;SECURITY_REJECTION&quot;,
+            resourceRef: context.Request.Path.Value,
+            details: details);
+    }
+
+    private static string HashClient(IPAddress? address)
+    {
+        if (address == null)
+            return &quot;unknown&quot;;
+
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(address.ToString()));
+        return &quot;sha256:&quot; + Convert.ToHexString(hash)[..16].ToLowerInvariant();
+    }
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 5: Update AuditMiddleware and ExceptionHandlingMiddleware</strong></li>
+</ul>
+<p>Modify <code>packages/csharp/broker/Middleware/AuditMiddleware.cs</code> so trace id is read with:</p>
+<pre><code class="language-csharp">var traceId = context.Items.TryGetValue(BrokerCorrelationMiddleware.TraceIdItemKey, out var traceObj)
+    ? traceObj as string ?? context.TraceIdentifier
+    : context.TraceIdentifier;
+context.Items[&quot;audit_trace_id&quot;] = traceId;
+</code></pre>
+<p>Modify <code>packages/csharp/broker/Middleware/ExceptionHandlingMiddleware.cs</code> response body:</p>
+<pre><code class="language-csharp">var traceId = context.Items.TryGetValue(BrokerCorrelationMiddleware.TraceIdItemKey, out var traceObj)
+    ? traceObj as string ?? context.TraceIdentifier
+    : context.TraceIdentifier;
+
+_logger.LogError(
+    ex,
+    &quot;Unhandled broker request exception: method={Method} path={Path} trace={TraceId}&quot;,
+    context.Request.Method,
+    context.Request.Path,
+    traceId);
+
+context.Response.Clear();
+context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+context.Response.ContentType = &quot;application/json; charset=utf-8&quot;;
+var response = ApiResponseHelper.Error(&quot;Internal server error.&quot;, StatusCodes.Status500InternalServerError);
+response.TraceId = traceId;
+await context.Response.WriteAsJsonAsync(response);
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 6: Add recorder to rejection middleware constructors and calls</strong></li>
+</ul>
+<p>Modify <code>BodySizeLimitMiddleware</code> constructor:</p>
+<pre><code class="language-csharp">private readonly SecurityRejectionAuditRecorder? _securityAudit;
+
+public BodySizeLimitMiddleware(
+    RequestDelegate next,
+    long maxBodyBytes,
+    ILogger&lt;BodySizeLimitMiddleware&gt; logger,
+    SecurityRejectionAuditRecorder? securityAudit = null)
+{
+    _next = next;
+    _maxBodyBytes = maxBodyBytes;
+    _logger = logger;
+    _securityAudit = securityAudit;
+}
+</code></pre>
+<p>Before writing <code>413</code>, call:</p>
+<pre><code class="language-csharp">_securityAudit?.Record(context, StatusCodes.Status413PayloadTooLarge, &quot;body_too_large&quot;);
+</code></pre>
+<p>Modify <code>BrokerIpRateLimitMiddleware</code> by adding the same optional constructor dependency and call:</p>
+<pre><code class="language-csharp">_securityAudit?.Record(context, StatusCodes.Status429TooManyRequests, &quot;rate_limit_exceeded&quot;);
+</code></pre>
+<p>Modify <code>EncryptionMiddleware</code> by adding the same optional constructor dependency and these calls at the corresponding rejection branches:</p>
+<pre><code class="language-csharp">_securityAudit?.Record(context, StatusCodes.Status400BadRequest, &quot;invalid_envelope&quot;);
+_securityAudit?.Record(context, StatusCodes.Status400BadRequest, &quot;handshake_decryption_failed&quot;);
+_securityAudit?.Record(context, StatusCodes.Status400BadRequest, &quot;missing_session&quot;);
+_securityAudit?.Record(context, StatusCodes.Status401Unauthorized, &quot;session_key_not_found&quot;);
+_securityAudit?.Record(context, StatusCodes.Status400BadRequest, &quot;replay_detected&quot;);
+_securityAudit?.Record(context, StatusCodes.Status400BadRequest, &quot;decryption_failed&quot;);
+</code></pre>
+<p>Modify <code>BrokerAuthMiddleware</code> by adding the same optional constructor dependency and these calls at the corresponding rejection branches:</p>
+<pre><code class="language-csharp">_securityAudit?.Record(context, StatusCodes.Status401Unauthorized, &quot;missing_token&quot;);
+_securityAudit?.Record(context, StatusCodes.Status401Unauthorized, &quot;invalid_token&quot;);
+_securityAudit?.Record(context, StatusCodes.Status401Unauthorized, &quot;epoch_mismatch&quot;);
+_securityAudit?.Record(context, StatusCodes.Status401Unauthorized, &quot;revoked_jti&quot;);
+_securityAudit?.Record(context, StatusCodes.Status401Unauthorized, &quot;revoked_session&quot;);
+</code></pre>
+<p>Modify <code>WorkerIdentityAuthMiddleware</code> by adding the same optional constructor dependency and these calls at the corresponding rejection branches:</p>
+<pre><code class="language-csharp">_securityAudit?.Record(context, StatusCodes.Status401Unauthorized, &quot;missing_worker_auth_headers&quot;);
+_securityAudit?.Record(context, StatusCodes.Status401Unauthorized, &quot;invalid_worker_auth_timestamp&quot;);
+_securityAudit?.Record(context, StatusCodes.Status401Unauthorized, &quot;unauthorized_worker_identity&quot;);
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 7: Run broker correlation tests</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter FullyQualifiedName~Unit.Tests.Core.BrokerCorrelationAndAuditTests
+</code></pre>
+<p>Expected: tests pass.</p>
+<ul>
+<li>[ ] <strong>Step 8: Commit Task 5</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">git add packages/csharp/broker/Middleware `
+  packages/csharp/broker/Services/SecurityRejectionAuditRecorder.cs `
+  packages/csharp/tests/unit/Core/BrokerCorrelationAndAuditTests.cs
+git commit -m &quot;feat: add broker log correlation and rejection audit&quot;
+</code></pre>
+<hr>
+<h3>Task 6: Host Setup, Sidecar Retention, Compatibility, Docs, And Full Verification</h3>
+<p><strong>Files:</strong>
+- Modify: <code>packages/csharp/broker/Program.cs</code>
+- Modify: <code>packages/csharp/rag-service/Program.cs</code>
+- Modify: <code>packages/csharp/rag-service/RagService.csproj</code>
+- Modify: <code>packages/csharp/workers/line-worker/Program.cs</code>
+- Modify: <code>packages/csharp/workers/line-worker/LineWorker.csproj</code>
+- Modify: <code>packages/csharp/workers/file-worker/Program.cs</code>
+- Modify: <code>packages/csharp/workers/file-worker/FileWorker.csproj</code>
+- Modify: <code>packages/csharp/workers/browser-worker/Program.cs</code>
+- Modify: <code>packages/csharp/workers/browser-worker/BrowserWorker.csproj</code>
+- Modify: <code>packages/csharp/workers/execution-adapter-worker/Program.cs</code>
+- Modify: <code>packages/csharp/workers/execution-adapter-worker/ExecutionAdapterWorker.csproj</code>
+- Modify: <code>packages/csharp/workers/transport-tdx-worker/Program.cs</code>
+- Modify: <code>packages/csharp/workers/transport-tdx-worker/TransportTdxWorker.csproj</code>
+- Modify: <code>packages/csharp/workers/line-worker/start-sidecar-stack.ps1</code>
+- Modify: <code>packages/csharp/logging/BaseLogger/BaseLogger.cs</code>
+- Modify: <code>packages/csharp/logging/BaseLogger/README.md</code>
+- Modify: <code>docs/manuals/current-technical-manual.zh-TW.md</code>
+- Modify: <code>docs/manuals/current-user-manual.zh-TW.md</code>
+- Modify: <code>docs/reports/follow-up-planning.zh-TW.md</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Add BaseLogger provider to broker</strong></li>
+</ul>
+<p>Modify <code>packages/csharp/broker/Program.cs</code> after <code>var builder = WebApplication.CreateBuilder(args);</code>:</p>
+<pre><code class="language-csharp">using BaseLogger.MicrosoftExtensions;
+</code></pre>
+<p>Add:</p>
+<pre><code class="language-csharp">builder.Logging.ClearProviders();
+builder.Logging.AddBaseLogger(builder.Configuration);
+</code></pre>
+<p>Register services:</p>
+<pre><code class="language-csharp">builder.Services.AddSingleton&lt;Broker.Services.SecurityRejectionAuditRecorder&gt;();
+</code></pre>
+<p>Add middleware immediately after <code>app</code> creation and before dev guard/body/auth middleware:</p>
+<pre><code class="language-csharp">app.UseBrokerCorrelation();
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 2: Add BaseLogger configuration to broker appsettings</strong></li>
+</ul>
+<p>Modify <code>packages/csharp/broker/appsettings.json</code>:</p>
+<pre><code class="language-json">&quot;BaseLogger&quot;: {
+  &quot;Enabled&quot;: true,
+  &quot;MinimumSeverity&quot;: &quot;Info&quot;,
+  &quot;Format&quot;: &quot;json&quot;,
+  &quot;Component&quot;: &quot;broker&quot;,
+  &quot;RedactionProfile&quot;: &quot;production&quot;,
+  &quot;Sinks&quot;: {
+    &quot;Console&quot;: { &quot;Enabled&quot;: true },
+    &quot;RollingFile&quot;: {
+      &quot;Enabled&quot;: true,
+      &quot;Path&quot;: &quot;.run/logs/broker.jsonl&quot;,
+      &quot;MaxFileSizeBytes&quot;: 10485760,
+      &quot;MaxFiles&quot;: 10,
+      &quot;RetentionDays&quot;: 14
+    },
+    &quot;Database&quot;: { &quot;Enabled&quot;: false, &quot;TableName&quot;: &quot;operational_logs&quot; },
+    &quot;Memory&quot;: { &quot;Enabled&quot;: true, &quot;MaxEntries&quot;: 500 }
+  }
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 3: Add provider to rag-service and workers</strong></li>
+</ul>
+<p>Add a direct BaseLogger project reference to each csproj that will call <code>AddBaseLogger</code>.</p>
+<p>For <code>packages/csharp/rag-service/RagService.csproj</code>, add:</p>
+<pre><code class="language-xml">    &lt;ProjectReference Include=&quot;..\logging\BaseLogger\BaseLogger.csproj&quot; /&gt;
+</code></pre>
+<p>For each worker csproj, add:</p>
+<pre><code class="language-xml">    &lt;ProjectReference Include=&quot;..\..\logging\BaseLogger\BaseLogger.csproj&quot; /&gt;
+</code></pre>
+<p>Worker csproj files:</p>
+<ul>
+<li><code>packages/csharp/workers/line-worker/LineWorker.csproj</code></li>
+<li><code>packages/csharp/workers/file-worker/FileWorker.csproj</code></li>
+<li><code>packages/csharp/workers/browser-worker/BrowserWorker.csproj</code></li>
+<li><code>packages/csharp/workers/execution-adapter-worker/ExecutionAdapterWorker.csproj</code></li>
+<li><code>packages/csharp/workers/transport-tdx-worker/TransportTdxWorker.csproj</code></li>
+</ul>
+<p>For each <code>Program.cs</code> listed in this task, add:</p>
+<pre><code class="language-csharp">using BaseLogger.MicrosoftExtensions;
+</code></pre>
+<p>After creating the builder or logging builder, add:</p>
+<pre><code class="language-csharp">builder.Logging.ClearProviders();
+builder.Logging.AddBaseLogger(builder.Configuration);
+</code></pre>
+<p>For worker programs that use <code>Host.CreateDefaultBuilder</code>, add the provider inside <code>ConfigureLogging</code>:</p>
+<pre><code class="language-csharp">logging.ClearProviders();
+logging.AddBaseLogger(context.Configuration);
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 4: Update sidecar retention</strong></li>
+</ul>
+<p>Modify <code>packages/csharp/workers/line-worker/start-sidecar-stack.ps1</code>:</p>
+<p>Replace the block that deletes <code>$brokerLog</code>, <code>$brokerErrLog</code>, <code>$workerLog</code>, <code>$workerErrLog</code> with:</p>
+<pre><code class="language-powershell">$runId = Get-Date -Format &quot;yyyyMMdd-HHmmss&quot;
+$runLogDir = Join-Path $logDir $runId
+New-Item -ItemType Directory -Force -Path $runLogDir | Out-Null
+$brokerLog = Join-Path $runLogDir &quot;broker.out.log&quot;
+$brokerErrLog = Join-Path $runLogDir &quot;broker.err.log&quot;
+$workerLog = Join-Path $runLogDir &quot;line-worker.out.log&quot;
+$workerErrLog = Join-Path $runLogDir &quot;line-worker.err.log&quot;
+
+$retentionCutoff = (Get-Date).AddDays(-14)
+Get-ChildItem -Path $logDir -Directory -ErrorAction SilentlyContinue |
+    Where-Object { $_.LastWriteTime -lt $retentionCutoff } |
+    Remove-Item -Recurse -Force
+</code></pre>
+<p>Keep tunnel logs under the run-specific directory too, so each sidecar start has an evidence folder.</p>
+<ul>
+<li>[ ] <strong>Step 5: Mark old BaseLogger names obsolete</strong></li>
+</ul>
+<p>Modify <code>packages/csharp/logging/BaseLogger/BaseLogger.cs</code>:</p>
+<pre><code class="language-csharp">[Obsolete(&quot;Use BaseLoggerSeverity for new code.&quot;)]
+public enum LogLevel
+</code></pre>
+<pre><code class="language-csharp">[Obsolete(&quot;Use BaseLoggerEvent for new code.&quot;)]
+public class LogEntry
+</code></pre>
+<pre><code class="language-csharp">[Obsolete(&quot;Use Microsoft.Extensions.Logging.ILogger&lt;T&gt; at application boundaries or BaseLoggerPipeline internally.&quot;)]
+public interface ILogger
+</code></pre>
+<pre><code class="language-csharp">[Obsolete(&quot;Use BaseLoggerPipeline for new code.&quot;)]
+public class Logger : ILogger, IDisposable
+</code></pre>
+<pre><code class="language-csharp">[Obsolete(&quot;Use IBaseLoggerSink for new code.&quot;)]
+public interface ILogTarget
+</code></pre>
+<pre><code class="language-csharp">[Obsolete(&quot;Use Microsoft.Extensions.Logging plus AddBaseLogger for application code.&quot;)]
+public static class Log
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 6: Update docs</strong></li>
+</ul>
+<p>Update <code>packages/csharp/logging/BaseLogger/README.md</code> with a new first section:</p>
+<pre><code class="language-markdown">## Current API Direction
+
+`BaseLogger` is the package and namespace name. New code should not use the old `ILogger`, `Logger`, `LogLevel`, `LogEntry`, `ILogTarget`, or static `Log` types directly.
+
+Application code should continue to depend on `Microsoft.Extensions.Logging.ILogger&lt;T&gt;`.
+Hosts integrate BaseLogger with:
+
+```csharp
+builder.Logging.ClearProviders();
+builder.Logging.AddBaseLogger(builder.Configuration);
+</code></pre>
+<p>BaseLogger-specific extension points use explicit names such as <code>BaseLoggerPipeline</code>, <code>BaseLoggerEvent</code>, <code>BaseLoggerSeverity</code>, <code>IBaseLoggerSink</code>, <code>IBaseLoggerRedactor</code>, and <code>BaseLoggerProvider</code>.</p>
+<pre><code>
+Update manuals:
+
+- `docs/manuals/current-technical-manual.zh-TW.md`: add a &quot;BaseLogger / Audit / Observability&quot; section that explains runtime log vs audit vs raw interaction log vs observation.
+- `docs/manuals/current-user-manual.zh-TW.md`: update troubleshooting log paths to note per-run sidecar log folders and 14-day retention.
+- `docs/reports/follow-up-planning.zh-TW.md`: mention that BaseLogger governance design now has an implementation plan.
+
+- [ ] **Step 7: Run focused tests**
+
+Run:
+
+```powershell
+dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter &quot;FullyQualifiedName~Unit.Tests.BaseLogger|FullyQualifiedName~Unit.Tests.Core.BrokerCorrelationAndAuditTests&quot;
+</code></pre>
+<p>Expected: BaseLogger and broker correlation tests pass.</p>
+<ul>
+<li>[ ] <strong>Step 8: Run repository build</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet build packages/csharp/ControlPlane.slnx
+</code></pre>
+<p>Expected: build exits 0. Existing warnings are acceptable unless new errors appear.</p>
+<ul>
+<li>[ ] <strong>Step 9: Run broker unit test entrypoint</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet run --project packages/csharp/tests/broker-tests/Broker.Tests.csproj
+</code></pre>
+<p>Expected: command exits 0 and prints final pass summary.</p>
+<ul>
+<li>[ ] <strong>Step 10: Cleanup test artifacts</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">Remove-Item -LiteralPath packages/csharp/broker/broker.db -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath packages/csharp/broker/broker.db-shm -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath packages/csharp/broker/broker.db-wal -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath .test-output -Recurse -Force -ErrorAction SilentlyContinue
+</code></pre>
+<p>Expected: command exits 0 or silently skips missing files.</p>
+<ul>
+<li>[ ] <strong>Step 11: Commit Task 6</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">git add packages/csharp/broker/Program.cs `
+  packages/csharp/broker/appsettings.json `
+  packages/csharp/rag-service/Program.cs `
+  packages/csharp/rag-service/RagService.csproj `
+  packages/csharp/workers/line-worker/Program.cs `
+  packages/csharp/workers/line-worker/LineWorker.csproj `
+  packages/csharp/workers/file-worker/Program.cs `
+  packages/csharp/workers/file-worker/FileWorker.csproj `
+  packages/csharp/workers/browser-worker/Program.cs `
+  packages/csharp/workers/browser-worker/BrowserWorker.csproj `
+  packages/csharp/workers/execution-adapter-worker/Program.cs `
+  packages/csharp/workers/execution-adapter-worker/ExecutionAdapterWorker.csproj `
+  packages/csharp/workers/transport-tdx-worker/Program.cs `
+  packages/csharp/workers/transport-tdx-worker/TransportTdxWorker.csproj `
+  packages/csharp/workers/line-worker/start-sidecar-stack.ps1 `
+  packages/csharp/logging/BaseLogger/BaseLogger.cs `
+  packages/csharp/logging/BaseLogger/README.md `
+  docs/manuals/current-technical-manual.zh-TW.md `
+  docs/manuals/current-user-manual.zh-TW.md `
+  docs/reports/follow-up-planning.zh-TW.md
+git commit -m &quot;feat: integrate BaseLogger governance pipeline&quot;
+</code></pre>
+<hr>
+<h2>Final Verification</h2>
+<ul>
+<li>[ ] Run complete unit test command:</li>
+</ul>
+<pre><code class="language-powershell">dotnet test packages/csharp/tests/unit/Unit.Tests.csproj
+</code></pre>
+<p>Expected: all xUnit tests pass.</p>
+<ul>
+<li>[ ] Run broker console tests:</li>
+</ul>
+<pre><code class="language-powershell">dotnet run --project packages/csharp/tests/broker-tests/Broker.Tests.csproj
+</code></pre>
+<p>Expected: all broker console tests pass.</p>
+<ul>
+<li>[ ] Run solution build:</li>
+</ul>
+<pre><code class="language-powershell">dotnet build packages/csharp/ControlPlane.slnx
+</code></pre>
+<p>Expected: exit code 0.</p>
+<ul>
+<li>[ ] Confirm no accidental staging of unrelated files:</li>
+</ul>
+<pre><code class="language-powershell">git status --short
+</code></pre>
+<p>Expected: only intended BaseLogger/logging changes remain uncommitted before final commit; unrelated pre-existing RAG/signing files remain unstaged unless the user explicitly asks to include them.</p>
+<h2>Spec Coverage Self-Review</h2>
+<ul>
+<li>Naming rule covered by Tasks 1 and 6.</li>
+<li>Provider integration covered by Task 4 and Task 6.</li>
+<li>Redaction covered by Task 2.</li>
+<li>Sinks and retention covered by Task 3 and Task 6.</li>
+<li>Correlation model covered by Task 5.</li>
+<li>Security rejection audit covered by Task 5.</li>
+<li>Runtime log vs audit boundaries covered by Task 6 documentation.</li>
+<li>Compatibility wrapper covered by Task 6.</li>
+</ul>
+</main>
+</body>
+</html>

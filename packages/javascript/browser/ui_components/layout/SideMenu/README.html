@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SideMenu</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>SideMenu</h1>
+<p>側邊選單元件，支援多層級、展開收合、手風琴模式、Badge 徽章。</p>
+<h2>API</h2>
+<h3>Constructor</h3>
+<pre><code class="language-js">new SideMenu(options?)
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>參數</th>
+<th>型別</th>
+<th>預設值</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>options.items</code></td>
+<td><code>Array</code></td>
+<td><code>[]</code></td>
+<td>選單項目 <code>[{id, text, icon?, href?, children?, badge?, disabled?}]</code></td>
+</tr>
+<tr>
+<td><code>options.activeId</code></td>
+<td><code>string</code></td>
+<td><code>null</code></td>
+<td>當前選中項目 ID</td>
+</tr>
+<tr>
+<td><code>options.collapsed</code></td>
+<td><code>boolean</code></td>
+<td><code>false</code></td>
+<td>是否收合模式</td>
+</tr>
+<tr>
+<td><code>options.accordion</code></td>
+<td><code>boolean</code></td>
+<td><code>true</code></td>
+<td>手風琴模式（同層只展開一個）</td>
+</tr>
+<tr>
+<td><code>options.width</code></td>
+<td><code>string</code></td>
+<td><code>'240px'</code></td>
+<td>選單寬度</td>
+</tr>
+<tr>
+<td><code>options.collapsedWidth</code></td>
+<td><code>string</code></td>
+<td><code>'64px'</code></td>
+<td>收合時寬度</td>
+</tr>
+<tr>
+<td><code>options.onSelect</code></td>
+<td><code>Function</code></td>
+<td><code>null</code></td>
+<td>選擇回調 <code>(item)</code></td>
+</tr>
+<tr>
+<td><code>options.onToggle</code></td>
+<td><code>Function</code></td>
+<td><code>null</code></td>
+<td>收合回調 <code>(collapsed)</code></td>
+</tr>
+</tbody>
+</table>
+<h3>方法</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>回傳</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>toggle()</code></td>
+<td><code>this</code></td>
+<td>切換展開/收合</td>
+</tr>
+<tr>
+<td><code>expand()</code></td>
+<td><code>this</code></td>
+<td>展開選單</td>
+</tr>
+<tr>
+<td><code>collapse()</code></td>
+<td><code>this</code></td>
+<td>收合選單</td>
+</tr>
+<tr>
+<td><code>setActive(id)</code></td>
+<td><code>this</code></td>
+<td>設定選中項目</td>
+</tr>
+<tr>
+<td><code>setItems(items)</code></td>
+<td><code>this</code></td>
+<td>重設選單項目</td>
+</tr>
+<tr>
+<td><code>updateBadge(id, badge)</code></td>
+<td><code>this</code></td>
+<td>更新指定項目的 Badge（傳 <code>null</code>/<code>0</code> 移除）</td>
+</tr>
+<tr>
+<td><code>mount(container)</code></td>
+<td><code>this</code></td>
+<td>掛載至容器</td>
+</tr>
+<tr>
+<td><code>destroy()</code></td>
+<td><code>void</code></td>
+<td>銷毀元件</td>
+</tr>
+</tbody>
+</table>
+<h2>使用範例</h2>
+<pre><code class="language-js">import { SideMenu } from './SideMenu.js';
+
+const menu = new SideMenu({
+    items: [
+        { id: 'home', text: '首頁', icon: '🏠' },
+        { id: 'users', text: '使用者', icon: '👥', badge: 5, children: [
+            { id: 'user-list', text: '使用者列表' },
+            { id: 'user-add', text: '新增使用者' }
+        ]}
+    ],
+    activeId: 'home',
+    onSelect: (item) =&gt; console.log('選擇:', item.id)
+});
+menu.mount('#sidebar');
+</code></pre>
+<h2>Demo</h2>
+<p>開啟 <code>demo.html</code> 直接在瀏覽器測試。</p>
+</main>
+</body>
+</html>

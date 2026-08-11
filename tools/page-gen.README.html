@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>page-gen CLI</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>page-gen CLI</h1>
+<p><code>tools/page-gen.js</code> 會把 PageDefinition 轉成靜態頁面程式碼，或輸出動態定義 JSON。</p>
+<h2>Usage</h2>
+<pre><code class="language-bash">node tools/page-gen.js [options]
+</code></pre>
+<h2>Common Commands</h2>
+<h3>Validate a definition</h3>
+<pre><code class="language-bash">node tools/page-gen.js --validate --def employee.json
+</code></pre>
+<h3>Generate a static page</h3>
+<pre><code class="language-bash">node tools/page-gen.js --def employee.json --mode static --output ./output/
+</code></pre>
+<h3>List supported types</h3>
+<pre><code class="language-bash">node tools/page-gen.js --list-types
+</code></pre>
+<h2>Options</h2>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--def &lt;path&gt;</code></td>
+<td>Input definition file</td>
+<td>-</td>
+</tr>
+<tr>
+<td><code>--mode &lt;mode&gt;</code></td>
+<td><code>static</code>, <code>dynamic</code>, or <code>both</code></td>
+<td><code>static</code></td>
+</tr>
+<tr>
+<td><code>--output &lt;dir&gt;</code></td>
+<td>Output directory</td>
+<td>-</td>
+</tr>
+<tr>
+<td><code>--validate</code></td>
+<td>Validate only, do not generate files</td>
+<td><code>false</code></td>
+</tr>
+<tr>
+<td><code>--list-types</code></td>
+<td>Print supported field, trigger, and optionsSource types</td>
+<td><code>false</code></td>
+</tr>
+<tr>
+<td><code>--help</code>, <code>-h</code></td>
+<td>Show help</td>
+<td>-</td>
+</tr>
+</tbody>
+</table>
+<h2>Modes</h2>
+<table>
+<thead>
+<tr>
+<th>Mode</th>
+<th>Output</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>static</code></td>
+<td><code>&lt;Entity&gt;Page.js</code></td>
+</tr>
+<tr>
+<td><code>dynamic</code></td>
+<td><code>&lt;entity&gt;-definition.json</code></td>
+</tr>
+<tr>
+<td><code>both</code></td>
+<td>Both outputs</td>
+</tr>
+</tbody>
+</table>
+<h2>stdin Support</h2>
+<pre><code class="language-bash">cat employee.json | node tools/page-gen.js --mode static --output ./output/
+</code></pre>
+<h2>Validation and Test Entry Points</h2>
+<p>目前 repo 內可直接執行的測試入口在 <code>packages/javascript/browser/page-generator/examples/</code>。</p>
+<pre><code class="language-bash">npm test
+node packages/javascript/browser/page-generator/examples/test-all.js
+node packages/javascript/browser/page-generator/examples/test-generator.js
+</code></pre>
+<h2>Example Definition</h2>
+<p>可參考：</p>
+<ul>
+<li><code>packages/javascript/browser/page-generator/examples/EmployeeDefinition.js</code></li>
+<li><code>packages/javascript/browser/page-generator/examples/DiaryEditorDefinition.js</code></li>
+<li><code>packages/javascript/browser/page-generator/examples/ContactFormDefinition.js</code></li>
+</ul>
+<h2>Related Files</h2>
+<ul>
+<li><code>packages/javascript/browser/page-generator/README.md</code></li>
+<li><code>packages/javascript/browser/page-generator/PageDefinitionAdapter.js</code></li>
+<li><code>packages/javascript/browser/page-generator/examples/</code></li>
+</ul>
+</main>
+</body>
+</html>

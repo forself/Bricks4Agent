@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TabContainer - 頁籤容器組件</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>TabContainer - 頁籤容器組件</h1>
+<p>功能完整的頁籤容器組件，支援多頁籤介面、動態添加/移除、徽章顯示、圖示支援等功能。</p>
+<h2>特性</h2>
+<ul>
+<li>✅ <strong>多種位置</strong>: 支援頂部、底部、左側、右側四種頁籤位置</li>
+<li>✅ <strong>動態管理</strong>: 動態添加、移除、更新頁籤</li>
+<li>✅ <strong>徽章顯示</strong>: 顯示通知數量徽章</li>
+<li>✅ <strong>圖示支援</strong>: 支援 Font Awesome 等圖示庫</li>
+<li>✅ <strong>可關閉</strong>: 可配置頁籤是否可關閉</li>
+<li>✅ <strong>動畫效果</strong>: 平滑的切換動畫</li>
+<li>✅ <strong>回調函數</strong>: 提供切換和關閉事件回調</li>
+<li>✅ <strong>響應式設計</strong>: 適配各種螢幕尺寸</li>
+<li>✅ <strong>深色模式</strong>: 支援深色模式</li>
+</ul>
+<h2>使用方法</h2>
+<h3>基本使用</h3>
+<pre><code class="language-html">&lt;!DOCTYPE html&gt;
+&lt;html&gt;
+&lt;head&gt;
+    &lt;link rel=&quot;stylesheet&quot; href=&quot;TabContainer.css&quot;&gt;
+&lt;/head&gt;
+&lt;body&gt;
+    &lt;div id=&quot;my-tabs&quot;&gt;&lt;/div&gt;
+
+    &lt;script src=&quot;TabContainer.js&quot;&gt;&lt;/script&gt;
+    &lt;script&gt;
+        const tabs = new TabContainer({
+            containerId: 'my-tabs',
+            position: 'top',
+            tabs: [
+                {
+                    id: 'tab1',
+                    title: '頁籤 1',
+                    icon: 'fas fa-home',
+                    content: '&lt;h3&gt;頁籤 1 內容&lt;/h3&gt;'
+                },
+                {
+                    id: 'tab2',
+                    title: '頁籤 2',
+                    icon: 'fas fa-user',
+                    badge: 5,
+                    content: '&lt;h3&gt;頁籤 2 內容&lt;/h3&gt;'
+                }
+            ]
+        });
+    &lt;/script&gt;
+&lt;/body&gt;
+&lt;/html&gt;
+</code></pre>
+<h3>配置選項</h3>
+<pre><code class="language-javascript">const tabs = new TabContainer({
+    // 容器元素 ID（必填）
+    containerId: 'my-tabs',
+
+    // 頁籤位置: 'top', 'bottom', 'left', 'right'（預設: 'top'）
+    position: 'top',
+
+    // 頁籤是否可關閉（預設: true）
+    closable: true,
+
+    // 是否啟用動畫（預設: true）
+    animated: true,
+
+    // 初始頁籤配置（選填）
+    tabs: [
+        {
+            id: 'tab1',              // 頁籤唯一 ID（必填）
+            title: '頁籤標題',        // 頁籤標題（必填）
+            content: '&lt;div&gt;內容&lt;/div&gt;', // 頁籤內容（選填）
+            icon: 'fas fa-home',     // 圖示類名（選填）
+            badge: 5,                // 徽章數字（選填）
+            closable: true           // 是否可關閉（選填，覆蓋全域設定）
+        }
+    ],
+
+    // 頁籤切換回調
+    onTabChange: (event) =&gt; {
+        console.log('切換到頁籤:', event.tabId);
+        console.log('前一個頁籤:', event.previousTabId);
+        console.log('頁籤資料:', event.tab);
+    },
+
+    // 頁籤關閉回調
+    onTabClose: (event) =&gt; {
+        console.log('關閉頁籤:', event.tabId);
+        // 返回 false 可取消關閉
+        return confirm('確定要關閉嗎？');
+    }
+});
+</code></pre>
+<h2>API 方法</h2>
+<h3>addTab(tab)</h3>
+<p>添加新頁籤</p>
+<pre><code class="language-javascript">tabs.addTab({
+    id: 'new-tab',
+    title: '新頁籤',
+    icon: 'fas fa-plus',
+    badge: 3,
+    content: '&lt;h3&gt;新頁籤內容&lt;/h3&gt;',
+    closable: true
+});
+</code></pre>
+<h3>activateTab(tabId)</h3>
+<p>激活指定頁籤</p>
+<pre><code class="language-javascript">tabs.activateTab('tab1');
+</code></pre>
+<h3>closeTab(tabId)</h3>
+<p>關閉指定頁籤</p>
+<pre><code class="language-javascript">tabs.closeTab('tab1');
+</code></pre>
+<h3>updateBadge(tabId, badge)</h3>
+<p>更新頁籤徽章</p>
+<pre><code class="language-javascript">// 設定徽章數字
+tabs.updateBadge('tab1', 10);
+
+// 移除徽章
+tabs.updateBadge('tab1', 0);
+</code></pre>
+<h3>updateTitle(tabId, title)</h3>
+<p>更新頁籤標題</p>
+<pre><code class="language-javascript">tabs.updateTitle('tab1', '新標題');
+</code></pre>
+<h3>updateContent(tabId, content)</h3>
+<p>更新頁籤內容</p>
+<pre><code class="language-javascript">// 使用 HTML 字串
+tabs.updateContent('tab1', '&lt;h3&gt;新內容&lt;/h3&gt;');
+
+// 使用 DOM 元素
+const element = document.createElement('div');
+element.innerHTML = '&lt;h3&gt;新內容&lt;/h3&gt;';
+tabs.updateContent('tab1', element);
+</code></pre>
+<h3>getActiveTabId()</h3>
+<p>取得當前激活的頁籤 ID</p>
+<pre><code class="language-javascript">const activeId = tabs.getActiveTabId();
+console.log('當前頁籤:', activeId);
+</code></pre>
+<h3>getAllTabIds()</h3>
+<p>取得所有頁籤 ID</p>
+<pre><code class="language-javascript">const allIds = tabs.getAllTabIds();
+console.log('所有頁籤:', allIds); // ['tab1', 'tab2', 'tab3']
+</code></pre>
+<h3>getTabCount()</h3>
+<p>取得頁籤數量</p>
+<pre><code class="language-javascript">const count = tabs.getTabCount();
+console.log('頁籤數量:', count);
+</code></pre>
+<h3>removeAllTabs()</h3>
+<p>移除所有頁籤</p>
+<pre><code class="language-javascript">tabs.removeAllTabs();
+</code></pre>
+<h3>destroy()</h3>
+<p>銷毀容器</p>
+<pre><code class="language-javascript">tabs.destroy();
+</code></pre>
+<h2>使用範例</h2>
+<h3>範例 1: 基本頁籤容器</h3>
+<pre><code class="language-javascript">const basicTabs = new TabContainer({
+    containerId: 'basic-tabs',
+    position: 'top',
+    tabs: [
+        {
+            id: 'home',
+            title: '首頁',
+            icon: 'fas fa-home',
+            content: '&lt;h3&gt;歡迎來到首頁&lt;/h3&gt;'
+        },
+        {
+            id: 'profile',
+            title: '個人資料',
+            icon: 'fas fa-user',
+            content: '&lt;h3&gt;個人資料頁面&lt;/h3&gt;'
+        }
+    ]
+});
+</code></pre>
+<h3>範例 2: 帶徽章的頁籤</h3>
+<pre><code class="language-javascript">const notificationTabs = new TabContainer({
+    containerId: 'notification-tabs',
+    tabs: [
+        {
+            id: 'inbox',
+            title: '收件匣',
+            icon: 'fas fa-inbox',
+            badge: 12,
+            content: '&lt;h3&gt;您有 12 封未讀郵件&lt;/h3&gt;'
+        },
+        {
+            id: 'sent',
+            title: '寄件備份',
+            icon: 'fas fa-paper-plane',
+            content: '&lt;h3&gt;寄件備份&lt;/h3&gt;'
+        }
+    ]
+});
+
+// 更新徽章數字
+notificationTabs.updateBadge('inbox', 15);
+</code></pre>
+<h3>範例 3: 動態添加頁籤</h3>
+<pre><code class="language-javascript">const dynamicTabs = new TabContainer({
+    containerId: 'dynamic-tabs',
+    tabs: [
+        {
+            id: 'dashboard',
+            title: '儀表板',
+            content: '&lt;h3&gt;儀表板&lt;/h3&gt;'
+        }
+    ]
+});
+
+// 動態添加頁籤
+document.getElementById('add-tab-btn').addEventListener('click', () =&gt; {
+    const tabId = `tab-${Date.now()}`;
+    dynamicTabs.addTab({
+        id: tabId,
+        title: `新頁籤 ${dynamicTabs.getTabCount() + 1}`,
+        content: `&lt;h3&gt;動態添加的頁籤 ${tabId}&lt;/h3&gt;`,
+        closable: true
+    });
+});
+</code></pre>
+<h3>範例 4: 左側垂直頁籤</h3>
+<pre><code class="language-javascript">const verticalTabs = new TabContainer({
+    containerId: 'vertical-tabs',
+    position: 'left',
+    tabs: [
+        {
+            id: 'general',
+            title: '一般設定',
+            icon: 'fas fa-cog',
+            content: '&lt;h3&gt;一般設定&lt;/h3&gt;'
+        },
+        {
+            id: 'security',
+            title: '安全性',
+            icon: 'fas fa-shield-alt',
+            content: '&lt;h3&gt;安全性設定&lt;/h3&gt;'
+        },
+        {
+            id: 'privacy',
+            title: '隱私權',
+            icon: 'fas fa-lock',
+            content: '&lt;h3&gt;隱私權設定&lt;/h3&gt;'
+        }
+    ]
+});
+</code></pre>
+<h3>範例 5: 不可關閉的頁籤</h3>
+<pre><code class="language-javascript">const fixedTabs = new TabContainer({
+    containerId: 'fixed-tabs',
+    closable: false, // 全域設定為不可關閉
+    tabs: [
+        {
+            id: 'overview',
+            title: '總覽',
+            content: '&lt;h3&gt;總覽頁面&lt;/h3&gt;'
+        },
+        {
+            id: 'details',
+            title: '詳細資訊',
+            content: '&lt;h3&gt;詳細資訊&lt;/h3&gt;'
+        }
+    ]
+});
+</code></pre>
+<h3>範例 6: 帶回調函數</h3>
+<pre><code class="language-javascript">const callbackTabs = new TabContainer({
+    containerId: 'callback-tabs',
+    tabs: [/* ... */],
+    onTabChange: (event) =&gt; {
+        console.log(`從 ${event.previousTabId} 切換到 ${event.tabId}`);
+        // 可在此載入頁籤內容
+        loadTabContent(event.tabId);
+    },
+    onTabClose: (event) =&gt; {
+        // 關閉前確認
+        const confirmed = confirm(`確定要關閉「${event.tab.title}」嗎？`);
+        if (confirmed) {
+            // 執行清理工作
+            cleanupTab(event.tabId);
+        }
+        return confirmed; // 返回 false 取消關閉
+    }
+});
+</code></pre>
+<h2>樣式自訂</h2>
+<h3>自訂顏色</h3>
+<pre><code class="language-css">/* 自訂激活頁籤顏色 */
+.tab-item.active .tab-button {
+    color: #ff6b6b;
+}
+
+/* 自訂徽章顏色 */
+.tab-badge {
+    background: #4ecdc4;
+}
+
+/* 自訂容器背景 */
+.tab-content {
+    background: #f8f9fa;
+}
+</code></pre>
+<h3>自訂尺寸</h3>
+<pre><code class="language-css">/* 調整頁籤大小 */
+.tab-button {
+    padding: 12px 20px;
+    font-size: 16px;
+}
+
+/* 調整內容區域高度 */
+.tab-container {
+    min-height: 500px;
+}
+</code></pre>
+<h2>注意事項</h2>
+<ol>
+<li><strong>頁籤 ID 必須唯一</strong>: 每個頁籤的 <code>id</code> 必須是唯一的</li>
+<li><strong>圖示依賴</strong>: 如使用圖示，需引入 Font Awesome 或其他圖示庫</li>
+<li><strong>內容格式</strong>: 頁籤內容可以是 HTML 字串或 DOM 元素</li>
+<li><strong>響應式</strong>: 在小螢幕上，頁籤列表會自動顯示滾動條</li>
+<li><strong>事件回調</strong>: <code>onTabClose</code> 返回 <code>false</code> 可取消關閉操作</li>
+</ol>
+<h2>瀏覽器支援</h2>
+<ul>
+<li>Chrome 90+</li>
+<li>Firefox 88+</li>
+<li>Safari 14+</li>
+<li>Edge 90+</li>
+</ul>
+<h2>依賴</h2>
+<ul>
+<li>無外部依賴（純 JavaScript 實作）</li>
+<li>可選：Font Awesome（用於圖示）</li>
+</ul>
+<h2>授權</h2>
+<p>MIT License</p>
+<h2>更新日誌</h2>
+<h3>v1.0.0 (2026-01-23)</h3>
+<ul>
+<li>初始版本</li>
+<li>支援四種頁籤位置</li>
+<li>動態添加/移除頁籤</li>
+<li>徽章顯示功能</li>
+<li>圖示支援</li>
+<li>切換動畫</li>
+<li>響應式設計</li>
+</ul>
+</main>
+</body>
+</html>

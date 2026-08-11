@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>受控代理容器啟用計畫與驗證</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>受控代理容器啟用計畫與驗證</h1>
+<p>Date: 2026-06-13
+Status: in progress
+依據規格: <a href="../designs/ControlledAutonomousAISystemTechnicalDesign.html">ControlledAutonomousAISystemTechnicalDesign.md</a></p>
+<h2>1. 目的與「完成」的定義</h2>
+<p>設計規格 §6.6 定義 Agent 容器是「受控主體執行殼層」:它<strong>只能</strong>向控制平面請領工作、讀授權上下文、呼叫模型、產生結構化執行請求、回報結果;<strong>不可</strong>直接碰工具、資料源、倉庫、部署、模型供應商,或自行發放權限。§21 列出最小成功判準。</p>
+<p>本專案的 agent runtime 程式碼齊全(<code>tools/agent</code>,約 4639 行:planner/state-machine、governed-executor、broker-client、tool-registry、safety),broker 端也有 capability catalog、scoped token、worker auth、audit、shared context。<strong>但這條受控代理容器的端到端從未通電驗證過</strong>——這份計畫的目標就是讓它第一次通電並通過治理驗證。</p>
+<p><strong>「完成」的可驗證定義</strong>:既有的 <code>tools/agent/tests/test-podman-governed-stack.js</code> 端到端測試通過(綠燈),即:</p>
+<blockquote>
+<p>用 podman build 出 broker + mock-ollama + file-worker + line-worker + <strong>agent</strong> 五個容器映像,<code>podman compose up</code> 整個受控 stack,斷言 agent 容器輸出包含 <code>STACK_OK</code> 與 <code>[governed] read_file</code>——也就是 <strong>agent 容器起來後,透過 broker 領到 capability、產生結構化請求、由控制平面裁決後執行了一個 governed 的 <code>read_file</code> 工具</strong>,而非容器自己直連工具。</p>
+</blockquote>
+<p>這正是 §21 判準「人類與 AI 走同一授權路徑」「容器被入侵也無法直接存取外部工具」的最小可驗證形式。</p>
+<h2>2. 現況評估(2026-06-13)</h2>
+<table>
+<thead>
+<tr>
+<th>項目</th>
+<th>狀態</th>
+<th>證據</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>agent runtime 程式碼</td>
+<td>✅ 齊全</td>
+<td><code>tools/agent</code> 4639 行;governed-executor 661、broker-client 307、tool-registry 578、state-machine 558</td>
+</tr>
+<tr>
+<td>podman 可用性</td>
+<td>⚠️ 需手動啟動</td>
+<td>podman 5.8.2 已裝,但 machine <code>LAST UP: Never</code>——本機從未跑過任何容器(已於本次啟動)</td>
+</tr>
+<tr>
+<td>FunctionPool(容器 spawn 子系統)</td>
+<td>⚠️ 預設關</td>
+<td>broker <code>appsettings.json</code> <code>FunctionPool.Enabled = false</code></td>
+</tr>
+<tr>
+<td>broker 容器映像 build</td>
+<td>❌ 失敗</td>
+<td><code>NETSDK1152</code>:<code>broker.csproj</code> 引用 <code>site-crawler-worker</code>,worker 的 <code>appsettings.json</code> 與 broker 的同名,publish 輸出衝突</td>
+</tr>
+<tr>
+<td>governed stack e2e</td>
+<td>❌ 從未通過</td>
+<td>卡在 broker 映像 build,連 stack 都起不來</td>
+</tr>
+</tbody>
+</table>
+<h3>2.1 第一阻擋的根因</h3>
+<p><code>packages/csharp/broker/Broker.csproj</code> 引用了 <code>..\workers\site-crawler-worker\SiteCrawlerWorker.csproj</code>。這不是誤加——broker 的 <code>HighLevelSiteRebuildService.cs</code> 直接 <code>using SiteCrawlerWorker.Models / .Services</code>(Benson 的 site rebuild 服務消費了 worker 的 deterministic extractor 與 contracts)。</p>
+<p>後果:worker 的 <code>appsettings.json</code>(標 <code>CopyToOutputDirectory=PreserveNewest</code>)透過 ProjectReference 流入 broker 的 publish 輸出,與 broker 自己的 <code>appsettings.json</code> 相對路徑相同 → <code>NETSDK1152</code>。</p>
+<p>這同時違反規格 §3.2/§6.6 的架構原則(控制平面不應依賴 worker 實作)。修法見 §4。</p>
+<h2>3. 能力檢核表(對照規格,標示需在 e2e 驗證的項)</h2>
+<h3>3.1 §6.6 Agent 容器「可做」</h3>
+<table>
+<thead>
+<tr>
+<th>能力</th>
+<th>runtime 實作</th>
+<th>e2e 驗證</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>請領工作項 / 連控制平面</td>
+<td>broker-client.js</td>
+<td>待 e2e</td>
+</tr>
+<tr>
+<td>讀授權上下文</td>
+<td>broker-client + shared context</td>
+<td>待 e2e</td>
+</tr>
+<tr>
+<td>呼叫模型推理</td>
+<td>ollama/openai client(stack 用 mock-ollama)</td>
+<td>待 e2e</td>
+</tr>
+<tr>
+<td>產生結構化執行請求</td>
+<td>governed-executor.js</td>
+<td><strong>e2e 核心斷言</strong></td>
+</tr>
+<tr>
+<td>回報進度/結果</td>
+<td>state-machine</td>
+<td>待 e2e</td>
+</tr>
+</tbody>
+</table>
+<h3>3.2 §6.6 Agent 容器「不可做」(治理邊界)</h3>
+<table>
+<thead>
+<tr>
+<th>禁止項</th>
+<th>機制</th>
+<th>e2e 驗證</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>直接碰工具</td>
+<td>工具執行走 broker 裁決,非容器直連</td>
+<td><code>[governed] read_file</code> 證明走治理路徑</td>
+</tr>
+<tr>
+<td>自行發放權限</td>
+<td>capability 由 broker 核發 scoped token</td>
+<td>待 e2e</td>
+</tr>
+<tr>
+<td>直連模型供應商</td>
+<td>stack 內只連 mock-ollama;§13 網路隔離</td>
+<td>後續強化(見 §6)</td>
+</tr>
+</tbody>
+</table>
+<h3>3.3 §13 容器安全基線(現有 Containerfile 對照)</h3>
+<table>
+<thead>
+<tr>
+<th>基線</th>
+<th>agent Containerfile 現況</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>non-root user</td>
+<td>✅ <code>USER agent</code>(uid 10001)</td>
+</tr>
+<tr>
+<td>read-only rootfs</td>
+<td>⚠️ 未設(後續強化)</td>
+</tr>
+<tr>
+<td>cap-drop=ALL / no-new-privileges</td>
+<td>⚠️ 未設(後續強化)</td>
+</tr>
+<tr>
+<td>不持長期 key、只持短時效 session</td>
+<td>✅ 設計如此(token 由 broker 發)</td>
+</tr>
+</tbody>
+</table>
+<h2>4. 工作項與修法</h2>
+<ol>
+<li><strong>修 broker 容器 build 衝突(NETSDK1152)</strong> — 必做,阻擋一切。
+   - 方案 A(最小):在 broker 對 site-crawler-worker 的 ProjectReference 阻止 content 流入 publish(<code>&lt;ExcludeAssets&gt;contentFiles&lt;/ExcludeAssets&gt;</code> 或 worker 的 appsettings 改 <code>CopyToPublishDirectory=Never</code>)。
+   - 方案 B(較正規,符合 §3.2):把 broker 用到的 SiteCrawler 型別(Models/contracts + extractor)下沉到共用層,broker 不再引用 worker 專案。
+   - 本次採可解 build 且風險最低者,並記錄取捨。</li>
+<li><strong>重跑 governed stack e2e</strong>,逐一解後續 build/compose/stack 問題直到綠。</li>
+<li><strong>依本文件 §5 驗收條件確認</strong>,把結果填回 §7。</li>
+</ol>
+<h2>5. 驗收條件(依此驗證)</h2>
+<ul>
+<li>[ ] V1:五個容器映像(broker/mock-ollama/file-worker/line-worker/agent)全部 build 成功</li>
+<li>[ ] V2:<code>podman compose up</code> 整個受控 stack 起來,broker 健康</li>
+<li>[ ] V3:agent 容器註冊 session、領 capability、產生結構化執行請求(STACK_OK)</li>
+<li>[ ] V4:agent 透過 broker 裁決執行 governed <code>read_file</code>(<code>[governed] read_file</code>)——對應 §21「AI 走同一授權路徑、不直連工具」</li>
+<li>[ ] V5:<code>test-podman-governed-stack.js</code> 整體綠燈</li>
+<li>[ ] V6:既有單元測試(337)不被修復破壞;solution build 0 錯誤</li>
+<li>[ ] V7:compose down 清理乾淨,無殘留容器/測試 db</li>
+</ul>
+<h2>6. 明確劃為「後續」的(本次不做,記錄以免誤判完成)</h2>
+<p>對照規格但超出「首次通電」範圍、留待後續:
+- §13 完整容器安全 hardening(read-only rootfs、cap-drop=ALL、seccomp、tmpfs)
+- §13.1 嚴格網路隔離(容器只能連控制平面、禁直接對外)
+- 審批服務 / 風險分級(§18.2 第二階段)
+- repo-adapter / build-test-adapter 兩個執行配接器(§18.1 列為 MVP,但本次聚焦「代理容器通電 + governed 工具執行」這一條最小鏈)
+- FunctionPool 在 sidecar 生產路徑的預設啟用策略</p>
+<h2>7. 執行紀錄與驗證結果</h2>
+<p>「通電」過程逐一暴露了三個單元測試抓不到、只有真正跑容器 stack 才會現形的整合 bug:</p>
+<h3>Bug A:broker 容器 build 失敗(NETSDK1152)</h3>
+<ul>
+<li>根因:<code>broker.csproj</code> 引用 <code>site-crawler-worker</code>(<code>HighLevelSiteRebuildService</code> 就地用其 extractor + Playwright),worker 的 <code>appsettings.json</code> 流入 broker publish 與 broker 自己的同名衝突。</li>
+<li>修法:broker.csproj 加 <code>RemoveTransitiveWorkerSettingsFromPublish</code> target,publish 時移除來自 worker 的重複設定。下沉型別成本過高(會把 Playwright 汙染進 broker-core)故不採。</li>
+<li>驗證:本機 <code>dotnet publish broker</code> 無 NETSDK1152,broker 拿到自己的 appsettings(含 HighLevelLlm)。✅</li>
+</ul>
+<h3>Bug B:監控 HealthScoreService 在 FunctionPool 關閉時無法啟動(我整合監控時引入的回歸)</h3>
+<ul>
+<li>根因:<code>HealthScoreService</code>(從 AnthonyLee 擷取)依賴 <code>IWorkerRegistry</code>(FunctionPool),但無條件註冊;FunctionPool 關閉時 <code>IWorkerRegistry</code> 不存在 → broker 啟動 DI activation 失敗。<strong>預設設定(<code>FunctionPool:Enabled=false</code>)的 broker 因此完全起不來</strong>。agent 1 在 worktree 只 build 沒 run 故漏掉。</li>
+<li>修法:HealthScore 子系統(LeaderGuard/HealthScoreService/SnapshotService)只在 FunctionPool 啟用時註冊(它本質是監控 worker pool);LLM metrics(不依賴 pool)保持無條件。</li>
+<li>驗證:本機起 broker(FunctionPool=false)正常啟動。✅</li>
+</ul>
+<h3>Bug C:register 時 <code>Get&lt;BrokerTask&gt;</code> 在 Linux 容器丟「No data exists for the row/column」(500)</h3>
+<ul>
+<li>定位過程:本機(Windows)無論帶大 RuntimeDescriptor、FunctionPool=true、雙啟動都<strong>無法重現</strong>;把容器建的 broker.db 複製出來、本機讀仍正常 → 排除 schema/data,確認是 <strong>Microsoft.Data.Sqlite 在 Linux 的 <code>IsDBNull(index)</code> 行為</strong>(BrokerTask 欄位比 Principal 多才觸發,故 register 在 <code>Get&lt;BrokerTask&gt;</code> 那行才炸)。</li>
+<li>修法:<code>BaseOrm.MapToObject</code> 不再用 <code>IsDBNull(index)</code>,改用 <code>GetValue(index)</code>(NULL → <code>DBNull.Value</code>,跨平台一致的 ADO.NET 契約)後判斷。</li>
+<li>驗證:337 單元測試全綠(改動不破壞既有查詢);Linux 容器最終效果由 governed stack e2e 確認(進行中)。</li>
+</ul>
+<h3>最終 e2e 驗證 ✅ 全部通過(2026-06-13)</h3>
+<p><code>node tools/agent/tests/test-podman-governed-stack.js</code> → exit 0,<code>Podman governed stack integration test passed.</code></p>
+<table>
+<thead>
+<tr>
+<th>驗收條件</th>
+<th>結果</th>
+<th>證據</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>V1 五映像 build</td>
+<td>✅</td>
+<td>broker/mock-ollama/file-worker/line-worker/agent 全 <code>Successfully tagged</code></td>
+</tr>
+<tr>
+<td>V2 stack 起來</td>
+<td>✅</td>
+<td>broker tool-spec sync(inserted=15)、agent 連上 broker</td>
+</tr>
+<tr>
+<td>V3 領 capability + STACK_OK</td>
+<td>✅</td>
+<td><code>[Governed] session=ses_019EBDD3F462...</code> → <code>STACK_OK</code></td>
+</tr>
+<tr>
+<td>V4 governed 工具執行</td>
+<td>✅</td>
+<td><code>[governed] read_file(path: "README.md")</code>——agent 不直連工具,經 broker 裁決</td>
+</tr>
+<tr>
+<td>V5 e2e 整體綠</td>
+<td>✅</td>
+<td>exit 0,integration test passed,無 500、無 No data exists</td>
+</tr>
+<tr>
+<td>V6 unit test + build</td>
+<td>✅</td>
+<td>337 unit test 綠,solution build 0 錯誤</td>
+</tr>
+<tr>
+<td>V7 清理</td>
+<td>✅</td>
+<td>e2e finally 段 <code>podman compose down</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>結論</strong>:受控代理容器這條 e2e 第一次通電並通過治理驗證。對照規格 §21 最小成功判準的可驗證項——「人類與 AI 走同一授權路徑」「容器不直接碰工具、經控制平面裁決」——成立。§6 中明列「後續」的容器安全 hardening、網路隔離、執行配接器、審批服務仍未做,本次範圍止於「通電 + governed 工具執行」。</p>
+</main>
+</body>
+</html>

@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Browser Site Binding Model</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Browser Site Binding Model</h1>
+<h2>Goal</h2>
+<p>Define how broker-governed browser tools bind to sites and origins.</p>
+<p>Identity mode answers:</p>
+<ul>
+<li>whose identity is used</li>
+</ul>
+<p>Session policy answers:</p>
+<ul>
+<li>how the session is materialized and reused</li>
+</ul>
+<p>Site binding answers:</p>
+<ul>
+<li>which sites the tool is allowed to operate against</li>
+<li>whether a broker-registered site binding is required</li>
+<li>whether cross-origin navigation is allowed</li>
+</ul>
+<p>All three are required for safe browser tooling.</p>
+<h2>Core Rule</h2>
+<p>No browser tool should be treated as "generic web automation" by default.</p>
+<p>Browser execution must always answer:</p>
+<ol>
+<li>what identity is in use</li>
+<li>how credentials/session are bound</li>
+<li>which sites or origin classes are allowed</li>
+</ol>
+<p>If site binding is unspecified, the tool definition is incomplete.</p>
+<h2>Site Policy Fields</h2>
+<p>The registry can now carry:</p>
+<ul>
+<li><code>site_binding_mode</code></li>
+<li><code>public_open</code></li>
+<li><code>registered_site</code></li>
+<li><code>user_authorized_site</code></li>
+<li><code>allowed_site_classes</code></li>
+<li><code>requires_registered_site_binding</code></li>
+<li><code>requires_exact_origin_match</code></li>
+<li><code>allows_cross_origin_navigation</code></li>
+</ul>
+<p>These fields belong to <code>browser_site_policy</code>.</p>
+<h2>Meaning Of Site Binding Modes</h2>
+<h3><code>public_open</code></h3>
+<ul>
+<li>the tool may operate against public web targets</li>
+<li>no broker-owned site binding record is required</li>
+<li>still subject to source policy and runtime rules</li>
+</ul>
+<p>Typical use:</p>
+<ul>
+<li>anonymous search</li>
+<li>anonymous page fetch</li>
+</ul>
+<h3><code>registered_site</code></h3>
+<ul>
+<li>the tool must use a broker-registered site binding</li>
+<li>site metadata is managed by the platform</li>
+<li>this is the expected mode for system-account browser tools</li>
+</ul>
+<p>Typical use:</p>
+<ul>
+<li>broker-owned dashboards</li>
+<li>service-integrated backoffice sites</li>
+</ul>
+<h3><code>user_authorized_site</code></h3>
+<ul>
+<li>the tool must use a site binding that is explicitly authorized for the user context</li>
+<li>this is the expected mode for user-delegated browser tools</li>
+</ul>
+<p>Typical use:</p>
+<ul>
+<li>personal assistant flows</li>
+<li>authenticated portals used on behalf of the user</li>
+</ul>
+<h2>Allowed Site Classes</h2>
+<p><code>allowed_site_classes</code> is a coarse classification for policy and audit.</p>
+<p>Examples:</p>
+<ul>
+<li><code>public_web</code></li>
+<li><code>broker_managed_site</code></li>
+<li><code>user_authorized_site</code></li>
+</ul>
+<p>These are not yet a full site catalog.
+They are registry-visible coarse constraints that later runtime/site-binding systems can refine.</p>
+<h2>Origin Matching</h2>
+<h3><code>requires_exact_origin_match</code></h3>
+<p>When <code>true</code>:</p>
+<ul>
+<li>execution must remain on the bound origin unless a separate policy explicitly permits otherwise</li>
+</ul>
+<h3><code>allows_cross_origin_navigation</code></h3>
+<p>When <code>false</code>:</p>
+<ul>
+<li>runtime should not silently follow the browser into unrelated origins</li>
+</ul>
+<p>This matters even for read-only tools.</p>
+<h2>Expected Defaults</h2>
+<h3>Anonymous Public Read</h3>
+<ul>
+<li><code>site_binding_mode = public_open</code></li>
+<li><code>allowed_site_classes = ["public_web"]</code></li>
+<li><code>requires_registered_site_binding = false</code></li>
+<li><code>requires_exact_origin_match = false</code></li>
+<li><code>allows_cross_origin_navigation = true</code></li>
+</ul>
+<h3>System Account Read</h3>
+<ul>
+<li><code>site_binding_mode = registered_site</code></li>
+<li><code>allowed_site_classes = ["broker_managed_site"]</code></li>
+<li><code>requires_registered_site_binding = true</code></li>
+<li><code>requires_exact_origin_match = true</code></li>
+<li><code>allows_cross_origin_navigation = false</code></li>
+</ul>
+<h3>User Delegated Read</h3>
+<ul>
+<li><code>site_binding_mode = user_authorized_site</code></li>
+<li><code>allowed_site_classes = ["user_authorized_site"]</code></li>
+<li><code>requires_registered_site_binding = true</code></li>
+<li><code>requires_exact_origin_match = true</code></li>
+<li><code>allows_cross_origin_navigation = false</code></li>
+</ul>
+<h2>Current Phase</h2>
+<p>Current implementation direction:</p>
+<ul>
+<li>broker registry can read and surface <code>browser_site_policy</code></li>
+<li>reference browser specs should declare identity, session policy, and site policy together</li>
+</ul>
+<p>Not yet implemented:</p>
+<ul>
+<li>broker site-binding catalog</li>
+<li>user-authorized site registry</li>
+<li>runtime origin enforcement</li>
+<li>browser worker navigation guards</li>
+</ul>
+<h2>Rule</h2>
+<p>No browser tool definition is complete until it explicitly states:</p>
+<ol>
+<li>identity mode</li>
+<li>session policy</li>
+<li>site binding mode</li>
+<li>origin/navigation constraints</li>
+</ol>
+</main>
+</body>
+</html>

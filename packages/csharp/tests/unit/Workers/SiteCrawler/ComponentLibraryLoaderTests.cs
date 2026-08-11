@@ -73,7 +73,7 @@ public class ComponentLibraryLoaderTests : IDisposable
             "site-crawler-worker",
             "component-libraries",
             "bricks4agent.default",
-            "README.md"));
+            "README.html"));
 
         foreach (var component in manifest.Components)
         {

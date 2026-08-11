@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SPA Template CLI</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>SPA Template CLI</h1>
+<p>This directory contains the CLI scripts used to generate projects from the SPA template.</p>
+<p>Current scripts include:</p>
+<ul>
+<li><code>spa-cli.js</code></li>
+<li><code>create-project.js</code></li>
+<li><code>generate-page.js</code></li>
+<li><code>generate-api.js</code></li>
+</ul>
+<h2>Scope</h2>
+<p>This CLI helps scaffold SPA-style projects from the template.</p>
+<h2>Commands</h2>
+<h3>Create a project</h3>
+<pre><code class="language-bash">node spa-cli.js new
+node spa-cli.js new --name my-app --output ./projects
+node spa-cli.js new --config project.json
+</code></pre>
+<h3>Generate a page</h3>
+<pre><code class="language-bash">node spa-cli.js page ProductList
+node spa-cli.js page products/ProductDetail
+node spa-cli.js page orders/OrderView --detail
+</code></pre>
+<h3>Generate an API</h3>
+<pre><code class="language-bash">node spa-cli.js api Product
+node spa-cli.js api Order --fields &quot;CustomerId:int,Total:decimal,Status:string&quot;
+</code></pre>
+<p>Supported field aliases include:</p>
+<ul>
+<li><code>string</code></li>
+<li><code>int</code>, <code>integer</code></li>
+<li><code>long</code></li>
+<li><code>decimal</code></li>
+<li><code>float</code>, <code>double</code></li>
+<li><code>bool</code>, <code>boolean</code></li>
+<li><code>datetime</code>, <code>date</code></li>
+<li><code>guid</code></li>
+</ul>
+<h3>Generate a feature</h3>
+<pre><code class="language-bash">node spa-cli.js feature Product
+node spa-cli.js feature Order --fields &quot;CustomerId:int,Total:decimal,Status:string&quot;
+</code></pre>
+<h2>Example workflow</h2>
+<pre><code class="language-bash">cd templates/spa/scripts
+node spa-cli.js new --name my-shop
+node spa-cli.js feature Product --fields &quot;Name:string,Price:decimal,Stock:int&quot;
+</code></pre>
+<h2>Important limitation</h2>
+<p>Generated output still needs manual integration.</p>
+<p>Typical follow-up work includes:</p>
+<ol>
+<li>update backend schema/bootstrap in <code>backend/Data/AppDbContext.cs</code></li>
+<li>update backend routing in <code>backend/Program.cs</code></li>
+<li>update frontend routing in <code>frontend/pages/routes.js</code></li>
+</ol>
+<p>This CLI is a scaffold helper, not a full end-to-end product compiler.</p>
+<h2>Config file</h2>
+<p><code>project-config.example.json</code> provides a non-interactive project-creation example.</p>
+<pre><code class="language-bash">cp project-config.example.json my-project.json
+node spa-cli.js new --config my-project.json
+</code></pre>
+</main>
+</body>
+</html>

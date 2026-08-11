@@ -1,0 +1,416 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DateTime</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>DateTime</h1>
+<p>日期時間工具類別 — 提供 Unix Timestamp 轉換、ISO 8601 處理、相對時間、期間計算、工作日等擴充方法。</p>
+<h2>初始化方式</h2>
+<pre><code class="language-csharp">using YourNamespace.Utils.DateTime;
+// 靜態類別，直接以擴充方法呼叫
+</code></pre>
+<h2>API 列表</h2>
+<h3>Unix Timestamp</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>參數</th>
+<th>回傳</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>.ToUnixTimestamp()</code></td>
+<td>-</td>
+<td><code>long</code></td>
+<td>轉為 Unix 秒數</td>
+</tr>
+<tr>
+<td><code>.ToUnixTimestampMs()</code></td>
+<td>-</td>
+<td><code>long</code></td>
+<td>轉為 Unix 毫秒數</td>
+</tr>
+<tr>
+<td><code>FromUnixTimestamp(timestamp)</code></td>
+<td><code>long</code></td>
+<td><code>DateTime</code></td>
+<td>Unix 秒數轉 DateTime</td>
+</tr>
+<tr>
+<td><code>FromUnixTimestampMs(timestamp)</code></td>
+<td><code>long</code></td>
+<td><code>DateTime</code></td>
+<td>Unix 毫秒數轉 DateTime</td>
+</tr>
+</tbody>
+</table>
+<h3>ISO 8601</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>參數</th>
+<th>回傳</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>.ToIso8601()</code></td>
+<td>-</td>
+<td><code>string</code></td>
+<td>轉為 ISO 8601 字串</td>
+</tr>
+<tr>
+<td><code>FromIso8601(iso8601)</code></td>
+<td><code>string</code></td>
+<td><code>DateTime</code></td>
+<td>ISO 8601 字串轉 DateTime</td>
+</tr>
+<tr>
+<td><code>TryParseIso8601(iso8601, out result)</code></td>
+<td><code>string</code></td>
+<td><code>bool</code></td>
+<td>嘗試解析 ISO 8601</td>
+</tr>
+</tbody>
+</table>
+<h3>格式化</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>回傳</th>
+<th>範例輸出</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>.ToShortDate()</code></td>
+<td><code>string</code></td>
+<td><code>2026-01-23</code></td>
+</tr>
+<tr>
+<td><code>.ToLongDate()</code></td>
+<td><code>string</code></td>
+<td><code>2026-01-23 15:30:45</code></td>
+</tr>
+<tr>
+<td><code>.ToReadableDate()</code></td>
+<td><code>string</code></td>
+<td><code>January 23, 2026</code></td>
+</tr>
+<tr>
+<td><code>.ToReadableDateTime()</code></td>
+<td><code>string</code></td>
+<td><code>Jan 23, 2026 3:30 PM</code></td>
+</tr>
+</tbody>
+</table>
+<h3>相對時間</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>參數</th>
+<th>回傳</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>.ToRelativeTime()</code></td>
+<td>-</td>
+<td><code>string</code></td>
+<td>相對於現在（如 <code>2 hours ago</code>）</td>
+</tr>
+<tr>
+<td><code>.ToRelativeTime(referenceTime)</code></td>
+<td><code>DateTime</code></td>
+<td><code>string</code></td>
+<td>相對於指定時間</td>
+</tr>
+</tbody>
+</table>
+<h3>期間起迄</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>.StartOfDay()</code></td>
+<td>當天 00:00:00</td>
+</tr>
+<tr>
+<td><code>.EndOfDay()</code></td>
+<td>當天 23:59:59.999</td>
+</tr>
+<tr>
+<td><code>.StartOfWeek(firstDay)</code></td>
+<td>本週起始（預設週一）</td>
+</tr>
+<tr>
+<td><code>.EndOfWeek(firstDay)</code></td>
+<td>本週結束</td>
+</tr>
+<tr>
+<td><code>.StartOfMonth()</code></td>
+<td>本月第一天</td>
+</tr>
+<tr>
+<td><code>.EndOfMonth()</code></td>
+<td>本月最後一天</td>
+</tr>
+<tr>
+<td><code>.StartOfYear()</code></td>
+<td>本年 1/1</td>
+</tr>
+<tr>
+<td><code>.EndOfYear()</code></td>
+<td>本年 12/31</td>
+</tr>
+<tr>
+<td><code>.StartOfQuarter()</code></td>
+<td>本季第一天</td>
+</tr>
+<tr>
+<td><code>.EndOfQuarter()</code></td>
+<td>本季最後一天</td>
+</tr>
+<tr>
+<td><code>.GetQuarter()</code></td>
+<td>取得季度（1-4）</td>
+</tr>
+</tbody>
+</table>
+<h3>年齡計算</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>參數</th>
+<th>回傳</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>.GetAge()</code></td>
+<td>-</td>
+<td><code>int</code></td>
+<td>計算至今日的年齡</td>
+</tr>
+<tr>
+<td><code>.GetAge(atDate)</code></td>
+<td><code>DateTime</code></td>
+<td><code>int</code></td>
+<td>計算至指定日期的年齡</td>
+</tr>
+</tbody>
+</table>
+<h3>工作日</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>參數</th>
+<th>回傳</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>.IsWeekend()</code></td>
+<td>-</td>
+<td><code>bool</code></td>
+<td>是否為週末</td>
+</tr>
+<tr>
+<td><code>.IsWeekday()</code></td>
+<td>-</td>
+<td><code>bool</code></td>
+<td>是否為工作日</td>
+</tr>
+<tr>
+<td><code>.AddBusinessDays(days)</code></td>
+<td><code>int</code></td>
+<td><code>DateTime</code></td>
+<td>加減工作日（跳過週末）</td>
+</tr>
+<tr>
+<td><code>GetBusinessDays(start, end)</code></td>
+<td><code>DateTime, DateTime</code></td>
+<td><code>int</code></td>
+<td>計算兩日期間的工作日數</td>
+</tr>
+</tbody>
+</table>
+<h3>比較</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>回傳</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>.IsToday()</code></td>
+<td><code>bool</code></td>
+<td>是否為今天</td>
+</tr>
+<tr>
+<td><code>.IsYesterday()</code></td>
+<td><code>bool</code></td>
+<td>是否為昨天</td>
+</tr>
+<tr>
+<td><code>.IsTomorrow()</code></td>
+<td><code>bool</code></td>
+<td>是否為明天</td>
+</tr>
+<tr>
+<td><code>.IsPast()</code></td>
+<td><code>bool</code></td>
+<td>是否已過去</td>
+</tr>
+<tr>
+<td><code>.IsFuture()</code></td>
+<td><code>bool</code></td>
+<td>是否在未來</td>
+</tr>
+<tr>
+<td><code>.IsSameDay(other)</code></td>
+<td><code>bool</code></td>
+<td>是否為同一天</td>
+</tr>
+<tr>
+<td><code>.IsBetween(start, end)</code></td>
+<td><code>bool</code></td>
+<td>是否在範圍內（含頭尾）</td>
+</tr>
+<tr>
+<td><code>.Clamp(min, max)</code></td>
+<td><code>DateTime</code></td>
+<td>限制在範圍內</td>
+</tr>
+</tbody>
+</table>
+<h3>截斷</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>.TruncateToSeconds()</code></td>
+<td>移除毫秒</td>
+</tr>
+<tr>
+<td><code>.TruncateToMinutes()</code></td>
+<td>移除秒與毫秒</td>
+</tr>
+<tr>
+<td><code>.TruncateToHours()</code></td>
+<td>移除分、秒與毫秒</td>
+</tr>
+</tbody>
+</table>
+<h3>時區</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>參數</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>.ToTimeZone(timeZoneId)</code></td>
+<td><code>string</code></td>
+<td>轉換至指定時區</td>
+</tr>
+<tr>
+<td><code>.ToUtc()</code></td>
+<td>-</td>
+<td>轉換至 UTC</td>
+</tr>
+</tbody>
+</table>
+<h2>使用範例</h2>
+<pre><code class="language-csharp">using YourNamespace.Utils.DateTime;
+
+// Unix Timestamp
+var now = System.DateTime.UtcNow;
+long ts = now.ToUnixTimestamp();       // 1709712345
+var dt = DateTimeHelper.FromUnixTimestamp(ts);
+
+// 相對時間
+var created = System.DateTime.UtcNow.AddHours(-3);
+string relative = created.ToRelativeTime();  // &quot;3 hours ago&quot;
+
+// 工作日計算
+var start = new System.DateTime(2026, 3, 1);
+var end = new System.DateTime(2026, 3, 31);
+int bizDays = DateTimeHelper.GetBusinessDays(start, end);
+
+// 期間
+var monthStart = now.StartOfMonth();
+var quarterEnd = now.EndOfQuarter();
+
+// 年齡
+var birthday = new System.DateTime(1990, 5, 15);
+int age = birthday.GetAge();  // 35
+</code></pre>
+<h2>依賴清單</h2>
+<table>
+<thead>
+<tr>
+<th>依賴</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>System</code></td>
+<td>.NET 基礎命名空間</td>
+</tr>
+<tr>
+<td><code>System.Globalization</code></td>
+<td>ISO 8601 解析支援</td>
+</tr>
+</tbody>
+</table>
+<p>無第三方依賴。</p>
+</main>
+</body>
+</html>

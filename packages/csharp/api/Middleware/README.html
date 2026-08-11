@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ExceptionMiddleware - Global Exception Handling</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>ExceptionMiddleware - Global Exception Handling</h1>
+<p>Global exception handling middleware for ASP.NET Core applications.</p>
+<h2>Features</h2>
+<ul>
+<li>Centralized exception handling</li>
+<li>Custom exception types (ValidationException, NotFoundException, etc.)</li>
+<li>Automatic error logging</li>
+<li>Consistent error response format</li>
+<li>Environment-aware error details (development vs production)</li>
+<li>Automatic status code mapping</li>
+<li>Trace ID tracking</li>
+</ul>
+<h2>Setup</h2>
+<h3>1. Register Middleware in Program.cs</h3>
+<pre><code class="language-csharp">var builder = WebApplication.CreateBuilder(args);
+
+// Add services
+builder.Services.AddControllers();
+
+var app = builder.Build();
+
+// Add global exception handler (place early in pipeline)
+app.UseGlobalExceptionHandler();
+
+app.UseAuthentication();
+app.UseAuthorization();
+app.MapControllers();
+
+app.Run();
+</code></pre>
+<h2>Usage</h2>
+<h3>Using Custom Exceptions in Controllers</h3>
+<pre><code class="language-csharp">[HttpGet(&quot;{id}&quot;)]
+public async Task&lt;IActionResult&gt; GetUser(int id)
+{
+    var user = await _userService.GetByIdAsync(id);
+
+    if (user == null)
+        throw new NotFoundException(&quot;User&quot;, id);
+        // Returns 404 with message: &quot;User with key '123' was not found&quot;
+
+    return Ok(user);
+}
+
+[HttpPost]
+public async Task&lt;IActionResult&gt; CreateUser([FromBody] CreateUserDto dto)
+{
+    if (string.IsNullOrEmpty(dto.Email))
+        throw new ValidationException(&quot;Email is required&quot;);
+        // Returns 400 with validation error
+
+    if (await _userService.EmailExistsAsync(dto.Email))
+        throw new ConflictException(&quot;Email already exists&quot;);
+        // Returns 409 conflict
+
+    var user = await _userService.CreateAsync(dto);
+    return Ok(user);
+}
+
+[HttpPut(&quot;{id}&quot;)]
+[Authorize]
+public async Task&lt;IActionResult&gt; UpdateUser(int id, [FromBody] UpdateUserDto dto)
+{
+    if (!User.Identity.IsAuthenticated)
+        throw new UnauthorizedException();
+        // Returns 401
+
+    if (!HasPermission(id))
+        throw new ForbiddenException(&quot;You don't have permission to update this user&quot;);
+        // Returns 403
+
+    var user = await _userService.UpdateAsync(id, dto);
+    return Ok(user);
+}
+</code></pre>
+<h3>Custom Exception Types</h3>
+<pre><code class="language-csharp">// Validation error
+throw new ValidationException(&quot;Invalid email format&quot;);
+
+// Resource not found
+throw new NotFoundException(&quot;User not found&quot;);
+throw new NotFoundException(&quot;User&quot;, userId); // &quot;User with key '123' was not found&quot;
+
+// Unauthorized access
+throw new UnauthorizedException();
+throw new UnauthorizedException(&quot;Invalid token&quot;);
+
+// Forbidden access
+throw new ForbiddenException();
+throw new ForbiddenException(&quot;Admin access required&quot;);
+
+// Resource conflict
+throw new ConflictException(&quot;Username already exists&quot;);
+</code></pre>
+<h3>Built-in Exception Mapping</h3>
+<p>The middleware automatically maps built-in .NET exceptions:</p>
+<pre><code class="language-csharp">// ArgumentNullException -&gt; 400 Bad Request
+if (dto == null)
+    throw new ArgumentNullException(nameof(dto));
+
+// ArgumentException -&gt; 400 Bad Request
+if (id &lt;= 0)
+    throw new ArgumentException(&quot;ID must be positive&quot;, nameof(id));
+
+// InvalidOperationException -&gt; 400 Bad Request
+if (!IsValidState())
+    throw new InvalidOperationException(&quot;Cannot perform this operation in current state&quot;);
+
+// UnauthorizedAccessException -&gt; 401 Unauthorized
+if (!HasAccess())
+    throw new UnauthorizedAccessException();
+</code></pre>
+<h3>Error Response Format</h3>
+<p>All exceptions are converted to consistent ApiResponse format:</p>
+<pre><code class="language-json">{
+  &quot;success&quot;: false,
+  &quot;statusCode&quot;: 404,
+  &quot;message&quot;: &quot;User with key '123' was not found&quot;,
+  &quot;data&quot;: null,
+  &quot;errors&quot;: [
+    &quot;User with key '123' was not found&quot;
+  ],
+  &quot;timestamp&quot;: &quot;2026-01-23T10:30:00Z&quot;,
+  &quot;traceId&quot;: &quot;0HMVFE42N8GJ7:00000001&quot;
+}
+</code></pre>
+<p>In development environment (DEBUG mode), additional details are included:</p>
+<pre><code class="language-json">{
+  &quot;success&quot;: false,
+  &quot;statusCode&quot;: 500,
+  &quot;message&quot;: &quot;An internal server error occurred&quot;,
+  &quot;data&quot;: null,
+  &quot;errors&quot;: [
+    &quot;Object reference not set to an instance of an object.&quot;,
+    &quot;StackTrace: at MyApp.Services.UserService.GetByIdAsync(Int32 id)...&quot;,
+    &quot;InnerException: Connection to database failed&quot;
+  ],
+  &quot;timestamp&quot;: &quot;2026-01-23T10:30:00Z&quot;,
+  &quot;traceId&quot;: &quot;0HMVFE42N8GJ7:00000001&quot;
+}
+</code></pre>
+<h2>Exception Status Code Mapping</h2>
+<table>
+<thead>
+<tr>
+<th>Exception Type</th>
+<th>HTTP Status Code</th>
+<th>Include Details</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ValidationException</td>
+<td>400 Bad Request</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>NotFoundException</td>
+<td>404 Not Found</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>UnauthorizedException</td>
+<td>401 Unauthorized</td>
+<td>No</td>
+</tr>
+<tr>
+<td>ForbiddenException</td>
+<td>403 Forbidden</td>
+<td>No</td>
+</tr>
+<tr>
+<td>ConflictException</td>
+<td>409 Conflict</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>ArgumentNullException</td>
+<td>400 Bad Request</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>ArgumentException</td>
+<td>400 Bad Request</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>InvalidOperationException</td>
+<td>400 Bad Request</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>UnauthorizedAccessException</td>
+<td>401 Unauthorized</td>
+<td>No</td>
+</tr>
+<tr>
+<td>All Others</td>
+<td>500 Internal Server Error</td>
+<td>Yes</td>
+</tr>
+</tbody>
+</table>
+<h2>Logging</h2>
+<p>All exceptions are automatically logged with:
+- Exception details
+- Stack trace
+- Trace ID for request correlation</p>
+<pre><code class="language-csharp">_logger.LogError(exception, &quot;Unhandled exception occurred. TraceId: {TraceId}&quot;, context.TraceIdentifier);
+</code></pre>
+<h2>Creating Custom Exception Types</h2>
+<pre><code class="language-csharp">public class PaymentFailedException : Exception
+{
+    public string TransactionId { get; }
+
+    public PaymentFailedException(string message, string transactionId)
+        : base(message)
+    {
+        TransactionId = transactionId;
+    }
+}
+
+// Update GetErrorDetails in ExceptionMiddleware
+private (HttpStatusCode statusCode, string message, bool includeDetails) GetErrorDetails(Exception exception)
+{
+    return exception switch
+    {
+        PaymentFailedException =&gt; (HttpStatusCode.PaymentRequired, exception.Message, true),
+        ValidationException =&gt; (HttpStatusCode.BadRequest, exception.Message, true),
+        // ... other cases
+        _ =&gt; (HttpStatusCode.InternalServerError, &quot;An internal server error occurred&quot;, true)
+    };
+}
+</code></pre>
+<h2>Dependencies</h2>
+<ul>
+<li>Microsoft.AspNetCore.Http</li>
+<li>Microsoft.Extensions.Logging</li>
+<li>System.Text.Json</li>
+<li>ApiResponse component</li>
+<li>.NET 6.0 or higher</li>
+</ul>
+<h2>Benefits</h2>
+<ol>
+<li><strong>Centralized Handling</strong> - All exceptions handled in one place</li>
+<li><strong>Consistent Responses</strong> - Uniform error format across the application</li>
+<li><strong>Automatic Logging</strong> - All errors logged automatically</li>
+<li><strong>Type Safety</strong> - Custom exception types for different scenarios</li>
+<li><strong>Development-Friendly</strong> - Detailed error info in development mode</li>
+<li><strong>Production-Safe</strong> - Minimal error exposure in production</li>
+<li><strong>Request Tracking</strong> - Trace ID for debugging</li>
+</ol>
+</main>
+</body>
+</html>

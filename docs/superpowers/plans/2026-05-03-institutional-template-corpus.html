@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Visual Pattern Template Corpus Implementation Plan</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Visual Pattern Template Corpus Implementation Plan</h1>
+<blockquote>
+<p><strong>For agentic workers:</strong> REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (<code>- [ ]</code>) syntax for tracking.</p>
+</blockquote>
+<p><strong>Goal:</strong> Expand the site rebuild pipeline with a small benchmark corpus, reusable composite components, and higher-level visual/function templates documented inside the component library.</p>
+<p><strong>Architecture:</strong> Public websites are used as visual pattern references, not as one-off component sources. The pipeline remains <code>SiteIntentExtractor -&gt; TemplateMatcher -&gt; TemplateCompiler -&gt; StaticSitePackageGenerator</code>; templates may only select components declared by <code>bricks4agent.default</code>, and component gaps are recorded as requests rather than generated into the output package.</p>
+<p><strong>Tech Stack:</strong> .NET 8 worker/tests, JSON component manifest/templates, vanilla runtime renderer, Playwright/browser smoke checks.</p>
+<hr>
+<h2>Benchmark Corpus</h2>
+<p>Use these public websites as pattern references. Their domains and real-world categories are corpus labels only; they must not drive template or component selection.</p>
+<ul>
+<li><code>https://www.ntu.edu.tw/</code></li>
+<li><code>https://www.nthu.edu.tw/</code></li>
+<li><code>https://www.mmu.edu.tw/</code></li>
+<li><code>https://www.gov.tw/</code></li>
+<li><code>https://www.gov.taipei/</code></li>
+<li><code>https://www.ey.gov.tw/</code></li>
+<li><code>https://www.mohw.gov.tw/</code></li>
+<li><code>https://www.cgh.org.tw/</code></li>
+<li><code>https://www.ntuh.gov.tw/</code></li>
+</ul>
+<p>Observed reusable patterns:</p>
+<ul>
+<li>Search-led portal hero: prominent search, hot keywords, role or service shortcuts.</li>
+<li>Service category grid: broad categories with nested links.</li>
+<li>Action grid: high-priority tasks such as registration, contact, complaint, portal, mail, service lookup.</li>
+<li>Tabbed/news board: multiple announcement categories sharing one area.</li>
+<li>Existing generic pieces remain valid: mega header, hero carousel/banner, quick links, card news, media features, footer.</li>
+</ul>
+<h2>Files</h2>
+<ul>
+<li>Modify: <code>packages/csharp/workers/site-crawler-worker/component-libraries/bricks4agent.default/manifest.json</code></li>
+<li>Create: <code>packages/csharp/workers/site-crawler-worker/component-libraries/bricks4agent.default/README.md</code></li>
+<li>Create: <code>packages/csharp/workers/site-crawler-worker/template-framework/README.md</code></li>
+<li>Modify: <code>packages/csharp/workers/site-crawler-worker/template-framework/visual_patterns.json</code></li>
+<li>Modify: <code>packages/csharp/workers/site-crawler-worker/Services/SiteIntentExtractor.cs</code></li>
+<li>Modify: <code>packages/csharp/workers/site-crawler-worker/Services/TemplateMatcher.cs</code></li>
+<li>Modify: <code>packages/csharp/workers/site-crawler-worker/Services/TemplateCompiler.cs</code></li>
+<li>Modify: <code>packages/csharp/workers/site-crawler-worker/Services/StaticSitePackageGenerator.cs</code></li>
+<li>Modify: <code>packages/csharp/tests/unit/Workers/SiteCrawler/ComponentLibraryLoaderTests.cs</code></li>
+<li>Modify: <code>packages/csharp/tests/unit/Workers/SiteCrawler/TemplateFrameworkLoaderTests.cs</code></li>
+<li>Modify: <code>packages/csharp/tests/unit/Workers/SiteCrawler/SiteIntentExtractorTests.cs</code></li>
+<li>Modify: <code>packages/csharp/tests/unit/Workers/SiteCrawler/TemplateMatcherTests.cs</code></li>
+<li>Modify: <code>packages/csharp/tests/unit/Workers/SiteCrawler/TemplateCompilerTests.cs</code></li>
+<li>Modify: <code>packages/csharp/tests/unit/Workers/SiteCrawler/StaticSitePackageGeneratorTests.cs</code></li>
+</ul>
+<h2>Tasks</h2>
+<h3>Task 1: Documentation Coverage Tests</h3>
+<ul>
+<li>[ ] Add a component-library test that loads <code>bricks4agent.default/README.md</code> and asserts every manifest component type appears as a documented heading or code token.</li>
+<li>[ ] Add a template-framework test that asserts <code>hero_news_portal</code>, <code>search_service_portal</code>, and <code>service_action_portal</code> load from <code>visual_patterns.json</code> and are documented in <code>template-framework/README.md</code>.</li>
+<li>[ ] Run <code>dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --no-restore --filter "ComponentLibraryLoaderTests|TemplateFrameworkLoaderTests"</code> and verify the new tests fail because docs/templates/components are missing.</li>
+</ul>
+<h3>Task 2: Component Library Expansion</h3>
+<ul>
+<li>[ ] Add manifest entries for <code>ServiceSearchHero</code>, <code>ServiceCategoryGrid</code>, <code>ServiceActionGrid</code>, and <code>TabbedNewsBoard</code>.</li>
+<li>[ ] Write <code>bricks4agent.default/README.md</code> with component roles, props, and composition rules. The docs must state that composite components are reusable family-level pieces assembled from existing atomic ideas, not source-specific website clones.</li>
+<li>[ ] Re-run the documentation tests and verify they pass.</li>
+</ul>
+<h3>Task 3: Template Definitions</h3>
+<ul>
+<li>[ ] Extend the template manifest with <code>search_service_portal</code> and <code>service_action_portal</code>.</li>
+<li>[ ] Use <code>pattern_tags</code> for template metadata; <code>supported_site_kinds</code> remains only as legacy manifest compatibility.</li>
+<li>[ ] Add slots: <code>search</code>, <code>service_categories</code>, <code>service_actions</code>, and <code>tabbed_news</code> where appropriate.</li>
+<li>[ ] Write <code>template-framework/README.md</code> describing template selection, page types, and slot-to-component rules.</li>
+<li>[ ] Re-run template loader tests and verify they pass.</li>
+</ul>
+<h3>Task 4: Intent Extraction And Matching</h3>
+<ul>
+<li>[ ] Add failing tests for search-service and service-action visual snapshots modelled on the corpus patterns.</li>
+<li>[ ] Update <code>SiteIntentExtractor</code> to extract search heroes, service category grids, action grids, and tabbed news boards from visual/function evidence.</li>
+<li>[ ] Update <code>TemplateMatcher</code> to score template candidates by visual/function slots only; <code>SiteKind</code> must not influence template or component selection.</li>
+<li>[ ] Run <code>dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --no-restore --filter "SiteIntentExtractorTests|TemplateMatcherTests"</code> and verify pass after implementation.</li>
+</ul>
+<h3>Task 5: Compiler And Runtime Rendering</h3>
+<ul>
+<li>[ ] Add failing compiler/static package tests asserting the new components are emitted and rendered.</li>
+<li>[ ] Update <code>TemplateCompiler</code> to build props for search hero, category grid, action grid, and tabbed news from extracted visual blocks.</li>
+<li>[ ] Update <code>StaticSitePackageGenerator</code> runtime and CSS for the new components.</li>
+<li>[ ] Run <code>dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --no-restore --filter "TemplateCompilerTests|StaticSitePackageGeneratorTests"</code> and verify pass.</li>
+</ul>
+<h3>Task 6: End-To-End Verification</h3>
+<ul>
+<li>[ ] Run <code>dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --no-restore</code>.</li>
+<li>[ ] Run <code>dotnet build packages/csharp/ControlPlane.slnx --no-restore</code>.</li>
+<li>[ ] Run a limited visual/package smoke on representative sites from the corpus with depth 2 or 3, checking generated documents contain only manifest-declared components and no generated local components.</li>
+<li>[ ] Use a local static server and browser smoke check on at least one generated package to verify <code>index.html</code>, <code>site.json</code>, navigation, header/main/footer, and runtime console health.</li>
+</ul>
+</main>
+</body>
+</html>

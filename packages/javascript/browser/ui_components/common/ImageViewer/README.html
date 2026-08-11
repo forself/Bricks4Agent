@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ImageViewer</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>ImageViewer</h1>
+<p>圖片展示器元件，提供燈箱效果（Modal），支援滾輪縮放、拖曳平移、左右切換導航。</p>
+<h2>API</h2>
+<p>ImageViewer 使用靜態方法開啟，全域同時只有一個實例。</p>
+<h3>靜態方法</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ImageViewer.open(src, options?)</code></td>
+<td>開啟圖片展示器</td>
+</tr>
+<tr>
+<td><code>ImageViewer.close()</code></td>
+<td>關閉圖片展示器</td>
+</tr>
+</tbody>
+</table>
+<h3>Constructor（通常透過 <code>open()</code> 呼叫）</h3>
+<pre><code class="language-js">new ImageViewer(src, options?)
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>參數</th>
+<th>型別</th>
+<th>預設值</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>src</code></td>
+<td><code>string</code></td>
+<td>—</td>
+<td>圖片來源 URL</td>
+</tr>
+<tr>
+<td><code>options.minZoom</code></td>
+<td><code>number</code></td>
+<td><code>0.1</code></td>
+<td>最小縮放比例</td>
+</tr>
+<tr>
+<td><code>options.maxZoom</code></td>
+<td><code>number</code></td>
+<td><code>3</code></td>
+<td>最大縮放比例</td>
+</tr>
+<tr>
+<td><code>options.zoomStep</code></td>
+<td><code>number</code></td>
+<td><code>0.2</code></td>
+<td>縮放步長</td>
+</tr>
+<tr>
+<td><code>options.onPrev</code></td>
+<td><code>Function</code></td>
+<td><code>null</code></td>
+<td>上一張回調（有值時顯示左箭頭）</td>
+</tr>
+<tr>
+<td><code>options.onNext</code></td>
+<td><code>Function</code></td>
+<td><code>null</code></td>
+<td>下一張回調（有值時顯示右箭頭）</td>
+</tr>
+</tbody>
+</table>
+<h3>實例方法</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>setSrc(src)</code></td>
+<td>切換圖片來源</td>
+</tr>
+<tr>
+<td><code>setOptions(options)</code></td>
+<td>更新選項</td>
+</tr>
+<tr>
+<td><code>destroy()</code></td>
+<td>關閉並銷毀</td>
+</tr>
+</tbody>
+</table>
+<h3>操作方式</h3>
+<ul>
+<li>滾輪：縮放</li>
+<li>拖曳：平移（放大後）</li>
+<li>點擊遮罩：關閉</li>
+<li>Escape 鍵：關閉</li>
+<li>左右箭頭鍵：切換圖片（需提供 onPrev/onNext）</li>
+<li>工具列：縮小、放大、重設、關閉</li>
+</ul>
+<h2>使用範例</h2>
+<pre><code class="language-js">import { ImageViewer } from './ImageViewer.js';
+
+// 基本用法
+ImageViewer.open('/path/to/image.jpg');
+
+// 相簿瀏覽
+const images = ['a.jpg', 'b.jpg', 'c.jpg'];
+let idx = 0;
+ImageViewer.open(images[idx], {
+    onPrev: () =&gt; { idx = (idx - 1 + images.length) % images.length; ImageViewer.open(images[idx]); },
+    onNext: () =&gt; { idx = (idx + 1) % images.length; ImageViewer.open(images[idx]); }
+});
+</code></pre>
+<h2>Demo</h2>
+<p>開啟 <code>demo.html</code> 直接在瀏覽器測試。</p>
+</main>
+</body>
+</html>

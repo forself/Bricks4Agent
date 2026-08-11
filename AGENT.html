@@ -1,0 +1,548 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bricks4Agent — AI Agent 操作手冊（SPA 生成器）</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Bricks4Agent — AI Agent 操作手冊（SPA 生成器）</h1>
+<blockquote>
+<p>本手冊專為 AI Agent 設計（適用於任何語言模型：GPT、Claude、Llama、Qwen、DeepSeek、Gemini 等，含離線地端模型）。
+內容是<strong>頁面／SPA 生成器</strong>的指令格式、欄位對應表與操作流程。</p>
+<p><strong>要在元件庫上手刻頁面（呼叫元件、缺件補庫）請優先讀 <a href="AGENT-UI-GUIDE.html">AGENT-UI-GUIDE.md</a>；本文件講的是用生成器批次產頁。</strong></p>
+</blockquote>
+<h3>AI Agent 框架入口</h3>
+<ul>
+<li>通用 / 其他框架：<code>.agentrc</code>（指向本手冊）</li>
+<li>Claude Code：<a href="CLAUDE.html">CLAUDE.md</a></li>
+</ul>
+<hr>
+<h2>1. 專案概觀</h2>
+<p>Bricks4Agent 是一套<strong>零 runtime 依賴的 Vanilla JS UI 元件庫</strong>，加上一個把 JSON <code>PageDefinition</code> 轉成頁面的<strong>頁面／SPA 生成器</strong>。</p>
+<p>組成：</p>
+<ul>
+<li><strong>前端 UI 元件庫</strong>（Vanilla JS，零外部 runtime dependency，116 個元件）</li>
+<li><strong>頁面生成引擎</strong>（PageGenerator，支援 30 種欄位類型；靜態產碼 + 動態渲染）</li>
+<li><strong>SPA 生成器</strong>（CLI + Web UI，一鍵產生全端 CRUD）</li>
+<li><strong>C# 後端範本</strong>（.NET 10 Minimal API，供生成器產出後端；ORM 為輕量 BaseOrm）</li>
+</ul>
+<p>AI agent 動手前的優先閱讀：手刻頁面／補元件看 <a href="AGENT-UI-GUIDE.html">AGENT-UI-GUIDE.md</a>；用生成器批次產頁看本文件；規則看 <a href="CLAUDE.html">CLAUDE.md</a>。</p>
+<h3>1.1 核心子系統位置</h3>
+<ul>
+<li>UI 元件庫：<code>packages/javascript/browser/ui_components</code>（權威清單：<code>metadata/component-catalog.json</code>）</li>
+<li>頁面生成引擎：<code>packages/javascript/browser/page-generator</code></li>
+<li>SPA 範本：<code>templates/spa</code>（前端核心 <code>frontend/core</code> + 後端 <code>backend/SpaApi.csproj</code>）</li>
+<li>生成器 CLI：<code>templates/spa/scripts</code>、<code>tools/page-gen.js</code></li>
+<li>生成器 Web UI：<code>tools/spa-generator</code>（port 3080）</li>
+<li>Schema→表單/API/資料表工作台：<code>tools/form-application-studio</code>（未給連線字串時生成本地 SQLite；只產碼、不連線）</li>
+<li>表單應用定義與生成器：<code>packages/javascript/browser/form-application</code></li>
+</ul>
+<h3>1.2 Build 與 test 入口</h3>
+<pre><code class="language-powershell">npm test                        # 頁面生成器測試
+npm run validate:ui-library     # UI 元件庫檢查
+npm run audit:ui-styles         # 樣式 token 稽核
+npm run test:form-designer:dotnet # 生成並編譯 SQLite/SQL Server/PostgreSQL/MySQL 後端
+npm run test:dotnet10           # 35 個 net10.0 專案；任何建置警告都視為錯誤
+npm run serve                   # 啟動生成器 Web UI（port 3080）
+
+# 生成器產出的 .NET 10 後端（SPA 範本）
+dotnet build templates/spa/backend/SpaApi.csproj
+dotnet test templates/spa/backend.Tests/SpaApi.Template.Tests.csproj
+</code></pre>
+<h3>核心工具鏈</h3>
+<pre><code>spa-cli.js feature → generate-api.js (C# 後端)
+                    → generate-page.js (前端頁面)
+                        ├── 無 --fields → 原始 HTML 模板
+                        └── 有 --fields → PageGenerator → 元件庫頁面 + 自動更新 routes.js
+</code></pre>
+<hr>
+<h2>2. 指令格式</h2>
+<h3>2.1 生成完整功能（前端 + 後端）</h3>
+<pre><code class="language-bash">node templates/spa/scripts/spa-cli.js feature &lt;名稱&gt; --fields &quot;&lt;欄位定義&gt;&quot;
+</code></pre>
+<p><strong>參數：</strong>
+- <code>&lt;名稱&gt;</code>：功能名稱，PascalCase（如 <code>Article</code>、<code>PhotoDiary</code>）
+- <code>--fields</code>：欄位定義字串，格式為 <code>"欄位名:類型,欄位名:類型,..."</code></p>
+<p><strong>範例：</strong></p>
+<pre><code class="language-bash">node templates/spa/scripts/spa-cli.js feature Diary --fields &quot;Title:string,Content:text,Date:date,Mood:string,IsPublic:bool&quot;
+</code></pre>
+<p><strong>產出：</strong></p>
+<pre><code>backend/Models/Diary.cs              ← C# Model + DTO
+backend/Services/DiaryService.cs     ← CRUD Service
+frontend/pages/diarys/DiaryListPage.js   ← 元件庫列表頁
+frontend/pages/diarys/DiaryDetailPage.js ← 元件庫詳情頁
+frontend/pages/routes.js             ← 自動更新（import + 路由）
+</code></pre>
+<p><strong>後續步驟（僅需 1 步）：</strong>
+依照終端輸出的指示，將 API 端點程式碼貼入 <code>Program.cs</code>。</p>
+<hr>
+<h3>2.2 僅生成頁面</h3>
+<pre><code class="language-bash"># 元件庫頁面（推薦）
+node templates/spa/scripts/generate-page.js &lt;路徑/名稱&gt; --fields &quot;&lt;欄位&gt;&quot; --api-path &quot;&lt;API路徑&gt;&quot;
+
+# 原始模板頁面（向下相容）
+node templates/spa/scripts/generate-page.js &lt;路徑/名稱&gt;
+node templates/spa/scripts/generate-page.js &lt;路徑/名稱&gt; --detail
+</code></pre>
+<p><strong>範例：</strong></p>
+<pre><code class="language-bash"># 元件庫表單頁
+node scripts/generate-page.js orders/OrderList --fields &quot;Name:string,Price:decimal&quot; --api-path &quot;/api/orders&quot;
+
+# 元件庫詳情頁
+node scripts/generate-page.js orders/OrderDetail --detail --fields &quot;Name:string,Price:decimal&quot; --api-path &quot;/api/orders&quot;
+
+# 原始模板（無 --fields）
+node scripts/generate-page.js SimplePage
+</code></pre>
+<hr>
+<h3>2.3 僅生成 API</h3>
+<pre><code class="language-bash">node templates/spa/scripts/generate-api.js &lt;名稱&gt; --fields &quot;&lt;欄位&gt;&quot;
+</code></pre>
+<hr>
+<h3>2.4 建立新專案</h3>
+<pre><code class="language-bash"># 互動模式
+node templates/spa/scripts/spa-cli.js new
+
+# 非互動模式
+node templates/spa/scripts/spa-cli.js new --name my-app --output ./projects
+</code></pre>
+<hr>
+<h2>3. 欄位類型對應表</h2>
+<h3>3.1 CLI 類型 → PageDefinition 類型 → UI 元件</h3>
+<table>
+<thead>
+<tr>
+<th>CLI <code>--fields</code> 類型</th>
+<th>PageDefinition 類型</th>
+<th>生成的 UI 元件</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>string</code></td>
+<td><code>text</code></td>
+<td>TextInput</td>
+<td>單行文字</td>
+</tr>
+<tr>
+<td><code>text</code></td>
+<td><code>textarea</code></td>
+<td>WebTextEditor</td>
+<td>多行富文本</td>
+</tr>
+<tr>
+<td><code>int</code>, <code>integer</code></td>
+<td><code>number</code></td>
+<td>NumberInput</td>
+<td>整數</td>
+</tr>
+<tr>
+<td><code>long</code></td>
+<td><code>number</code></td>
+<td>NumberInput</td>
+<td>長整數</td>
+</tr>
+<tr>
+<td><code>decimal</code>, <code>float</code>, <code>double</code></td>
+<td><code>number</code></td>
+<td>NumberInput</td>
+<td>小數</td>
+</tr>
+<tr>
+<td><code>bool</code>, <code>boolean</code></td>
+<td><code>toggle</code></td>
+<td>ToggleSwitch</td>
+<td>開關</td>
+</tr>
+<tr>
+<td><code>date</code></td>
+<td><code>date</code></td>
+<td>DatePicker</td>
+<td>日期選擇器</td>
+</tr>
+<tr>
+<td><code>datetime</code></td>
+<td><code>datetime</code></td>
+<td>DateTimeInput</td>
+<td>日期時間</td>
+</tr>
+<tr>
+<td><code>guid</code></td>
+<td><code>text</code></td>
+<td>TextInput</td>
+<td>GUID 文字</td>
+</tr>
+</tbody>
+</table>
+<h3>3.2 未對應的類型（預設為 TextInput）</h3>
+<p>未列於上表的 CLI 類型會預設映射為 <code>text</code> → TextInput。若需要其他 30 種欄位類型（如 <code>select</code>、<code>multiselect</code>、<code>color</code>、<code>image</code>、<code>richtext</code>、<code>canvas</code> 等），請直接使用 PageDefinition JSON 格式搭配 PageGenerator API 或 <code>tools/page-gen.js</code>。</p>
+<h3>3.3 C# 類型對應（generate-api.js）</h3>
+<table>
+<thead>
+<tr>
+<th>CLI 類型</th>
+<th>C# 類型</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>string</code></td>
+<td><code>string</code></td>
+</tr>
+<tr>
+<td><code>text</code></td>
+<td><code>string</code></td>
+</tr>
+<tr>
+<td><code>int</code></td>
+<td><code>int</code></td>
+</tr>
+<tr>
+<td><code>long</code></td>
+<td><code>long</code></td>
+</tr>
+<tr>
+<td><code>decimal</code></td>
+<td><code>decimal</code></td>
+</tr>
+<tr>
+<td><code>float</code></td>
+<td><code>float</code></td>
+</tr>
+<tr>
+<td><code>double</code></td>
+<td><code>double</code></td>
+</tr>
+<tr>
+<td><code>bool</code></td>
+<td><code>bool</code></td>
+</tr>
+<tr>
+<td><code>date</code></td>
+<td><code>DateTime</code></td>
+</tr>
+<tr>
+<td><code>datetime</code></td>
+<td><code>DateTime</code></td>
+</tr>
+<tr>
+<td><code>guid</code></td>
+<td><code>Guid</code></td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>4. SPA 範本元件清單</h2>
+<p><code>templates/spa/frontend/components/</code> 中的元件會隨 <code>spa new</code> 一起複製到新專案。PageGenerator 生成的頁面會自動 import 這些元件：</p>
+<table>
+<thead>
+<tr>
+<th>元件</th>
+<th>路徑</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>TextInput</td>
+<td><code>components/TextInput/TextInput.js</code></td>
+<td>文字輸入（含 XSS 防護）</td>
+</tr>
+<tr>
+<td>NumberInput</td>
+<td><code>components/NumberInput/NumberInput.js</code></td>
+<td>數字輸入（含 +/- 按鈕）</td>
+</tr>
+<tr>
+<td>Dropdown</td>
+<td><code>components/Dropdown/Dropdown.js</code></td>
+<td>下拉選單（含搜尋）</td>
+</tr>
+<tr>
+<td>ToggleSwitch</td>
+<td><code>components/ToggleSwitch/ToggleSwitch.js</code></td>
+<td>開關元件</td>
+</tr>
+<tr>
+<td>WebTextEditor</td>
+<td><code>components/WebTextEditor/WebTextEditor.js</code></td>
+<td>簡易富文本編輯器</td>
+</tr>
+<tr>
+<td>DatePicker</td>
+<td><code>components/DatePicker/DatePicker.js</code></td>
+<td>日期選擇器</td>
+</tr>
+<tr>
+<td>ColorPicker</td>
+<td><code>components/ColorPicker/ColorPicker.js</code></td>
+<td>顏色選擇器</td>
+</tr>
+<tr>
+<td>ImageViewer</td>
+<td><code>components/ImageViewer/ImageViewer.js</code></td>
+<td>圖片檢視器</td>
+</tr>
+<tr>
+<td>Panel</td>
+<td><code>components/Panel/Panel.js</code></td>
+<td>面板佈局</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>5. 自動路由更新</h2>
+<p>使用 <code>--fields</code> 生成頁面時，<code>routes.js</code> 會自動更新：</p>
+<ol>
+<li>在最後一個 <code>import</code> 後插入新的 import 語句</li>
+<li>在 <code>];</code> 前插入新的路由條目</li>
+<li>自動處理逗號分隔</li>
+<li>重複檢查：若 className 已存在則跳過</li>
+<li>保持原始換行符號（CRLF/LF）</li>
+</ol>
+<p><strong>不使用 <code>--fields</code></strong>（原始模板）時，需手動更新 routes.js，終端會輸出所需的程式碼。</p>
+<hr>
+<h2>6. 目錄結構</h2>
+<pre><code>Bricks4Agent/
+├── AGENT.md                              ← 本手冊
+├── packages/
+│   ├── javascript/browser/
+│   │   ├── ui_components/                ← 75 個 UI 元件（完整版）
+│   │   │   ├── form/                     ← 表單 (12)
+│   │   │   ├── common/                   ← 通用 (18)
+│   │   │   ├── layout/                   ← 佈局 (10)
+│   │   │   ├── input/                    ← 進階輸入 (10)
+│   │   │   ├── viz/                      ← 視覺化 (18)
+│   │   │   ├── social/                   ← 社群 (5)
+│   │   │   ├── editor/                   ← 編輯器 (1)
+│   │   │   └── data/                     ← 資料展示 (1)
+│   │   └── page-generator/              ← PageGenerator 引擎
+│   │       ├── PageGenerator.js          ← 靜態產碼：PageDefinition → 頁面程式碼
+│   │       ├── PageDefinition.js         ← 定義格式、驗證、欄位→元件映射
+│   │       ├── FieldResolver.js          ← 欄位型別 → 元件實例
+│   │       ├── TriggerEngine.js          ← 欄位連動（8 種動作）
+│   │       └── DynamicPageRenderer.js    ← 動態渲染（執行期依 JSON 畫出）
+│   └── csharp/                           ← C# 後端模組（生成器產出的後端所用）
+├── templates/spa/                        ← SPA 專案範本
+│   ├── scripts/
+│   │   ├── spa-cli.js                    ← CLI 入口（new/feature/page/api）
+│   │   ├── generate-page.js              ← 頁面生成（整合 PageGenerator）
+│   │   ├── generate-api.js               ← C# API 生成
+│   │   └── create-project.js             ← 專案建立
+│   ├── frontend/
+│   │   ├── core/                         ← 框架核心（BasePage, Router, Store）
+│   │   ├── pages/                        ← 頁面範本
+│   │   │   └── routes.js                 ← 路由配置（自動更新）
+│   │   └── components/                   ← SPA 範本元件
+│   └── backend/                          ← .NET 10 後端範本（SpaApi.csproj）
+└── tools/
+    ├── spa-generator/                    ← SPA 生成器 Web UI（port 3080）
+    ├── page-gen.js                       ← PageDefinition CLI（獨立工具）
+    └── static-server/                    ← 預覽用靜態伺服器
+</code></pre>
+<hr>
+<h2>7. PageGenerator 進階用法</h2>
+<p>若 CLI 的 13 種欄位類型不夠用，可直接使用 PageGenerator 的 30 種欄位類型：</p>
+<pre><code class="language-javascript">import { PageGenerator } from './packages/javascript/browser/page-generator/PageGenerator.js';
+
+const definition = {
+    name: 'MyFormPage',
+    type: 'form',           // form | detail | list
+    description: '自訂表單',
+    fields: [
+        { name: 'Color', type: 'color', label: '顏色' },
+        { name: 'Avatar', type: 'image', label: '頭像' },
+        { name: 'Tags', type: 'multiselect', label: '標籤',
+          options: ['A', 'B', 'C'] },
+        { name: 'Category', type: 'select', label: '分類',
+          options: ['類別1', '類別2'] },
+        { name: 'Bio', type: 'richtext', label: '自傳' }
+    ],
+    api: {
+        create: '/api/my-form',
+        update: '/api/my-form',
+        get: '/api/my-form',
+        delete: '/api/my-form',
+        list: '/api/my-form'
+    },
+    styles: { layout: 'single', theme: 'default' }
+};
+
+const generator = new PageGenerator();
+const result = generator.generate(definition);
+// result.code → 完整頁面 JS 程式碼
+// result.errors → 錯誤陣列（空陣列表示成功）
+</code></pre>
+<h3>7.1 完整 30 種欄位類型</h3>
+<table>
+<thead>
+<tr>
+<th>類型</th>
+<th>元件</th>
+<th>類型</th>
+<th>元件</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>text</td>
+<td>TextInput</td>
+<td>number</td>
+<td>NumberInput</td>
+</tr>
+<tr>
+<td>textarea</td>
+<td>WebTextEditor</td>
+<td>toggle</td>
+<td>ToggleSwitch</td>
+</tr>
+<tr>
+<td>date</td>
+<td>DatePicker</td>
+<td>datetime</td>
+<td>DateTimeInput</td>
+</tr>
+<tr>
+<td>select</td>
+<td>Dropdown</td>
+<td>multiselect</td>
+<td>MultiSelect</td>
+</tr>
+<tr>
+<td>checkbox</td>
+<td>CheckboxGroup</td>
+<td>radio</td>
+<td>RadioGroup</td>
+</tr>
+<tr>
+<td>color</td>
+<td>ColorPicker</td>
+<td>slider</td>
+<td>Slider</td>
+</tr>
+<tr>
+<td>rating</td>
+<td>StarRating</td>
+<td>image</td>
+<td>ImageUploader</td>
+</tr>
+<tr>
+<td>file</td>
+<td>FileUploader</td>
+<td>password</td>
+<td>TextInput(password)</td>
+</tr>
+<tr>
+<td>email</td>
+<td>TextInput(email)</td>
+<td>url</td>
+<td>TextInput(url)</td>
+</tr>
+<tr>
+<td>tel</td>
+<td>TextInput(tel)</td>
+<td>richtext</td>
+<td>RichTextEditor</td>
+</tr>
+<tr>
+<td>canvas</td>
+<td>CanvasBoard</td>
+<td>address</td>
+<td>AddressInput</td>
+</tr>
+<tr>
+<td>location</td>
+<td>LocationPicker</td>
+<td>weather</td>
+<td>WeatherWidget</td>
+</tr>
+<tr>
+<td>avatar</td>
+<td>AvatarUploader</td>
+<td>tags</td>
+<td>TagInput</td>
+</tr>
+<tr>
+<td>signature</td>
+<td>SignaturePad</td>
+<td>percentage</td>
+<td>PercentageInput</td>
+</tr>
+<tr>
+<td>currency</td>
+<td>CurrencyInput</td>
+<td>hidden</td>
+<td>(隱藏欄位)</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>8. 常見陷阱</h2>
+<h3>8.1 MSYS 路徑轉換（Windows Git Bash）</h3>
+<p>在 Git Bash 中，<code>/api/xxx</code> 會被自動轉換為 <code>C:/Program Files/Git/api/xxx</code>。generate-page.js 已內建 <code>sanitizeApiPath()</code> 修復此問題，但若你手動傳遞路徑，請注意：</p>
+<pre><code class="language-bash"># Git Bash 中安全的寫法（加引號）
+node scripts/generate-page.js orders/OrderList --api-path &quot;/api/orders&quot;
+</code></pre>
+<h3>8.2 檔案已存在</h3>
+<p>生成器不會覆蓋已存在的檔案。若需重新生成，請先手動刪除目標檔案。</p>
+<h3>8.3 CJS 與 ESM</h3>
+<ul>
+<li><code>generate-page.js</code>、<code>spa-cli.js</code>：CommonJS（使用 <code>require</code>）</li>
+<li><code>PageGenerator.js</code>、所有元件：ESM（使用 <code>import/export</code>）</li>
+<li>橋接方式：<code>const { pathToFileURL } = require('url')</code> + <code>await import(path)</code></li>
+</ul>
+<h3>8.4 import 路徑深度</h3>
+<p>PageGenerator 輸出的 import 路徑為 depth=1（<code>../components/X/X.js</code>）。若頁面位於子目錄（如 <code>pages/orders/OrderPage.js</code>），generate-page.js 會自動調整為 <code>../../components/X/X.js</code>。</p>
+<hr>
+<h2>9. 操作流程範例</h2>
+<h3>範例：生成部落格功能</h3>
+<pre><code class="language-bash"># 1. 建立新專案
+node templates/spa/scripts/spa-cli.js new --name my-blog --output ./projects
+
+# 2. 進入專案目錄
+cd projects/my-blog
+
+# 3. 生成 Article 功能
+node scripts/spa-cli.js feature Article --fields &quot;Title:string,Content:text,Author:string,PublishedAt:datetime,IsPublished:bool&quot;
+
+# 4. 依終端輸出指示，更新 Program.cs
+
+# 5. 啟動
+dotnet run              # 後端
+# 前端用任意靜態伺服器開啟 frontend/
+</code></pre>
+<p><strong>生成結果：</strong>
+- <code>Article.cs</code>：C# Model，含 Title(string), Content(string), Author(string), PublishedAt(DateTime), IsPublished(bool)
+- <code>ArticleService.cs</code>：CRUD 服務
+- <code>ArticleListPage.js</code>：使用 TextInput, WebTextEditor, DateTimeInput, ToggleSwitch
+- <code>ArticleDetailPage.js</code>：同上元件
+- <code>routes.js</code>：自動加入 <code>/articles/article-list</code> 與 <code>/articles/article-detail</code> 路由</p>
+<hr>
+<h2>10. 延伸閱讀</h2>
+<ul>
+<li>手刻頁面／呼叫元件／缺件補庫：<a href="AGENT-UI-GUIDE.html">AGENT-UI-GUIDE.md</a></li>
+<li>JSON 客製元件、三層分類、資料夾載入與 DynamicPageRenderer 接線：<a href="CUSTOM-COMPONENTS.html">CUSTOM-COMPONENTS.md</a></li>
+<li>JSON 產生的工具頁、可信 commands、state bindings 與 self-host Studio：<a href="packages/javascript/browser/page-generator/README.html#tool-pagedefinition-與自舉工具頁">page-generator/README.md</a></li>
+<li>頁面生成器細節：<a href="packages/javascript/browser/page-generator/README.html">page-generator/README.md</a></li>
+<li>獨立 PageDefinition CLI：<a href="tools/page-gen.README.html">tools/page-gen.README.md</a></li>
+<li>SPA 範本：<a href="templates/spa/README.html">templates/spa/README.md</a></li>
+</ul>
+</main>
+</body>
+</html>

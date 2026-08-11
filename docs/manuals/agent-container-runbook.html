@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>受控代理容器操作手冊 (Agent Container Runbook)</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>受控代理容器操作手冊 (Agent Container Runbook)</h1>
+<p>Date: 2026-06-13
+依據設計: <a href="../designs/ControlledAutonomousAISystemTechnicalDesign.html">ControlledAutonomousAISystemTechnicalDesign.md</a>
+啟用紀錄: <a href="../reports/AgentContainerActivation-2026-06-13.html">AgentContainerActivation-2026-06-13.md</a></p>
+<h2>1. 這是什麼</h2>
+<p>受控代理容器是設計規格 §6.6 的「受控主體執行殼層」:LLM 驅動的 agent 在隔離容器內,<strong>只能</strong>向 broker(控制平面)請領工作、讀授權上下文、呼叫模型、產生結構化執行請求、回報結果;<strong>不可</strong>直接碰工具、資料源、倉庫、部署或模型供應商。所有工具執行都經 broker 領 capability + 裁決,人與 AI 走同一授權路徑。</p>
+<p>與 LINE sidecar(<code>line-sidecar.ps1</code>)不同:那是 broker + line-worker + tunnel 的常駐服務;受控代理容器是 podman compose 起的一次性治理 stack(broker + worker(s) + agent),用來執行單一受控任務。</p>
+<h2>2. 前置需求</h2>
+<ul>
+<li><strong>podman</strong>(Windows 用 podman machine / WSL backend)。首次需 <code>podman machine start</code>(若 <code>LAST UP: Never</code>)。</li>
+<li><strong>node</strong>(跑 stack 啟動腳本)。</li>
+<li>LLM 後端三選一:</li>
+<li>mock(內建,無需外部)</li>
+<li>本機 <strong>ollama</strong>(<code>localhost:11434</code>,需先 <code>ollama pull &lt;model&gt;</code>)</li>
+<li><strong>商用 API</strong>(OpenAI-compatible 或 Anthropic Claude,需 API key)</li>
+</ul>
+<h2>3. 三條 LLM 路徑(都已實測通過 2026-06-13)</h2>
+<p>每條都是 <code>podman compose up</code> 一個 stack:build 映像 → 起 broker + worker(s) + agent → agent 註冊 session、領 capability、經 broker 裁決執行工具。</p>
+<h3>3.1 mock(最快,離線驗證治理鏈)</h3>
+<pre><code class="language-powershell">node tools/agent/tests/test-podman-governed-stack.js
+</code></pre>
+<p>驗證 <code>STACK_OK</code> + <code>[governed] read_file</code>——agent 不直連工具,經 broker 裁決執行 governed <code>read_file</code>。</p>
+<h3>3.2 本機 ollama(真實開源模型)</h3>
+<p>先確認 ollama 有模型(<code>ollama list</code>),然後:</p>
+<pre><code class="language-powershell">node tools/agent/tests/test-podman-ollama-host-stack.js
+</code></pre>
+<p>自動從 <code>/api/tags</code> 選一個可用模型。要指定模型用 <code>STACK_MODEL</code>。這條 live-host 驗證會檢查 broker-mediated Ollama round-trip、agent completion、session close 與無 broker/API error；精確 sentinel 文字只由 mock stack 保證，因為不同本機模型可能改寫回覆。</p>
+<h3>3.3 商用 API(OpenAI-compatible / Claude)</h3>
+<p>broker <code>LlmProxy</code> 的 openai provider 支援 <code>v1/chat/completions</code>(chat)與 <code>v1/responses</code>(responses),帶 Bearer key。把 BaseUrl 指向真實 OpenAI 即可:</p>
+<pre><code class="language-powershell">$env:OPENAI_BASE_URL  = &quot;https://api.openai.com&quot;
+$env:OPENAI_API_KEY   = &quot;&lt;你的 OpenAI key&gt;&quot;
+$env:OPENAI_API_FORMAT = &quot;responses&quot;   # gpt-5.x 用 responses;gpt-4o 系列用 chat
+$env:STACK_MODEL = &quot;gpt-5.4-mini&quot;
+node tools/agent/tests/test-podman-openai-compatible-stack.js
+</code></pre>
+<p>不設 <code>OPENAI_BASE_URL</code> 時預設指向內建 mock-openai，這是目前可離線重跑的 OpenAI-compatible protocol 驗證。若設定 <code>OPENAI_BASE_URL=https://api.openai.com</code>、<code>OPENAI_API_KEY</code>、<code>OPENAI_API_FORMAT</code> 與 <code>STACK_MODEL</code>，同一 compose path 會改由 broker <code>LlmProxy</code> 打真實 OpenAI；真實模型測試依外部 API key 與模型行為而定。</p>
+<p><code>LlmProxy</code> 也支援 Anthropic Claude Messages API (<code>Provider=anthropic</code>, <code>BaseUrl=https://api.anthropic.com</code>, <code>ApiFormat=messages</code>, <code>DefaultModel=claude-sonnet-4-6</code>)；這條目前由 broker/sidecar 設定與單元測試覆蓋，不把既有 OpenAI-compatible compose 測試誤稱為 Claude compose stack。</p>
+<blockquote>
+<p>兩條 LLM 路徑釐清:LINE 高階模型(<code>HighLevelLlm</code>)目前 sidecar 會優先讀 <code>ANTHROPIC_API_KEY</code> 並設定 <code>anthropic</code> / <code>claude-sonnet-4-6</code>;沒有該 key 時才走 OpenAI-compatible <code>Api.txt</code> fallback。受控代理容器走 broker <code>LlmProxy</code>,agent 不直接持有 provider key。</p>
+</blockquote>
+<h2>4. 用真實商用 API 時的注意</h2>
+<ul>
+<li><code>OPENAI_API_FORMAT</code>:responses API 的原始回應把文字放在 <code>output[].content[].output_text</code>(頂層 <code>output_text</code> 是 SDK 便利欄位,真實 API 不一定有);broker parser 兩者皆支援。gpt-5 系列的 <code>output[]</code> 會夾帶 reasoning item,parser 會略過。</li>
+<li>Claude Messages API 需要 <code>max_tokens</code>;目前預設 <code>MaxOutputTokens=4096</code>。</li>
+<li>key 不應放進 repo;Anthropic 使用 <code>ANTHROPIC_API_KEY</code>,OpenAI-compatible fallback 使用 <code>C:\secure\Bricks4Agent\Api.txt</code> 或環境變數。</li>
+</ul>
+<h2>5. FunctionPool 與健康端點</h2>
+<p>受控代理容器 stack 的 broker 預設 <code>FunctionPool:Enabled=true</code>(worker dispatch + container manager 的基礎)。<code>/api/v1/health/workers</code>、<code>/health/score</code> 等監控端點只在 FunctionPool 啟用時註冊——它們的 handler 依賴 worker registry 服務,關閉時不註冊以免 Minimal API 把未註冊服務推斷成 body。純 LLM 對話的 stack(如 ollama/openai host 測試)可 FunctionPool=false。</p>
+<h2>6. 疑難排解(2026-06-13 通電時實際遇到並修掉的)</h2>
+<table>
+<thead>
+<tr>
+<th>症狀</th>
+<th>根因</th>
+<th>已修</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>broker 容器 build <code>NETSDK1152</code></td>
+<td>broker 引用 site-crawler-worker,worker appsettings 流入 publish</td>
+<td>broker.csproj publish target 移除重複</td>
+</tr>
+<tr>
+<td>broker <code>FunctionPool=false</code> 啟動即崩</td>
+<td>HealthScoreService 無條件依賴 IWorkerRegistry</td>
+<td>監控只在 FunctionPool 啟用時註冊</td>
+</tr>
+<tr>
+<td>register 回 500 <code>No data exists</code></td>
+<td>Linux Sqlite <code>IsDBNull</code> edge case</td>
+<td>BaseOrm 改用 <code>GetValue</code></td>
+</tr>
+<tr>
+<td><code>GET /api/v1/health</code> 回 <code>Body was inferred</code></td>
+<td>health endpoint 在 FunctionPool=false 仍註冊但服務缺失</td>
+<td>endpoint 註冊也 gate 在 FunctionPool</td>
+</tr>
+<tr>
+<td>真實 OpenAI 回 200 但 agent 輸出空</td>
+<td>parser 只認頂層 <code>output_text</code></td>
+<td>從 <code>output[]</code> 聚合 message content</td>
+</tr>
+<tr>
+<td>Claude 回 <code>400</code></td>
+<td>Messages API 缺 <code>max_tokens</code> 或 request shape 不符</td>
+<td>確認 <code>Provider=anthropic</code> 且使用 broker Claude adapter</td>
+</tr>
+</tbody>
+</table>
+<h2>7. 網路隔離(§13.1,已實作 2026-06-13)</h2>
+<p>三條 compose stack 都把 <strong>agent 容器單獨放在 <code>internal: true</code> 的 <code>agent-net</code></strong>——該網路無對外閘道,agent 只能連 broker、無法自行對外連網。broker 另接 bridge 網路(<code>egress</code>/<code>control-net</code>/<code>worker-net</code>),保有對外出口(真實 OpenAI/Claude、host ollama)與 host port-publishing;商用 API 仍可用,因為<strong>出口是 broker 不是 agent</strong>(agent 不持金鑰)。agent 無 published port,故放 internal 網路安全(ingress 走 broker)。</p>
+<p>為何不直接把共用網路設成 internal:會連帶封住同網路上「有 published port 的 mock LLM」(internal 網路上的 port-publishing 在 docker/podman 行為不可靠)。所以只密封 agent。</p>
+<p>驗證(egress 拒絕):</p>
+<pre><code class="language-powershell"># internal 網路的容器連不到外網(bad address / 逾時)
+podman network create --internal seal-probe
+podman run --rm --network seal-probe alpine wget -T 4 -q -O- https://api.openai.com/v1/models   # 失敗
+# bridge 網路的容器連得到(回 401,代表連到了)
+podman run --rm alpine wget -T 6 -q -S -O /dev/null https://api.openai.com/v1/models            # 連到(401)
+podman network rm seal-probe
+</code></pre>
+<p>mock stack 已實測:agent 在 <code>agent-net</code> 仍能註冊 session、經 broker 裁決跑 governed <code>read_file</code> → <code>STACK_OK</code>。ollama/openai stack 的網路拓樸相同(broker 在 <code>egress</code>、agent 在 <code>agent-net</code>),但因需 GPU/金鑰未在此機離線複驗——使用者跑這兩條時即同時驗證。</p>
+<h2>8. OS 層容器 hardening(§13,已實作 2026-06-13)</h2>
+<p>三條 compose stack 的 <strong>agent 服務</strong>(受控主體,不受信任)都套上 OS 層沙箱:</p>
+<table>
+<thead>
+<tr>
+<th>設定</th>
+<th>作用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>read_only: true</code></td>
+<td>rootfs 唯讀;<code>/workspace</code> bind mount 仍可寫(唯讀不影響掛載卷)</td>
+</tr>
+<tr>
+<td><code>tmpfs: [/tmp]</code></td>
+<td>唯一可寫的 rootfs 路徑放 tmpfs(<code>os.tmpdir()</code> 用)</td>
+</tr>
+<tr>
+<td><code>cap_drop: [ALL]</code></td>
+<td>丟掉所有 Linux capability(agent 以非 root uid 10001 跑,無需任何 cap)</td>
+</tr>
+<tr>
+<td><code>security_opt: [no-new-privileges:true]</code></td>
+<td>擋 setuid/setgid 提權</td>
+</tr>
+<tr>
+<td><code>pids_limit: 256</code></td>
+<td>限制行程數(fork-bomb 防護)</td>
+</tr>
+</tbody>
+</table>
+<p>seccomp 用 runtime 預設 profile(尚未寫客製 profile)。</p>
+<p>驗證(以 agent 映像直接驗證強制生效):</p>
+<pre><code class="language-powershell">podman run --rm --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges:true `
+  --entrypoint sh bricks4agent-agent:latest -c `
+  'echo uid=$(id -u); touch /app/probe 2&gt;/dev/null &amp;&amp; echo rootfs:BAD || echo rootfs:blocked; touch /tmp/probe &amp;&amp; echo tmp:ok; grep CapEff /proc/self/status'
+# 預期:uid=10001 / rootfs:blocked / tmp:ok / CapEff:0000000000000000
+</code></pre>
+<p>mock stack 已實測:套上述 hardening 後 agent 仍能完成 governed <code>read_file</code> → <code>STACK_OK</code>。</p>
+<h2>9. 執行配接器(§18.1,已實作 + 單元驗證 2026-06-13)</h2>
+<p><code>execution-adapter-worker</code> 讓受控 agent 能真的做事(不再只讀):agent 產生結構化請求 → broker 裁決(grant/quota/scope/policy)→ adapter worker 執行並附證據。agent 永遠碰不到 adapter,只有 broker 會 dispatch。</p>
+<p>兩個能力:
+| 能力 / route | 行為 |
+|------|------|
+| <code>repo.patch.apply</code> / <code>execution.repo.apply_patch</code> | 驗 patch(非自由 shell)、驗 base_commit==HEAD、限 <code>scope.allowed_paths</code>、<code>git apply --check</code> 後套用、存 diff 證據、支援 idempotency_key(重放回前次結果不重套) |
+| <code>build.test.run</code> / <code>execution.build_test.run</code> | 只跑白名單命令(npm test / npm run build / dotnet test / pytest)、不經 shell、收 stdout/stderr+exit、截斷大輸出、存 log 證據 |</p>
+<p>adapter 是<strong>受信任執行節點</strong>:套 §13.2 OS 加固(非 root uid 10004、read-only rootfs、cap-drop ALL、no-new-privileges、無 docker socket),但與 agent 不同 —— 可寫 workspace(它就是經控制平面中介的寫入路徑)、有出口(build/test restore)。</p>
+<p>驗證:</p>
+<pre><code class="language-bash"># broker 單元測試(含 38 條執行配接器斷言,對真實 git 操作)
+dotnet run --project packages/csharp/tests/broker-tests/Broker.Tests.csproj
+# 設定驗證(compose 接線 + 加固 + 能力 seed + 工具映射)
+node tools/agent/tests/test-execution-adapter-config.js
+# 端到端:模型驅動 agent 經治理鏈套 patch,斷言檔案真的被改(profile=adapters)
+node tools/agent/tests/test-podman-execution-adapter-stack.js
+</code></pre>
+<p>compose 中 adapter 服務以 <strong>profile 隔離</strong>(<code>--profile adapters</code>),預設不啟動(不影響既有 governed stack 測試);預設掛載 throwaway workspace(<code>ADAPTER_WORKSPACE</code> 可覆寫),<strong>不會動到真實 repo</strong>。</p>
+<p><strong>已端到端驗證(2026-06-13)</strong>:stack 測試讓 mock 模型驅動 agent 呼叫 <code>apply_patch</code>,經 broker 裁決(grant→policy→pool dispatch)→ adapter <code>git apply</code> → fixture 檔案實際被改。這條 e2e 揪出四個單元測試結構上抓不到的整合 bug(mock 環境變數接線、git bind-mount 的 <code>safe.directory</code>/<code>core.fileMode</code>、能力 route 必須等於 agent 工具名、workspace 根 scope 正規化),皆已修。</p>
+<blockquote>
+<p>慣例提醒:agent 送出的 payload <code>route</code> 就是「工具名」(如 <code>apply_patch</code>),broker policy 要求 <code>route == capability.Route</code>。所以新能力的 <code>Route</code> 必須設成工具名(<code>repo.patch.apply</code>→<code>apply_patch</code>、<code>build.test.run</code>→<code>run_build_test</code>),而非設計文件的 <code>execution.*</code> 邏輯名。</p>
+</blockquote>
+<p>尚未做:broker <code>--integration</code> HTTP 對新 route 的覆蓋(stack 測試已涵蓋真實 dispatch 路徑)。</p>
+<h2>10. 範圍界線(尚未做,對照規格 §13/§18)</h2>
+<p><strong>尚未實作</strong>:
+- §18.2 審批服務、風險分級(高風險 adapter 動作走人工放行)
+- agent 客製 seccomp profile(目前用 runtime 預設)</p>
+<p>這些是後續階段。重點:容器「關得住」已做到;agent「能做什麼、危險動作怎麼放行」尚未做。</p>
+</main>
+</body>
+</html>

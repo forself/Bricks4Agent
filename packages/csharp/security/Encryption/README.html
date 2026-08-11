@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PasswordHasher - Secure Password Hashing</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>PasswordHasher - Secure Password Hashing</h1>
+<p>Secure password hashing utility using BCrypt algorithm with built-in password strength validation.</p>
+<h2>Features</h2>
+<ul>
+<li>BCrypt password hashing (industry-standard)</li>
+<li>Password verification</li>
+<li>Automatic salt generation</li>
+<li>Password strength validation</li>
+<li>Password strength scoring</li>
+<li>Random password generation</li>
+<li>Rehash detection for security upgrades</li>
+</ul>
+<h2>Setup</h2>
+<h3>Install Required NuGet Package</h3>
+<pre><code class="language-bash">dotnet add package BCrypt.Net-Next
+</code></pre>
+<h3>Register in Dependency Injection</h3>
+<pre><code class="language-csharp">// Program.cs
+builder.Services.AddSingleton&lt;PasswordHasher&gt;();
+</code></pre>
+<h2>Usage</h2>
+<h3>Basic Password Hashing</h3>
+<pre><code class="language-csharp">public class UserService
+{
+    private readonly PasswordHasher _passwordHasher;
+
+    public UserService(PasswordHasher passwordHasher)
+    {
+        _passwordHasher = passwordHasher;
+    }
+
+    public async Task&lt;User&gt; RegisterUser(RegisterDto dto)
+    {
+        // Hash the password
+        var hashedPassword = _passwordHasher.HashPassword(dto.Password);
+
+        var user = new User
+        {
+            Username = dto.Username,
+            Email = dto.Email,
+            PasswordHash = hashedPassword
+        };
+
+        await _userRepository.AddAsync(user);
+        return user;
+    }
+}
+</code></pre>
+<h3>Password Verification</h3>
+<pre><code class="language-csharp">public async Task&lt;bool&gt; Login(LoginDto dto)
+{
+    var user = await _userRepository.GetByUsernameAsync(dto.Username);
+    if (user == null)
+        return false;
+
+    // Verify password
+    var isValid = _passwordHasher.VerifyPassword(dto.Password, user.PasswordHash);
+
+    if (!isValid)
+        return false;
+
+    // Check if password needs rehashing (security upgrade)
+    if (_passwordHasher.NeedsRehash(user.PasswordHash))
+    {
+        // Rehash with updated work factor
+        user.PasswordHash = _passwordHasher.HashPassword(dto.Password);
+        await _userRepository.UpdateAsync(user);
+    }
+
+    return true;
+}
+</code></pre>
+<h3>Password Strength Validation</h3>
+<pre><code class="language-csharp">[HttpPost(&quot;validate-password&quot;)]
+public IActionResult ValidatePassword([FromBody] string password)
+{
+    var result = _passwordHasher.ValidatePasswordStrength(password);
+
+    if (!result.IsValid)
+    {
+        return BadRequest(new
+        {
+            Message = &quot;Password does not meet strength requirements&quot;,
+            Errors = result.Errors
+        });
+    }
+
+    return Ok(&quot;Password is strong&quot;);
+}
+</code></pre>
+<h3>Password Strength Scoring</h3>
+<pre><code class="language-csharp">[HttpPost(&quot;check-strength&quot;)]
+public IActionResult CheckPasswordStrength([FromBody] string password)
+{
+    var score = _passwordHasher.CalculatePasswordStrength(password);
+
+    var strength = score switch
+    {
+        0 or 1 =&gt; &quot;Very Weak&quot;,
+        2 =&gt; &quot;Weak&quot;,
+        3 =&gt; &quot;Medium&quot;,
+        4 =&gt; &quot;Strong&quot;,
+        5 =&gt; &quot;Very Strong&quot;,
+        _ =&gt; &quot;Unknown&quot;
+    };
+
+    return Ok(new
+    {
+        Score = score,
+        Strength = strength
+    });
+}
+</code></pre>
+<h3>Complete Registration Example</h3>
+<pre><code class="language-csharp">[HttpPost(&quot;register&quot;)]
+public async Task&lt;IActionResult&gt; Register([FromBody] RegisterDto dto)
+{
+    // Validate password strength
+    var strengthResult = _passwordHasher.ValidatePasswordStrength(dto.Password);
+    if (!strengthResult.IsValid)
+    {
+        return BadRequest(new
+        {
+            Message = &quot;Password does not meet requirements&quot;,
+            Errors = strengthResult.Errors
+        });
+    }
+
+    // Check if username exists
+    if (await _userService.UsernameExistsAsync(dto.Username))
+        return Conflict(&quot;Username already exists&quot;);
+
+    // Check if email exists
+    if (await _userService.EmailExistsAsync(dto.Email))
+        return Conflict(&quot;Email already registered&quot;);
+
+    // Hash password and create user
+    var hashedPassword = _passwordHasher.HashPassword(dto.Password);
+
+    var user = new User
+    {
+        Username = dto.Username,
+        Email = dto.Email,
+        PasswordHash = hashedPassword,
+        CreatedAt = DateTime.UtcNow
+    };
+
+    await _userRepository.AddAsync(user);
+
+    return Created(&quot;User registered successfully&quot;);
+}
+</code></pre>
+<h3>Generate Random Password</h3>
+<pre><code class="language-csharp">[HttpGet(&quot;generate-password&quot;)]
+public IActionResult GeneratePassword([FromQuery] int length = 16)
+{
+    var password = _passwordHasher.GenerateRandomPassword(length, includeSpecialChars: true);
+
+    return Ok(new
+    {
+        Password = password,
+        Strength = _passwordHasher.CalculatePasswordStrength(password)
+    });
+}
+</code></pre>
+<h3>Password Reset with Strength Check</h3>
+<pre><code class="language-csharp">[HttpPost(&quot;reset-password&quot;)]
+public async Task&lt;IActionResult&gt; ResetPassword([FromBody] ResetPasswordDto dto)
+{
+    // Validate new password
+    var strengthResult = _passwordHasher.ValidatePasswordStrength(dto.NewPassword);
+    if (!strengthResult.IsValid)
+    {
+        return BadRequest(new
+        {
+            Message = &quot;New password does not meet requirements&quot;,
+            Errors = strengthResult.Errors
+        });
+    }
+
+    // Verify reset token
+    var user = await _userService.GetByResetTokenAsync(dto.ResetToken);
+    if (user == null || user.ResetTokenExpiry &lt; DateTime.UtcNow)
+        return BadRequest(&quot;Invalid or expired reset token&quot;);
+
+    // Update password
+    user.PasswordHash = _passwordHasher.HashPassword(dto.NewPassword);
+    user.ResetToken = null;
+    user.ResetTokenExpiry = null;
+
+    await _userRepository.UpdateAsync(user);
+
+    return Ok(&quot;Password reset successfully&quot;);
+}
+</code></pre>
+<h3>Change Password with Old Password Verification</h3>
+<pre><code class="language-csharp">[HttpPost(&quot;change-password&quot;)]
+[Authorize]
+public async Task&lt;IActionResult&gt; ChangePassword([FromBody] ChangePasswordDto dto)
+{
+    var userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier).Value);
+    var user = await _userRepository.GetByIdAsync(userId);
+
+    // Verify old password
+    if (!_passwordHasher.VerifyPassword(dto.OldPassword, user.PasswordHash))
+        return BadRequest(&quot;Current password is incorrect&quot;);
+
+    // Validate new password
+    var strengthResult = _passwordHasher.ValidatePasswordStrength(dto.NewPassword);
+    if (!strengthResult.IsValid)
+        return BadRequest(new { Errors = strengthResult.Errors });
+
+    // Prevent reusing old password
+    if (_passwordHasher.VerifyPassword(dto.NewPassword, user.PasswordHash))
+        return BadRequest(&quot;New password cannot be the same as old password&quot;);
+
+    // Update password
+    user.PasswordHash = _passwordHasher.HashPassword(dto.NewPassword);
+    await _userRepository.UpdateAsync(user);
+
+    return Ok(&quot;Password changed successfully&quot;);
+}
+</code></pre>
+<h2>Password Strength Requirements</h2>
+<p>Default validation requirements:
+- Minimum 8 characters
+- At least one uppercase letter (A-Z)
+- At least one lowercase letter (a-z)
+- At least one digit (0-9)
+- At least one special character (!@#$%^&amp;* etc.)
+- Not a common password (password, 123456, etc.)</p>
+<h2>Password Strength Scoring</h2>
+<p>Score is calculated based on:
+- Length (8+ chars = +1, 12+ chars = +1)
+- Uppercase letters (+1)
+- Lowercase letters (+1)
+- Digits (+1)
+- Special characters (+1)
+- Penalties for repeating characters (-1)
+- Penalties for sequential numbers (-1)</p>
+<p>Final score: 0-5
+- 0-1: Very Weak
+- 2: Weak
+- 3: Medium
+- 4: Strong
+- 5: Very Strong</p>
+<h2>BCrypt Work Factor</h2>
+<p>Default work factor: 12 (2^12 = 4,096 iterations)</p>
+<p>Higher work factor = more secure but slower hashing:
+- 10: Fast, minimal security (not recommended)
+- 12: Good balance (recommended)
+- 14: High security, slower
+- 16: Very high security, very slow</p>
+<h2>Security Best Practices</h2>
+<ol>
+<li><strong>Never Store Plain Passwords</strong> - Always hash before storing</li>
+<li><strong>Use BCrypt</strong> - Industry-standard, designed for password hashing</li>
+<li><strong>Automatic Salting</strong> - BCrypt includes unique salt for each hash</li>
+<li><strong>Work Factor</strong> - Adjust based on security requirements</li>
+<li><strong>Rehashing</strong> - Update old hashes when work factor increases</li>
+<li><strong>Password Policy</strong> - Enforce minimum strength requirements</li>
+<li><strong>Rate Limiting</strong> - Prevent brute-force attacks on login</li>
+<li><strong>Secure Transport</strong> - Always use HTTPS</li>
+<li><strong>No Password Hints</strong> - Don't store or display password hints</li>
+</ol>
+<h2>Benefits</h2>
+<ol>
+<li><strong>BCrypt Algorithm</strong> - Designed specifically for password hashing</li>
+<li><strong>Automatic Salting</strong> - Unique salt generated for each password</li>
+<li><strong>Slow by Design</strong> - Resistant to brute-force attacks</li>
+<li><strong>Future-Proof</strong> - Work factor can be increased as hardware improves</li>
+<li><strong>Strength Validation</strong> - Built-in password policy enforcement</li>
+<li><strong>Random Generation</strong> - Generate secure temporary passwords</li>
+<li><strong>Rehash Detection</strong> - Automatically upgrade old hashes</li>
+</ol>
+<h2>Dependencies</h2>
+<ul>
+<li>BCrypt.Net-Next (NuGet package)</li>
+<li>.NET 6.0 or higher</li>
+</ul>
+<h2>Example DTOs</h2>
+<pre><code class="language-csharp">public class RegisterDto
+{
+    public string Username { get; set; }
+    public string Email { get; set; }
+    public string Password { get; set; }
+}
+
+public class LoginDto
+{
+    public string Username { get; set; }
+    public string Password { get; set; }
+}
+
+public class ChangePasswordDto
+{
+    public string OldPassword { get; set; }
+    public string NewPassword { get; set; }
+}
+
+public class ResetPasswordDto
+{
+    public string ResetToken { get; set; }
+    public string NewPassword { get; set; }
+}
+</code></pre>
+</main>
+</body>
+</html>

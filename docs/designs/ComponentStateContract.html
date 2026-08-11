@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Component State Contract</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Component State Contract</h1>
+<h2>Status</h2>
+<p>Draft repository design note.</p>
+<p>This document describes how <code>ui_components</code> may evolve toward explicit
+state-machine-based components without overreaching into generator, app, or
+agent policy.</p>
+<h2>Scope</h2>
+<p>This document applies only to:</p>
+<ul>
+<li><code>packages/javascript/browser/ui_components</code></li>
+<li>the internal implementation model of components owned by the library</li>
+</ul>
+<p>This document does not define:</p>
+<ul>
+<li>how applications must use components</li>
+<li>how generators must emit component calls</li>
+<li>how agents must invoke components</li>
+</ul>
+<p>Those concerns belong to other layers.</p>
+<h2>Core Position</h2>
+<p>Every component is treated as a state machine.</p>
+<p>That does not mean every component must use the same heavyweight FSM pattern.
+It means each component must have:</p>
+<ul>
+<li>a current state</li>
+<li>explicit transitions</li>
+<li>render output that is a projection of that state</li>
+</ul>
+<p>The main difference between components is complexity:</p>
+<ul>
+<li>some components are mostly externally driven</li>
+<li>some components are internally interactive</li>
+<li>some components orchestrate child component state</li>
+</ul>
+<h2>Non-Negotiable Constraints</h2>
+<h3>1. State-machine work must not reduce component self-containment</h3>
+<p>Component state machines must remain an internal implementation detail of the
+component or of library-owned local helpers.</p>
+<p>The library must not require consumers to understand external transition schema
+or external machine registries just to use a component.</p>
+<p>Accepted:</p>
+<ul>
+<li>component-local transitions</li>
+<li>library-owned shared state helpers</li>
+<li>same-folder helpers when they reduce duplication without hiding behavior</li>
+</ul>
+<p>Not accepted:</p>
+<ul>
+<li>consumer-supplied machine schema as a requirement for normal use</li>
+<li>remote registries or app-owned machine orchestration as a prerequisite</li>
+<li>thin wrapper components whose real behavior lives somewhere else</li>
+</ul>
+<h3>2. Early phases must preserve generator compatibility</h3>
+<p>For the migration waves that touch generator-facing components, existing public
+methods remain the compatibility layer.</p>
+<p>At minimum, migrated field components must keep working through the current
+generator/runtime call surface:</p>
+<ul>
+<li><code>mount</code></li>
+<li><code>destroy</code></li>
+<li><code>getValue</code></li>
+<li><code>setValue</code></li>
+<li><code>setDisabled</code></li>
+<li><code>clear</code></li>
+</ul>
+<p>New state-machine methods such as <code>snapshot()</code> and <code>send()</code> may be added, but
+the generator must not need to know them in the early phases.</p>
+<h3>3. State-machine work must not increase required external knowledge</h3>
+<p>If a component becomes harder to use because consumers must learn machine
+internals that were previously irrelevant, the migration has failed.</p>
+<p>State-machine structure is allowed to increase internal rigor. It is not
+allowed to push that complexity outward without a separate decision by the
+generator or application layer.</p>
+<h2>Shared State Vocabulary</h2>
+<p>All migrated components should use the smallest honest subset of these state
+regions:</p>
+<ul>
+<li><code>lifecycle</code>: <code>created | mounted | destroyed</code></li>
+<li><code>visibility</code>: <code>visible | hidden</code></li>
+<li><code>availability</code>: <code>enabled | disabled</code></li>
+<li><code>interaction</code>: such as <code>idle | focused | open | active</code></li>
+<li><code>value</code></li>
+<li><code>validation</code></li>
+<li><code>async</code></li>
+</ul>
+<p>Not every component needs every region.</p>
+<h2>Required Public Contract For Migrated Components</h2>
+<p>Each migrated component should expose:</p>
+<ul>
+<li><code>snapshot()</code></li>
+<li><code>send(event, payload?)</code></li>
+</ul>
+<p>But legacy public methods remain valid and should map to those transitions.</p>
+<p>Examples:</p>
+<ul>
+<li><code>setValue(value)</code> -&gt; <code>send('SET_VALUE', { value })</code></li>
+<li><code>setDisabled(true)</code> -&gt; <code>send('SET_DISABLED', { disabled: true })</code></li>
+<li><code>clear()</code> -&gt; <code>send('CLEAR')</code></li>
+<li><code>mount(container)</code> -&gt; append DOM + <code>send('MOUNT')</code></li>
+</ul>
+<h2>Migration Strategy</h2>
+<h3>Phase 0</h3>
+<ul>
+<li>define the contract</li>
+<li>add a minimal library-owned state helper</li>
+<li>add baseline tests for the helper and pilot components</li>
+</ul>
+<h3>Phase 1</h3>
+<p>Pilot components:</p>
+<ul>
+<li>one simple display component</li>
+<li>one generator-facing field component</li>
+</ul>
+<p>Current pilot choice:</p>
+<ul>
+<li><code>Badge</code></li>
+<li><code>TextInput</code></li>
+</ul>
+<h3>Phase 2</h3>
+<p>Simple field components:</p>
+<ul>
+<li><code>NumberInput</code></li>
+<li><code>Checkbox</code></li>
+</ul>
+<h3>Phase 3</h3>
+<p>Interactive field components:</p>
+<ul>
+<li><code>Dropdown</code></li>
+<li><code>DatePicker</code></li>
+<li><code>TimePicker</code></li>
+<li><code>MultiSelectDropdown</code></li>
+</ul>
+<h3>Phase 4</h3>
+<p>Composite orchestrators:</p>
+<ul>
+<li><code>ChainedInput</code></li>
+<li><code>DateTimeInput</code></li>
+<li><code>ListInput</code></li>
+<li>related composite inputs</li>
+</ul>
+<h3>Phase 5</h3>
+<p>High-complexity async/editor components:</p>
+<ul>
+<li><code>BatchUploader</code></li>
+<li><code>WebTextEditor</code></li>
+<li><code>WebPainter</code></li>
+<li><code>OSMMapEditor</code></li>
+</ul>
+<h2>Checkpoints</h2>
+<p>Every phase must keep these gates green:</p>
+<ul>
+<li>existing UI library validation</li>
+<li>explicit state tests for newly migrated components</li>
+<li>legacy API compatibility checks for generator-facing components</li>
+</ul>
+<p>If a phase needs generator changes just to keep current behavior working, it is
+too early or too broad.</p>
+</main>
+</body>
+</html>

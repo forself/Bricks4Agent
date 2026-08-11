@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LINE Worker</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>LINE Worker</h1>
+<p>中文版本:</p>
+<ul>
+<li><a href="/d:/Bricks4Agent/packages/csharp/workers/line-worker/README.zh-TW.html">README.zh-TW.md</a></li>
+</ul>
+<p>Canonical live path:</p>
+<p><code>LINE webhook -&gt; ngrok public URL -&gt; line-worker -&gt; broker /api/v1/high-level/line/process</code></p>
+<p>The broker path above remains plain JSON, but it is no longer a trust bypass.
+<code>line-worker</code> must sign broker HTTP requests with the shared worker credential configured under <code>Worker.Auth</code>.</p>
+<p>Operator runbook:</p>
+<ul>
+<li><a href="/d:/Bricks4Agent/docs/manuals/line-sidecar-runbook.html">line-sidecar-runbook.md</a></li>
+<li><a href="/d:/Bricks4Agent/docs/manuals/line-sidecar-runbook.zh-TW.html">line-sidecar-runbook.zh-TW.md</a></li>
+</ul>
+<p>The worker is only the ingress bridge.
+User-facing dialogue, routing, confirmation, and query/production decisions belong to the broker high-level layer, which is configured separately from execution/runtime LLM settings through <code>HighLevelLlm</code>.</p>
+<p>Verified on 2026-03-22:</p>
+<ul>
+<li>signed live webhook verification returned <code>200</code></li>
+<li>broker high-level processing accepted UTF-8 Chinese production input</li>
+<li>canonical sidecar ingress path remained functional on ports <code>5357/5361</code></li>
+</ul>
+<p>Current verified query boundary:</p>
+<ul>
+<li>explicit broker-mediated search is available through <code>?search &lt;keywords&gt;</code></li>
+<li>plain <code>?query</code> messages still go through the high-level dialogue path</li>
+<li>real-time query tooling is not yet auto-selected for arbitrary query text; the current controlled live path is the explicit <code>?search</code> subcommand</li>
+</ul>
+<p>Recommended sidecar flow:</p>
+<ol>
+<li>Copy <code>appsettings.sidecar.example.json</code> to local <code>appsettings.json</code> and fill in real LINE credentials.</li>
+<li>Fill in <code>Worker.Auth.WorkerType</code>, <code>Worker.Auth.KeyId</code>, and <code>Worker.Auth.SharedSecret</code>.</li>
+<li>Ensure <code>%LOCALAPPDATA%\\ngrok\\ngrok.yml</code> exists and contains a valid ngrok authtoken.</li>
+<li>Run <code>line-sidecar.ps1 up</code>.</li>
+<li>Run <code>line-sidecar.ps1 verify</code> to send a signed synthetic webhook event.</li>
+<li>Use <code>line-sidecar.ps1 status</code>, <code>line-sidecar.ps1 restart</code>, and <code>line-sidecar.ps1 down</code> for runtime control.</li>
+</ol>
+<p>Unified one-command entrypoint:</p>
+<pre><code class="language-powershell">powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\line-sidecar.ps1 up
+powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\line-sidecar.ps1 status
+powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\line-sidecar.ps1 restart
+powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\line-sidecar.ps1 verify -MessageBase64Utf8 &lt;base64-utf8&gt;
+powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\line-sidecar.ps1 verify-broker -UserId test-user -MessageBase64Utf8 &lt;base64-utf8&gt;
+powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\line-sidecar.ps1 down
+</code></pre>
+<p>The unified script is the canonical operator entrypoint. It still starts separate broker, line-worker, and ngrok processes, but it now auto-starts the local ngrok agent if the admin API on <code>127.0.0.1:4040</code> is not already running.</p>
+<p>Default sidecar ports:</p>
+<ul>
+<li>broker: <code>5361</code></li>
+<li>line-worker webhook: <code>5357</code></li>
+</ul>
+<p>Why <code>5357</code>:</p>
+<ul>
+<li>this machine already has a reusable <code>http://*:5357/</code> URL ACL</li>
+<li>it avoids the old long-running <code>19090</code> worker</li>
+<li>it avoids the more collision-prone <code>8xxx</code> range</li>
+<li>sidecar therefore binds <code>WebhookHost="*"</code> on this port</li>
+</ul>
+<p>Notes:</p>
+<ul>
+<li><code>appsettings.json</code> is local-only and ignored by git.</li>
+<li><code>line-sidecar.ps1</code> is the canonical operator entrypoint for local Windows sidecar usage.</li>
+<li><code>start-sidecar-stack.ps1</code> creates a <code>.run/line-sidecar</code> workspace and updates the LINE webhook endpoint to the active tunnel URL unless <code>-SkipWebhookUpdate</code> is used.</li>
+<li>in sidecar mode, the observed managed workspace root is <code>.run/line-sidecar/broker/managed-workspaces</code>; production broker configuration can override this with an absolute <code>HighLevelCoordinator:AccessRoot</code></li>
+<li><code>verify-live-webhook.ps1</code> reads the current LINE webhook endpoint from LINE first, then falls back to <code>.last-tunnel-url</code>.</li>
+<li>all broker and webhook verification should use UTF-8 input; use <code>verify-high-level-process.ps1</code> or <code>verify-live-webhook.ps1</code> with <code>-MessageFile</code> / <code>-MessageBase64Utf8</code> when shell encoding is unreliable.</li>
+<li><code>start-sidecar-stack.ps1</code>, <code>status-sidecar-stack.ps1</code>, <code>stop-sidecar-stack.ps1</code>, <code>verify-live-webhook.ps1</code>, and <code>verify-high-level-process.ps1</code> remain as lower-level scripts behind <code>line-sidecar.ps1</code>.</li>
+<li><code>line-sidecar.ps1 restart</code> is the canonical reload path after broker or worker changes.</li>
+<li><code>start-with-tunnel.ps1</code> is a legacy tunnel launcher path, not the canonical sidecar flow.</li>
+<li>the current canonical sidecar pair is <code>5357</code> for the webhook ingress and <code>5361</code> for the broker.</li>
+</ul>
+</main>
+</body>
+</html>

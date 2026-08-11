@@ -1,0 +1,904 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bricks4Agent 目前版本使用手冊</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Bricks4Agent 目前版本使用手冊</h1>
+<p>Date: 2026-06-18<br>
+Status: current operator and user manual<br>
+Audience: LINE 使用者、系統管理者、在本機操作 sidecar 的工程/營運人員</p>
+<h2>1. 這套系統是什麼</h2>
+<p>Bricks4Agent 目前是一套以 broker 為中心的受治理 AI 操作平台。它不是單純的聊天機器人、CLI agent、頁面產生器或 UI 元件庫；這些都是平台內的子系統。核心設計是：</p>
+<pre><code class="language-text">使用者意圖 -&gt; broker 解讀與驗證 -&gt; 受控能力/工作流程 -&gt; artifact 或外部動作
+</code></pre>
+<p>目前主要可用入口是 LINE sidecar：</p>
+<pre><code class="language-text">LINE webhook -&gt; public tunnel -&gt; line-worker -&gt; broker /api/v1/high-level/line/process
+</code></pre>
+<p>重要界線：</p>
+<ul>
+<li><code>line-worker -&gt; broker high-level coordinator</code> 是目前 canonical LINE 路徑。</li>
+<li><code>agent --line-listen</code> 只保留為 legacy/development-only，不是正式操作路徑。</li>
+<li>Podman governed agent stack 用於驗證受控 agent/container 路徑，不等於整個 LINE/Drive/部署系統。</li>
+<li>高階對話模型與受控 agent 執行模型是分開設定的。</li>
+</ul>
+<h2>2. 角色與常見任務</h2>
+<table>
+<thead>
+<tr>
+<th>角色</th>
+<th>會做的事</th>
+<th>主要入口</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>LINE 使用者</td>
+<td>對話、查詢、建立需求草稿、確認/取消任務、查看審批連結</td>
+<td>LINE</td>
+</tr>
+<tr>
+<td>本機管理員</td>
+<td>啟動 sidecar、查看狀態、登入後台、處理審批、重送通知/交付</td>
+<td>PowerShell、<code>line-admin.html</code></td>
+</tr>
+<tr>
+<td>工程人員</td>
+<td>建置、測試、執行 worker、驗證 governed stack、維護設定</td>
+<td>repo root、CLI、Podman</td>
+</tr>
+<tr>
+<td>受控 agent 測試者</td>
+<td>驗證 agent 僅能透過 broker 取用模型與工具</td>
+<td><code>tools/agent</code>、Podman stack</td>
+</tr>
+</tbody>
+</table>
+<h2>3. 核心概念</h2>
+<h3>3.1 Broker</h3>
+<p>Broker 是控制平面。它負責：</p>
+<ul>
+<li>接收 LINE / agent / admin / worker request。</li>
+<li>維護 principal、role、task、session、capability、grant、approval、audit。</li>
+<li>判斷使用者或 agent 是否能執行某個 capability。</li>
+<li>將允許的執行請求派發給 in-process handler 或 FunctionPool worker。</li>
+<li>管理 artifact、Google Drive delivery、browser/deployment/admin surface。</li>
+</ul>
+<h3>3.2 High-Level Coordinator</h3>
+<p>High-Level Coordinator 是 LINE 高階互動層。它負責：</p>
+<ul>
+<li>一般對話。</li>
+<li>顯式查詢命令，例如 <code>?search</code>、<code>?rail</code>。</li>
+<li>生產型需求的草稿、確認、取消、promotion gate。</li>
+<li>專案訪談流程。</li>
+<li>使用者 profile 與 managed workspace。</li>
+</ul>
+<h3>3.3 Managed Workspace</h3>
+<p>每個使用者有自己的工作區，邏輯形狀為：</p>
+<pre><code class="language-text">{AccessRoot}/{channel}/{userId}/{conversations|documents|projects}
+</code></pre>
+<p>在 sidecar 模式中，常見實際路徑位於：</p>
+<pre><code class="language-text">.run/line-sidecar/broker/managed-workspaces
+</code></pre>
+<h3>3.4 Approval</h3>
+<p>高風險、scope 逸出、跨使用者或外部發佈/部署類動作不應由 agent 自行決定。Broker 會建立 approval request，並由：</p>
+<ul>
+<li>admin 在 <code>line-admin.html</code> 審批。</li>
+<li>使用者透過 LINE 收到的短效簽章連結進入 <code>user-approvals.html</code> 審批。</li>
+</ul>
+<p>目前 High / <code>require_approval</code> 需要 1 次核准；Critical / <code>require_dual_approval</code> 需要 2 個不同 approver id 才能放行。Broker 會持久化 <code>ApprovalRequest.required_approval_count</code> 與每位 approver 一筆的 <code>approval_decisions</code>，避免同一 approver 重複核准。Local admin 現在使用 named operator session，approver id 會綁到 operator，並由後端 RBAC 判斷是否具備 admin approval 權限。</p>
+<h2>4. 最小安裝需求</h2>
+<p>建議最低環境：</p>
+<table>
+<thead>
+<tr>
+<th>工具</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Windows 10/11</td>
+<td>canonical local LINE sidecar</td>
+</tr>
+<tr>
+<td>Windows PowerShell 5.1+</td>
+<td>sidecar 腳本</td>
+</tr>
+<tr>
+<td>.NET SDK 8.0+</td>
+<td>broker / worker 建置與測試</td>
+</tr>
+<tr>
+<td>Node.js 18+ 與 npm</td>
+<td>agent、JS tools、UI tests</td>
+</tr>
+<tr>
+<td>Git</td>
+<td>repo 操作</td>
+</tr>
+<tr>
+<td>ngrok</td>
+<td>LINE webhook public tunnel</td>
+</tr>
+<tr>
+<td>Podman</td>
+<td>governed agent container stack</td>
+</tr>
+<tr>
+<td>Playwright Chromium</td>
+<td>browser worker / browser tests</td>
+</tr>
+<tr>
+<td>Ollama</td>
+<td>local model、embedding、host Ollama stack</td>
+</tr>
+</tbody>
+</table>
+<p>外部整合所需額外憑證：</p>
+<ul>
+<li>LINE Channel Access Token / Channel Secret。</li>
+<li>Anthropic Claude API key (<code>ANTHROPIC_API_KEY</code>)；若未設定，仍可使用 OpenAI-compatible API key。</li>
+<li>Google OAuth client JSON 或 service account。</li>
+<li>TDX Client ID / Client Secret。</li>
+<li>Azure VM IIS + WinRM 憑證。</li>
+</ul>
+<h2>5. 第一次本機設定</h2>
+<p>在 repo root：</p>
+<pre><code class="language-powershell">npm install
+dotnet restore packages/csharp/ControlPlane.slnx
+dotnet build packages/csharp/ControlPlane.slnx
+</code></pre>
+<p>如果要跑 browser/e2e：</p>
+<pre><code class="language-powershell">npx playwright install chromium
+</code></pre>
+<p>如果要直接跑 <code>packages/javascript/browser</code> 的測試：</p>
+<pre><code class="language-powershell">cd packages/javascript/browser
+npm install
+cd ..\..\..
+</code></pre>
+<h2>6. 本機 secrets 與設定</h2>
+<p>不要把 credentials commit 進 repo。</p>
+<p>建議 secrets 目錄：</p>
+<pre><code class="language-powershell">C:\secure\Bricks4Agent
+</code></pre>
+<p>可用環境變數覆寫：</p>
+<pre><code class="language-powershell">$env:BRICKS4AGENT_SECRETS_DIR = 'D:\secure\Bricks4Agent'
+</code></pre>
+<p>常見檔案：</p>
+<table>
+<thead>
+<tr>
+<th>檔案</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Api.txt</code></td>
+<td>OpenAI-compatible fallback key；只有在 sidecar/container 明確切到 OpenAI-compatible provider 時才需要</td>
+</tr>
+<tr>
+<td><code>client_secret_*.json</code></td>
+<td>Google delegated OAuth</td>
+</tr>
+<tr>
+<td><code>worker-auth.json</code></td>
+<td>sidecar 產生/維護 worker identity credentials</td>
+</tr>
+</tbody>
+</table>
+<p>本機 broker / Portal 預設使用 host Ollama：<code>HighLevelLlm.Provider=ollama</code>、<code>HighLevelLlm.BaseUrl=http://localhost:11434</code>、<code>HighLevelLlm.ApiFormat=chat</code>、<code>HighLevelLlm.DefaultModel=qwen3.6:latest</code>、<code>HighLevelLlm.MaxOutputTokens=256</code>。此模式不需要 <code>HighLevelLlm.ApiKey</code>。</p>
+<p>目前 sidecar 會優先讀取環境變數 <code>ANTHROPIC_API_KEY</code>，並將 broker high-level 與 agent-facing <code>LlmProxy</code> 設為 <code>anthropic</code> / <code>claude-sonnet-4-6</code>。若要改走 OpenAI-compatible provider，才使用 <code>Api.txt</code> fallback。</p>
+<p>LINE worker 本機設定：</p>
+<pre><code class="language-powershell">Copy-Item .\packages\csharp\workers\line-worker\appsettings.sidecar.example.json `
+  .\packages\csharp\workers\line-worker\appsettings.json
+</code></pre>
+<p>至少填入：</p>
+<ul>
+<li><code>Line.ChannelAccessToken</code></li>
+<li><code>Line.ChannelSecret</code></li>
+<li><code>Line.DefaultRecipientId</code></li>
+<li><code>Line.AllowedUserIds</code></li>
+</ul>
+<h2>7. 啟動 LINE Sidecar</h2>
+<h3>7.1 啟動</h3>
+<pre><code class="language-powershell">powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\line-sidecar.ps1 up
+</code></pre>
+<p>Sidecar 會：</p>
+<ol>
+<li>建立 <code>.run/line-sidecar</code> runtime workspace。</li>
+<li>publish broker 與 line-worker。</li>
+<li>若存在 <code>Bricks4Agent Dev Code Signing</code> 開發簽章憑證，補簽 sidecar runtime 內自家 <code>.dll</code> / <code>.exe</code>。</li>
+<li>載入 high-level API key、Google OAuth、worker auth 等 runtime override。</li>
+<li>啟動 broker：<code>127.0.0.1:5361</code>。</li>
+<li>啟動 line-worker webhook：<code>127.0.0.1:5357</code>。</li>
+<li>啟動或沿用 ngrok tunnel。</li>
+<li>更新 LINE webhook URL，除非使用 <code>-SkipWebhookUpdate</code>。</li>
+<li>檢查 broker、line-worker、tunnel ready。</li>
+</ol>
+<p>若 Windows Smart App Control / WDAC 在啟動時封鎖 <code>Broker.dll</code>、<code>BrokerCore.dll</code>、<code>BaseOrm.dll</code> 或其他 runtime DLL，請用系統管理員 PowerShell 修復 sidecar runtime trust：</p>
+<pre><code class="language-powershell">cd D:\Bricks4Agent
+npm run signing:wdac-repair -- -Deploy
+</code></pre>
+<p>此命令會掃描 <code>D:\Bricks4Agent\.run\line-sidecar</code>，產生 policy 到 <code>D:\Bricks4Agent\.run\wdac\line-sidecar-runtime\</code>，並確認 <code>{policy-id}.cip</code> 進入 <code>C:\Windows\System32\CodeIntegrity\CiPolicies\Active</code>。只有 active policy 檢查通過才表示 WDAC trust 已生效。</p>
+<h3>7.2 狀態</h3>
+<pre><code class="language-powershell">powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\line-sidecar.ps1 status
+</code></pre>
+<p>應確認：</p>
+<ul>
+<li>broker PID 存在。</li>
+<li>line-worker PID 存在。</li>
+<li>ngrok public URL 存在。</li>
+<li>LINE webhook endpoint active。</li>
+<li>admin console 可開啟。</li>
+</ul>
+<h3>7.3 驗證</h3>
+<p>直接驗證 broker high-level：</p>
+<pre><code class="language-powershell">powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\line-sidecar.ps1 verify-broker -UserId test-user -Message &quot;hello&quot;
+</code></pre>
+<p>驗證 live webhook：</p>
+<pre><code class="language-powershell">powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\line-sidecar.ps1 verify -Message &quot;hello&quot;
+</code></pre>
+<p>遇到 shell 中文編碼問題時，改用 UTF-8 base64：</p>
+<pre><code class="language-powershell">powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\line-sidecar.ps1 verify-broker `
+  -UserId test-user `
+  -MessageBase64Utf8 &lt;base64-utf8-message&gt;
+</code></pre>
+<h3>7.4 重啟與停止</h3>
+<pre><code class="language-powershell">powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\line-sidecar.ps1 restart
+powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\line-sidecar.ps1 down
+</code></pre>
+<h2>8. 使用 LINE 互動</h2>
+<h3>8.0 第一次綁定 LINE</h3>
+<p>新使用者不能只靠 LINE 訊息自動開通。正式流程是先在 Web Portal 註冊，再把 Portal 帳號綁定到 LINE：</p>
+<ol>
+<li>開啟 <code>http://127.0.0.1:5361/portal/index.html</code>。</li>
+<li>在 Portal 註冊 <code>user_id</code>、密碼與顯示名稱。</li>
+<li>註冊成功後，Portal 會顯示 6 位數 LINE 驗證碼與完整指令，例如 <code>/verify alice 123456</code>。</li>
+<li>在 LINE 傳送 <code>/verify &lt;user_id&gt; &lt;code&gt;</code>。也可使用 <code>/驗證 &lt;user_id&gt; &lt;code&gt;</code>。</li>
+<li>帳號或驗證碼不符合、過期、已使用，broker 會拒絕 LINE 操作。</li>
+<li>驗證成功後，同一個 LINE 使用者才會被映射到 Portal <code>user_id</code>，後續對話、結果紀錄與 artifact 都使用同一個使用者工作區。</li>
+</ol>
+<p>若驗證碼過期，可登入 Portal，在個人資料區重新產生 LINE 驗證碼。</p>
+<h3>8.1 基本對話</h3>
+<p>直接傳一般訊息即可。Broker 會走 high-level conversation path。當問題比較適合受控搜尋或查詢時，系統會引導你使用明確前綴命令。</p>
+<h3>8.2 查詢命令</h3>
+<table>
+<thead>
+<tr>
+<th>指令</th>
+<th>快捷</th>
+<th>用途</th>
+<th>範例</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>?help</code></td>
+<td><code>?h</code></td>
+<td>查看規則</td>
+<td><code>?help</code></td>
+</tr>
+<tr>
+<td><code>?search</code></td>
+<td><code>?s</code></td>
+<td>受控網路搜尋</td>
+<td><code>?search 台灣 AI 法規趨勢</code></td>
+</tr>
+<tr>
+<td><code>?rail</code></td>
+<td><code>?r</code></td>
+<td>台鐵/火車查詢</td>
+<td><code>?rail 台北 台中 今天 18:00</code></td>
+</tr>
+<tr>
+<td><code>?hsr</code></td>
+<td></td>
+<td>高鐵查詢</td>
+<td><code>?hsr 台北 左營 明天上午</code></td>
+</tr>
+<tr>
+<td><code>?bus</code></td>
+<td><code>?b</code></td>
+<td>公車/客運查詢</td>
+<td><code>?bus 台北 宜蘭 明天</code></td>
+</tr>
+<tr>
+<td><code>?flight</code></td>
+<td><code>?f</code></td>
+<td>航班查詢</td>
+<td><code>?flight TPE KIX tomorrow</code></td>
+</tr>
+<tr>
+<td><code>?profile</code></td>
+<td><code>?p</code></td>
+<td>查看個人 profile</td>
+<td><code>?profile</code></td>
+</tr>
+</tbody>
+</table>
+<p>目前建議使用顯式查詢命令。一般問題不保證自動選用即時查詢工具。</p>
+<h3>8.3 個人設定</h3>
+<table>
+<thead>
+<tr>
+<th>指令</th>
+<th>快捷</th>
+<th>用途</th>
+<th>範例</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/name</code></td>
+<td><code>/n</code></td>
+<td>設定顯示稱呼</td>
+<td><code>/name 小布</code></td>
+</tr>
+<tr>
+<td><code>/id</code></td>
+<td><code>/i</code></td>
+<td>設定英數字使用者 ID</td>
+<td><code>/id bricks001</code></td>
+</tr>
+</tbody>
+</table>
+<p>使用者 ID 只能包含英文字母與數字，長度需介於 3 到 32。</p>
+<h3>8.4 生產型需求與確認</h3>
+<p>當你提出「建立、產生、修改、修復、部署、交付」之類的需求，broker 會先建立 draft，而不是立刻執行。</p>
+<p>典型流程：</p>
+<ol>
+<li>使用者提出需求，例如 <code>/create a website prototype</code>。</li>
+<li>系統要求專案名稱。</li>
+<li>使用者用 <code>#ProjectName</code> 回覆。</li>
+<li>系統整理 draft 和預計行動。</li>
+<li>使用者回覆 <code>confirm</code>、<code>yes</code>、<code>y</code>、<code>ok</code> 或 <code>確認</code>。</li>
+<li>Broker 將合格 draft promotion 成 task / plan / handoff。</li>
+<li>若使用者回覆 <code>cancel</code>、<code>no</code>、<code>n</code> 或 <code>取消</code>，draft 取消。</li>
+</ol>
+<p>專案名稱必須使用 <code>#</code> 或全形 <code>＃</code> 開頭：</p>
+<pre><code class="language-text">#MySite
+</code></pre>
+<h3>8.5 專案訪談流程</h3>
+<p>專案訪談用於更結構化地收集需求並產生 artifact。</p>
+<table>
+<thead>
+<tr>
+<th>指令</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/proj</code></td>
+<td>開始專案訪談</td>
+</tr>
+<tr>
+<td><code>#ProjectName</code></td>
+<td>指定專案名稱</td>
+</tr>
+<tr>
+<td><code>/ok</code></td>
+<td>確認目前訪談/設計</td>
+</tr>
+<tr>
+<td><code>/revise</code></td>
+<td>要求修訂</td>
+</tr>
+<tr>
+<td><code>/cancel</code></td>
+<td>取消訪談</td>
+</tr>
+</tbody>
+</table>
+<p>典型流程：</p>
+<ol>
+<li>傳 <code>/proj</code>。</li>
+<li>用 <code>#ProjectName</code> 指定專案名。</li>
+<li>回答系統提出的需求問題。</li>
+<li>查看系統產出的摘要、設計、PDF/JSON review artifact。</li>
+<li>用 <code>/ok</code>、<code>/revise</code> 或 <code>/cancel</code> 決定下一步。</li>
+</ol>
+<h3>8.6 使用者 Portal 前台</h3>
+<p>Broker 也提供使用者 Web 前台，讓使用者可以登入、下指令、查看回應紀錄，以及下載 broker 產生的 artifact。</p>
+<p>啟動 sidecar 或 direct broker 後開啟：</p>
+<pre><code class="language-text">http://127.0.0.1:5361/portal/index.html
+</code></pre>
+<p>目前 portal 使用 broker 內建輕量帳號密碼登入：</p>
+<ol>
+<li>第一次使用可在 portal 註冊使用者 ID 與密碼；broker 會同步建立對應的 high-level profile，並顯示一次性 LINE 驗證碼。</li>
+<li>若要使用 LINE，需把 Portal 顯示的 <code>/verify &lt;user_id&gt; &lt;code&gt;</code> 傳到 LINE 完成綁定。</li>
+<li>登入後可以在「指令與回應」輸入需求。Portal 會呼叫同一個 <code>HighLevelCoordinator</code>，所以 <code>?profile</code>、查詢命令、draft、專案訪談等行為與 LINE 高階入口一致。</li>
+<li>「結果檔案」會列出該使用者工作區中的 artifact。若 artifact 沒有 Google Drive 下載連結，portal 會使用 broker 的短效簽章下載連結。</li>
+<li>Portal 只顯示自己的 profile、結果紀錄與 artifact metadata；不回傳 broker 內部檔案路徑。</li>
+</ol>
+<p>Portal 是一般使用者操作入口；管理、審批、Drive OAuth、部署與系統監控仍使用 <code>line-admin.html</code>。</p>
+<h2>9. 使用本機管理後台</h2>
+<p>Sidecar 啟動後開啟：</p>
+<pre><code class="language-text">http://127.0.0.1:5361/line-admin.html
+</code></pre>
+<p>安全特性：</p>
+<ul>
+<li>local admin 僅供 localhost 操作。</li>
+<li>若 local DB 沒有 admin credential，初始帳號為 <code>admin</code>、初始密碼為 <code>admin</code>。</li>
+<li>第一次登入後會要求修改密碼，並建立 <code>super_admin</code> operator。</li>
+<li>session 以 cookie 維持。</li>
+<li>後端會依 operator 角色檢查 API 權限；UI 隱藏頁籤只是操作提示，不是安全邊界。</li>
+</ul>
+<p>本機 operator 角色：</p>
+<table>
+<thead>
+<tr>
+<th>角色</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>super_admin</code></td>
+<td>break-glass / 全權限，可建立與調整其他 operator</td>
+</tr>
+<tr>
+<td><code>system_admin</code></td>
+<td>系統狀態、監控、browser/deployment/delivery 等系統操作</td>
+</tr>
+<tr>
+<td><code>permission_admin</code></td>
+<td>operator、使用者權限、註冊政策、browser user grant、admin approval 管理</td>
+</tr>
+<tr>
+<td><code>auditor</code></td>
+<td>只讀監控、audit、tool specs 與狀態檢視</td>
+</tr>
+</tbody>
+</table>
+<p>常用區域：</p>
+<table>
+<thead>
+<tr>
+<th>區域</th>
+<th>功能</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>系統狀態</td>
+<td>broker、LLM proxy、embedding、RAG、DB 狀態</td>
+</tr>
+<tr>
+<td>系統監控</td>
+<td>LLM、Embedding、RAG、DB 與 runtime monitoring 摘要</td>
+</tr>
+<tr>
+<td>LINE 使用者</td>
+<td>使用者列表、註冊政策、權限</td>
+</tr>
+<tr>
+<td>對話/工作流</td>
+<td>對話紀錄、draft、handoff、execution intent</td>
+</tr>
+<tr>
+<td>權限管理</td>
+<td>named local admin operator 建立、角色調整、停用與 session 撤銷</td>
+</tr>
+<tr>
+<td>審批</td>
+<td>查看 pending approval，批准或拒絕</td>
+</tr>
+<tr>
+<td>Browser governance</td>
+<td>site binding、user grant、lease、request build、execute</td>
+</tr>
+<tr>
+<td>Deployment</td>
+<td>Azure IIS target、preview、execute、execution history</td>
+</tr>
+<tr>
+<td>Delivery</td>
+<td>Google Drive OAuth、share、artifact delivery</td>
+</tr>
+<tr>
+<td>Artifacts</td>
+<td>使用者文件與交付物、重試 Drive 或 LINE notification</td>
+</tr>
+<tr>
+<td>Tool specs</td>
+<td>查看 broker tool/capability 規格</td>
+</tr>
+<tr>
+<td>Alerts</td>
+<td>觀測事件與系統警示</td>
+</tr>
+</tbody>
+</table>
+<h2>10. 審批操作</h2>
+<h3>10.1 管理員審批</h3>
+<p>在 <code>line-admin.html</code> 的審批分頁：</p>
+<ol>
+<li>查看 request 細節。</li>
+<li>檢查 rendered content，例如 unified diff、payload、目標路徑、risk reason。</li>
+<li>輸入 reason。</li>
+<li>按 approve 或 reject。</li>
+</ol>
+<p>Admin 層適用於：</p>
+<ul>
+<li>scope 逸出。</li>
+<li>High / Critical 風險。</li>
+<li>agent create/stop。</li>
+<li>部署。</li>
+<li>對外發佈。</li>
+<li>自由 shell 類，現階段通常拒絕。</li>
+</ul>
+<h3>10.2 使用者審批</h3>
+<p>User 層 approval 會透過 LINE 傳短效簽章連結：</p>
+<pre><code class="language-text">http(s)://.../user-approvals.html#token=&lt;signed&gt;
+</code></pre>
+<p>使用者只能看見與決定自己 scope 內的 User 層 approval。連結會過期。</p>
+<h2>11. Artifact 與交付</h2>
+<p>系統可以產出：</p>
+<ul>
+<li>Markdown / JSON / PDF review artifact。</li>
+<li>靜態網站套件。</li>
+<li>scaffold / project definition。</li>
+<li>web report。</li>
+<li>其他由 high-level artifact service 產生的文件。</li>
+</ul>
+<p>交付方式：</p>
+<table>
+<thead>
+<tr>
+<th>方式</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Broker signed download</td>
+<td>短效簽章下載連結，不依賴 Google Drive</td>
+</tr>
+<tr>
+<td>Google Drive shared delegated</td>
+<td>使用共用 delegated owner 上傳到 Drive</td>
+</tr>
+<tr>
+<td>Google Drive user delegated</td>
+<td>使用 LINE 使用者自己的 delegated OAuth</td>
+</tr>
+<tr>
+<td>Google Drive system account</td>
+<td>使用 service account，通常適合 Shared Drive</td>
+</tr>
+<tr>
+<td>LINE notification queue</td>
+<td>broker queue notification，line-worker 取出後送 LINE</td>
+</tr>
+</tbody>
+</table>
+<p>若 Drive 或通知失敗，可在 admin console 重試。</p>
+<h2>12. Governed Agent Container 使用時機</h2>
+<p>Podman governed stack 用於驗證「agent 不能直接拿工具或模型，只能透過 broker」。</p>
+<p>它適合驗證：</p>
+<ul>
+<li>agent bootstrap。</li>
+<li>broker-issued runtime descriptor。</li>
+<li>capability / scope-gated execution。</li>
+<li>broker LLM proxy。</li>
+<li>worker container attachment。</li>
+<li>execution adapter patch/build/test path。</li>
+</ul>
+<p>它不直接驗證：</p>
+<ul>
+<li>LINE webhook。</li>
+<li>admin console。</li>
+<li>Google Drive delivery。</li>
+<li>Azure IIS deployment。</li>
+<li>browser-governed production readiness。</li>
+</ul>
+<h3>12.1 Mock governed stack</h3>
+<pre><code class="language-powershell">npm run validate:podman-governed-stack
+</code></pre>
+<p>預期能看到 deterministic <code>STACK_OK</code>，並覆蓋 broker-governed <code>read_file</code> 路徑。</p>
+<h3>12.2 OpenAI-compatible stack</h3>
+<p>Mock upstream：</p>
+<pre><code class="language-powershell">npm run validate:podman-openai-compatible-stack
+</code></pre>
+<p>真實 OpenAI-compatible provider：</p>
+<pre><code class="language-powershell">$env:OPENAI_BASE_URL=&quot;https://api.openai.com&quot;
+$env:OPENAI_API_KEY=&quot;&lt;key&gt;&quot;
+$env:OPENAI_API_FORMAT=&quot;responses&quot;
+$env:STACK_MODEL=&quot;gpt-5.4-mini&quot;
+npm run validate:podman-openai-compatible-stack
+</code></pre>
+<h3>12.3 Host Ollama stack</h3>
+<p>先確認 Ollama 有模型：</p>
+<pre><code class="language-powershell">ollama list
+</code></pre>
+<p>執行：</p>
+<pre><code class="language-powershell">npm run validate:podman-ollama-host-stack
+</code></pre>
+<p>Live Ollama 驗證的是 broker-mediated round trip、agent completion、session close、無 broker/API error。逐字 sentinel 只由 mock stack 保證，因為不同本機模型會改寫回答。</p>
+<h3>12.4 Execution adapter stack</h3>
+<pre><code class="language-powershell">node tools/agent/tests/test-podman-execution-adapter-stack.js
+</code></pre>
+<p>這會建立 throwaway fixture，讓模型透過 broker-governed chain 呼叫 <code>apply_patch</code>，最後確認 patch 真的由 execution-adapter-worker 套用。</p>
+<h2>13. Local Agent CLI</h2>
+<p>CLI 位於：</p>
+<pre><code class="language-text">tools/agent/agent.js
+</code></pre>
+<p>主要模式：</p>
+<table>
+<thead>
+<tr>
+<th>模式</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>local provider mode</td>
+<td>agent 直接呼叫 Ollama/OpenAI-compatible provider</td>
+</tr>
+<tr>
+<td>generation/pipeline mode</td>
+<td>產生 <code>project.json</code> 或 CRUD pipeline</td>
+</tr>
+<tr>
+<td>governed mode</td>
+<td>agent 只跟 broker 溝通，模型與工具都 broker-mediated</td>
+</tr>
+</tbody>
+</table>
+<p>One-shot 範例：</p>
+<pre><code class="language-powershell">node tools/agent/agent.js --run &quot;Read AGENT.md and summarize the constraints&quot;
+</code></pre>
+<p>Governed 範例：</p>
+<pre><code class="language-powershell">node tools/agent/agent.js `
+  --governed `
+  --broker-url http://127.0.0.1:5361 `
+  --broker-pub-key &lt;base64&gt; `
+  --principal-id prn_xxx `
+  --task-id task_xxx `
+  --role-id role_reader `
+  --run &quot;Inspect the repo&quot;
+</code></pre>
+<p>Governed mode 中，<code>--provider</code>、<code>--api-key</code>、<code>--host</code> 不是 canonical 執行路徑；LLM health、model list、chat 都會透過 broker <code>/api/v1/llm/*</code>。</p>
+<h2>14. SPA / Page Generator / UI Library</h2>
+<p>這些是平台內的生成與前端工具，不是 LINE sidecar 本身。</p>
+<h3>14.1 SPA Generator Workbench</h3>
+<p>啟動 frontend：</p>
+<pre><code class="language-powershell">npm run serve
+</code></pre>
+<p>或：</p>
+<pre><code class="language-powershell">cd tools/spa-generator
+node server.js
+</code></pre>
+<p>開啟：</p>
+<pre><code class="language-text">http://localhost:3080
+</code></pre>
+<p>Backend 預設：</p>
+<pre><code class="language-text">https://localhost:5002
+</code></pre>
+<h3>14.2 Page Generator CLI</h3>
+<pre><code class="language-powershell">node tools/page-gen.js --validate --def employee.json
+node tools/page-gen.js --def employee.json --mode static --output .\output
+node tools/page-gen.js --list-types
+</code></pre>
+<h3>14.3 UI Component Library</h3>
+<p>目前 component metadata catalog 包含 109 個 components，分類包含：</p>
+<ul>
+<li><code>common</code></li>
+<li><code>form</code></li>
+<li><code>input</code></li>
+<li><code>layout</code></li>
+<li><code>sections</code></li>
+<li><code>social</code></li>
+<li><code>viz</code></li>
+<li><code>editor</code></li>
+<li><code>data</code></li>
+</ul>
+<p>注意：</p>
+<ul>
+<li>site generator 的 component vocabulary 已錨定到 canonical <code>ui_components</code> 閉集。</li>
+<li>static site package 會輸出 <code>b_component</code> / <code>b-binding.json</code> 作為 B component anchor。</li>
+<li>不是整個 <code>ui_components</code> 都宣稱 byte-deterministic；site-gen 靜態輸出與特定 instance ID 已清 deterministic，viz/map/social/download 類仍可能有 runtime timestamp 或互動時 ID/檔名需求。</li>
+<li>使用者 Portal 的指令輸入使用元件庫中的 <code>CommandComposer</code>；後續前台需要的新前後端元件也應先補回共用元件庫或 broker reusable service，再由產品畫面引用。</li>
+</ul>
+<h2>15. 常用驗證命令</h2>
+<h3>15.1 C# build/test</h3>
+<pre><code class="language-powershell">dotnet build packages/csharp/ControlPlane.slnx
+dotnet run --project packages/csharp/tests/broker-tests/Broker.Tests.csproj
+dotnet test packages/csharp/tests/unit/Unit.Tests.csproj
+</code></pre>
+<p>Broker HTTP integration 需要先有 broker：</p>
+<pre><code class="language-powershell">dotnet run --project packages/csharp/tests/broker-tests/Broker.Tests.csproj -- --integration http://localhost:5361
+</code></pre>
+<h3>15.2 Repo validation</h3>
+<pre><code class="language-powershell">npm test
+npm run validate:baseorm
+npm run validate:broker-scope
+npm run validate:backend-governance
+npm run validate:ui-state
+npm run validate:ui-library
+npm run validate:ui-library:browser
+npm run validate:user-portal
+npm run validate:agent-governed
+npm run validate:broker-llm-proxy
+</code></pre>
+<p>若 Windows Smart App Control / WDAC 擋下 <code>BaseOrm.dll</code>、broker verify executable、<code>Unit.Tests.dll</code>、<code>Broker.Tests.exe</code> 或其他本機 build output，先依 <a href="dev-code-signing-wdac.zh-TW.html">dev-code-signing-wdac.zh-TW.md</a> 建立 dev code-signing 與 WDAC supplemental policy 流程，再用 signed 入口重跑驗證：</p>
+<pre><code class="language-powershell">npm run validate:db:signed
+npm run test:unit:signed
+npm run test:integration:signed
+npm run test:broker:signed
+npm run test:dotnet:signed
+</code></pre>
+<p>若測試 runtime 仍被封鎖，請用系統管理員 PowerShell 執行 <code>npm run signing:wdac-repair-tests -- -Deploy</code>，讓 broker、broker-tests、unit-tests、integration-tests runtime 都納入 Publisher-level supplemental policy。SAC / WDAC 下不要在簽章後直接跑一般 <code>dotnet run</code> 或 <code>dotnet test</code>，因為它們可能重新 build 並覆蓋簽章。</p>
+<h3>15.3 Podman stacks</h3>
+<pre><code class="language-powershell">npm run validate:podman-governed-stack
+npm run validate:podman-openai-compatible-stack
+npm run validate:podman-ollama-host-stack
+node tools/agent/tests/test-podman-execution-adapter-stack.js
+</code></pre>
+<h2>16. 測試產物清理</h2>
+<p>直接測試後清理：</p>
+<pre><code class="language-powershell">Remove-Item -Force `
+  .\packages\csharp\broker\broker.db, `
+  .\packages\csharp\broker\broker.db-shm, `
+  .\packages\csharp\broker\broker.db-wal `
+  -ErrorAction SilentlyContinue
+
+Remove-Item -Recurse -Force .\.test-output -ErrorAction SilentlyContinue
+</code></pre>
+<p>若是 sidecar runtime，不要直接刪 <code>.run/line-sidecar</code>，除非你要重置 sidecar 狀態。先停止：</p>
+<pre><code class="language-powershell">powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\line-sidecar.ps1 down
+</code></pre>
+<p>Podman stack 停止與移除 volume：</p>
+<pre><code class="language-powershell">podman compose -f tools/agent/container/compose.yml down -v
+</code></pre>
+<h2>17. 疑難排解</h2>
+<h3>17.1 <code>dotnet</code> 找不到</h3>
+<p>安裝 .NET SDK 8.0+，再確認：</p>
+<pre><code class="language-powershell">dotnet --info
+dotnet --list-sdks
+</code></pre>
+<h3>17.2 中文顯示亂碼</h3>
+<p>檔案以 UTF-8 為主。PowerShell 5.1 可能顯示異常。建議：</p>
+<ul>
+<li>使用 PowerShell 7。</li>
+<li>驗證 LINE 訊息時用 <code>-MessageBase64Utf8</code>。</li>
+<li>讀檔時指定 UTF-8。</li>
+</ul>
+<h3>17.3 LINE webhook 無法收到</h3>
+<p>檢查：</p>
+<pre><code class="language-powershell">powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\line-sidecar.ps1 status
+</code></pre>
+<p>確認：</p>
+<ul>
+<li>ngrok tunnel 有 public URL。</li>
+<li>LINE webhook endpoint active。</li>
+<li><code>line-worker</code> PID 存在。</li>
+<li>LINE credentials 正確。</li>
+<li><code>.run/line-sidecar/logs/line-worker.err.log</code> 沒有簽章或 token 錯誤。</li>
+</ul>
+<h3>17.4 Broker 回覆但 AI 不動</h3>
+<p>檢查：</p>
+<ul>
+<li>本機 Portal / broker 預設路徑：確認 Ollama 正在執行，且 <code>ollama list</code> 看得到 <code>qwen3.6:latest</code>。</li>
+<li>外部 provider 路徑：確認 <code>ANTHROPIC_API_KEY</code>，或 <code>C:\secure\Bricks4Agent\Api.txt</code> 的 OpenAI-compatible fallback key。</li>
+<li><code>HighLevelLlm</code> provider / model / API format 是否匹配。</li>
+<li><code>.run/line-sidecar/logs/broker.err.log</code> 是否有 upstream <code>401</code>、<code>400</code>、timeout。</li>
+</ul>
+<h3>17.5 Worker registration 失敗</h3>
+<p>先用 sidecar 產生 <code>worker-auth.json</code>，再用 helper 啟 worker：</p>
+<pre><code class="language-powershell">powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\run-worker.ps1 -Worker site-crawler
+</code></pre>
+<p>若手動啟 worker，需要提供符合 broker 設定的：</p>
+<ul>
+<li><code>Worker:Auth:WorkerType</code></li>
+<li><code>Worker:Auth:KeyId</code></li>
+<li><code>Worker:Auth:SharedSecret</code></li>
+</ul>
+<h3>17.6 Google Drive OAuth 失敗</h3>
+<p>檢查：</p>
+<ul>
+<li><code>client_secret_*.json</code> 是否在 secrets 目錄。</li>
+<li>redirect URI 是否包含：</li>
+</ul>
+<pre><code class="language-text">http://127.0.0.1:5361/api/v1/google-drive/oauth/callback
+</code></pre>
+<ul>
+<li>sidecar public URL 是否最新。</li>
+<li>callback log 是否出現 <code>invalid_state</code> 或 <code>state_expired</code>。</li>
+</ul>
+<h3>17.7 Podman stack port 衝突</h3>
+<p>常見 broker port：</p>
+<table>
+<thead>
+<tr>
+<th>Stack</th>
+<th>預設 port</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>compose.yml</code></td>
+<td><code>5000</code></td>
+</tr>
+<tr>
+<td><code>compose.openai-compatible.yml</code></td>
+<td><code>5361</code></td>
+</tr>
+<tr>
+<td><code>compose.ollama-host.yml</code></td>
+<td><code>5002</code></td>
+</tr>
+</tbody>
+</table>
+<p>如果 sidecar 正在使用 <code>5361</code>，先覆寫：</p>
+<pre><code class="language-powershell">$env:BROKER_PORT='5601'
+npm run validate:podman-openai-compatible-stack
+</code></pre>
+<h2>18. 已知限制</h2>
+<p>目前不要宣稱以下已完成：</p>
+<ul>
+<li>企業級 operator console，例如 SSO、MFA、集中式 IAM、跨機器 operator 同步。</li>
+<li>自訂 seccomp profile。</li>
+<li>Critical dual approval 已具備 broker 層持久化與兩個不同 approver id 門檻；local admin 具備 named operator RBAC，但尚未接企業 IAM。</li>
+<li><code>line.message.send</code> / <code>line.audio.send</code> 已有 worker-local outbound rate limiting；分散式配額與 <code>line.notification.send</code> 覆蓋仍未完成。</li>
+<li>browser authenticated automation production readiness。</li>
+<li>所有外部 provider 在每台機器都已實測。</li>
+<li>整個 <code>ui_components</code> 全庫 byte-deterministic。</li>
+</ul>
+<p>目前已可依文件操作與驗證的重點是：</p>
+<ul>
+<li>LINE sidecar canonical path。</li>
+<li>broker high-level conversation / query / draft / confirmation。</li>
+<li>local admin console。</li>
+<li>approval lifecycle、User/Admin 兩層介面，以及 Critical dual approval 的 broker 層門檻。</li>
+<li>governed agent container path。</li>
+<li>execution adapter stack。</li>
+<li>UI/generator validation。</li>
+<li>broker/core build and tests。</li>
+</ul>
+<h2>19. Legal RAG / 法律檢索輔助</h2>
+<p>目前系統有一個小型法律 RAG 可行性模組，重點是把可查證資料外部化到資料庫，再讓回答可以引用檢索到的片段。這不是完整法律資料庫，也不是法律意見。</p>
+<p>目前範圍：</p>
+<ul>
+<li>法律 POC 來源是台灣消費者保護法相關資料。</li>
+<li>broker 會把資料存成 <code>SharedContextEntry</code>，並建立 SQLite FTS5 全文索引。</li>
+<li>若啟用 embedding provider，會同步建立 <code>vector_entries</code> 做語意檢索；目前 broker 預設使用 <code>bge-m3</code>，<code>nomic-embed-text</code> 是較輕量的備用模型。</li>
+<li>同一份資料可同時保留不同 embedding model 的向量；檢索時只會使用目前設定模型的向量，不會把不同維度或不同模型混在同一輪語意比對。</li>
+<li>LINE 對話、<code>rag_retrieve</code> tool、<code>/agents/rag/test</code> 與 <code>/dev/rag-test</code> 都走同一個 RAG retrieval core。</li>
+<li>需要獨立查詢服務時，可啟動 <code>packages/csharp/rag-service</code>；它只提供 <code>/healthz</code> 與 <code>/rag/retrieve</code>，可共用同一份 SQLite RAG DB，不依賴 LINE 或 broker 對話流程。</li>
+</ul>
+<p>使用限制：</p>
+<ul>
+<li>法律 RAG 只能作為檢索與佐證輔助，不應視為律師意見。</li>
+<li>若沒有啟用 Ollama / embedding，仍可用 FTS5 全文檢索；語意向量檢索需要 embedding provider。</li>
+<li>live 法規 seed 需要網路；正式驗證使用離線 fixture，不依賴法務部網站或 live model。</li>
+<li><code>rag-service</code> 預設關閉 embedding、query rewrite、rerank，所以可以先作為純 FTS5 retrieval host；若要語意檢索，需另外設定 embedding provider。</li>
+</ul>
+<p>驗證：</p>
+<pre><code class="language-powershell">npm run validate:broker-scope:signed
+npm run validate:db:signed
+</code></pre>
+<p><code>validate:broker-scope</code> 會驗證法律 RAG import、狀態外部化、FTS5、deterministic vector retrieval 與 tag filter。</p>
+</main>
+</body>
+</html>

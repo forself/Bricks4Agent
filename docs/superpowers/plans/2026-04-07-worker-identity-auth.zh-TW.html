@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Worker Identity Auth Implementation Plan</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Worker Identity Auth Implementation Plan</h1>
+<blockquote>
+<p><strong>For agentic workers:</strong> REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (<code>- [ ]</code>) syntax for tracking.</p>
+</blockquote>
+<p><strong>Goal:</strong> 為 broker 補上統一的 worker identity 驗證，先覆蓋 <code>line-worker -&gt; broker</code> 的 HTTP 呼叫與 function-pool <code>WORKER_REGISTER</code> 註冊，移除 <code>line-worker</code> 的免驗證特例。</p>
+<p><strong>Architecture:</strong> 新增共用的 HMAC 驗證服務與 nonce store，讓 broker 能驗證 <code>worker_type + key_id + timestamp + nonce + signature</code>。HTTP 路徑透過 middleware 驗證 worker 身分，function-pool registration 則在 <code>WorkerSession.HandleRegisterAsync()</code> 驗證後才允許進入 <code>WorkerRegistry</code>。<code>line-worker</code> 與 <code>worker-sdk</code> 負責補上 outbound signing。</p>
+<p><strong>Tech Stack:</strong> C# / .NET 8, ASP.NET Core middleware, BaseOrm/SQLite, xUnit integration/unit tests, existing worker-sdk / function-pool / broker services.</p>
+<hr>
+<h2>File Map</h2>
+<h3>Create</h3>
+<ul>
+<li><code>packages/csharp/broker-core/Services/WorkerIdentityAuthService.cs</code></li>
+<li><code>packages/csharp/broker-core/Services/WorkerIdentityAuthOptions.cs</code></li>
+<li><code>packages/csharp/broker-core/Services/WorkerAuthNonceStore.cs</code></li>
+<li><code>packages/csharp/broker/Middleware/WorkerIdentityAuthMiddleware.cs</code></li>
+<li><code>packages/csharp/tests/unit/Core/WorkerIdentityAuthServiceTests.cs</code></li>
+<li><code>packages/csharp/tests/integration/Api/HighLevelWorkerAuthTests.cs</code></li>
+<li><code>packages/csharp/tests/unit/FunctionPool/WorkerSessionAuthTests.cs</code></li>
+</ul>
+<h3>Modify</h3>
+<ul>
+<li><code>packages/csharp/broker/Program.cs</code></li>
+<li><code>packages/csharp/broker/Middleware/BrokerAuthMiddleware.cs</code></li>
+<li><code>packages/csharp/broker/Middleware/EncryptionMiddleware.cs</code></li>
+<li><code>packages/csharp/broker/Endpoints/HighLevelEndpoints.cs</code></li>
+<li><code>packages/csharp/function-pool/Network/WorkerSession.cs</code></li>
+<li><code>packages/csharp/worker-sdk/WorkerHost.cs</code></li>
+<li><code>packages/csharp/worker-sdk/WorkerHostOptions.cs</code></li>
+<li><code>packages/csharp/workers/line-worker/Program.cs</code></li>
+<li><code>packages/csharp/workers/line-worker/InboundDispatcher.cs</code></li>
+<li><code>packages/csharp/tests/integration/Fixtures/BrokerFixture.cs</code></li>
+<li><code>packages/csharp/tests/integration/Middleware/EncryptionBypassTests.cs</code></li>
+<li><code>docs/manuals/line-sidecar-runbook.md</code></li>
+<li><code>docs/manuals/line-sidecar-runbook.zh-TW.md</code></li>
+</ul>
+<hr>
+<h3>Task 1: 共用 Worker Identity 驗證服務</h3>
+<p><strong>Files:</strong>
+- Create: <code>packages/csharp/broker-core/Services/WorkerIdentityAuthOptions.cs</code>
+- Create: <code>packages/csharp/broker-core/Services/WorkerIdentityAuthService.cs</code>
+- Create: <code>packages/csharp/broker-core/Services/WorkerAuthNonceStore.cs</code>
+- Test: <code>packages/csharp/tests/unit/Core/WorkerIdentityAuthServiceTests.cs</code></p>
+<ul>
+<li>[ ] <strong>Step 1: 寫 failing unit tests</strong></li>
+</ul>
+<p>測試覆蓋：
+- 正確 HMAC 可驗過
+- <code>key_id</code> 不存在失敗
+- timestamp 超過容忍窗失敗
+- nonce replay 失敗
+- <code>worker_type</code> 無權呼叫指定 route 失敗</p>
+<ul>
+<li>[ ] <strong>Step 2: 跑 unit test，確認 RED</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet test packages\csharp\tests\unit\Unit.Tests.csproj -v minimal --filter WorkerIdentityAuthServiceTests --disable-build-servers -p:UseSharedCompilation=false -m:1
+</code></pre>
+<p>Expected:
+- 編譯失敗或測試失敗，因為 service/options/store 尚未存在</p>
+<ul>
+<li>[ ] <strong>Step 3: 以最小程式碼建立 options / nonce store / auth service</strong></li>
+</ul>
+<p>實作內容：
+- <code>WorkerCredentialRecord</code>
+- <code>WorkerRouteRule</code>
+- <code>WorkerIdentityAuthOptions</code>
+- <code>WorkerAuthNonceStore</code>
+- <code>WorkerIdentityAuthService</code></p>
+<p>責任：
+- 解析 credential
+- 驗證 timestamp 容忍窗
+- 驗證 nonce 未重複
+- 驗證 route allowlist
+- 驗證 HMAC-SHA256 signature</p>
+<ul>
+<li>[ ] <strong>Step 4: 重跑 unit test，確認 GREEN</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet test packages\csharp\tests\unit\Unit.Tests.csproj -v minimal --filter WorkerIdentityAuthServiceTests --disable-build-servers -p:UseSharedCompilation=false -m:1
+</code></pre>
+<p>Expected:
+- <code>WorkerIdentityAuthServiceTests</code> 全通過</p>
+<ul>
+<li>[ ] <strong>Step 5: commit</strong></li>
+</ul>
+<pre><code class="language-powershell">git add packages/csharp/broker/Services/WorkerIdentityAuthOptions.cs packages/csharp/broker/Services/WorkerIdentityAuthService.cs packages/csharp/broker/Services/WorkerAuthNonceStore.cs packages/csharp/tests/unit/Services/WorkerIdentityAuthServiceTests.cs
+git commit -m &quot;feat: add worker identity auth service&quot;
+</code></pre>
+<hr>
+<h3>Task 2: HTTP worker auth middleware 與 line-worker outbound signing</h3>
+<p><strong>Files:</strong>
+- Create: <code>packages/csharp/broker/Middleware/WorkerIdentityAuthMiddleware.cs</code>
+- Modify: <code>packages/csharp/broker/Program.cs</code>
+- Modify: <code>packages/csharp/broker/Middleware/BrokerAuthMiddleware.cs</code>
+- Modify: <code>packages/csharp/broker/Middleware/EncryptionMiddleware.cs</code>
+- Modify: <code>packages/csharp/workers/line-worker/Program.cs</code>
+- Modify: <code>packages/csharp/workers/line-worker/InboundDispatcher.cs</code>
+- Modify: <code>packages/csharp/tests/integration/Fixtures/BrokerFixture.cs</code>
+- Create: <code>packages/csharp/tests/integration/Api/HighLevelWorkerAuthTests.cs</code>
+- Modify: <code>packages/csharp/tests/integration/Middleware/EncryptionBypassTests.cs</code></p>
+<ul>
+<li>[ ] <strong>Step 1: 寫 failing integration tests</strong></li>
+</ul>
+<p>測試案例：
+- 無簽章呼叫 <code>/api/v1/high-level/line/process</code> 回 <code>401</code>
+- 正確 <code>line-worker</code> 簽章呼叫成功
+- 使用 <code>file-worker</code> 簽章呼叫 line path 回 <code>403</code>
+- <code>/api/v1/local-admin/*</code> 仍維持原本 plain JSON bypass</p>
+<ul>
+<li>[ ] <strong>Step 2: 跑 integration test，確認 RED</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet test packages\csharp\tests\integration\Integration.Tests.csproj -v minimal --filter HighLevelWorkerAuthTests --disable-build-servers -p:UseSharedCompilation=false -m:1
+</code></pre>
+<p>Expected:
+- 測試失敗，因為 middleware 與 worker signing 尚未實作</p>
+<ul>
+<li>[ ] <strong>Step 3: 加入 broker 端 HTTP worker auth middleware</strong></li>
+</ul>
+<p>實作內容：
+- 在 <code>/api/v1/high-level/line/*</code> 前驗 <code>X-B4A-*</code> headers
+- 驗過才放行至 endpoint
+- 未驗過回 <code>401/403</code>
+- <code>BrokerAuthMiddleware</code> / <code>EncryptionMiddleware</code> 保持 plain JSON，但不再把 high-level line path 視為免驗證 caller path</p>
+<ul>
+<li>[ ] <strong>Step 4: 在 line-worker 加入 outbound signing</strong></li>
+</ul>
+<p>實作內容：
+- <code>Program.cs</code> 讀取 <code>WorkerAuth:*</code>
+- <code>InboundDispatcher</code> 對 broker HTTP POST 加入 <code>X-B4A-Worker-Type</code>
+  <code>X-B4A-Key-Id</code>
+  <code>X-B4A-Timestamp</code>
+  <code>X-B4A-Nonce</code>
+  <code>X-B4A-Signature</code></p>
+<ul>
+<li>[ ] <strong>Step 5: 重跑 targeted integration tests，確認 GREEN</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet test packages\csharp\tests\integration\Integration.Tests.csproj -v minimal --filter HighLevelWorkerAuthTests --disable-build-servers -p:UseSharedCompilation=false -m:1
+</code></pre>
+<p>Expected:
+- <code>HighLevelWorkerAuthTests</code> 全通過</p>
+<ul>
+<li>[ ] <strong>Step 6: 重跑 bypass regression tests</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet test packages\csharp\tests\integration\Integration.Tests.csproj -v minimal --filter EncryptionBypassTests --disable-build-servers -p:UseSharedCompilation=false -m:1
+</code></pre>
+<p>Expected:
+- <code>local-admin</code> bypass 仍通過
+- high-level line path 行為改為 worker-auth protected，測試同步更新後通過</p>
+<ul>
+<li>[ ] <strong>Step 7: commit</strong></li>
+</ul>
+<pre><code class="language-powershell">git add packages/csharp/broker/Middleware/WorkerIdentityAuthMiddleware.cs packages/csharp/broker/Program.cs packages/csharp/broker/Middleware/BrokerAuthMiddleware.cs packages/csharp/broker/Middleware/EncryptionMiddleware.cs packages/csharp/workers/line-worker/Program.cs packages/csharp/workers/line-worker/InboundDispatcher.cs packages/csharp/tests/integration/Fixtures/BrokerFixture.cs packages/csharp/tests/integration/Api/HighLevelWorkerAuthTests.cs packages/csharp/tests/integration/Middleware/EncryptionBypassTests.cs
+git commit -m &quot;feat: require worker auth on high-level line routes&quot;
+</code></pre>
+<hr>
+<h3>Task 3: function-pool <code>WORKER_REGISTER</code> signing 與驗證</h3>
+<p><strong>Files:</strong>
+- Modify: <code>packages/csharp/worker-sdk/WorkerHostOptions.cs</code>
+- Modify: <code>packages/csharp/worker-sdk/WorkerHost.cs</code>
+- Modify: <code>packages/csharp/function-pool/Network/WorkerSession.cs</code>
+- Test: <code>packages/csharp/tests/unit/WorkerSdk/WorkerRegisterSigningTests.cs</code></p>
+<ul>
+<li>[ ] <strong>Step 1: 寫 failing tests</strong></li>
+</ul>
+<p>測試覆蓋：
+- <code>WorkerHost</code> 產出的 register payload 包含 <code>worker_type/key_id/timestamp/nonce/signature</code>
+- broker 端驗證 register 簽章成功
+- replay / key 不存在 / signature 錯誤被拒</p>
+<ul>
+<li>[ ] <strong>Step 2: 跑 tests，確認 RED</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet test packages\csharp\tests\unit\Unit.Tests.csproj -v minimal --filter WorkerRegisterSigningTests --disable-build-servers -p:UseSharedCompilation=false -m:1
+</code></pre>
+<p>Expected:
+- 測試失敗，因為 register signing 尚未存在</p>
+<ul>
+<li>[ ] <strong>Step 3: 擴充 worker-sdk register payload</strong></li>
+</ul>
+<p>實作內容：
+- <code>WorkerHostOptions</code> 新增 <code>WorkerType / KeyId / SharedSecret</code>
+- <code>WorkerHost.RegisterAsync()</code> 產生簽章並放入 register payload</p>
+<ul>
+<li>[ ] <strong>Step 4: 擴充 broker <code>WorkerSession.HandleRegisterAsync()</code></strong></li>
+</ul>
+<p>實作內容：
+- 解析新欄位
+- 呼叫 <code>WorkerIdentityAuthService</code> 進行 register 驗證
+- 驗過才 <code>WorkerRegistry.Register()</code></p>
+<ul>
+<li>[ ] <strong>Step 5: 重跑 tests，確認 GREEN</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet test packages\csharp\tests\unit\Unit.Tests.csproj -v minimal --filter WorkerRegisterSigningTests --disable-build-servers -p:UseSharedCompilation=false -m:1
+</code></pre>
+<p>Expected:
+- <code>WorkerRegisterSigningTests</code> 全通過</p>
+<ul>
+<li>[ ] <strong>Step 6: commit</strong></li>
+</ul>
+<pre><code class="language-powershell">git add packages/csharp/worker-sdk/WorkerHostOptions.cs packages/csharp/worker-sdk/WorkerHost.cs packages/csharp/function-pool/Network/WorkerSession.cs packages/csharp/tests/unit/WorkerSdk/WorkerRegisterSigningTests.cs
+git commit -m &quot;feat: sign and verify worker registration&quot;
+</code></pre>
+<hr>
+<h3>Task 4: 設定、runbook 與全面驗證</h3>
+<p><strong>Files:</strong>
+- Modify: <code>packages/csharp/broker/appsettings.Development.example.json</code>
+- Modify: <code>packages/csharp/broker/appsettings.json</code>
+- Modify: <code>packages/csharp/workers/line-worker/appsettings.example.json</code>
+- Modify: <code>packages/csharp/workers/line-worker/appsettings.sidecar.example.json</code>
+- Modify: <code>docs/manuals/line-sidecar-runbook.md</code>
+- Modify: <code>docs/manuals/line-sidecar-runbook.zh-TW.md</code></p>
+<ul>
+<li>[ ] <strong>Step 1: 補設定檔樣板</strong></li>
+</ul>
+<p>新增：
+- broker <code>WorkerAuth:Credentials</code>
+- line-worker <code>WorkerAuth:*</code>
+- 需要時補 <code>WorkerAuth:Enforce</code></p>
+<ul>
+<li>[ ] <strong>Step 2: 更新 runbook</strong></li>
+</ul>
+<p>寫清楚：
+- worker secret 怎麼設定
+- <code>line-sidecar</code> 啟動前需要哪些 config
+- rotate secret 時的順序
+- broker line route 不再是免驗證 trusted path</p>
+<ul>
+<li>[ ] <strong>Step 3: 跑完整驗證</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet test packages\csharp\tests\unit\Unit.Tests.csproj -v minimal --disable-build-servers -p:UseSharedCompilation=false -m:1
+dotnet test packages\csharp\tests\integration\Integration.Tests.csproj -v minimal --disable-build-servers -p:UseSharedCompilation=false -m:1
+dotnet run --project packages\csharp\broker\verify\Broker.Verify.csproj --disable-build-servers
+npm.cmd --prefix packages\javascript\browser run test
+</code></pre>
+<p>Expected:
+- unit 全綠
+- integration 全綠
+- broker verify 通過
+- browser tests 維持全綠</p>
+<ul>
+<li>[ ] <strong>Step 4: commit</strong></li>
+</ul>
+<pre><code class="language-powershell">git add packages/csharp/broker/appsettings.Development.example.json packages/csharp/broker/appsettings.json packages/csharp/workers/line-worker/appsettings.example.json packages/csharp/workers/line-worker/appsettings.sidecar.example.json docs/manuals/line-sidecar-runbook.md docs/manuals/line-sidecar-runbook.zh-TW.md
+git commit -m &quot;docs: document worker identity auth configuration&quot;
+</code></pre>
+<hr>
+<h2>Spec Coverage Check</h2>
+<ul>
+<li>HTTP <code>line-worker -&gt; broker</code> 驗證：Task 2</li>
+<li>function-pool <code>WORKER_REGISTER</code> 驗證：Task 3</li>
+<li>每種 worker 一組 credential：Task 1 / Task 4</li>
+<li>trusted path 改成 authenticated worker path：Task 2</li>
+<li>docs / runbook 同步：Task 4</li>
+</ul>
+<h2>Placeholder Check</h2>
+<ul>
+<li>無 <code>TBD</code> / <code>TODO</code></li>
+<li>每個 task 都有檔案、驗證命令、預期結果</li>
+</ul>
+<h2>Type Consistency Check</h2>
+<ul>
+<li>服務名稱統一為 <code>WorkerIdentityAuthService</code></li>
+<li>options 統一為 <code>WorkerIdentityAuthOptions</code></li>
+<li>nonce store 統一為 <code>WorkerAuthNonceStore</code></li>
+<li><code>WorkerType / KeyId / SharedSecret</code> 命名在 broker 與 worker-sdk 一致</li>
+</ul>
+</main>
+</body>
+</html>

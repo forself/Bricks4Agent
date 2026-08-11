@@ -1,0 +1,863 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LINE Project Interview Agent Implementation Plan</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>LINE Project Interview Agent Implementation Plan</h1>
+<blockquote>
+<p><strong>For agentic workers:</strong> REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (<code>- [ ]</code>) syntax for tracking.</p>
+</blockquote>
+<p><strong>Goal:</strong> Add a dedicated <code>/proj</code> LINE workflow that runs a task-scoped project interview, narrows the request through project scale and template-family selection, compiles confirmed assertions into versioned JSON/PDF review artifacts, and waits for explicit <code>/ok</code>, <code>/revise</code>, or <code>/cancel</code>.</p>
+<h2>Current Status</h2>
+<p>This plan has already been executed for the phase-1 interview/review scope and is kept as the historical implementation plan.</p>
+<p>Current <code>main</code> status:</p>
+<ul>
+<li><code>/proj</code>, <code>#ProjectName</code>, scope narrowing, structure-direction narrowing, and review artifact generation are live</li>
+<li><code>/ok</code>, <code>/revise</code>, and <code>/cancel</code> are live</li>
+<li>prompts are bilingual and written for general LINE users</li>
+<li>internal scale/template identifiers remain broker-internal and are not shown in user-facing copy</li>
+<li>deeper requirement collection and autonomous implementation handoff remain future work</li>
+</ul>
+<p><strong>Architecture:</strong> Extend the broker high-level path with a dedicated <code>project_interview</code> state machine and per-version DAG model. Keep truth in broker-owned persisted assertion and version-graph documents, use the LLM only to propose interpretations and restatement options, and compile confirmed assertions into a canonical project-instance JSON that drives PDF review generation and artifact delivery. Template selection is driven by a JSON catalog layered above the existing browser page-generator and UI component runtime.</p>
+<p><strong>Tech Stack:</strong> C# /.NET 8 minimal API broker, existing <code>HighLevelCoordinator</code> and artifact services, broker verify program, integration tests under <code>packages/csharp/tests</code>, JSON template catalog under <code>packages/javascript/browser</code>, existing SPA runtime and page-generator</p>
+<hr>
+<h2>Design Rationale</h2>
+<h3>Why a state machine</h3>
+<p>The interview workflow is a protocol, not a free chat. A state machine is the correct control model because it constrains admissible commands, makes approval checkpoints explicit, and prevents accidental transitions from ambiguous natural language. In formal terms, this reduces control-flow entropy and keeps task progression deterministic even when semantic interpretation remains probabilistic.</p>
+<h3>Why a per-version DAG</h3>
+<p>The generated JSON/PDF pair is not just a transcript artifact. It is a derived product whose provenance must remain auditable. A directed acyclic graph is appropriate because each review version is a one-way compilation from confirmed assertions to canonical project definition to rendered artifacts. Revision creates a new graph instead of mutating the old one, which preserves lineage and avoids hidden circular dependencies.</p>
+<h3>Why confirmed restatements instead of free-form memory</h3>
+<p>Long-horizon agent memory fails mainly because compression introduces drift. The design therefore treats memory as a set of confirmed restatements rather than a rolling summary. This follows a verification-first epistemic model: unconfirmed interpretation remains provisional, while only explicit user-confirmed statements are promoted to canonical truth.</p>
+<h3>Why template-first narrowing</h3>
+<p>The system should not solve an open-world synthesis problem if the implementation substrate is already bounded by an existing component library and runtime. Template-first narrowing reduces hypothesis space early, improves consistency, and lowers the cost of downstream implementation planning. In software architecture terms, this moves the system from unconstrained generation to guided configuration over a known capability surface.</p>
+<h3>Why document-first JSON-defined programs</h3>
+<p>The canonical machine-readable output should be a document that defines the program, not ad hoc handwritten code assembled directly from chat. This aligns with model-driven engineering: the interview produces a structured intermediate representation, and the existing page-generator/runtime acts as the execution substrate. The benefit is separation of concerns between intent capture, structural definition, and executable rendering.</p>
+<h3>Why bilingual planning artifacts</h3>
+<p>This feature touches both implementation and design review. Maintaining English and Traditional Chinese planning artifacts improves review accessibility while keeping execution precise. The English plan remains the source of exact code snippets and shell commands; the Chinese companion preserves the same task structure and rationale to support architectural discussion and review.</p>
+<h2>Language Versions</h2>
+<ul>
+<li>English source plan: <code>docs/superpowers/plans/2026-03-31-line-project-interview-agent.md</code></li>
+<li>Traditional Chinese companion: <code>docs/superpowers/plans/2026-03-31-line-project-interview-agent.zh-TW.md</code></li>
+</ul>
+<p>The English plan is the canonical execution document for exact code blocks and commands. The Chinese companion must stay structurally aligned with it.</p>
+<hr>
+<h2>File Map</h2>
+<h3>Create</h3>
+<ul>
+<li><code>packages/csharp/broker/Services/ProjectInterviewModels.cs</code></li>
+<li>Session state, assertion, restatement option, version-graph node/edge, and project-definition DTOs for the new workflow.</li>
+<li><code>packages/csharp/broker/Services/ProjectInterviewStateService.cs</code></li>
+<li>Loads and persists <code>hlm.project-interview.*</code> documents and provides the broker-owned canonical task state API.</li>
+<li><code>packages/csharp/broker/Services/ProjectInterviewStateMachine.cs</code></li>
+<li>Central state transition validator for <code>/proj</code>, <code>/ok</code>, <code>/revise</code>, <code>/cancel</code>, and phase progression.</li>
+<li><code>packages/csharp/broker/Services/ProjectInterviewRestatementService.cs</code></li>
+<li>Converts model proposals into bounded explicit statement options plus the conservative escape option.</li>
+<li><code>packages/csharp/broker/Services/ProjectInterviewTemplateCatalogService.cs</code></li>
+<li>Loads template manifests and narrows candidates by project scale, required modules, and constraints.</li>
+<li><code>packages/csharp/broker/Services/ProjectInterviewProjectDefinitionCompiler.cs</code></li>
+<li>Builds the canonical <code>project_instance_definition</code> JSON and immutable per-version DAG from confirmed assertions.</li>
+<li><code>packages/csharp/broker/Services/ProjectInterviewWorkflowDesignService.cs</code></li>
+<li>Builds the deterministic workflow-design view model, intermediate markdown/html, and render manifest.</li>
+<li><code>packages/csharp/broker/Services/ProjectInterviewPdfRenderService.cs</code></li>
+<li>Renders the workflow-design PDF and embeds task/version/digest metadata.</li>
+<li><code>packages/csharp/tests/integration/Api/ProjectInterviewLifecycleTests.cs</code></li>
+<li>End-to-end broker lifecycle tests for <code>/proj</code>, scale classification, template selection, document generation gating, and cancellation.</li>
+<li><code>packages/csharp/tests/integration/Api/ProjectInterviewReviewTests.cs</code></li>
+<li>Review command and revision tests for <code>/ok</code>, <code>/revise</code>, artifact regeneration, and immutable version history.</li>
+<li><code>packages/javascript/browser/templates/catalog.json</code></li>
+<li>Top-level template catalog for the interview workflow.</li>
+<li><code>packages/javascript/browser/templates/content_showcase/template.manifest.json</code></li>
+<li><code>packages/javascript/browser/templates/form_collection/template.manifest.json</code></li>
+<li><code>packages/javascript/browser/templates/member_portal/template.manifest.json</code></li>
+<li><code>packages/javascript/browser/templates/list_search/template.manifest.json</code></li>
+<li><code>packages/javascript/browser/templates/crud_admin/template.manifest.json</code></li>
+<li><code>packages/javascript/browser/templates/dashboard/template.manifest.json</code></li>
+<li><code>packages/javascript/browser/templates/multi_step_flow/template.manifest.json</code></li>
+<li><code>packages/javascript/browser/templates/transaction_flow/template.manifest.json</code></li>
+<li><code>packages/javascript/browser/__tests__/templates/TemplateCatalog.test.js</code></li>
+<li>Validates manifest shape, supported scales, and conservative narrowing behavior.</li>
+</ul>
+<h3>Modify</h3>
+<ul>
+<li><code>packages/csharp/broker/Services/HighLevelCommandParser.cs</code></li>
+<li>Add <code>/proj</code>, <code>/ok</code>, <code>/revise</code>, and <code>/cancel</code> parsing for the project interview path.</li>
+<li><code>packages/csharp/broker/Services/HighLevelCoordinator.cs</code></li>
+<li>Route project-interview commands and user turns into the new state service, state machine, restatement service, and compiler.</li>
+<li><code>packages/csharp/broker/Services/HighLevelLlmOptions.cs</code></li>
+<li>Add prompt/config fields for the high-grade interview model if needed.</li>
+<li><code>packages/csharp/broker/Services/LineArtifactDeliveryService.cs</code></li>
+<li>Reuse the existing artifact-delivery path for PDF/JSON/zip output.</li>
+<li><code>packages/csharp/broker/Program.cs</code></li>
+<li>Register the new services and any config sections.</li>
+<li><code>packages/csharp/broker/appsettings.json</code></li>
+<li>Add project interview config such as document TTL, template catalog path, and PDF defaults.</li>
+<li><code>packages/csharp/broker/appsettings.Development.example.json</code></li>
+<li>Add development example values for the same settings.</li>
+<li><code>packages/csharp/broker/verify/Program.cs</code></li>
+<li>Add deterministic verification coverage for state transitions, restatement promotion, template narrowing, DAG construction, and artifact metadata.</li>
+<li><code>packages/javascript/browser/package.json</code></li>
+<li>Ensure any JSON-template test command or fixtures are reachable from the existing test setup if needed.</li>
+</ul>
+<h3>Reuse Without Structural Change</h3>
+<ul>
+<li><code>packages/csharp/broker/Services/HighLevelDocumentArtifactService.cs</code></li>
+<li>Reuse for artifact recording.</li>
+<li><code>packages/csharp/broker/Services/HighLevelMemoryStore.cs</code></li>
+<li>Reuse as the storage substrate for <code>hlm.project-interview.*</code> documents.</li>
+<li><code>packages/javascript/browser/page-generator/PageDefinitionAdapter.js</code></li>
+<li>Reuse as the downstream execution substrate for JSON-defined programs.</li>
+<li><code>templates/spa/frontend/runtime/page-generator/DynamicPageRenderer.js</code></li>
+<li>Reuse as the browser-side render substrate; do not redesign runtime in this feature.</li>
+</ul>
+<hr>
+<h3>Task 1: Add Command Routing and Session State Machine</h3>
+<p><strong>Files:</strong>
+- Create: <code>packages/csharp/broker/Services/ProjectInterviewModels.cs</code>
+- Create: <code>packages/csharp/broker/Services/ProjectInterviewStateMachine.cs</code>
+- Modify: <code>packages/csharp/broker/Services/HighLevelCommandParser.cs</code>
+- Modify: <code>packages/csharp/broker/Services/HighLevelCoordinator.cs</code>
+- Modify: <code>packages/csharp/broker/Program.cs</code>
+- Test: <code>packages/csharp/broker/verify/Program.cs</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Write the failing verify tests for <code>/proj</code> and phase transitions</strong></li>
+</ul>
+<p>Add coverage in <code>packages/csharp/broker/verify/Program.cs</code> for:</p>
+<pre><code class="language-csharp">var machine = new ProjectInterviewStateMachine();
+
+var idle = ProjectInterviewSessionState.CreateNew(&quot;line&quot;, &quot;U123&quot;);
+AssertEqual(ProjectInterviewPhase.Idle, idle.CurrentPhase, &quot;new session starts idle&quot;);
+
+var started = machine.ApplyCommand(idle, ProjectInterviewCommand.StartProjectInterview);
+AssertEqual(ProjectInterviewPhase.CollectProjectName, started.CurrentPhase, &quot;/proj enters project-name collection&quot;);
+
+var named = started with
+{
+    ProjectName = &quot;Alpha Portal&quot;,
+    ProjectFolderName = &quot;alpha-portal&quot;,
+    HasUniqueProjectFolder = true
+};
+var classified = machine.Advance(named, ProjectInterviewAdvanceReason.ProjectNameAccepted);
+AssertEqual(ProjectInterviewPhase.ClassifyProjectScale, classified.CurrentPhase, &quot;accepted project name advances to scale classification&quot;);
+
+var cancelled = machine.ApplyCommand(classified, ProjectInterviewCommand.Cancel);
+AssertEqual(ProjectInterviewPhase.Cancelled, cancelled.CurrentPhase, &quot;/cancel reaches terminal cancelled state&quot;);
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 2: Run verify to confirm the tests fail because the project interview types do not exist</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet run --project packages/csharp/broker/verify/Broker.Verify.csproj
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>
+<p>FAIL with missing <code>ProjectInterviewStateMachine</code>, <code>ProjectInterviewSessionState</code>, and related types</p>
+</li>
+<li>
+<p>[ ] <strong>Step 3: Add the minimal project interview models</strong></p>
+</li>
+</ul>
+<p>Create <code>packages/csharp/broker/Services/ProjectInterviewModels.cs</code>:</p>
+<pre><code class="language-csharp">namespace Broker.Services;
+
+public enum ProjectInterviewPhase
+{
+    Idle,
+    CollectProjectName,
+    ClassifyProjectScale,
+    NarrowTemplateFamily,
+    ConfirmTemplateFamily,
+    CollectTemplateRequirements,
+    ResolveConflicts,
+    CompileProjectDefinition,
+    RenderReviewArtifacts,
+    AwaitUserReview,
+    ReviseRequested,
+    Confirmed,
+    Cancelled,
+    Failed
+}
+
+public enum ProjectInterviewCommand
+{
+    StartProjectInterview,
+    Approve,
+    Revise,
+    Cancel
+}
+
+public enum ProjectInterviewAdvanceReason
+{
+    ProjectNameAccepted,
+    ProjectScaleConfirmed,
+    TemplateFamilyNarrowed,
+    TemplateFamilyConfirmed,
+    RequirementsReady,
+    GraphCompiled,
+    ArtifactsRendered,
+    RevisionCaptured
+}
+
+public sealed record ProjectInterviewSessionState(
+    string Channel,
+    string UserId,
+    ProjectInterviewPhase CurrentPhase,
+    string? ProjectName,
+    string? ProjectFolderName,
+    bool HasUniqueProjectFolder)
+{
+    public static ProjectInterviewSessionState CreateNew(string channel, string userId) =&gt;
+        new(channel, userId, ProjectInterviewPhase.Idle, null, null, false);
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 4: Add the minimal state machine</strong></li>
+</ul>
+<p>Create <code>packages/csharp/broker/Services/ProjectInterviewStateMachine.cs</code>:</p>
+<pre><code class="language-csharp">namespace Broker.Services;
+
+public sealed class ProjectInterviewStateMachine
+{
+    public ProjectInterviewSessionState ApplyCommand(ProjectInterviewSessionState state, ProjectInterviewCommand command) =&gt;
+        (state.CurrentPhase, command) switch
+        {
+            (ProjectInterviewPhase.Idle, ProjectInterviewCommand.StartProjectInterview)
+                =&gt; state with { CurrentPhase = ProjectInterviewPhase.CollectProjectName },
+            (_, ProjectInterviewCommand.Cancel)
+                =&gt; state with { CurrentPhase = ProjectInterviewPhase.Cancelled },
+            (ProjectInterviewPhase.AwaitUserReview, ProjectInterviewCommand.Approve)
+                =&gt; state with { CurrentPhase = ProjectInterviewPhase.Confirmed },
+            (ProjectInterviewPhase.AwaitUserReview, ProjectInterviewCommand.Revise)
+                =&gt; state with { CurrentPhase = ProjectInterviewPhase.ReviseRequested },
+            _ =&gt; throw new InvalidOperationException($&quot;Command {command} not allowed from {state.CurrentPhase}.&quot;)
+        };
+
+    public ProjectInterviewSessionState Advance(ProjectInterviewSessionState state, ProjectInterviewAdvanceReason reason) =&gt;
+        (state.CurrentPhase, reason) switch
+        {
+            (ProjectInterviewPhase.CollectProjectName, ProjectInterviewAdvanceReason.ProjectNameAccepted) when state.HasUniqueProjectFolder
+                =&gt; state with { CurrentPhase = ProjectInterviewPhase.ClassifyProjectScale },
+            _ =&gt; throw new InvalidOperationException($&quot;Advance {reason} not allowed from {state.CurrentPhase}.&quot;)
+        };
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 5: Wire command parsing for <code>/proj</code>, <code>/ok</code>, <code>/revise</code>, and <code>/cancel</code></strong></li>
+</ul>
+<p>Modify <code>packages/csharp/broker/Services/HighLevelCommandParser.cs</code> to add a narrow command result:</p>
+<pre><code class="language-csharp">public sealed record HighLevelProjectInterviewCommand(bool IsProjectInterview, ProjectInterviewCommand? Command);
+
+if (text.Equals(&quot;/proj&quot;, StringComparison.OrdinalIgnoreCase))
+    return new HighLevelProjectInterviewCommand(true, ProjectInterviewCommand.StartProjectInterview);
+
+if (text.Equals(&quot;/ok&quot;, StringComparison.OrdinalIgnoreCase))
+    return new HighLevelProjectInterviewCommand(true, ProjectInterviewCommand.Approve);
+
+if (text.Equals(&quot;/revise&quot;, StringComparison.OrdinalIgnoreCase))
+    return new HighLevelProjectInterviewCommand(true, ProjectInterviewCommand.Revise);
+
+if (text.Equals(&quot;/cancel&quot;, StringComparison.OrdinalIgnoreCase))
+    return new HighLevelProjectInterviewCommand(true, ProjectInterviewCommand.Cancel);
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 6: Register the state machine and route project-interview commands through the coordinator</strong></li>
+</ul>
+<p>Modify <code>packages/csharp/broker/Program.cs</code>:</p>
+<pre><code class="language-csharp">builder.Services.AddSingleton&lt;ProjectInterviewStateMachine&gt;();
+</code></pre>
+<p>Modify <code>packages/csharp/broker/Services/HighLevelCoordinator.cs</code> to inject <code>ProjectInterviewStateMachine</code> and branch early:</p>
+<pre><code class="language-csharp">if (parsedProjectInterviewCommand.IsProjectInterview &amp;&amp; parsedProjectInterviewCommand.Command is { } projectCommand)
+{
+    return await HandleProjectInterviewCommandAsync(channel, userId, projectCommand, cancellationToken);
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 7: Run verify to confirm the state-machine tests pass</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet run --project packages/csharp/broker/verify/Broker.Verify.csproj
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>PASS for the new <code>/proj</code> and transition assertions</li>
+<li>
+<p>overall suite may still fail later because persistence, restatement, and artifact services are not implemented</p>
+</li>
+<li>
+<p>[ ] <strong>Step 8: Commit</strong></p>
+</li>
+</ul>
+<pre><code class="language-powershell">git add packages/csharp/broker/Services/ProjectInterviewModels.cs packages/csharp/broker/Services/ProjectInterviewStateMachine.cs packages/csharp/broker/Services/HighLevelCommandParser.cs packages/csharp/broker/Services/HighLevelCoordinator.cs packages/csharp/broker/Program.cs packages/csharp/broker/verify/Program.cs
+git commit -m &quot;feat: add project interview command routing and state machine&quot;
+</code></pre>
+<h3>Task 2: Add Assertion Persistence and Restatement Confirmation</h3>
+<p><strong>Files:</strong>
+- Create: <code>packages/csharp/broker/Services/ProjectInterviewStateService.cs</code>
+- Create: <code>packages/csharp/broker/Services/ProjectInterviewRestatementService.cs</code>
+- Modify: <code>packages/csharp/broker/Services/ProjectInterviewModels.cs</code>
+- Modify: <code>packages/csharp/broker/Services/HighLevelCoordinator.cs</code>
+- Modify: <code>packages/csharp/broker/Program.cs</code>
+- Test: <code>packages/csharp/broker/verify/Program.cs</code>
+- Test: <code>packages/csharp/tests/integration/Api/ProjectInterviewLifecycleTests.cs</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Write the failing verify tests for confirmation-only promotion</strong></li>
+</ul>
+<p>Add coverage in <code>packages/csharp/broker/verify/Program.cs</code>:</p>
+<pre><code class="language-csharp">var service = new ProjectInterviewRestatementService();
+var options = service.BuildOptions(
+    new[]
+    {
+        &quot;This is a small internal admin tool with login.&quot;,
+        &quot;This is a customer-facing portal with member accounts.&quot;
+    },
+    conservativeOptionText: &quot;None of these is precise.&quot;);
+
+AssertEqual(3, options.Count, &quot;restatement adds conservative escape option&quot;);
+AssertTrue(options[^1].IsConservativeEscape, &quot;last option is the conservative escape&quot;);
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 2: Run verify to confirm failure</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet run --project packages/csharp/broker/verify/Broker.Verify.csproj
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>
+<p>FAIL because <code>ProjectInterviewRestatementService</code> and assertion DTOs do not exist yet</p>
+</li>
+<li>
+<p>[ ] <strong>Step 3: Add persisted task-document and assertion models</strong></p>
+</li>
+</ul>
+<p>Extend <code>packages/csharp/broker/Services/ProjectInterviewModels.cs</code> with:</p>
+<pre><code class="language-csharp">public enum AssertionStatus
+{
+    Candidate,
+    Confirmed,
+    Rejected,
+    Superseded,
+    Conflicted
+}
+
+public sealed record ProjectInterviewAssertion(
+    string AssertionId,
+    string Statement,
+    AssertionStatus Status,
+    string Evidence,
+    DateTimeOffset UpdatedAt);
+
+public sealed record RestatementOption(
+    string OptionId,
+    string Text,
+    IReadOnlyList&lt;string&gt; AssertionStatements,
+    bool IsConservativeEscape);
+
+public sealed record ProjectInterviewTaskDocument(string Channel, string UserId, IReadOnlyList&lt;ProjectInterviewAssertion&gt; Assertions)
+{
+    public static ProjectInterviewTaskDocument CreateEmpty(string channel, string userId) =&gt;
+        new(channel, userId, Array.Empty&lt;ProjectInterviewAssertion&gt;());
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 4: Add the restatement service</strong></li>
+</ul>
+<p>Create <code>packages/csharp/broker/Services/ProjectInterviewRestatementService.cs</code>:</p>
+<pre><code class="language-csharp">namespace Broker.Services;
+
+public sealed class ProjectInterviewRestatementService
+{
+    public IReadOnlyList&lt;RestatementOption&gt; BuildOptions(IEnumerable&lt;string&gt; candidateStatements, string conservativeOptionText)
+    {
+        var statements = candidateStatements.Where(static x =&gt; !string.IsNullOrWhiteSpace(x)).Take(3).ToArray();
+        var options = new List&lt;RestatementOption&gt;();
+        for (var i = 0; i &lt; statements.Length; i++)
+        {
+            options.Add(new RestatementOption($&quot;opt-{i + 1}&quot;, statements[i], new[] { statements[i] }, false));
+        }
+
+        options.Add(new RestatementOption(&quot;opt-conservative&quot;, conservativeOptionText, Array.Empty&lt;string&gt;(), true));
+        return options;
+    }
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 5: Add the persisted state service using the existing broker memory store</strong></li>
+</ul>
+<p>Create <code>packages/csharp/broker/Services/ProjectInterviewStateService.cs</code>:</p>
+<pre><code class="language-csharp">namespace Broker.Services;
+
+public sealed class ProjectInterviewStateService
+{
+    private readonly HighLevelMemoryStore _memoryStore;
+
+    public ProjectInterviewStateService(HighLevelMemoryStore memoryStore)
+    {
+        _memoryStore = memoryStore;
+    }
+
+    public Task&lt;ProjectInterviewTaskDocument&gt; LoadTaskDocumentAsync(string channel, string userId, CancellationToken cancellationToken)
+        =&gt; _memoryStore.LoadJsonAsync&lt;ProjectInterviewTaskDocument&gt;(
+            $&quot;hlm.project-interview.requirements.{channel}.{userId}&quot;,
+            () =&gt; ProjectInterviewTaskDocument.CreateEmpty(channel, userId),
+            cancellationToken);
+
+    public Task SaveTaskDocumentAsync(ProjectInterviewTaskDocument document, CancellationToken cancellationToken)
+        =&gt; _memoryStore.SaveJsonAsync($&quot;hlm.project-interview.requirements.{document.Channel}.{document.UserId}&quot;, document, cancellationToken);
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 6: Wire the services into the coordinator</strong></li>
+</ul>
+<p>Modify <code>packages/csharp/broker/Program.cs</code>:</p>
+<pre><code class="language-csharp">builder.Services.AddSingleton&lt;ProjectInterviewStateService&gt;();
+builder.Services.AddSingleton&lt;ProjectInterviewRestatementService&gt;();
+</code></pre>
+<p>Modify <code>packages/csharp/broker/Services/HighLevelCoordinator.cs</code> to:</p>
+<pre><code class="language-csharp">var taskDocument = await _projectInterviewStateService.LoadTaskDocumentAsync(channel, userId, cancellationToken);
+var restatementOptions = _projectInterviewRestatementService.BuildOptions(modelCandidateStatements, &quot;None of these is precise.&quot;);
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 7: Add a broker integration test for explicit promotion</strong></li>
+</ul>
+<p>Create <code>packages/csharp/tests/integration/Api/ProjectInterviewLifecycleTests.cs</code> with:</p>
+<pre><code class="language-csharp">[Fact]
+public async Task ProjectInterview_DoesNotPromoteAssertionsWithoutExplicitConfirmation()
+{
+    using var fixture = await BrokerFixture.StartAsync();
+    await fixture.SendHighLevelLineTextAsync(&quot;/proj&quot;);
+    await fixture.SendHighLevelLineTextAsync(&quot;想做一個內部管理工具&quot;);
+
+    var state = await fixture.ReadProjectInterviewRequirementsAsync(&quot;line&quot;, fixture.DefaultLineUserId);
+    state.Assertions.Should().OnlyContain(a =&gt; a.Status != AssertionStatus.Confirmed);
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 8: Run focused tests</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet run --project packages/csharp/broker/verify/Broker.Verify.csproj
+dotnet test packages/csharp/tests/integration/Integration.Tests.csproj --filter ProjectInterviewLifecycleTests -v minimal
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>verify passes for the new restatement assertions</li>
+<li>
+<p>integration test passes for explicit confirmation gating</p>
+</li>
+<li>
+<p>[ ] <strong>Step 9: Commit</strong></p>
+</li>
+</ul>
+<pre><code class="language-powershell">git add packages/csharp/broker/Services/ProjectInterviewModels.cs packages/csharp/broker/Services/ProjectInterviewStateService.cs packages/csharp/broker/Services/ProjectInterviewRestatementService.cs packages/csharp/broker/Services/HighLevelCoordinator.cs packages/csharp/broker/Program.cs packages/csharp/broker/verify/Program.cs packages/csharp/tests/integration/Api/ProjectInterviewLifecycleTests.cs
+git commit -m &quot;feat: add project interview assertion state and restatement flow&quot;
+</code></pre>
+<h3>Task 3: Add Project Scale and Template Catalog Narrowing</h3>
+<p><strong>Files:</strong>
+- Create: <code>packages/csharp/broker/Services/ProjectInterviewTemplateCatalogService.cs</code>
+- Create: <code>packages/javascript/browser/templates/catalog.json</code>
+- Create: <code>packages/javascript/browser/templates/content_showcase/template.manifest.json</code>
+- Create: <code>packages/javascript/browser/templates/form_collection/template.manifest.json</code>
+- Create: <code>packages/javascript/browser/templates/member_portal/template.manifest.json</code>
+- Create: <code>packages/javascript/browser/templates/list_search/template.manifest.json</code>
+- Create: <code>packages/javascript/browser/templates/crud_admin/template.manifest.json</code>
+- Create: <code>packages/javascript/browser/templates/dashboard/template.manifest.json</code>
+- Create: <code>packages/javascript/browser/templates/multi_step_flow/template.manifest.json</code>
+- Create: <code>packages/javascript/browser/templates/transaction_flow/template.manifest.json</code>
+- Create: <code>packages/javascript/browser/__tests__/templates/TemplateCatalog.test.js</code>
+- Modify: <code>packages/csharp/broker/Services/HighLevelCoordinator.cs</code>
+- Modify: <code>packages/csharp/broker/appsettings.json</code>
+- Modify: <code>packages/csharp/broker/appsettings.Development.example.json</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Write the failing JS catalog tests</strong></li>
+</ul>
+<p>Create <code>packages/javascript/browser/__tests__/templates/TemplateCatalog.test.js</code>:</p>
+<pre><code class="language-javascript">import { describe, expect, it } from &quot;vitest&quot;;
+import catalog from &quot;../../templates/catalog.json&quot;;
+
+describe(&quot;template catalog&quot;, () =&gt; {
+  it(&quot;contains the initial interaction-structure families&quot;, () =&gt; {
+    expect(catalog.families.map((entry) =&gt; entry.template_id)).toEqual([
+      &quot;content_showcase&quot;,
+      &quot;form_collection&quot;,
+      &quot;member_portal&quot;,
+      &quot;list_search&quot;,
+      &quot;crud_admin&quot;,
+      &quot;dashboard&quot;,
+      &quot;multi_step_flow&quot;,
+      &quot;transaction_flow&quot;,
+    ]);
+  });
+});
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 2: Run the JS test to confirm failure</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">npm --prefix packages/javascript/browser run test -- TemplateCatalog.test.js
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>
+<p>FAIL because <code>packages/javascript/browser/templates/catalog.json</code> does not exist yet</p>
+</li>
+<li>
+<p>[ ] <strong>Step 3: Add the initial template catalog</strong></p>
+</li>
+</ul>
+<p>Create <code>packages/javascript/browser/templates/catalog.json</code>:</p>
+<pre><code class="language-json">{
+  &quot;families&quot;: [
+    { &quot;template_id&quot;: &quot;content_showcase&quot;, &quot;supported_project_scales&quot;: [&quot;tool_page&quot;, &quot;mini_app&quot;], &quot;manifest_path&quot;: &quot;./content_showcase/template.manifest.json&quot; },
+    { &quot;template_id&quot;: &quot;form_collection&quot;, &quot;supported_project_scales&quot;: [&quot;tool_page&quot;, &quot;mini_app&quot;], &quot;manifest_path&quot;: &quot;./form_collection/template.manifest.json&quot; },
+    { &quot;template_id&quot;: &quot;member_portal&quot;, &quot;supported_project_scales&quot;: [&quot;mini_app&quot;, &quot;structured_app&quot;], &quot;manifest_path&quot;: &quot;./member_portal/template.manifest.json&quot; },
+    { &quot;template_id&quot;: &quot;list_search&quot;, &quot;supported_project_scales&quot;: [&quot;tool_page&quot;, &quot;mini_app&quot;], &quot;manifest_path&quot;: &quot;./list_search/template.manifest.json&quot; },
+    { &quot;template_id&quot;: &quot;crud_admin&quot;, &quot;supported_project_scales&quot;: [&quot;mini_app&quot;, &quot;structured_app&quot;], &quot;manifest_path&quot;: &quot;./crud_admin/template.manifest.json&quot; },
+    { &quot;template_id&quot;: &quot;dashboard&quot;, &quot;supported_project_scales&quot;: [&quot;mini_app&quot;, &quot;structured_app&quot;], &quot;manifest_path&quot;: &quot;./dashboard/template.manifest.json&quot; },
+    { &quot;template_id&quot;: &quot;multi_step_flow&quot;, &quot;supported_project_scales&quot;: [&quot;mini_app&quot;, &quot;structured_app&quot;], &quot;manifest_path&quot;: &quot;./multi_step_flow/template.manifest.json&quot; },
+    { &quot;template_id&quot;: &quot;transaction_flow&quot;, &quot;supported_project_scales&quot;: [&quot;mini_app&quot;, &quot;structured_app&quot;], &quot;manifest_path&quot;: &quot;./transaction_flow/template.manifest.json&quot; }
+  ]
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 4: Add the broker-side catalog narrowing service</strong></li>
+</ul>
+<p>Create <code>packages/csharp/broker/Services/ProjectInterviewTemplateCatalogService.cs</code>:</p>
+<pre><code class="language-csharp">namespace Broker.Services;
+
+public sealed class ProjectInterviewTemplateCatalogService
+{
+    private readonly string _catalogPath;
+
+    public ProjectInterviewTemplateCatalogService(IConfiguration configuration)
+    {
+        _catalogPath = configuration[&quot;ProjectInterview:TemplateCatalogPath&quot;]
+            ?? &quot;.\\packages\\javascript\\browser\\templates\\catalog.json&quot;;
+    }
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 5: Wire template narrowing into the coordinator and config</strong></li>
+</ul>
+<p>Modify <code>packages/csharp/broker/Services/HighLevelCoordinator.cs</code>:</p>
+<pre><code class="language-csharp">var candidateTemplateFamilies = _projectInterviewTemplateCatalogService.NarrowByScale(projectScale);
+if (candidateTemplateFamilies.Count == 0)
+{
+    throw new InvalidOperationException($&quot;No template family supports project scale '{projectScale}'.&quot;);
+}
+</code></pre>
+<p>Modify <code>packages/csharp/broker/appsettings.json</code> and <code>packages/csharp/broker/appsettings.Development.example.json</code>:</p>
+<pre><code class="language-json">&quot;ProjectInterview&quot;: {
+  &quot;TemplateCatalogPath&quot;: &quot;.\\packages\\javascript\\browser\\templates\\catalog.json&quot;
+},
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 6: Run JS and broker verification</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">npm --prefix packages/javascript/browser run test -- TemplateCatalog.test.js
+dotnet run --project packages/csharp/broker/verify/Broker.Verify.csproj
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>JS template catalog tests PASS</li>
+<li>
+<p>broker verify passes for scale-based narrowing assertions</p>
+</li>
+<li>
+<p>[ ] <strong>Step 7: Commit</strong></p>
+</li>
+</ul>
+<pre><code class="language-powershell">git add packages/javascript/browser/templates packages/javascript/browser/__tests__/templates/TemplateCatalog.test.js packages/csharp/broker/Services/ProjectInterviewTemplateCatalogService.cs packages/csharp/broker/Services/HighLevelCoordinator.cs packages/csharp/broker/appsettings.json packages/csharp/broker/appsettings.Development.example.json packages/csharp/broker/verify/Program.cs
+git commit -m &quot;feat: add project interview template catalog narrowing&quot;
+</code></pre>
+<h3>Task 4: Compile Canonical Project Definition and Version DAG</h3>
+<p><strong>Files:</strong>
+- Create: <code>packages/csharp/broker/Services/ProjectInterviewProjectDefinitionCompiler.cs</code>
+- Modify: <code>packages/csharp/broker/Services/ProjectInterviewModels.cs</code>
+- Modify: <code>packages/csharp/broker/Services/ProjectInterviewStateService.cs</code>
+- Modify: <code>packages/csharp/broker/Services/HighLevelCoordinator.cs</code>
+- Test: <code>packages/csharp/broker/verify/Program.cs</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Write the failing verify tests for version-DAG compilation</strong></li>
+</ul>
+<p>Add coverage in <code>packages/csharp/broker/verify/Program.cs</code>:</p>
+<pre><code class="language-csharp">var compiler = new ProjectInterviewProjectDefinitionCompiler();
+var result = compiler.Compile(
+    version: 1,
+    confirmedAssertions: new[]
+    {
+        &quot;project_scale=mini_app&quot;,
+        &quot;template_family=member_portal&quot;,
+        &quot;enabled_module=auth&quot;,
+        &quot;enabled_module=dashboard&quot;,
+        &quot;style_profile=clean-enterprise&quot;
+    });
+
+AssertEqual(1, result.Version, &quot;compiler stamps version&quot;);
+AssertEqual(&quot;member_portal&quot;, result.ProjectDefinition.TemplateFamily, &quot;compiler projects selected template&quot;);
+AssertTrue(result.Dag.Nodes.Any(node =&gt; node.NodeType == &quot;project_instance_definition_json&quot;), &quot;dag contains canonical json node&quot;);
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 2: Add the version-DAG and project-definition DTOs</strong></li>
+</ul>
+<p>Extend <code>packages/csharp/broker/Services/ProjectInterviewModels.cs</code>:</p>
+<pre><code class="language-csharp">public sealed record VersionDagNode(string NodeId, string NodeType, string PayloadDigest);
+public sealed record VersionDagEdge(string FromNodeId, string ToNodeId);
+public sealed record ProjectInterviewVersionDag(int Version, IReadOnlyList&lt;VersionDagNode&gt; Nodes, IReadOnlyList&lt;VersionDagEdge&gt; Edges);
+
+public sealed record ProjectInstanceDefinition(
+    string ProjectScale,
+    string TemplateFamily,
+    IReadOnlyList&lt;string&gt; EnabledModules,
+    string StyleProfile);
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 3: Add the compiler</strong></li>
+</ul>
+<p>Create <code>packages/csharp/broker/Services/ProjectInterviewProjectDefinitionCompiler.cs</code>:</p>
+<pre><code class="language-csharp">namespace Broker.Services;
+
+public sealed class ProjectInterviewProjectDefinitionCompiler
+{
+    public (int Version, ProjectInstanceDefinition ProjectDefinition, ProjectInterviewVersionDag Dag) Compile(int version, IReadOnlyList&lt;string&gt; confirmedAssertions)
+    {
+        var scale = confirmedAssertions.Single(x =&gt; x.StartsWith(&quot;project_scale=&quot;, StringComparison.Ordinal)).Split('=')[1];
+        var template = confirmedAssertions.Single(x =&gt; x.StartsWith(&quot;template_family=&quot;, StringComparison.Ordinal)).Split('=')[1];
+        var enabledModules = confirmedAssertions.Where(x =&gt; x.StartsWith(&quot;enabled_module=&quot;, StringComparison.Ordinal)).Select(x =&gt; x.Split('=')[1]).ToArray();
+        var styleProfile = confirmedAssertions.Single(x =&gt; x.StartsWith(&quot;style_profile=&quot;, StringComparison.Ordinal)).Split('=')[1];
+
+        var projectDefinition = new ProjectInstanceDefinition(scale, template, enabledModules, styleProfile);
+        var dag = new ProjectInterviewVersionDag(
+            version,
+            new[]
+            {
+                new VersionDagNode(&quot;confirmed_assertions&quot;, &quot;confirmed_assertions&quot;, &quot;confirmed&quot;),
+                new VersionDagNode(&quot;project_instance_definition_json&quot;, &quot;project_instance_definition_json&quot;, JsonSerializer.Serialize(projectDefinition)),
+            },
+            new[]
+            {
+                new VersionDagEdge(&quot;confirmed_assertions&quot;, &quot;project_instance_definition_json&quot;),
+            });
+
+        return (version, projectDefinition, dag);
+    }
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 4: Persist the DAG by version</strong></li>
+</ul>
+<p>Modify <code>packages/csharp/broker/Services/ProjectInterviewStateService.cs</code>:</p>
+<pre><code class="language-csharp">public Task SaveVersionDagAsync(string channel, string userId, int version, ProjectInterviewVersionDag dag, CancellationToken cancellationToken)
+    =&gt; _memoryStore.SaveJsonAsync($&quot;hlm.project-interview.version-graph.{channel}.{userId}.{version}&quot;, dag, cancellationToken);
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 5: Integrate compile-and-save into the coordinator</strong></li>
+</ul>
+<p>Modify <code>packages/csharp/broker/Services/HighLevelCoordinator.cs</code>:</p>
+<pre><code class="language-csharp">var compileResult = _projectInterviewProjectDefinitionCompiler.Compile(nextVersion, confirmedAssertions);
+await _projectInterviewStateService.SaveVersionDagAsync(channel, userId, nextVersion, compileResult.Dag, cancellationToken);
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 6: Run verification</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet run --project packages/csharp/broker/verify/Broker.Verify.csproj
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>
+<p>verify passes for compiler and DAG assertions</p>
+</li>
+<li>
+<p>[ ] <strong>Step 7: Commit</strong></p>
+</li>
+</ul>
+<pre><code class="language-powershell">git add packages/csharp/broker/Services/ProjectInterviewModels.cs packages/csharp/broker/Services/ProjectInterviewProjectDefinitionCompiler.cs packages/csharp/broker/Services/ProjectInterviewStateService.cs packages/csharp/broker/Services/HighLevelCoordinator.cs packages/csharp/broker/verify/Program.cs
+git commit -m &quot;feat: compile project interview definition and version dag&quot;
+</code></pre>
+<h3>Task 5: Generate Versioned PDF/JSON Review Artifacts and Review Commands</h3>
+<p><strong>Files:</strong>
+- Create: <code>packages/csharp/broker/Services/ProjectInterviewWorkflowDesignService.cs</code>
+- Create: <code>packages/csharp/broker/Services/ProjectInterviewPdfRenderService.cs</code>
+- Modify: <code>packages/csharp/broker/Services/HighLevelCoordinator.cs</code>
+- Modify: <code>packages/csharp/broker/Services/LineArtifactDeliveryService.cs</code>
+- Modify: <code>packages/csharp/broker/Program.cs</code>
+- Test: <code>packages/csharp/broker/verify/Program.cs</code>
+- Test: <code>packages/csharp/tests/integration/Api/ProjectInterviewReviewTests.cs</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Write the failing verify tests for render metadata</strong></li>
+</ul>
+<p>Add coverage in <code>packages/csharp/broker/verify/Program.cs</code>:</p>
+<pre><code class="language-csharp">var workflow = new ProjectInterviewWorkflowDesignService();
+var viewModel = workflow.BuildViewModel(
+    taskId: &quot;task-1&quot;,
+    version: 2,
+    projectDefinition: new ProjectInstanceDefinition(&quot;mini_app&quot;, &quot;member_portal&quot;, new[] { &quot;auth&quot; }, &quot;clean-enterprise&quot;));
+
+AssertEqual(2, viewModel.Version, &quot;view model carries version&quot;);
+AssertEqual(&quot;member_portal&quot;, viewModel.TemplateFamily, &quot;view model carries template family&quot;);
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 2: Add the deterministic workflow-design view-model builder</strong></li>
+</ul>
+<p>Create <code>packages/csharp/broker/Services/ProjectInterviewWorkflowDesignService.cs</code>:</p>
+<pre><code class="language-csharp">namespace Broker.Services;
+
+public sealed record WorkflowDesignViewModel(string TaskId, int Version, string TemplateFamily, string ProjectScale, IReadOnlyList&lt;string&gt; EnabledModules, string StyleProfile);
+
+public sealed class ProjectInterviewWorkflowDesignService
+{
+    public WorkflowDesignViewModel BuildViewModel(string taskId, int version, ProjectInstanceDefinition projectDefinition) =&gt;
+        new(taskId, version, projectDefinition.TemplateFamily, projectDefinition.ProjectScale, projectDefinition.EnabledModules, projectDefinition.StyleProfile);
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 3: Add the PDF renderer stub with versioned metadata</strong></li>
+</ul>
+<p>Create <code>packages/csharp/broker/Services/ProjectInterviewPdfRenderService.cs</code>:</p>
+<pre><code class="language-csharp">namespace Broker.Services;
+
+public sealed record PdfRenderResult(string FileName, byte[] Bytes, string MetadataDigest);
+
+public sealed class ProjectInterviewPdfRenderService
+{
+    public PdfRenderResult Render(WorkflowDesignViewModel viewModel, string jsonDigest)
+    {
+        var content = Encoding.UTF8.GetBytes($&quot;workflow-design:{viewModel.TaskId}:v{viewModel.Version}:{jsonDigest}&quot;);
+        return new PdfRenderResult($&quot;workflow-design.v{viewModel.Version}.pdf&quot;, content, jsonDigest);
+    }
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 4: Integrate artifact recording and review commands</strong></li>
+</ul>
+<p>Modify <code>packages/csharp/broker/Services/HighLevelCoordinator.cs</code>:</p>
+<pre><code class="language-csharp">var viewModel = _projectInterviewWorkflowDesignService.BuildViewModel(taskId, version, projectDefinition);
+var jsonBytes = JsonSerializer.SerializeToUtf8Bytes(projectDefinition);
+var jsonDigest = Convert.ToHexString(SHA256.HashData(jsonBytes));
+var pdf = _projectInterviewPdfRenderService.Render(viewModel, jsonDigest);
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 5: Add the review integration test</strong></li>
+</ul>
+<p>Create <code>packages/csharp/tests/integration/Api/ProjectInterviewReviewTests.cs</code> with:</p>
+<pre><code class="language-csharp">[Fact]
+public async Task ProjectInterview_ReviseCreatesNewVersionAndKeepsPriorGraph()
+{
+    using var fixture = await BrokerFixture.StartAsync();
+    await fixture.CompleteProjectInterviewToReviewAsync();
+    await fixture.SendHighLevelLineTextAsync(&quot;/revise&quot;);
+
+    var review = await fixture.ReadProjectInterviewReviewAsync(&quot;line&quot;, fixture.DefaultLineUserId);
+    review.CurrentVersion.Should().Be(2);
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 6: Run broker verify and integration review tests</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet run --project packages/csharp/broker/verify/Broker.Verify.csproj
+dotnet test packages/csharp/tests/integration/Integration.Tests.csproj --filter ProjectInterviewReviewTests -v minimal
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>verify passes for PDF/JSON metadata assertions</li>
+<li>
+<p>review tests pass for <code>/ok</code>, <code>/revise</code>, and immutable prior-version behavior</p>
+</li>
+<li>
+<p>[ ] <strong>Step 7: Commit</strong></p>
+</li>
+</ul>
+<pre><code class="language-powershell">git add packages/csharp/broker/Services/ProjectInterviewWorkflowDesignService.cs packages/csharp/broker/Services/ProjectInterviewPdfRenderService.cs packages/csharp/broker/Services/HighLevelCoordinator.cs packages/csharp/broker/Services/LineArtifactDeliveryService.cs packages/csharp/broker/Program.cs packages/csharp/broker/verify/Program.cs packages/csharp/tests/integration/Api/ProjectInterviewReviewTests.cs
+git commit -m &quot;feat: add project interview review artifact generation&quot;
+</code></pre>
+<h3>Task 6: Full Verification, Docs Sync, and Safety Checks</h3>
+<p><strong>Files:</strong>
+- Modify: <code>packages/csharp/broker/verify/Program.cs</code>
+- Modify: <code>docs/superpowers/specs/2026-03-30-line-project-interview-agent-design.md</code>
+- Modify: <code>docs/0329/00-overview.md</code>
+- Modify: <code>docs/0329/01-broker.md</code>
+- Modify: <code>docs/0329/07-tests.md</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Add the final verify assertions for path redaction and delivery safety</strong></li>
+</ul>
+<p>Extend <code>packages/csharp/broker/verify/Program.cs</code>:</p>
+<pre><code class="language-csharp">AssertTrue(!deliveryMessage.Contains(&quot;D:\\\\&quot;), &quot;user-facing review output does not expose internal windows paths&quot;);
+AssertTrue(!deliveryMessage.Contains(&quot;/packages/csharp/&quot;), &quot;user-facing review output does not expose repo paths&quot;);
+AssertTrue(deliveryMessage.Contains(&quot;workflow-design.v&quot;), &quot;user-facing review output references versioned artifact&quot;);
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 2: Run the full verification stack</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet build packages/csharp/ControlPlane.slnx -c Release --disable-build-servers -nodeReuse:false
+dotnet run --project packages/csharp/broker/verify/Broker.Verify.csproj
+dotnet test packages/csharp/tests/integration/Integration.Tests.csproj -v minimal
+npm --prefix packages/javascript/browser run test
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>build succeeds with <code>0</code> warnings / <code>0</code> errors</li>
+<li>verify prints a passing result</li>
+<li>integration tests pass</li>
+<li>
+<p>JS tests pass including template-catalog coverage</p>
+</li>
+<li>
+<p>[ ] <strong>Step 3: Sync the docs to the implemented shape</strong></p>
+</li>
+</ul>
+<p>Update:</p>
+<pre><code class="language-markdown">- `project_interview` now uses a broker-owned state machine plus per-version DAG.
+- review artifacts are versioned `workflow-design.vN.pdf` and `workflow-design.vN.json`.
+- template narrowing is driven by `packages/javascript/browser/templates/catalog.json`.
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 4: Commit</strong></li>
+</ul>
+<pre><code class="language-powershell">git add packages/csharp/broker/verify/Program.cs docs/superpowers/specs/2026-03-30-line-project-interview-agent-design.md docs/0329/00-overview.md docs/0329/01-broker.md docs/0329/07-tests.md
+git commit -m &quot;docs: document project interview workflow and verification&quot;
+</code></pre>
+<hr>
+<h2>Self-Review</h2>
+<h3>Spec coverage</h3>
+<ul>
+<li><code>/proj</code> explicit entry, review commands, and task-scoped state machine: covered by Task 1.</li>
+<li>Confirmed-restatement assertion model and conservative option handling: covered by Task 2.</li>
+<li>Project scale classification, template-family narrowing, and JSON template catalog: covered by Task 3.</li>
+<li>Canonical project-instance JSON and per-version DAG: covered by Task 4.</li>
+<li>Versioned PDF/JSON generation and review workflow: covered by Task 5.</li>
+<li>Delivery safety, verification, and docs sync: covered by Task 6.</li>
+</ul>
+<h3>Placeholder scan</h3>
+<ul>
+<li>No <code>TODO</code>, <code>TBD</code>, or “implement later” placeholders remain.</li>
+<li>Each task has exact files, commands, and code snippets.</li>
+</ul>
+<h3>Type consistency</h3>
+<ul>
+<li><code>ProjectInterviewSessionState</code>, <code>ProjectInterviewStateMachine</code>, <code>ProjectInterviewTaskDocument</code>, <code>ProjectInterviewRestatementService</code>, <code>ProjectInterviewTemplateCatalogService</code>, <code>ProjectInterviewProjectDefinitionCompiler</code>, <code>ProjectInstanceDefinition</code>, and <code>ProjectInterviewVersionDag</code> are introduced in order and reused consistently.</li>
+</ul>
+<p>```</p>
+</main>
+</body>
+</html>

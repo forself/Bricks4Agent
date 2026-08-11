@@ -1,0 +1,916 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Broker Control Plane Console Phase 1 Implementation Plan</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Broker Control Plane Console Phase 1 Implementation Plan</h1>
+<blockquote>
+<p><strong>For agentic workers:</strong> REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (<code>- [ ]</code>) syntax for tracking.</p>
+</blockquote>
+<p><strong>Goal:</strong> 將現有 <code>line-admin</code> 升級為 broker control plane console 的第一批可用版本，交付 web 註冊/登入、角色化 console shell、dashboard、users/conversations、以及 project interview operator 視角。</p>
+<p><strong>Architecture:</strong> 採演化式升級，不重寫前端框架。後端新增 <code>web-auth</code> 與 <code>control-plane</code> API，保留 <code>local-admin</code> 作為 localhost bootstrap 與高權限 fallback；前端新增 <code>control-plane.html</code> 與模組化 JS shell，逐步吸收 <code>line-admin</code> 的既有能力。資料真相仍由 broker 擁有，project interview / memory / artifact 等狀態直接從 broker 文件與 DB projection 讀取。</p>
+<p><strong>Tech Stack:</strong> ASP.NET Core 8 Minimal API、BrokerDb(SQLite)、vanilla JS ES modules、既有 <code>line-admin.html</code> / <code>LocalAdminAuthService</code> / <code>HighLevelCoordinator</code> / xUnit / Vitest / Playwright smoke</p>
+<hr>
+<h2>範圍切分</h2>
+<p>這份計劃只做 <strong>Phase 1 可落地切片</strong>，不一次展開整份 spec 的所有子系統。</p>
+<p>本計劃要完成：</p>
+<ul>
+<li><code>control-plane.html</code> 基礎 shell</li>
+<li>web 使用者註冊 / 登入 / 登出 / me</li>
+<li>pending-review 註冊審核</li>
+<li>role-based console gating（<code>admin</code> / <code>operator</code> / <code>reviewer</code> / <code>user</code>）</li>
+<li>dashboard summary</li>
+<li>users / conversations operator 視圖</li>
+<li>project interview list/detail/version DAG 的 read-only operator 視圖</li>
+</ul>
+<p>本計劃暫不完成：</p>
+<ul>
+<li>LINE identity linking 完整流</li>
+<li><code>user</code> workspace 全功能</li>
+<li>memory write/delete 控制</li>
+<li>artifact / browser / deployment 的全面改版</li>
+<li>end-user 專屬 artifact portal</li>
+</ul>
+<hr>
+<h2>依賴圖</h2>
+<pre><code class="language-mermaid">flowchart LR
+    T1[Task 1&lt;br/&gt;資料模型與資料表] --&gt; T2[Task 2&lt;br/&gt;Web Auth Service / Endpoints]
+    T2 --&gt; T3[Task 3&lt;br/&gt;Role Gate + Control Plane APIs]
+    T3 --&gt; T4[Task 4&lt;br/&gt;control-plane 前端 shell]
+    T4 --&gt; T5[Task 5&lt;br/&gt;Dashboard / Users / Conversations UI]
+    T3 --&gt; T6[Task 6&lt;br/&gt;Project Interview Operator Views]
+    T5 --&gt; T7[Task 7&lt;br/&gt;Docs / smoke / integration refresh]
+    T6 --&gt; T7
+</code></pre>
+<hr>
+<h2>File Map</h2>
+<h3>Create</h3>
+<ul>
+<li><code>packages/csharp/broker-core/Models/WebConsoleUser.cs</code></li>
+<li>Web 使用者帳號、狀態、角色</li>
+<li><code>packages/csharp/broker-core/Models/WebConsoleSession.cs</code></li>
+<li>web session cookie 對應的 session 記錄</li>
+<li><code>packages/csharp/broker-core/Models/UserIdentityLink.cs</code></li>
+<li>預留 web / line 綁定關係</li>
+<li><code>packages/csharp/broker/Services/WebConsoleAuthService.cs</code></li>
+<li>web 註冊、登入、登出、session 驗證</li>
+<li><code>packages/csharp/broker/Services/ControlPlaneAuthorizationService.cs</code></li>
+<li>角色檢查與 endpoint gate</li>
+<li><code>packages/csharp/broker/Services/ControlPlaneDashboardService.cs</code></li>
+<li>dashboard summary 與 queue/failure projection</li>
+<li><code>packages/csharp/broker/Services/ControlPlaneProjectInterviewService.cs</code></li>
+<li>project interview list/detail/version DAG read model</li>
+<li><code>packages/csharp/broker/Endpoints/WebAuthEndpoints.cs</code></li>
+<li><code>/api/v1/web-auth/*</code></li>
+<li><code>packages/csharp/broker/Endpoints/ControlPlaneEndpoints.cs</code></li>
+<li><code>/api/v1/control-plane/*</code></li>
+<li><code>packages/csharp/tests/integration/Api/WebAuthEndpointsTests.cs</code></li>
+<li>register/login/me/review/role gate 整合測試</li>
+<li><code>packages/csharp/tests/integration/Api/ControlPlaneDashboardTests.cs</code></li>
+<li>dashboard、users、conversations、project interviews 讀取整合測試</li>
+<li><code>packages/csharp/tests/unit/Services/WebConsoleAuthServiceTests.cs</code></li>
+<li>帳號狀態與 session 驗證單元測試</li>
+<li><code>packages/csharp/tests/unit/Services/ControlPlaneProjectInterviewServiceTests.cs</code></li>
+<li>project interview projection 單元測試</li>
+<li><code>packages/csharp/broker/wwwroot/control-plane.html</code></li>
+<li>新 console 入口頁</li>
+<li><code>packages/csharp/broker/wwwroot/control-plane/styles.css</code></li>
+<li>shell 與 workspace 樣式</li>
+<li><code>packages/csharp/broker/wwwroot/control-plane/app.js</code></li>
+<li>入口、tab/router、boot sequence</li>
+<li><code>packages/csharp/broker/wwwroot/control-plane/api.js</code></li>
+<li>request helper</li>
+<li><code>packages/csharp/broker/wwwroot/control-plane/state.js</code></li>
+<li>前端 state store</li>
+<li><code>packages/csharp/broker/wwwroot/control-plane/auth.js</code></li>
+<li>login/register/me/logout UI</li>
+<li><code>packages/csharp/broker/wwwroot/control-plane/dashboard.js</code></li>
+<li>dashboard render</li>
+<li><code>packages/csharp/broker/wwwroot/control-plane/users.js</code></li>
+<li>users / review queue / conversations render</li>
+<li><code>packages/csharp/broker/wwwroot/control-plane/project-interviews.js</code></li>
+<li>project interview list/detail/version render</li>
+<li><code>packages/javascript/browser/__tests__/control-plane/DashboardShell.test.js</code></li>
+<li>dashboard / auth shell 渲染 smoke</li>
+</ul>
+<h3>Modify</h3>
+<ul>
+<li><code>packages/csharp/broker-core/Data/BrokerDbInitializer.cs</code></li>
+<li>建立新資料表</li>
+<li><code>packages/csharp/broker/Program.cs</code></li>
+<li>註冊新 services / endpoints</li>
+<li><code>packages/csharp/broker/Endpoints/LocalAdminEndpoints.cs</code></li>
+<li>補 localhost bootstrap to approve/review web users 或 alias</li>
+<li><code>packages/csharp/broker/wwwroot/line-admin.html</code></li>
+<li>加入導向新 console 的入口提示或 alias</li>
+<li><code>packages/csharp/tests/integration/Fixtures/BrokerFixture.cs</code></li>
+<li>補 web-auth / control-plane helper</li>
+</ul>
+<h3>Reuse Without Structural Change</h3>
+<ul>
+<li><code>packages/csharp/broker/Services/LocalAdminAuthService.cs</code></li>
+<li>保留 localhost bootstrap admin</li>
+<li><code>packages/csharp/broker/Services/HighLevelCoordinator.cs</code></li>
+<li>重用 line users / permissions / project interview 狀態來源</li>
+<li><code>packages/csharp/broker/Services/ProjectInterviewStateService.cs</code></li>
+<li>project interview 真相來源</li>
+<li><code>packages/csharp/broker/wwwroot/line-admin.html</code></li>
+<li>作為 visual/layout 參考與 API 行為來源</li>
+</ul>
+<hr>
+<h2>Task 1: 建立 Web Auth 資料模型與資料表</h2>
+<p><strong>Files:</strong>
+- Create: <code>packages/csharp/broker-core/Models/WebConsoleUser.cs</code>
+- Create: <code>packages/csharp/broker-core/Models/WebConsoleSession.cs</code>
+- Create: <code>packages/csharp/broker-core/Models/UserIdentityLink.cs</code>
+- Modify: <code>packages/csharp/broker-core/Data/BrokerDbInitializer.cs</code>
+- Test: <code>packages/csharp/tests/unit/Services/WebConsoleAuthServiceTests.cs</code></p>
+<ul>
+<li>[ ] <strong>Step 1: 先寫失敗中的模型/表結構測試</strong></li>
+</ul>
+<pre><code class="language-csharp">[Fact]
+public void WebConsoleUser_DefaultStatus_IsPendingReview()
+{
+    var user = new WebConsoleUser
+    {
+        WebUserId = &quot;wu_001&quot;,
+        Username = &quot;alice&quot;
+    };
+
+    user.Status.Should().Be(&quot;pending_review&quot;);
+    user.Role.Should().Be(&quot;user&quot;);
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 2: 跑單元測試，確認因型別不存在而失敗</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet test packages/csharp/tests/unit/Unit.Tests.csproj -v minimal --filter WebConsoleUser_DefaultStatus_IsPendingReview --disable-build-servers -p:UseSharedCompilation=false
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>FAIL</li>
+<li>
+<p><code>WebConsoleUser</code> type not found</p>
+</li>
+<li>
+<p>[ ] <strong>Step 3: 建立 <code>WebConsoleUser.cs</code></strong></p>
+</li>
+</ul>
+<pre><code class="language-csharp">namespace BrokerCore.Models;
+
+public class WebConsoleUser
+{
+    public string WebUserId { get; set; } = string.Empty;
+    public string UserId { get; set; } = string.Empty;
+    public string Username { get; set; } = string.Empty;
+    public string PasswordSalt { get; set; } = string.Empty;
+    public string PasswordHash { get; set; } = string.Empty;
+    public int HashIterations { get; set; } = 120000;
+    public string Status { get; set; } = &quot;pending_review&quot;;
+    public string Role { get; set; } = &quot;user&quot;;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? ApprovedAt { get; set; }
+    public string? ApprovedBy { get; set; }
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 4: 建立 <code>WebConsoleSession.cs</code> 與 <code>UserIdentityLink.cs</code></strong></li>
+</ul>
+<pre><code class="language-csharp">namespace BrokerCore.Models;
+
+public class WebConsoleSession
+{
+    public string SessionId { get; set; } = string.Empty;
+    public string WebUserId { get; set; } = string.Empty;
+    public string TokenHash { get; set; } = string.Empty;
+    public DateTime ExpiresAt { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime LastSeenAt { get; set; } = DateTime.UtcNow;
+    public DateTime? RevokedAt { get; set; }
+}
+
+public class UserIdentityLink
+{
+    public string LinkId { get; set; } = string.Empty;
+    public string UserId { get; set; } = string.Empty;
+    public string IdentityType { get; set; } = string.Empty;
+    public string ExternalId { get; set; } = string.Empty;
+    public string Status { get; set; } = &quot;active&quot;;
+    public DateTime LinkedAt { get; set; } = DateTime.UtcNow;
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 5: 在 <code>BrokerDbInitializer.cs</code> 建表</strong></li>
+</ul>
+<pre><code class="language-csharp">db.Execute(@&quot;
+CREATE TABLE IF NOT EXISTS web_console_users (
+    web_user_id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    username TEXT NOT NULL UNIQUE,
+    password_salt TEXT NOT NULL,
+    password_hash TEXT NOT NULL,
+    hash_iterations INTEGER NOT NULL,
+    status TEXT NOT NULL,
+    role TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    approved_at TEXT NULL,
+    approved_by TEXT NULL
+);&quot;);
+
+db.Execute(@&quot;
+CREATE TABLE IF NOT EXISTS web_console_sessions (
+    session_id TEXT PRIMARY KEY,
+    web_user_id TEXT NOT NULL,
+    token_hash TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    last_seen_at TEXT NOT NULL,
+    revoked_at TEXT NULL
+);&quot;);
+
+db.Execute(@&quot;
+CREATE TABLE IF NOT EXISTS user_identity_links (
+    link_id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    identity_type TEXT NOT NULL,
+    external_id TEXT NOT NULL,
+    status TEXT NOT NULL,
+    linked_at TEXT NOT NULL
+);&quot;);
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 6: 再跑單元測試，確認通過</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet test packages/csharp/tests/unit/Unit.Tests.csproj -v minimal --filter WebConsoleUser_DefaultStatus_IsPendingReview --disable-build-servers -p:UseSharedCompilation=false
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>
+<p>PASS</p>
+</li>
+<li>
+<p>[ ] <strong>Step 7: Commit</strong></p>
+</li>
+</ul>
+<pre><code class="language-powershell">git add packages/csharp/broker-core/Models/WebConsoleUser.cs packages/csharp/broker-core/Models/WebConsoleSession.cs packages/csharp/broker-core/Models/UserIdentityLink.cs packages/csharp/broker-core/Data/BrokerDbInitializer.cs packages/csharp/tests/unit/Services/WebConsoleAuthServiceTests.cs
+git commit -m &quot;feat: add web console auth models&quot;
+</code></pre>
+<hr>
+<h2>Task 2: 實作 Web 註冊/登入/登出/我自己 與待審核狀態</h2>
+<p><strong>Files:</strong>
+- Create: <code>packages/csharp/broker/Services/WebConsoleAuthService.cs</code>
+- Create: <code>packages/csharp/broker/Endpoints/WebAuthEndpoints.cs</code>
+- Modify: <code>packages/csharp/broker/Program.cs</code>
+- Test: <code>packages/csharp/tests/unit/Services/WebConsoleAuthServiceTests.cs</code>
+- Test: <code>packages/csharp/tests/integration/Api/WebAuthEndpointsTests.cs</code></p>
+<ul>
+<li>[ ] <strong>Step 1: 先寫 <code>register -&gt; pending_review</code> 的整合測試</strong></li>
+</ul>
+<pre><code class="language-csharp">[Fact]
+public async Task Register_CreatesPendingReviewUser()
+{
+    var response = await _fixture.Client.PostAsJsonAsync(&quot;/api/v1/web-auth/register&quot;, new
+    {
+        username = &quot;alice&quot;,
+        password = &quot;Password123!&quot;
+    });
+
+    response.StatusCode.Should().Be(HttpStatusCode.OK);
+    var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+    json.RootElement.GetProperty(&quot;data&quot;).GetProperty(&quot;status&quot;).GetString().Should().Be(&quot;pending_review&quot;);
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 2: 跑測試，確認因 endpoint 不存在而失敗</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet test packages/csharp/tests/integration/Integration.Tests.csproj -v minimal --filter Register_CreatesPendingReviewUser --disable-build-servers -p:UseSharedCompilation=false
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>FAIL</li>
+<li>
+<p>404 或 endpoint missing</p>
+</li>
+<li>
+<p>[ ] <strong>Step 3: 建立 <code>WebConsoleAuthService.cs</code></strong></p>
+</li>
+</ul>
+<pre><code class="language-csharp">public sealed class WebConsoleAuthService
+{
+    public const string SessionCookieName = &quot;b4a_web_console&quot;;
+
+    private readonly BrokerDb _db;
+
+    public WebConsoleAuthService(BrokerDb db)
+    {
+        _db = db;
+    }
+
+    public WebConsoleUser Register(string username, string password)
+    {
+        // validate unique username, create user_id/user row, hash password, pending_review
+    }
+
+    public WebConsoleLoginResult Login(HttpContext context, string username, string password)
+    {
+        // deny if not approved, issue cookie if active
+    }
+
+    public void Logout(HttpContext context) { }
+
+    public WebConsoleUser? GetCurrentUser(HttpContext context) { return null; }
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 4: 補最小可用實作</strong></li>
+</ul>
+<pre><code class="language-csharp">public WebConsoleUser Register(string username, string password)
+{
+    var existing = _db.Query&lt;WebConsoleUser&gt;(
+        &quot;SELECT * FROM web_console_users WHERE username = @username&quot;,
+        new { username }).FirstOrDefault();
+    if (existing != null)
+        throw new InvalidOperationException(&quot;Username already exists.&quot;);
+
+    var salt = RandomNumberGenerator.GetBytes(16);
+    var user = new WebConsoleUser
+    {
+        WebUserId = $&quot;wu_{Guid.NewGuid():N}&quot;,
+        UserId = $&quot;user_web_{Guid.NewGuid():N}&quot;,
+        Username = username.Trim(),
+        PasswordSalt = Convert.ToBase64String(salt),
+        PasswordHash = Convert.ToBase64String(HashPassword(password, salt, 120000)),
+        HashIterations = 120000,
+        Status = &quot;pending_review&quot;,
+        Role = &quot;user&quot;,
+        CreatedAt = DateTime.UtcNow,
+        UpdatedAt = DateTime.UtcNow
+    };
+    _db.Insert(user);
+    return user;
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 5: 建立 <code>WebAuthEndpoints.cs</code></strong></li>
+</ul>
+<pre><code class="language-csharp">public static class WebAuthEndpoints
+{
+    public static void Map(RouteGroupBuilder group)
+    {
+        var web = group.MapGroup(&quot;/web-auth&quot;);
+
+        web.MapPost(&quot;/register&quot;, (HttpContext ctx, WebConsoleAuthService auth) =&gt;
+        {
+            var body = RequestBodyHelper.GetBody(ctx);
+            if (!RequestBodyHelper.TryGetRequiredFields(body, new[] { &quot;username&quot;, &quot;password&quot; }, out var values, out var error))
+                return error!;
+
+            var user = auth.Register(values[&quot;username&quot;], values[&quot;password&quot;]);
+            return Results.Ok(ApiResponseHelper.Success(new
+            {
+                web_user_id = user.WebUserId,
+                user_id = user.UserId,
+                username = user.Username,
+                status = user.Status
+            }));
+        });
+    }
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 6: 在 <code>Program.cs</code> 註冊 service 與 endpoints</strong></li>
+</ul>
+<pre><code class="language-csharp">builder.Services.AddSingleton&lt;WebConsoleAuthService&gt;();
+builder.Services.AddSingleton&lt;ControlPlaneAuthorizationService&gt;();
+builder.Services.AddSingleton&lt;ControlPlaneDashboardService&gt;();
+builder.Services.AddSingleton&lt;ControlPlaneProjectInterviewService&gt;();
+
+// later, after var api = app.MapGroup(&quot;/api/v1&quot;);
+WebAuthEndpoints.Map(api);
+ControlPlaneEndpoints.Map(api);
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 7: 補 login / me / logout 測試與實作</strong></li>
+</ul>
+<pre><code class="language-csharp">[Fact]
+public async Task ApprovedUser_CanLogin_AndReadMe()
+{
+    // register
+    // approve through admin endpoint
+    // login
+    // GET /api/v1/web-auth/me
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 8: 跑 unit + integration</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet test packages/csharp/tests/unit/Unit.Tests.csproj -v minimal --filter WebConsoleAuthService --disable-build-servers -p:UseSharedCompilation=false
+dotnet test packages/csharp/tests/integration/Integration.Tests.csproj -v minimal --filter WebAuthEndpointsTests --disable-build-servers -p:UseSharedCompilation=false
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>
+<p>PASS</p>
+</li>
+<li>
+<p>[ ] <strong>Step 9: Commit</strong></p>
+</li>
+</ul>
+<pre><code class="language-powershell">git add packages/csharp/broker/Services/WebConsoleAuthService.cs packages/csharp/broker/Endpoints/WebAuthEndpoints.cs packages/csharp/broker/Program.cs packages/csharp/tests/unit/Services/WebConsoleAuthServiceTests.cs packages/csharp/tests/integration/Api/WebAuthEndpointsTests.cs
+git commit -m &quot;feat: add web console registration and login&quot;
+</code></pre>
+<hr>
+<h2>Task 3: 加入角色檢查與 Control Plane API</h2>
+<p><strong>Files:</strong>
+- Create: <code>packages/csharp/broker/Services/ControlPlaneAuthorizationService.cs</code>
+- Create: <code>packages/csharp/broker/Services/ControlPlaneDashboardService.cs</code>
+- Create: <code>packages/csharp/broker/Services/ControlPlaneProjectInterviewService.cs</code>
+- Create: <code>packages/csharp/broker/Endpoints/ControlPlaneEndpoints.cs</code>
+- Modify: <code>packages/csharp/broker/Endpoints/LocalAdminEndpoints.cs</code>
+- Test: <code>packages/csharp/tests/integration/Api/ControlPlaneDashboardTests.cs</code></p>
+<ul>
+<li>[ ] <strong>Step 1: 先寫角色 gate 測試</strong></li>
+</ul>
+<pre><code class="language-csharp">[Fact]
+public async Task User_CannotRead_ControlPlaneUsers()
+{
+    var client = await _fixture.CreateApprovedWebClientAsync(role: &quot;user&quot;);
+    var response = await client.GetAsync(&quot;/api/v1/control-plane/users&quot;);
+    response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 2: 寫 <code>ControlPlaneAuthorizationService.cs</code></strong></li>
+</ul>
+<pre><code class="language-csharp">public sealed class ControlPlaneAuthorizationService
+{
+    public bool TryRequireRole(HttpContext context, WebConsoleAuthService auth, string minimumRole, out WebConsoleUser user, out IResult denied)
+    {
+        user = null!;
+        denied = null!;
+
+        user = auth.GetCurrentUser(context)!;
+        if (user == null)
+        {
+            denied = Results.Json(ApiResponseHelper.Error(&quot;Web login required.&quot;, 401), statusCode: 401);
+            return false;
+        }
+
+        if (!HasSufficientRole(user.Role, minimumRole))
+        {
+            denied = Results.Json(ApiResponseHelper.Error(&quot;Forbidden.&quot;, 403), statusCode: 403);
+            return false;
+        }
+
+        return true;
+    }
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 3: 寫 <code>ControlPlaneDashboardService.cs</code></strong></li>
+</ul>
+<pre><code class="language-csharp">public sealed class ControlPlaneDashboardService
+{
+    private readonly BrokerDb _db;
+    private readonly HighLevelCoordinator _coordinator;
+    private readonly HighLevelWorkflowAdminService _workflow;
+
+    public object GetSummary()
+    {
+        return new
+        {
+            active_users = _coordinator.ListLineUsers().Count,
+            active_conversations = _db.Query&lt;int&gt;(&quot;SELECT COUNT(DISTINCT key) FROM shared_context_entries WHERE key LIKE 'convlog:%'&quot;).FirstOrDefault(),
+            pending_web_registrations = _db.Query&lt;int&gt;(&quot;SELECT COUNT(*) FROM web_console_users WHERE status = 'pending_review'&quot;).FirstOrDefault(),
+            recent_execution_intents = _workflow.GetSnapshot(10).ExecutionIntents.Count
+        };
+    }
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 4: 寫 <code>ControlPlaneProjectInterviewService.cs</code></strong></li>
+</ul>
+<pre><code class="language-csharp">public sealed class ControlPlaneProjectInterviewService
+{
+    private readonly BrokerDb _db;
+
+    public IReadOnlyList&lt;object&gt; ListSessions(int limit)
+    {
+        return _db.Query&lt;SharedContextEntry&gt;(
+            &quot;SELECT * FROM shared_context_entries WHERE document_id LIKE 'hlm.project-interview.task:%' ORDER BY updated_at DESC LIMIT @limit&quot;,
+            new { limit })
+            .Select(x =&gt; new { x.DocumentId, x.Channel, x.UserId, x.UpdatedAt })
+            .Cast&lt;object&gt;()
+            .ToList();
+    }
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 5: 寫 <code>ControlPlaneEndpoints.cs</code></strong></li>
+</ul>
+<pre><code class="language-csharp">public static class ControlPlaneEndpoints
+{
+    public static void Map(RouteGroupBuilder group)
+    {
+        var cp = group.MapGroup(&quot;/control-plane&quot;);
+
+        cp.MapGet(&quot;/dashboard/summary&quot;, (HttpContext ctx, WebConsoleAuthService auth, ControlPlaneAuthorizationService gate, ControlPlaneDashboardService dashboard) =&gt;
+        {
+            if (!gate.TryRequireRole(ctx, auth, &quot;operator&quot;, out _, out var denied))
+                return denied;
+            return Results.Ok(ApiResponseHelper.Success(dashboard.GetSummary()));
+        });
+    }
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 6: 補 <code>/users</code>、<code>/conversations</code>、<code>/project-interviews</code> read-only endpoints</strong></li>
+</ul>
+<pre><code class="language-csharp">cp.MapGet(&quot;/users&quot;, ...);
+cp.MapGet(&quot;/conversations&quot;, ...);
+cp.MapGet(&quot;/conversations/{userId}&quot;, ...);
+cp.MapGet(&quot;/project-interviews&quot;, ...);
+cp.MapGet(&quot;/project-interviews/{channel}/{userId}&quot;, ...);
+cp.MapGet(&quot;/project-interviews/{channel}/{userId}/versions/{version}&quot;, ...);
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 7: 跑 integration 測試</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet test packages/csharp/tests/integration/Integration.Tests.csproj -v minimal --filter ControlPlaneDashboardTests --disable-build-servers -p:UseSharedCompilation=false
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>
+<p>PASS</p>
+</li>
+<li>
+<p>[ ] <strong>Step 8: Commit</strong></p>
+</li>
+</ul>
+<pre><code class="language-powershell">git add packages/csharp/broker/Services/ControlPlaneAuthorizationService.cs packages/csharp/broker/Services/ControlPlaneDashboardService.cs packages/csharp/broker/Services/ControlPlaneProjectInterviewService.cs packages/csharp/broker/Endpoints/ControlPlaneEndpoints.cs packages/csharp/broker/Endpoints/LocalAdminEndpoints.cs packages/csharp/tests/integration/Api/ControlPlaneDashboardTests.cs
+git commit -m &quot;feat: add control plane role-gated read APIs&quot;
+</code></pre>
+<hr>
+<h2>Task 4: 建立 <code>control-plane.html</code> 與 auth shell</h2>
+<p><strong>Files:</strong>
+- Create: <code>packages/csharp/broker/wwwroot/control-plane.html</code>
+- Create: <code>packages/csharp/broker/wwwroot/control-plane/styles.css</code>
+- Create: <code>packages/csharp/broker/wwwroot/control-plane/app.js</code>
+- Create: <code>packages/csharp/broker/wwwroot/control-plane/api.js</code>
+- Create: <code>packages/csharp/broker/wwwroot/control-plane/state.js</code>
+- Create: <code>packages/csharp/broker/wwwroot/control-plane/auth.js</code>
+- Test: <code>packages/javascript/browser/__tests__/control-plane/DashboardShell.test.js</code></p>
+<ul>
+<li>[ ] <strong>Step 1: 先寫前端 smoke test</strong></li>
+</ul>
+<pre><code class="language-javascript">import { describe, expect, it } from &quot;vitest&quot;;
+import { createShell } from &quot;../../../csharp/broker/wwwroot/control-plane/app.js&quot;;
+
+describe(&quot;control-plane shell&quot;, () =&gt; {
+  it(&quot;renders login view before authenticated boot&quot;, () =&gt; {
+    const root = document.createElement(&quot;div&quot;);
+    createShell(root, { authenticated: false });
+    expect(root.textContent).toContain(&quot;登入&quot;);
+    expect(root.textContent).toContain(&quot;註冊&quot;);
+  });
+});
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 2: 跑 Vitest，確認失敗</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">npm.cmd --prefix packages/javascript/browser run test -- --run DashboardShell.test.js
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>FAIL</li>
+<li>
+<p>module not found</p>
+</li>
+<li>
+<p>[ ] <strong>Step 3: 建 <code>control-plane.html</code></strong></p>
+</li>
+</ul>
+<pre><code class="language-html">&lt;!DOCTYPE html&gt;
+&lt;html lang=&quot;zh-TW&quot;&gt;
+&lt;head&gt;
+  &lt;meta charset=&quot;UTF-8&quot;&gt;
+  &lt;meta name=&quot;viewport&quot; content=&quot;width=device-width, initial-scale=1.0&quot;&gt;
+  &lt;title&gt;B4A Control Plane&lt;/title&gt;
+  &lt;link rel=&quot;stylesheet&quot; href=&quot;/control-plane/styles.css&quot;&gt;
+&lt;/head&gt;
+&lt;body&gt;
+  &lt;div id=&quot;app&quot;&gt;&lt;/div&gt;
+  &lt;script type=&quot;module&quot; src=&quot;/control-plane/app.js&quot;&gt;&lt;/script&gt;
+&lt;/body&gt;
+&lt;/html&gt;
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 4: 建 <code>app.js</code> 最小 shell</strong></li>
+</ul>
+<pre><code class="language-javascript">import { renderAuthShell } from &quot;./auth.js&quot;;
+
+export function createShell(root, bootState) {
+  root.innerHTML = &quot;&quot;;
+  if (!bootState?.authenticated) {
+    renderAuthShell(root);
+    return;
+  }
+  root.innerHTML = `&lt;div class=&quot;cp-shell&quot;&gt;&lt;aside class=&quot;cp-nav&quot;&gt;&lt;/aside&gt;&lt;main class=&quot;cp-main&quot;&gt;&lt;/main&gt;&lt;/div&gt;`;
+}
+
+const root = document.getElementById(&quot;app&quot;);
+if (root) createShell(root, { authenticated: false });
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 5: 建 <code>auth.js</code></strong></li>
+</ul>
+<pre><code class="language-javascript">export function renderAuthShell(root) {
+  root.innerHTML = `
+    &lt;section class=&quot;auth-shell&quot;&gt;
+      &lt;h1&gt;Broker Control Plane&lt;/h1&gt;
+      &lt;div class=&quot;auth-card&quot;&gt;
+        &lt;h2&gt;登入&lt;/h2&gt;
+        &lt;button id=&quot;show-login&quot;&gt;登入&lt;/button&gt;
+        &lt;button id=&quot;show-register&quot;&gt;註冊&lt;/button&gt;
+      &lt;/div&gt;
+    &lt;/section&gt;
+  `;
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 6: 跑 Vitest，確認通過</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">npm.cmd --prefix packages/javascript/browser run test
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>
+<p>新增 shell test PASS</p>
+</li>
+<li>
+<p>[ ] <strong>Step 7: Commit</strong></p>
+</li>
+</ul>
+<pre><code class="language-powershell">git add packages/csharp/broker/wwwroot/control-plane.html packages/csharp/broker/wwwroot/control-plane/styles.css packages/csharp/broker/wwwroot/control-plane/app.js packages/csharp/broker/wwwroot/control-plane/api.js packages/csharp/broker/wwwroot/control-plane/state.js packages/csharp/broker/wwwroot/control-plane/auth.js packages/javascript/browser/__tests__/control-plane/DashboardShell.test.js
+git commit -m &quot;feat: add control plane frontend shell&quot;
+</code></pre>
+<hr>
+<h2>Task 5: 搬移 Dashboard / Users / Conversations 到新 console</h2>
+<p><strong>Files:</strong>
+- Create: <code>packages/csharp/broker/wwwroot/control-plane/dashboard.js</code>
+- Create: <code>packages/csharp/broker/wwwroot/control-plane/users.js</code>
+- Modify: <code>packages/csharp/broker/wwwroot/control-plane/app.js</code>
+- Modify: <code>packages/csharp/broker/wwwroot/control-plane/api.js</code>
+- Modify: <code>packages/csharp/broker/wwwroot/control-plane/state.js</code>
+- Modify: <code>packages/csharp/broker/wwwroot/line-admin.html</code></p>
+<ul>
+<li>[ ] <strong>Step 1: 先寫 dashboard render test</strong></li>
+</ul>
+<pre><code class="language-javascript">it(&quot;renders dashboard counters&quot;, () =&gt; {
+  const root = document.createElement(&quot;div&quot;);
+  renderDashboard(root, {
+    active_users: 3,
+    active_conversations: 5,
+    pending_web_registrations: 2
+  });
+  expect(root.textContent).toContain(&quot;3&quot;);
+  expect(root.textContent).toContain(&quot;5&quot;);
+  expect(root.textContent).toContain(&quot;2&quot;);
+});
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 2: 建立 dashboard/users module</strong></li>
+</ul>
+<pre><code class="language-javascript">export function renderDashboard(root, summary) {
+  root.innerHTML = `
+    &lt;section class=&quot;dashboard-grid&quot;&gt;
+      &lt;div class=&quot;metric-card&quot;&gt;&lt;span&gt;活躍使用者&lt;/span&gt;&lt;strong&gt;${summary.active_users ?? 0}&lt;/strong&gt;&lt;/div&gt;
+      &lt;div class=&quot;metric-card&quot;&gt;&lt;span&gt;進行中對話&lt;/span&gt;&lt;strong&gt;${summary.active_conversations ?? 0}&lt;/strong&gt;&lt;/div&gt;
+      &lt;div class=&quot;metric-card&quot;&gt;&lt;span&gt;待審核註冊&lt;/span&gt;&lt;strong&gt;${summary.pending_web_registrations ?? 0}&lt;/strong&gt;&lt;/div&gt;
+    &lt;/section&gt;
+  `;
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 3: 用 <code>/api/v1/control-plane/dashboard/summary</code>、<code>/users</code>、<code>/conversations</code> 接資料</strong></li>
+</ul>
+<pre><code class="language-javascript">export async function loadDashboard(api) {
+  const result = await api.get(&quot;/api/v1/control-plane/dashboard/summary&quot;);
+  return result;
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 4: 在 <code>line-admin.html</code> 加入口</strong></li>
+</ul>
+<pre><code class="language-html">&lt;div class=&quot;notice&quot;&gt;
+  新版 Broker Control Plane Console：
+  &lt;a href=&quot;/control-plane.html&quot;&gt;開啟 control-plane.html&lt;/a&gt;
+&lt;/div&gt;
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 5: 跑 browser tests + integration</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">npm.cmd --prefix packages/javascript/browser run test
+dotnet test packages/csharp/tests/integration/Integration.Tests.csproj -v minimal --filter ControlPlaneDashboardTests --disable-build-servers -p:UseSharedCompilation=false
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>
+<p>PASS</p>
+</li>
+<li>
+<p>[ ] <strong>Step 6: Commit</strong></p>
+</li>
+</ul>
+<pre><code class="language-powershell">git add packages/csharp/broker/wwwroot/control-plane/dashboard.js packages/csharp/broker/wwwroot/control-plane/users.js packages/csharp/broker/wwwroot/control-plane/app.js packages/csharp/broker/wwwroot/control-plane/api.js packages/csharp/broker/wwwroot/control-plane/state.js packages/csharp/broker/wwwroot/line-admin.html
+git commit -m &quot;feat: add dashboard and user workspace to control plane&quot;
+</code></pre>
+<hr>
+<h2>Task 6: 加入 Project Interview Operator 視圖</h2>
+<p><strong>Files:</strong>
+- Create: <code>packages/csharp/broker/wwwroot/control-plane/project-interviews.js</code>
+- Modify: <code>packages/csharp/broker/wwwroot/control-plane/app.js</code>
+- Modify: <code>packages/csharp/broker/wwwroot/control-plane/styles.css</code>
+- Test: <code>packages/csharp/tests/unit/Services/ControlPlaneProjectInterviewServiceTests.cs</code>
+- Test: <code>packages/csharp/tests/integration/Api/ControlPlaneDashboardTests.cs</code></p>
+<ul>
+<li>[ ] <strong>Step 1: 先寫 project interview projection 單元測試</strong></li>
+</ul>
+<pre><code class="language-csharp">[Fact]
+public async Task ListSessions_ReturnsLatestProjectInterviewDocuments()
+{
+    var service = new ControlPlaneProjectInterviewService(db);
+    var items = service.ListSessions(20);
+    items.Should().NotBeNull();
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 2: 實作 <code>project-interviews.js</code></strong></li>
+</ul>
+<pre><code class="language-javascript">export function renderProjectInterviewList(root, sessions) {
+  root.innerHTML = sessions.map(item =&gt; `
+    &lt;button class=&quot;pi-row&quot; data-channel=&quot;${item.channel}&quot; data-user=&quot;${item.user_id}&quot;&gt;
+      &lt;strong&gt;${item.user_id}&lt;/strong&gt;
+      &lt;span&gt;${item.current_phase}&lt;/span&gt;
+    &lt;/button&gt;
+  `).join(&quot;&quot;);
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 3: 補 detail 與 version inspector</strong></li>
+</ul>
+<pre><code class="language-javascript">export function renderProjectInterviewDetail(root, detail) {
+  root.innerHTML = `
+    &lt;section class=&quot;pi-detail&quot;&gt;
+      &lt;h2&gt;${detail.user_id}&lt;/h2&gt;
+      &lt;pre&gt;${JSON.stringify(detail.session_state, null, 2)}&lt;/pre&gt;
+      &lt;pre&gt;${JSON.stringify(detail.assertions, null, 2)}&lt;/pre&gt;
+      &lt;pre&gt;${JSON.stringify(detail.versions, null, 2)}&lt;/pre&gt;
+    &lt;/section&gt;
+  `;
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 4: 補整合測試</strong></li>
+</ul>
+<pre><code class="language-csharp">[Fact]
+public async Task Operator_CanRead_ProjectInterviewDetail()
+{
+    await _fixture.CompleteProjectInterviewToReviewAsync();
+    var client = await _fixture.CreateApprovedWebClientAsync(role: &quot;operator&quot;);
+    var response = await client.GetAsync(&quot;/api/v1/control-plane/project-interviews/line/line-project-user&quot;);
+    response.StatusCode.Should().Be(HttpStatusCode.OK);
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 5: 跑 unit + integration + browser tests</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet test packages/csharp/tests/unit/Unit.Tests.csproj -v minimal --filter ControlPlaneProjectInterviewServiceTests --disable-build-servers -p:UseSharedCompilation=false
+dotnet test packages/csharp/tests/integration/Integration.Tests.csproj -v minimal --filter ProjectInterview --disable-build-servers -p:UseSharedCompilation=false
+npm.cmd --prefix packages/javascript/browser run test
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>
+<p>PASS</p>
+</li>
+<li>
+<p>[ ] <strong>Step 6: Commit</strong></p>
+</li>
+</ul>
+<pre><code class="language-powershell">git add packages/csharp/broker/wwwroot/control-plane/project-interviews.js packages/csharp/broker/wwwroot/control-plane/app.js packages/csharp/broker/wwwroot/control-plane/styles.css packages/csharp/tests/unit/Services/ControlPlaneProjectInterviewServiceTests.cs packages/csharp/tests/integration/Api/ControlPlaneDashboardTests.cs
+git commit -m &quot;feat: add project interview operator views&quot;
+</code></pre>
+<hr>
+<h2>Task 7: 文件、Smoke 與收尾</h2>
+<p><strong>Files:</strong>
+- Modify: <code>docs/manuals/line-sidecar-runbook.md</code>
+- Modify: <code>docs/manuals/line-sidecar-runbook.zh-TW.md</code>
+- Modify: <code>docs/0329/09-frontend-and-ui.md</code>
+- Modify: <code>docs/0329/01-broker.md</code></p>
+<ul>
+<li>[ ] <strong>Step 1: 更新 runbook 與分析文件</strong></li>
+</ul>
+<pre><code class="language-md">- new entry: `/control-plane.html`
+- web registration / login exists
+- operator dashboard exists
+- project interview operator views exist
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 2: 跑完整驗證</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet run --project packages/csharp/broker/verify/Broker.Verify.csproj --disable-build-servers
+dotnet test packages/csharp/tests/unit/Unit.Tests.csproj -v minimal --disable-build-servers -p:UseSharedCompilation=false
+dotnet test packages/csharp/tests/integration/Integration.Tests.csproj -v minimal --disable-build-servers -p:UseSharedCompilation=false
+npm.cmd --prefix packages/javascript/browser run test
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>broker verify PASS</li>
+<li>unit PASS</li>
+<li>integration PASS</li>
+<li>
+<p>browser tests PASS</p>
+</li>
+<li>
+<p>[ ] <strong>Step 3: Commit</strong></p>
+</li>
+</ul>
+<pre><code class="language-powershell">git add docs/manuals/line-sidecar-runbook.md docs/manuals/line-sidecar-runbook.zh-TW.md docs/0329/09-frontend-and-ui.md docs/0329/01-broker.md
+git commit -m &quot;docs: document control plane console phase 1&quot;
+</code></pre>
+<hr>
+<h2>風險與限制</h2>
+<h3>1. 先不要把 <code>local-admin</code> 拔掉</h3>
+<p><code>local-admin</code> 仍然是 localhost bootstrap 與高權限 fallback。<br>
+在 <code>web-auth</code> 穩定前，不要直接移除它。</p>
+<h3>2. 第 1 版先做 role gate，不做細粒度 ACL</h3>
+<p>先用角色門檻控制頁面與 API。</p>
+<p>不要在這一版就擴成：</p>
+<ul>
+<li>resource-level ACL</li>
+<li>field-level masking</li>
+<li>tenant isolation</li>
+</ul>
+<h3>3. project interview 先做 read-only operator 視圖</h3>
+<p>先把：</p>
+<ul>
+<li>session</li>
+<li>assertions</li>
+<li>versions</li>
+<li>DAG</li>
+</ul>
+<p>看得見。</p>
+<p>不要一開始就加入大量 operator write actions，不然風險太高。</p>
+<hr>
+<h2>覆蓋檢查</h2>
+<p>本計劃已覆蓋 spec 的第一批落地需求：</p>
+<ul>
+<li>web 註冊/登入</li>
+<li>角色分層</li>
+<li>control plane shell</li>
+<li>dashboard</li>
+<li>users / conversations</li>
+<li>project interview 管理視圖</li>
+</ul>
+<p>尚未納入此計劃、留給後續子計劃：</p>
+<ul>
+<li>LINE identity linking 完整流</li>
+<li>user workspace 全功能</li>
+<li>artifact / browser / deployment 的統一新版工作台</li>
+<li>memory 的 write/delete 控制</li>
+<li>更完整的 reviewer flow</li>
+</ul>
+<p>這些應在本計劃完成後，依成熟度拆成第二批與第三批子計劃。</p>
+</main>
+</body>
+</html>

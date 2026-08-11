@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>風險分級與審批定義 (Risk Classification &amp; Approval)</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>風險分級與審批定義 (Risk Classification &amp; Approval)</h1>
+<p>Date: 2026-06-13
+Status: <strong>已依 owner 決策定案(2026-06-13)</strong> —— §18.2 審批服務的前置定義
+依據: <a href="ControlledAutonomousAISystemTechnicalDesign.html">ControlledAutonomousAISystemTechnicalDesign.md</a> §3.1、§6.3、§6.4、§18.2、§21
+銜接: <a href="../reports/CurrentArchitectureAndProgress-2026-06-13.html">CurrentArchitectureAndProgress-2026-06-13.md</a>(§18.1 執行配接器已 e2e 完成)</p>
+<h2>0. 目的</h2>
+<p>規格只說「<strong>高風險行為不由 agent 自決,必須可審批、可撤銷、可重放</strong>」(§3.1/§6.3/§21),但<strong>沒定義什麼叫高風險</strong>。本文補上這個定義,作為 §18.2 審批服務的依據:先有「什麼是高風險」,審批閘門才知道該攔什麼。</p>
+<h2>1. 風險維度(評估一個動作的五個面向)</h2>
+<p>一個動作的風險不是單一屬性,而是這五個維度的綜合:</p>
+<table>
+<thead>
+<tr>
+<th>維度</th>
+<th>問題</th>
+<th>高風險訊號</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>可逆性 Reversibility</strong></td>
+<td>做錯能乾淨還原嗎?</td>
+<td>不可逆(刪除、覆寫無備份、送出訊息、部署)</td>
+</tr>
+<tr>
+<td><strong>影響半徑 Blast radius</strong></td>
+<td>影響多少資源、範圍多大?</td>
+<td>跨多檔/整庫/跨專案/正式環境</td>
+</tr>
+<tr>
+<td><strong>外向性 Externality</strong></td>
+<td>會影響控制平面<strong>之外</strong>的世界嗎?</td>
+<td>對外發訊息、部署、推 remote、網路安裝、寫外部系統</td>
+</tr>
+<tr>
+<td><strong>資料敏感度 Data sensitivity</strong></td>
+<td>讀取/暴露敏感資料或密鑰嗎?</td>
+<td>觸及密鑰、憑證、他人資料、可外洩</td>
+</tr>
+<tr>
+<td><strong>權限 Privilege</strong></td>
+<td>會發放/提升權限或控制其他主體嗎?</td>
+<td>發 capability、spawn/停 agent、改治理設定</td>
+</tr>
+</tbody>
+</table>
+<h2>2. 主體與 scope —— 風險的首要判別(owner 決策)</h2>
+<p><strong>最重要的判別不是「動作種類」,而是「動作有沒有逸出主體被授權的 scope」。</strong> 主體分兩類:</p>
+<table>
+<thead>
+<tr>
+<th>主體</th>
+<th>授權 scope</th>
+<th>在 scope 內的讀寫</th>
+<th>逸出 scope</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>使用者 User</strong>(經 LINE/Web → 代理容器 → broker)</td>
+<td><strong>自己的私有資料夾</strong> <code>{AccessRoot}/{channel}/{userId}/...</code></td>
+<td><strong>auto</strong>(這就是他的 sandbox,改自己的東西不需審批)</td>
+<td><strong>拒絕</strong>(使用者根本碰不到他資料夾外的東西)</td>
+</tr>
+<tr>
+<td><strong>管理員 Admin</strong></td>
+<td><strong>全域</strong>(目前不細分)</td>
+<td>auto(全域讀寫)</td>
+<td>n/a(本來就是全域)</td>
+</tr>
+<tr>
+<td><strong>AI agent</strong>(自主任務)</td>
+<td>任務 grant 的 scope</td>
+<td>scope 內 auto / <code>auto_if_task_scope_match</code></td>
+<td>升 High → 審批</td>
+</tr>
+</tbody>
+</table>
+<p>含意:
+- 同一個 <code>file.write</code> / <code>file.delete</code> / <code>repo.patch.apply</code>,<strong>使用者在自己私有資料夾內做 = Medium/auto</strong>(他的沙箱,可逆與否是他自己的事);<strong>逸出私有資料夾 = High 或直接拒絕</strong>。
+- 所以「高風險」的第一道判別 = <strong>scope 逸出</strong>。動作種類(刪除、部署、對外)是第二層,疊加在 scope 之上。
+- 審批的「信任錨」是<strong>管理員(全域)</strong>;使用者不審批別人,他只在自己的資料夾內操作(那裡都是 auto)。</p>
+<h2>3. 四級準則(對應現有 <code>RiskLevel</code> enum)</h2>
+<p>風險 = <strong>靜態基準級</strong>(能力本身)＋ <strong>動態升級</strong>(這次請求的情境)。</p>
+<table>
+<thead>
+<tr>
+<th>級別</th>
+<th>準則(任一成立即屬此級)</th>
+<th>預設 <code>approval_policy</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Low</strong></td>
+<td>唯讀、內部、無副作用、完全可逆</td>
+<td><code>auto</code></td>
+</tr>
+<tr>
+<td><strong>Medium</strong></td>
+<td>可逆寫入,且<strong>限縮在任務授權的 scope/sandbox 內</strong>;無外向效果</td>
+<td><code>auto_if_task_scope_match</code></td>
+</tr>
+<tr>
+<td><strong>High</strong></td>
+<td>不可逆 <strong>或</strong> 外向 <strong>或</strong> 逸出任務 scope <strong>或</strong> spawn/控制其他 agent</td>
+<td><code>require_approval</code></td>
+</tr>
+<tr>
+<td><strong>Critical</strong></td>
+<td>權限提升、密鑰/憑證存取、正式環境部署、批量/破壞性操作、自由 shell</td>
+<td><code>require_dual_approval</code>(兩個不同 approver id),<strong>永不 auto</strong></td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>「高風險」的定義 = High 或 Critical 級</strong> → 一律走審批(不可 auto、也不該靜默拒絕)。</p>
+</blockquote>
+<h3>動態升級(關鍵)</h3>
+<p>同一能力的風險會因情境上升 —— 這正是 <code>auto_if_task_scope_match</code> 的精神:</p>
+<ul>
+<li><code>repo.patch.apply</code>:預設 Medium(scope 內套 patch、git 可逆);但<strong>patch 觸及 scope 外路徑、保護路徑、或改寫歷史</strong> → 升 High → 審批。</li>
+<li><code>build.test.run</code>:預設 Medium(白名單命令、隔離);但<strong>命令不在白名單、或需要白名單外的網路安裝</strong> → 升 High → 審批(或直接拒)。</li>
+<li><code>file.write</code>:scope 內 Medium;<strong>寫到 sandbox 外</strong> → 升 High。</li>
+</ul>
+<p>審批服務攔的是「<strong>最終風險級 ≥ High</strong>」,而非只看能力的靜態 <code>risk_level</code>。</p>
+<h2>4. <code>approval_policy</code> 取值(定義列舉,規格只給了一個例子)</h2>
+<table>
+<thead>
+<tr>
+<th>值</th>
+<th>意義</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>auto</code></td>
+<td>直接放行(Low,或使用者在自己私有資料夾內)</td>
+</tr>
+<tr>
+<td><code>auto_if_task_scope_match</code></td>
+<td>在授權 scope 內 auto;逸出 scope 則升級為 <code>require_approval</code></td>
+</tr>
+<tr>
+<td><code>require_approval</code></td>
+<td>需單一信任錨放行 —— High 維持 1 次核准</td>
+</tr>
+<tr>
+<td><code>require_dual_approval</code></td>
+<td>需 2 個不同 approver id 放行 —— Critical 使用；broker 持久化 <code>ApprovalRequest.required_approval_count</code> 與每位 approver 一筆 <code>approval_decisions</code>，避免同一 approver 重複核准</td>
+</tr>
+<tr>
+<td><code>deny</code></td>
+<td>一律拒絕(尚未具備安全執行此能力的條件時的暫時值)</td>
+</tr>
+</tbody>
+</table>
+<h2>5. 現有能力重分級表(依 owner 決策)</h2>
+<p>重點:檔案/記憶體類的讀寫刪,<strong>使用者在自己私有資料夾內一律 auto</strong>(他的 sandbox);風險來自<strong>逸出 scope</strong>,由 <code>auto_if_task_scope_match</code> 動態升 High。對外通訊維持 auto 但加頻率限制。</p>
+<table>
+<thead>
+<tr>
+<th>能力</th>
+<th>現況 risk / policy</th>
+<th>定案 risk / policy</th>
+<th>理由</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>file.read / list / search_*</td>
+<td>Low / auto</td>
+<td>Low / auto</td>
+<td>唯讀 ✓</td>
+</tr>
+<tr>
+<td>file.write</td>
+<td>Medium / require_approval</td>
+<td>Medium / <code>auto_if_task_scope_match</code> ⚠️改</td>
+<td>私有資料夾內 auto;逸出才升 High。原無條件 require_approval 過嚴</td>
+</tr>
+<tr>
+<td>file.delete</td>
+<td>Medium / auto</td>
+<td>Medium / <code>auto_if_task_scope_match</code> ⚠️改</td>
+<td>私有資料夾內刪自己的東西 auto;逸出升 High。<strong>不無條件升 High</strong></td>
+</tr>
+<tr>
+<td>repo.patch.apply</td>
+<td>Medium / auto_if_task_scope_match</td>
+<td>Medium / auto_if_task_scope_match</td>
+<td>scope 內可逆 ✓(scope 外升 High)</td>
+</tr>
+<tr>
+<td>build.test.run</td>
+<td>Medium / auto_if_task_scope_match</td>
+<td>Medium / auto_if_task_scope_match</td>
+<td>白名單+隔離 ✓(非白名單升 High)</td>
+</tr>
+<tr>
+<td>command.execute</td>
+<td>High / deny</td>
+<td>Critical / deny</td>
+<td>自由 shell,最高危;暫時全拒</td>
+</tr>
+<tr>
+<td>line.message.send</td>
+<td>Medium / auto</td>
+<td>Medium / auto <strong>+ rate-limit</strong> ⚠️加</td>
+<td>維持 auto(發訊是常態);加 quota/頻率限制防濫用,異常量才升 High</td>
+</tr>
+<tr>
+<td>line.audio.send</td>
+<td>Medium / auto</td>
+<td>Medium / auto <strong>+ rate-limit</strong> ⚠️加</td>
+<td>同上</td>
+</tr>
+<tr>
+<td>line.notification.send</td>
+<td>Low / auto</td>
+<td>Low / auto</td>
+<td>✓</td>
+</tr>
+<tr>
+<td>line.message.read</td>
+<td>Low / auto</td>
+<td>Low / auto</td>
+<td>讀取 ✓</td>
+</tr>
+<tr>
+<td>line.approval.request</td>
+<td>Medium / auto</td>
+<td>Medium / auto</td>
+<td>請求審批本身低危 ✓</td>
+</tr>
+<tr>
+<td>agent.create</td>
+<td>High / require_approval</td>
+<td>High / require_approval ✓</td>
+<td>spawn 主體(逸出單一使用者範圍)</td>
+</tr>
+<tr>
+<td>agent.stop</td>
+<td>High / require_approval</td>
+<td>High / require_approval ✓</td>
+<td>控制主體</td>
+</tr>
+<tr>
+<td>memory.write</td>
+<td>Low / auto</td>
+<td>Low / auto(私有 scope)</td>
+<td>使用者私有記憶 ✓</td>
+</tr>
+<tr>
+<td>memory.delete</td>
+<td>Medium / auto</td>
+<td>Medium / <code>auto_if_task_scope_match</code> ⚠️改</td>
+<td>私有 scope 內 auto;逸出升 High</td>
+</tr>
+<tr>
+<td>rag.import / import_web</td>
+<td>Medium / auto</td>
+<td>Medium / auto</td>
+<td>攝入外部內容(可逆) ✓</td>
+</tr>
+<tr>
+<td>web.search / fetch</td>
+<td>Low / auto</td>
+<td>Low / auto</td>
+<td>外向<strong>讀取</strong>、低危 ✓</td>
+</tr>
+<tr>
+<td>(deploy_azure_vm_iis,tool-spec)</td>
+<td>—</td>
+<td>Critical / require_approval</td>
+<td>正式環境部署(全域、不可逆、外向)</td>
+</tr>
+<tr>
+<td>(google drive 上傳,tool-spec)</td>
+<td>—</td>
+<td>High / require_approval</td>
+<td>對外發佈</td>
+</tr>
+</tbody>
+</table>
+<p><strong>定案要點</strong>:檔案/記憶體的寫刪一律 <code>auto_if_task_scope_match</code>(私有資料夾 = sandbox,scope 內 auto、逸出升 High);對外通訊維持 auto + 頻率限制;只有跨主體控制(agent.create/stop)、正式部署、自由 shell、對外發佈這類<strong>本質逸出單一使用者私有範圍</strong>的才靜態屬 High/Critical。</p>
+<h2>6. PolicyEngine 狀態</h2>
+<p>原始基線中 <code>PolicyEngine.Evaluate</code> 對 High/Critical 直接 <code>Deny</code>(「Only Low and Medium risk are allowed」),等於 <code>require_approval</code> 形同虛設。§18.2 實作後應維持下列行為:</p>
+<ol>
+<li>計算<strong>最終風險級</strong> = 靜態 <code>risk_level</code> 經動態升級(scope 逸出、非白名單、保護路徑…)。</li>
+<li>依最終級對應 <code>approval_policy</code>:
+   - Low/Medium 且符合條件 → <code>Allow</code>(現狀)。
+   - High/Critical 或 scope 逸出 → 回新的決策 <code>RequireApproval</code>(不是 Deny),交審批服務。</li>
+<li>審批服務(§6.3)建立升權申請、依 policy 設定 required approval count、記錄 approver decision、發短時效升權 token、逾時失效、可撤銷;審批達門檻後該請求才得 dispatch。</li>
+<li>全程 audit(誰、何時、基於何權限與<strong>哪個批准</strong>)—— 滿足 §21 可追溯。</li>
+</ol>
+<p><code>PolicyDecision</code> enum 已有 <code>RequireApproval</code>，供 broker 在需審批時保留 execution request。</p>
+<h2>6.5 審批層級:兩種信任錨(owner 補充,2026-06-13)</h2>
+<p>審批面分兩層,各有自己的介面與授權邊界:</p>
+<table>
+<thead>
+<tr>
+<th>層級</th>
+<th>誰批</th>
+<th>介面</th>
+<th>授權邊界</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>使用者層 User</strong></td>
+<td>動作所屬的<strong>使用者本人</strong></td>
+<td><strong>使用者自己的介面</strong>(LINE / Web)</td>
+<td><strong>只限該使用者自己的權限範圍</strong>;只能批自己擁有的待審</td>
+</tr>
+<tr>
+<td><strong>管理員層 Admin</strong></td>
+<td><strong>管理員</strong></td>
+<td><strong>後台 <code>line-admin.html</code> 新增的審批功能</strong></td>
+<td><strong>全域</strong></td>
+</tr>
+</tbody>
+</table>
+<p>層級判定(<code>ApproverTier</code>):
+- 在使用者權限/scope 內、但被設成需確認的動作(<code>require_approval</code> policy)→ <strong>User 層</strong>(使用者自己確認)。
+- 逸出使用者 scope、或 High/Critical(本質跨使用者:agent.create、部署、自由 shell…)→ <strong>Admin 層</strong>(只有管理員能批)。</p>
+<p>授權強制(在 broker 的 approve/reject):
+- User 層:<code>approverId == OwnerPrincipalId</code> 才行(或管理員)。
+- Admin 層:必須是管理員。
+- 使用者<strong>不能</strong>批 Admin 層或別人的 User 層。</p>
+<h2>7. 已定案決策(owner,2026-06-13)</h2>
+<ol>
+<li><strong>對外通訊(line.message.send/audio)維持 auto + 頻率限制</strong> —— 不每次審批;加 quota/rate-limit 防濫用,異常量(批量發送、非授權接收者)才升 High。</li>
+<li><strong>檔案/記憶體寫刪改成 scope-aware</strong>(<code>auto_if_task_scope_match</code>)—— 使用者在自己私有資料夾內 auto;逸出才升 High。<code>file.write</code> 不再無條件 require_approval。</li>
+<li><strong>審批門檻</strong>:High / <code>require_approval</code> 只需<strong>一個</strong>審批者；Critical / <code>require_dual_approval</code> 需<strong>兩個不同 approver id</strong>。目前 local admin approver id 來自 admin session，因此是兩個不同 session/approver id，不是完整 named operator account 管理。</li>
+<li><strong>審批通道兩個都要,且區分使用者/管理員</strong>:
+   - <strong>使用者(User)</strong>:經 <strong>LINE 或 Web</strong> 操作,作用範圍<strong>只限自己的私有資料夾</strong>(<code>{AccessRoot}/{channel}/{userId}/...</code>)。在自己資料夾內都是 auto,本來就不需審批;碰不到資料夾外。
+   - <strong>管理員(Admin)</strong>:<strong>全域</strong>(目前不細分),是高風險動作的<strong>審批信任錨</strong>。可經 LINE 回 confirm/cancel,或在 <code>line-admin.html</code> 的審批佇列按核准/駁回。
+   - 即:<strong>使用者 = 被授權的受限主體;管理員 = 全域審批者</strong>。</li>
+</ol>
+<h2>8. §18.2 實作狀態(依本定義)</h2>
+<ol>
+<li><code>PolicyDecision</code> enum 加 <code>RequireApproval</code>;<code>PolicyEngine</code> 不再對 High/Critical 直接 Deny,改:scope 逸出或最終級 ≥ High → <code>RequireApproval</code>。</li>
+<li>重分級 seed:套 §5 表(file.write/delete/memory.delete 改 <code>auto_if_task_scope_match</code>;deploy/command/agent.* 維持/調 High/Critical)。</li>
+<li>使用者私有資料夾 scope 強制:確認 broker 對 User 主體的 grant scope 綁 <code>{AccessRoot}/{channel}/{userId}</code>;逸出即升級。</li>
+<li><code>ApprovalService</code>(§6.3):建立升權申請、依 policy 設定 required approval count、記錄每位 approver 的決策、指派<strong>管理員</strong>、發短時效升權 token、逾時失效、可撤銷。</li>
+<li>審批通道:LINE(沿用 line.approval.request / confirm)＋ <code>line-admin.html</code> 審批佇列。</li>
+<li>LINE send 頻率限制:<code>line.message.send</code> / <code>line.audio.send</code> worker-local limiter 已於 2026-06-20 補上；per-user/per-channel 分散式 quota 與 <code>line.notification.send</code> 覆蓋仍是後續項。</li>
+<li>全程 audit(誰、何時、哪個批准)—— 滿足 §21 可追溯。
+驗收:高風險動作(逸出 scope、agent.create、部署等)必經管理員審批且可追溯;使用者在私有資料夾內操作不被打擾。</li>
+</ol>
+<h2>9. 範圍界線</h2>
+<p>本文是風險分級與審批模型的定義文件。Broker 層已實作 §8 的核心決策、持久化 approval lifecycle、User/Admin 介面，以及 Critical / <code>require_dual_approval</code> 的兩個不同 approver id 門檻；local admin 身分仍是 session 型，尚不包含完整 named operator account / 多人帳號管理。</p>
+</main>
+</body>
+</html>

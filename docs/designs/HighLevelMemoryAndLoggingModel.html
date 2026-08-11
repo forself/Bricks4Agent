@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>High-Level Memory And Logging Model</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>High-Level Memory And Logging Model</h1>
+<h2>Goal</h2>
+<p>Define how the high-level conversation layer should separate:</p>
+<ul>
+<li>raw audit logs</li>
+<li>interpreted interaction state</li>
+<li>reusable memory state</li>
+<li>executable downstream payloads</li>
+</ul>
+<p>The core rule is:</p>
+<ul>
+<li>logs preserve truth</li>
+<li>memory preserves reusable state</li>
+<li>execution payloads preserve actionable intent</li>
+</ul>
+<p>These are not the same thing and must not be collapsed into one store.</p>
+<h2>Layer 1: Raw Log</h2>
+<p>Purpose:</p>
+<ul>
+<li>audit</li>
+<li>replay</li>
+<li>traceability</li>
+<li>debugging</li>
+<li>incident review</li>
+</ul>
+<p>Properties:</p>
+<ul>
+<li>must preserve the original inbound message</li>
+<li>must preserve the original outbound reply</li>
+<li>must preserve channel metadata, timestamps, identifiers, and request metadata</li>
+<li>may include normalized routing results, but must not overwrite the raw content</li>
+</ul>
+<p>Examples:</p>
+<ul>
+<li>original LINE message text</li>
+<li>original assistant reply</li>
+<li>webhook metadata</li>
+<li>routing result</li>
+<li>session / task ids</li>
+</ul>
+<p>Important rule:</p>
+<ul>
+<li>raw log is not conversation memory</li>
+</ul>
+<h2>Layer 2: Interaction Interpretation</h2>
+<p>Purpose:</p>
+<ul>
+<li>classify what the message means in system terms</li>
+<li>extract structured intent from raw human language</li>
+</ul>
+<p>Typical outputs:</p>
+<ul>
+<li><code>interaction_type</code></li>
+<li><code>conversation</code></li>
+<li><code>query</code></li>
+<li><code>production</code></li>
+<li><code>confirm</code></li>
+<li><code>cancel</code></li>
+<li><code>project_name</code></li>
+<li><code>help</code></li>
+<li><code>prefixed_command</code></li>
+<li><code>none</code></li>
+<li><code>query</code></li>
+<li><code>production</code></li>
+<li><code>project_name</code></li>
+<li><code>needs_confirmation</code></li>
+<li><code>requires_project_name</code></li>
+<li><code>possible_goal</code></li>
+</ul>
+<p>Important rule:</p>
+<ul>
+<li>this layer is transient interpretation state, not long-term memory by itself</li>
+</ul>
+<h2>Layer 3: Memory Form</h2>
+<p>Purpose:</p>
+<ul>
+<li>store information in the format most useful for future retrieval and reuse</li>
+<li>avoid forcing future callers to re-parse old natural language every time</li>
+</ul>
+<p>Memory should be stored in the expected future access form, not as raw conversation fragments.</p>
+<p>Examples:</p>
+<ul>
+<li><code>current_goal</code></li>
+<li><code>confirmed_scope</code></li>
+<li><code>pending_project_name</code></li>
+<li><code>routing_state</code></li>
+<li><code>last_confirmed_task_type</code></li>
+<li><code>user_preferences</code></li>
+<li><code>allowed_workflow_step</code></li>
+</ul>
+<p>Good memory examples:</p>
+<ul>
+<li><code>current_goal = "build a website prototype"</code></li>
+<li><code>pending_project_name = true</code></li>
+<li><code>preferred_language = "zh-TW"</code></li>
+<li><code>last_routing_mode = "production"</code></li>
+</ul>
+<p>Bad memory examples:</p>
+<ul>
+<li>full repeated raw transcripts when only a small confirmed fact is needed</li>
+<li>raw prompt text stored as if it were structured state</li>
+<li>previous instruction syntax preserved when only intent matters</li>
+</ul>
+<p>Important rules:</p>
+<ul>
+<li>memory should be de-commanded where possible</li>
+<li>memory should not depend on the original prefix syntax to remain meaningful</li>
+<li>memory should be optimized for future system use, not for human verbatim replay</li>
+</ul>
+<h2>Layer 4: Execution Form</h2>
+<p>Purpose:</p>
+<ul>
+<li>carry validated, structured intent into broker, tools, workers, or downstream task planners</li>
+</ul>
+<p>Examples:</p>
+<ul>
+<li><code>route_mode = production</code></li>
+<li><code>task_type = code_gen</code></li>
+<li><code>project_name = MySite</code></li>
+<li><code>tool_request = web.search.duckduckgo</code></li>
+<li><code>scope_descriptor = {...}</code></li>
+<li><code>runtime_descriptor = {...}</code></li>
+</ul>
+<p>Important rules:</p>
+<ul>
+<li>execution form should be deterministic and explicit</li>
+<li>execution form should not require downstream workers to re-interpret raw human wording</li>
+<li>execution form should be capability- and scope-ready</li>
+</ul>
+<h2>Why Logs And Memory Must Be Split</h2>
+<p>If raw conversation text is used directly as memory, the system accumulates noise:</p>
+<ul>
+<li>prefix syntax leaks into future state</li>
+<li>temporary wording is mistaken for confirmed intent</li>
+<li>reminder text pollutes later prompts</li>
+<li>system-control metadata is mixed with user conversation state</li>
+</ul>
+<p>If memory is over-compressed without raw logs, the system loses:</p>
+<ul>
+<li>auditability</li>
+<li>replayability</li>
+<li>forensic review</li>
+<li>proof of what the user actually said</li>
+</ul>
+<p>Therefore:</p>
+<ul>
+<li>raw logs must exist</li>
+<li>memory must be derived</li>
+<li>execution state must be derived again from memory and current interaction</li>
+</ul>
+<h2>De-Commanding Rule</h2>
+<p>User messages may use prefixes like:</p>
+<ul>
+<li><code>?query</code></li>
+<li><code>/task</code></li>
+<li><code>#project</code></li>
+</ul>
+<p>Those prefixes are useful at interaction time, but they are not the ideal long-term memory representation.</p>
+<p>Examples:</p>
+<ul>
+<li>raw input:</li>
+<li><code>/請幫我建立一個網站程式</code></li>
+<li>interpreted form:</li>
+<li><code>interaction_type = production</code></li>
+<li>memory form:</li>
+<li><code>current_goal = build website program</code></li>
+<li>execution form:</li>
+<li><code>task_type = code_gen</code></li>
+</ul>
+<p>Likewise:</p>
+<ul>
+<li>raw input:</li>
+<li><code>#MySite</code></li>
+<li>memory form:</li>
+<li><code>project_name = MySite</code></li>
+</ul>
+<p>The prefix is retained in logs, but stripped from memory and execution state.</p>
+<p>Current implementation note:</p>
+<ul>
+<li>explicit <code>?search &lt;keywords&gt;</code> remains verbatim in raw interaction logs</li>
+<li>the memory projection stores only the de-commanded goal text (<code>&lt;keywords&gt;</code>)</li>
+<li>the execution layer references the broker-mediated tool capability separately, rather than reusing raw prefixed text</li>
+</ul>
+<h2>Control-Plane State Must Not Pollute Conversation Memory</h2>
+<p>The following should remain control-plane state, not normal conversation memory:</p>
+<ul>
+<li>task draft ids</li>
+<li>handoff ids</li>
+<li>guide reminder timestamps</li>
+<li>routing counters</li>
+<li>capability / scope metadata</li>
+</ul>
+<p>They may live in user profile or workflow documents, but they should not be injected into model prompts as if they were user conversation.</p>
+<h2>Recommended Persistence Split</h2>
+<h3>Raw Log Store</h3>
+<ul>
+<li>append-only or versioned</li>
+<li>suitable for replay and audit</li>
+</ul>
+<h3>Memory Store</h3>
+<ul>
+<li>mutable, compact, structured</li>
+<li>optimized for retrieval by future handlers</li>
+</ul>
+<h3>Workflow Store</h3>
+<ul>
+<li>pending draft</li>
+<li>current workflow step</li>
+<li>confirmation state</li>
+<li>project-name collection state</li>
+</ul>
+<h3>Execution Store</h3>
+<ul>
+<li>task</li>
+<li>plan</li>
+<li>handoff</li>
+<li>tool request</li>
+</ul>
+<h2>Current Direction</h2>
+<p>The existing broker high-level layer already contains pieces of:</p>
+<ul>
+<li>conversation memory</li>
+<li>user profile memory</li>
+<li>draft / handoff workflow memory</li>
+</ul>
+<p>The next refinement should make the split explicit:</p>
+<ol>
+<li>raw interaction log as its own store or document family</li>
+<li>memory documents storing de-commanded reusable state</li>
+<li>workflow documents storing focused state machines</li>
+<li>downstream execution payloads derived from current state, not from raw transcript scanning</li>
+</ol>
+<h2>Decision Rule</h2>
+<p>From now on, new memory fields should be evaluated with this question:</p>
+<blockquote>
+<p>Is this field being stored because it preserves the original event, or because it will be useful to future callers?</p>
+</blockquote>
+<p>If the answer is:</p>
+<ul>
+<li>"preserve original event" -&gt; it belongs in log</li>
+<li>"useful to future callers" -&gt; it belongs in memory or workflow state</li>
+</ul>
+<p>Do not store one form and pretend it satisfies both.</p>
+</main>
+</body>
+</html>

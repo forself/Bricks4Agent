@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bricks4Agent — Agent Rules</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Bricks4Agent — Agent Rules</h1>
+<h2>Project Identity</h2>
+<p>A zero-runtime-dependency Vanilla JS <strong>UI component library</strong> plus a <strong>page/SPA generator</strong>
+that turns a JSON <code>PageDefinition</code> into working pages (static code generation or dynamic runtime rendering).</p>
+<ul>
+<li>Authoritative component list: <a href="packages/javascript/browser/ui_components/metadata/component-catalog.json">component-catalog.json</a> (116 components)</li>
+<li>Read before building: <a href="AGENT-UI-GUIDE.html">AGENT-UI-GUIDE.md</a> (calling convention) and <a href="AGENT.html">AGENT.md</a> (SPA generator manual)</li>
+</ul>
+<h2>Build &amp; Test</h2>
+<ul>
+<li>Page-generator tests: <code>npm test</code></li>
+<li>UI library checks: <code>npm run validate:ui-library</code></li>
+<li>Style-token audit: <code>npm run audit:ui-styles</code></li>
+<li>All SDK-style .NET 10 projects, with every warning treated as an error: <code>npm run test:dotnet10</code></li>
+<li>.NET tests: <code>dotnet test packages/csharp/tests/unit/Unit.Tests.csproj</code>, <code>dotnet test packages/csharp/tests/integration/Integration.Tests.csproj</code>, <code>dotnet test templates/spa/backend.Tests/SpaApi.Template.Tests.csproj</code></li>
+<li>CSP + SVG hard-zero gate (must pass before any commit touching ui_components): <code>node tools/scripts/audit-csp.mjs</code></li>
+<li>Browser smoke harnesses (serve repo root on :8124 first): <code>node tools/theme-studio/run.mjs</code>, <code>node tools/scripts/canvas-chart-smoke.mjs</code>, <code>node tools/scripts/wave2-stage-sweep.mjs</code>, <code>node tools/scripts/data-explorer-smoke.mjs</code>, <code>node tools/scripts/cluster-graph-perf.mjs</code></li>
+<li>Generated .NET 10 backend (SPA template): <code>dotnet build templates/spa/backend/SpaApi.csproj</code></li>
+<li>Rebuild component metadata after changing a component:
+  <code>node packages/javascript/browser/ui_components/metadata/build-metadata.mjs</code> (<code>--check</code> to validate only)</li>
+</ul>
+<h2>Test Artifacts and Cleanup</h2>
+<p><strong>Rule: all test-generated files must be tracked and cleaned up.</strong></p>
+<table>
+<thead>
+<tr>
+<th>Artifact</th>
+<th>Source</th>
+<th>Cleanup</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>.test-output/</code></td>
+<td>test output directory</td>
+<td>delete after testing</td>
+</tr>
+<tr>
+<td>generated pages/projects under <code>out/</code> (or your <code>--output</code>)</td>
+<td><code>spa-cli.js</code> / <code>page-gen.js</code></td>
+<td>delete after testing</td>
+</tr>
+</tbody>
+</table>
+<h2>Code Conventions</h2>
+<ul>
+<li>Frontend: JavaScript, ES modules, vanilla — <strong>no third-party runtime UI dependency</strong> (only exceptions: vendored Leaflet 1.9.4 + html2canvas under <code>ui_components/vendor/</code>, local-first with CDN fallback).</li>
+<li>Styling: theme tokens only (<code>var(--cl-*)</code>); dark mode via <code>[data-theme="dark"]</code>. See <a href="packages/javascript/browser/ui_components/STYLE_CONVENTION.html">STYLE_CONVENTION.md</a>.</li>
+<li>Strict CSP (machine-enforced): no <code>&lt;style&gt;</code> injection, no <code>style=</code>/<code>on*=</code> in innerHTML templates, no eval / <code>javascript:</code>. Style via CSSOM or co-located <code>.css</code> + same-origin <code>&lt;link&gt;</code>.</li>
+<li><strong>SVG banned — Canvas only</strong>. <code>audit-csp.mjs</code> enforces hard zero; <code>tools/scripts/svg-baseline.json</code> is an empty inventory snapshot and cannot waive findings. Chart base <code>viz/CanvasChart.js</code>; theme reactivity <code>utils/theme-bus.js</code>; color fallbacks only via theme-bus <code>FALLBACK_PAINT</code> (no loose hex).</li>
+<li>Security: escape dynamic HTML with <code>escapeHtml()</code>; raw HTML only via explicit <code>raw()</code>.</li>
+<li>i18n: user-facing strings via <code>Locale.t()</code>.</li>
+<li>Component contract: <code>new X(options)</code> → <code>.mount(container)</code> → <code>.destroy()</code>.</li>
+<li>Generated backend: .NET 10 Minimal API, BaseOrm (no EF Core).</li>
+<li>Password hashing: use the static <code>Rfc2898DeriveBytes.Pbkdf2</code> API without changing the existing iteration/salt/hash sizes or stored formats; compatibility vectors live in the unit and SPA template test projects.</li>
+</ul>
+<h2>Key Notes</h2>
+<ul>
+<li>The generator has two paths: <strong>static</strong> (<code>PageGenerator.generate()</code> / <code>tools/page-gen.js</code> emit <code>.js</code> files) and <strong>dynamic</strong> (<code>DynamicPageRenderer</code> renders at runtime from JSON).</li>
+<li>Field types map to components via <code>PageDefinition.ComponentMapping</code> and <code>FieldResolver</code>; field interactions via <code>TriggerEngine</code>.</li>
+<li>To add a missing component, follow <a href="AGENT-UI-GUIDE.html">AGENT-UI-GUIDE.md</a> §8, then rebuild metadata.</li>
+</ul>
+<h2>Documentation</h2>
+<ul>
+<li>Calling convention + React-rewrite playbook: <a href="AGENT-UI-GUIDE.html">AGENT-UI-GUIDE.md</a></li>
+<li>JSON custom components + Studio + folder/runtime contract: <a href="CUSTOM-COMPONENTS.html">CUSTOM-COMPONENTS.md</a></li>
+<li>SPA generator manual: <a href="AGENT.html">AGENT.md</a></li>
+<li>Page generator: <a href="packages/javascript/browser/page-generator/README.html">page-generator/README.md</a></li>
+</ul>
+</main>
+</body>
+</html>

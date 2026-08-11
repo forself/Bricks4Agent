@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ToggleSwitch 開關滑桿</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>ToggleSwitch 開關滑桿</h1>
+<p>布林值輸入元件，滑桿式外觀，API 對齊 Checkbox 可互換使用。</p>
+<h2>API</h2>
+<h3>Constructor</h3>
+<pre><code class="language-javascript">import { ToggleSwitch } from './ToggleSwitch.js';
+
+const toggle = new ToggleSwitch({
+    label: '啟用通知',       // 標籤文字
+    checked: false,          // 是否開啟
+    disabled: false,         // 停用
+    size: 'medium',          // 'small' | 'medium' | 'large'
+    onChange: (checked) =&gt; {} // 變更回調
+});
+</code></pre>
+<h3>方法</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>mount(container)</code></td>
+<td>掛載至容器</td>
+</tr>
+<tr>
+<td><code>destroy()</code></td>
+<td>銷毀元件</td>
+</tr>
+<tr>
+<td><code>toggle()</code></td>
+<td>切換開關狀態</td>
+</tr>
+<tr>
+<td><code>isChecked()</code></td>
+<td>回傳目前狀態</td>
+</tr>
+<tr>
+<td><code>setChecked(bool)</code></td>
+<td>設定狀態（不觸發 onChange）</td>
+</tr>
+<tr>
+<td><code>getValue()</code></td>
+<td>同 <code>isChecked()</code></td>
+</tr>
+<tr>
+<td><code>setValue(value)</code></td>
+<td>同 <code>setChecked()</code></td>
+</tr>
+<tr>
+<td><code>clear()</code></td>
+<td>重置為 false</td>
+</tr>
+</tbody>
+</table>
+<h3>屬性</h3>
+<ul>
+<li><code>element</code> — 根 DOM 元素</li>
+<li><code>checked</code> — 目前布林值</li>
+</ul>
+<h2>使用範例</h2>
+<pre><code class="language-javascript">import { ToggleSwitch } from './ToggleSwitch.js';
+
+const toggle = new ToggleSwitch({
+    label: '深色模式',
+    size: 'medium',
+    onChange: (checked) =&gt; console.log('dark mode:', checked)
+});
+toggle.mount('#container');
+</code></pre>
+<h2>Demo</h2>
+<p><code>demos/form/ToggleSwitch.html</code>（專案根目錄）</p>
+</main>
+</body>
+</html>

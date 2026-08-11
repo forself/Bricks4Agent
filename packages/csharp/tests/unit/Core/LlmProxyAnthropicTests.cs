@@ -101,7 +101,7 @@ public class LlmProxyAnthropicTests
               "type": "tool_use",
               "id": "toolu_1",
               "name": "read_file",
-              "input": { "path": "README.md" }
+              "input": { "path": "README.html" }
             }
           ],
           "usage": { "output_tokens": 11 }
@@ -139,7 +139,7 @@ public class LlmProxyAnthropicTests
         result.ToolCalls.Should().HaveCount(1);
         result.ToolCalls[0]!["id"]!.GetValue<string>().Should().Be("toolu_1");
         result.ToolCalls[0]!["function"]!["name"]!.GetValue<string>().Should().Be("read_file");
-        result.ToolCalls[0]!["function"]!["arguments"]!["path"]!.GetValue<string>().Should().Be("README.md");
+        result.ToolCalls[0]!["function"]!["arguments"]!["path"]!.GetValue<string>().Should().Be("README.html");
 
         using var sent = JsonDocument.Parse(handler.RequestBody);
         var tools = sent.RootElement.GetProperty("tools");

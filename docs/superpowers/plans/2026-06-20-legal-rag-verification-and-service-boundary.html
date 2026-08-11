@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Legal RAG Verification And Service Boundary Implementation Plan</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Legal RAG Verification And Service Boundary Implementation Plan</h1>
+<blockquote>
+<p><strong>For agentic workers:</strong> REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (<code>- [ ]</code>) syntax for tracking.</p>
+</blockquote>
+<p><strong>Goal:</strong> Restore the earlier legal RAG proof-of-concept as a verified, low-coupling core capability for state externalization and evidence-backed retrieval.</p>
+<p><strong>Architecture:</strong> Keep the existing broker endpoints and routes, but move retrieval behavior into a BrokerCore service that depends only on <code>BrokerDb</code>, <code>SharedContextEntry</code>, <code>VectorEntry</code>, <code>EmbeddingService</code>, and optional <code>RagPipelineService</code>. Legal RAG verification uses offline fixtures, deterministic fake embeddings, SQLite FTS5, and vector rows, so it does not depend on the live law site or Ollama.</p>
+<p>The retrieval core is also hosted by <code>packages/csharp/rag-service</code>, a standalone minimal API process with <code>/healthz</code> and <code>/rag/retrieve</code>. The host depends on BrokerCore and SQLite, not on broker conversation, LINE, approval, or agent-dispatch layers.</p>
+<p><strong>Tech Stack:</strong> C# / .NET 8, BaseOrm, SQLite FTS5, BrokerCore services, broker verify executable, npm signed validation scripts.</p>
+<p><strong>Status:</strong> Completed on 2026-06-20. Verified with solution build, signed broker-scope verification, signed DB validation, agent registry/config tests, and standalone <code>rag-service</code> smoke testing.</p>
+<hr>
+<h3>Task 1: Add Deterministic Legal RAG Verification</h3>
+<p><strong>Files:</strong>
+- Modify: <code>packages/csharp/broker/verify/Program.cs</code></p>
+<ul>
+<li>[x] <strong>Step 1: Write the failing test</strong></li>
+</ul>
+<p>Add a broker verify block that creates a temp SQLite DB, initializes it, imports a tiny Consumer Protection Act fixture, manually inserts deterministic vectors, dispatches <code>rag_retrieve</code>, and asserts:
+- <code>SharedContextEntry</code> contains the legal article.
+- <code>memory_fts</code> returns it for a CJK legal query.
+- vector retrieval returns the same legal entry with a positive vector score.
+- tag filtering excludes unrelated entries.</p>
+<ul>
+<li>[x] <strong>Step 2: Run test to verify it fails</strong></li>
+</ul>
+<p>Run: <code>dotnet run --project packages/csharp/broker/verify/Broker.Verify.csproj</code></p>
+<p>Expected: FAIL because the deterministic fake embedding provider cannot override <code>EmbeddingService.EmbedAsync</code>, or because the retrieval core is still duplicated and not testable through a stable service boundary.</p>
+<h3>Task 2: Introduce BrokerCore RAG Retrieval Boundary</h3>
+<p><strong>Files:</strong>
+- Create: <code>packages/csharp/broker-core/Services/Fts5TextNormalizer.cs</code>
+- Create: <code>packages/csharp/broker-core/Services/RagRetrievalService.cs</code>
+- Modify: <code>packages/csharp/broker-core/Services/EmbeddingService.cs</code>
+- Modify: <code>packages/csharp/broker/Adapters/InProcessDispatcher.cs</code>
+- Modify: <code>packages/csharp/broker/Handlers/Rag/RagRetrieveHandler.cs</code>
+- Modify: <code>packages/csharp/broker/Helpers/Fts5Utility.cs</code></p>
+<ul>
+<li>[x] <strong>Step 1: Make embedding deterministic-testable</strong></li>
+</ul>
+<p>Change <code>EmbeddingService.EmbedAsync</code>, <code>EmbedBatchAsync</code>, and <code>EmbedWithModelAsync</code> to <code>virtual</code> so verify can use a subclass without network access.</p>
+<ul>
+<li>[x] <strong>Step 2: Add FTS5 normalizer in BrokerCore</strong></li>
+</ul>
+<p>Move reusable CJK query/content normalization into <code>Fts5TextNormalizer</code>.</p>
+<ul>
+<li>[x] <strong>Step 3: Add <code>RagRetrievalService</code></strong></li>
+</ul>
+<p>Implement fulltext, semantic vector, RRF fusion, optional query rewrite, optional rerank, tag filtering, and convlog inclusion in BrokerCore.</p>
+<ul>
+<li>[x] <strong>Step 4: Thin broker adapters</strong></li>
+</ul>
+<p>Update dispatcher and handler to parse payloads and call <code>RagRetrievalService</code> instead of maintaining duplicate retrieval logic.</p>
+<h3>Task 3: Update Manuals To Match Verified Reality</h3>
+<p><strong>Files:</strong>
+- Modify: <code>docs/manuals/current-user-manual.zh-TW.md</code>
+- Modify: <code>docs/manuals/current-technical-manual.zh-TW.md</code></p>
+<ul>
+<li>[x] <strong>Step 1: Document the legal RAG module</strong></li>
+</ul>
+<p>State that the old legal RAG POC exists and is now verified through offline legal fixture tests.</p>
+<ul>
+<li>[x] <strong>Step 2: Document guarantees and limits</strong></li>
+</ul>
+<p>Clarify that deterministic verification covers SQLite state externalization, FTS5 retrieval, vector rows, fake embedding vector retrieval, RRF, and tag filtering. Live law-site seeding and live Ollama embeddings remain operational/integration paths.</p>
+<ul>
+<li>[x] <strong>Step 3: Document commands</strong></li>
+</ul>
+<p>Mention <code>npm run validate:broker-scope:signed</code> and <code>npm run validate:db:signed</code> for Windows SAC/WDAC hosts.</p>
+<h3>Task 4: Verify And Clean Up</h3>
+<p><strong>Files:</strong>
+- Inspect: <code>package.json</code>
+- Inspect: <code>.gitignore</code></p>
+<ul>
+<li>[x] <strong>Step 1: Build</strong></li>
+</ul>
+<p>Run: <code>dotnet build packages/csharp/ControlPlane.slnx</code></p>
+<ul>
+<li>[x] <strong>Step 2: Broker verify</strong></li>
+</ul>
+<p>Run: <code>npm run validate:broker-scope:signed</code></p>
+<ul>
+<li>[x] <strong>Step 3: DB validation</strong></li>
+</ul>
+<p>Run: <code>npm run validate:db:signed</code></p>
+<ul>
+<li>[x] <strong>Step 4: Cleanup</strong></li>
+</ul>
+<p>Confirm no new <code>packages/csharp/broker/broker.db*</code> or <code>.test-output/</code> artifacts remain from this work.</p>
+</main>
+</body>
+</html>

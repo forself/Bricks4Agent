@@ -1,0 +1,386 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bricks4Agent Current Architecture And Progress</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Bricks4Agent Current Architecture And Progress</h1>
+<blockquote>
+<p><strong>Superseded by <a href="CurrentArchitectureAndProgress-2026-06-13.html">CurrentArchitectureAndProgress-2026-06-13.md</a></strong> (three-way convergence + controlled agent container activation + commercial API). Kept for history.</p>
+</blockquote>
+<p>Date: 2026-03-26
+Status: superseded working report (historical)</p>
+<h2>1. Executive Summary</h2>
+<p><code>Bricks4Agent</code> is no longer just an agent CLI or a page/code generator. The project has already moved into a control-plane direction:</p>
+<ul>
+<li>LINE ingress</li>
+<li>broker-governed routing</li>
+<li>high-level conversation and task planning</li>
+<li>governed execution</li>
+<li>per-user managed workspaces</li>
+<li>artifact generation and delivery</li>
+<li>browser-governed capability groundwork</li>
+<li>Azure VM IIS deployment groundwork</li>
+</ul>
+<p>That is the real shape of the system now.</p>
+<p>The honest summary is:</p>
+<ul>
+<li>the system is already useful as a broker-mediated AI operations prototype</li>
+<li>the architecture is becoming coherent</li>
+<li>several core paths are genuinely live</li>
+<li>but the whole platform is still uneven in maturity</li>
+</ul>
+<p>This is not a finished platform. It is a serious POC with a growing amount of real infrastructure behind it.</p>
+<h2>2. Core Architectural Position</h2>
+<p>The system is now built around three clearly different roles.</p>
+<h3>2.1 High-level entry model</h3>
+<p>This layer handles:</p>
+<ul>
+<li>user conversation</li>
+<li>clarification</li>
+<li>query rewriting</li>
+<li>candidate intent formation</li>
+<li>workflow confirmation</li>
+<li>execution-model suggestion</li>
+</ul>
+<p>This layer is allowed to interpret. It is not allowed to execute arbitrary side effects by itself.</p>
+<h3>2.2 Broker / control plane</h3>
+<p>The broker is responsible for:</p>
+<ul>
+<li>parsing</li>
+<li>workflow gating</li>
+<li>trust and taint boundaries</li>
+<li>memory projection</li>
+<li>execution-intent promotion</li>
+<li>capability and scope enforcement</li>
+<li>artifact and delivery coordination</li>
+<li>admin views and control surfaces</li>
+</ul>
+<p>The broker should not behave like an autonomous planner. Its value is that it narrows behavior and makes it inspectable, repeatable, and governable.</p>
+<h3>2.3 Execution layer</h3>
+<p>This includes:</p>
+<ul>
+<li>governed agent runtime</li>
+<li>worker processes</li>
+<li>tool routes</li>
+<li>deployment execution</li>
+<li>browser execution groundwork</li>
+</ul>
+<p>This layer should consume structured intent, not raw conversation.</p>
+<h2>3. Canonical Live Path</h2>
+<p>The current production-style path is:</p>
+<p><code>LINE webhook -&gt; line-worker -&gt; broker /api/v1/high-level/line/process -&gt; HighLevelCoordinator</code></p>
+<p>Current local canonical sidecar ports:</p>
+<ul>
+<li>broker: <code>127.0.0.1:5361</code></li>
+<li>line-worker webhook: <code>127.0.0.1:5357</code></li>
+</ul>
+<p>Public ingress is currently tunneled through ngrok.</p>
+<p>Important clarification:</p>
+<ul>
+<li><code>--line-listen</code> on the agent side is now legacy/development-only</li>
+<li>the real canonical LINE path is <code>line-worker -&gt; broker high-level coordinator</code></li>
+</ul>
+<h2>4. High-level Model Layer</h2>
+<p>The LINE high-level responder is now configured to use:</p>
+<ul>
+<li>provider: <code>openai-compatible</code></li>
+<li>model: <code>gpt-5.4-mini</code></li>
+</ul>
+<p>This high-level model is used for:</p>
+<ul>
+<li>conversation</li>
+<li>clarification</li>
+<li>mediated query synthesis</li>
+<li>execution-model suggestion</li>
+</ul>
+<p>It is intentionally separate from execution/runtime model selection.</p>
+<p>Important principle:</p>
+<ul>
+<li>the entry model may propose execution model usage</li>
+<li>the broker validates and records it</li>
+<li>the broker should not freely improvise model selection on its own</li>
+</ul>
+<h2>5. High-level Parsing, Gating, and Memory</h2>
+<p>The high-level entry path already has explicit structure.</p>
+<h3>5.1 Command grammar</h3>
+<p>Supported explicit forms include:</p>
+<ul>
+<li><code>?help</code> / <code>?h</code></li>
+<li><code>?search</code> / <code>?s</code></li>
+<li><code>?rail</code> / <code>?r</code></li>
+<li><code>?hsr</code> / <code>?thsr</code></li>
+<li><code>?bus</code> / <code>?b</code></li>
+<li><code>?flight</code> / <code>?f</code></li>
+<li><code>?profile</code> / <code>?p</code></li>
+<li><code>/name</code> / <code>/n</code></li>
+<li><code>/id</code> / <code>/i</code></li>
+<li><code>#projectName</code></li>
+<li><code>confirm</code></li>
+<li><code>cancel</code></li>
+</ul>
+<p>This grammar exists to narrow what can become executable intent.</p>
+<h3>5.2 Workflow state machine</h3>
+<p>The coordinator does not accept everything everywhere. Core workflow states are explicitly gated, especially around:</p>
+<ul>
+<li>production start</li>
+<li>project-name capture</li>
+<li>confirmation</li>
+<li>cancellation</li>
+</ul>
+<h3>5.3 Trust / taint boundary</h3>
+<p>The current high-level path distinguishes between:</p>
+<ul>
+<li>raw user input</li>
+<li>transformed/decoded input</li>
+<li>retrieved external content</li>
+</ul>
+<p>Only trusted command-shaped user input should be allowed to affect workflow directly. This is still early, but the direction is correct.</p>
+<h3>5.4 Memory split</h3>
+<p>The system now distinguishes between:</p>
+<ul>
+<li>raw interaction log</li>
+<li>interpretation record</li>
+<li>memory projection</li>
+<li>execution intent</li>
+</ul>
+<p>This is one of the most important structural improvements in the project.</p>
+<p>The right mental model is:</p>
+<ul>
+<li>log stores raw truth</li>
+<li>memory stores reusable state</li>
+<li>execution intent stores approved, structured action</li>
+</ul>
+<h2>6. User Model and Managed Paths</h2>
+<p>Users in the LINE high-level layer are keyed by:</p>
+<ul>
+<li><code>channel</code></li>
+<li><code>userId</code></li>
+</ul>
+<p>There is now support for:</p>
+<ul>
+<li>preferred display name</li>
+<li>preferred alphanumeric ID</li>
+<li>per-user permissions</li>
+<li>registration policy</li>
+<li>synthetic/test-user labeling</li>
+</ul>
+<p>Managed workspace root is configured as an absolute path, not a relative path. The current model is:</p>
+<ul>
+<li><code>{AccessRoot}/{channel}/{userId}/conversations</code></li>
+<li><code>{AccessRoot}/{channel}/{userId}/documents</code></li>
+<li><code>{AccessRoot}/{channel}/{userId}/projects/{projectName}</code></li>
+</ul>
+<p>This matters because capability path scope is meaningless until file placement is formalized.</p>
+<h2>7. Admin Console</h2>
+<p>There is now a working local admin console:</p>
+<ul>
+<li><code>http://127.0.0.1:5361/line-admin.html</code></li>
+</ul>
+<p>Current behavior:</p>
+<ul>
+<li>localhost-only access</li>
+<li>local admin login</li>
+<li>initial password fallback if no password exists</li>
+<li>forced first password change</li>
+<li>logout support</li>
+</ul>
+<p>The console already includes:</p>
+<ul>
+<li>LINE user list</li>
+<li>conversation views</li>
+<li>registration policy and review</li>
+<li>per-user permission toggles</li>
+<li>browser-related records</li>
+<li>deployment target views</li>
+<li>tool-spec views</li>
+<li>artifact and workflow visibility</li>
+</ul>
+<p>This is already useful.</p>
+<p>What it is not yet:</p>
+<ul>
+<li>a hardened multi-user production admin console</li>
+<li>a complete long-term admin product</li>
+</ul>
+<h2>8. Query and Tool Mediation</h2>
+<h3>8.1 General mediated search</h3>
+<p>General search is no longer just raw search-result listing.</p>
+<p>The current path:</p>
+<ul>
+<li>broker-mediated search tool</li>
+<li>then high-level synthesis over top results</li>
+</ul>
+<p>This is the right direction. A high-level model that only forwards raw search results would not justify its existence.</p>
+<h3>8.2 Transport tools</h3>
+<p>Transport queries are split by mode:</p>
+<ul>
+<li><code>?rail</code></li>
+<li><code>?hsr</code></li>
+<li><code>?bus</code></li>
+<li><code>?flight</code></li>
+</ul>
+<p>This is important. Rail and HSR were previously collapsed too loosely.</p>
+<h3>8.3 Relation-aware routing</h3>
+<p>A Wikipedia-first broker-mediated relation query path now exists for queries such as:</p>
+<ul>
+<li>administrative divisions</li>
+<li>nearby administrative areas</li>
+<li>core subject relation lookups</li>
+</ul>
+<p>The current implementation is meaningfully better than raw search forwarding, but still not mature.</p>
+<p>The system now does something more honest:</p>
+<ul>
+<li>uses Wikipedia-first evidence</li>
+<li>extracts candidate relation terms</li>
+<li>avoids confidently inventing neighboring-area answers when evidence is weak</li>
+</ul>
+<p>This is better than confident nonsense, but still not equal to a real geographic relation engine.</p>
+<h2>9. Artifact Generation and Delivery</h2>
+<p>The system now supports document-style artifact generation in user-specific directories.</p>
+<p>That includes:</p>
+<ul>
+<li>writing files into user documents paths</li>
+<li>artifact records</li>
+<li>admin visibility of artifacts</li>
+</ul>
+<p>Google Drive delivery is also now wired in through selectable identity modes:</p>
+<ul>
+<li>shared delegated owner</li>
+<li>per-user delegated OAuth</li>
+<li>service-account / Shared Drive path</li>
+</ul>
+<p>The current working delivery path is:</p>
+<ul>
+<li>generate file into user workspace</li>
+<li>upload to delegated Google Drive</li>
+<li>create share link</li>
+<li>queue notification for LINE delivery</li>
+</ul>
+<p>This is already a real delivery chain, not a mock.</p>
+<p>Current limitation:</p>
+<ul>
+<li>the final LINE send still depends on the target being a real LINE user ID</li>
+<li>test identities can complete upload and link generation, but not final real LINE delivery</li>
+<li>there is still no end-user frontend for artifact browsing or authenticated download</li>
+<li>if this system later serves users directly, a broker-governed frontend download API should exist</li>
+</ul>
+<h2>10. Browser-Governed Capability Model</h2>
+<p>The browser-governance foundation is now significantly more mature than it was before.</p>
+<p>The system already distinguishes browser identity modes:</p>
+<ul>
+<li><code>anonymous</code></li>
+<li><code>system_account</code></li>
+<li><code>user_delegated</code></li>
+</ul>
+<p>It also has broker-side models for:</p>
+<ul>
+<li>site bindings</li>
+<li>user grants</li>
+<li>system bindings</li>
+<li>session leases</li>
+<li>browser execution requests/results</li>
+</ul>
+<p>This is good architectural progress.</p>
+<p>What is still missing:</p>
+<ul>
+<li>a full browser worker runtime for serious authenticated automation</li>
+<li>vault/credential lifecycle completion</li>
+<li>submission-grade action approval</li>
+<li>DOM/action policy enforcement at production quality</li>
+</ul>
+<p>So the browser model is structurally real, but execution maturity is still partial.</p>
+<h2>11. Deployment</h2>
+<p>The broker now has Azure VM IIS deployment groundwork, including child-application deployment mode.</p>
+<p>That means the system can move toward:</p>
+<ul>
+<li>publish</li>
+<li>package</li>
+<li>remote deploy</li>
+<li>IIS site or child-application update</li>
+</ul>
+<p>This is strategically important because it proves the project is not just about generating artifacts, but also about governed delivery into real runtime environments.</p>
+<p>What remains incomplete:</p>
+<ul>
+<li>stronger health-check automation</li>
+<li>better end-to-end deployment verification</li>
+<li>more polished operator flow</li>
+</ul>
+<h2>12. Hard Critique</h2>
+<p>This section is intentionally not flattering.</p>
+<h3>12.1 What is genuinely strong</h3>
+<ul>
+<li>The project is no longer just feature sprawl. A real control-plane shape is emerging.</li>
+<li>The split between conversation, governance, execution, and delivery is increasingly coherent.</li>
+<li>The project already contains several working end-to-end paths, not just design notes.</li>
+<li>The system is becoming unusually strong in one area most prototypes neglect: governed transition from language to executable structure.</li>
+</ul>
+<h3>12.2 What is still weak</h3>
+<ul>
+<li>Maturity is uneven. Some parts are real; some parts are still half-policy, half-implementation.</li>
+<li>Search and relation reasoning are improving, but still not reliable enough to claim deep knowledge competence.</li>
+<li>The admin console is useful, but it is still fundamentally a localhost-side operator console, not a hardened admin product.</li>
+<li>Browser governance is more complete on paper and broker records than in live authenticated execution.</li>
+<li>The system still carries historical layering residue. Old paths and newer canonical paths coexist more than they should.</li>
+</ul>
+<h3>12.3 What would be dishonest to claim</h3>
+<p>It would be dishonest to claim that the project is already:</p>
+<ul>
+<li>production-stable</li>
+<li>fully containerized end-to-end</li>
+<li>fully hardened against prompt injection</li>
+<li>browser-automation complete</li>
+<li>search-quality complete</li>
+<li>deployment-operations complete</li>
+</ul>
+<p>It is not there yet.</p>
+<h3>12.4 What would also be dishonest to deny</h3>
+<p>It would also be dishonest to call this “just another toy agent repo”.</p>
+<p>At this point, the repo already contains:</p>
+<ul>
+<li>live ingress</li>
+<li>governance</li>
+<li>structured state promotion</li>
+<li>delivery</li>
+<li>admin operations</li>
+<li>execution constraints</li>
+<li>deployment direction</li>
+</ul>
+<p>That combination is materially stronger than a typical single-agent demo.</p>
+<h2>13. Recommended Near-Term Priorities</h2>
+<p>The highest-value remaining work is:</p>
+<ol>
+<li>Continue improving mediated query quality
+   - especially relation queries and source-aware synthesis</li>
+<li>Harden sidecar/operator reliability
+   - restart, publish, state visibility, failure reporting</li>
+<li>Finish the delegated artifact delivery UX
+   - especially real-user LINE delivery and admin affordances</li>
+<li>Strengthen browser runtime execution
+   - not just registry and records</li>
+<li>Improve deployment verification
+   - health checks, rollback posture, operator clarity</li>
+</ol>
+<h2>14. Bottom Line</h2>
+<p>The current project is best described as:</p>
+<p><strong>a broker-centered governed AI operations prototype moving toward a real control plane</strong></p>
+<p>That is the honest macro-level description.</p>
+<p>It is already beyond a toy. It is not yet a complete platform. The most important thing now is not to pretend it is finished, but also not to underestimate how much real structure is already there.</p>
+</main>
+</body>
+</html>

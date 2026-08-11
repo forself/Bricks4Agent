@@ -79,7 +79,7 @@ public sealed class StaticSitePackageGenerator
         WriteFile(outputDirectory, Path.Combine("components", "manifest.json"), JsonSerializer.Serialize(document.ComponentLibrary, JsonOptions), files);
         WriteFile(outputDirectory, Path.Combine("components", "b-binding.json"), BuildBComponentBinding(document), files);
         WriteGeneratedComponentAssets(outputDirectory, document, files);
-        WriteFile(outputDirectory, "README.md", BuildReadme(document), files);
+        WriteFile(outputDirectory, "README.html", BuildReadme(document), files);
 
         var archivePath = string.Empty;
         if (options.CreateArchive)

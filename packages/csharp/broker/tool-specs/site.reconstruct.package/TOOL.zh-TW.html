@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>網站重製封裝</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>網站重製封裝</h1>
+<p>爬取已確認的公開 URL，優先使用瀏覽器渲染後的視覺與功能線索，轉換成元件庫限定的 <code>site.json</code>，通過品質檢查後產生本機靜態網站包。</p>
+<h2>能力</h2>
+<ul>
+<li>Tool ID: <code>site.reconstruct.package</code></li>
+<li>Capability ID: <code>site.reconstruct_package</code></li>
+<li>Route: <code>site_reconstruct_package</code></li>
+<li>Status: <code>beta</code></li>
+<li>Risk: medium</li>
+</ul>
+<h2>執行前必要確認</h2>
+<p>執行前必須由使用者確認爬取深度，深度定義為「連結跳數」：</p>
+<ul>
+<li>入口頁連結：<code>max_depth = 1</code></li>
+<li>兩次連結跳轉以內：<code>max_depth = 2</code></li>
+<li>N 次連結跳轉以內：<code>max_depth = N</code></li>
+</ul>
+<p>只爬根頁或目前頁面時，<code>max_depth = 0</code> 只作為明確的診斷或手動模式。</p>
+<p><code>link_depth</code> 會以廣度優先逐層爬取；若遇到安全預算限制，必須先保留較低層的完整性，再進入更深層。URL 實體路徑深度不作為網站層級定義。</p>
+<p>對學校、機構或多子網域網站，可用 <code>scope.allowed_host_suffixes</code> 納入公開的同站子網域，例如 <code>["ntub.edu.tw"]</code>。這仍會套用公開 HTTP/HTTPS 與私網阻擋規則，但允許 <code>www.ntub.edu.tw</code>、<code>sec.ntub.edu.tw</code> 等子網域被視為同一個重製範圍。不得用來擴大到無關網域。</p>
+<p>基於效能，渲染後的 visual snapshots 可以有上限；但這個上限不得作為頁面或 route 爬取上限。</p>
+<h2>流程</h2>
+<ol>
+<li>只在已確認的公開 HTTP/HTTPS 範圍內爬取。</li>
+<li>優先使用渲染後的視覺與功能線索，原始 HTML 只作為輔助證據。</li>
+<li>將網站意圖轉換為模板 slot 與元件庫節點。</li>
+<li>預設執行嚴格品質檢查。</li>
+<li>產生以 <code>index.html</code> 為入口的網站包。</li>
+<li>預設產生可攜式 zip 檔供交付。</li>
+<li>驗證 package 檔案、<code>site.json</code> 可渲染性與 archive 內容。</li>
+</ol>
+<p>package runtime 會載入 <code>site.json</code> 與 <code>components/manifest.json</code>，再渲染元件樹。它不得輸出任意頁面 HTML，也不得產生 DOM 等價複製。</p>
+<h2>嚴格品質檢查</h2>
+<p>strict mode 預設啟用。下列狀況會阻止 package 建立：</p>
+<ul>
+<li>文件仍含未解決的 <code>component_requests</code>。</li>
+<li>manifest 宣告 generated components。</li>
+<li>route 使用未知 component type。</li>
+<li>route path 重複。</li>
+<li>route root 不是 <code>PageShell</code>。</li>
+</ul>
+<p>失敗時工具會回傳結構化 <code>quality_report</code>，且不寫出 package。</p>
+<p>strict mode 也會在 package verification 失敗時阻止交付。工具會回傳 <code>verification_report</code>，並在可行時移除失敗的 package artifacts。</p>
+<h2>Package 驗證</h2>
+<p>成功輸出會包含 <code>package.verification_report</code>。驗證內容包含：</p>
+<ul>
+<li><code>index.html</code></li>
+<li><code>runtime.js</code></li>
+<li><code>styles.css</code></li>
+<li><code>site.json</code></li>
+<li><code>components/manifest.json</code></li>
+<li><code>README.md</code></li>
+<li><code>index.html</code> 宣告 <code>#app</code> 並載入 <code>./runtime.js</code></li>
+<li><code>runtime.js</code> 載入 <code>./site.json</code> 與 <code>./components/manifest.json</code></li>
+<li><code>components/manifest.json</code> 宣告 <code>site.json</code> 使用的所有 component type</li>
+<li><code>site.json</code> 使用的每個非 generated component type 都有 <code>runtime.js</code> renderer</li>
+<li>generated component type 具備本機 <code>components/generated/&lt;Type&gt;.js</code> 與 <code>.json</code> 資產</li>
+<li>zip archive entries</li>
+</ul>
+<p>一般使用者交付時，<code>package.quality_report.is_passed</code> 與 <code>package.verification_report.is_passed</code> 都必須為 true。</p>
+<p><code>package.verification_report.runtime_renderer_types</code> 會列出從 <code>runtime.js</code> 解析出的 renderer key。</p>
+<h2>輸出</h2>
+<p>成功結果包含：</p>
+<ul>
+<li><code>crawl_run_id</code></li>
+<li><code>page_count</code></li>
+<li><code>excluded_count</code></li>
+<li><code>package.output_directory</code></li>
+<li><code>package.entry_point</code></li>
+<li><code>package.site_json_path</code></li>
+<li><code>package.manifest_path</code></li>
+<li><code>package.archive_path</code></li>
+<li><code>package.files</code></li>
+<li><code>package.quality_report</code></li>
+<li><code>package.verification_report</code></li>
+</ul>
+<p>結果是一個可重用的網站重製 package，不是來源網站的等價 clone。</p>
+</main>
+</body>
+</html>

@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DefinitionTemplate Specification v0.1</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>DefinitionTemplate Specification v0.1</h1>
+<h2>Status</h2>
+<p>This document is the normative specification for generator-native definition documents in this repository.</p>
+<p>It replaces the previous draft-level framing that treated page-level and app-level definition work as loosely parallel concepts.</p>
+<h2>Scope</h2>
+<p>This specification defines:</p>
+<ol>
+<li>the canonical root format for generator-native definition documents</li>
+<li>the structural boundary between page semantics and app composition semantics</li>
+<li>identity, reference, compatibility, and prohibition rules</li>
+<li>the minimum common semantic intersection that must be representable before broader equivalence is attempted</li>
+</ol>
+<p>This specification does not define:</p>
+<ol>
+<li>full broker-equivalent expressiveness</li>
+<li>arbitrary handwritten source-code round-trip</li>
+<li>automatic reverse extraction</li>
+<li>capability registry resolution rules beyond the structural placeholders already present in the schema</li>
+</ol>
+<p>Version <code>0.1</code> is intentionally scoped to the shared semantic intersection across:</p>
+<ul>
+<li>website-style applications</li>
+<li>richer generated website examples</li>
+<li>control-plane-like applications only where their semantics intersect with the generator's common model</li>
+</ul>
+<h2>Normative Language</h2>
+<p>The keywords below are normative:</p>
+<ul>
+<li><code>MUST</code>: mandatory</li>
+<li><code>MUST NOT</code>: prohibited</li>
+<li><code>SHOULD</code>: recommended unless there is a justified reason not to do so</li>
+<li><code>MAY</code>: optional</li>
+</ul>
+<h2>Canonical Rule</h2>
+<p><code>DefinitionTemplate</code> is the only canonical root definition format.</p>
+<p>Generated <code>.js</code>, <code>.cs</code>, configuration files, project files, and other emitted artifacts are implementation outputs, not canonical sources.</p>
+<p>A generator-native feature is not complete unless it can be:</p>
+<ol>
+<li>represented in the canonical definition format</li>
+<li>generated from that definition</li>
+<li>described back into that definition at semantic level</li>
+</ol>
+<h2>Root Object</h2>
+<p>A conforming root document MUST have this shape:</p>
+<pre><code class="language-json">{
+  &quot;kind&quot;: &quot;definition-template&quot;,
+  &quot;version&quot;: &quot;0.1.0&quot;,
+  &quot;definitions&quot;: {
+    &quot;pages&quot;: [],
+    &quot;apps&quot;: []
+  }
+}
+</code></pre>
+<h3>Root Rules</h3>
+<p>The root object:</p>
+<ul>
+<li>MUST contain <code>kind</code></li>
+<li>MUST contain <code>version</code></li>
+<li>MUST contain <code>definitions</code></li>
+<li>MAY contain <code>meta</code></li>
+<li>MUST NOT contain feature-specific payloads outside <code>definitions</code></li>
+</ul>
+<p><code>kind</code> MUST equal <code>definition-template</code>.</p>
+<p><code>version</code> identifies the definition format version, not the generated application's product version.</p>
+<h2>First-Layer Child Collections</h2>
+<p>The <code>definitions</code> object is the only place where canonical definition content may live at root level.</p>
+<p>In version <code>0.1</code>, the only first-layer child collections are:</p>
+<ul>
+<li><code>definitions.pages</code></li>
+<li><code>definitions.apps</code></li>
+</ul>
+<p>No additional peer collection is permitted in <code>0.1</code>.</p>
+<h2>Page Nodes</h2>
+<p>Each entry in <code>definitions.pages</code> MUST have:</p>
+<ul>
+<li><code>id</code></li>
+<li><code>definition</code></li>
+</ul>
+<p>The canonical page node shape is:</p>
+<pre><code class="language-json">{
+  &quot;id&quot;: &quot;products-list&quot;,
+  &quot;definition&quot;: {
+    &quot;...&quot;: &quot;PageDefinition payload&quot;
+  }
+}
+</code></pre>
+<h3>Page Node Rules</h3>
+<ul>
+<li><code>id</code> MUST be stable within the document.</li>
+<li><code>id</code> MUST be unique within <code>definitions.pages</code>.</li>
+<li><code>definition</code> MUST follow the current page-definition semantics used by the page generator.</li>
+<li><code>definition.type</code> in <code>0.1</code> MUST remain within the currently supported page types:</li>
+<li><code>form</code></li>
+<li><code>list</code></li>
+<li><code>detail</code></li>
+<li><code>dashboard</code></li>
+</ul>
+<p>For version <code>0.1</code>, page payload semantics are defined by the existing page-definition contract implemented in:</p>
+<ul>
+<li><code>D:\Bricks4Agent\packages\javascript\browser\page-generator\PageDefinition.js</code></li>
+</ul>
+<p>This means <code>DefinitionTemplate</code> MUST reuse existing page semantics instead of inventing a second page DSL.</p>
+<h2>App Nodes</h2>
+<p>Each entry in <code>definitions.apps</code> MUST have:</p>
+<ul>
+<li><code>id</code></li>
+<li><code>app</code></li>
+</ul>
+<p>The app node is the canonical location for application composition semantics.</p>
+<h3>Minimum App Model</h3>
+<p>In version <code>0.1</code>, an app node MUST use this logical shape:</p>
+<ul>
+<li><code>app.identity</code></li>
+<li><code>app.profiles</code></li>
+<li><code>app.configuration</code></li>
+<li><code>app.frontend.pageRefs</code></li>
+<li><code>app.backend.features</code></li>
+<li><code>app.backend.services</code></li>
+<li><code>app.backend.policies</code></li>
+<li><code>app.backend.middleware</code></li>
+<li><code>app.backend.endpointModules</code></li>
+<li><code>app.backend.routeGroups</code></li>
+<li><code>app.backend.startupHooks</code></li>
+<li><code>app.backend.hosting</code></li>
+</ul>
+<p>This is the minimum common semantic intersection between the current website generator baseline and the broader application composition patterns already present elsewhere in the repository.</p>
+<h3>App Node Rules</h3>
+<ul>
+<li><code>definitions.apps[*].id</code> MUST be unique within <code>definitions.apps</code>.</li>
+<li><code>app.frontend.pageRefs</code> MUST reference <code>definitions.pages[*].id</code> values in the same canonical document.</li>
+<li><code>app.frontend</code> MUST NOT redefine page structure.</li>
+<li><code>app.backend</code> MUST describe composition semantics, not freeform implementation code.</li>
+<li>A conforming <code>0.1</code> app node MAY omit <code>frontend</code> only for API-only applications.</li>
+</ul>
+<h2>Node Identity Rules</h2>
+<p>The following node identifiers MUST be unique within their containing collection:</p>
+<ul>
+<li><code>definitions.pages[*].id</code></li>
+<li><code>definitions.apps[*].id</code></li>
+<li><code>app.backend.features[*].id</code></li>
+<li><code>app.backend.services[*].id</code></li>
+<li><code>app.backend.policies[*].id</code></li>
+<li><code>app.backend.middleware[*].id</code></li>
+<li><code>app.backend.endpointModules[*].id</code></li>
+<li><code>app.backend.routeGroups[*].id</code></li>
+<li><code>app.backend.startupHooks[*].id</code></li>
+</ul>
+<p>Identifiers are semantic identities, not display labels.</p>
+<p>Changing an identifier SHOULD be treated as a breaking semantic rename unless the normalizer or migration layer explicitly handles it.</p>
+<h2>Reference Integrity Rules</h2>
+<p>The following references MUST resolve within the same canonical document in version <code>0.1</code>:</p>
+<ul>
+<li><code>app.frontend.pageRefs[*] -&gt; definitions.pages[*].id</code></li>
+<li><code>app.backend.routeGroups[*].moduleRefs[*] -&gt; app.backend.endpointModules[*].id</code></li>
+<li><code>app.backend.routeGroups[*].policies[*] -&gt; app.backend.policies[*].id</code></li>
+</ul>
+<p>Capability references and conditional expressions are not fully standardized in <code>0.1</code>.</p>
+<p>Therefore:</p>
+<ul>
+<li>a document MAY contain structurally valid capability or condition fields</li>
+<li>a conforming generator MAY reject them unless the implementation has a documented resolver</li>
+</ul>
+<h2>Prohibited Content</h2>
+<p>A canonical definition document MUST NOT embed arbitrary source code.</p>
+<p>This prohibition includes:</p>
+<ul>
+<li>raw C# code fragments</li>
+<li>raw JavaScript code fragments</li>
+<li>raw lambda bodies</li>
+<li>raw SQL statements</li>
+<li>generator-internal temporary fields</li>
+</ul>
+<p>Canonical definitions MUST describe semantics through:</p>
+<ul>
+<li>structured fields</li>
+<li>identifiers</li>
+<li>references</li>
+<li>ordering</li>
+<li>relationships</li>
+<li>declared options</li>
+</ul>
+<h2>Conformance Model</h2>
+<h3>1. Structural Conformance</h3>
+<p>A structurally conforming document MUST:</p>
+<ul>
+<li>satisfy <code>DefinitionTemplate.schema.json</code></li>
+<li>satisfy all root and child-collection shape rules in this specification</li>
+</ul>
+<h3>2. Semantic Conformance</h3>
+<p>A semantically conforming document MUST:</p>
+<ul>
+<li>satisfy page-definition semantics for every page payload</li>
+<li>satisfy identifier uniqueness rules</li>
+<li>satisfy reference integrity rules</li>
+<li>avoid prohibited content</li>
+</ul>
+<h3>3. Generator Conformance</h3>
+<p>A conforming generator MUST:</p>
+<ul>
+<li>treat <code>DefinitionTemplate</code> as canonical input once normalized</li>
+<li>preserve page/app boundary rules</li>
+<li>reject invalid references rather than silently generating drifted artifacts</li>
+</ul>
+<h3>4. Reverse Description Conformance</h3>
+<p>A conforming reverse-description workflow MUST output semantic equivalents in the same root format.</p>
+<p>Byte-for-byte source reconstruction is not required.</p>
+<h2>Compatibility and Normalization</h2>
+<p>Backward compatibility is a transition mechanism, not a second canonical model.</p>
+<p>In version <code>0.1</code>:</p>
+<ul>
+<li>legacy standalone page-definition inputs MAY still be accepted by tools</li>
+<li>legacy project payloads MAY still be accepted by tools</li>
+<li>but internal processing SHOULD normalize them into <code>DefinitionTemplate</code></li>
+</ul>
+<p>Canonical storage and canonical comparison SHOULD converge on <code>DefinitionTemplate</code>.</p>
+<h2>Minimum Viable Proof for v0.1</h2>
+<p>The success condition for version <code>0.1</code> is not full equivalence with every current handwritten application.</p>
+<p>The success condition is:</p>
+<ol>
+<li>one canonical root format</li>
+<li>no schema split between page and app roots</li>
+<li>CLI and server normalization into the same root format</li>
+<li>generation of the minimum common app semantic intersection</li>
+<li>at least one generator-native sample manually described back into the same format</li>
+</ol>
+<h2>Reserved for Later Versions</h2>
+<p>The topics below are reserved for later specifications:</p>
+<ul>
+<li>formal capability registry contract</li>
+<li>condition mini-DSL</li>
+<li>broker-level non-CRUD endpoint grammar beyond the common intersection</li>
+<li>automatic reverse extraction</li>
+<li>full transaction grammar</li>
+<li>complete data-layer strategy switching</li>
+</ul>
+<h2>Normative Schema</h2>
+<p>The machine-readable companion for this specification is:</p>
+<ul>
+<li><code>D:\Bricks4Agent\tools\spa-generator\schemas\DefinitionTemplate.schema.json</code></li>
+</ul>
+<p>If the schema and this specification conflict, this specification is authoritative.</p>
+</main>
+</body>
+</html>

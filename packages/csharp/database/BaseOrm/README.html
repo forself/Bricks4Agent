@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BaseOrm</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>BaseOrm</h1>
+<p><code>BaseOrm</code> is a micro ORM for Bricks4Agent.</p>
+<p>It is closer to <code>Dapper + a small convention layer</code> than to a full ORM like EF Core:</p>
+<ul>
+<li>You write SQL explicitly.</li>
+<li>It maps rows to objects.</li>
+<li>It provides attribute-driven CRUD helpers.</li>
+<li>It can create simple tables from model metadata.</li>
+<li>It does not provide LINQ, change tracking, or migrations.</li>
+</ul>
+<h2>Layout</h2>
+<table>
+<thead>
+<tr>
+<th>Path</th>
+<th>Target</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>net10/</code></td>
+<td>.NET 10+</td>
+<td>Canonical implementation, async API, shared source used by the repo</td>
+</tr>
+<tr>
+<td><code>netfx48/</code></td>
+<td>.NET Framework 4.8</td>
+<td>Legacy variant kept for older systems</td>
+</tr>
+</tbody>
+</table>
+<h2>Usage Modes</h2>
+<h3>1. Project/package mode</h3>
+<p>Use this when you reference <code>packages/csharp/database/BaseOrm/net10/BaseOrm.csproj</code> from another repo project.</p>
+<p>In this mode the package already references the default ADO.NET providers for:</p>
+<ul>
+<li><code>Microsoft.Data.Sqlite</code></li>
+<li><code>Microsoft.Data.SqlClient</code></li>
+<li><code>MySqlConnector</code></li>
+<li><code>Npgsql</code></li>
+</ul>
+<p>That means <code>BaseDb.UseSqlServer(...)</code>, <code>BaseDb.UseMySql(...)</code>, and <code>BaseDb.UsePostgreSql(...)</code> work without adding extra provider references in the consuming project.</p>
+<h3>2. Single-file copy mode</h3>
+<p>Use this when you copy <code>net10/BaseOrm.cs</code> into a standalone project.</p>
+<p>In this mode you still need to add the provider packages yourself for the databases you want to use. The API remains the same, but package references are now the consumer's responsibility.</p>
+<h2>Supported Databases</h2>
+<table>
+<thead>
+<tr>
+<th>Database</th>
+<th>Factory entry point</th>
+<th>Default provider in <code>net10</code> project mode</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SQLite</td>
+<td><code>new BaseDb(connStr)</code> or <code>BaseDb.UseSqlite(connStr)</code></td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>SQL Server</td>
+<td><code>BaseDb.UseSqlServer(connStr)</code></td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>MySQL</td>
+<td><code>BaseDb.UseMySql(connStr)</code></td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>PostgreSQL</td>
+<td><code>BaseDb.UsePostgreSql(connStr)</code></td>
+<td>Yes</td>
+</tr>
+</tbody>
+</table>
+<h2>Verification</h2>
+<p>The repository includes an executable verification project for provider resolution, dialect behavior, and async CRUD:</p>
+<pre><code class="language-bash">dotnet run --project packages/csharp/database/BaseOrm/net10/verify/BaseOrm.Verify.csproj
+</code></pre>
+<p>If these environment variables are set, the verifier also runs live CRUD integrations against temporary databases:</p>
+<ul>
+<li><code>BASEORM_SQLSERVER_CONNECTION_STRING</code></li>
+<li><code>BASEORM_MYSQL_CONNECTION_STRING</code></li>
+<li><code>BASEORM_POSTGRESQL_CONNECTION_STRING</code></li>
+</ul>
+<p>From the repo root you can also run:</p>
+<pre><code class="language-bash">npm.cmd run validate:baseorm
+</code></pre>
+<h2>Quick Start</h2>
+<pre><code class="language-csharp">using BaseOrm;
+
+await using var db = BaseDb.UseSqlite(&quot;Data Source=app.db&quot;);
+await db.EnsureTableAsync&lt;User&gt;();
+
+var id = await db.InsertAsync(new User
+{
+    Name = &quot;Ada&quot;,
+    Email = &quot;ada@example.com&quot;,
+    CreatedAt = DateTime.UtcNow
+});
+
+var user = await db.GetAsync&lt;User&gt;(id);
+</code></pre>
+<h2>Model Example</h2>
+<pre><code class="language-csharp">using BaseOrm;
+
+[Table(&quot;Users&quot;)]
+public class User
+{
+    [Key]
+    public int Id { get; set; }
+
+    [Required]
+    [MaxLength(100)]
+    public string Name { get; set; } = string.Empty;
+
+    [Column(&quot;EmailAddress&quot;)]
+    [MaxLength(200)]
+    public string Email { get; set; } = string.Empty;
+
+    public DateTime CreatedAt { get; set; }
+
+    [Ignore]
+    public string TemporaryValue { get; set; } = string.Empty;
+}
+</code></pre>
+<h2>Core API</h2>
+<h3>Query</h3>
+<pre><code class="language-csharp">var users = await db.QueryAsync&lt;User&gt;(
+    &quot;SELECT * FROM Users WHERE Name LIKE @Name ORDER BY Id&quot;,
+    new { Name = &quot;%Ada%&quot; });
+
+var first = await db.QueryFirstAsync&lt;User&gt;(
+    &quot;SELECT * FROM Users WHERE Id = @Id&quot;,
+    new { Id = 1 });
+
+var count = await db.ScalarAsync&lt;int&gt;(&quot;SELECT COUNT(*) FROM Users&quot;);
+</code></pre>
+<h3>CRUD</h3>
+<pre><code class="language-csharp">var id = await db.InsertAsync(new User
+{
+    Name = &quot;Ada&quot;,
+    Email = &quot;ada@example.com&quot;,
+    CreatedAt = DateTime.UtcNow
+});
+
+var user = await db.GetAsync&lt;User&gt;(id);
+user!.Email = &quot;ada.lovelace@example.com&quot;;
+await db.UpdateAsync(user);
+
+await db.DeleteAsync&lt;User&gt;(id);
+</code></pre>
+<h3>Paging</h3>
+<pre><code class="language-csharp">var page = await db.QueryPagedAsync&lt;User&gt;(
+    &quot;SELECT * FROM Users ORDER BY Id&quot;,
+    page: 1,
+    pageSize: 20);
+
+Console.WriteLine(page.TotalCount);
+Console.WriteLine(page.HasNext);
+</code></pre>
+<h3>Transactions</h3>
+<pre><code class="language-csharp">await db.InTransactionAsync(async () =&gt;
+{
+    await db.InsertAsync(new User
+    {
+        Name = &quot;Ada&quot;,
+        Email = &quot;ada@example.com&quot;,
+        CreatedAt = DateTime.UtcNow
+    });
+
+    await db.ExecuteAsync(
+        &quot;UPDATE Settings SET Value = @Value WHERE Name = @Name&quot;,
+        new { Value = &quot;ready&quot;, Name = &quot;State&quot; });
+});
+</code></pre>
+<h2>Attributes</h2>
+<table>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>[Table("Users")]</code></td>
+<td>Override table name</td>
+</tr>
+<tr>
+<td><code>[Key]</code></td>
+<td>Mark primary key</td>
+</tr>
+<tr>
+<td><code>[Key(AutoIncrement = false)]</code></td>
+<td>Mark non-identity key</td>
+</tr>
+<tr>
+<td><code>[Column("email_address")]</code></td>
+<td>Override column name</td>
+</tr>
+<tr>
+<td><code>[Required]</code></td>
+<td>Emit <code>NOT NULL</code> in generated schema</td>
+</tr>
+<tr>
+<td><code>[MaxLength(100)]</code></td>
+<td>Control generated string column width</td>
+</tr>
+<tr>
+<td><code>[Ignore]</code></td>
+<td>Exclude property from mapping and schema</td>
+</tr>
+</tbody>
+</table>
+<h2>Database Notes</h2>
+<ul>
+<li>Parameter names are written as <code>@Name</code> in user SQL. <code>BaseOrm</code> rewrites them for MySQL when needed.</li>
+<li>Identifier quoting is dialect-specific and guarded by an allowlist, so only letters, digits, and <code>_</code> are accepted.</li>
+<li>SQLite connections enable <code>busy_timeout</code>, <code>foreign_keys</code>, and WAL mode for file-backed databases.</li>
+<li><code>EnsureTable</code> / <code>EnsureTableAsync</code> are for simple bootstrap tables, not migration workflows.</li>
+</ul>
+<h2>Limitations</h2>
+<p><code>BaseOrm</code> is intentionally small. It does not attempt to replace EF Core.</p>
+<ul>
+<li>No LINQ provider</li>
+<li>No change tracking</li>
+<li>No migrations</li>
+<li>No relation graph loading</li>
+<li>No expression-based query builder</li>
+</ul>
+<p>If you need deterministic SQL with lightweight mapping, this package fits. If you need full ORM behavior, use EF Core instead.</p>
+</main>
+</body>
+</html>

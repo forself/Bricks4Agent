@@ -1,0 +1,978 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bricks4Agent 環境需求與設置教學</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Bricks4Agent 環境需求與設置教學</h1>
+<p>Date: 2026-06-12<br>
+Scope: repository-wide developer setup, local Windows sidecar operation, Node/SPA tooling, worker runtime, and validation commands.</p>
+<h2>1. 這份文件涵蓋什麼</h2>
+<p>本文件是依目前 repo 的程式碼、專案檔、設定檔、腳本與既有文件整理出的集中式環境指南。它補足的是「新機器或新開發者要準備哪些工具、設定哪些 local-only 檔案、用哪些命令啟動與驗證」。</p>
+<p>Bricks4Agent 目前不是單一前端、單一 CLI 或單一 .NET API。主體是：</p>
+<ul>
+<li>broker-centered governed AI operations control plane</li>
+<li>.NET 8 broker / broker-core / worker-sdk / function-pool</li>
+<li>C# capability workers: <code>line-worker</code>, <code>file-worker</code>, <code>browser-worker</code>, <code>transport-tdx-worker</code>, <code>site-crawler-worker</code></li>
+<li>Node.js governed agent runtime and generator tools</li>
+<li>vanilla JS UI component library, page generator, definition-json package</li>
+<li>SPA template and SPA generator workbench</li>
+<li>Podman compose smoke stacks for governed agent execution</li>
+</ul>
+<p>Canonical live path remains:</p>
+<pre><code class="language-text">LINE webhook -&gt; public tunnel -&gt; line-worker -&gt; broker /api/v1/high-level/line/process
+</code></pre>
+<p><code>agent --line-listen</code> is legacy/development-only.</p>
+<h2>2. Repo 版圖摘要</h2>
+<p>主要目錄：</p>
+<table>
+<thead>
+<tr>
+<th>Path</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>packages/csharp/ControlPlane.slnx</code></td>
+<td>Canonical control-plane build solution</td>
+</tr>
+<tr>
+<td><code>packages/csharp/broker</code></td>
+<td>ASP.NET Core 8 broker, local admin UI, high-level coordinator, tool specs</td>
+</tr>
+<tr>
+<td><code>packages/csharp/broker-core</code></td>
+<td>Broker domain services, policy/session/token/auth abstractions</td>
+</tr>
+<tr>
+<td><code>packages/csharp/function-pool</code></td>
+<td>TCP worker registration and dispatch</td>
+</tr>
+<tr>
+<td><code>packages/csharp/worker-sdk</code></td>
+<td>Worker host framework used by capability workers</td>
+</tr>
+<tr>
+<td><code>packages/csharp/workers/*</code></td>
+<td>LINE, file, browser, TDX transport, and site crawler workers</td>
+</tr>
+<tr>
+<td><code>packages/csharp/database/BaseOrm/net8</code></td>
+<td>Canonical lightweight ORM used by broker/template apps</td>
+</tr>
+<tr>
+<td><code>packages/javascript/browser</code></td>
+<td>UI library, page generator, definition-json, browser-side tests</td>
+</tr>
+<tr>
+<td><code>tools/agent</code></td>
+<td>Node governed/local agent runtime</td>
+</tr>
+<tr>
+<td><code>tools/agent/container</code></td>
+<td>Podman compose stacks and mock providers</td>
+</tr>
+<tr>
+<td><code>tools/scripts</code></td>
+<td>validation, crawl, conversion, and generation helper scripts</td>
+</tr>
+<tr>
+<td><code>tools/spa-generator</code></td>
+<td>SPA generator workbench</td>
+</tr>
+<tr>
+<td><code>tools/static-server</code></td>
+<td>small .NET static server for local frontend testing</td>
+</tr>
+<tr>
+<td><code>templates/spa</code></td>
+<td>generated SPA project template</td>
+</tr>
+<tr>
+<td><code>tests/e2e</code></td>
+<td>Playwright e2e tests</td>
+</tr>
+<tr>
+<td><code>docs</code></td>
+<td>architecture, manuals, reports, security, and setup docs</td>
+</tr>
+</tbody>
+</table>
+<p>Approximate tracked source/doc mix, excluding <code>bin</code>, <code>obj</code>, <code>node_modules</code>, and test output:</p>
+<ul>
+<li>C#: 423 files</li>
+<li>JavaScript: 374 files</li>
+<li>Markdown: 146 files</li>
+<li>JSON: 140 files</li>
+<li>HTML: 83 files</li>
+<li>C# project files: 34 files</li>
+</ul>
+<h2>3. Required tools</h2>
+<h3>3.1 Minimum practical requirements</h3>
+<table>
+<thead>
+<tr>
+<th>Tool</th>
+<th>Required for</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Git</td>
+<td>all development</td>
+<td>Standard clone/status/diff workflow</td>
+</tr>
+<tr>
+<td>Windows 10/11</td>
+<td>canonical local LINE sidecar</td>
+<td>Sidecar scripts are PowerShell and Windows-oriented</td>
+</tr>
+<tr>
+<td>Windows PowerShell 5.1+</td>
+<td>sidecar scripts</td>
+<td>Scripts use <code>#Requires -Version 5.1</code></td>
+</tr>
+<tr>
+<td>.NET SDK 8.0+</td>
+<td>C# build/test/runtime</td>
+<td>All active control-plane projects target <code>net8.0</code></td>
+</tr>
+<tr>
+<td>Node.js 18+</td>
+<td>JS tools and agent</td>
+<td><code>tools/agent/README.md</code> states Node 18+</td>
+</tr>
+<tr>
+<td>npm</td>
+<td>Node dependency install and scripts</td>
+<td>Root package uses npm scripts</td>
+</tr>
+<tr>
+<td>Playwright browsers</td>
+<td>browser tests and browser worker</td>
+<td>Install Chromium for JS e2e and .NET browser-worker</td>
+</tr>
+</tbody>
+</table>
+<p>Verified in this workspace on 2026-06-12:</p>
+<ul>
+<li>.NET SDK <code>10.0.300</code></li>
+<li>.NET SDK <code>8.0.421</code></li>
+<li>.NET runtime <code>8.0.27</code></li>
+<li>Node.js <code>v24.16.0</code></li>
+<li>npm <code>11.13.0</code></li>
+<li>Playwright CLI <code>1.58.2</code></li>
+<li><code>dotnet build packages/csharp/ControlPlane.slnx</code> passed with <code>0</code> warnings and <code>0</code> errors</li>
+</ul>
+<p>There is no <code>global.json</code>, so the installed SDK is selected by normal .NET SDK resolution. The repo targets .NET 8; installing .NET 8 SDK is the safest baseline even if a newer SDK is also present.</p>
+<h3>3.2 Optional but important tools</h3>
+<table>
+<thead>
+<tr>
+<th>Tool</th>
+<th>Needed when</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ngrok</td>
+<td>You run the LINE sidecar with an ngrok public webhook</td>
+</tr>
+<tr>
+<td>cloudflared or localhost.run</td>
+<td>Alternative public tunnel paths supported by the sidecar stack</td>
+</tr>
+<tr>
+<td>Podman 5+ with compose support</td>
+<td>You run governed agent container validations</td>
+</tr>
+<tr>
+<td>Ollama</td>
+<td>You use local agent provider mode, local embeddings, or RAG defaults</td>
+</tr>
+<tr>
+<td>SQL Server / MySQL / PostgreSQL</td>
+<td>You run optional live BaseOrm provider integration tests</td>
+</tr>
+<tr>
+<td>Azure VM with IIS and WinRM</td>
+<td>You exercise <code>deploy.azure-vm-iis</code></td>
+</tr>
+<tr>
+<td>Google OAuth/service account credentials</td>
+<td>You exercise Google Drive delivery</td>
+</tr>
+<tr>
+<td>TDX client credentials</td>
+<td>You exercise live Taiwan transport data queries</td>
+</tr>
+</tbody>
+</table>
+<h2>4. First-time local setup</h2>
+<p>From the repo root:</p>
+<pre><code class="language-powershell">git clone &lt;repo-url&gt; Bricks4Agent
+cd Bricks4Agent
+
+npm install
+dotnet restore packages/csharp/ControlPlane.slnx
+dotnet build packages/csharp/ControlPlane.slnx
+</code></pre>
+<p>If you will run the browser UI/e2e tests:</p>
+<pre><code class="language-powershell">npx playwright install chromium
+</code></pre>
+<p>If you will run <code>browser-worker</code>, build it once and install the .NET Playwright browser payload:</p>
+<pre><code class="language-powershell">dotnet build packages/csharp/workers/browser-worker/BrowserWorker.csproj
+powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\browser-worker\bin\Debug\net8.0\playwright.ps1 install chromium
+</code></pre>
+<p>If you will work inside <code>packages/javascript/browser</code> directly, install its package-local dev dependencies too:</p>
+<pre><code class="language-powershell">cd packages/javascript/browser
+npm install
+cd ..\..\..
+</code></pre>
+<p>Why two npm installs can matter:</p>
+<ul>
+<li>root <code>package.json</code> drives repo-level validation and e2e tools</li>
+<li><code>packages/javascript/browser/package.json</code> has its own Vitest/jsdom dev dependencies for the browser package tests</li>
+</ul>
+<h2>5. Local-only secrets and config</h2>
+<p>Do not commit credentials. The repo already ignores local secret/config patterns such as <code>Api.txt</code>, <code>.env</code>, <code>client_secret_*.json</code>, <code>*.key</code>, <code>packages/csharp/broker/appsettings.Development.json</code>, and <code>packages/csharp/workers/line-worker/appsettings.json</code>.</p>
+<h3>5.1 Secrets directory</h3>
+<p>Default secure local directory:</p>
+<pre><code class="language-powershell">C:\secure\Bricks4Agent
+</code></pre>
+<p>Override:</p>
+<pre><code class="language-powershell">$env:BRICKS4AGENT_SECRETS_DIR = 'D:\secure\Bricks4Agent'
+</code></pre>
+<p>Common files:</p>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Used by</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Api.txt</code></td>
+<td>OpenAI-compatible fallback key when <code>ANTHROPIC_API_KEY</code> is not set</td>
+</tr>
+<tr>
+<td><code>client_secret_*.json</code></td>
+<td>Google Drive delegated OAuth setup</td>
+</tr>
+<tr>
+<td><code>worker-auth.json</code></td>
+<td>Generated/persisted worker identity credentials</td>
+</tr>
+</tbody>
+</table>
+<p>The checked-in local broker defaults use Ollama for both Portal/high-level conversation and agent-facing LLM proxy: <code>HighLevelLlm.Provider=ollama</code>, <code>HighLevelLlm.BaseUrl=http://localhost:11434</code>, <code>HighLevelLlm.ApiFormat=chat</code>, <code>HighLevelLlm.DefaultModel=qwen3.6:latest</code>, and <code>HighLevelLlm.MaxOutputTokens=256</code>. <code>HighLevelLlm.ApiKey</code> is only required when you intentionally override the high-level path to a commercial provider.</p>
+<p>Sidecar prefers <code>ANTHROPIC_API_KEY</code> from the process or Windows User environment. When present, it writes runtime broker overrides for <code>anthropic</code> / <code>claude-sonnet-4-6</code>. <code>Api.txt</code> has a legacy repo-root fallback for OpenAI-compatible sidecar/container setups, but new OpenAI-compatible fallback setups should prefer the secure directory.</p>
+<h3>5.2 LINE worker local config</h3>
+<p>Copy the sidecar example to the local ignored config path:</p>
+<pre><code class="language-powershell">Copy-Item .\packages\csharp\workers\line-worker\appsettings.sidecar.example.json `
+  .\packages\csharp\workers\line-worker\appsettings.json
+</code></pre>
+<p>Fill in at least:</p>
+<ul>
+<li><code>Line.ChannelAccessToken</code></li>
+<li><code>Line.ChannelSecret</code></li>
+<li><code>Line.DefaultRecipientId</code></li>
+<li><code>Line.AllowedUserIds</code></li>
+</ul>
+<p>The sidecar startup provisions worker auth in <code>worker-auth.json</code> and injects the matching line-worker credential into runtime config. Manual <code>Worker.Auth.*</code> values are still supported, but the sidecar-managed credential store is the canonical local path.</p>
+<h3>5.3 Broker local development config</h3>
+<p>For direct broker development, create or edit the ignored file:</p>
+<pre><code class="language-text">packages/csharp/broker/appsettings.Development.json
+</code></pre>
+<p>Start from:</p>
+<pre><code class="language-text">packages/csharp/broker/appsettings.Development.example.json
+</code></pre>
+<p>Common sections to override:</p>
+<ul>
+<li><code>Broker:ScopedToken:Secret</code></li>
+<li><code>Broker:Encryption:MasterKeyBase64</code></li>
+<li><code>Broker:Encryption:EcdhPrivateKeyBase64</code></li>
+<li><code>FunctionPool:Enabled</code></li>
+<li><code>HighLevelLlm:ApiKey</code></li>
+<li><code>HighLevelLlm:Provider</code></li>
+<li><code>HighLevelLlm:BaseUrl</code></li>
+<li><code>HighLevelLlm:ApiFormat</code></li>
+<li><code>HighLevelLlm:DefaultModel</code></li>
+<li><code>HighLevelLlm:MaxOutputTokens</code></li>
+<li><code>Tdx:ClientId</code></li>
+<li><code>Tdx:ClientSecret</code></li>
+<li><code>GoogleDriveDelivery:*</code></li>
+<li><code>DeploymentSecrets:Mappings</code></li>
+<li><code>ArtifactDownload:SigningSecret</code></li>
+</ul>
+<h2>6. Environment variables used by the repo</h2>
+<h3>6.1 ASP.NET Core and broker</h3>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ASPNETCORE_URLS</code></td>
+<td>Broker/template API listen URL, for example <code>http://127.0.0.1:5361</code></td>
+</tr>
+<tr>
+<td><code>ASPNETCORE_ENVIRONMENT</code></td>
+<td>Use <code>Development</code> for <code>appsettings.Development.json</code></td>
+</tr>
+<tr>
+<td><code>B4A_NODE_PATH</code></td>
+<td>Broker artifact generation can use this Node executable before falling back to bundled/user PATH Node</td>
+</tr>
+<tr>
+<td><code>Broker__MaxRequestBodyBytes</code></td>
+<td>Broker request body cap override</td>
+</tr>
+<tr>
+<td><code>Broker__IpRateLimit__Enabled</code></td>
+<td>Enable/disable broker POST API IP limiter</td>
+</tr>
+<tr>
+<td><code>Broker__IpRateLimit__PermitLimit</code></td>
+<td>Broker POST API per-IP requests per window</td>
+</tr>
+<tr>
+<td><code>Broker__IpRateLimit__WindowSeconds</code></td>
+<td>Broker POST API limiter window</td>
+</tr>
+<tr>
+<td><code>Broker__IpRateLimit__MaxTrackedClients</code></td>
+<td>Maximum in-memory broker limiter client windows</td>
+</tr>
+<tr>
+<td><code>BRICKS4AGENT_DEPLOY_SECRET__&lt;NORMALIZED_SECRET_REF&gt;__USERNAME</code></td>
+<td>Azure IIS deploy secret fallback</td>
+</tr>
+<tr>
+<td><code>BRICKS4AGENT_DEPLOY_SECRET__&lt;NORMALIZED_SECRET_REF&gt;__PASSWORD</code></td>
+<td>Azure IIS deploy secret fallback</td>
+</tr>
+</tbody>
+</table>
+<p>ASP.NET nested config can also be overridden with <code>__</code>, for example:</p>
+<pre><code class="language-powershell">$env:Embedding__Enabled = 'false'
+$env:FunctionPool__Enabled = 'true'
+$env:LlmProxy__BaseUrl = 'http://localhost:11434'
+$env:Broker__IpRateLimit__PermitLimit = '120'
+</code></pre>
+<h3>6.2 Worker config prefix</h3>
+<p>All C# workers call:</p>
+<pre><code class="language-text">AddEnvironmentVariables(&quot;WORKER_&quot;)
+</code></pre>
+<p>Examples:</p>
+<pre><code class="language-powershell">$env:WORKER_Worker__BrokerHost = 'localhost'
+$env:WORKER_Worker__BrokerPort = '7000'
+$env:WORKER_Worker__Auth__WorkerType = 'site-crawler-worker'
+$env:WORKER_Worker__Auth__KeyId = '&lt;key-id&gt;'
+$env:WORKER_Worker__Auth__SharedSecret = '&lt;shared-secret&gt;'
+</code></pre>
+<p>LINE worker also reads:</p>
+<ul>
+<li><code>WORKER_Line__ChannelAccessToken</code></li>
+<li><code>WORKER_Line__ChannelSecret</code></li>
+<li><code>WORKER_Line__DefaultRecipientId</code></li>
+<li><code>WORKER_Line__AllowedUserIds</code></li>
+<li><code>WORKER_Line__OutboundRateLimit__PermitLimit</code></li>
+<li><code>WORKER_Line__OutboundRateLimit__WindowSeconds</code></li>
+<li><code>WORKER_Line__OutboundRateLimit__MaxTrackedKeys</code></li>
+<li><code>WORKER_Broker__ApiUrl</code></li>
+</ul>
+<p><code>Line:OutboundRateLimit</code> is worker-local and keyed by recipient + capability. It currently covers <code>line.message.send</code> and <code>line.audio.send</code>; distributed quota coordination and <code>line.notification.send</code> coverage are separate hardening work.</p>
+<h3>6.3 Agent and provider variables</h3>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Used by</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>BROKER_URL</code></td>
+<td>governed agent broker URL</td>
+</tr>
+<tr>
+<td><code>BROKER_PUB_KEY</code></td>
+<td>governed agent broker public key</td>
+</tr>
+<tr>
+<td><code>BROKER_PRINCIPAL_ID</code></td>
+<td>governed agent principal</td>
+</tr>
+<tr>
+<td><code>BROKER_TASK_ID</code></td>
+<td>governed agent task</td>
+</tr>
+<tr>
+<td><code>BROKER_ROLE_ID</code></td>
+<td>governed agent role, default <code>role_reader</code></td>
+</tr>
+<tr>
+<td><code>ANTHROPIC_API_KEY</code></td>
+<td>Anthropic Claude provider; sidecar prefers this and defaults to <code>claude-sonnet-4-6</code></td>
+</tr>
+<tr>
+<td><code>OPENAI_API_KEY</code></td>
+<td>OpenAI-compatible provider</td>
+</tr>
+<tr>
+<td><code>GEMINI_API_KEY</code></td>
+<td>Gemini OpenAI-compatible provider</td>
+</tr>
+<tr>
+<td><code>DEEPSEEK_API_KEY</code></td>
+<td>DeepSeek provider</td>
+</tr>
+<tr>
+<td><code>GROQ_API_KEY</code></td>
+<td>Groq provider</td>
+</tr>
+<tr>
+<td><code>MISTRAL_API_KEY</code></td>
+<td>Mistral provider</td>
+</tr>
+<tr>
+<td><code>OLLAMA_BASE_URL</code></td>
+<td>host Ollama compose/test path</td>
+</tr>
+</tbody>
+</table>
+<h3>6.4 Optional validation variables</h3>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Enables</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>TDX_CLIENT_ID</code></td>
+<td>live TDX verification in broker verify</td>
+</tr>
+<tr>
+<td><code>TDX_CLIENT_SECRET</code></td>
+<td>live TDX verification in broker verify</td>
+</tr>
+<tr>
+<td><code>BASEORM_SQLSERVER_CONNECTION_STRING</code></td>
+<td>live SQL Server BaseOrm integration</td>
+</tr>
+<tr>
+<td><code>BASEORM_MYSQL_CONNECTION_STRING</code></td>
+<td>live MySQL BaseOrm integration</td>
+</tr>
+<tr>
+<td><code>BASEORM_POSTGRESQL_CONNECTION_STRING</code></td>
+<td>live PostgreSQL BaseOrm integration</td>
+</tr>
+</tbody>
+</table>
+<h2>7. Default ports and URLs</h2>
+<table>
+<thead>
+<tr>
+<th>Port / URL</th>
+<th>Owner</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>http://127.0.0.1:5361</code></td>
+<td>canonical sidecar broker</td>
+<td>User portal at <code>/portal/index.html</code>; admin UI at <code>/line-admin.html</code></td>
+</tr>
+<tr>
+<td><code>http://127.0.0.1:5357</code></td>
+<td>canonical sidecar line-worker webhook</td>
+<td>Public tunnel forwards here</td>
+</tr>
+<tr>
+<td><code>7000</code></td>
+<td>function-pool TCP worker port</td>
+<td>Workers register here</td>
+</tr>
+<tr>
+<td><code>http://localhost:5000</code></td>
+<td>generic broker / SPA template backend / some e2e defaults</td>
+<td>Can collide across subsystems</td>
+</tr>
+<tr>
+<td><code>https://localhost:5002</code></td>
+<td>SPA generator backend default</td>
+<td>Workbench backend</td>
+</tr>
+<tr>
+<td><code>http://localhost:3080</code></td>
+<td>SPA generator frontend</td>
+<td><code>npm run serve</code> or <code>tools/spa-generator/server.js</code></td>
+</tr>
+<tr>
+<td><code>http://localhost:3000</code></td>
+<td>generic static server / SPA template frontend</td>
+<td><code>tools/static-server</code> default examples</td>
+</tr>
+<tr>
+<td><code>6380</code></td>
+<td>cache-server default</td>
+<td>Optional cache subsystem</td>
+</tr>
+<tr>
+<td><code>19090</code></td>
+<td>LINE worker container dev port</td>
+<td>Not the canonical Windows sidecar port</td>
+</tr>
+<tr>
+<td><code>11434</code></td>
+<td>Ollama default</td>
+<td>Optional local model/embedding path</td>
+</tr>
+</tbody>
+</table>
+<p>When the sidecar is running on <code>5361</code>, avoid starting the OpenAI-compatible compose stack on its default <code>BROKER_PORT=5361</code>; override it first.</p>
+<h2>8. Canonical Windows LINE sidecar</h2>
+<p>This is the main local operator path.</p>
+<p>Start:</p>
+<pre><code class="language-powershell">powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\line-sidecar.ps1 up
+</code></pre>
+<p>Status:</p>
+<pre><code class="language-powershell">powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\line-sidecar.ps1 status
+</code></pre>
+<p>Verify live webhook path:</p>
+<pre><code class="language-powershell">powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\line-sidecar.ps1 verify -Message &quot;hello&quot;
+</code></pre>
+<p>Verify broker high-level process directly:</p>
+<pre><code class="language-powershell">powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\line-sidecar.ps1 verify-broker -UserId test-user -Message &quot;hello&quot;
+</code></pre>
+<p>Restart:</p>
+<pre><code class="language-powershell">powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\line-sidecar.ps1 restart
+</code></pre>
+<p>Stop:</p>
+<pre><code class="language-powershell">powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\line-sidecar.ps1 down
+</code></pre>
+<p>Sidecar behavior:</p>
+<ul>
+<li>publishes broker and line-worker into <code>.run/line-sidecar</code></li>
+<li>signs Bricks4Agent-owned sidecar runtime <code>.dll</code> / <code>.exe</code> files when the dev code-signing certificate exists</li>
+<li>stores runtime DB at <code>.run/line-sidecar/data/broker.db</code></li>
+<li>writes logs under <code>.run/line-sidecar/logs</code></li>
+<li>provisions <code>worker-auth.json</code> under the secure secrets directory</li>
+<li>injects <code>WorkerAuth.Enforce = true</code> into the sidecar broker runtime config</li>
+<li>updates LINE webhook URL unless <code>-SkipWebhookUpdate</code> is used</li>
+<li>user portal is available at <code>http://127.0.0.1:5361/portal/index.html</code></li>
+<li>admin console is available at <code>http://127.0.0.1:5361/line-admin.html</code></li>
+</ul>
+<p>On Windows machines with Smart App Control / WDAC enforcement, sidecar startup can fail with <code>0x800711C7</code> or Code Integrity messages such as <code>did not meet the Enterprise signing level requirements</code>. If this happens, do not keep re-running <code>up</code>; repair the runtime trust policy from an elevated PowerShell:</p>
+<pre><code class="language-powershell">cd D:\Bricks4Agent
+npm run signing:wdac-repair -- -Deploy
+</code></pre>
+<p>This scans <code>D:\Bricks4Agent\.run\line-sidecar</code>, generates the supplemental policy under <code>D:\Bricks4Agent\.run\wdac\line-sidecar-runtime\</code>, installs it with <code>CiTool</code>, and verifies that the generated <code>{policy-id}.cip</code> appears under <code>C:\Windows\System32\CodeIntegrity\CiPolicies\Active</code>. The policy is not effective until the repair output shows it is active. See <code>docs/manuals/dev-code-signing-wdac.zh-TW.md</code> for the full flow.</p>
+<p>If shell encoding is unreliable for Chinese text, prefer:</p>
+<pre><code class="language-powershell">powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\line-sidecar.ps1 verify-broker `
+  -UserId test-user `
+  -MessageBase64Utf8 &lt;base64-utf8-message&gt;
+</code></pre>
+<h2>9. Running workers against a broker</h2>
+<p>For a broker with function-pool enabled on port <code>7000</code>, start workers through the helper so they use the sidecar-managed credential store:</p>
+<pre><code class="language-powershell">powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\run-worker.ps1 -Worker file
+powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\run-worker.ps1 -Worker browser
+powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\run-worker.ps1 -Worker transport-tdx
+powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\run-worker.ps1 -Worker site-crawler
+</code></pre>
+<p>Override broker port when needed:</p>
+<pre><code class="language-powershell">powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\run-worker.ps1 -Worker site-crawler -BrokerPort 7000
+</code></pre>
+<p>Direct worker run shape:</p>
+<pre><code class="language-powershell">dotnet run --project packages/csharp/workers/site-crawler-worker/SiteCrawlerWorker.csproj -- `
+  --Worker:BrokerHost=localhost `
+  --Worker:BrokerPort=7000
+</code></pre>
+<p>The direct form is useful for development, but if broker worker auth is enforced you must also supply matching <code>Worker:Auth:*</code> values.</p>
+<h2>10. Direct broker development</h2>
+<p>The sidecar is preferred for the canonical LINE path. For direct broker development:</p>
+<pre><code class="language-powershell">$env:ASPNETCORE_ENVIRONMENT = 'Development'
+$env:ASPNETCORE_URLS = 'http://127.0.0.1:5361'
+dotnet run --project packages/csharp/broker/Broker.csproj -- --FunctionPool:Enabled=true
+</code></pre>
+<p>Health:</p>
+<pre><code class="language-powershell">Invoke-RestMethod http://127.0.0.1:5361/api/v1/health
+</code></pre>
+<p>Admin UI:</p>
+<pre><code class="language-text">http://127.0.0.1:5361/line-admin.html
+</code></pre>
+<p>The first local admin login uses username <code>admin</code> and password <code>admin</code>; the first successful login must set a new password and creates the local <code>super_admin</code> operator. Subsequent operators are managed from the admin UI Permissions tab. The built-in roles are <code>super_admin</code>, <code>system_admin</code>, <code>permission_admin</code>, and <code>auditor</code>; backend local-admin APIs enforce those permissions regardless of what the UI hides or shows.</p>
+<p>User portal:</p>
+<pre><code class="language-text">http://127.0.0.1:5361/portal/index.html
+</code></pre>
+<p>Direct broker defaults differ from sidecar defaults:</p>
+<ul>
+<li>repo <code>appsettings.json</code> has <code>WorkerAuth.Enforce = false</code></li>
+<li>sidecar runtime enables worker auth enforcement and injects generated credentials</li>
+<li>repo <code>appsettings.json</code> points embeddings/RAG/LLM proxy at local Ollama by default</li>
+</ul>
+<p>If you do not have Ollama running and are not testing RAG/local LLM paths, disable those sections for focused broker work:</p>
+<pre><code class="language-powershell">$env:Embedding__Enabled = 'false'
+$env:LineChatGateway__RagEnabled = 'false'
+</code></pre>
+<h2>11. Node, UI, and generator tooling</h2>
+<p>Root package scripts:</p>
+<pre><code class="language-powershell">npm test
+npm run test:generator
+npm run audit:ui-styles
+npm run validate:ui-state
+npm run validate:ui-library
+npm run validate:ui-library:browser
+npm run validate:user-portal
+npm run validate:backend-governance
+npm run validate:baseorm
+npm run validate:broker-scope
+npm run validate:broker-llm-proxy
+npm run validate:anthropic-provider-smoke
+npm run serve
+</code></pre>
+<p>SPA generator frontend:</p>
+<pre><code class="language-powershell">npm run serve
+# open http://localhost:3080
+</code></pre>
+<p>Alternative:</p>
+<pre><code class="language-powershell">cd tools/spa-generator
+node server.js
+</code></pre>
+<p>Page generator CLI:</p>
+<pre><code class="language-powershell">node tools/page-gen.js --validate --def employee.json
+node tools/page-gen.js --def employee.json --mode static --output .\output
+node tools/page-gen.js --list-types
+</code></pre>
+<p>Browser package tests:</p>
+<pre><code class="language-powershell">cd packages/javascript/browser
+npm test
+npm run metadata:check
+cd ..\..\..
+</code></pre>
+<p>SPA template CLI:</p>
+<pre><code class="language-powershell">cd templates/spa/scripts
+node spa-cli.js new --name my-shop --output ..\..\..\projects
+node spa-cli.js feature Product --fields &quot;Name:string,Price:decimal,Stock:int&quot;
+</code></pre>
+<h2>12. Playwright and e2e tests</h2>
+<p>Install Chromium:</p>
+<pre><code class="language-powershell">npx playwright install chromium
+</code></pre>
+<p>Run the SPA commerce proof e2e test:</p>
+<pre><code class="language-powershell">npx playwright test tests/e2e/ui/spa-commerce-proof.spec.ts --config tests/e2e/playwright.config.ts
+</code></pre>
+<p>Run the SPA generator Playwright suite:</p>
+<pre><code class="language-powershell">npx playwright test --config tools/spa-generator/playwright.config.mjs
+</code></pre>
+<p>The e2e config can start the template backend automatically at:</p>
+<pre><code class="language-text">http://127.0.0.1:5000
+</code></pre>
+<p>If port <code>5000</code> is already in use, stop the conflicting service or override the relevant config before running the test.</p>
+<h2>13. C# build and test commands</h2>
+<p>Canonical build:</p>
+<pre><code class="language-powershell">dotnet build packages/csharp/ControlPlane.slnx
+</code></pre>
+<p>Broker console/unit-style test suite:</p>
+<pre><code class="language-powershell">dotnet run --project packages/csharp/tests/broker-tests/Broker.Tests.csproj
+</code></pre>
+<p>On Windows hosts with Smart App Control / WDAC enforcement, use the signed test entries so build outputs are signed before execution and the test command runs without rebuilding:</p>
+<pre><code class="language-powershell">npm run test:unit:signed
+npm run test:integration:signed
+npm run test:broker:signed
+npm run test:dotnet:signed
+</code></pre>
+<p>If WDAC still blocks local test assemblies, repair the main workspace test trust from an elevated PowerShell. This builds broker, broker-tests, unit-tests, and integration-tests, signs Bricks4Agent-owned outputs, deploys Publisher-level supplemental policies, then verifies that the policies are active:</p>
+<pre><code class="language-powershell">npm run signing:wdac-repair-tests -- -Deploy
+npm run test:broker:trusted
+</code></pre>
+<p>Broker integration mode, requiring a running broker:</p>
+<pre><code class="language-powershell">dotnet run --project packages/csharp/tests/broker-tests/Broker.Tests.csproj -- --integration http://localhost:5361
+</code></pre>
+<p>xUnit unit tests:</p>
+<pre><code class="language-powershell">dotnet test packages/csharp/tests/unit/Unit.Tests.csproj
+</code></pre>
+<p>xUnit integration tests:</p>
+<pre><code class="language-powershell">dotnet test packages/csharp/tests/integration/Integration.Tests.csproj
+</code></pre>
+<p>BaseOrm verification:</p>
+<pre><code class="language-powershell">dotnet run --project packages/csharp/database/BaseOrm/net8/verify/BaseOrm.Verify.csproj
+npm run validate:baseorm
+</code></pre>
+<p>Broker verify project:</p>
+<pre><code class="language-powershell">dotnet run --project packages/csharp/broker/verify/Broker.Verify.csproj
+npm run validate:broker-scope
+</code></pre>
+<p>Backend dependency governance:</p>
+<pre><code class="language-powershell">npm run validate:dotnet-deps
+npm run validate:dotnet-api-usage
+npm run validate:backend-governance
+</code></pre>
+<h2>14. Podman governed agent stacks</h2>
+<p>The Podman stacks prove the governed agent path, not the full LINE sidecar system.</p>
+<p>Preferred smoke test:</p>
+<pre><code class="language-powershell">npm run validate:podman-governed-stack
+</code></pre>
+<p>Manual default stack:</p>
+<pre><code class="language-powershell">podman compose -f tools/agent/container/compose.yml up --build --abort-on-container-exit --exit-code-from agent
+</code></pre>
+<p>OpenAI-compatible mock stack:</p>
+<pre><code class="language-powershell">podman compose -f tools/agent/container/compose.openai-compatible.yml up --build --abort-on-container-exit --exit-code-from agent
+</code></pre>
+<p>Host Ollama stack:</p>
+<pre><code class="language-powershell">$env:STACK_MODEL = 'qwen3.6:latest'
+podman compose -f tools/agent/container/compose.ollama-host.yml up --build --abort-on-container-exit --exit-code-from agent
+</code></pre>
+<p>Stop and remove volumes:</p>
+<pre><code class="language-powershell">podman compose -f tools/agent/container/compose.yml down -v
+</code></pre>
+<p>Important port note:</p>
+<ul>
+<li><code>compose.yml</code> broker default host port: <code>5000</code></li>
+<li><code>compose.openai-compatible.yml</code> broker default host port: <code>5361</code></li>
+<li><code>compose.ollama-host.yml</code> broker default host port: <code>5002</code></li>
+</ul>
+<p>Override when needed:</p>
+<pre><code class="language-powershell">$env:BROKER_PORT = '5601'
+podman compose -f tools/agent/container/compose.openai-compatible.yml up --build --abort-on-container-exit --exit-code-from agent
+</code></pre>
+<h2>15. Optional integrations</h2>
+<h3>15.1 Ollama</h3>
+<p>Used by:</p>
+<ul>
+<li><code>tools/agent</code> default local provider mode</li>
+<li>broker <code>Embedding</code></li>
+<li>broker <code>RagPipeline</code></li>
+<li>broker <code>LlmProxy</code> default config</li>
+</ul>
+<p>Typical local setup:</p>
+<pre><code class="language-powershell">ollama serve
+ollama pull bge-m3
+ollama pull nomic-embed-text
+ollama pull qwen3.6:latest
+</code></pre>
+<p><code>qwen3.6:latest</code> is the default local high-level and LLM proxy model used by the broker and Portal path. <code>bge-m3</code> is the default embedding model for multilingual / Chinese RAG vectors; <code>nomic-embed-text</code> is kept as a lighter fallback. Model names in config are defaults, not hard requirements for every workflow. If you do not run RAG or local model paths, disable those settings instead of installing large models.</p>
+<h3>15.2 Anthropic Claude</h3>
+<p>Used by the LINE sidecar high-level responder and broker <code>LlmProxy</code> when <code>ANTHROPIC_API_KEY</code> exists:</p>
+<pre><code class="language-powershell">[Environment]::SetEnvironmentVariable('ANTHROPIC_API_KEY', '&lt;key&gt;', 'User')
+</code></pre>
+<p>The sidecar runtime override uses:</p>
+<ul>
+<li><code>Provider=anthropic</code></li>
+<li><code>BaseUrl=https://api.anthropic.com</code></li>
+<li><code>ApiFormat=messages</code></li>
+<li><code>DefaultModel=claude-sonnet-4-6</code></li>
+<li><code>MaxOutputTokens=4096</code></li>
+</ul>
+<p>Restart the sidecar after changing the key.</p>
+<p>Smoke check without logging the key:</p>
+<pre><code class="language-powershell">npm run validate:anthropic-provider-smoke
+</code></pre>
+<p>If <code>ANTHROPIC_API_KEY</code> is absent, this check exits successfully as skipped. If present, it confirms <code>claude-sonnet-4-6</code> is visible through Anthropic <code>/v1/models</code>.</p>
+<h3>15.3 TDX transport</h3>
+<p>Required only for live transport data:</p>
+<ul>
+<li><code>Tdx:ClientId</code></li>
+<li><code>Tdx:ClientSecret</code></li>
+<li>optional <code>TDX_CLIENT_ID</code> / <code>TDX_CLIENT_SECRET</code> for verify tools</li>
+</ul>
+<p>TDX defaults:</p>
+<ul>
+<li>auth URL: <code>https://tdx.transportdata.tw/auth/realms/TDXConnect/protocol/openid-connect/token</code></li>
+<li>API base URL: <code>https://tdx.transportdata.tw/api/basic</code></li>
+</ul>
+<h3>15.4 Google Drive delivery</h3>
+<p>Required only for Drive artifact delivery:</p>
+<ul>
+<li>OAuth client JSON: <code>client_secret_*.json</code></li>
+<li>optional service account JSON</li>
+<li><code>GoogleDriveDelivery:DefaultFolderId</code></li>
+<li>delegated redirect URI: <code>http://127.0.0.1:5361/api/v1/google-drive/oauth/callback</code></li>
+</ul>
+<p>Signed broker artifact download is a fallback delivery leg and does not require Drive.</p>
+<h3>15.5 Azure VM IIS deployment</h3>
+<p>Required only for <code>deploy.azure-vm-iis</code>:</p>
+<ul>
+<li>target VM has IIS installed</li>
+<li>PowerShell remoting / WinRM enabled</li>
+<li><code>WebAdministration</code> module available on the VM</li>
+<li>deployment target registered through broker admin endpoints or local admin UI</li>
+<li>credentials configured through <code>DeploymentSecrets:Mappings</code> or <code>BRICKS4AGENT_DEPLOY_SECRET__...</code> environment variables</li>
+</ul>
+<h2>16. Test artifacts and cleanup</h2>
+<p>Known generated artifacts:</p>
+<table>
+<thead>
+<tr>
+<th>Artifact</th>
+<th>Source</th>
+<th>Cleanup</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>packages/csharp/broker/broker.db</code></td>
+<td>direct broker startup</td>
+<td>delete after tests if not needed</td>
+</tr>
+<tr>
+<td><code>packages/csharp/broker/broker.db-shm</code></td>
+<td>SQLite shared memory</td>
+<td>delete with DB</td>
+</tr>
+<tr>
+<td><code>packages/csharp/broker/broker.db-wal</code></td>
+<td>SQLite WAL</td>
+<td>delete with DB</td>
+</tr>
+<tr>
+<td><code>.test-output/</code></td>
+<td>test output</td>
+<td>delete after tests</td>
+</tr>
+<tr>
+<td><code>test-results/</code></td>
+<td>Playwright output</td>
+<td>delete after tests</td>
+</tr>
+<tr>
+<td><code>.run/line-sidecar/</code></td>
+<td>sidecar runtime state</td>
+<td>do not delete unless intentionally resetting sidecar state</td>
+</tr>
+<tr>
+<td><code>**/bin/</code>, <code>**/obj/</code></td>
+<td>.NET build output</td>
+<td>safe to clean when not running processes</td>
+</tr>
+<tr>
+<td><code>node_modules/</code></td>
+<td>npm install</td>
+<td>reinstall with <code>npm install</code></td>
+</tr>
+</tbody>
+</table>
+<p>Stop broker/sidecar before deleting SQLite files.</p>
+<p>Windows cleanup after direct integration tests:</p>
+<pre><code class="language-powershell">taskkill /F /IM dotnet.exe
+Remove-Item -Force `
+  .\packages\csharp\broker\broker.db, `
+  .\packages\csharp\broker\broker.db-shm, `
+  .\packages\csharp\broker\broker.db-wal `
+  -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force .\.test-output -ErrorAction SilentlyContinue
+</code></pre>
+<p>Use <code>line-sidecar.ps1 down</code> instead of killing all <code>dotnet.exe</code> processes when you only want to stop the sidecar:</p>
+<pre><code class="language-powershell">powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\line-sidecar.ps1 down
+</code></pre>
+<h2>17. Troubleshooting</h2>
+<h3>17.1 <code>dotnet</code> not found</h3>
+<p>Install .NET SDK 8.0+. The sidecar script also checks:</p>
+<pre><code class="language-text">%USERPROFILE%\.dotnet\dotnet.exe
+</code></pre>
+<p>Verify:</p>
+<pre><code class="language-powershell">dotnet --info
+dotnet --list-sdks
+</code></pre>
+<h3>17.2 Chinese text appears corrupted in PowerShell output</h3>
+<p>The source files are UTF-8. Prefer PowerShell 7 or explicitly read files with UTF-8:</p>
+<pre><code class="language-powershell">Get-Content .\packages\csharp\broker\Broker.csproj -Encoding UTF8
+</code></pre>
+<p>For LINE verification messages, prefer <code>-MessageFile</code> or <code>-MessageBase64Utf8</code>.</p>
+<h3>17.3 Worker registration fails with auth errors</h3>
+<p>Use the sidecar once to provision <code>worker-auth.json</code>, then start workers with:</p>
+<pre><code class="language-powershell">powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\run-worker.ps1 -Worker &lt;file|browser|transport-tdx|site-crawler&gt;
+</code></pre>
+<p>If manually starting workers, ensure <code>Worker:Auth:WorkerType</code>, <code>Worker:Auth:KeyId</code>, and <code>Worker:Auth:SharedSecret</code> match broker <code>WorkerAuth:Credentials</code>.</p>
+<h3>17.4 Browser worker fails with Playwright browser missing</h3>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet build packages/csharp/workers/browser-worker/BrowserWorker.csproj
+powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\browser-worker\bin\Debug\net8.0\playwright.ps1 install chromium
+</code></pre>
+<h3>17.5 E2E tests fail because port <code>5000</code> or <code>5361</code> is occupied</h3>
+<p>Check what is running:</p>
+<pre><code class="language-powershell">netstat -ano | findstr &quot;:5000&quot;
+netstat -ano | findstr &quot;:5361&quot;
+</code></pre>
+<p>Stop the conflicting process or override the relevant port before starting compose/e2e/sidecar.</p>
+<h3>17.6 Ollama is not installed or models are missing</h3>
+<p>If the workflow does not need local RAG or local LLM proxying, disable:</p>
+<pre><code class="language-powershell">$env:Embedding__Enabled = 'false'
+$env:LineChatGateway__RagEnabled = 'false'
+</code></pre>
+<p>If the workflow does need local models, start Ollama and pull the configured model names.</p>
+<h2>18. Recommended setup paths</h2>
+<h3>18.1 Minimal code contributor</h3>
+<pre><code class="language-powershell">npm install
+dotnet build packages/csharp/ControlPlane.slnx
+dotnet run --project packages/csharp/tests/broker-tests/Broker.Tests.csproj
+</code></pre>
+<h3>18.2 Frontend / generator contributor</h3>
+<pre><code class="language-powershell">npm install
+npx playwright install chromium
+npm run validate:ui-library
+npm run validate:ui-state
+npm run serve
+</code></pre>
+<p>For package-local browser tests:</p>
+<pre><code class="language-powershell">cd packages/javascript/browser
+npm install
+npm test
+</code></pre>
+<h3>18.3 LINE sidecar operator</h3>
+<pre><code class="language-powershell">New-Item -ItemType Directory -Force C:\secure\Bricks4Agent | Out-Null
+Copy-Item .\packages\csharp\workers\line-worker\appsettings.sidecar.example.json `
+  .\packages\csharp\workers\line-worker\appsettings.json
+# Fill LINE credentials in the ignored appsettings.json.
+powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\line-sidecar.ps1 up
+powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\line-sidecar.ps1 verify -Message &quot;hello&quot;
+</code></pre>
+<h3>18.4 Governed agent / container contributor</h3>
+<pre><code class="language-powershell">npm install
+npm run validate:agent-governed
+npm run validate:broker-llm-proxy
+npm run validate:podman-governed-stack
+</code></pre>
+<h2>19. Source documents worth reading next</h2>
+<ul>
+<li><code>README.md</code></li>
+<li><code>AGENTS.md</code></li>
+<li><code>docs/reports/CurrentArchitectureAndProgress-2026-06-11.md</code></li>
+<li><code>docs/manuals/line-sidecar-runbook.md</code></li>
+<li><code>packages/csharp/workers/line-worker/README.md</code></li>
+<li><code>tools/agent/README.md</code></li>
+<li><code>tools/agent/container/README.md</code></li>
+<li><code>tools/spa-generator/README.md</code></li>
+<li><code>templates/spa/README.md</code></li>
+<li><code>packages/csharp/database/BaseOrm/README.md</code></li>
+</ul>
+</main>
+</body>
+</html>

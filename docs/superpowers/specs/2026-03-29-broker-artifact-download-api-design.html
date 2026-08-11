@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Broker Artifact Download API Design</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Broker Artifact Download API Design</h1>
+<p>Date: 2026-03-29
+Status: approved design draft for first broker-owned artifact download path</p>
+<h2>Goal</h2>
+<p>Add a broker-owned download path for generated artifacts so the system can return a first-party downloadable link when Google Drive delivery is unavailable.</p>
+<p>This first version is intentionally narrow:</p>
+<ul>
+<li>public signed download link</li>
+<li>no end-user login requirement</li>
+<li>one-hour expiration</li>
+<li>repeated downloads allowed until expiry</li>
+<li>link only sent to the user when Google Drive upload fails</li>
+</ul>
+<h2>Why This Exists</h2>
+<p>The current system can generate artifacts locally and can often upload them to Google Drive.
+However, when delegated Drive delivery is unavailable, the user-facing path degrades too far:</p>
+<ul>
+<li>the file may exist locally</li>
+<li>the artifact may be recorded in broker state</li>
+<li>but the user still has no broker-owned download surface</li>
+</ul>
+<p>This feature fills that gap without requiring a complete end-user web account system.</p>
+<h2>Scope</h2>
+<p>This first implementation covers:</p>
+<ul>
+<li>generating a signed broker download URL for an existing recorded artifact</li>
+<li>validating the signed URL without user login</li>
+<li>streaming the artifact file directly from the broker host</li>
+<li>using the current sidecar ngrok public URL as the first public base URL source</li>
+<li>switching LINE notification fallback text from local-only messaging to broker download messaging when Drive upload fails and broker public download is available</li>
+</ul>
+<p>This first implementation does not cover:</p>
+<ul>
+<li>authenticated user artifact history pages</li>
+<li>permanent public URLs</li>
+<li>one-time-use links</li>
+<li>resumable or ranged downloads</li>
+<li>generalized multi-channel artifact portal UX</li>
+</ul>
+<h2>User-Facing Behavior</h2>
+<h3>Primary behavior</h3>
+<p>The system still attempts Google Drive delivery first.</p>
+<p>If Google Drive upload succeeds:</p>
+<ul>
+<li>keep the current behavior</li>
+<li>do not replace the Drive link with a broker link</li>
+</ul>
+<p>If Google Drive upload fails:</p>
+<ul>
+<li>attempt to build a broker-owned signed download URL</li>
+<li>if successful, enqueue a LINE notification that includes:</li>
+<li>file name</li>
+<li>broker download link</li>
+<li>if broker public URL is unavailable, keep the current degraded local-only fallback message</li>
+</ul>
+<h3>Download link behavior</h3>
+<p>The first version download link:</p>
+<ul>
+<li>is valid for one hour</li>
+<li>may be used multiple times during that window</li>
+<li>is anonymous but signed</li>
+<li>should download the artifact directly</li>
+</ul>
+<h2>Security Model</h2>
+<h3>Signed public URL</h3>
+<p>The broker download URL should look conceptually like:</p>
+<p><code>/api/v1/artifacts/download/{artifactId}?exp=&lt;unix-seconds&gt;&amp;sig=&lt;signature&gt;</code></p>
+<p>The signature should be generated with a broker-controlled secret using stable fields such as:</p>
+<ul>
+<li>artifact id</li>
+<li>expiration time</li>
+<li>current file name</li>
+</ul>
+<p>The signature must not include internal filesystem paths in any user-visible form.</p>
+<h3>Hard requirement: never expose internal paths</h3>
+<p>This is a non-negotiable design rule.</p>
+<p>The implementation must never expose:</p>
+<ul>
+<li>physical file paths</li>
+<li>managed workspace roots</li>
+<li>documents roots</li>
+<li>project roots</li>
+<li>broker host path layout</li>
+</ul>
+<p>This applies to:</p>
+<ul>
+<li>LINE notification text</li>
+<li>API response bodies</li>
+<li>download URLs</li>
+<li>error responses</li>
+<li>logs that are surfaced to end users or local admin UI fields intended for user-facing relay</li>
+</ul>
+<p>Internal path resolution is broker-only.</p>
+<h3>Error model</h3>
+<p>The public endpoint should only return generic outcomes:</p>
+<ul>
+<li><code>403</code> invalid or tampered signature</li>
+<li><code>410</code> expired link</li>
+<li><code>404</code> artifact not found or file unavailable</li>
+</ul>
+<p>No error response should reveal:</p>
+<ul>
+<li>whether a path exists on disk</li>
+<li>where the file is stored</li>
+<li>internal path names</li>
+</ul>
+<h2>Public Base URL Strategy</h2>
+<p>There is currently no stable public site URL for the broker.</p>
+<p>Therefore, the first version must use the active sidecar ngrok public URL as the public download base URL.</p>
+<h3>Resolution strategy</h3>
+<p>The broker should resolve a public base URL from currently available sidecar state.</p>
+<p>The design assumption is:</p>
+<ul>
+<li>if the canonical local live path is active, ngrok public URL already exists</li>
+<li>if the ngrok URL cannot be resolved, broker public download is considered unavailable</li>
+</ul>
+<p>The implementation should avoid hardcoding a fixed external host name in this first version.</p>
+<h2>Data And Service Design</h2>
+<h3>New broker service</h3>
+<p>Add a focused service responsible for:</p>
+<ul>
+<li>generating signed download URLs</li>
+<li>validating download signatures</li>
+<li>resolving broker public base URL</li>
+<li>reading a recorded artifact by id</li>
+<li>ensuring the resolved file exists before streaming</li>
+</ul>
+<p>This service should not own artifact persistence.
+Artifact persistence should remain in the existing high-level workspace service.</p>
+<h3>Existing artifact record usage</h3>
+<p>Use the existing <code>HighLevelLineArtifactRecord</code> as the source of truth for:</p>
+<ul>
+<li>artifact id</li>
+<li>file name</li>
+<li>file path</li>
+<li>overall status</li>
+</ul>
+<p>No new artifact table is required for version one.</p>
+<h3>Secret configuration</h3>
+<p>Introduce a broker configuration secret dedicated to signed download URLs.</p>
+<p>This secret must be separate in purpose from unrelated credentials.
+The service must fail closed if the signing secret is missing.</p>
+<h2>Endpoint Design</h2>
+<h3>Public endpoint</h3>
+<p>Add a public broker endpoint:</p>
+<ul>
+<li><code>GET /api/v1/artifacts/download/{artifactId}</code></li>
+</ul>
+<p>Required query parameters:</p>
+<ul>
+<li><code>exp</code></li>
+<li><code>sig</code></li>
+</ul>
+<p>Behavior:</p>
+<ol>
+<li>validate parameters</li>
+<li>validate expiration</li>
+<li>validate signature</li>
+<li>resolve artifact record</li>
+<li>verify local file exists</li>
+<li>stream file with safe download headers</li>
+</ol>
+<h3>Response headers</h3>
+<p>Set download headers using only safe file metadata:</p>
+<ul>
+<li><code>Content-Type</code></li>
+<li><code>Content-Length</code> when available</li>
+<li><code>Content-Disposition: attachment; filename="&lt;safe-file-name&gt;"</code></li>
+</ul>
+<p>The response must use sanitized file names only.</p>
+<h2>Notification Fallback Design</h2>
+<p>The current fallback message when Drive upload fails still references local-only delivery.</p>
+<p>Version one should update that branch:</p>
+<ul>
+<li>if broker signed download URL is available:</li>
+<li>notify user that the file is ready</li>
+<li>include safe file name</li>
+<li>include broker download link</li>
+<li>if broker signed download URL is unavailable:</li>
+<li>keep the current local-only degraded message</li>
+</ul>
+<p>The notification body must not include local file path.</p>
+<h2>Testing Strategy</h2>
+<p>This feature should be implemented with TDD.</p>
+<p>Minimum verification coverage:</p>
+<ol>
+<li>signed URL generation returns a broker URL when ngrok public URL is available</li>
+<li>valid signed URL downloads the expected artifact bytes</li>
+<li>invalid signature is rejected with <code>403</code></li>
+<li>expired link is rejected with <code>410</code></li>
+<li>missing artifact or missing file is rejected with <code>404</code></li>
+<li>user-facing fallback notification body does not contain internal path text</li>
+<li>Drive failure plus broker public URL available produces broker download fallback content</li>
+<li>Drive failure plus broker public URL unavailable keeps degraded local-only fallback behavior</li>
+</ol>
+<h2>File-Level Change Direction</h2>
+<p>Expected implementation areas:</p>
+<ul>
+<li>broker public endpoint mapping</li>
+<li>new broker download signing/validation service</li>
+<li>artifact workspace service reuse for artifact lookup</li>
+<li>artifact delivery service fallback message update</li>
+<li>verify project coverage for signed download and no-path-leak behavior</li>
+</ul>
+<p>The design intentionally keeps the change surface narrow and broker-centered.</p>
+<h2>Risks</h2>
+<h3>Public URL instability</h3>
+<p>Because the first version depends on ngrok, any tunnel rotation invalidates newly generated base URLs after the tunnel changes.</p>
+<p>This is acceptable for version one because:</p>
+<ul>
+<li>links are already short-lived</li>
+<li>the system currently has no fixed public broker host</li>
+</ul>
+<h3>Anonymous signed links</h3>
+<p>Anyone with the signed URL can use it until expiry.</p>
+<p>This is acceptable for version one because:</p>
+<ul>
+<li>the link lifetime is short</li>
+<li>the link is hard to guess</li>
+<li>the user explicitly asked for a broker-owned download fallback without requiring login</li>
+</ul>
+<h3>Path leakage regression</h3>
+<p>The largest implementation risk is accidentally surfacing <code>filePath</code> or related fields through:</p>
+<ul>
+<li>fallback notification text</li>
+<li>API error messages</li>
+<li>admin-to-user copied content</li>
+</ul>
+<p>This must be explicitly tested.</p>
+<h2>Recommendation</h2>
+<p>Implement the first broker-owned download path exactly as:</p>
+<ul>
+<li>signed anonymous URL</li>
+<li>one-hour expiry</li>
+<li>repeat downloads allowed</li>
+<li>ngrok-based public base URL</li>
+<li>only used in user-facing LINE flow when Google Drive upload fails</li>
+<li>never expose internal paths</li>
+</ul>
+<p>This is the smallest version that provides a real first-party artifact download path without waiting for a full authenticated user portal.</p>
+</main>
+</body>
+</html>

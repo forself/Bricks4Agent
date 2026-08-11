@@ -21,7 +21,7 @@ tests
 packages/csharp/tests
 tools/agent/tests
 tools/agent/test-*.js
-tools/agent/container/README.md
+tools/agent/container/README.html
 tools/agent/container/compose*.yml
 
 *.db

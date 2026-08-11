@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>create-project — 新專案產生器</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>create-project — 新專案產生器</h1>
+<p>一鍵產出以 Bricks4Agent 為腳手架的新專案,<strong>內建「junction 開發 + 發佈快照」機制</strong>(開發直用活腳手架、發佈打包自含複本+來源憑證+封閉性驗證)。</p>
+<pre><code class="language-powershell"># 於 Bricks4Agent 根:
+node tools/create-project/create-project.mjs --name my-app
+# 選項:--dest D:\path\my-app(預設=Bricks4Agent 同層)、--no-junction(複本模式)、--no-git
+</code></pre>
+<p>產生內容(見 <code>template\</code>):</p>
+<table>
+<thead>
+<tr>
+<th>產物</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>node scripts/dev-link.mjs</code></td>
+<td>lib\ → 腳手架 連結(產生時已自動執行;<code>--unlink</code> 可拆;Windows=junction、POSIX=symlink)</td>
+</tr>
+<tr>
+<td><code>node scripts/dev.mjs</code></td>
+<td>靜態伺服(root=專案根)</td>
+</tr>
+<tr>
+<td><code>node scripts/sync-lib.mjs</code></td>
+<td>無腳手架機器的複本後備(junction 護欄拒跑)</td>
+</tr>
+<tr>
+<td><code>node scripts/publish.mjs</code></td>
+<td>發佈 <code>dist\</code>:快照(穿透 junction)+ <code>SNAPSHOT.json</code> 憑證(commit/dirty/時間/檔數)+ 封閉驗證(fail 即擋)</td>
+</tr>
+<tr>
+<td><code>scripts\verify-sealed.mjs</code></td>
+<td>靜態解析 JS/HTML/CSS 全部相對引用:禁逃出、禁外部腳手架路徑、禁根絕對、禁 bare import</td>
+</tr>
+<tr>
+<td><code>src\frontend\</code></td>
+<td>最小起始頁(示範相對深度規則、元件掛載、escapeHtml、theme 鏈)</td>
+</tr>
+<tr>
+<td><code>docs\dev-and-publish.md</code></td>
+<td>機制文件(核心不變式:引用字面永遠是 <code>lib/…</code> 相對路徑)</td>
+</tr>
+</tbody>
+</table>
+<p>產生器動作:複製範本 → 烙入專案名({{PROJECT_NAME}})→ 寫入 <code>.b4a-root</code>(每機腳手架指標,gitignored)→ git init → 建 junction → 驗證 lib 可達。</p>
+<p><strong>腳本內零寫死路徑</strong>:各 script 經 <code>scripts/resolve-b4a.mjs</code> 解析腳手架位置,順序=env <code>B4A_ROOT</code> → 專案根 <code>.b4a-root</code> → 同層搜尋(往上 3 層找 <code>Bricks4Agent\</code>)。換機器 clone:同層佈局零設定;否則設 env 或寫 <code>.b4a-root</code> 一行。</p>
+<blockquote>
+<p>注意:清除含 junction 的專案前先跑 <code>node scripts/dev-link.mjs --unlink</code>(PS5.1 的 <code>Remove-Item -Recurse</code> 會追進 junction 誤刪腳手架)。</p>
+</blockquote>
+<p><strong>機制 v2.0.0(2026-07-07)</strong>:全腳本零依賴 Node(跨平台:Windows=junction、POSIX=symlink);<strong>釘版</strong>(<code>sync-lib.mjs --pin</code> → <code>b4a.lock.json</code> 入版控,git worktree 取 commit 內容,可重現);<strong>publish 強制</strong>(lock 不符=fail,<code>--allow-drift</code> 硬闖記入 SNAPSHOT 供稽核);<code>--no-junction</code> 建案自動釘版(團隊成員/CI);<strong>升級工具</strong> <code>upgrade-project.mjs --dest &lt;專案&gt; [--dry-run]</code>(只更新機制腳本、跳過 mechanism.json 的 customized 清單)。</p>
+<p>驗證紀錄(2026-07-07):junction 開發開機+互動 ✅、publish 封閉 ✅、dist 密封開機 ✅、釘版建案+強制通過 ✅、lock 竄改 fail ✅、--allow-drift 稽核軌跡 ✅、升級工具(dry-run/customized 跳過)✅。POSIX 未實測(開發機為 Windows)。</p>
+</main>
+</body>
+</html>

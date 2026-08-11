@@ -1,0 +1,785 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin Permission Boundary Implementation Plan</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Admin Permission Boundary Implementation Plan</h1>
+<blockquote>
+<p><strong>For agentic workers:</strong> REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (<code>- [ ]</code>) syntax for tracking.</p>
+</blockquote>
+<p><strong>Goal:</strong> Complete the local admin backend and UI permission model so system administration and permission administration are separate, testable roles.</p>
+<p><strong>Architecture:</strong> Keep <code>line-admin.html</code> and <code>/api/v1/local-admin/*</code> as the local admin surface, but replace the singleton admin session behavior with named operators, role-derived permission snapshots, and backend permission gates. Do not merge this with broker scoped-token <code>Principal</code> / <code>Role</code>; local admin operator roles are a separate human-admin boundary.</p>
+<p><strong>Tech Stack:</strong> C# .NET 8 Minimal APIs, BaseOrm, SQLite, xUnit/FluentAssertions, vanilla JS single-file admin UI.</p>
+<hr>
+<h2>File Structure</h2>
+<ul>
+<li>Modify <code>packages/csharp/broker-core/Models/LocalAdminCredential.cs</code>: add operator identity, role, status and login metadata columns.</li>
+<li>Modify <code>packages/csharp/broker-core/Models/LocalAdminSession.cs</code>: add operator identity, role and permission snapshot columns.</li>
+<li>Modify <code>packages/csharp/broker-core/Data/BrokerDbInitializer.cs</code>: add migration columns, indexes and legacy bootstrap normalization.</li>
+<li>Create <code>packages/csharp/broker/Services/LocalAdminPermissions.cs</code>: canonical permission names, role mapping and permission evaluation.</li>
+<li>Modify <code>packages/csharp/broker/Services/LocalAdminAuthService.cs</code>: named operator login, permission checks, operator management and session revocation.</li>
+<li>Modify <code>packages/csharp/broker/Endpoints/LocalAdminEndpoints.cs</code>: gate each route by permission and add operator management endpoints.</li>
+<li>Modify <code>packages/csharp/broker/wwwroot/line-admin.html</code>: role-aware navigation, system monitoring tab and permission management tab.</li>
+<li>Create <code>packages/csharp/tests/unit/Admin/LocalAdminPermissionTests.cs</code>: role/permission unit tests.</li>
+<li>Create <code>packages/csharp/tests/integration/Api/LocalAdminPermissionEndpointTests.cs</code>: backend authorization integration tests.</li>
+<li>Create <code>tools/scripts/validate-line-admin.mjs</code>: static/admin UI permission-gating smoke validation.</li>
+<li>Modify <code>package.json</code>: add <code>validate:line-admin</code>.</li>
+<li>Modify <code>docs/manuals/current-user-manual.zh-TW.md</code>, <code>docs/manuals/current-technical-manual.zh-TW.md</code>, <code>docs/environment-setup.zh-TW.md</code>: document the operator roles and entry points.</li>
+</ul>
+<h2>Task 1: Local Admin Permission Catalog</h2>
+<p><strong>Files:</strong>
+- Create: <code>packages/csharp/broker/Services/LocalAdminPermissions.cs</code>
+- Test: <code>packages/csharp/tests/unit/Admin/LocalAdminPermissionTests.cs</code></p>
+<ul>
+<li>[x] <strong>Step 1: Write the failing unit tests</strong></li>
+</ul>
+<p>Create <code>packages/csharp/tests/unit/Admin/LocalAdminPermissionTests.cs</code>:</p>
+<pre><code class="language-csharp">using Broker.Services;
+using FluentAssertions;
+
+namespace Unit.Tests.Admin;
+
+public class LocalAdminPermissionTests
+{
+    [Fact]
+    public void SuperAdmin_HasEveryDefinedPermission()
+    {
+        var permissions = LocalAdminPermissions.ForRole(LocalAdminRoles.SuperAdmin);
+
+        permissions.Should().BeEquivalentTo(LocalAdminPermissions.All);
+    }
+
+    [Fact]
+    public void SystemAdmin_CannotManageOperators()
+    {
+        var permissions = LocalAdminPermissions.ForRole(LocalAdminRoles.SystemAdmin);
+
+        permissions.Should().Contain(LocalAdminPermissions.SystemStatusRead);
+        permissions.Should().Contain(LocalAdminPermissions.SystemDeploymentManage);
+        permissions.Should().NotContain(LocalAdminPermissions.PermissionOperatorManage);
+    }
+
+    [Fact]
+    public void PermissionAdmin_CannotManageDeployment()
+    {
+        var permissions = LocalAdminPermissions.ForRole(LocalAdminRoles.PermissionAdmin);
+
+        permissions.Should().Contain(LocalAdminPermissions.PermissionOperatorManage);
+        permissions.Should().Contain(LocalAdminPermissions.ApprovalAdminManage);
+        permissions.Should().NotContain(LocalAdminPermissions.SystemDeploymentManage);
+    }
+
+    [Fact]
+    public void Auditor_IsReadOnly()
+    {
+        var permissions = LocalAdminPermissions.ForRole(LocalAdminRoles.Auditor);
+
+        permissions.Should().Contain(LocalAdminPermissions.AuditRead);
+        permissions.Should().Contain(LocalAdminPermissions.SystemMonitorRead);
+        permissions.Should().NotContain(LocalAdminPermissions.SystemDeliveryManage);
+        permissions.Should().NotContain(LocalAdminPermissions.ApprovalAdminManage);
+    }
+}
+</code></pre>
+<ul>
+<li>[x] <strong>Step 2: Run test to verify it fails</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter LocalAdminPermissionTests
+</code></pre>
+<p>Expected: FAIL because <code>LocalAdminPermissions</code> and <code>LocalAdminRoles</code> do not exist.</p>
+<ul>
+<li>[x] <strong>Step 3: Implement permission catalog</strong></li>
+</ul>
+<p>Create <code>packages/csharp/broker/Services/LocalAdminPermissions.cs</code>:</p>
+<pre><code class="language-csharp">namespace Broker.Services;
+
+public static class LocalAdminRoles
+{
+    public const string SuperAdmin = &quot;super_admin&quot;;
+    public const string SystemAdmin = &quot;system_admin&quot;;
+    public const string PermissionAdmin = &quot;permission_admin&quot;;
+    public const string Auditor = &quot;auditor&quot;;
+
+    public static readonly IReadOnlySet&lt;string&gt; All = new HashSet&lt;string&gt;(StringComparer.OrdinalIgnoreCase)
+    {
+        SuperAdmin,
+        SystemAdmin,
+        PermissionAdmin,
+        Auditor
+    };
+
+    public static string Normalize(string? role)
+        =&gt; string.IsNullOrWhiteSpace(role) ? Auditor : role.Trim().ToLowerInvariant();
+
+    public static bool IsKnown(string? role)
+        =&gt; All.Contains(Normalize(role));
+}
+
+public static class LocalAdminPermissions
+{
+    public const string SystemStatusRead = &quot;system.status.read&quot;;
+    public const string SystemMonitorRead = &quot;system.monitor.read&quot;;
+    public const string SystemWorkerManage = &quot;system.worker.manage&quot;;
+    public const string SystemDeploymentManage = &quot;system.deployment.manage&quot;;
+    public const string SystemDeliveryManage = &quot;system.delivery.manage&quot;;
+    public const string SystemBrowserManage = &quot;system.browser.manage&quot;;
+    public const string PermissionOperatorManage = &quot;permission.operator.manage&quot;;
+    public const string PermissionUserManage = &quot;permission.user.manage&quot;;
+    public const string PermissionRegistrationManage = &quot;permission.registration.manage&quot;;
+    public const string PermissionBrowserGrantManage = &quot;permission.browser_grant.manage&quot;;
+    public const string ApprovalAdminManage = &quot;approval.admin.manage&quot;;
+    public const string ToolSpecRead = &quot;tool_spec.read&quot;;
+    public const string AuditRead = &quot;audit.read&quot;;
+    public const string AuditVerify = &quot;audit.verify&quot;;
+
+    public static readonly IReadOnlySet&lt;string&gt; All = new HashSet&lt;string&gt;(StringComparer.OrdinalIgnoreCase)
+    {
+        SystemStatusRead,
+        SystemMonitorRead,
+        SystemWorkerManage,
+        SystemDeploymentManage,
+        SystemDeliveryManage,
+        SystemBrowserManage,
+        PermissionOperatorManage,
+        PermissionUserManage,
+        PermissionRegistrationManage,
+        PermissionBrowserGrantManage,
+        ApprovalAdminManage,
+        ToolSpecRead,
+        AuditRead,
+        AuditVerify
+    };
+
+    public static IReadOnlySet&lt;string&gt; ForRole(string? role)
+    {
+        var normalized = LocalAdminRoles.Normalize(role);
+        if (normalized == LocalAdminRoles.SuperAdmin)
+            return new HashSet&lt;string&gt;(All, StringComparer.OrdinalIgnoreCase);
+
+        if (normalized == LocalAdminRoles.SystemAdmin)
+        {
+            return new HashSet&lt;string&gt;(StringComparer.OrdinalIgnoreCase)
+            {
+                SystemStatusRead,
+                SystemMonitorRead,
+                SystemWorkerManage,
+                SystemDeploymentManage,
+                SystemDeliveryManage,
+                SystemBrowserManage,
+                ToolSpecRead,
+                AuditRead
+            };
+        }
+
+        if (normalized == LocalAdminRoles.PermissionAdmin)
+        {
+            return new HashSet&lt;string&gt;(StringComparer.OrdinalIgnoreCase)
+            {
+                PermissionOperatorManage,
+                PermissionUserManage,
+                PermissionRegistrationManage,
+                PermissionBrowserGrantManage,
+                ApprovalAdminManage,
+                ToolSpecRead,
+                AuditRead
+            };
+        }
+
+        return new HashSet&lt;string&gt;(StringComparer.OrdinalIgnoreCase)
+        {
+            SystemStatusRead,
+            SystemMonitorRead,
+            ToolSpecRead,
+            AuditRead,
+            AuditVerify
+        };
+    }
+
+    public static bool Has(string? role, string permission)
+        =&gt; ForRole(role).Contains(permission);
+}
+</code></pre>
+<ul>
+<li>[x] <strong>Step 4: Run test to verify it passes</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter LocalAdminPermissionTests
+</code></pre>
+<p>Expected: PASS.</p>
+<h2>Task 2: Operator Data Model and Migration</h2>
+<p><strong>Files:</strong>
+- Modify: <code>packages/csharp/broker-core/Models/LocalAdminCredential.cs</code>
+- Modify: <code>packages/csharp/broker-core/Models/LocalAdminSession.cs</code>
+- Modify: <code>packages/csharp/broker-core/Data/BrokerDbInitializer.cs</code>
+- Test: <code>packages/csharp/tests/unit/Admin/LocalAdminMigrationTests.cs</code></p>
+<ul>
+<li>[x] <strong>Step 1: Write the failing migration tests</strong></li>
+</ul>
+<p>Create <code>packages/csharp/tests/unit/Admin/LocalAdminMigrationTests.cs</code>:</p>
+<pre><code class="language-csharp">using BrokerCore.Data;
+using BrokerCore.Models;
+using FluentAssertions;
+
+namespace Unit.Tests.Admin;
+
+public class LocalAdminMigrationTests
+{
+    [Fact]
+    public void Initializer_AddsOperatorColumns()
+    {
+        using var db = CreateDb();
+        var columns = db.Query&lt;ColumnInfo&gt;(&quot;PRAGMA table_info(local_admin_credentials)&quot;)
+            .Select(c =&gt; c.Name)
+            .ToArray();
+
+        columns.Should().Contain(&quot;operator_id&quot;);
+        columns.Should().Contain(&quot;username&quot;);
+        columns.Should().Contain(&quot;display_name&quot;);
+        columns.Should().Contain(&quot;role&quot;);
+        columns.Should().Contain(&quot;permission_overrides&quot;);
+        columns.Should().Contain(&quot;status&quot;);
+        columns.Should().Contain(&quot;last_login_at&quot;);
+    }
+
+    [Fact]
+    public void Initializer_NormalizesLegacyLocalAdminCredential()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $&quot;broker_legacy_admin_{Guid.NewGuid():N}.db&quot;);
+        using var db = new BrokerDb($&quot;Data Source={path}&quot;);
+        db.EnsureTable&lt;LocalAdminCredential&gt;();
+        db.Insert(new LocalAdminCredential
+        {
+            CredentialId = &quot;local_admin&quot;,
+            PasswordHash = &quot;hash&quot;,
+            PasswordSalt = &quot;salt&quot;,
+            HashIterations = 120000,
+            MustChangePassword = false
+        });
+
+        new BrokerDbInitializer(db).Initialize();
+
+        var credential = db.Get&lt;LocalAdminCredential&gt;(&quot;local_admin&quot;);
+        credential.Should().NotBeNull();
+        credential!.OperatorId.Should().Be(&quot;local_admin&quot;);
+        credential.Username.Should().Be(&quot;admin&quot;);
+        credential.Role.Should().Be(&quot;super_admin&quot;);
+        credential.Status.Should().Be(&quot;active&quot;);
+    }
+
+    private static BrokerDb CreateDb()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $&quot;broker_admin_migration_{Guid.NewGuid():N}.db&quot;);
+        var db = new BrokerDb($&quot;Data Source={path}&quot;);
+        new BrokerDbInitializer(db).Initialize();
+        return db;
+    }
+
+    private sealed class ColumnInfo
+    {
+        public string Name { get; set; } = string.Empty;
+    }
+}
+</code></pre>
+<ul>
+<li>[x] <strong>Step 2: Run test to verify it fails</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter LocalAdminMigrationTests
+</code></pre>
+<p>Expected: FAIL because the new columns and model properties do not exist.</p>
+<ul>
+<li>[x] <strong>Step 3: Add model properties</strong></li>
+</ul>
+<p>Add these properties to <code>LocalAdminCredential</code>:</p>
+<pre><code class="language-csharp">[Column(&quot;operator_id&quot;)]
+public string OperatorId { get; set; } = &quot;local_admin&quot;;
+
+[Column(&quot;username&quot;)]
+public string Username { get; set; } = &quot;admin&quot;;
+
+[Column(&quot;display_name&quot;)]
+public string DisplayName { get; set; } = &quot;Local Super Admin&quot;;
+
+[Column(&quot;role&quot;)]
+public string Role { get; set; } = &quot;super_admin&quot;;
+
+[Column(&quot;permission_overrides&quot;)]
+public string PermissionOverrides { get; set; } = &quot;{}&quot;;
+
+[Column(&quot;status&quot;)]
+public string Status { get; set; } = &quot;active&quot;;
+
+[Column(&quot;last_login_at&quot;)]
+public DateTime? LastLoginAt { get; set; }
+</code></pre>
+<p>Add these properties to <code>LocalAdminSession</code>:</p>
+<pre><code class="language-csharp">[Column(&quot;operator_id&quot;)]
+public string OperatorId { get; set; } = &quot;local_admin&quot;;
+
+[Column(&quot;username&quot;)]
+public string Username { get; set; } = &quot;admin&quot;;
+
+[Column(&quot;role&quot;)]
+public string Role { get; set; } = &quot;super_admin&quot;;
+
+[Column(&quot;permissions_snapshot&quot;)]
+public string PermissionsSnapshot { get; set; } = &quot;[]&quot;;
+</code></pre>
+<ul>
+<li>[x] <strong>Step 4: Add initializer migration and legacy normalization</strong></li>
+</ul>
+<p>In <code>BrokerDbInitializer.EnsureColumns()</code>, add:</p>
+<pre><code class="language-csharp">TryExecute(&quot;ALTER TABLE local_admin_credentials ADD COLUMN operator_id TEXT DEFAULT 'local_admin'&quot;);
+TryExecute(&quot;ALTER TABLE local_admin_credentials ADD COLUMN username TEXT DEFAULT 'admin'&quot;);
+TryExecute(&quot;ALTER TABLE local_admin_credentials ADD COLUMN display_name TEXT DEFAULT 'Local Super Admin'&quot;);
+TryExecute(&quot;ALTER TABLE local_admin_credentials ADD COLUMN role TEXT DEFAULT 'super_admin'&quot;);
+TryExecute(&quot;ALTER TABLE local_admin_credentials ADD COLUMN permission_overrides TEXT DEFAULT '{}'&quot;);
+TryExecute(&quot;ALTER TABLE local_admin_credentials ADD COLUMN status TEXT DEFAULT 'active'&quot;);
+TryExecute(&quot;ALTER TABLE local_admin_credentials ADD COLUMN last_login_at TEXT NULL&quot;);
+TryExecute(&quot;ALTER TABLE local_admin_sessions ADD COLUMN operator_id TEXT DEFAULT 'local_admin'&quot;);
+TryExecute(&quot;ALTER TABLE local_admin_sessions ADD COLUMN username TEXT DEFAULT 'admin'&quot;);
+TryExecute(&quot;ALTER TABLE local_admin_sessions ADD COLUMN role TEXT DEFAULT 'super_admin'&quot;);
+TryExecute(&quot;ALTER TABLE local_admin_sessions ADD COLUMN permissions_snapshot TEXT DEFAULT '[]'&quot;);
+</code></pre>
+<p>In <code>CreateUniqueConstraints()</code>, add:</p>
+<pre><code class="language-csharp">TryExecute(@&quot;CREATE UNIQUE INDEX IF NOT EXISTS idx_local_admin_credentials_username
+              ON local_admin_credentials(username)&quot;);
+TryExecute(@&quot;CREATE INDEX IF NOT EXISTS idx_local_admin_sessions_operator
+              ON local_admin_sessions(operator_id, expires_at, revoked_at)&quot;);
+</code></pre>
+<p>Add a private method and call it from <code>Initialize()</code> after <code>EnsureTables()</code>:</p>
+<pre><code class="language-csharp">private void NormalizeLocalAdminBootstrap()
+{
+    var legacy = _db.Get&lt;LocalAdminCredential&gt;(&quot;local_admin&quot;);
+    if (legacy == null)
+        return;
+
+    var changed = false;
+    if (string.IsNullOrWhiteSpace(legacy.OperatorId))
+    {
+        legacy.OperatorId = legacy.CredentialId;
+        changed = true;
+    }
+    if (string.IsNullOrWhiteSpace(legacy.Username))
+    {
+        legacy.Username = &quot;admin&quot;;
+        changed = true;
+    }
+    if (string.IsNullOrWhiteSpace(legacy.DisplayName))
+    {
+        legacy.DisplayName = &quot;Local Super Admin&quot;;
+        changed = true;
+    }
+    if (string.IsNullOrWhiteSpace(legacy.Role))
+    {
+        legacy.Role = &quot;super_admin&quot;;
+        changed = true;
+    }
+    if (string.IsNullOrWhiteSpace(legacy.PermissionOverrides))
+    {
+        legacy.PermissionOverrides = &quot;{}&quot;;
+        changed = true;
+    }
+    if (string.IsNullOrWhiteSpace(legacy.Status))
+    {
+        legacy.Status = &quot;active&quot;;
+        changed = true;
+    }
+
+    if (changed)
+        _db.Update(legacy);
+}
+</code></pre>
+<ul>
+<li>[x] <strong>Step 5: Run test to verify it passes</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter LocalAdminMigrationTests
+</code></pre>
+<p>Expected: PASS.</p>
+<h2>Task 3: Named Operator Auth Service</h2>
+<p><strong>Files:</strong>
+- Modify: <code>packages/csharp/broker/Services/LocalAdminAuthService.cs</code>
+- Test: <code>packages/csharp/tests/unit/Admin/LocalAdminAuthServiceTests.cs</code></p>
+<ul>
+<li>[x] <strong>Step 1: Write failing service tests</strong></li>
+</ul>
+<p>Create <code>packages/csharp/tests/unit/Admin/LocalAdminAuthServiceTests.cs</code>:</p>
+<pre><code class="language-csharp">using Broker.Services;
+using BrokerCore.Data;
+using FluentAssertions;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging.Abstractions;
+
+namespace Unit.Tests.Admin;
+
+public class LocalAdminAuthServiceTests
+{
+    [Fact]
+    public void FirstLogin_BootstrapsSuperAdminWithPermissions()
+    {
+        using var db = CreateDb();
+        var service = new LocalAdminAuthService(db, NullLogger&lt;LocalAdminAuthService&gt;.Instance);
+        var context = LocalContext();
+
+        var result = service.Login(context, &quot;admin&quot;, &quot;admin&quot;, &quot;new-password-1&quot;);
+
+        result.Authenticated.Should().BeTrue();
+        result.OperatorId.Should().Be(&quot;local_admin&quot;);
+        result.Username.Should().Be(&quot;admin&quot;);
+        result.Role.Should().Be(LocalAdminRoles.SuperAdmin);
+        result.Permissions.Should().Contain(LocalAdminPermissions.PermissionOperatorManage);
+    }
+
+    [Fact]
+    public void SystemAdminSession_DoesNotHaveOperatorManagePermission()
+    {
+        using var db = CreateDb();
+        var service = new LocalAdminAuthService(db, NullLogger&lt;LocalAdminAuthService&gt;.Instance);
+        service.CreateOperator(&quot;sys&quot;, &quot;System Admin&quot;, LocalAdminRoles.SystemAdmin, &quot;system-password&quot;, &quot;local_admin&quot;);
+
+        var context = LocalContext();
+        var result = service.Login(context, &quot;sys&quot;, &quot;system-password&quot;, null);
+
+        result.Authenticated.Should().BeTrue();
+        service.TryRequirePermission(context, LocalAdminPermissions.SystemStatusRead, out _, out _).Should().BeTrue();
+        service.TryRequirePermission(context, LocalAdminPermissions.PermissionOperatorManage, out _, out var denied).Should().BeFalse();
+        denied.Should().NotBeNull();
+    }
+
+    [Fact]
+    public void DisableOperator_RevokesActiveSessions()
+    {
+        using var db = CreateDb();
+        var service = new LocalAdminAuthService(db, NullLogger&lt;LocalAdminAuthService&gt;.Instance);
+        service.CreateOperator(&quot;perm&quot;, &quot;Permission Admin&quot;, LocalAdminRoles.PermissionAdmin, &quot;permission-password&quot;, &quot;local_admin&quot;);
+        var context = LocalContext();
+        service.Login(context, &quot;perm&quot;, &quot;permission-password&quot;, null).Authenticated.Should().BeTrue();
+
+        service.DisableOperator(&quot;perm&quot;, &quot;local_admin&quot;);
+
+        service.GetAuthenticatedSession(context).Should().BeNull();
+    }
+
+    private static BrokerDb CreateDb()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $&quot;broker_admin_auth_{Guid.NewGuid():N}.db&quot;);
+        var db = new BrokerDb($&quot;Data Source={path}&quot;);
+        new BrokerDbInitializer(db).Initialize();
+        return db;
+    }
+
+    private static DefaultHttpContext LocalContext()
+    {
+        var context = new DefaultHttpContext();
+        context.Connection.RemoteIpAddress = System.Net.IPAddress.Loopback;
+        context.Response.Body = new MemoryStream();
+        return context;
+    }
+}
+</code></pre>
+<ul>
+<li>[x] <strong>Step 2: Run test to verify it fails</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter LocalAdminAuthServiceTests
+</code></pre>
+<p>Expected: FAIL because the login signature and operator APIs are not implemented.</p>
+<ul>
+<li>[x] <strong>Step 3: Implement named operator auth</strong></li>
+</ul>
+<p>Modify <code>LocalAdminAuthService</code>:</p>
+<ul>
+<li>Keep the existing <code>Login(HttpContext, string password, string? newPassword)</code> overload as a compatibility wrapper calling <code>Login(context, "admin", password, newPassword)</code>.</li>
+<li>Add <code>Login(HttpContext context, string username, string password, string? newPassword)</code>.</li>
+<li>Lookup credentials by normalized username.</li>
+<li>Create bootstrap credential <code>credential_id = "local_admin"</code>, <code>operator_id = "local_admin"</code>, <code>username = "admin"</code>, <code>role = "super_admin"</code> on first login.</li>
+<li>Issue sessions with <code>operator_id</code>, <code>username</code>, <code>role</code>, <code>permissions_snapshot</code>.</li>
+<li>Return <code>OperatorId</code>, <code>Username</code>, <code>Role</code>, <code>Permissions</code> from <code>LocalAdminStatus</code> and <code>LocalAdminLoginResult</code>.</li>
+<li>Add <code>TryRequirePermission(...)</code>.</li>
+<li>Add <code>CreateOperator</code>, <code>ListOperators</code>, <code>UpdateOperatorRole</code>, <code>DisableOperator</code>, <code>ResetOperatorPassword</code>, <code>RevokeOperatorSessions</code>.</li>
+</ul>
+<p>The denial body for missing permission must be:</p>
+<pre><code class="language-csharp">denied = Results.Json(
+    Broker.Helpers.ApiResponseHelper.Error($&quot;Forbidden: permission '{permission}' required.&quot;, 403),
+    statusCode: 403);
+</code></pre>
+<ul>
+<li>[x] <strong>Step 4: Run test to verify it passes</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter LocalAdminAuthServiceTests
+</code></pre>
+<p>Expected: PASS.</p>
+<h2>Task 4: Local Admin Endpoint Permission Gates</h2>
+<p><strong>Files:</strong>
+- Modify: <code>packages/csharp/broker/Endpoints/LocalAdminEndpoints.cs</code>
+- Test: <code>packages/csharp/tests/integration/Api/LocalAdminPermissionEndpointTests.cs</code></p>
+<ul>
+<li>[x] <strong>Step 1: Write failing integration tests</strong></li>
+</ul>
+<p>Create <code>packages/csharp/tests/integration/Api/LocalAdminPermissionEndpointTests.cs</code>:</p>
+<pre><code class="language-csharp">using System.Net;
+using System.Net.Http.Json;
+using Broker.Services;
+using BrokerCore.Data;
+using Integration.Tests.Fixtures;
+using Microsoft.Extensions.DependencyInjection;
+
+namespace Integration.Tests.Api;
+
+public class LocalAdminPermissionEndpointTests : IClassFixture&lt;BrokerFixture&gt;
+{
+    private readonly BrokerFixture _fixture;
+
+    public LocalAdminPermissionEndpointTests(BrokerFixture fixture)
+    {
+        _fixture = fixture;
+    }
+
+    [Fact]
+    public async Task SystemAdmin_CanReadSystemStatus_ButCannotListOperators()
+    {
+        using var scope = _fixture.Factory.Services.CreateScope();
+        var auth = scope.ServiceProvider.GetRequiredService&lt;LocalAdminAuthService&gt;();
+        auth.CreateOperator(&quot;sysadmin&quot;, &quot;System Admin&quot;, LocalAdminRoles.SystemAdmin, &quot;system-password&quot;, &quot;test&quot;);
+
+        var cookie = await LoginAsync(&quot;sysadmin&quot;, &quot;system-password&quot;);
+
+        using var status = await SendWithCookieAsync(HttpMethod.Get, &quot;/api/v1/local-admin/system/status&quot;, cookie);
+        status.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        using var operators = await SendWithCookieAsync(HttpMethod.Get, &quot;/api/v1/local-admin/operators&quot;, cookie);
+        operators.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task PermissionAdmin_CanListOperators_ButCannotPreviewDeployment()
+    {
+        using var scope = _fixture.Factory.Services.CreateScope();
+        var auth = scope.ServiceProvider.GetRequiredService&lt;LocalAdminAuthService&gt;();
+        auth.CreateOperator(&quot;permadmin&quot;, &quot;Permission Admin&quot;, LocalAdminRoles.PermissionAdmin, &quot;permission-password&quot;, &quot;test&quot;);
+
+        var cookie = await LoginAsync(&quot;permadmin&quot;, &quot;permission-password&quot;);
+
+        using var operators = await SendWithCookieAsync(HttpMethod.Get, &quot;/api/v1/local-admin/operators&quot;, cookie);
+        operators.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        using var deployment = await SendWithCookieAsync(
+            HttpMethod.Post,
+            &quot;/api/v1/local-admin/deployment/preview&quot;,
+            cookie,
+            new { target_id = &quot;missing&quot;, artifact_path = &quot;site.zip&quot; });
+        deployment.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task Auditor_CannotApproveRequests()
+    {
+        using var scope = _fixture.Factory.Services.CreateScope();
+        var auth = scope.ServiceProvider.GetRequiredService&lt;LocalAdminAuthService&gt;();
+        auth.CreateOperator(&quot;auditor&quot;, &quot;Auditor&quot;, LocalAdminRoles.Auditor, &quot;auditor-password&quot;, &quot;test&quot;);
+
+        var cookie = await LoginAsync(&quot;auditor&quot;, &quot;auditor-password&quot;);
+
+        using var response = await SendWithCookieAsync(
+            HttpMethod.Post,
+            &quot;/api/v1/local-admin/approvals/apr_missing/approve&quot;,
+            cookie,
+            new { reason = &quot;nope&quot; });
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    private async Task&lt;string&gt; LoginAsync(string username, string password)
+    {
+        using var response = await _fixture.Client.PostAsJsonAsync(&quot;/api/v1/local-admin/login&quot;, new
+        {
+            username,
+            password
+        });
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.Headers.TryGetValues(&quot;Set-Cookie&quot;, out var values).Should().BeTrue();
+        var cookie = values!.First(value =&gt; value.StartsWith($&quot;{LocalAdminAuthService.SessionCookieName}=&quot;, StringComparison.Ordinal));
+        return cookie.Split(';', 2)[0];
+    }
+
+    private Task&lt;HttpResponseMessage&gt; SendWithCookieAsync(HttpMethod method, string path, string cookie, object? body = null)
+    {
+        var request = new HttpRequestMessage(method, path);
+        request.Headers.Add(&quot;Cookie&quot;, cookie);
+        if (body != null)
+            request.Content = JsonContent.Create(body);
+        return _fixture.Client.SendAsync(request);
+    }
+}
+</code></pre>
+<ul>
+<li>[x] <strong>Step 2: Run test to verify it fails</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet test packages/csharp/tests/integration/Integration.Tests.csproj --filter LocalAdminPermissionEndpointTests
+</code></pre>
+<p>Expected: FAIL because endpoint permission gates and <code>/operators</code> routes do not exist.</p>
+<ul>
+<li>[x] <strong>Step 3: Gate local-admin routes</strong></li>
+</ul>
+<p>In <code>LocalAdminEndpoints.Map</code>, add small local helper methods:</p>
+<pre><code class="language-csharp">static bool Require(HttpContext ctx, LocalAdminAuthService auth, string permission, out LocalAdminSession session, out IResult denied)
+    =&gt; auth.TryRequirePermission(ctx, permission, out session, out denied);
+
+static bool RequireAny(HttpContext ctx, LocalAdminAuthService auth, string[] permissions, out LocalAdminSession session, out IResult denied)
+    =&gt; auth.TryRequireAnyPermission(ctx, permissions, out session, out denied);
+</code></pre>
+<p>Change route checks from <code>TryRequireAuthenticated</code> to the matching permission from the spec. Add <code>/operators</code> routes using <code>permission.operator.manage</code>.</p>
+<p>For <code>/api/v1/local-admin/login</code>, parse optional <code>username</code>:</p>
+<pre><code class="language-csharp">var username = body.TryGetProperty(&quot;username&quot;, out var un) &amp;&amp; un.ValueKind == JsonValueKind.String
+    ? un.GetString()
+    : &quot;admin&quot;;
+var result = auth.Login(ctx, username ?? &quot;admin&quot;, password, newPassword);
+</code></pre>
+<ul>
+<li>[x] <strong>Step 4: Run test to verify it passes</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet test packages/csharp/tests/integration/Integration.Tests.csproj --filter LocalAdminPermissionEndpointTests
+</code></pre>
+<p>Expected: PASS.</p>
+<h2>Task 5: Admin UI Role-Aware Navigation and Monitoring</h2>
+<p><strong>Files:</strong>
+- Modify: <code>packages/csharp/broker/wwwroot/line-admin.html</code>
+- Create: <code>tools/scripts/validate-line-admin.mjs</code>
+- Modify: <code>package.json</code></p>
+<ul>
+<li>[x] <strong>Step 1: Write failing validation script</strong></li>
+</ul>
+<p>Create <code>tools/scripts/validate-line-admin.mjs</code>:</p>
+<pre><code class="language-javascript">import { readFile } from 'node:fs/promises';
+import assert from 'node:assert/strict';
+
+const html = await readFile('packages/csharp/broker/wwwroot/line-admin.html', 'utf8');
+
+assert.match(html, /data-tab=&quot;monitoring&quot;/, 'line-admin must expose a monitoring tab');
+assert.match(html, /data-tab=&quot;permissions&quot;/, 'line-admin must expose a permissions tab');
+assert.match(html, /hasPermission\(/, 'line-admin must contain permission-aware UI gating');
+assert.match(html, /system\.monitor\.read/, 'line-admin must reference monitoring permission');
+assert.match(html, /permission\.operator\.manage/, 'line-admin must reference operator management permission');
+assert.match(html, /\/api\/v1\/local-admin\/operators/, 'line-admin must call operator management API');
+
+console.log('line-admin validation passed');
+</code></pre>
+<p>Add to <code>package.json</code> scripts:</p>
+<pre><code class="language-json">&quot;validate:line-admin&quot;: &quot;node tools/scripts/validate-line-admin.mjs&quot;
+</code></pre>
+<ul>
+<li>[x] <strong>Step 2: Run validation to verify it fails</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">npm run validate:line-admin
+</code></pre>
+<p>Expected: FAIL because monitoring/permissions tabs and permission-gating JS are absent.</p>
+<ul>
+<li>[x] <strong>Step 3: Implement UI gating</strong></li>
+</ul>
+<p>Modify <code>line-admin.html</code>:</p>
+<ul>
+<li>Add nav buttons <code>data-tab="monitoring"</code> and <code>data-tab="permissions"</code>.</li>
+<li>Add <code>const PERMISSIONS = { ... }</code> with the backend permission names.</li>
+<li>Add:</li>
+</ul>
+<pre><code class="language-javascript">function hasPermission(permission) {
+  return Array.isArray(state.authStatus?.permissions)
+    &amp;&amp; state.authStatus.permissions.includes(permission);
+}
+
+function requireVisible(selector, permission) {
+  const node = document.querySelector(selector);
+  if (node) node.classList.toggle(&quot;hidden&quot;, !hasPermission(permission));
+}
+</code></pre>
+<ul>
+<li>In <code>renderAuthState()</code>, hide or show nav/actions using <code>hasPermission</code>.</li>
+<li>Build the monitoring tab from existing <code>state.system</code>, alerts, and health API responses.</li>
+<li>
+<p>Build the permissions tab with operator list, create operator form, role update and disable buttons.</p>
+</li>
+<li>
+<p>[x] <strong>Step 4: Run validation to verify it passes</strong></p>
+</li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">npm run validate:line-admin
+</code></pre>
+<p>Expected: PASS.</p>
+<h2>Task 6: Documentation and Full Verification</h2>
+<p><strong>Files:</strong>
+- Modify: <code>docs/manuals/current-user-manual.zh-TW.md</code>
+- Modify: <code>docs/manuals/current-technical-manual.zh-TW.md</code>
+- Modify: <code>docs/environment-setup.zh-TW.md</code></p>
+<ul>
+<li>[x] <strong>Step 1: Update manuals</strong></li>
+</ul>
+<p>Document:</p>
+<ul>
+<li>Admin UI entry point remains <code>http://127.0.0.1:5361/line-admin.html</code>.</li>
+<li>First login uses username <code>admin</code> and initial password <code>admin</code>, then requires a new password.</li>
+<li>Local operator roles are <code>super_admin</code>, <code>system_admin</code>, <code>permission_admin</code>, <code>auditor</code>.</li>
+<li>System monitoring and permission management are separate tabs.</li>
+<li>
+<p>Backend enforces role permissions; UI hiding is not the security boundary.</p>
+</li>
+<li>
+<p>[x] <strong>Step 2: Run targeted backend tests</strong></p>
+</li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter &quot;LocalAdminPermissionTests|LocalAdminMigrationTests|LocalAdminAuthServiceTests&quot;
+dotnet test packages/csharp/tests/integration/Integration.Tests.csproj --filter LocalAdminPermissionEndpointTests
+</code></pre>
+<p>Expected: all targeted tests PASS.</p>
+<ul>
+<li>[x] <strong>Step 3: Run full verification</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet test packages/csharp/tests/unit/Unit.Tests.csproj
+dotnet test packages/csharp/tests/integration/Integration.Tests.csproj
+dotnet run --project packages/csharp/tests/broker-tests/Broker.Tests.csproj
+npm run validate:line-admin
+npm run validate:user-portal
+</code></pre>
+<p>Expected: all commands PASS. If Smart App Control blocks built test assemblies, run the existing signing/WDAC repair workflow from <code>docs/manuals/dev-code-signing-wdac.zh-TW.md</code>, then re-run the blocked command with <code>--no-build</code>.</p>
+<ul>
+<li>[x] <strong>Step 4: Commit implementation</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">git status --short
+git add packages/csharp/broker-core/Models/LocalAdminCredential.cs packages/csharp/broker-core/Models/LocalAdminSession.cs packages/csharp/broker-core/Data/BrokerDbInitializer.cs packages/csharp/broker/Services/LocalAdminPermissions.cs packages/csharp/broker/Services/LocalAdminAuthService.cs packages/csharp/broker/Endpoints/LocalAdminEndpoints.cs packages/csharp/broker/wwwroot/line-admin.html packages/csharp/tests/unit/Admin packages/csharp/tests/integration/Api/LocalAdminPermissionEndpointTests.cs tools/scripts/validate-line-admin.mjs package.json docs/manuals/current-user-manual.zh-TW.md docs/manuals/current-technical-manual.zh-TW.md docs/environment-setup.zh-TW.md docs/superpowers/plans/2026-06-26-admin-permission-boundary.md
+git commit -m &quot;feat: split admin and permission management roles&quot;
+</code></pre>
+<p>Expected: commit succeeds with only related files staged.</p>
+<h2>Self-Review</h2>
+<ul>
+<li>Spec coverage: data model, role split, API gates, UI tabs, migration, docs and tests are covered by Tasks 1-6.</li>
+<li>Placeholder scan: no deferred implementation markers are present.</li>
+<li>Type consistency: role constants, permission constants, endpoint names and test expectations use the same names across tasks.</li>
+</ul>
+</main>
+</body>
+</html>
