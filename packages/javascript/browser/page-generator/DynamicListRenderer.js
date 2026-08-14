@@ -8,6 +8,9 @@
 import { escapeHtml, raw } from '../ui_components/utils/security.js';
 import { BasicButton } from '../ui_components/common/BasicButton/BasicButton.js';
 import { Link } from '../ui_components/common/Link/Link.js';
+import { Badge } from '../ui_components/common/Badge/Badge.js';
+import { StatGrid } from '../ui_components/common/StatGrid/StatGrid.js';
+import { DrawerPanel } from '../ui_components/layout/Panel/DrawerPanel.js';
 import {
     buildActionRequest,
     buildDownloadRequest,
@@ -66,6 +69,9 @@ export class DynamicListRenderer {
         this._tableClickHandler = null;
         this._modalElement = null;
         this._modalComponents = [];
+        this._drawerPanel = null;
+        this._statGrid = null;
+        this._summaryContainer = null;
         this._controlComponents = [];
         this._renderedActionComponents = [];
 
@@ -112,6 +118,7 @@ export class DynamicListRenderer {
         this.element.className = this._isQuery ? 'dynamic-list dynamic-list--query' : 'dynamic-list';
 
         this._buildPageHeader(definition);
+        this._buildSummary(definition);
 
         // 搜尋區
         const searchFields = this._buildSearchFields(definition.fields || []);
@@ -143,6 +150,41 @@ export class DynamicListRenderer {
 
         header.appendChild(heading);
         this.element.appendChild(header);
+    }
+
+    _buildSummary(definition) {
+        if (!definition?.summary || !Array.isArray(definition.summary.stats)) return;
+        const container = document.createElement('section');
+        container.className = 'dynamic-list__summary';
+        container.setAttribute('aria-label', definition.summary.label || '摘要');
+        container.style.cssText = 'margin-bottom:16px;';
+        this._summaryContainer = container;
+        this.element.appendChild(container);
+        this.setSummary(definition.fixtures?.summary || {});
+    }
+
+    _summaryStats(data = {}) {
+        return (this._definition?.summary?.stats || []).map(stat => {
+            const value = readNestedValue(data, stat.key);
+            return {
+                ...stat,
+                value: formatSummaryValue(
+                    value === undefined || value === null || value === '' ? (stat.fallback ?? '—') : value,
+                    stat,
+                ),
+            };
+        });
+    }
+
+    setSummary(data = {}) {
+        if (!this._summaryContainer || !this._definition?.summary) return;
+        this._statGrid?.destroy?.();
+        this._summaryContainer.replaceChildren();
+        this._statGrid = new StatGrid({
+            stats: this._summaryStats(data),
+            columns: this._definition.summary.columns || 4,
+        });
+        this._statGrid.mount(this._summaryContainer);
     }
 
     _buildSearchFields(fields) {
@@ -325,7 +367,7 @@ export class DynamicListRenderer {
             columns.push({
                 key: '_actions',
                 title: table.actionColumnTitle || '操作',
-                width: '140px',
+                width: table.actionColumnWidth || '140px',
                 sortable: false,
                 // DataTable escapes ordinary strings by design. Row actions are
                 // renderer-owned, fully escaped markup, so opt in explicitly;
@@ -482,11 +524,14 @@ export class DynamicListRenderer {
     }
 
     _renderActionButtons(actions, row = null) {
-        return actions.filter(action => !matchesCondition(action.hiddenWhen, row)).map((action) => {
+        const hosts = actions.filter(action => !matchesCondition(action.hiddenWhen, row)).map((action) => {
             const id = action.id || action.apiAction || action.key;
             const label = action.label || id;
             return `<span class="dynamic-list__action-host" data-dynamic-action-host="${escapeHtml(id)}" data-action-label="${escapeHtml(label)}"></span>`;
         }).join('');
+        return row
+            ? `<span class="dynamic-list__row-actions">${hosts}</span>`
+            : hosts;
     }
 
     _mountActionControls(root) {
@@ -521,8 +566,8 @@ export class DynamicListRenderer {
             }
             const button = new BasicButton({
                 type: BasicButton.TYPES.CUSTOM,
-                variant: 'plain',
-                showIcon: action.appearance === 'legacy-icon',
+                variant: isRowAction && action.icon ? 'icon' : 'plain',
+                showIcon: action.appearance === 'legacy-icon' || (isRowAction && Boolean(action.icon)),
                 icon: action.icon || action.type || actionId,
                 customLabel: label,
                 disabled: host.dataset.actionDisabled === 'true',
@@ -595,12 +640,28 @@ export class DynamicListRenderer {
         if (!action) return null;
         const row = this._rowFromButton(button);
 
+        if (action.type === 'drawer' || action.drawer) {
+            const request = buildActionRequest(this._definition, action, {
+                row,
+                rows: this._rows,
+                selectedIndices: this._dataTable?.getSelectedRows?.() || [],
+                searchValues: this._searchForm?.getValues?.() || {},
+            });
+            const result = typeof this.options.onAction === 'function'
+                ? await this.options.onAction(action.id || actionId, row, request)
+                : request;
+            if (result !== null && result !== undefined && result !== false) {
+                return this._openDrawer(action, result);
+            }
+            return result;
+        }
+
         if (action.type === 'modal' || action.modal) {
             return this._openModal(action, row);
         }
 
         if (action.type === 'export') {
-            return this.downloadSelected({ actionId: action.id });
+            return this.downloadSelected({ actionId: action.id, row });
         }
 
         if ((action.type === 'link' || action.type === 'create') && action.route) {
@@ -628,6 +689,45 @@ export class DynamicListRenderer {
             return this.options.onAction(action.id || actionId, row, request);
         }
         return request;
+    }
+
+    _openDrawer(action, data) {
+        this._closeDrawer();
+        const config = action.drawer || {};
+        const drawer = new DrawerPanel({
+            title: config.title || action.label || '明細',
+            position: config.placement || 'right',
+            width: `${Number(config.width) || 720}px`,
+            autoClose: true,
+            closable: true,
+        });
+        const content = document.createElement('div');
+        content.className = 'dynamic-list__drawer-content';
+        content.style.cssText = 'display:grid;gap:14px;min-width:0;';
+        for (const column of config.columns || []) {
+            const item = document.createElement('section');
+            item.className = 'dynamic-list__drawer-item';
+            const title = document.createElement('h4');
+            title.textContent = column.title || column.label || column.key || '';
+            title.style.cssText = 'margin:0 0 6px;font-size:var(--cl-font-size-md);color:var(--cl-text-secondary);';
+            const value = document.createElement(column.multiline === false ? 'div' : 'pre');
+            value.textContent = formatDrawerValue(readNestedValue(data, column.key));
+            value.style.cssText = column.multiline === false
+                ? 'margin:0;color:var(--cl-text);overflow-wrap:anywhere;'
+                : 'margin:0;padding:10px;white-space:pre-wrap;overflow-wrap:anywhere;background:var(--cl-bg-secondary);border:1px solid var(--cl-border-light);border-radius:var(--cl-radius-sm);font:inherit;color:var(--cl-text);';
+            item.append(title, value);
+            content.appendChild(item);
+        }
+        drawer.setContent(content);
+        drawer.mount();
+        drawer.open();
+        this._drawerPanel = drawer;
+        return drawer;
+    }
+
+    _closeDrawer() {
+        this._drawerPanel?.destroy?.();
+        this._drawerPanel = null;
     }
 
     _findUiAction(actionId) {
@@ -670,6 +770,9 @@ export class DynamicListRenderer {
         const overlay = document.createElement('div');
         overlay.className = 'dynamic-list__modal-overlay';
         overlay.style.cssText = 'position:fixed;inset:0;background:var(--cl-bg-overlay-medium);display:flex;align-items:center;justify-content:center;z-index:1000;';
+        overlay.addEventListener('click', event => {
+            if (event.target === overlay) this._closeModal();
+        });
 
         const panel = document.createElement('section');
         panel.className = 'dynamic-list__modal';
@@ -907,6 +1010,23 @@ export class DynamicListRenderer {
                 return raw(`<span data-field-link-host="" data-link-label="${escapeHtml(displayValue)}"></span>`);
             }
         }
+        if (def.format === 'badge') {
+            const normalized = String(value ?? '').toLowerCase();
+            const variant = normalized === 'failed' || normalized === '失敗備份'
+                ? Badge.VARIANTS.DANGER
+                : (normalized === 'processing' || normalized === '處理中'
+                    ? Badge.VARIANTS.INFO
+                    : (normalized === 'pending' || normalized === '待送'
+                        ? Badge.VARIANTS.WARNING
+                        : Badge.VARIANTS.DEFAULT));
+            const badge = new Badge({ text: displayValue, variant });
+            // DataTable deliberately stringifies ordinary return values.  A DOM
+            // element would therefore appear as "[object HTMLSpanElement]".
+            // Badge owns this markup and escapes its text through textContent,
+            // so serialize the component output and mark only that controlled
+            // markup as renderer-owned HTML.
+            return raw(badge.element.outerHTML);
+        }
         if (def.format === 'raw') {
             return value === null || value === undefined ? '' : String(value);
         }
@@ -915,6 +1035,9 @@ export class DynamicListRenderer {
                 return formatRocDateTime(value);
             }
             return value === null || value === undefined ? '' : String(value);
+        }
+        if (def.format === 'datetime' || def.format === 'datetime-short') {
+            return formatSummaryValue(value, { format: 'datetime-short' });
         }
         if (value === null || value === undefined || value === '') return displayValue;
 
@@ -947,7 +1070,7 @@ export class DynamicListRenderer {
                 swatch.style.cssText = 'display:inline-block;width:14px;height:14px;border-radius:var(--cl-radius-xs);border:1px solid var(--cl-border);vertical-align:middle;';
                 const color = String(value).trim();
                 swatch.style.background = /^#[0-9a-f]{3,8}$/i.test(color) ? color : 'transparent';
-                return swatch;
+                return raw(swatch.outerHTML);
             }
             default:
                 return displayValue;
@@ -1001,7 +1124,8 @@ export class DynamicListRenderer {
     async downloadSelected(options = {}) {
         const request = this.buildDownloadRequest(options);
         if (!request) return null;
-        if (request.selectionKey && request.selectionValues.length === 0) return null;
+        if (request.action?.requiresSelection !== false
+            && request.selectionKey && request.selectionValues.length === 0) return null;
         if (options.outputExtension && /^\.[A-Za-z0-9]+$/.test(options.outputExtension)) {
             request.fileName = String(request.fileName || 'TIM_download')
                 .replace(/\.[^.]+$/, options.outputExtension);
@@ -1099,6 +1223,16 @@ export class DynamicListRenderer {
         }
     }
 
+    setSelectedRowsByKey(key, values = []) {
+        if (!key || !this._dataTable?.setSelectedRows) return;
+        const wanted = new Set((values || []).map(value => String(value)));
+        const indices = this._rows.reduce((result, row, index) => {
+            if (wanted.has(String(readNestedValue(row, key) ?? ''))) result.push(index);
+            return result;
+        }, []);
+        this._dataTable.setSelectedRows(indices);
+    }
+
     _normalizeRow(row) {
         if (!row || Array.isArray(row) || typeof row !== 'object') return row;
         const normalized = { ...row };
@@ -1121,7 +1255,11 @@ export class DynamicListRenderer {
         this._searchForm?.destroy?.();
         this._dataTable?.destroy?.();
         this._pagination?.destroy?.();
+        this._statGrid?.destroy?.();
+        this._statGrid = null;
+        this._summaryContainer = null;
         this._closeModal();
+        this._closeDrawer();
         if (this._tableClickHandler) {
             this.element?.querySelector('.dynamic-list__table')?.removeEventListener('click', this._tableClickHandler);
             this._tableClickHandler = null;
@@ -1134,6 +1272,31 @@ export class DynamicListRenderer {
         this._searchPanelToggle = null;
         this._searchPanelLabels = null;
     }
+}
+
+function readNestedValue(source, path) {
+    if (!path) return source;
+    return String(path).split('.').reduce((value, key) => value == null ? undefined : value[key], source);
+}
+
+function formatDrawerValue(value) {
+    if (value === undefined || value === null) return '';
+    if (typeof value === 'string') return value;
+    try { return JSON.stringify(value, null, 2); }
+    catch { return String(value); }
+}
+
+function formatSummaryValue(value, stat = {}) {
+    if (stat.format === 'boolean') {
+        return value === true || String(value).toLowerCase() === 'true'
+            ? (stat.trueLabel || '是')
+            : (stat.falseLabel || '否');
+    }
+    if (stat.format === 'datetime-short' && typeof value === 'string') {
+        const match = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/.exec(value);
+        if (match) return `${match[1]} ${match[2]}`;
+    }
+    return value;
 }
 
 function modalInputType(fieldType) {

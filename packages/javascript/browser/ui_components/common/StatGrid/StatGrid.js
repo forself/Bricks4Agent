@@ -1,5 +1,5 @@
 import { createComponentState } from '../../utils/component-state.js';
-import { StatCard } from '../../social/StatCard/index.js';
+import { StatCard } from '../../social/StatCard/index.js?v=20260814-1';
 
 /**
  * StatGrid — 指標網格(複合)。grid of StatCard。確定性。
@@ -29,11 +29,14 @@ export class StatGrid {
         this.element.style.cssText = `
             display: grid;
             gap: 12px;
-            grid-template-columns: repeat(${cols}, 1fr);
+            grid-template-columns: repeat(${cols}, minmax(0, 1fr));
         `;
         (Array.isArray(this.options.stats) ? this.options.stats : []).forEach((stat) => {
-            const card = new StatCard({ label: stat.label ?? '', value: stat.value ?? 0, ...(stat.detail ? { detail: stat.detail } : {}) });
-            (card.mount ? card.mount(this.element) : card.render?.(this.element));
+            const host = document.createElement('div');
+            host.className = 'cl-statgrid__item';
+            this.element.appendChild(host);
+            const card = new StatCard({ ...stat, label: stat.label ?? '', value: stat.value ?? 0 });
+            (card.mount ? card.mount(host) : card.render?.(host));
             this._children.push(card);
         });
     }
