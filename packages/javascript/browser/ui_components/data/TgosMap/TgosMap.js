@@ -203,7 +203,13 @@ export class TgosMap {
             const visible = await this._waitUntilVisible();
             if (!visible || this.destroyed) return false;
             const coord = TGOS.TGCoordSys?.[this.options.coordinateSystem] || TGOS.TGCoordSys?.EPSG3857;
-            this.map = new TGOS.TGOnlineMap(this.mapHost, coord, { disableDefaultUI: this.options.disableDefaultUI });
+            // Be explicit about the base layer.  TGOS 2.x can otherwise retain an
+            // uninitialised/previous map type when its script is shared by pages.
+            // TGOSMAP is the official generic electronic map in both EPSG3826 and
+            // EPSG3857 contexts; keep the fallback for API revisions without it.
+            const mapOptions = { disableDefaultUI: this.options.disableDefaultUI };
+            if (TGOS.TGMapTypeId?.TGOSMAP) mapOptions.mapTypeId = TGOS.TGMapTypeId.TGOSMAP;
+            this.map = new TGOS.TGOnlineMap(this.mapHost, coord, mapOptions);
             this.infoWindow = new TGOS.TGInfoWindow();
             if (this.options.geocodeMissingAddresses && TGOS.TGLocateService) {
                 this.locator = new TGOS.TGLocateService();

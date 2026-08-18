@@ -51,6 +51,16 @@ export class TextArea {
         this._apply();
     }
 
+    _limitInputValue(value) {
+        const text = String(value ?? '');
+        const configured = this.options.maxLength;
+        if (configured === null || configured === undefined || configured === '') return text;
+        const limit = Number(configured);
+        return Number.isInteger(limit) && limit >= 0 && text.length > limit
+            ? text.slice(0, limit)
+            : text;
+    }
+
     _create() {
         const { label, placeholder, rows, maxLength, width, monospace, resize } = this.options;
         const container = document.createElement('div');
@@ -84,8 +94,10 @@ export class TextArea {
             if (typeof this.options.onBlur === 'function') this.options.onBlur(ta.value);
         });
         ta.addEventListener('input', () => {
-            this._state.replace({ ...this._state.snapshot(), value: ta.value });
-            if (typeof this.options.onInput === 'function') this.options.onInput(ta.value);
+            const limitedValue = this._limitInputValue(ta.value);
+            if (limitedValue !== ta.value) ta.value = limitedValue;
+            this._state.replace({ ...this._state.snapshot(), value: limitedValue });
+            if (typeof this.options.onInput === 'function') this.options.onInput(limitedValue);
         });
         ta.addEventListener('change', () => {
             if (typeof this.options.onChange === 'function') this.options.onChange(ta.value);
