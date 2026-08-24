@@ -48,7 +48,7 @@ When adding tests that produce files: add the pattern to this table, ensure it i
 
 - Frontend: JavaScript, ES modules, vanilla — **no third-party runtime UI dependency** (the only exceptions are vendored copies under `ui_components/vendor/`: Leaflet 1.9.4 and html2canvas, loaded locally first with CDN fallback only when the local file is missing).
 
-- Styling: theme tokens only (`var(--cl-*)`); no hard-coded colors. Dark mode via `[data-theme="dark"]`, not per-component media queries. See [STYLE_CONVENTION.md](packages/javascript/browser/ui_components/STYLE_CONVENTION.html).
+- Styling: theme tokens only (`var(--cl-*)`); no hard-coded colors. Dark mode via `[data-theme="dark"]`, not per-component media queries. See [STYLE_CONVENTION.md](packages/javascript/browser/ui_components/STYLE_CONVENTION.md).
 
 - Strict CSP (machine-enforced by `tools/scripts/audit-csp.mjs`): no `<style>` injection, no `style=`/`on*=` inside innerHTML templates, no eval / `javascript:` URLs. Style via CSSOM (`cssText`/`setProperty`) or a co-located `.css` + same-origin `<link>`.
 

@@ -26,7 +26,7 @@ English version: [README.md](README.md)
 
 - [metadata/component-catalog.json](packages/javascript/browser/ui_components/metadata/component-catalog.json) — 元件權威清單
 
-- [STYLE_CONVENTION.md](packages/javascript/browser/ui_components/STYLE_CONVENTION.html) — 樣式／token 規範
+- [STYLE_CONVENTION.md](packages/javascript/browser/ui_components/STYLE_CONVENTION.md) — 樣式／token 規範
 
 ### 頁面生成器
 
@@ -42,7 +42,7 @@ English version: [README.md](README.md)
 
 - [tools/spa-generator](tools/spa-generator) — 生成器 Web UI(port 3080)
 
-- [tools/page-gen.js](tools/page-gen.js) — 獨立 PageDefinition CLI([說明](tools/page-gen.README.html))
+- [tools/page-gen.js](tools/page-gen.js) — 獨立 PageDefinition CLI([說明](tools/page-gen.README.md))
 
 - [tools/static-server](tools/static-server) — 預覽用靜態伺服器
 

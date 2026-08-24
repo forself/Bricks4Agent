@@ -21,7 +21,7 @@ Use this directory when you want to:
 
 - generate or inspect template-style CRUD project structure
 
-Related: [../../AGENT.md](../../AGENT.md) (generator manual) · [../../AGENT-UI-GUIDE.md](../../AGENT-UI-GUIDE.md) (component calling convention) · [../page-gen.README.md](../page-gen.README.html) (standalone CLI).
+Related: [../../AGENT.md](../../AGENT.md) (generator manual) · [../../AGENT-UI-GUIDE.md](../../AGENT-UI-GUIDE.md) (component calling convention) · [../page-gen.README.md](../page-gen.README.md) (standalone CLI).
 
 ## Quick Start
 

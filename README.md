@@ -27,7 +27,7 @@
 
 - [metadata/component-catalog.json](packages/javascript/browser/ui_components/metadata/component-catalog.json) — the authoritative component list
 
-- [STYLE_CONVENTION.md](packages/javascript/browser/ui_components/STYLE_CONVENTION.html) — theming / token rules
+- [STYLE_CONVENTION.md](packages/javascript/browser/ui_components/STYLE_CONVENTION.md) — theming / token rules
 
 ### Page generator
 
@@ -43,7 +43,7 @@
 
 - [tools/spa-generator](tools/spa-generator) — generator Web UI (port 3080)
 
-- [tools/page-gen.js](tools/page-gen.js) — standalone PageDefinition CLI ([docs](tools/page-gen.README.html))
+- [tools/page-gen.js](tools/page-gen.js) — standalone PageDefinition CLI ([docs](tools/page-gen.README.md))
 
 - [tools/static-server](tools/static-server) — static file server for previewing
 

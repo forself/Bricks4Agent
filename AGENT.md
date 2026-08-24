@@ -396,6 +396,6 @@ dotnet run              # 後端
 
 - 頁面生成器細節：[page-generator/README.md](packages/javascript/browser/page-generator/README.md)
 
-- 獨立 PageDefinition CLI：[tools/page-gen.README.md](tools/page-gen.README.html)
+- 獨立 PageDefinition CLI：[tools/page-gen.README.md](tools/page-gen.README.md)
 
 - SPA 範本：[templates/spa/README.md](templates/spa/README.md)

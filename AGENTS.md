@@ -43,7 +43,7 @@ that turns a JSON `PageDefinition` into working pages (static code generation or
 
 - Frontend: JavaScript, ES modules, vanilla — **no third-party runtime UI dependency** (only exceptions: vendored Leaflet 1.9.4 + html2canvas under `ui_components/vendor/`, local-first with CDN fallback).
 
-- Styling: theme tokens only (`var(--cl-*)`); dark mode via `[data-theme="dark"]`. See [STYLE_CONVENTION.md](packages/javascript/browser/ui_components/STYLE_CONVENTION.html).
+- Styling: theme tokens only (`var(--cl-*)`); dark mode via `[data-theme="dark"]`. See [STYLE_CONVENTION.md](packages/javascript/browser/ui_components/STYLE_CONVENTION.md).
 
 - Strict CSP (machine-enforced): no `<style>` injection, no `style=`/`on*=` in innerHTML templates, no eval / `javascript:`. Style via CSSOM or co-located `.css` + same-origin `<link>`.
 
