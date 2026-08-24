@@ -1,5 +1,4 @@
-using System.Globalization;
-using System.Text;
+using BrokerCore.Services;
 
 namespace Broker.Helpers;
 
@@ -14,46 +13,5 @@ public static class Fts5Utility
     /// 用空格隔開 → FTS5 預設 AND 語意
     /// </summary>
     public static string PrepareFts5Query(string query)
-    {
-        var sb = new StringBuilder(query.Length * 2);
-        bool prevIsCjk = false;
-
-        foreach (var ch in query)
-        {
-            bool isCjk = char.GetUnicodeCategory(ch) == UnicodeCategory.OtherLetter;
-
-            if (isCjk)
-            {
-                if (sb.Length > 0 && !prevIsCjk)
-                    sb.Append(' ');
-                else if (prevIsCjk)
-                    sb.Append(' ');
-                sb.Append(ch);
-            }
-            else if (ch == ' ' || ch == '\t')
-            {
-                if (sb.Length > 0) sb.Append(' ');
-            }
-            else
-            {
-                if (sb.Length > 0 && prevIsCjk)
-                    sb.Append(' ');
-                sb.Append(ch);
-            }
-
-            prevIsCjk = isCjk;
-        }
-
-        var result = sb.ToString().Trim();
-        result = result.Replace("\"", "");
-        result = result.Replace("*", "");
-        result = result.Replace("(", "");
-        result = result.Replace(")", "");
-        result = result.Replace("^", "");
-        result = result.Replace("-", " ");
-        while (result.Contains("  "))
-            result = result.Replace("  ", " ");
-        result = result.Trim();
-        return string.IsNullOrEmpty(result) ? query : result;
-    }
+        => Fts5TextNormalizer.PrepareQuery(query);
 }

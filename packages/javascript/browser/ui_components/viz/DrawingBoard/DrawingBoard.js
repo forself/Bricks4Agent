@@ -10,6 +10,7 @@ import { ButtonGroup } from '../../common/ButtonGroup/index.js';
 import { ColorPicker } from '../../common/ColorPicker/index.js';
 import { NumberInput } from '../../form/NumberInput/index.js';
 import Locale from '../../i18n/index.js';
+import { FALLBACK_PAINT, onThemeChange, resolveTokens } from '../../utils/theme-bus.js';
 
 export class DrawingBoard {
     constructor(options = {}) {
@@ -46,14 +47,46 @@ export class DrawingBoard {
         this.onDraw = options.onDraw || null;
         this.onClear = options.onClear || null;
 
+        // Generate cursor bitmaps only when settings or theme paints change.
+        this._cursorCache = new Map();
+        this._offCursorTheme = null;
+        this._childComponents = new Set();
+        this._destroyed = false;
+        this._handleKeyDown = null;
+
         this._init();
+        this._offCursorTheme = onThemeChange(() => {
+            this._cursorCache.clear();
+            this._updateCursor();
+        });
     }
 
     _init() {
         this.element = this._createUI();
         this.container.appendChild(this.element);
+        this._clampToContainer(); // 建構時 clamp:畫布不超過容器可用寬
         this._setupEventListeners();
         this._saveHistory();
+    }
+
+    _trackComponent(component) {
+        if (component) this._childComponents.add(component);
+        return component;
+    }
+
+    // 建構時 clamp:內部解析度 = min(option 寬, 容器可用寬),高度等比例縮小
+    _clampToContainer() {
+        const rect = this.canvas.getBoundingClientRect(); // 已受 max-width:100% 限制
+        if (rect.width > 0 && rect.width < this.width) {
+            const ratio = this.height / this.width;
+            this.width = Math.round(rect.width);
+            this.height = Math.round(this.width * ratio);
+            this.canvas.width = this.width;
+            this.canvas.height = this.height;
+            // 重設 canvas 尺寸會清掉 context 狀態,需重新設定
+            this.ctx.lineCap = 'round';
+            this.ctx.lineJoin = 'round';
+        }
     }
 
     _createUI() {
@@ -90,12 +123,15 @@ export class DrawingBoard {
         const canvas = document.createElement('canvas');
         canvas.width = this.width;
         canvas.height = this.height;
+        // RWD:max-width + height:auto 讓顯示尺寸不超過容器並等比縮放(內部解析度不變)
         canvas.style.cssText = `
             background: var(--cl-bg);
             border-radius: var(--cl-radius-sm);
             box-shadow: var(--cl-shadow-sm);
             cursor: crosshair;
             touch-action: none;
+            max-width: 100%;
+            height: auto;
         `;
         this.canvas = canvas;
         this.ctx = canvas.getContext('2d');
@@ -131,7 +167,7 @@ export class DrawingBoard {
         this.toolButtons = {};
 
         // 繪圖工具群組
-        const toolGroup = new ButtonGroup({
+        const toolGroup = this._trackComponent(new ButtonGroup({
             theme: 'gradient',
             gap: '4px',
             buttons: [
@@ -162,11 +198,11 @@ export class DrawingBoard {
                 })
             ],
             showSeparator: true
-        });
+        }));
         toolGroup.mount(toolbar);
 
         // 歷史群組
-        const historyGroup = new ButtonGroup({
+        const historyGroup = this._trackComponent(new ButtonGroup({
             theme: 'gradient',
             gap: '4px',
             buttons: [
@@ -184,11 +220,11 @@ export class DrawingBoard {
                 })
             ],
             showSeparator: true
-        });
+        }));
         historyGroup.mount(toolbar);
 
         // 清除按鈕
-        const clearGroup = new ButtonGroup({
+        const clearGroup = this._trackComponent(new ButtonGroup({
             theme: 'gradient',
             gap: '4px',
             buttons: [
@@ -200,17 +236,17 @@ export class DrawingBoard {
                 })
             ],
             showSeparator: true
-        });
+        }));
         clearGroup.mount(toolbar);
 
         // 匯出按鈕
-        const exportBtn = new EditorButton({
+        const exportBtn = this._trackComponent(new EditorButton({
             type: EditorButton.TYPES.EXPORT_PNG,
             label: Locale.t('drawingBoard.exportPng'),
             theme: 'gradient',
             variant: 'primary',
             onClick: () => this.exportPNG()
-        });
+        }));
         exportBtn.mount(toolbar);
 
         return toolbar;
@@ -256,6 +292,7 @@ export class DrawingBoard {
             colorBtn.onclick = () => {
                 this.settings.strokeColor = color;
                 this._updateColorButtons();
+                this._updateCursor();
             };
             colorBtn.onmouseover = () => colorBtn.style.transform = 'scale(1.1)';
             colorBtn.onmouseout = () => colorBtn.style.transform = 'scale(1)';
@@ -276,6 +313,7 @@ export class DrawingBoard {
         customColor.onchange = (e) => {
             this.settings.strokeColor = e.target.value;
             this._updateColorButtons();
+            this._updateCursor();
         };
         colorGroup.appendChild(customColor);
         this.colorButtons = colorGroup.querySelectorAll('button');
@@ -390,19 +428,69 @@ export class DrawingBoard {
         const size = Math.max(this.settings.lineWidth, 8);
 
         if (this.settings.tool === 'eraser') {
-            // 橡皮擦游標
-            this.canvas.style.cursor = `url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}"><circle cx="${size/2}" cy="${size/2}" r="${size/2-1}" fill="%23ffffff" stroke="%23000000" stroke-width="1"/></svg>') ${size/2} ${size/2}, crosshair`;
+            const cursorUrl = this._getCursorPng('eraser', size);
+            this.canvas.style.cursor = `url("${cursorUrl}") ${size / 2} ${size / 2}, crosshair`;
         } else if (this.settings.tool === 'line') {
             // 直線游標
             this.canvas.style.cursor = 'crosshair';
         } else if (this.settings.tool === 'highlighter') {
-            // 螢光筆游標
-            const color = this.settings.strokeColor.replace('#', '%23');
-            this.canvas.style.cursor = `url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}"><rect x="1" y="1" width="${size-2}" height="${size-2}" fill="${color}" fill-opacity="0.4" stroke="${color}" stroke-width="1"/></svg>') ${size/2} ${size/2}, crosshair`;
+            const cursorUrl = this._getCursorPng('highlighter', size, this.settings.strokeColor);
+            this.canvas.style.cursor = `url("${cursorUrl}") ${size / 2} ${size / 2}, crosshair`;
         } else {
             // 畫筆游標
             this.canvas.style.cursor = 'crosshair';
         }
+    }
+
+    _resolveCursorPaint(value, fallbackToken = '--cl-text') {
+        const raw = String(value || '').trim();
+        const tokenMatch = raw.match(/^var\(\s*(--cl-[\w-]+)\s*(?:,\s*([^)]+))?\)$/);
+        if (tokenMatch) {
+            const tokens = resolveTokens([tokenMatch[1]], this.element || document.documentElement);
+            return tokens[tokenMatch[1]] || tokenMatch[2]?.trim() || FALLBACK_PAINT;
+        }
+        if (raw) return raw;
+        const tokens = resolveTokens([fallbackToken], this.element || document.documentElement);
+        return tokens[fallbackToken] || FALLBACK_PAINT;
+    }
+
+    _getCursorPng(tool, size, color = '') {
+        const paints = tool === 'eraser'
+            ? resolveTokens(['--cl-bg', '--cl-text'], this.element || document.documentElement)
+            : null;
+        const fill = tool === 'eraser'
+            ? (paints['--cl-bg'] || FALLBACK_PAINT)
+            : this._resolveCursorPaint(color);
+        const stroke = tool === 'eraser'
+            ? (paints['--cl-text'] || FALLBACK_PAINT)
+            : fill;
+        const cacheKey = `${tool}:${size}:${fill}:${stroke}`;
+        const cached = this._cursorCache.get(cacheKey);
+        if (cached) return cached;
+
+        const cursorCanvas = document.createElement('canvas');
+        cursorCanvas.width = size;
+        cursorCanvas.height = size;
+        const ctx = cursorCanvas.getContext('2d');
+
+        ctx.fillStyle = fill;
+        ctx.strokeStyle = stroke;
+        ctx.lineWidth = 1;
+        if (tool === 'eraser') {
+            ctx.beginPath();
+            ctx.arc(size / 2, size / 2, size / 2 - 1, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+        } else {
+            ctx.globalAlpha = 0.4;
+            ctx.fillRect(1, 1, size - 2, size - 2);
+            ctx.globalAlpha = 1;
+            ctx.strokeRect(1, 1, size - 2, size - 2);
+        }
+
+        const dataUrl = cursorCanvas.toDataURL('image/png');
+        this._cursorCache.set(cacheKey, dataUrl);
+        return dataUrl;
     }
 
     _updateColorButtons() {
@@ -432,7 +520,7 @@ export class DrawingBoard {
         this.canvas.addEventListener('touchend', () => this._stopDrawing());
 
         // 鍵盤快捷鍵
-        document.addEventListener('keydown', (e) => {
+        this._handleKeyDown = (e) => {
             if (e.ctrlKey && e.key === 'z') {
                 e.preventDefault();
                 this.undo();
@@ -440,14 +528,18 @@ export class DrawingBoard {
                 e.preventDefault();
                 this.redo();
             }
-        });
+        };
+        document.addEventListener('keydown', this._handleKeyDown);
     }
 
     _getCanvasPoint(e) {
         const rect = this.canvas.getBoundingClientRect();
+        // 座標映射:CSS 顯示寬 ≠ canvas.width 時,需乘 canvas.width / rect.width 映射回內部座標
+        const scaleX = rect.width ? this.canvas.width / rect.width : 1;
+        const scaleY = rect.height ? this.canvas.height / rect.height : 1;
         return {
-            x: e.clientX - rect.left,
-            y: e.clientY - rect.top
+            x: (e.clientX - rect.left) * scaleX,
+            y: (e.clientY - rect.top) * scaleY
         };
     }
 
@@ -721,6 +813,20 @@ export class DrawingBoard {
     }
 
     destroy() {
+        if (this._destroyed) return;
+        this._destroyed = true;
+        if (this._offCursorTheme) {
+            this._offCursorTheme();
+            this._offCursorTheme = null;
+        }
+        if (this._handleKeyDown) {
+            document.removeEventListener('keydown', this._handleKeyDown);
+            this._handleKeyDown = null;
+        }
+        for (const component of this._childComponents) component?.destroy?.();
+        this._childComponents.clear();
+        this.toolButtons = {};
+        this._cursorCache.clear();
         if (this.element && this.element.parentNode) {
             this.element.parentNode.removeChild(this.element);
         }

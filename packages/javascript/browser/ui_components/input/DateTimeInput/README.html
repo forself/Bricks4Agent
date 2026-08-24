@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DateTimeInput</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>DateTimeInput</h1>
+<p>日期時間整合輸入元件，內部組合 <code>DatePicker</code> + <code>TimePicker</code>，支援民國年。</p>
+<h2>API</h2>
+<h3>Constructor</h3>
+<pre><code class="language-js">new DateTimeInput(options?)
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>參數</th>
+<th>型別</th>
+<th>預設值</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>options.label</code></td>
+<td><code>string</code></td>
+<td><code>''</code></td>
+<td>整體標籤</td>
+</tr>
+<tr>
+<td><code>options.useROC</code></td>
+<td><code>boolean</code></td>
+<td><code>true</code></td>
+<td>使用民國年格式</td>
+</tr>
+<tr>
+<td><code>options.showTime</code></td>
+<td><code>boolean</code></td>
+<td><code>true</code></td>
+<td>是否顯示時間選擇</td>
+</tr>
+<tr>
+<td><code>options.minuteStep</code></td>
+<td><code>number</code></td>
+<td><code>15</code></td>
+<td>分鐘間隔</td>
+</tr>
+<tr>
+<td><code>options.dateValue</code></td>
+<td><code>string</code></td>
+<td><code>''</code></td>
+<td>預設日期（YYYY-MM-DD 或民國年格式）</td>
+</tr>
+<tr>
+<td><code>options.timeValue</code></td>
+<td><code>string</code></td>
+<td><code>''</code></td>
+<td>預設時間（HH:MM）</td>
+</tr>
+<tr>
+<td><code>options.onChange</code></td>
+<td><code>Function</code></td>
+<td><code>null</code></td>
+<td>值變更回調，參數為 <code>{date, time, combined}</code></td>
+</tr>
+</tbody>
+</table>
+<h3>方法</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>mount(container)</code></td>
+<td>掛載至 DOM 容器，回傳 <code>this</code></td>
+</tr>
+<tr>
+<td><code>getValue()</code></td>
+<td>回傳 <code>{date, time}</code></td>
+</tr>
+<tr>
+<td><code>setValue(date?, time?)</code></td>
+<td>設定日期和/或時間</td>
+</tr>
+<tr>
+<td><code>destroy()</code></td>
+<td>移除元件及內部子元件</td>
+</tr>
+</tbody>
+</table>
+<h2>使用範例</h2>
+<pre><code class="language-js">import { DateTimeInput } from './input/DateTimeInput/index.js';
+
+const dt = new DateTimeInput({
+    label: '事件時間',
+    useROC: true,
+    minuteStep: 30,
+    onChange: ({ date, time, combined }) =&gt; console.log(combined)
+});
+dt.mount('#container');
+
+// 程式設定值
+dt.setValue('2024-03-15', '14:30');
+</code></pre>
+<h2>Demo</h2>
+<p><code>packages/javascript/browser/ui_components/input/demo.html</code></p>
+</main>
+</body>
+</html>

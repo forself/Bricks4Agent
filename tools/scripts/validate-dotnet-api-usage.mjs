@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
@@ -72,9 +72,20 @@ function createMatcher(forbiddenRule) {
 function validateRule(rule) {
     const findings = [];
     const extensions = rule.extensions ?? ['.cs'];
+    const optionalPaths = new Set(rule.optionalPaths ?? []);
 
     for (const relativePath of rule.paths ?? []) {
         const absolutePath = path.join(repoRoot, relativePath);
+        if (!existsSync(absolutePath)) {
+            if (!optionalPaths.has(relativePath)) {
+                findings.push({
+                    file: normalizePath(relativePath),
+                    line: 0,
+                    message: 'Required API policy scope is missing.'
+                });
+            }
+            continue;
+        }
         const files = walkFiles(absolutePath, extensions);
 
         for (const filePath of files) {

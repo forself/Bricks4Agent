@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>High-Level Model Routing And Memory</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>High-Level Model Routing And Memory</h1>
+<h2>Goal</h2>
+<p>Define the control-plane role of the high-level model that fronts LINE or similar social channels.</p>
+<p>The high-level model is not a low-level agent. Its job is to:</p>
+<ul>
+<li>receive and reply to user messages</li>
+<li>decide whether the request is only conversation/query or a production task</li>
+<li>use broker-managed memory</li>
+<li>ask for confirmation before creating production work</li>
+<li>create a <code>BrokerTask</code> and a draft <code>Plan</code> handoff when production work is confirmed</li>
+</ul>
+<h2>Layered Memory</h2>
+<p>The mechanism uses three memory layers.</p>
+<h3>1. Conversation Memory</h3>
+<ul>
+<li>scope: per channel user thread</li>
+<li>current implementation source: <code>convlog:{userId}</code></li>
+<li>owner: high-level conversation gateway</li>
+<li>purpose: recent dialogue continuity, RAG over conversation history</li>
+</ul>
+<h3>2. User Memory</h3>
+<ul>
+<li>scope: per channel user profile</li>
+<li>document id: <code>hlm.profile.{channel}.{userId}</code></li>
+<li>purpose:</li>
+<li>last routing decision</li>
+<li>aggregate counts of conversation/query/production decisions</li>
+<li>last created task id / plan id</li>
+<li>pending draft presence</li>
+</ul>
+<h3>3. Task Memory</h3>
+<ul>
+<li>scope: per pending or confirmed production task</li>
+<li>draft document id: <code>hlm.draft.{channel}.{userId}</code></li>
+<li>handoff document id: <code>hlm.handoff.{taskId}</code></li>
+<li>purpose:</li>
+<li>store a pending production proposal awaiting confirmation</li>
+<li>store the task tree skeleton passed into the broker workflow layer</li>
+</ul>
+<h2>Managed Workspace Root</h2>
+<p>The high-level layer must define a broker-owned filesystem root for agent-accessible work.</p>
+<ul>
+<li>config key: <code>HighLevelCoordinator:AccessRoot</code></li>
+<li>current default: <code>%LOCALAPPDATA%\Bricks4Agent\managed-workspaces</code> on Windows</li>
+<li>relative paths are not allowed; the configured value must already be absolute after environment-variable expansion</li>
+<li>this is the canonical agent-access root for high-level production tasks</li>
+</ul>
+<p>Within that root, the current layout is:</p>
+<pre><code class="language-text">{AccessRoot}/
+  {channel}/
+    {userId}/
+      conversations/
+      documents/
+      projects/
+        {projectName}/
+</code></pre>
+<p>Rules:</p>
+<ul>
+<li>each channel user gets a dedicated user root</li>
+<li>conversation, document, and project artifacts are separated</li>
+<li>generated project work must live under <code>projects/{projectName}</code></li>
+<li>the broker/runtime descriptor carries these paths forward as managed paths and path scope</li>
+</ul>
+<p>Conversation memory is still primarily stored in broker-managed context documents.
+The <code>conversations/</code> folder exists as the canonical per-user conversation-area path for downstream artifact usage, exports, or future file-backed conversation assets.</p>
+<h2>Routing Gate</h2>
+<p>Incoming messages are routed into one of three modes.</p>
+<h3>Conversation</h3>
+<ul>
+<li>normal dialogue</li>
+<li>no external production workflow</li>
+<li>handled directly by the high-level model reply path</li>
+</ul>
+<h3>Query</h3>
+<ul>
+<li>search / explanation / RAG-assisted answer</li>
+<li>still no task tree</li>
+<li>handled directly by the high-level model reply path</li>
+</ul>
+<h3>Production</h3>
+<ul>
+<li>any request expected to create or mutate an external artifact</li>
+<li>examples:</li>
+<li>new or modified files</li>
+<li>new records</li>
+<li>generated prototype / draft deliverable</li>
+<li>structured work that must be handed to agent containers</li>
+</ul>
+<p>Production requests do not immediately create tasks.
+They first become a pending draft and require user confirmation.</p>
+<p>If the production request is project-like, the high-level layer must first collect a project name before confirmation.</p>
+<h2>Confirmation Flow</h2>
+<ol>
+<li>User sends a production-like request.</li>
+<li>High-level coordinator classifies it as <code>production</code>.</li>
+<li>Coordinator creates a pending draft in task memory.</li>
+<li>If the draft requires a project workspace:
+   - ask the user for a project name
+   - validate that the project name is not empty
+   - map it to a filesystem-safe project folder name
+   - confirm that the target project folder does not already exist under the user's <code>projects/</code> root</li>
+<li>Coordinator replies with a summary and asks for confirmation.</li>
+<li>User replies with confirm/cancel language.</li>
+<li>On confirm:
+   - create <code>BrokerTask</code>
+   - create draft <code>Plan</code>
+   - write handoff context document
+   - create the managed workspace directories under the configured access root
+   - clear pending draft</li>
+<li>On cancel:
+   - clear pending draft
+   - no task is created</li>
+</ol>
+<p>Project name uniqueness is enforced per user workspace.
+Two different users may have the same project name.
+The same user may not create two project folders with the same final folder name.</p>
+<h2>Handoff Artifact</h2>
+<p>The coordinator does not directly create executable low-level plan nodes.
+Instead it creates:</p>
+<ul>
+<li>a <code>BrokerTask</code></li>
+<li>a draft <code>Plan</code></li>
+<li>a <code>task tree skeleton</code> stored as handoff context</li>
+</ul>
+<p>That handoff contains:</p>
+<ul>
+<li>channel</li>
+<li>user id</li>
+<li>original request</li>
+<li>classified task type</li>
+<li>summary</li>
+<li>draft phases</li>
+<li>runtime hints</li>
+<li>memory references</li>
+<li>managed workspace paths</li>
+<li>project name / project root when applicable</li>
+</ul>
+<p>This keeps the high-level layer responsible for planning intent, while later planning/execution layers can refine executable nodes.</p>
+<h2>Current Implementation Boundary</h2>
+<p>This mechanism is intentionally limited to what the broker can own:</p>
+<ul>
+<li>routing</li>
+<li>memory</li>
+<li>confirmation state</li>
+<li>task creation</li>
+<li>plan creation</li>
+<li>handoff persistence</li>
+</ul>
+<p>It does not claim to solve:</p>
+<ul>
+<li>final low-level execution planning</li>
+<li>all future channel integrations</li>
+<li>all natural-language routing edge cases</li>
+</ul>
+<p>Those remain downstream concerns.</p>
+<h2>Broker Surface</h2>
+<p>The current broker entrypoints for the high-level LINE coordinator are:</p>
+<ul>
+<li><code>POST /api/v1/high-level/line/process</code></li>
+<li>body: <code>{ "user_id": "...", "message": "..." }</code></li>
+<li>behavior:<ul>
+<li>conversation/query: reply directly through the high-level path</li>
+<li>production: create pending draft and ask for confirmation</li>
+<li>confirm/cancel while draft exists: either create task/plan/handoff or clear the draft</li>
+</ul>
+</li>
+<li><code>POST /api/v1/high-level/line/profile</code></li>
+<li>body: <code>{ "user_id": "..." }</code></li>
+<li>returns the current high-level user profile memory</li>
+<li><code>POST /api/v1/high-level/line/draft</code></li>
+<li>body: <code>{ "user_id": "..." }</code></li>
+<li>returns the current pending production draft, if any</li>
+</ul>
+<p>The line conversation gateway remains the direct conversation/query executor.
+The high-level coordinator is the routing and confirmation layer above it.</p>
+<h2>Current Explicit Query Mediation</h2>
+<p>The high-level query layer now has one explicit broker-mediated live search path:</p>
+<ul>
+<li><code>?search &lt;keywords&gt;</code></li>
+</ul>
+<p>Current behavior:</p>
+<ul>
+<li>the command is parsed as an explicit query subcommand in the high-level command grammar</li>
+<li>the broker routes it through <code>HighLevelQueryToolMediator</code></li>
+<li>the mediator resolves <code>web.search.duckduckgo</code> from the tool-spec registry</li>
+<li>execution goes through the broker-owned dispatcher route, not through unrestricted model-side web access</li>
+<li>the reply is returned directly to the user with ranked URLs and engine citation</li>
+</ul>
+<p>Plain <code>?query</code> messages still remain in the high-level dialogue path.
+They do not automatically escalate into tool execution.</p>
+<h2>Current Query Tool Boundary</h2>
+<p>The high-level layer is still broker-mediated.
+It does not own unrestricted external access.</p>
+<p>Current documented query-tool state:</p>
+<ul>
+<li><code>web.search.duckduckgo</code></li>
+<li>active</li>
+<li>broker-registered</li>
+<li>backed by a broker-owned execution route</li>
+<li><code>web.search.google</code></li>
+<li>planned</li>
+<li>kept in the tool registry</li>
+<li>not currently activated because the observed public Google response path is not yet stable enough for a broker-owned parser</li>
+</ul>
+<p>This means high-level query expansion should currently assume DuckDuckGo is the broker-supported public web search path.</p>
+</main>
+</body>
+</html>

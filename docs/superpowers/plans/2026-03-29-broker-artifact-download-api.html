@@ -1,0 +1,738 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Broker Artifact Download API Implementation Plan</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Broker Artifact Download API Implementation Plan</h1>
+<blockquote>
+<p><strong>For agentic workers:</strong> REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (<code>- [ ]</code>) syntax for tracking.</p>
+</blockquote>
+<p><strong>Goal:</strong> Add a broker-owned signed artifact download API that can serve local artifacts through short-lived anonymous links and use that link as the LINE fallback path when Google Drive delivery fails.</p>
+<p><strong>Architecture:</strong> Keep artifact persistence where it already lives and add one narrow broker-side download service that (1) resolves the active public broker base URL from current sidecar/ngrok state, (2) signs and validates public artifact download URLs, and (3) streams a recorded artifact file through a new public endpoint. Update the artifact delivery service so Drive remains the primary path, while broker download links are only used for user-facing fallback when Drive upload fails and broker public download is available.</p>
+<p><strong>Tech Stack:</strong> C# /.NET 8 minimal API, existing broker services/endpoints, SQLite-backed <code>SharedContextEntry</code> artifact records, PowerShell sidecar/ngrok state, broker verify suite in <code>packages/csharp/broker/verify/Program.cs</code></p>
+<hr>
+<h2>File Map</h2>
+<h3>Create</h3>
+<ul>
+<li><code>packages/csharp/broker/Services/BrokerArtifactDownloadOptions.cs</code></li>
+<li>Dedicated configuration object for download signing secret, TTL, and optional sidecar public URL source settings.</li>
+<li><code>packages/csharp/broker/Services/SidecarPublicUrlResolver.cs</code></li>
+<li>Focused resolver that reads the current sidecar/ngrok public URL from known sidecar state and returns a safe broker base URL.</li>
+<li><code>packages/csharp/broker/Services/BrokerArtifactDownloadService.cs</code></li>
+<li>Generates signed URLs, validates signatures/expiry, sanitizes file names, resolves artifact files, and exposes a small download lookup model for the endpoint.</li>
+<li><code>packages/csharp/broker/Endpoints/ArtifactDownloadEndpoints.cs</code></li>
+<li>Public anonymous GET download endpoint using the service above.</li>
+</ul>
+<h3>Modify</h3>
+<ul>
+<li><code>packages/csharp/broker/Program.cs</code></li>
+<li>Register the new options/services and map the new endpoint.</li>
+<li><code>packages/csharp/broker/appsettings.json</code></li>
+<li>Add default <code>ArtifactDownload</code> section with non-secret placeholders and safe defaults.</li>
+<li><code>packages/csharp/broker/appsettings.Development.example.json</code></li>
+<li>Add development example values for the new settings.</li>
+<li><code>packages/csharp/broker/Services/LineArtifactDeliveryService.cs</code></li>
+<li>Inject the new broker download service and replace the current Drive-failure notification fallback with a broker download link when available, without exposing internal paths.</li>
+<li><code>packages/csharp/broker/verify/Program.cs</code></li>
+<li>Add TDD coverage for signed URL generation, download validation, expiry/signature/file-not-found cases, and notification path-leak prevention.</li>
+</ul>
+<h3>Reuse Without Structural Change</h3>
+<ul>
+<li><code>packages/csharp/broker/Services/HighLevelLineWorkspaceService.cs</code></li>
+<li>Reuse <code>ReadArtifactById</code> and existing artifact records as the source of truth.</li>
+<li><code>packages/csharp/broker/Services/HighLevelLineArtifactRecord.cs</code></li>
+<li>Reuse current persisted fields; do not add a new artifact table for v1.</li>
+</ul>
+<hr>
+<h3>Task 1: Add Download Options and Public URL Resolution</h3>
+<p><strong>Files:</strong>
+- Create: <code>packages/csharp/broker/Services/BrokerArtifactDownloadOptions.cs</code>
+- Create: <code>packages/csharp/broker/Services/SidecarPublicUrlResolver.cs</code>
+- Modify: <code>packages/csharp/broker/Program.cs</code>
+- Modify: <code>packages/csharp/broker/appsettings.json</code>
+- Modify: <code>packages/csharp/broker/appsettings.Development.example.json</code>
+- Test: <code>packages/csharp/broker/verify/Program.cs</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Write the failing verify tests for option defaults and ngrok URL resolution</strong></li>
+</ul>
+<p>Add verify coverage in <code>packages/csharp/broker/verify/Program.cs</code> for:</p>
+<pre><code class="language-csharp">var downloadOptions = new BrokerArtifactDownloadOptions();
+AssertTrue(downloadOptions.LinkTtlMinutes == 60, &quot;artifact download defaults to one-hour ttl&quot;);
+AssertTrue(downloadOptions.AllowRepeatedDownloads, &quot;artifact download defaults to repeated downloads&quot;);
+
+var sidecarStateRoot = Path.Combine(tempRoot, &quot;line-worker&quot;);
+Directory.CreateDirectory(sidecarStateRoot);
+var lastUrlPath = Path.Combine(sidecarStateRoot, &quot;.last-tunnel-url&quot;);
+await File.WriteAllTextAsync(lastUrlPath, &quot;https://example-sidecar.ngrok-free.dev/webhook/line/&quot;, new UTF8Encoding(false));
+
+var resolver = new SidecarPublicUrlResolver(
+    new BrokerArtifactDownloadOptions
+    {
+        SidecarLastTunnelUrlPath = lastUrlPath
+    });
+
+var publicBaseUrl = resolver.TryGetPublicBaseUrl();
+AssertTrue(publicBaseUrl == &quot;https://example-sidecar.ngrok-free.dev&quot;, &quot;sidecar public url resolver strips webhook suffix&quot;);
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 2: Run verify to confirm the new tests fail for the expected missing types</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet run --project packages/csharp/broker/verify/Broker.Verify.csproj
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>
+<p>FAIL because <code>BrokerArtifactDownloadOptions</code> and <code>SidecarPublicUrlResolver</code> do not exist yet</p>
+</li>
+<li>
+<p>[ ] <strong>Step 3: Add the minimal options class</strong></p>
+</li>
+</ul>
+<p>Create <code>packages/csharp/broker/Services/BrokerArtifactDownloadOptions.cs</code>:</p>
+<pre><code class="language-csharp">namespace Broker.Services;
+
+public sealed class BrokerArtifactDownloadOptions
+{
+    public string SigningSecret { get; set; } = string.Empty;
+    public int LinkTtlMinutes { get; set; } = 60;
+    public bool AllowRepeatedDownloads { get; set; } = true;
+    public string SidecarLastTunnelUrlPath { get; set; } = &quot;.\\packages\\csharp\\workers\\line-worker\\.last-tunnel-url&quot;;
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 4: Add the minimal sidecar public URL resolver</strong></li>
+</ul>
+<p>Create <code>packages/csharp/broker/Services/SidecarPublicUrlResolver.cs</code>:</p>
+<pre><code class="language-csharp">namespace Broker.Services;
+
+public sealed class SidecarPublicUrlResolver
+{
+    private readonly BrokerArtifactDownloadOptions _options;
+
+    public SidecarPublicUrlResolver(BrokerArtifactDownloadOptions options)
+    {
+        _options = options;
+    }
+
+    public string? TryGetPublicBaseUrl()
+    {
+        if (string.IsNullOrWhiteSpace(_options.SidecarLastTunnelUrlPath))
+            return null;
+
+        var path = Path.GetFullPath(Environment.ExpandEnvironmentVariables(_options.SidecarLastTunnelUrlPath));
+        if (!File.Exists(path))
+            return null;
+
+        var raw = File.ReadAllText(path, new UTF8Encoding(false)).Trim();
+        if (string.IsNullOrWhiteSpace(raw))
+            return null;
+
+        if (!Uri.TryCreate(raw, UriKind.Absolute, out var uri))
+            return null;
+
+        var builder = new UriBuilder(uri)
+        {
+            Path = string.Empty,
+            Query = string.Empty,
+            Fragment = string.Empty
+        };
+
+        return builder.Uri.ToString().TrimEnd('/');
+    }
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 5: Register the options and resolver in broker startup</strong></li>
+</ul>
+<p>Modify <code>packages/csharp/broker/Program.cs</code>:</p>
+<pre><code class="language-csharp">var artifactDownloadOptions = builder.Configuration.GetSection(&quot;ArtifactDownload&quot;).Get&lt;Broker.Services.BrokerArtifactDownloadOptions&gt;()
+    ?? new Broker.Services.BrokerArtifactDownloadOptions();
+builder.Services.AddSingleton(artifactDownloadOptions);
+builder.Services.AddSingleton&lt;Broker.Services.SidecarPublicUrlResolver&gt;();
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 6: Add configuration sections</strong></li>
+</ul>
+<p>Modify <code>packages/csharp/broker/appsettings.json</code>:</p>
+<pre><code class="language-json">&quot;ArtifactDownload&quot;: {
+  &quot;SigningSecret&quot;: &quot;&quot;,
+  &quot;LinkTtlMinutes&quot;: 60,
+  &quot;AllowRepeatedDownloads&quot;: true,
+  &quot;SidecarLastTunnelUrlPath&quot;: &quot;.\\packages\\csharp\\workers\\line-worker\\.last-tunnel-url&quot;
+},
+</code></pre>
+<p>Modify <code>packages/csharp/broker/appsettings.Development.example.json</code>:</p>
+<pre><code class="language-json">&quot;ArtifactDownload&quot;: {
+  &quot;SigningSecret&quot;: &quot;REPLACE_WITH_DEVELOPMENT_DOWNLOAD_SIGNING_SECRET&quot;,
+  &quot;LinkTtlMinutes&quot;: 60,
+  &quot;AllowRepeatedDownloads&quot;: true,
+  &quot;SidecarLastTunnelUrlPath&quot;: &quot;.\\packages\\csharp\\workers\\line-worker\\.last-tunnel-url&quot;
+},
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 7: Run verify to confirm the resolver tests pass</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet run --project packages/csharp/broker/verify/Broker.Verify.csproj
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>PASS for the new option default and public URL resolver assertions</li>
+<li>
+<p>overall suite still fails later because the signed download service and endpoint do not exist yet</p>
+</li>
+<li>
+<p>[ ] <strong>Step 8: Commit</strong></p>
+</li>
+</ul>
+<pre><code class="language-powershell">git add packages/csharp/broker/Services/BrokerArtifactDownloadOptions.cs packages/csharp/broker/Services/SidecarPublicUrlResolver.cs packages/csharp/broker/Program.cs packages/csharp/broker/appsettings.json packages/csharp/broker/appsettings.Development.example.json packages/csharp/broker/verify/Program.cs
+git commit -m &quot;feat: add broker artifact download config and public url resolver&quot;
+</code></pre>
+<h3>Task 2: Implement Signed Artifact Download Service</h3>
+<p><strong>Files:</strong>
+- Create: <code>packages/csharp/broker/Services/BrokerArtifactDownloadService.cs</code>
+- Modify: <code>packages/csharp/broker/Program.cs</code>
+- Test: <code>packages/csharp/broker/verify/Program.cs</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Write the failing verify tests for signed URL generation and validation</strong></li>
+</ul>
+<p>Add verify coverage in <code>packages/csharp/broker/verify/Program.cs</code> for:</p>
+<pre><code class="language-csharp">var artifactFilePath = Path.Combine(tempRoot, &quot;artifact.txt&quot;);
+await File.WriteAllTextAsync(artifactFilePath, &quot;download-bytes&quot;, new UTF8Encoding(false));
+
+var workspace = new HighLevelLineWorkspaceService(coordinatorDb, new HighLevelCoordinatorOptions
+{
+    AccessRoot = tempRoot
+});
+
+var recorded = workspace.RecordArtifact(new HighLevelLineArtifactRecord
+{
+    UserId = &quot;download-user&quot;,
+    FileName = &quot;artifact.txt&quot;,
+    Format = &quot;txt&quot;,
+    FilePath = artifactFilePath,
+    DocumentsRoot = tempRoot,
+    OverallStatus = &quot;completed&quot;,
+    Success = true
+});
+
+var service = new BrokerArtifactDownloadService(
+    workspace,
+    new SidecarPublicUrlResolver(new BrokerArtifactDownloadOptions
+    {
+        SigningSecret = &quot;verify-signing-secret&quot;,
+        LinkTtlMinutes = 60,
+        SidecarLastTunnelUrlPath = lastUrlPath
+    }),
+    new BrokerArtifactDownloadOptions
+    {
+        SigningSecret = &quot;verify-signing-secret&quot;,
+        LinkTtlMinutes = 60
+    });
+
+var signed = service.CreateSignedDownloadUrl(recorded.ArtifactId);
+AssertTrue(signed is not null &amp;&amp; signed.Contains(&quot;/api/v1/artifacts/download/&quot;, StringComparison.Ordinal), &quot;download service creates signed artifact url&quot;);
+
+var resolved = service.ValidateAndResolve(recorded.ArtifactId, signedExp, signedSig, DateTimeOffset.UtcNow);
+AssertTrue(resolved?.Artifact.ArtifactId == recorded.ArtifactId, &quot;download service validates signed artifact request&quot;);
+AssertTrue(!resolved!.FilePath.Contains(&quot;managed-workspaces&quot;, StringComparison.OrdinalIgnoreCase), &quot;resolved download model does not expose internal path to caller&quot;);
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 2: Run verify to confirm the tests fail because the service is missing</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet run --project packages/csharp/broker/verify/Broker.Verify.csproj
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>
+<p>FAIL because <code>BrokerArtifactDownloadService</code> and its methods do not exist yet</p>
+</li>
+<li>
+<p>[ ] <strong>Step 3: Implement the minimal download service</strong></p>
+</li>
+</ul>
+<p>Create <code>packages/csharp/broker/Services/BrokerArtifactDownloadService.cs</code>:</p>
+<pre><code class="language-csharp">using System.Security.Cryptography;
+using System.Text;
+
+namespace Broker.Services;
+
+public sealed class BrokerArtifactDownloadService
+{
+    private readonly HighLevelLineWorkspaceService _workspace;
+    private readonly SidecarPublicUrlResolver _publicUrlResolver;
+    private readonly BrokerArtifactDownloadOptions _options;
+
+    public BrokerArtifactDownloadService(
+        HighLevelLineWorkspaceService workspace,
+        SidecarPublicUrlResolver publicUrlResolver,
+        BrokerArtifactDownloadOptions options)
+    {
+        _workspace = workspace;
+        _publicUrlResolver = publicUrlResolver;
+        _options = options;
+    }
+
+    public string? CreateSignedDownloadUrl(string artifactId, DateTimeOffset? now = null)
+    {
+        if (string.IsNullOrWhiteSpace(_options.SigningSecret))
+            return null;
+
+        var artifact = _workspace.ReadArtifactById(artifactId);
+        if (artifact == null || string.IsNullOrWhiteSpace(artifact.FilePath) || !File.Exists(artifact.FilePath))
+            return null;
+
+        var publicBaseUrl = _publicUrlResolver.TryGetPublicBaseUrl();
+        if (string.IsNullOrWhiteSpace(publicBaseUrl))
+            return null;
+
+        var issuedAt = now ?? DateTimeOffset.UtcNow;
+        var exp = issuedAt.AddMinutes(_options.LinkTtlMinutes &lt;= 0 ? 60 : _options.LinkTtlMinutes).ToUnixTimeSeconds();
+        var sig = ComputeSignature(artifact.ArtifactId, artifact.FileName, exp);
+        return $&quot;{publicBaseUrl}/api/v1/artifacts/download/{Uri.EscapeDataString(artifact.ArtifactId)}?exp={exp}&amp;sig={Uri.EscapeDataString(sig)}&quot;;
+    }
+
+    public BrokerArtifactDownloadResolution? ValidateAndResolve(string artifactId, long exp, string sig, DateTimeOffset now)
+    {
+        if (now.ToUnixTimeSeconds() &gt; exp)
+            return BrokerArtifactDownloadResolution.Expired();
+
+        var artifact = _workspace.ReadArtifactById(artifactId);
+        if (artifact == null || string.IsNullOrWhiteSpace(artifact.FilePath) || !File.Exists(artifact.FilePath))
+            return BrokerArtifactDownloadResolution.NotFound();
+
+        var expected = ComputeSignature(artifact.ArtifactId, artifact.FileName, exp);
+        if (!CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(expected), Encoding.UTF8.GetBytes(sig ?? string.Empty)))
+            return BrokerArtifactDownloadResolution.Invalid();
+
+        return BrokerArtifactDownloadResolution.Success(
+            artifact,
+            artifact.FilePath,
+            SanitizeFileName(artifact.FileName));
+    }
+
+    private string ComputeSignature(string artifactId, string fileName, long exp)
+    {
+        using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(_options.SigningSecret));
+        var payload = $&quot;{artifactId}\n{fileName}\n{exp}&quot;;
+        return Convert.ToHexString(hmac.ComputeHash(Encoding.UTF8.GetBytes(payload))).ToLowerInvariant();
+    }
+
+    private static string SanitizeFileName(string fileName)
+    {
+        var safe = string.IsNullOrWhiteSpace(fileName) ? &quot;artifact.bin&quot; : fileName.Trim();
+        foreach (var invalid in Path.GetInvalidFileNameChars())
+            safe = safe.Replace(invalid, '_');
+        return safe;
+    }
+}
+
+public sealed class BrokerArtifactDownloadResolution
+{
+    public bool IsValid { get; init; }
+    public bool IsExpired { get; init; }
+    public bool IsMissing { get; init; }
+    public HighLevelLineArtifactRecord? Artifact { get; init; }
+    public string FilePath { get; init; } = string.Empty;
+    public string SafeFileName { get; init; } = string.Empty;
+
+    public static BrokerArtifactDownloadResolution Invalid() =&gt; new();
+    public static BrokerArtifactDownloadResolution Expired() =&gt; new() { IsExpired = true };
+    public static BrokerArtifactDownloadResolution NotFound() =&gt; new() { IsMissing = true };
+    public static BrokerArtifactDownloadResolution Success(HighLevelLineArtifactRecord artifact, string filePath, string safeFileName)
+        =&gt; new() { IsValid = true, Artifact = artifact, FilePath = filePath, SafeFileName = safeFileName };
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 4: Register the new service</strong></li>
+</ul>
+<p>Modify <code>packages/csharp/broker/Program.cs</code>:</p>
+<pre><code class="language-csharp">builder.Services.AddSingleton&lt;Broker.Services.BrokerArtifactDownloadService&gt;();
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 5: Add verify coverage for invalid signature, expiry, and missing file</strong></li>
+</ul>
+<p>Extend <code>packages/csharp/broker/verify/Program.cs</code> with assertions like:</p>
+<pre><code class="language-csharp">AssertTrue(service.ValidateAndResolve(recorded.ArtifactId, signedExp, &quot;bad-signature&quot;, DateTimeOffset.UtcNow)!.IsValid == false, &quot;download service rejects invalid signature&quot;);
+AssertTrue(service.ValidateAndResolve(recorded.ArtifactId, signedExp, signedSig, DateTimeOffset.FromUnixTimeSeconds(signedExp + 1))!.IsExpired, &quot;download service rejects expired link&quot;);
+File.Delete(artifactFilePath);
+AssertTrue(service.ValidateAndResolve(recorded.ArtifactId, signedExp, signedSig, DateTimeOffset.UtcNow)!.IsMissing, &quot;download service rejects missing artifact file&quot;);
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 6: Run verify to confirm service-level tests pass</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet run --project packages/csharp/broker/verify/Broker.Verify.csproj
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>PASS for URL generation and validation assertions</li>
+<li>
+<p>overall suite still fails later because the public endpoint and notification fallback are not wired yet</p>
+</li>
+<li>
+<p>[ ] <strong>Step 7: Commit</strong></p>
+</li>
+</ul>
+<pre><code class="language-powershell">git add packages/csharp/broker/Services/BrokerArtifactDownloadService.cs packages/csharp/broker/Program.cs packages/csharp/broker/verify/Program.cs
+git commit -m &quot;feat: add signed broker artifact download service&quot;
+</code></pre>
+<h3>Task 3: Expose Public Download Endpoint</h3>
+<p><strong>Files:</strong>
+- Create: <code>packages/csharp/broker/Endpoints/ArtifactDownloadEndpoints.cs</code>
+- Modify: <code>packages/csharp/broker/Program.cs</code>
+- Test: <code>packages/csharp/broker/verify/Program.cs</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Write the failing endpoint tests</strong></li>
+</ul>
+<p>Add endpoint-level verify coverage in <code>packages/csharp/broker/verify/Program.cs</code> using the existing in-process broker host pattern:</p>
+<pre><code class="language-csharp">using var response = await httpClient.GetAsync($&quot;/api/v1/artifacts/download/{recorded.ArtifactId}?exp={signedExp}&amp;sig={signedSig}&quot;);
+AssertTrue(response.IsSuccessStatusCode, &quot;artifact download endpoint serves signed request&quot;);
+AssertTrue(response.Content.Headers.ContentDisposition?.FileName?.Contains(&quot;artifact.txt&quot;, StringComparison.OrdinalIgnoreCase) == true, &quot;artifact download endpoint uses safe file name&quot;);
+AssertTrue((await response.Content.ReadAsStringAsync()) == &quot;download-bytes&quot;, &quot;artifact download endpoint returns artifact bytes&quot;);
+</code></pre>
+<p>Add failure assertions:</p>
+<pre><code class="language-csharp">AssertTrue((int)(await httpClient.GetAsync($&quot;/api/v1/artifacts/download/{recorded.ArtifactId}?exp={signedExp}&amp;sig=bad&quot;)).StatusCode == 403, &quot;artifact download endpoint rejects invalid signature&quot;);
+AssertTrue((int)(await httpClient.GetAsync($&quot;/api/v1/artifacts/download/{recorded.ArtifactId}?exp={expiredExp}&amp;sig={expiredSig}&quot;)).StatusCode == 410, &quot;artifact download endpoint rejects expired link&quot;);
+AssertTrue((int)(await httpClient.GetAsync($&quot;/api/v1/artifacts/download/missing-artifact?exp={signedExp}&amp;sig={signedSig}&quot;)).StatusCode == 404, &quot;artifact download endpoint rejects missing artifact&quot;);
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 2: Run verify to confirm the endpoint tests fail because the route is missing</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet run --project packages/csharp/broker/verify/Broker.Verify.csproj
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>
+<p>FAIL with 404 or missing route assertions for <code>/api/v1/artifacts/download/...</code></p>
+</li>
+<li>
+<p>[ ] <strong>Step 3: Add the public endpoint</strong></p>
+</li>
+</ul>
+<p>Create <code>packages/csharp/broker/Endpoints/ArtifactDownloadEndpoints.cs</code>:</p>
+<pre><code class="language-csharp">namespace Broker.Endpoints;
+
+public static class ArtifactDownloadEndpoints
+{
+    public static void Map(RouteGroupBuilder group)
+    {
+        group.MapGet(&quot;/artifacts/download/{artifactId}&quot;, async (
+            string artifactId,
+            HttpContext ctx,
+            BrokerArtifactDownloadService service,
+            CancellationToken cancellationToken) =&gt;
+        {
+            var expRaw = ctx.Request.Query[&quot;exp&quot;].ToString();
+            var sig = ctx.Request.Query[&quot;sig&quot;].ToString();
+            if (!long.TryParse(expRaw, out var exp) || string.IsNullOrWhiteSpace(sig))
+                return Results.StatusCode(StatusCodes.Status403Forbidden);
+
+            var resolved = service.ValidateAndResolve(artifactId, exp, sig, DateTimeOffset.UtcNow);
+            if (resolved == null || (!resolved.IsValid &amp;&amp; !resolved.IsExpired &amp;&amp; !resolved.IsMissing))
+                return Results.StatusCode(StatusCodes.Status403Forbidden);
+            if (resolved.IsExpired)
+                return Results.StatusCode(StatusCodes.Status410Gone);
+            if (resolved.IsMissing || string.IsNullOrWhiteSpace(resolved.FilePath))
+                return Results.NotFound();
+
+            var stream = File.OpenRead(resolved.FilePath);
+            return Results.File(
+                stream,
+                contentType: &quot;application/octet-stream&quot;,
+                fileDownloadName: resolved.SafeFileName,
+                enableRangeProcessing: false);
+        });
+    }
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 4: Map the endpoint in startup</strong></li>
+</ul>
+<p>Modify <code>packages/csharp/broker/Program.cs</code> near other API mappings:</p>
+<pre><code class="language-csharp">var api = app.MapGroup(&quot;/api/v1&quot;);
+ArtifactDownloadEndpoints.Map(api);
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 5: Run verify to confirm endpoint tests pass</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet run --project packages/csharp/broker/verify/Broker.Verify.csproj
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>PASS for valid download, invalid signature, expired link, and missing artifact endpoint assertions</li>
+<li>
+<p>suite may still fail on notification fallback until Task 4 is complete</p>
+</li>
+<li>
+<p>[ ] <strong>Step 6: Commit</strong></p>
+</li>
+</ul>
+<pre><code class="language-powershell">git add packages/csharp/broker/Endpoints/ArtifactDownloadEndpoints.cs packages/csharp/broker/Program.cs packages/csharp/broker/verify/Program.cs
+git commit -m &quot;feat: expose signed broker artifact download endpoint&quot;
+</code></pre>
+<h3>Task 4: Switch Drive Failure Fallback to Broker Download Links</h3>
+<p><strong>Files:</strong>
+- Modify: <code>packages/csharp/broker/Services/LineArtifactDeliveryService.cs</code>
+- Modify: <code>packages/csharp/broker/verify/Program.cs</code>
+- Test: <code>packages/csharp/broker/verify/Program.cs</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Write the failing tests for notification fallback behavior and path leak prevention</strong></li>
+</ul>
+<p>Add verify coverage in <code>packages/csharp/broker/verify/Program.cs</code> for:</p>
+<pre><code class="language-csharp">var failedDriveResult = new GoogleDriveShareResult
+{
+    Success = false,
+    Message = &quot;google_drive_upload_failed&quot;
+};
+
+var fallbackBody = LineArtifactDeliveryService.BuildNotificationBody(
+    &quot;artifact.txt&quot;,
+    artifactFilePath,
+    failedDriveResult,
+    &quot;https://example-sidecar.ngrok-free.dev/api/v1/artifacts/download/artifact_verify?exp=111&amp;sig=abc&quot;);
+
+AssertTrue(fallbackBody.Contains(&quot;https://example-sidecar.ngrok-free.dev/api/v1/artifacts/download/&quot;, StringComparison.Ordinal), &quot;notification fallback uses broker link when available&quot;);
+AssertTrue(!fallbackBody.Contains(artifactFilePath, StringComparison.OrdinalIgnoreCase), &quot;notification fallback never exposes internal path&quot;);
+
+var degradedBody = LineArtifactDeliveryService.BuildNotificationBody(
+    &quot;artifact.txt&quot;,
+    artifactFilePath,
+    failedDriveResult,
+    null);
+
+AssertTrue(!degradedBody.Contains(artifactFilePath, StringComparison.OrdinalIgnoreCase), &quot;degraded fallback also avoids exposing internal path&quot;);
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 2: Run verify to confirm the tests fail against the current notification builder</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet run --project packages/csharp/broker/verify/Broker.Verify.csproj
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>
+<p>FAIL because the current <code>BuildNotificationBody</code> still emits the local file path and does not accept a broker URL parameter</p>
+</li>
+<li>
+<p>[ ] <strong>Step 3: Inject the broker download service into artifact delivery</strong></p>
+</li>
+</ul>
+<p>Modify the constructor in <code>packages/csharp/broker/Services/LineArtifactDeliveryService.cs</code>:</p>
+<pre><code class="language-csharp">private readonly BrokerArtifactDownloadService _brokerArtifactDownloadService;
+
+public LineArtifactDeliveryService(
+    HighLevelLineWorkspaceService workspaceService,
+    GoogleDriveShareService googleDriveShareService,
+    BrokerArtifactDownloadService brokerArtifactDownloadService,
+    ILogger&lt;LineArtifactDeliveryService&gt; logger)
+{
+    _workspaceService = workspaceService;
+    _googleDriveShareService = googleDriveShareService;
+    _brokerArtifactDownloadService = brokerArtifactDownloadService;
+    _logger = logger;
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 4: Update notification body builder so it never exposes internal paths</strong></li>
+</ul>
+<p>Modify <code>packages/csharp/broker/Services/LineArtifactDeliveryService.cs</code>:</p>
+<pre><code class="language-csharp">internal static string BuildNotificationBody(
+    string fileName,
+    string filePath,
+    GoogleDriveShareResult? driveResult,
+    string? brokerDownloadUrl = null)
+{
+    var lines = new List&lt;string&gt;();
+
+    if (driveResult?.Success == true)
+    {
+        lines.Add(&quot;檔案已完成並上傳到 Google Drive。&quot;);
+        lines.Add(string.Empty);
+        lines.Add($&quot;檔名：{fileName}&quot;);
+        if (!string.IsNullOrWhiteSpace(driveResult.DownloadLink))
+        {
+            lines.Add(string.Empty);
+            lines.Add(&quot;下載連結：&quot;);
+            lines.Add(driveResult.DownloadLink);
+        }
+        if (!string.IsNullOrWhiteSpace(driveResult.WebViewLink))
+        {
+            lines.Add(string.Empty);
+            lines.Add(&quot;預覽連結：&quot;);
+            lines.Add(driveResult.WebViewLink);
+        }
+        return string.Join(Environment.NewLine, lines);
+    }
+
+    lines.Add(&quot;檔案已完成。&quot;);
+    lines.Add(string.Empty);
+    lines.Add($&quot;檔名：{fileName}&quot;);
+
+    if (!string.IsNullOrWhiteSpace(brokerDownloadUrl))
+    {
+        lines.Add(string.Empty);
+        lines.Add(&quot;下載連結：&quot;);
+        lines.Add(brokerDownloadUrl);
+        return string.Join(Environment.NewLine, lines);
+    }
+
+    lines.Add(string.Empty);
+    lines.Add(&quot;雲端下載連結暫時不可用，請稍後由管理員協助重新交付。&quot;);
+    return string.Join(Environment.NewLine, lines);
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 5: Wire broker fallback URL creation into both delivery paths</strong></li>
+</ul>
+<p>Update both <code>GenerateAndDeliverAsync</code> and <code>DeliverExistingFileAsync</code> in <code>packages/csharp/broker/Services/LineArtifactDeliveryService.cs</code>:</p>
+<pre><code class="language-csharp">var artifact = _workspaceService.RecordArtifact(new HighLevelLineArtifactRecord
+{
+    // existing fields
+});
+
+var brokerDownloadUrl = driveOk
+    ? null
+    : _brokerArtifactDownloadService.CreateSignedDownloadUrl(artifact.ArtifactId);
+
+if (request.SendLineNotification)
+{
+    notification = _workspaceService.QueueLineNotification(
+        request.UserId,
+        string.IsNullOrWhiteSpace(request.NotificationTitle) ? &quot;檔案已完成&quot; : request.NotificationTitle.Trim(),
+        BuildNotificationBody(fileName, filePath, driveResult, brokerDownloadUrl));
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 6: Add a verify scenario that simulates Drive failure plus broker URL availability</strong></li>
+</ul>
+<p>Add a focused verify case in <code>packages/csharp/broker/verify/Program.cs</code> with a fake failing <code>GoogleDriveShareService</code> input path or direct notification-body assertion, then verify:</p>
+<pre><code class="language-csharp">AssertTrue(fallbackNotification.Body.Contains(&quot;/api/v1/artifacts/download/&quot;, StringComparison.Ordinal), &quot;drive failure plus broker public url available produces broker download fallback content&quot;);
+AssertTrue(!fallbackNotification.Body.Contains(&quot;C:\\&quot;, StringComparison.OrdinalIgnoreCase), &quot;fallback notification body does not leak internal path&quot;);
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 7: Run verify to confirm fallback behavior passes</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet run --project packages/csharp/broker/verify/Broker.Verify.csproj
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>
+<p>PASS for broker-link fallback and path-leak assertions</p>
+</li>
+<li>
+<p>[ ] <strong>Step 8: Commit</strong></p>
+</li>
+</ul>
+<pre><code class="language-powershell">git add packages/csharp/broker/Services/LineArtifactDeliveryService.cs packages/csharp/broker/verify/Program.cs
+git commit -m &quot;feat: use broker download links for drive fallback delivery&quot;
+</code></pre>
+<h3>Task 5: Final Verification and Documentation Refresh</h3>
+<p><strong>Files:</strong>
+- Modify: <code>docs/designs/GoogleDriveDelivery.md</code>
+- Modify: <code>docs/manuals/line-sidecar-runbook.md</code>
+- Modify: <code>docs/manuals/line-sidecar-runbook.zh-TW.md</code>
+- Test: <code>packages/csharp/broker/verify/Program.cs</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Update design and runbook docs to reflect the new fallback path</strong></li>
+</ul>
+<p>Add concise updates:</p>
+<p><code>docs/designs/GoogleDriveDelivery.md</code></p>
+<pre><code class="language-md">- broker-signed artifact download URLs now exist as a fallback when Drive upload fails
+- first version uses active sidecar ngrok public URL
+- signed links are short-lived and must not expose internal paths
+</code></pre>
+<p><code>docs/manuals/line-sidecar-runbook.md</code></p>
+<pre><code class="language-md">- if Google Drive upload fails but the active ngrok public URL is available, broker can now issue a signed first-party artifact download link
+- user-facing fallback messages must not expose local paths
+</code></pre>
+<p><code>docs/manuals/line-sidecar-runbook.zh-TW.md</code></p>
+<pre><code class="language-md">- 若 Google Drive 上傳失敗，但目前 ngrok 公開網址可用，broker 會改提供短效簽名下載連結
+- 使用者可見訊息不得暴露本機內部路徑
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 2: Run the required verification commands</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet build packages/csharp/ControlPlane.slnx -c Release --disable-build-servers -nodeReuse:false
+dotnet run --project packages/csharp/broker/verify/Broker.Verify.csproj
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>build succeeds with <code>0</code> errors</li>
+<li>
+<p>broker verify passes, including the new signed download and path-leak checks</p>
+</li>
+<li>
+<p>[ ] <strong>Step 3: Check git state before claiming completion</strong></p>
+</li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">git status --short
+git log --oneline -n 5
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>only intended implementation/doc files are modified or committed</li>
+<li>
+<p>no accidental staging of unrelated untracked files</p>
+</li>
+<li>
+<p>[ ] <strong>Step 4: Commit</strong></p>
+</li>
+</ul>
+<pre><code class="language-powershell">git add docs/designs/GoogleDriveDelivery.md docs/manuals/line-sidecar-runbook.md docs/manuals/line-sidecar-runbook.zh-TW.md
+git commit -m &quot;docs: document broker artifact download fallback&quot;
+</code></pre>
+<h2>Self-Review</h2>
+<h3>Spec coverage</h3>
+<ul>
+<li>Signed anonymous URL: covered in Task 2 and Task 3</li>
+<li>One-hour expiry and repeat downloads: covered in Task 1 and Task 2</li>
+<li>ngrok-based public base URL: covered in Task 1</li>
+<li>Only use broker link when Drive fails: covered in Task 4</li>
+<li>Never expose internal paths: covered in Task 4 and Task 5</li>
+</ul>
+<h3>Placeholder scan</h3>
+<ul>
+<li>No <code>TBD</code></li>
+<li>No <code>TODO</code></li>
+<li>No implicit “write tests later” steps</li>
+<li>Every code-touching step includes concrete file paths and example code</li>
+</ul>
+<h3>Type consistency</h3>
+<ul>
+<li><code>BrokerArtifactDownloadOptions</code>, <code>SidecarPublicUrlResolver</code>, <code>BrokerArtifactDownloadService</code>, and <code>BrokerArtifactDownloadResolution</code> are defined before later tasks reference them</li>
+<li>Endpoint uses <code>ValidateAndResolve</code> from the download service</li>
+<li>Notification fallback calls the updated <code>BuildNotificationBody(..., brokerDownloadUrl)</code></li>
+</ul>
+<h2>Execution Handoff</h2>
+<p>Plan complete and saved to <code>docs/superpowers/plans/2026-03-29-broker-artifact-download-api.md</code>. Two execution options:</p>
+<p><strong>1. Subagent-Driven (recommended)</strong> - I dispatch a fresh subagent per task, review between tasks, fast iteration</p>
+<p><strong>2. Inline Execution</strong> - Execute tasks in this session using executing-plans, batch execution with checkpoints</p>
+<p><strong>Which approach?</strong></p>
+</main>
+</body>
+</html>

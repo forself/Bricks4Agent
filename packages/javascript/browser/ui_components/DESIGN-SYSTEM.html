@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bricks4Agent 設計系統 — 設計說明</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Bricks4Agent 設計系統 — 設計說明</h1>
+<p>本文說明色彩／樣式 token 的架構、元件如何消費 token、富文本樣式白名單、以及 Theme Studio 的自舉設計。
+使用方式(啟動 Theme Studio、套用客製產出)見 <a href="THEME-USAGE.html">THEME-USAGE.md</a>。</p>
+<h2>1. 核心原則</h2>
+<ol>
+<li><strong>零 runtime 依賴</strong>:元件為純 Vanilla JS class,不 import 任何外部套件。</li>
+<li><strong>樣式一律走 token</strong>:顏色/圓角/陰影/字級/字體/過渡全部用 <code>var(--cl-*)</code> CSS 變數;元件內用 <code>element.style.cssText</code>(CSSOM,不受 CSP <code>style-src</code> 限制)。</li>
+<li><strong>嚴格 CSP 相容</strong>:<code>script-src 'self'; style-src 'self'</code>,不需 <code>unsafe-inline</code>/<code>unsafe-eval</code>(無 inline 事件屬性、無 eval、無 inline <code>&lt;style&gt;</code>)。</li>
+<li><strong>換膚集中</strong>:淺/深色由文件根 <code>[data-theme="dark"]</code> 切換,元件不寫 media query。</li>
+</ol>
+<h2>2. 三層色彩 token 架構(primitive → semantic → override)</h2>
+<pre><code>palette.css   (primitive)   --cl-&lt;hue&gt;-&lt;step&gt;   例 --cl-blue-500:#2196F3
+      │  ← theme.css 開頭 @import './palette.css'
+theme.css     (semantic)    --cl-primary: var(--cl-blue-500)   (light)
+      │                      --cl-primary: var(--cl-blue-300)   ([data-theme=dark])
+      ▼
+theme.custom.css (override)  :root{ --cl-primary: … }   ← Theme Studio 產出,最後載入覆蓋
+</code></pre>
+<ul>
+<li><strong>palette.css</strong>(<code>ui_components/palette.css</code>,<strong>自動生成,勿手改</strong>):Material 級 16 色相 × 50→900(共 160)+ 黑/白/default + <code>transparent</code> + <code>.opacity-*</code> 工具階。提供 <code>--cl-&lt;hue&gt;-&lt;step&gt;</code> <strong>token</strong>(全站可用)與 <code>.rt-color-*</code> <strong>class</strong>(文字色/富文本)。來源=<code>editor/richtext-palette.js</code>,重生:<code>node editor/gen-palette-css.mjs</code>。</li>
+<li><strong>theme.css</strong>(<code>ui_components/theme.css</code>):語意層。品牌/語意色、字級、圓角、陰影、字體、過渡;<code>@import './palette.css'</code> 後,語意色以 <code>var(--cl-&lt;hue&gt;-&lt;step&gt;)</code> 引用色階(單一色彩來源);含 <code>[data-theme="dark"]</code> 覆蓋。</li>
+<li><strong>theme.custom.css</strong>(客製產出):由 Theme Studio 或 <code>tools/theme-studio/gen-custom-css.mjs</code> 產生,只含有調整的 token,載於 theme.css <strong>之後</strong>覆蓋。見 <a href="THEME-USAGE.html">THEME-USAGE.md</a>。</li>
+</ul>
+<blockquote>
+<p>為何調 token 能即時重繪:元件全走 <code>var(--cl-*)</code>,只要 <code>document.documentElement.style.setProperty('--cl-primary', v)</code>,所有已渲染元件立即套用,無需重建。這是 Theme Studio WYSIWYG 的基礎。</p>
+</blockquote>
+<h2>3. 富文本樣式(class 化,禁自由 inline CSS)</h2>
+<p>富文本(WebTextEditor)樣式一律以 class 表達,不存 inline style:
+- <strong>色彩</strong>:有限調色盤;選色可用光譜,但<strong>存檔吸附到最相近的顏色 class</strong>(<code>richtext-palette.js</code> 的 <code>nearestColorClass</code>)。
+- <strong>class 集合</strong>:<code>rt-color-&lt;hue&gt;-&lt;step&gt;</code> / <code>rt-color-{default,black,white,transparent}</code> / <code>rt-size-*</code> / <code>rt-align-*</code> / <code>rt-lh-*</code> / <code>.opacity-*</code>(定義於 palette.css + <code>editor/richtext.css</code>)。
+- <strong>normalizer</strong>:編輯器 <code>_normalizeStyles()</code> 把 execCommand 產生的 inline style 即時轉為 rt-<em> class 並移除 style。
+- </em><em>清洗</em><em>:<code>utils/security.js</code> 的 <code>sanitizeHTML()</code> 用</em><em>白名單</em>*(標籤/屬性/class 三層)+ 移除所有 style + URL 協定白名單;<code>ALLOWED_CLASS_PATTERN</code> 為 class 白名單單一事實來源。政策=禁指令碼/跳轉/非同源引用,實作以白名單(非黑名單,防 mXSS)。</p>
+<h2>4. 自舉(dogfooding)</h2>
+<p><code>tools/theme-studio</code> 的介面<strong>完全用本庫元件搭成</strong>。這是覆蓋度的驗證:搭不出來就是缺必要元件。開發 Theme Studio 時即以此補上了 <code>form/Slider</code> 與 <code>form/TextArea</code> 兩個基礎控制項。</p>
+<h2>5. 元件契約(摘要)</h2>
+<p><code>new X(options)</code> → <code>.mount(container)</code> → <code>.destroy()</code>;具值元件有 <code>getValue/setValue/setDisabled/clear</code>。內部狀態走 <code>utils/component-state.js</code> 的不可變狀態機。完整調用約定見 <a href="../../../../AGENT-UI-GUIDE.html">/AGENT-UI-GUIDE.md</a>。</p>
+<h2>6. 權威來源與工具</h2>
+<table>
+<thead>
+<tr>
+<th>項目</th>
+<th>位置</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>元件權威清單</td>
+<td><code>metadata/component-catalog.json</code>(112)</td>
+</tr>
+<tr>
+<td>色彩來源資料</td>
+<td><code>editor/richtext-palette.js</code>(MATERIAL 色階 + 吸附 + class 白名單)</td>
+</tr>
+<tr>
+<td>色階 CSS 生成</td>
+<td><code>editor/gen-palette-css.mjs</code> → <code>palette.css</code></td>
+</tr>
+<tr>
+<td>客製樣式生成</td>
+<td><code>tools/theme-studio/gen-custom-css.mjs</code> → <code>theme.custom.css</code></td>
+</tr>
+<tr>
+<td>樣式稽核</td>
+<td><code>npm run audit:ui-styles</code>(theme.css/palette.css/richtext-palette.js 為色彩來源,已排除)</td>
+</tr>
+</tbody>
+</table>
+</main>
+</body>
+</html>

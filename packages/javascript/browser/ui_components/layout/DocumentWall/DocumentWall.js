@@ -6,6 +6,8 @@
 import { DocumentCard } from './DocumentCard.js';
 import { ModalPanel } from '../Panel/index.js';
 import SimpleZip from '../../utils/SimpleZip.js';
+import { nextUid } from '../../utils/uid.js';
+import { Icon } from '../../common/Icon/index.js';
 
 import Locale from '../../i18n/index.js';
 export class DocumentWall {
@@ -26,11 +28,14 @@ export class DocumentWall {
             onDescription: null,
             onEdit: null,
             onDelete: null,
+            onBatchDownload: null,
             ...options
         };
 
         this.documents = [...this.options.documents];
         this.selectedIds = new Set();
+        this._cards = [];
+        this._downloadIcon = null;
         this.element = this._createElement();
     }
 
@@ -55,7 +60,6 @@ export class DocumentWall {
             `;
 
             this.downloadBtn = document.createElement('button');
-            this.downloadBtn.textContent = Locale.t('documentWall.downloadSelected', { count: 0 });
             this.downloadBtn.style.cssText = `
                 padding: 8px 16px;
                 border: 1px solid var(--cl-border);
@@ -70,15 +74,13 @@ export class DocumentWall {
                 opacity: 0.6;
                 transition: all var(--cl-transition);
             `;
-            // SVG Icon
-            this.downloadBtn.innerHTML = `
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                    <polyline points="7 10 12 15 17 10"></polyline>
-                    <line x1="12" y1="15" x2="12" y2="3"></line>
-                </svg>
-                <span>下載選取 (0)</span>
-            `;
+            this.downloadBtn.textContent = '';
+            this._downloadIcon = new Icon({ name: 'download', size: 16, color: 'currentColor' });
+            this._downloadIcon.mount(this.downloadBtn);
+            this.downloadLabel = document.createElement('span');
+            this.downloadLabel.className = 'document-wall__download-label';
+            this.downloadLabel.textContent = Locale.t('documentWall.downloadSelected', { count: 0 });
+            this.downloadBtn.appendChild(this.downloadLabel);
 
             this.downloadBtn.onclick = () => this._handleBatchDownload();
             toolbar.appendChild(this.downloadBtn);
@@ -104,6 +106,8 @@ export class DocumentWall {
     }
 
     render() {
+        this._cards.forEach((card) => card.destroy());
+        this._cards = [];
         this.container.innerHTML = '';
 
         this.documents.forEach((doc, index) => {
@@ -138,6 +142,7 @@ export class DocumentWall {
                 onDelete: (!this.options.readOnly && this.options.onDelete) ? () => this._handleDelete(index) : null
             });
 
+            this._cards.push(card);
             this.container.appendChild(card.element);
         });
 
@@ -196,8 +201,9 @@ export class DocumentWall {
         if (!this.downloadBtn) return;
 
         const count = this.selectedIds.size;
-        const textSpan = this.downloadBtn.querySelector('span');
-        if (textSpan) textSpan.textContent = Locale.t('documentWall.downloadSelected', { count });
+        if (this.downloadLabel) {
+            this.downloadLabel.textContent = Locale.t('documentWall.downloadSelected', { count });
+        }
 
         if (count > 0) {
             this.downloadBtn.style.opacity = '1';
@@ -221,41 +227,36 @@ export class DocumentWall {
 
         const selectedDocs = this.documents.filter(d => this.selectedIds.has(d.id));
 
+        if (typeof this.options.onBatchDownload === 'function') {
+            await this.options.onBatchDownload(selectedDocs);
+            return;
+        }
+
         // 進入 loading 狀態
-        const originalText = this.downloadBtn.querySelector('span').textContent;
-        this.downloadBtn.querySelector('span').textContent = Locale.t('documentWall.packing');
+        const originalText = this.downloadLabel?.textContent || '';
+        if (this.downloadLabel) this.downloadLabel.textContent = Locale.t('documentWall.packing');
         this.downloadBtn.disabled = true;
 
         try {
             const zip = new SimpleZip();
 
-            // 由於 src 可能是假連結，這裡做個簡單與 PhotoWall 類似的 fetch 處理
-            // 如果是真實連結，應該 fetch blob
             for (const doc of selectedDocs) {
-                if (doc.src?.startsWith('http')) {
-                    try {
-                        const blob = await fetch(doc.src).then(r => r.blob());
-                        zip.addFile(doc.title, blob); // 假設 title 包含副檔名或自動偵測
-                    } catch (e) {
-                        console.warn(`無法載入文件 "${doc.title}":`, e);
-                        // Fallback for demo: create text file
-                        zip.addFile(doc.title + '.txt', `Mock content for ${doc.title}`);
-                    }
-                } else {
-                    // Fallback
-                    zip.addFile(doc.title + '.txt', `Mock content for ${doc.title}\nDescription: ${doc.description}`);
-                }
+                if (!doc.src) throw new Error(`Document "${doc.title}" has no download source.`);
+                const response = await fetch(doc.src, { credentials: 'same-origin' });
+                if (!response.ok) throw new Error(`Document "${doc.title}" download failed (${response.status}).`);
+                const blob = await response.blob();
+                zip.addFile(doc.fileName || doc.title, blob);
             }
 
             const zipBlob = await zip.generateAsync();
-            this._triggerDownload(URL.createObjectURL(zipBlob), `documents_${Date.now()}.zip`);
+            this._triggerDownload(URL.createObjectURL(zipBlob), `${nextUid('documents')}.zip`);
 
         } catch (error) {
             console.error('Batch download failed', error);
             ModalPanel.alert({ message: Locale.t('documentWall.packError') });
         } finally {
-            this.downloadBtn.querySelector('span').textContent = originalText;
-            this._updateDownloadBtn();
+            if (this.downloadLabel) this.downloadLabel.textContent = originalText;
+            if (this.downloadBtn) this._updateDownloadBtn();
         }
     }
 
@@ -272,5 +273,15 @@ export class DocumentWall {
         const target = typeof container === 'string' ? document.querySelector(container) : container;
         if (target) target.appendChild(this.element);
         return this;
+    }
+
+    destroy() {
+        this._cards.forEach((card) => card.destroy());
+        this._cards = [];
+        this._downloadIcon?.destroy();
+        this._downloadIcon = null;
+        this.downloadLabel = null;
+        this.downloadBtn = null;
+        this.element?.remove();
     }
 }

@@ -11,7 +11,7 @@ new Breadcrumb(options?)
 ```
 
 | 參數 | 型別 | 預設值 | 說明 |
-|------|------|--------|------|
+|---|---|---|---|
 | `options.items` | `Array` | `[]` | 導航項目 `[{text, href?, icon?, active?}]` |
 | `options.separator` | `string` | `'/'` | 分隔符號 |
 | `options.homeIcon` | `string` | `'🏠'` | 首頁圖示 |
@@ -22,7 +22,7 @@ new Breadcrumb(options?)
 ### 方法
 
 | 方法 | 回傳 | 說明 |
-|------|------|------|
+|---|---|---|
 | `setItems(items)` | `this` | 重設導航項目 |
 | `push(item)` | `this` | 新增一層導航 |
 | `pop()` | `this` | 移除最後一層導航 |

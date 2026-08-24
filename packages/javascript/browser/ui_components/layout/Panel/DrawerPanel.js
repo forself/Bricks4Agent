@@ -15,18 +15,35 @@ export class DrawerPanel extends BasePanel {
     };
 
     constructor(options = {}) {
+        const closeOnBackdrop = options.autoClose !== false;
         super({
             closable: true,
-            autoClose: true,
+            autoClose: false,
             showHeader: true,
             visibility: BasePanel.VISIBILITY.NONE,
             position: DrawerPanel.POSITIONS.RIGHT,
             width: '320px',
             height: '100%',
-            ...options
+            ...options,
+            // Drawer owns its backdrop and therefore must not also register
+            // BasePanel's document-wide outside-click listener: the opening
+            // click would otherwise bubble to document and immediately close it.
+            autoClose: false,
         });
 
+        this._closeOnBackdrop = closeOnBackdrop;
         this._wrapWithBackdrop();
+        this.element.setAttribute('role', 'dialog');
+        this.element.setAttribute('aria-modal', 'true');
+        this.element.setAttribute('tabindex', '-1');
+        this._returnFocusTo = null;
+        this._handleKeydown = event => {
+            if (event.key === 'Escape' && this.options.visibility === BasePanel.VISIBILITY.VISIBLE) {
+                event.preventDefault();
+                this.close();
+            }
+        };
+        document.addEventListener('keydown', this._handleKeydown);
     }
 
     _wrapWithBackdrop() {
@@ -67,7 +84,7 @@ export class DrawerPanel extends BasePanel {
         this.backdrop.appendChild(this.element);
 
         // 點擊遮罩關閉
-        if (this.options.autoClose) {
+        if (this._closeOnBackdrop) {
             this.backdrop.addEventListener('click', (e) => {
                 if (e.target === this.backdrop) {
                     this.close();
@@ -119,13 +136,24 @@ export class DrawerPanel extends BasePanel {
 
         switch (visibility) {
             case BasePanel.VISIBILITY.VISIBLE:
+                this.element.style.display = '';
+                this.element.style.visibility = 'visible';
                 this.backdrop.style.visibility = 'visible';
                 this.backdrop.style.opacity = '1';
                 this.element.style.transform = positionStyles.visibleTransform;
                 document.body.style.overflow = 'hidden';
                 break;
             case BasePanel.VISIBILITY.HIDDEN:
+                this.element.style.display = '';
+                this.element.style.visibility = 'hidden';
+                this.backdrop.style.visibility = 'hidden';
+                this.backdrop.style.opacity = '0';
+                this.element.style.transform = positionStyles.hiddenTransform;
+                document.body.style.overflow = '';
+                break;
             case BasePanel.VISIBILITY.NONE:
+                this.element.style.display = 'none';
+                this.element.style.visibility = 'hidden';
                 this.backdrop.style.visibility = 'hidden';
                 this.backdrop.style.opacity = '0';
                 this.element.style.transform = positionStyles.hiddenTransform;
@@ -135,12 +163,17 @@ export class DrawerPanel extends BasePanel {
     }
 
     open() {
+        this._returnFocusTo = document.activeElement instanceof HTMLElement ? document.activeElement : null;
         this.setVisibility(BasePanel.VISIBILITY.VISIBLE);
+        queueMicrotask(() => (this.element.querySelector('.panel__close') || this.element).focus?.());
         return this;
     }
 
     close() {
         super.close();
+        const returnTarget = this._returnFocusTo;
+        this._returnFocusTo = null;
+        queueMicrotask(() => returnTarget?.isConnected && returnTarget.focus?.());
         return this;
     }
 
@@ -153,6 +186,7 @@ export class DrawerPanel extends BasePanel {
     }
 
     destroy() {
+        document.removeEventListener('keydown', this._handleKeydown);
         document.body.style.overflow = '';
 
         if (this.backdrop?.parentNode) {

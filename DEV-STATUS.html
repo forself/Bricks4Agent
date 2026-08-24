@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>交接文件 — AI 代理接續開發用</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>交接文件 — AI 代理接續開發用</h1>
+<blockquote>
+<p><strong>你是接手的 AI 代理。</strong> 本文件自足,不依賴先前任何對話、記憶系統或其他代理的上下文;照本文件即可續作。
+<strong>目前已推送基準:</strong> 分支 <code>main_0707</code>。平台狀態以 <code>git log -1 -- global.json</code>、安全建置狀態以 <code>git log -1 -- tools/scripts/verify-dotnet10.mjs</code>、表單工作台狀態以 <code>git log -1 -- tools/form-application-studio</code> 為準；工作樹狀態一律另查 <code>git status</code>。
+本文件自身的版本以 <code>git log -1 -- DEV-STATUS.md</code> 為準(文件修訂不代表功能基準變動)。
+配套規則文件:<a href="CLAUDE.html">CLAUDE.md</a> / <a href="AGENTS.html">AGENTS.md</a>(代理規則)、<a href="AGENT-UI-GUIDE.html">AGENT-UI-GUIDE.md</a>(元件調用契約,動手寫頁面前必讀)。</p>
+</blockquote>
+<hr>
+<h2>0. 任務與邊界(先讀這節)</h2>
+<p><strong>大案子:</strong> 把 TIM 組織犯罪資料應用系統(React 16 舊系統)重製為<strong>只用本元件庫</strong>的前端 + .NET 10 契約相容後端。三條線:</p>
+<table>
+<thead>
+<tr>
+<th>線</th>
+<th>內容</th>
+<th>狀態</th>
+<th>你現在動不動</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>元件庫線(本 repo)</strong></td>
+<td>補元件、嚴格 CSP、SVG→Canvas、Theme Studio、表單應用生成器</td>
+<td>波 3 已推送；Form Application Studio 已完成</td>
+<td><strong>覆核 §4 證據後可續作</strong></td>
+</tr>
+<tr>
+<td>前端軌(F)</td>
+<td>舊頁面翻寫,產出在 <code>D:\proj\newTim\tim-web</code></td>
+<td>藍圖已定、POC 已過、量產未開工</td>
+<td><strong>不動,等使用者發動</strong></td>
+</tr>
+<tr>
+<td>後端軌(B)</td>
+<td>.NET FX 4.8.1 → <strong>.NET 10(目標)</strong>,契約逐位相容</td>
+<td>架構已裁決、未開工</td>
+<td><strong>不動,等使用者發動</strong></td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>⚠ 本 repo 的 SDK-style 專案、SPA template、生成後端與 BaseOrm canonical implementation 已統一為 <strong>net10.0</strong>；另保留一份 BaseOrm .NET Framework 4.8 相容實作。這項基礎設施升級不代表後端軌(B)的舊系統契約翻寫已啟動。</p>
+</blockquote>
+<p><strong>硬邊界(違反=事故):</strong>
+1. <code>D:\work\new</code>、<code>D:\work\TIMSolution</code> 兩個舊專案<strong>唯讀</strong>,任何產出禁止寫入。
+2. <code>D:\proj\newTim\tim-web</code> <strong>不上本 repo 版控</strong>(版控歸使用者的大專案),<strong>不得對它做任何 git 操作</strong>;檔案可讀、經使用者同意可改。
+3. git push <strong>不直推 main</strong>,推 <code>main_月日</code> 日期分支(現用 <code>main_0707</code>;使用者若開新日期分支會告知)。
+4. 本 repo 是大專案剪枝後的工作副本,已設 <code>git sparse-checkout set packages templates tools</code>——<strong>不要</strong>碰 sparse 設定、不要「還原」看似被刪的路徑。</p>
+<p><strong>已定案、不得重開的決策</strong>(使用者已裁決,別再提替代方案):
+- <strong>SVG 全面禁用、只允許 Canvas</strong>（含 UI 小圖示），由 <code>audit-csp.mjs</code> hard-zero 執法；空 baseline 不得豁免命中（§2）。
+- <strong>嚴格 CSP</strong>:<code>script-src 'self'; style-src 'self'</code>,零 unsafe-inline/eval,機器判定(§2)。
+- 元件庫<strong>不依賴任何 npm 安裝的第三方 runtime 套件</strong>;核准例外只有 vendored 的 Leaflet 1.9.4 + html2canvas(<code>ui_components/vendor/</code>,本地優先,Leaflet 缺檔才退 CDN)。工具腳本<strong>零 npm 依賴、純 Node</strong>,禁 spawn ripgrep 等外部工具(不得假設目標機器有裝)。
+- 圖表基底=<code>viz/CanvasChart.js</code>;主題響應=<code>utils/theme-bus.js</code>;色回退唯一常數=<code>FALLBACK_PAINT</code>。
+- 民國曆:DatePicker 用 <code>format:'taiwan'</code>;後端回民國字串前端原樣輸出、禁 <code>new Date()</code> 轉換。</p>
+<hr>
+<h2>1. 環境與開工自檢</h2>
+<p><strong>路徑地圖:</strong>
+- 本 repo:<code>D:\proj\newTim\Bricks4Agent</code>(遠端 github.com/forself/Bricks4Agent)
+- 元件庫本體:<code>packages/javascript/browser/ui_components/</code>(下文簡稱 <code>ui_components</code>)
+- 守門與 harness:<code>tools/scripts/</code>;視覺調校台:<code>tools/theme-studio/</code>
+- 重製案文件(參考,勿版控):<code>D:\proj\newTim\tim-web\docs\</code>(blueprint.md、task-board.json)</p>
+<p><strong>開工先跑(全部應綠;有紅先修再開工):</strong></p>
+<pre><code class="language-bash">cd D:/proj/newTim/Bricks4Agent
+git status -sb                              # 應在 main_0707；提交前會看到本節所列待提交變更
+node tools/scripts/audit-csp.mjs            # CSP A-G 全類硬零
+node tools/scripts/test-audit-csp-hard-zero.mjs # G 類負向回歸:即使列入 baseline 仍必須 fail;須與 audit 串行
+node tools/scripts/validate-ui-library.mjs  # 風格稽核/裸 import/公開面/demo 引用
+npm test                                    # 頁面生成器產碼 + 元件路徑測試(根 package.json)
+npm --prefix packages/javascript/browser test   # 四套純函式單元(palette/色階/聚合/力學)
+npm run custom-components:check             # 客製 JSON registry deterministic + schema/引用驗證
+npm run test:custom-components              # 客製分類/build/runtime/factory/folder/lifecycle
+npm run test:studio:self-host                # 唯一 Tool JSON + renderer/Link provenance/相容入口 19/19
+npm run test:form-designer                   # 表單應用定義/驗證/SQL/API/PageDefinition + layout helpers
+npm run test:form-designer:self-host         # Form Application Studio JSON 自舉與正式元件 provenance
+npm run test:form-designer:dotnet            # 四種 provider 生成後端實際 net10.0 build
+npm run test:dotnet10                        # 35 個 net10.0 專案；任何建置警告都視為錯誤
+dotnet test packages/csharp/tests/unit/Unit.Tests.csproj
+dotnet test packages/csharp/tests/integration/Integration.Tests.csproj
+dotnet test templates/spa/backend.Tests/SpaApi.Template.Tests.csproj
+</code></pre>
+<p><strong>瀏覽器驗收電池</strong>（Studio 三支會自行啟動 random-port/no-store server 與 fresh Edge；其他既有 harness 依各腳本需求啟 server。repo 本身零 runtime/dev dependency）：</p>
+<pre><code class="language-bash">node tools/theme-studio/run.mjs             # 18 項(Theme JSON self-host/catalog/頁內說明/token/scoped/CSP)
+node tools/scripts/studio-integration-smoke.mjs # 16 項(說明連結/同 renderer/DOM identity/雙 JSON round-trip/provenance/CSS 注入拒絕)
+node tools/scripts/canvas-chart-smoke.mjs   # 8 項
+node tools/scripts/wave2-stage-sweep.mjs    # 29 項
+node tools/scripts/data-explorer-smoke.mjs  # 8 項
+node tools/scripts/cluster-graph-perf.mjs   # 8 項(5000 節點效能)
+node tools/scripts/icon-canvas-smoke.mjs    # 13 項(Icon Canvas/DPR/ThemeBus/同步延遲掛載/互動/lifecycle)
+node tools/scripts/wave3-stage-sweep.mjs    # 24 項(波 3 全 registry/API/語意/lifecycle)
+node tools/scripts/custom-component-studio-smoke.mjs --require-browser # 13 項(Studio/runtime/dynamic form/export/import/security/lifecycle)
+node tools/scripts/form-application-studio-smoke.mjs --require-browser # 17 項(schema/design/generate/secret isolation/drag/resize/lifecycle)
+</code></pre>
+<hr>
+<h2>2. 必須內化的架構事實</h2>
+<ul>
+<li><strong>catalog 116 元件</strong>,權威來源=<code>ui_components/metadata/component-catalog.json</code>;元件契約 <code>new X(options)</code> → <code>.mount(el)</code> → <code>.destroy()</code>(個別元件用 <code>render</code>,harness 已示範相容處理)。</li>
+<li><strong>CSP 守門員</strong> <code>tools/scripts/audit-csp.mjs</code>:七類全部硬零(A <code>&lt;style&gt;</code> 注入/B setAttribute('style')/C innerHTML 模板 <code>style=</code>/D 模板 <code>on*=</code>/E eval/F <code>javascript:</code>/G SVG)。<code>tools/scripts/svg-baseline.json</code> 已為空物件,只保留盤點快照語意,<strong>不能豁免 G 類命中</strong>;<code>test-audit-csp-hard-zero.mjs</code> 會把單一命中寫進 baseline 再確認 audit 仍 exit 1 並於 finally 還原/清理。<strong>合規宣稱只認機器判定。</strong></li>
+<li><strong>樣式作法</strong>:CSSOM(<code>cssText</code>/<code>setProperty</code>)為主;hover/focus 用事件;偽元素/@media/大量子孫選擇器 → 同目錄 <code>.css</code> + 同源 <code>&lt;link&gt;</code> 注入(注意 inline CSSOM 蓋樣式表,@media 覆蓋需 <code>!important</code>)。</li>
+<li><strong>Canvas 體系</strong>:<code>CanvasChart</code> 提供 DPR 背景儲存/ResizeObserver/ThemeBus 重繪/hit-region(rect/circle/Path2D,<code>isPointInPath</code> 要乘 dpr)/DOM tooltip(textContent)/<code>exportPNG(scale)</code>/<code>niceTicks/fmt/ellipsis/wrapText</code> 排版輔助。子類契約=實作 <code>draw(ctx,w,h)</code> + <code>addRegion()</code> + 選配 <code>getTooltip(data)</code>。<strong>點擊回拋走 <code>options.onPointClick</code>——基底不會自動呼叫你的 <code>_handleClick</code>,要嘛建構子裡預設接線、要嘛自己 addEventListener(波 2 曾因此出過死代碼 bug)。</strong></li>
+<li><strong><code>ModalPanel.alert()</code> 只認 <code>message</code> 字串</strong>;要放 DOM 內容:取回傳的 modal,把 message <code>&lt;p&gt;</code> <code>replaceWith(node)</code>(TimelineChart/FlameChart 有現成範例)。</li>
+<li><strong>色彩</strong>:單一來源=<code>editor/richtext-palette.js</code> 的 MATERIAL(16 色相;<strong>這份 palette 無 deep-purple/light-blue,有 blue-grey/grey</strong>——注意 theme.css 另有歷史語意 token 如 <code>--cl-deep-purple</code>,兩者是不同層,別混為一談)→ <code>ui_components/editor/gen-palette-css.mjs</code> 產 palette.css → theme.css 引用。程式取色用 <code>utils/color-scale.js</code>(sequential/diverging/categorical/hierarchical)。Canvas 內色回退一律 <code>FALLBACK_PAINT</code>(theme-bus 匯出),<strong>元件內禁散裝 hex</strong>;亮度對比遮罩四常數(<code>#00000099/#ffffffcc/#000000aa/#ffffffdd</code>)已在稽核 allow 名單。</li>
+<li><strong>vendor/ 豁免一切庫規範</strong>(CSP/風格/裸 import 掃描都跳過):Leaflet 1.9.4 + html2canvas,本地優先、缺檔才退 CDN。</li>
+<li><strong>聚合</strong>:<code>utils/aggregation-engine.js</code> 白名單 fail-closed;<strong>時間聚合先按日期排序再分組</strong>(民國標籤字典序不可靠)。</li>
+<li><strong>新元件流程</strong>:三件套(<code>&lt;Name&gt;.js</code>+<code>index.js</code>+<code>&lt;Name&gt;.manifest.json</code>)→ 類別 barrel export → 需要的話進 ComponentFactory → <code>node ui_components/metadata/build-metadata.mjs</code>。<strong>新「分類」要動兩處白名單</strong>:<code>metadata/introspection.js</code> SEARCH_CATEGORIES + <code>metadata/manifest-schema.js</code> 分類枚舉。</li>
+</ul>
+<hr>
+<h2>3. 現況(哪裡了)</h2>
+<p><strong>一句話:</strong> catalog 116、CSP A-G 全類硬零、runtime SVG 0 檔/0 處、波 3 與客製元件 Studio 已推送；repo 已加入由 JSON 自舉的 Form Application Studio，可把 schema 視覺化編排後生成表單、.NET 10 API/BaseOrm 與 SQL，未給連線字串時使用本地 SQLite；35 個 .NET 10 專案已達零警告並由 CI 以 warnings-as-errors 強制執行。</p>
+<table>
+<thead>
+<tr>
+<th>完成</th>
+<th>Commit</th>
+<th>內容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>07-23</td>
+<td><code>git log -1 -- tools/scripts/verify-dotnet10.mjs</code></td>
+<td><strong>.NET 10 零警告與密碼相容性</strong>：MFA、AccountLock、AuditLog nullable 契約修正；8 個過時 PBKDF2 建構式改為靜態 API，但保留既有 iterations/salt/hash 大小與儲存格式；Broker、MFA、SPA template 固定相容性向量通過；CI 對所有建置警告 fail closed</td>
+</tr>
+<tr>
+<td>07-23</td>
+<td><code>git log -1 -- global.json</code></td>
+<td><strong>全 repo .NET 10 平台遷移</strong>：35 個 SDK-style 專案與生成契約統一為 <code>net10.0</code>；BaseOrm canonical 路徑改為 <code>net10/</code>；保留明確 allowlist 的 BaseOrm .NET Framework 4.8 相容版本</td>
+</tr>
+<tr>
+<td>07-23</td>
+<td><code>git log -1 -- tools/form-application-studio</code></td>
+<td><strong>Form Application Studio</strong>：schema→欄位清單+12欄拖拉/縮放畫布→design JSON/PageDefinition/.NET 10 Minimal API+BaseOrm/SQL；JSON 自舉；連線字串留白→本地 SQLite；預設 secret 不落產物；unit 11/11+self-host 8/8+Edge 17/17</td>
+</tr>
+<tr>
+<td>07-17</td>
+<td><code>e92a4d6</code></td>
+<td><strong>波 3 + JSON 客製元件 + Studio 自舉</strong>：SVG 清零、三層 JSON 客製元件、Theme/Custom 同頁工具與完整驗收</td>
+</tr>
+<tr>
+<td>07-17</td>
+<td><code>39f330f</code></td>
+<td><strong>波 2</strong>:8 支重型圖表 + Sparkline/RegionMap/Progress/Rating 遷 Canvas;BaseChart 刪除;棘輪 31→26;風格稽核歸零(FALLBACK_PAINT 收斂)</td>
+</tr>
+<tr>
+<td>07-16</td>
+<td><code>30e87f6</code></td>
+<td><strong>DataExplorer</strong> 統計探索複合件 + Bar/Line/Pie Canvas 化</td>
+</tr>
+<tr>
+<td>07-15</td>
+<td><code>8d466e3</code></td>
+<td><strong>波 1</strong>:Heatmap/Scatter/<strong>ClusterGraph</strong>(5000 節點 10.8ms/幀)+ 力學/色階/聚合核心</td>
+</tr>
+<tr>
+<td>07-14</td>
+<td><code>5293873</code></td>
+<td><strong>波 0</strong>:SVG 禁用政策+棘輪、CanvasChart 基底、theme-bus</td>
+</tr>
+<tr>
+<td>07-09</td>
+<td><code>9e9b3fa</code></td>
+<td>嚴格 CSP 159 處清零 + audit-csp 守門員</td>
+</tr>
+<tr>
+<td>07-08</td>
+<td><code>cb22ba2</code></td>
+<td>main_0626+main_0707 合併(0707 優先;0626 的 26 元件 CSP 修正後併入)</td>
+</tr>
+<tr>
+<td>07-07</td>
+<td><code>3ed9504</code></td>
+<td>設計系統/Theme Studio/TGOSMapEditor/vendoring/junction+snapshot 機制 v2/create-project</td>
+</tr>
+</tbody>
+</table>
+<p><strong>.NET 10 驗證證據（2026-07-23）:</strong> <code>npm run test:dotnet10</code> 以完整 <code>--warnaserror</code> 建置 35/35 專案，全部 0 warning/0 error；Release 測試為 Unit 410/410、Integration 27/27、SPA template 10/10。PBKDF2 固定向量覆蓋 Broker 兩條登入路徑、MFA 舊格式與 SPA template；GitHub CI 的 JavaScript/policy 與 .NET/generated-backend 兩個 job 均通過，產物清理檢查亦通過。</p>
+<hr>
+<h2>4. 最新完成任務:波 3 —— SVG 存量清零</h2>
+<p><strong>結果:</strong> 26 檔 181 處 → <strong>0 檔 0 處</strong>,<code>svg-baseline.json</code> 已清空,G 類已與 A-F 同級硬零。主力 Icon、Button、Picker、Panel、TreeList、WebTextEditor、OSMMapEditor、DrawingBoard、DocumentWall、PhotoWall 均已轉 Canvas/DOM-safe 呈現。</p>
+<p><strong>已落地:</strong>
+1. <code>common/Icon</code> 已改為 DPR-aware Canvas/Path2D,保留 size alias、<code>Icon.register()</code>、ThemeBus/currentColor、鍵盤 click、spin、destroy,並新增 <code>pathData</code>/文字 glyph 與公開 <code>redraw()</code>。
+2. 其餘 25 檔由互斥代理分組遷移後,主代理逐檔覆核並修正語意圖示、首次重繪、active 重繪、ThemeBus/子元件生命週期與 factory destroy。
+3. Leaflet <code>preferCanvas</code> 硬設 true(呼叫端不能 opt-out),非同步載入加 destroyed guard;OSMMapEditor 追蹤並銷毀 6 個子元件;vendor/ 未動。
+4. <code>audit-csp</code> G 類改硬零,baseline 清空;新增不可被 baseline 繞過的負向回歸。
+5. 全量驗收完成，波 3 與後續 Studio／生成器工作均已提交並推送；目前狀態以 §3 的動態 <code>git log</code> 指令為準。</p>
+<p><strong>驗證證據(2026-07-17，平台遷移前):</strong> audit-csp A-J/G 0;負向回歸 PASS;validate-ui-library 282 source/261 import + 9 demos browser PASS;兩組 npm test PASS(四套純函式 63/63);客製元件 definition/runtime 14/14、targeted integration 30/30、Edge E2E 13/13;Tool/page-generator 63/63;Studio 18/18 + 19/19 + 16/16;SPA backend build 0 warning/0 error;既有五支 Edge harness 因 Theme 增加三項現為 70/70;Icon 13/13;Wave 3 24/24。ClusterGraph 最終獨占 CPU 重測 BH=8.77ms、draw=2.99ms、8/8 通過;效能 harness 不應與其他瀏覽器壓測並跑。legacy harness 已移除字串 <code>waitForFunction</code>、inline <code>addScriptTag</code> 與產品層 <code>openStage</code> 依賴，能在 strict CSP + JSON self-host Studio 下真實執行。</p>
+<h3>4.1 最新追加：JSON 客製元件系統</h3>
+<ul>
+<li>權威契約：<a href="CUSTOM-COMPONENTS.html">CUSTOM-COMPONENTS.md</a>；定義放 <code>packages/javascript/browser/custom_components/definitions/*.json</code>。</li>
+<li><code>build-registry.mjs</code> 會驗證 path/symlink/名稱碰撞/引用/cycle/kind，產生 deterministic <code>registry.json</code>；瀏覽器不直接列舉資料夾。</li>
+<li><code>CustomComponentRegistry</code> 採整批原子註冊與全圖重驗證，具 ownership-aware <code>dispose()</code>，預設可接 ComponentFactory；<code>CustomComponentRenderer</code> 負責 group/leaf/custom 遞迴、值 round-trip、runtime unsafe option 過濾與反序 destroy。</li>
+<li><code>DynamicPageRenderer</code> 可用 <code>customComponents: { definitions, folder }</code> 在 async init 先全數取得、再單次註冊並接 FieldResolver；自建 registry 不污染全域 factory。SPA <code>DefinitionRuntimePage</code> 僅從可信 class/constructor options 取得來源，不信任頁面 JSON；目前自動接線為 dynamic form，靜態產碼不會自動打包 JSON folder。</li>
+<li>Studio 主入口：<code>tools/theme-studio/index.html</code>；「樣式客製」與「元件組合」共用 <code>tools/theme-studio/studio.page.json</code>、同一個 <code>DynamicToolRenderer</code> 與同一份 DOM。兩側均有 JSON-native 頁內說明與正式 <code>Link</code> 往返；組合頁另列三層規則、definitions 路徑與驗收指令。<code>tools/custom-component-studio/index.html</code> 僅為導向第二頁籤的相容 URL。</li>
+<li>新增驗收：definition/runtime 14/14；Adapter/FieldResolver/SPA targeted integration 30/30；真實 Edge E2E 13/13（含下載 JSON、拒絕錯誤副檔名/破損/危險/超限匯入、匯入 template、factory lifecycle、值 round-trip、dynamic form、CSP/SVG=0）。</li>
+</ul>
+<h3>4.2 Studio JSON 自舉</h3>
+<ul>
+<li>新增 <code>ToolPageDefinition</code>：純 JSON 僅允許 <code>group/component/tabs/slot</code>、safe state path 與 allowlisted event；函式/getter/raw HTML/prototype key/未知 command/component 全部 fail closed。</li>
+<li>新增 <code>DynamicToolRenderer</code>，並接進 <code>DynamicPageRenderer</code> tool mode 與 <code>PageGenerator.generate(type:'tool')</code> 靜態 wrapper。狀態更新只觸及重疊 bindings；setter 缺失只替換單一 component；內部控制重畫後 provenance 同步更新。</li>
+<li>Studio chrome 全由正式 ComponentFactory 元件建立。<code>List</code>/<code>TreeList</code> 補 action/active/data API，<code>UploadButton</code> 補 stable input id，<code>NumberInput.setValue()</code> 預設不回觸 onChange，作為自舉所需的正式元件能力。</li>
+<li>Theme 匯入會先把 token、catalog component、單一 class 與 CSS value 完整驗證到暫存快照，全部通過才一次套用；拒絕 selector/declaration/URL 注入且失敗不留下部分狀態。<code>customCss()</code> 匯出前再做防禦性驗證。</li>
+<li>機器證據：Tool/page-generator Vitest 7 files 63/63；Studio static/fresh-Edge self-host 19/19；Theme 18/18；頁內說明、正式 Link 同頁導覽、跨頁籤、雙 JSON round-trip、匯入原子性與防禦性匯出 16/16；Custom runtime/browser 13/13；全部維持 CSP/SVG hard-zero。</li>
+</ul>
+<h3>4.3 Form Application Studio</h3>
+<ul>
+<li>核心契約位於 <code>packages/javascript/browser/form-application/</code>：嚴格驗證 schema、provider、欄位與 CRUD allowlist，生成 normalized definition、design JSON、PageDefinition、provider SQL/rollback、.NET 10 Model/Service/Endpoints/bootstrap 與整合說明。</li>
+<li>正式 <code>layout/FormDesigner</code> 提供 schema 欄位清單、改欄位/顯示名、切換輸入元件、增刪欄位，以及 12 欄畫布的滑鼠/鍵盤拖拉與縮放；已註冊 <code>ComponentFactory</code> 並納入 catalog。</li>
+<li>工具入口 <code>tools/form-application-studio/index.html</code>；唯一頁面定義為 <code>studio.page.json</code>，由 <code>DynamicPageRenderer(tool)</code> 產生，沒有另刻一套工具 UI。</li>
+<li>連線政策：空白或缺少連線字串一律落到本地 SQLite <code>data/&lt;application_id&gt;.db</code>；外部 provider 必須明確指定且提供非空連線字串。secret 只存 controller 記憶體，預設不進 definition/design/bundle；只有使用者明確勾選才進 <code>backend/appsettings.Development.json</code>。</li>
+<li>Studio/CLI 只預覽與生成，絕不連線或套用 SQL。實際資料庫變更仍須先確認資料表、目標欄位、來源、寫入規則、例外處理與 rollback/驗證計畫。</li>
+<li>驗證證據（2026-07-23，平台遷移前）：核心 11/11、自舉 8/8、真實 Edge 17/17；提交前獨立 CLI 稽核曾抓到外部 provider 的 definition JSON 被二次正規化為 SQLite，修正後已新增單元與 Edge 產物一致性斷言。CLI help/未知參數、首次生成/byte-identical 再生成、PostgreSQL provider 保留與 secret 0 命中均通過，CLI 產出的 Web 專案 build 0 warning/0 error。全量回歸另含 page-generator、四套純函式、客製元件 14/14、UI static+9 demos、CSP A-J/G 正負向、Theme/Custom Studio 19/19+18/18+16/16+13/13、Canvas/Wave2/Data/Icon/Wave3 8/8+29/29+8/8+13/13+24/24、ClusterGraph 8/8（BH 7.15ms、draw 2.46ms）及 SPA backend build 0 warning/0 error；<code>.test-output/</code> 已清理。</li>
+</ul>
+<hr>
+<h2>5. 驗收協定(每次改 ui_components 都要)</h2>
+<pre><code>靜態:audit-csp → validate-ui-library → npm test(根)→ npm --prefix packages/javascript/browser test
+動態:五支既有瀏覽器 harness + Icon + Wave 3(§1);效能 harness 單獨跑
+客製元件:npm run custom-components:check → npm run test:custom-components → npm run test:custom-components:browser
+Studio:npm run test:studio:self-host → npm run test:theme-studio:browser → npm run test:studio:browser
+Form Application:npm run test:form-designer:all → 生成產物的 .NET 10 build
+.NET:npm run test:dotnet10 → 35/35 專案零警告；另跑 unit/integration/SPA template 三組 dotnet test
+</code></pre>
+<p>GitHub Actions：<code>.github/workflows/ci.yml</code> 在 PR→<code>main</code> 與 push→<code>main</code>
+執行可攜式 JavaScript/政策守門、全部 .NET 10 專案 warnings-as-errors 建置及四 provider 生成後端 build。
+真實 Edge harness 因依賴既有外部 Playwright/Edge runtime，維持本機驗收，不以 CI 假裝通過。</p>
+<p><strong>鐵律(前人血淚,條條有事故背書):</strong>
+1. <strong>回報不算數</strong>——子代理宣稱完成後,逐檔機器驗收 + 行為驗證。波 2 實例:六路代理全報成功,實測仍揪出兩個 bug(alert content 被覆蓋、click 沒接線)——<strong>渲染全綠也測不出,必須做互動鏈斷言</strong>(dispatch 真實 click → 斷言彈窗文字非空)。
+2. <strong>代理死於 session 上限會留半成品</strong>(曾發生寫了 <code>&lt;link&gt;</code> 沒建 .css):驗收看檔案,不看回報清單。
+3. 改繪製路徑後,<code>canvas-chart-smoke</code> 的像素斷言(換膚變紅)是最後防線,別跳過。
+4. harness 選擇器要鎖自建容器(如 <code>#cc-smoke</code>)——展示廊卡片本身是 canvas 圖表且有覆蓋層,全頁裸選 canvas 會誤中。
+5. Studio 測試鉤子：<code>window.__studio</code>、<code>window.__toolPageRenderer</code>、<code>window.__studioControls.records</code>、<code>window.__ts</code>、<code>window.__customComponentStudio</code>；來源證明看 <code>window.__studio.definitionUrl</code> + <code>definitionHash</code>。</p>
+<hr>
+<h2>6. 多代理波工作法(若你派子代理)</h2>
+<ol>
+<li>檔案互斥——絕不兩代理碰同檔。</li>
+<li>提示詞內建機器驗收命令與通過標準,要求代理自跑並貼輸出。</li>
+<li>上限 6 代理/波;機械遷移用 sonnet,設計判斷自己做。</li>
+<li>波收束=本人逐檔驗收(§5),然後才 commit。</li>
+</ol>
+<hr>
+<h2>7. 環境坑(照做,都踩過)</h2>
+<ul>
+<li><strong>工具腳本不得假設執行環境有 ripgrep 或任何外部搜尋工具</strong>(有的機器有、有的沒有——<code>audit-ui-style-rules.mjs</code> 曾因 spawn rg 在無 rg 機器上從沒真跑過):一律純 Node <code>fs</code>+regex,禁 spawn 外部工具。</li>
+<li><strong>PowerShell 5.1</strong>:<code>.ps1</code> 只寫英文註解(UTF-8 無 BOM 中文=parse 炸);<strong>改檔一律用編輯工具,禁 shell 重導向寫檔</strong>(UTF-16 BOM 毀損坑)。機制腳本已全 Node 化。</li>
+<li><code>node --check</code> 不吃瀏覽器 ESM <code>.js</code>——先複製成 <code>.mjs</code> 再驗。</li>
+<li>瀏覽器測試用 Edge(<code>channel:'msedge'</code>),playwright-core 從 <code>../tim-web/poc/node_modules</code> 借;<strong>不要</strong>在本 repo npm install 任何東西。</li>
+<li>含 junction 的專案刪除前必先解除連結(<code>scripts/dev-link.mjs</code> unlink),遞迴刪除會追進腳手架本體。</li>
+<li>測試產物(<code>.test-output/</code>、<code>out/</code>)用完即刪,見 CLAUDE.md 附表。</li>
+<li><code>test-audit-csp-hard-zero.mjs</code> 會在 runtime root 與 baseline 暫放負向 fixture,只能與正式 audit <strong>串行</strong>執行;腳本 finally 會還原,跑完仍要確認 fixture 不存在且 baseline=<code>{}</code>。</li>
+</ul>
+<hr>
+<h2>8. 波 3 之後的待辦(順序供參,發動前先跟使用者確認)</h2>
+<ol>
+<li><strong>Form Application 後續</strong>：若要真正套用 SQL／連接既有資料庫，先依高影響資料規則確認寫入計畫。多表關聯、migration diff、既有 API 反向匯入目前不在 v1。</li>
+<li><strong>DataExplorer 擴充</strong>:<code>'cluster'</code> 圖型接 ClusterGraph(spec 加 hierarchy 通道);ChartSpecBuilder 抽獨立元件;後端聚合模式(spec 直傳 Graph action,等 B 軌)。</li>
+<li><strong>前端軌量產</strong>(使用者發動):按 <code>tim-web\docs\task-board.json</code>——P0-1 頁面聚類 → 每群 <code>_base</code> 模板 → 生成器測試先行 → 量產頁 extends 只寫差異。</li>
+<li><strong>後端軌</strong>(使用者發動):B0-0 威脅建模 → B0-1 舊碼盤點 → B0-2 路由→10 動作對照表;契約釘 commit hash。</li>
+<li>掛帳:SKILL 包裝(已評估未實作)、機制 MCP 化(僅選項)。</li>
+<li>客製元件後續可選：static <code>PageGenerator.generate()</code> 自動物化 runtime/definitions；現況已支援直接 runtime 與 dynamic form，靜態產物須由啟動程式自行 <code>loadFolder()</code>。</li>
+</ol>
+<hr>
+<h2>9. 與使用者協作的慣例</h2>
+<ul>
+<li>溝通用<strong>繁體中文</strong>;直接、不奉承;壞消息直說(測試紅就說紅)。</li>
+<li>使用者重視<strong>驗證文化</strong>:宣稱完成要附機器證據;被抓到「說清了但沒清」會嚴重損害信任(發生過,教訓=全類別盤點+機器守門)。</li>
+<li>已定案決策(§0)別重開;真正的新決策(如動 tim-web、開新波、改公開 API)先問。</li>
+<li>commit 訊息:繁中、首行「波次/主題:摘要」、正文條列;不動 main,推 <code>main_0707</code>(或使用者指定的新日期分支)。</li>
+</ul>
+</main>
+</body>
+</html>

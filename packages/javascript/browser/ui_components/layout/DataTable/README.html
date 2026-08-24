@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DataTable</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>DataTable</h1>
+<p>資料表格元件，提供排序、分頁、選取、自訂渲染等功能。</p>
+<h2>API</h2>
+<h3>Constructor</h3>
+<pre><code class="language-js">new DataTable(config?)
+// 或兩參數模式：
+new DataTable(containerElement, config)
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>參數</th>
+<th>型別</th>
+<th>預設值</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>config.columns</code></td>
+<td><code>Array</code></td>
+<td><code>[]</code></td>
+<td>欄位定義，支援三種格式：標準 <code>[{name, label, options: {customBodyRender, display, setCellProps}}]</code>、Audit <code>[{key, title, width?, sortable?, render?, hidden?, html?}]</code>（data 為物件陣列）、Search <code>[{title, visible?, width?}]</code>（data 為 2D 陣列）</td>
+</tr>
+<tr>
+<td><code>config.data</code></td>
+<td><code>Array</code></td>
+<td><code>[]</code></td>
+<td>資料陣列（物件陣列或 2D 陣列，依 columns 格式）</td>
+</tr>
+<tr>
+<td><code>config.container</code></td>
+<td><code>HTMLElement</code></td>
+<td><code>null</code></td>
+<td>容器元素，省略時可稍後 <code>mount()</code></td>
+</tr>
+<tr>
+<td><code>config.title</code></td>
+<td><code>string</code></td>
+<td><code>''</code></td>
+<td>表格標題</td>
+</tr>
+<tr>
+<td><code>config.variant</code></td>
+<td><code>string</code></td>
+<td><code>'default'</code></td>
+<td>主題：<code>'default'</code> / <code>'search'</code></td>
+</tr>
+<tr>
+<td><code>config.pagination</code></td>
+<td><code>boolean</code></td>
+<td><code>true</code></td>
+<td>設為 <code>false</code> 停用分頁</td>
+</tr>
+<tr>
+<td><code>config.pageSize</code></td>
+<td><code>number</code></td>
+<td><code>10</code></td>
+<td>每頁筆數（未指定時取 <code>rowsPerPageOptions</code> 第一項）</td>
+</tr>
+<tr>
+<td><code>config.pageSizeOptions</code></td>
+<td><code>number[]</code></td>
+<td><code>[10,20,100,500,1000]</code></td>
+<td>每頁筆數選項（同 <code>rowsPerPageOptions</code>）</td>
+</tr>
+<tr>
+<td><code>config.emptyText</code></td>
+<td><code>string</code></td>
+<td>Locale 文字</td>
+<td>無資料文字</td>
+</tr>
+<tr>
+<td><code>config.striped</code></td>
+<td><code>boolean</code></td>
+<td>—</td>
+<td>斑馬紋（未設定時依主題 CSS）</td>
+</tr>
+<tr>
+<td><code>config.hoverable</code></td>
+<td><code>boolean</code></td>
+<td>—</td>
+<td>懸停效果（未設定時依主題 CSS）</td>
+</tr>
+<tr>
+<td><code>config.selectableRows</code></td>
+<td><code>string</code></td>
+<td><code>'multiple'</code></td>
+<td>行選取模式：<code>'multiple'</code> / <code>'single'</code> / <code>'none'</code>（也可放在 <code>config.options</code> 內）</td>
+</tr>
+<tr>
+<td><code>config.sortOrder</code></td>
+<td><code>Object</code></td>
+<td><code>null</code></td>
+<td>初始排序 <code>{name, direction}</code></td>
+</tr>
+<tr>
+<td><code>config.options</code></td>
+<td><code>Object</code></td>
+<td><code>{}</code></td>
+<td>進階設定：<code>textLabels</code>、<code>customToolbar</code>、<code>customToolbarSelect</code>、<code>rowsPerPageOptions</code>、<code>onRender(element, dt)</code>、<code>onRowSelectionChange(_, allSelected, selectedIndices)</code></td>
+</tr>
+</tbody>
+</table>
+<h3>方法</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>回傳</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>setData(data)</code></td>
+<td><code>void</code></td>
+<td>設定資料並重置分頁/選取，重新渲染</td>
+</tr>
+<tr>
+<td><code>getData()</code></td>
+<td><code>Array</code></td>
+<td>取得目前資料（正規化後的 2D 陣列）</td>
+</tr>
+<tr>
+<td><code>getSelectedRows()</code></td>
+<td><code>Array</code></td>
+<td>取得已選取列的 dataIndex 陣列</td>
+</tr>
+<tr>
+<td><code>setSelectedRows(indices)</code></td>
+<td><code>void</code></td>
+<td>設定已選取列並重新渲染</td>
+</tr>
+<tr>
+<td><code>render()</code></td>
+<td><code>void</code></td>
+<td>重新渲染表格至 container</td>
+</tr>
+<tr>
+<td><code>mount(container)</code></td>
+<td><code>this</code></td>
+<td>掛載至容器（CSS 選擇器或 DOM 元素）</td>
+</tr>
+<tr>
+<td><code>destroy()</code></td>
+<td><code>void</code></td>
+<td>銷毀元件</td>
+</tr>
+</tbody>
+</table>
+<h3>具名匯出</h3>
+<ul>
+<li><code>linkCell(text, href, options?)</code> — 產生連結儲存格（內部以 <code>Link</code> 元件 hydrate）</li>
+<li><code>badgeCell(text, options?)</code> — 產生徽章儲存格（內部以 <code>Badge</code> 元件 hydrate）</li>
+</ul>
+<h3>依賴</h3>
+<ul>
+<li><code>Link</code>、<code>Badge</code> — <code>linkCell()</code> / <code>badgeCell()</code> 儲存格渲染</li>
+<li><code>utils/security.js</code> — <code>escapeHtml</code> / <code>escapeAttr</code> / <code>raw</code></li>
+</ul>
+<h2>使用範例</h2>
+<pre><code class="language-js">import { DataTable } from './DataTable.js';
+
+const table = new DataTable({
+    columns: [
+        { key: 'name', title: '姓名' },
+        { key: 'age', title: '年齡' },
+        { key: 'action', title: '操作', render: (_, row) =&gt; `&lt;button&gt;編輯&lt;/button&gt;` }
+    ],
+    data: [{ id: 1, name: '張三', age: 28 }],
+    pageSize: 10,
+    options: {
+        selectableRows: 'multiple',
+        onRowSelectionChange: (_, allSelected, indices) =&gt; console.log(indices)
+    }
+});
+table.mount('#app');
+</code></pre>
+<h2>XSS 安全協議（render / customBodyRender）</h2>
+<p>DataTable 預設對 <code>render</code> / <code>customBodyRender</code> 的回傳值進行 HTML 跳脫（escapeHtml），防止 XSS。</p>
+<p>若需輸出原始 HTML（如按鈕、圖示），必須使用 <code>raw()</code> 包裝：</p>
+<pre><code class="language-js">import { raw, escapeAttr } from '../../utils/security.js';
+
+const table = new DataTable({
+    columns: [
+        // 純文字 — 自動跳脫，安全
+        { key: 'name', title: '姓名' },
+
+        // 需要 HTML — 必須用 raw() 明確標記
+        { key: 'action', title: '操作',
+          render: (_, row) =&gt; raw(`&lt;button data-id=&quot;${escapeAttr(row.id)}&quot;&gt;編輯&lt;/button&gt;`)
+        }
+    ]
+});
+</code></pre>
+<p><strong>規則</strong>：
+- <code>render</code> 回傳 <code>string</code> → 自動 HTML 跳脫（safe-by-default）
+- <code>render</code> 回傳 <code>raw(html)</code> → 原樣輸出（開發者負責確保安全）
+- 在 <code>raw()</code> 內部使用使用者資料時，務必用 <code>escapeHtml()</code> / <code>escapeAttr()</code> 跳脫</p>
+<h2>Demo</h2>
+<p>開啟 <code>demo.html</code> 直接在瀏覽器測試。</p>
+</main>
+</body>
+</html>

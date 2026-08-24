@@ -1,0 +1,2445 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bricks4Agent Engineer Guide</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Bricks4Agent Engineer Guide</h1>
+<blockquote>
+<p>This guide is intended for junior engineers, covering installation, usage, theme system, page generator, and backend integration of Bricks4Agent.</p>
+</blockquote>
+<h2>Verified Status (2026-03-22)</h2>
+<p>This guide now reflects a repository-wide validation run on 2026-03-22.</p>
+<ul>
+<li>Verified environment:</li>
+<li>Node.js <code>v22.17.1</code></li>
+<li>npm <code>11.5.1</code></li>
+<li>.NET SDK <code>10.0.104</code></li>
+<li>Podman <code>5.5.2</code></li>
+<li>Verified passing checks:</li>
+<li>solution build</li>
+<li>page-generator examples</li>
+<li>UI library validation</li>
+<li>browser smoke</li>
+<li>UI state contract validation</li>
+<li>broker scope and governed-agent validation</li>
+<li>broker LLM proxy integration</li>
+<li>BaseOrm verification</li>
+<li>governed Podman stacks</li>
+<li>LINE sidecar webhook ingress and high-level broker routing</li>
+<li>Verified high-level query behavior:</li>
+<li>explicit <code>?search &lt;keywords&gt;</code> now executes broker-mediated DuckDuckGo search</li>
+<li>plain <code>?query</code> still routes to the high-level dialogue path</li>
+<li>Important current limit:</li>
+<li>real-time broker-mediated search is currently explicit rather than automatic; if the user wants controlled live search, use <code>?search &lt;keywords&gt;</code></li>
+<li>Important backend note:</li>
+<li>the solution builds successfully, but it still emits <code>207</code> existing warnings, mostly in <code>Mfa</code>, <code>AuditLog</code>, and <code>AccountLock</code></li>
+</ul>
+<hr>
+<h2>Table of Contents</h2>
+<ol>
+<li><a href="#1-getting-started">Getting Started</a></li>
+<li><a href="#2-component-overview">Component Overview</a></li>
+<li><a href="#3-theme--styling-system">Theme &amp; Styling System</a></li>
+<li><a href="#4-form-components">Form Components</a></li>
+<li><a href="#5-common-components">Common Components</a></li>
+<li><a href="#6-layout-components">Layout Components</a></li>
+<li><a href="#7-advanced-input-components">Advanced Input Components</a></li>
+<li><a href="#8-social-components">Social Components</a></li>
+<li><a href="#9-visualization-components">Visualization Components</a></li>
+<li><a href="#10-behavior-modules--utilities">Behavior Modules &amp; Utilities</a></li>
+<li><a href="#11-page-generator">Page Generator</a></li>
+<li><a href="#12-spa-generator">SPA Generator</a></li>
+<li><a href="#13-c-backend-packages">C# Backend Packages</a></li>
+<li><a href="#14-security-guidelines">Security Guidelines</a></li>
+</ol>
+<hr>
+<h2>1. Getting Started</h2>
+<h3>1.1 Prerequisites</h3>
+<ul>
+<li>Node.js 18+</li>
+<li>.NET 10 SDK or newer (<code>10.0.104</code> verified)</li>
+<li>Git</li>
+<li>Podman 5+ for the full governed-stack validation matrix</li>
+</ul>
+<h3>1.2 Installation &amp; Startup</h3>
+<pre><code class="language-bash"># 1. Clone the project
+git clone &lt;repo-url&gt; Bricks4Agent
+cd Bricks4Agent
+
+# 2. Install dev tool dependencies (Playwright/Puppeteer for screenshots &amp; UI testing)
+npm install
+
+# 3. Start the SPA Generator (Web UI)
+npm run serve
+# Open http://localhost:3080 in your browser
+</code></pre>
+<h3>1.3 Project Structure</h3>
+<pre><code>Bricks4Agent/
+?謚??? packages/                            # Reusable packages
+??  ?謚??? javascript/
+??  ??  ????? browser/
+??  ??      ?謚??? ui_components/           # Bricks4Agent UI component library
+??  ??      ??  ?謚??? form/                # Form components (12)
+??  ??      ??  ?謚??? common/              # Common components (23)
+??  ??      ??  ?謚??? layout/              # Layout components (10)
+??  ??      ??  ?謚??? input/               # Advanced input components (10)
+??  ??      ??  ?謚??? viz/                 # Visualization (18 directly usable components + BaseChart)
+??  ??      ??  ?謚??? social/              # Social components (5)
+??  ??      ??  ?謚??? editor/              # Editor component (1)
+??  ??      ??  ?謚??? data/                # Data-display component (1)
+??  ??      ??  ?謚??? binding/             # Binding modules (2)
+??  ??      ??  ????? utils/               # Utilities &amp; services (4)
+??  ??      ????? page-generator/          # Page generator
+??  ????? csharp/
+??      ?謚??? api/                         # API and controller modules
+??      ?謚??? database/                    # Database / ORM modules
+??      ?謚??? security/                    # Security and auth modules
+??      ?謚??? logging/                     # Logging module
+??      ????? utils/                       # Backend utility modules
+?謚??? templates/
+??  ????? spa/                             # SPA project template
+??      ?謚??? frontend/                    # Frontend template
+??      ?謚??? backend/                     # .NET 10 backend template
+??      ????? scripts/                     # Template CLI (spa-cli.js)
+????? tools/
+    ?謚??? spa-generator/                   # SPA Generator Web UI
+    ????? page-gen.js                      # PageDefinition CLI
+</code></pre>
+<h3>1.4 Creating Your First Project</h3>
+<p>The SPA toolchain is split into two parts:</p>
+<ul>
+<li><code>tools/spa-generator/</code>: Web UI</li>
+<li><code>templates/spa/scripts/</code>: template CLI</li>
+</ul>
+<pre><code class="language-bash"># Start the Web UI
+npm run serve
+
+# Create a project with the template CLI (interactive)
+node templates/spa/scripts/spa-cli.js new
+
+# Create a project with the template CLI (non-interactive)
+node templates/spa/scripts/spa-cli.js new --name my-app --output ./projects
+
+# Generate a full feature (page + API)
+node templates/spa/scripts/spa-cli.js feature User --fields &quot;Name:string,Email:string&quot;
+</code></pre>
+<hr>
+<h2>2. Component Overview</h2>
+<h3>2.1 Component Categories</h3>
+<table>
+<thead>
+<tr>
+<th>Category</th>
+<th>Directory</th>
+<th>Count</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Form</td>
+<td><code>form/</code></td>
+<td>12</td>
+<td>Text, number, date, dropdown and other form inputs</td>
+</tr>
+<tr>
+<td>Common</td>
+<td><code>common/</code></td>
+<td>23</td>
+<td>Buttons, badges, tags, tooltips, progress bars, dividers, dialogs, notifications, pagination and other general UI</td>
+</tr>
+<tr>
+<td>Layout</td>
+<td><code>layout/</code></td>
+<td>10</td>
+<td>Panels, tables, side menus, tabs and other layout elements</td>
+</tr>
+<tr>
+<td>Advanced Input</td>
+<td><code>input/</code></td>
+<td>10</td>
+<td>Address, phone, organization and other composite inputs</td>
+</tr>
+<tr>
+<td>Visualization</td>
+<td><code>viz/</code></td>
+<td>18</td>
+<td>Charts, maps, drawing boards and data visualization (excluding the <code>BaseChart</code> base class)</td>
+</tr>
+<tr>
+<td>Social</td>
+<td><code>social/</code></td>
+<td>5</td>
+<td>Avatar, feed, connection, stat card, and timeline</td>
+</tr>
+<tr>
+<td>Editor</td>
+<td><code>editor/</code></td>
+<td>1</td>
+<td>Rich text editor</td>
+</tr>
+<tr>
+<td>Data</td>
+<td><code>data/</code></td>
+<td>1</td>
+<td>Region map and geo visualization</td>
+</tr>
+<tr>
+<td>Binding</td>
+<td><code>binding/</code></td>
+<td>2</td>
+<td>Component factory and binder</td>
+</tr>
+<tr>
+<td>Utils/Services</td>
+<td><code>utils/</code></td>
+<td>4</td>
+<td>Security, compression, geolocation, weather</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>Import path note: code snippets below use shortened paths for readability. If you validate them directly from this repo root, treat <code>./ui_components/...</code> as <code>./packages/javascript/browser/ui_components/...</code> and <code>./page-generator/...</code> as <code>./packages/javascript/browser/page-generator/...</code>.</p>
+</blockquote>
+<h3>2.2 Unified API Convention</h3>
+<p>All components follow a consistent API pattern to reduce the learning curve:</p>
+<pre><code class="language-javascript">import { TextInput } from './ui_components/form/TextInput/TextInput.js';
+
+// 1. Create the component
+const input = new TextInput({
+  label: 'Name',
+  placeholder: 'Enter your name',
+  required: true
+});
+
+// 2. Mount to DOM
+input.mount(document.getElementById('container'));
+
+// 3. Get / Set value
+const value = input.getValue();
+input.setValue('John Doe');
+
+// 4. Clear value (form components)
+input.clear();
+
+// 5. Destroy and cleanup
+input.destroy();
+</code></pre>
+<p><strong>API Method Quick Reference:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Description</th>
+<th>Applies To</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>new Component(options)</code></td>
+<td>Create component instance</td>
+<td>All components</td>
+</tr>
+<tr>
+<td><code>.mount(container)</code></td>
+<td>Mount to a DOM container</td>
+<td>All components</td>
+</tr>
+<tr>
+<td><code>.getValue()</code></td>
+<td>Get current value</td>
+<td>Form/Input components</td>
+</tr>
+<tr>
+<td><code>.setValue(value)</code></td>
+<td>Set value</td>
+<td>Form/Input components</td>
+</tr>
+<tr>
+<td><code>.clear()</code></td>
+<td>Clear value</td>
+<td>Form/Input components</td>
+</tr>
+<tr>
+<td><code>.destroy()</code></td>
+<td>Destroy component, remove event listeners</td>
+<td>All components</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>3. Theme &amp; Styling System</h2>
+<h3>3.1 theme.css Overview</h3>
+<p>Bricks4Agent uses CSS Custom Properties for its theme system. All variables use the <code>--cl-</code> prefix.</p>
+<h3>3.2 Variable Categories</h3>
+<pre><code class="language-css">:root {
+  /* Brand colors */
+  --cl-primary: #2196F3;
+  --cl-primary-dark: #1976D2;
+  --cl-primary-light: #e3f2fd;
+  --cl-primary-rgb: 33, 150, 243;      /* For rgba() usage */
+
+  /* Semantic colors */
+  --cl-success: #4CAF50;
+  --cl-success-light: #e8f5e9;
+  --cl-success-rgb: 76, 175, 80;
+  --cl-warning: #FF9800;
+  --cl-warning-light: #fff3e0;
+  --cl-warning-rgb: 255, 152, 0;
+  --cl-danger: #F44336;
+  --cl-danger-light: #fdecea;
+  --cl-danger-rgb: 244, 67, 54;
+  --cl-info: #2196F3;
+  --cl-info-light: #e3f2fd;
+
+  /* Text */
+  --cl-text: #333333;
+  --cl-text-secondary: #666666;
+  --cl-text-muted: #888888;
+  --cl-text-placeholder: #999999;
+  --cl-text-light: #aaaaaa;
+  --cl-text-inverse: #ffffff;
+  --cl-text-dark: #000000;
+
+  /* Backgrounds */
+  --cl-bg: #ffffff;
+  --cl-bg-secondary: #f5f5f5;
+  --cl-bg-tertiary: #f8f9fa;
+  --cl-bg-hover: #f0f2f5;
+  --cl-bg-active: #e3f2fd;
+  --cl-bg-disabled: #f9f9f9;
+  --cl-bg-overlay: rgba(0, 0, 0, 0.5);
+  --cl-bg-dark: #2b2b2b;
+
+  /* Borders */
+  --cl-border: #dddddd;
+  --cl-border-light: #eeeeee;
+  --cl-border-dark: #cccccc;
+  --cl-border-focus: var(--cl-primary);
+
+  /* Shadows */
+  --cl-shadow-sm: 0 1px 3px rgba(0,0,0,0.1);
+  --cl-shadow-md: 0 4px 12px rgba(0,0,0,0.15);
+  --cl-shadow-lg: 0 8px 24px rgba(0,0,0,0.2);
+  --cl-shadow-xl: 0 12px 48px rgba(0,0,0,0.25);
+
+  /* Border radius */
+  --cl-radius-sm: 4px;
+  --cl-radius-md: 6px;
+  --cl-radius-lg: 8px;
+  --cl-radius-xl: 12px;
+  --cl-radius-round: 50%;
+
+  /* Typography */
+  --cl-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --cl-font-size-xs: 11px;
+  --cl-font-size-sm: 12px;
+  --cl-font-size-md: 13px;
+  --cl-font-size-lg: 14px;
+  --cl-font-size-xl: 16px;
+  --cl-font-size-2xl: 18px;
+  --cl-font-size-3xl: 24px;
+
+  /* Material palette ??button variants / icon colors */
+  --cl-purple: #9C27B0;
+  --cl-teal: #009688;
+  --cl-pink: #E91E63;
+  --cl-light-green: #8BC34A;
+  --cl-amber: #FFC107;
+  /* ...15+ more extended colors (see theme.css for full definitions) */
+
+  /* Transitions */
+  --cl-transition-fast: 0.15s ease;
+  --cl-transition: 0.2s ease;
+  --cl-transition-slow: 0.3s ease;
+}
+</code></pre>
+<blockquote>
+<p>For the complete variable definitions, refer to <code>packages/javascript/browser/ui_components/theme.css</code>, which contains 140+ CSS variables.</p>
+</blockquote>
+<h3>3.3 Custom Themes</h3>
+<p>Override <code>:root</code> variables to customize your brand theme:</p>
+<pre><code class="language-css">/* my-theme.css ??Override brand colors to customize the theme */
+:root {
+  --cl-primary: #E74C3C;
+  --cl-primary-dark: #C0392B;
+  --cl-radius-md: 8px;
+  --cl-font-family: 'Noto Sans TC', sans-serif;
+}
+</code></pre>
+<h3>3.4 Dark Theme</h3>
+<p>theme.css includes a built-in <code>[data-theme="dark"]</code> selector that overrides all <code>--cl-</code> variables:</p>
+<pre><code class="language-css">[data-theme=&quot;dark&quot;] {
+  --cl-primary: #64B5F6;
+  --cl-primary-dark: #42A5F5;
+  --cl-primary-light: #1a2a4a;
+  --cl-primary-rgb: 100, 181, 246;
+
+  --cl-text: #e4e4e7;
+  --cl-text-secondary: #a1a1aa;
+  --cl-text-muted: #71717a;
+  --cl-text-inverse: #1a1a2e;
+
+  --cl-bg: #1a1a2e;
+  --cl-bg-secondary: #252542;
+  --cl-bg-tertiary: #2d2d4a;
+  --cl-bg-hover: #2d2d4a;
+
+  --cl-border: #3f3f5a;
+  --cl-border-light: #2d2d4a;
+  --cl-border-dark: #52527a;
+
+  --cl-shadow-sm: 0 1px 3px rgba(0,0,0,0.3);
+  --cl-shadow-md: 0 4px 12px rgba(0,0,0,0.4);
+  /* ...etc (see theme.css for full definitions) */
+}
+</code></pre>
+<p>Toggle theme with JavaScript:</p>
+<pre><code class="language-javascript">// Switch to dark theme
+document.documentElement.setAttribute('data-theme', 'dark');
+
+// Switch back to light theme
+document.documentElement.removeAttribute('data-theme');
+</code></pre>
+<h3>3.5 Demo Theme Toggle Utility</h3>
+<p>Bricks4Agent provides <code>demo-utils.js</code> for quickly adding a theme toggle button to demo pages:</p>
+<pre><code class="language-javascript">import { createThemeToggle } from '../../demo-utils.js';
+
+// Add a dark/light theme toggle button to the demo page
+createThemeToggle();
+</code></pre>
+<h3>3.6 Style Migration Tools</h3>
+<p>The library provides two automation scripts for batch-replacing hardcoded color values with CSS variables:</p>
+<pre><code class="language-bash"># Preview hex color replacements (dry run)
+node tools/migrate-styles.js
+
+# Apply replacements
+node tools/migrate-styles.js --apply
+
+# Preview named color / rgba() replacements
+node tools/fix-named-colors.js
+
+# Apply replacements
+node tools/fix-named-colors.js --apply
+</code></pre>
+<hr>
+<h2>4. Form Components</h2>
+<p>Form components are located in <code>packages/javascript/browser/ui_components/form/</code>, with 12 components total.</p>
+<h3>4.1 TextInput ??Text Input</h3>
+<p><img alt="TextInput Component" src="screenshots/after/form-TextInput.png"></p>
+<pre><code class="language-javascript">import { TextInput } from './ui_components/form/TextInput/TextInput.js';
+
+const nameInput = new TextInput({
+  label: 'Name',
+  placeholder: 'Enter your name',
+  required: true,
+  maxLength: 50,
+  onChange: (value) =&gt; console.log('Value changed:', value)
+});
+
+nameInput.mount(document.getElementById('name-field'));
+
+// Get value
+const name = nameInput.getValue();
+
+// Set value
+nameInput.setValue('John Doe');
+</code></pre>
+<h3>4.2 NumberInput ??Number Input</h3>
+<p><img alt="NumberInput Component" src="screenshots/after/form-NumberInput.png"></p>
+<pre><code class="language-javascript">import { NumberInput } from './ui_components/form/NumberInput/NumberInput.js';
+
+const ageInput = new NumberInput({
+  label: 'Age',
+  min: 0,
+  max: 150,
+  step: 1,
+  required: true
+});
+
+ageInput.mount(document.getElementById('age-field'));
+</code></pre>
+<h3>4.3 DatePicker ??Date Picker</h3>
+<p><img alt="DatePicker Component" src="screenshots/after/form-DatePicker.png"></p>
+<pre><code class="language-javascript">import { DatePicker } from './ui_components/form/DatePicker/DatePicker.js';
+
+const datePicker = new DatePicker({
+  label: 'Birthday',
+  format: 'western',      // 'western' (Gregorian) or 'taiwan' (ROC calendar)
+  min: '1900-01-01',
+  max: '2026-12-31',
+  onChange: (date) =&gt; console.log('Date selected:', date)
+});
+
+datePicker.mount(document.getElementById('date-field'));
+</code></pre>
+<h3>4.4 TimePicker ??Time Picker</h3>
+<p><img alt="TimePicker Component" src="screenshots/after/form-TimePicker.png"></p>
+<pre><code class="language-javascript">import { TimePicker } from './ui_components/form/TimePicker/TimePicker.js';
+
+const timePicker = new TimePicker({
+  label: 'Meeting Time',
+  minuteStep: 15           // Minute interval (1, 5, 10, 15, 30)
+});
+
+timePicker.mount(document.getElementById('time-field'));
+</code></pre>
+<h3>4.5 Dropdown ??Dropdown Select</h3>
+<p><img alt="Dropdown Component" src="screenshots/after/form-Dropdown.png"></p>
+<pre><code class="language-javascript">import { Dropdown } from './ui_components/form/Dropdown/Dropdown.js';
+
+const cityDropdown = new Dropdown({
+  variant: 'searchable',   // 'basic' or 'searchable'
+  placeholder: 'Select a city',
+  items: [
+    { value: 'NYC', label: 'New York' },
+    { value: 'LAX', label: 'Los Angeles' },
+    { value: 'CHI', label: 'Chicago' }
+  ],
+  clearable: true,
+  onChange: (value) =&gt; console.log('Selected:', value)
+});
+
+cityDropdown.mount(document.getElementById('city-field'));
+</code></pre>
+<h3>4.6 MultiSelectDropdown ??Multi-Select Dropdown</h3>
+<p><img alt="MultiSelectDropdown Component" src="screenshots/after/form-MultiSelectDropdown.png"></p>
+<pre><code class="language-javascript">import { MultiSelectDropdown } from './ui_components/form/MultiSelectDropdown/MultiSelectDropdown.js';
+
+const tagSelect = new MultiSelectDropdown({
+  placeholder: 'Select tags',
+  items: [
+    { value: 'js', label: 'JavaScript' },
+    { value: 'css', label: 'CSS' },
+    { value: 'html', label: 'HTML' }
+  ],
+  maxCount: 5,             // Maximum selectable items
+  modalTitle: 'Select Tags'
+});
+
+tagSelect.mount(document.getElementById('tag-field'));
+
+// Get selected values (array)
+const selected = tagSelect.getValues(); // ['js', 'css']
+</code></pre>
+<h3>4.7 Checkbox ??Checkbox</h3>
+<p><img alt="Checkbox Component" src="screenshots/after/form-Checkbox.png"></p>
+<pre><code class="language-javascript">import { Checkbox } from './ui_components/form/Checkbox/Checkbox.js';
+
+const agreeCheckbox = new Checkbox({
+  label: 'I agree to the terms of service',
+  checked: false,
+  onChange: (checked) =&gt; console.log('Checked:', checked)
+});
+
+agreeCheckbox.mount(document.getElementById('agree-field'));
+</code></pre>
+<h3>4.8 Radio ??Radio Button</h3>
+<p><img alt="Radio Component" src="screenshots/after/form-Radio.png"></p>
+<pre><code class="language-javascript">import { Radio } from './ui_components/form/Radio/Radio.js';
+
+// Single Radio button
+const radio = new Radio({
+  name: 'gender',
+  label: 'Male',
+  value: 'male',
+  onChange: (checked) =&gt; console.log('Checked:', checked)
+});
+
+radio.mount(document.getElementById('radio-field'));
+
+// Create a Radio group (recommended usage)
+const genderGroup = Radio.createGroup({
+  name: 'gender',
+  items: [
+    { value: 'male', label: 'Male' },
+    { value: 'female', label: 'Female' },
+    { value: 'other', label: 'Other' }
+  ],
+  value: 'male',            // Default selected value
+  direction: 'horizontal',  // 'vertical' or 'horizontal'
+  onChange: (value) =&gt; console.log('Selected:', value)
+});
+
+// createGroup returns a group object with getValue/setValue/mount methods
+genderGroup.mount(document.getElementById('gender-field'));
+
+// Get current selected value
+const selectedGender = genderGroup.getValue();
+
+// Programmatically set selected value
+genderGroup.setValue('female');
+</code></pre>
+<h3>4.9 ToggleSwitch ??Toggle Switch</h3>
+<pre><code class="language-javascript">import { ToggleSwitch } from './ui_components/form/ToggleSwitch/ToggleSwitch.js';
+
+const toggle = new ToggleSwitch({
+  label: 'Enable Notifications',
+  checked: true,
+  onChange: (enabled) =&gt; console.log('Notifications:', enabled ? 'On' : 'Off')
+});
+
+toggle.mount(document.getElementById('toggle-field'));
+</code></pre>
+<h3>4.10 FormField ??Form Field Wrapper</h3>
+<p><img alt="FormField Component" src="screenshots/after/form-FormField.png"></p>
+<pre><code class="language-javascript">import { FormField } from './ui_components/form/FormField/FormField.js';
+
+const field = new FormField({
+  label: 'Email',
+  required: true,
+  hint: 'We will not share your email',
+  component: new TextInput({ placeholder: 'user@example.com' })
+});
+
+field.mount(document.getElementById('email-field'));
+</code></pre>
+<h3>4.11 SearchForm ??Search Form</h3>
+<p><img alt="SearchForm Component" src="screenshots/after/form-SearchForm.png"></p>
+<pre><code class="language-javascript">import { SearchForm } from './ui_components/form/SearchForm/SearchForm.js';
+
+const searchForm = new SearchForm({
+  fields: [
+    { name: 'keyword', type: 'text', label: 'Keyword' },
+    { name: 'category', type: 'select', label: 'Category', options: [
+      { value: 'all', label: 'All' },
+      { value: 'news', label: 'News' }
+    ]},
+    { name: 'dateRange', type: 'date', label: 'Date Range' }
+  ],
+  onSearch: (criteria) =&gt; console.log('Search criteria:', criteria),
+  onReset: () =&gt; console.log('Reset')
+});
+
+searchForm.mount(document.getElementById('search-area'));
+</code></pre>
+<h3>4.12 BatchUploader ??Batch Uploader</h3>
+<p><img alt="BatchUploader Component" src="screenshots/after/form-BatchUploader.png"></p>
+<pre><code class="language-javascript">import { BatchUploader } from './ui_components/form/BatchUploader/BatchUploader.js';
+
+const uploader = new BatchUploader({
+  container: document.getElementById('upload-area'),
+  apiEndpoint: '/api/files/upload',
+  allowedExtensions: ['.pdf', '.jpg', '.png'],
+  maxFileSize: 10 * 1024 * 1024, // 10MB
+  maxFiles: 5,
+  autoUpload: false,
+  uploadMode: 'sequential',  // 'sequential' or 'parallel'
+  onComplete: (files) =&gt; console.log('Upload complete:', files),
+  onError: (err) =&gt; console.error('Upload failed:', err)
+});
+</code></pre>
+<hr>
+<h2>5. Common Components</h2>
+<p>Common components are located in <code>packages/javascript/browser/ui_components/common/</code>, with 23 components total.</p>
+<h3>5.1 Button Series</h3>
+<h4>BasicButton ??Basic Button</h4>
+<p><img alt="BasicButton" src="screenshots/after/common-BasicButton.png"></p>
+<pre><code class="language-javascript">import { BasicButton } from './ui_components/common/BasicButton/BasicButton.js';
+
+const btn = new BasicButton({
+  text: 'Submit',
+  variant: 'primary', // primary | secondary | outline | danger
+  onClick: () =&gt; console.log('Button clicked')
+});
+
+btn.mount(document.getElementById('btn-container'));
+</code></pre>
+<h4>ActionButton ??Action Button</h4>
+<p><img alt="ActionButton" src="screenshots/after/common-ActionButton.png"></p>
+<pre><code class="language-javascript">import { ActionButton } from './ui_components/common/ActionButton/ActionButton.js';
+
+const actionBtn = new ActionButton({
+  text: 'Edit',
+  icon: 'edit',
+  onClick: () =&gt; openEditor()
+});
+
+actionBtn.mount(document.getElementById('action-area'));
+</code></pre>
+<h4>AuthButton ??Permission-based Button</h4>
+<p><img alt="AuthButton" src="screenshots/after/common-AuthButton.png"></p>
+<pre><code class="language-javascript">import { AuthButton } from './ui_components/common/AuthButton/AuthButton.js';
+
+// Automatically shows/hides based on user permissions
+const deleteBtn = new AuthButton({
+  text: 'Delete',
+  permission: 'admin.delete',
+  variant: 'danger',
+  onClick: () =&gt; deleteItem()
+});
+
+deleteBtn.mount(document.getElementById('auth-area'));
+</code></pre>
+<h4>DownloadButton / UploadButton</h4>
+<p><img alt="DownloadButton" src="screenshots/after/common-DownloadButton.png"></p>
+<p><img alt="UploadButton" src="screenshots/after/common-UploadButton.png"></p>
+<pre><code class="language-javascript">import { DownloadButton } from './ui_components/common/DownloadButton/DownloadButton.js';
+import { UploadButton } from './ui_components/common/UploadButton/UploadButton.js';
+
+const downloadBtn = new DownloadButton({
+  text: 'Download Report',
+  url: '/api/reports/export',
+  filename: 'report.xlsx'
+});
+
+const uploadBtn = new UploadButton({
+  text: 'Upload File',
+  accept: '.csv,.xlsx',
+  onUpload: (file) =&gt; processFile(file)
+});
+</code></pre>
+<h4>ButtonGroup ??Button Group</h4>
+<p><img alt="ButtonGroup" src="screenshots/after/common-ButtonGroup.png"></p>
+<pre><code class="language-javascript">import { ButtonGroup } from './ui_components/common/ButtonGroup/ButtonGroup.js';
+
+const group = new ButtonGroup({
+  buttons: [saveBtn, cancelBtn, deleteBtn],  // Array of BasicButton instances
+  direction: 'horizontal',  // 'horizontal' | 'vertical'
+  gap: '8px',
+  showSeparator: false,
+  theme: 'light'            // 'light' | 'dark' | 'gradient'
+});
+
+group.mount(document.getElementById('button-area'));
+</code></pre>
+<h3>5.2 ColorPicker ??Color Picker</h3>
+<p><img alt="ColorPicker" src="screenshots/after/common-ColorPicker.png"></p>
+<pre><code class="language-javascript">import { ColorPicker } from './ui_components/common/ColorPicker/ColorPicker.js';
+
+const colorPicker = new ColorPicker({
+  label: 'Theme Color',
+  value: '#4A90D9',
+  onChange: (color) =&gt; applyColor(color)
+});
+
+colorPicker.mount(document.getElementById('color-field'));
+</code></pre>
+<h3>5.3 Dialog / SimpleDialog ??Dialog</h3>
+<p><img alt="Dialog Component" src="screenshots/after/common-Dialog.png"></p>
+<pre><code class="language-javascript">import { SimpleDialog } from './ui_components/common/Dialog/SimpleDialog.js';
+
+// Confirmation dialog (returns Promise&lt;boolean&gt;)
+const confirmed = await SimpleDialog.confirm('Are you sure you want to delete this item? This action cannot be undone.');
+if (confirmed) {
+  deleteItem();
+}
+
+// Alert dialog (returns Promise&lt;true&gt;)
+await SimpleDialog.alert('Data saved successfully.');
+
+// Prompt dialog (returns Promise&lt;string|null&gt;)
+const name = await SimpleDialog.prompt('Enter a name', 'default value');
+</code></pre>
+<h3>5.4 Notification ??Notification</h3>
+<p><img alt="Notification Component" src="screenshots/after/common-Notification.png"></p>
+<pre><code class="language-javascript">import { Notification } from './ui_components/common/Notification/Notification.js';
+
+// Success notification
+Notification.success('Saved successfully!');
+
+// Error notification
+Notification.error('An error occurred. Please try again.');
+
+// Warning notification
+Notification.warning('Please fill in the required fields.');
+
+// Info notification
+Notification.info('A new version has been released.');
+
+// Custom options
+Notification.show({
+  type: 'success',
+  message: 'Operation complete',
+  duration: 5000,    // Display for 5 seconds
+  position: 'top-right'
+});
+</code></pre>
+<h3>5.5 LoadingSpinner ??Loading Spinner</h3>
+<p><img alt="LoadingSpinner Component" src="screenshots/after/common-LoadingSpinner.png"></p>
+<pre><code class="language-javascript">import { LoadingSpinner } from './ui_components/common/LoadingSpinner/LoadingSpinner.js';
+
+const spinner = new LoadingSpinner({
+  text: 'Loading data...',
+  size: 'medium' // small | medium | large
+});
+
+// Show loading
+spinner.mount(document.getElementById('content-area'));
+
+// Remove when done
+spinner.destroy();
+</code></pre>
+<h3>5.6 Pagination ??Pagination</h3>
+<p><img alt="Pagination Component" src="screenshots/after/common-Pagination.png"></p>
+<pre><code class="language-javascript">import { Pagination } from './ui_components/common/Pagination/Pagination.js';
+
+const pagination = new Pagination({
+  total: 200,
+  pageSize: 20,
+  page: 1,
+  onChange: (page, pageSize) =&gt; loadData(page)
+});
+
+pagination.mount(document.getElementById('pagination-area'));
+</code></pre>
+<h3>5.7 Breadcrumb ??Breadcrumb Navigation</h3>
+<p><img alt="Breadcrumb Component" src="screenshots/after/common-Breadcrumb.png"></p>
+<pre><code class="language-javascript">import { Breadcrumb } from './ui_components/common/Breadcrumb/Breadcrumb.js';
+
+const breadcrumb = new Breadcrumb({
+  items: [
+    { text: 'Home', href: '#/' },
+    { text: 'User Management', href: '#/users' },
+    { text: 'Edit User' }  // Last item doesn't need href
+  ]
+});
+
+breadcrumb.mount(document.getElementById('breadcrumb-area'));
+</code></pre>
+<h3>5.8 TreeList ??Tree List</h3>
+<p><img alt="TreeList Component" src="screenshots/after/common-TreeList.png"></p>
+<pre><code class="language-javascript">import { TreeList } from './ui_components/common/TreeList/TreeList.js';
+
+const tree = new TreeList({
+  data: [
+    {
+      id: 1, label: 'Headquarters', children: [
+        { id: 2, label: 'Engineering', children: [
+          { id: 3, label: 'Frontend Team' },
+          { id: 4, label: 'Backend Team' }
+        ]},
+        { id: 5, label: 'Sales' }
+      ]
+    }
+  ],
+  onSelect: (node) =&gt; console.log('Selected:', node)
+});
+
+tree.mount(document.getElementById('tree-area'));
+</code></pre>
+<h3>5.9 PhotoCard / FeatureCard ??Card Components</h3>
+<p><img alt="PhotoCard Component" src="screenshots/after/common-PhotoCard.png"></p>
+<p><img alt="FeatureCard Component" src="screenshots/after/common-FeatureCard.png"></p>
+<pre><code class="language-javascript">import { PhotoCard } from './ui_components/common/PhotoCard/PhotoCard.js';
+import { FeatureCard } from './ui_components/common/FeatureCard/FeatureCard.js';
+
+const photoCard = new PhotoCard({
+  imageUrl: '/images/landscape.jpg',
+  title: 'National Park',
+  description: 'A scenic nature area near the city',
+  onClick: () =&gt; openDetail()
+});
+
+const featureCard = new FeatureCard({
+  icon: 'chart',
+  title: 'Data Analytics',
+  description: 'Real-time data statistics and visual reports'
+});
+</code></pre>
+<h3>5.10 ImageViewer ??Image Viewer</h3>
+<p><img alt="ImageViewer Component" src="screenshots/after/common-ImageViewer.png"></p>
+<pre><code class="language-javascript">import { ImageViewer } from './ui_components/common/ImageViewer/ImageViewer.js';
+
+const viewer = new ImageViewer({
+  images: [
+    { src: '/photos/1.jpg', caption: 'Photo 1' },
+    { src: '/photos/2.jpg', caption: 'Photo 2' },
+    { src: '/photos/3.jpg', caption: 'Photo 3' }
+  ],
+  enableZoom: true,
+  enableFullscreen: true
+});
+
+viewer.mount(document.getElementById('viewer-area'));
+</code></pre>
+<h3>5.11 SortButton ??Sort Button</h3>
+<p>Used for table column sorting, cycling through none ??desc ??asc states.</p>
+<pre><code class="language-javascript">import { SortButton } from './ui_components/common/SortButton/SortButton.js';
+
+const sortBtn = new SortButton({
+  field: 'name',
+  state: 'none',        // 'none'|'desc'|'asc'
+  size: 'small',         // 'small'|'medium'
+  onSort: (field, state) =&gt; {
+    console.log(`Sort ${field}: ${state}`);
+    loadData({ sortBy: field, order: state });
+  }
+});
+
+sortBtn.mount(headerCell);
+sortBtn.setState('asc');  // Programmatic control
+sortBtn.reset();          // Reset to none
+</code></pre>
+<h3>5.12 EditorButton ??Editor Toolbar Button</h3>
+<p>Provides 50+ predefined button types (bold, italic, link, image, etc.) for rich text editor toolbars.</p>
+<pre><code class="language-javascript">import { EditorButton } from './ui_components/common/EditorButton/EditorButton.js';
+
+const boldBtn = new EditorButton({
+  type: 'bold',           // 50+ predefined types
+  onClick: () =&gt; document.execCommand('bold'),
+  size: 'medium',         // 'small'|'medium'|'large'
+  variant: 'default',     // 'default'|'primary'|'ghost'|'outline'
+  tooltip: 'Bold (Ctrl+B)'
+});
+
+boldBtn.mount(toolbar);
+boldBtn.active = true;    // Set active state
+boldBtn.setDisabled(true); // Disable
+</code></pre>
+<hr>
+<h2>6. Layout Components</h2>
+<p>Layout components are located in <code>packages/javascript/browser/ui_components/layout/</code>, with 10 components total.</p>
+<h3>6.1 Panel Series</h3>
+<p><img alt="Panel Component" src="screenshots/after/layout-Panel.png"></p>
+<p>The Panel series provides multiple panel types: BasePanel, BasicPanel, CardPanel, CollapsiblePanel, ModalPanel, DrawerPanel, FocusPanel, ToastPanel, and the unified PanelManager.</p>
+<pre><code class="language-javascript">import { ModalPanel } from './ui_components/layout/Panel/ModalPanel.js';
+import { ToastPanel } from './ui_components/layout/Panel/ToastPanel.js';
+import { PanelManager } from './ui_components/layout/Panel/PanelManager.js';
+
+// Modal panel
+const modal = new ModalPanel({
+  title: 'Edit User',
+  width: '600px',
+  onClose: () =&gt; console.log('Closed')
+});
+
+modal.setContent('&lt;form&gt;...&lt;/form&gt;');
+modal.mount(document.body);
+modal.open();
+
+// Toast notification panel
+const toast = new ToastPanel({
+  message: 'Operation successful',
+  type: 'success',
+  duration: 3000
+});
+
+toast.mount(document.body);
+toast.show();
+
+// PanelManager ??Unified panel management
+const panelManager = new PanelManager();
+panelManager.register('editUser', modal);
+panelManager.open('editUser');
+panelManager.close('editUser');
+</code></pre>
+<h3>6.2 DataTable ??Data Table</h3>
+<p><img alt="DataTable Component" src="screenshots/after/layout-DataTable.png"></p>
+<pre><code class="language-javascript">import { DataTable } from './ui_components/layout/DataTable/DataTable.js';
+
+const table = new DataTable({
+  container: document.getElementById('table-area'),
+  title: 'User Management',
+  variant: 'default',       // 'default' or 'search'
+  columns: [
+    { name: 'name', label: 'Name', options: { sort: true } },
+    { name: 'email', label: 'Email' },
+    { name: 'role', label: 'Role', options: { sort: true } },
+    {
+      name: 'actions',
+      label: 'Actions',
+      options: {
+        customBodyRender: (value, tableMeta) =&gt;
+          `&lt;button onclick=&quot;edit(${tableMeta.rowData[0]})&quot;&gt;Edit&lt;/button&gt;`
+      }
+    }
+  ],
+  data: [
+    ['John Doe', 'john@example.com', 'Admin', ''],
+    ['Jane Smith', 'jane@example.com', 'Editor', '']
+  ],
+  pageSize: 20
+});
+
+// Alternative format ??Object array + key/title columns (audit mode)
+const auditTable = new DataTable({
+  container: document.getElementById('audit-area'),
+  columns: [
+    { key: 'name', title: 'Name', sortable: true },
+    { key: 'email', title: 'Email' },
+    { key: 'role', title: 'Role', render: (row) =&gt; `&lt;b&gt;${row.role}&lt;/b&gt;` }
+  ],
+  data: [
+    { name: 'John Doe', email: 'john@example.com', role: 'Admin' },
+    { name: 'Jane Smith', email: 'jane@example.com', role: 'Editor' }
+  ]
+});
+</code></pre>
+<h3>6.3 SideMenu ??Side Menu</h3>
+<p><img alt="SideMenu Component" src="screenshots/after/layout-SideMenu.png"></p>
+<pre><code class="language-javascript">import { SideMenu } from './ui_components/layout/SideMenu/SideMenu.js';
+
+const menu = new SideMenu({
+  items: [
+    { id: 'dashboard', icon: 'home', text: 'Dashboard', href: '#/' },
+    {
+      id: 'users', icon: 'users', text: 'User Management',
+      children: [
+        { id: 'user-list', text: 'User List', href: '#/users' },
+        { id: 'user-add', text: 'Add User', href: '#/users/add' }
+      ]
+    },
+    { id: 'settings', icon: 'settings', text: 'Settings', href: '#/settings' }
+  ],
+  activeId: 'dashboard',
+  collapsed: false,          // Whether the side menu is collapsed
+  accordion: true,           // Accordion mode (only one submenu expanded at a time)
+  onSelect: (item) =&gt; console.log('Selected:', item)
+});
+
+menu.mount(document.getElementById('sidebar'));
+</code></pre>
+<h3>6.4 TabContainer ??Tab Container</h3>
+<p><img alt="TabContainer Component" src="screenshots/after/layout-TabContainer.png"></p>
+<pre><code class="language-javascript">import { TabContainer } from './ui_components/layout/TabContainer/TabContainer.js';
+
+const tabs = new TabContainer({
+  containerId: 'tab-area',  // DOM id of the mount container
+  tabs: [
+    { id: 'basic', title: 'Basic Info', content: '&lt;div&gt;...&lt;/div&gt;' },
+    { id: 'contact', title: 'Contact', content: '&lt;div&gt;...&lt;/div&gt;' },
+    { id: 'permissions', title: 'Permissions', content: '&lt;div&gt;...&lt;/div&gt;', closable: false }
+  ],
+  position: 'top',          // 'top' | 'bottom' | 'left' | 'right'
+  closable: true,           // Whether tabs can be closed
+  animated: true,
+  onTabChange: (tabId) =&gt; console.log('Switched to:', tabId),
+  onTabClose: (tabId) =&gt; console.log('Closed:', tabId)
+});
+</code></pre>
+<h3>6.5 FormRow ??Form Row</h3>
+<p><img alt="FormRow Component" src="screenshots/after/layout-FormRow.png"></p>
+<pre><code class="language-javascript">import { FormRow } from './ui_components/layout/FormRow/FormRow.js';
+
+const row = new FormRow({
+  columns: 3,  // Display 3 fields per row
+  gap: '16px',
+  fields: [nameInput, emailInput, phoneInput]
+});
+
+row.mount(document.getElementById('form-area'));
+</code></pre>
+<h3>6.6 InfoPanel ??Info Panel</h3>
+<p><img alt="InfoPanel Component" src="screenshots/after/layout-InfoPanel.png"></p>
+<pre><code class="language-javascript">import { InfoPanel } from './ui_components/layout/InfoPanel/InfoPanel.js';
+
+const infoPanel = new InfoPanel({
+  containerId: 'info-area',  // DOM id of the mount container
+  panels: [
+    { title: 'Basic Info', fields: [
+      { label: 'Name', value: 'John Doe' },
+      { label: 'Phone', value: '0912-345-678' }
+    ]},
+    { title: 'System Info', fields: [
+      { label: 'Created', value: '2025-01-15' }
+    ]}
+  ],
+  layout: 'grid',        // 'grid' | 'list' | 'masonry'
+  columns: 3,
+  collapsible: true
+});
+</code></pre>
+<h3>6.7 Other Layout Components</h3>
+<h4>FunctionMenu ??Function Menu</h4>
+<p><img alt="FunctionMenu Component" src="screenshots/after/layout-FunctionMenu.png"></p>
+<pre><code class="language-javascript">import { FunctionMenu } from './ui_components/layout/FunctionMenu/FunctionMenu.js';
+
+const funcMenu = new FunctionMenu({
+  containerId: 'func-menu',  // DOM id of the mount container
+  items: [
+    { id: 'add', icon: 'add', label: 'Add' },
+    { id: 'export', icon: 'export', label: 'Export' },
+    { id: 'print', icon: 'print', label: 'Print' }
+  ],
+  layout: 'horizontal',      // 'horizontal' | 'vertical' | 'grid'
+  columns: 4,
+  size: 'medium',            // 'small' | 'medium' | 'large'
+  onItemClick: (item) =&gt; console.log('Clicked:', item.id)
+});
+</code></pre>
+<h4>WorkflowPanel ??Workflow Panel</h4>
+<p><img alt="WorkflowPanel Component" src="screenshots/after/layout-WorkflowPanel.png"></p>
+<pre><code class="language-javascript">import { WorkflowPanel } from './ui_components/layout/WorkflowPanel/WorkflowPanel.js';
+
+const workflow = new WorkflowPanel({
+  data: [
+    { StageName: 'Created', DateTime: '2026-03-01 10:00', UnitName: 'IT Dept', UserName: 'John' },
+    { StageName: 'Submitted', DateTime: '2026-03-02 14:00', UnitName: 'IT Dept', UserName: 'John' },
+    { StageName: 'Reviewed', DateTime: '2026-03-03 09:00', UnitName: 'Admin', UserName: 'Jane' },
+    { StageName: 'Approved', DateTime: '2026-03-03 16:00', UnitName: 'Admin', UserName: 'Manager' }
+  ],
+  itemsPerRow: 5,            // Nodes per row (3~7)
+  nextStage: { StageName: 'Closed', NextUnit: 'IT Dept' },
+  showDetails: true,
+  onNodeClick: (node) =&gt; console.log('Node:', node)
+});
+
+workflow.mount(document.getElementById('workflow-area'));
+</code></pre>
+<h3>6.8 DocumentWall ??Document Wall</h3>
+<p>Displays documents in a card grid, supports multi-select, batch ZIP download, description editing, and deletion.</p>
+<pre><code class="language-javascript">import { DocumentWall } from './ui_components/layout/DocumentWall/DocumentWall.js';
+
+const wall = new DocumentWall({
+  documents: [
+    { id: 1, title: 'report.pdf', type: 'pdf', src: '/files/report.pdf', description: 'Annual report' }
+  ],
+  readOnly: false,
+  onDownload: (doc) =&gt; {},
+  onDescription: (doc, text) =&gt; {},
+  onEdit: (doc) =&gt; {},
+  onDelete: (doc) =&gt; {}
+});
+
+wall.mount(document.getElementById('doc-area'));
+wall.removeDocument(0);
+</code></pre>
+<h3>6.9 PhotoWall ??Photo Wall</h3>
+<p>Image gallery component, supports preview browsing, multi-select, and batch ZIP download.</p>
+<pre><code class="language-javascript">import { PhotoWall } from './ui_components/layout/PhotoWall/PhotoWall.js';
+
+const photos = new PhotoWall({
+  photos: [
+    { id: 1, src: '/images/photo1.jpg', alt: 'Photo 1' }
+  ],
+  readOnly: false,
+  onAdd: (photo) =&gt; {},
+  onDelete: (photo) =&gt; {},
+  onChange: (photos) =&gt; {}
+});
+
+photos.mount(document.getElementById('gallery'));
+photos.addPhoto({ id: 2, src: '/images/photo2.jpg', alt: 'Photo 2' });
+const allPhotos = photos.getPhotos();
+</code></pre>
+<hr>
+<h2>7. Advanced Input Components</h2>
+<p>Advanced input components are located in <code>packages/javascript/browser/ui_components/input/</code>, with 10 components total. These components handle complex input scenarios such as addresses, phone lists, organization info, etc.</p>
+<p><img alt="Advanced Input Overview" src="screenshots/after/input-CompositeInputs.png"></p>
+<h3>7.1 ChainedInput ??Chained Input</h3>
+<p>Multi-level cascading dropdown selects, suitable for hierarchical data like country/state/city.</p>
+<pre><code class="language-javascript">import { ChainedInput } from './ui_components/input/ChainedInput/ChainedInput.js';
+
+const regionInput = new ChainedInput({
+  label: 'Region',
+  levels: [
+    { name: 'city', label: 'City', options: citiesData },
+    { name: 'district', label: 'District', dependsOn: 'city' },
+    { name: 'village', label: 'Village', dependsOn: 'district' }
+  ],
+  onLoadOptions: async (level, parentValue) =&gt; {
+    return await fetch(`/api/regions?parent=${parentValue}`).then(r =&gt; r.json());
+  }
+});
+
+regionInput.mount(document.getElementById('region-field'));
+</code></pre>
+<h3>7.2 AddressInput ??Address Input</h3>
+<p>Composite component integrating region cascading and detailed address.</p>
+<pre><code class="language-javascript">import { AddressInput } from './ui_components/input/AddressInput/AddressInput.js';
+
+const addressInput = new AddressInput({
+  label: 'Mailing Address',
+  required: true
+});
+
+addressInput.mount(document.getElementById('address-field'));
+
+// Get full address
+const address = addressInput.getValue();
+// { city: 'Taipei', district: 'Zhongzheng', detail: '122 Chongqing South Rd.' }
+</code></pre>
+<h3>7.3 AddressListInput ??Multiple Address Input</h3>
+<p>Add/remove multiple addresses, suitable for scenarios with multiple mailing addresses.</p>
+<pre><code class="language-javascript">import { AddressListInput } from './ui_components/input/AddressListInput/AddressListInput.js';
+
+const addressList = new AddressListInput({
+  label: 'Address List',
+  maxItems: 3
+});
+
+addressList.mount(document.getElementById('address-list-field'));
+</code></pre>
+<h3>7.4 PersonInfoList ??Person Info List</h3>
+<pre><code class="language-javascript">import { PersonInfoList } from './ui_components/input/PersonInfoList/PersonInfoList.js';
+
+const personList = new PersonInfoList({
+  label: 'Family Members',
+  fields: ['name', 'relationship', 'phone', 'birthDate'],
+  maxItems: 10
+});
+
+personList.mount(document.getElementById('person-list'));
+</code></pre>
+<h3>7.5 PhoneListInput ??Phone List</h3>
+<pre><code class="language-javascript">import { PhoneListInput } from './ui_components/input/PhoneListInput/PhoneListInput.js';
+
+const phoneList = new PhoneListInput({
+  label: 'Contact Phones',
+  maxItems: 5,
+  types: ['Mobile', 'Home', 'Work']
+});
+
+phoneList.mount(document.getElementById('phone-list'));
+</code></pre>
+<h3>7.6 OrganizationInput ??Organization Input</h3>
+<pre><code class="language-javascript">import { OrganizationInput } from './ui_components/input/OrganizationInput/OrganizationInput.js';
+
+const orgInput = new OrganizationInput({
+  label: 'Employer',
+  fields: ['name', 'department', 'title', 'phone']
+});
+
+orgInput.mount(document.getElementById('org-field'));
+</code></pre>
+<h3>7.7 Other Advanced Inputs</h3>
+<ul>
+<li><strong>DateTimeInput</strong> ??DateTime composite input</li>
+<li><strong>ListInput</strong> ??Generic list input (add/remove/reorder items)</li>
+<li><strong>SocialMediaList</strong> ??Social media account list</li>
+<li><strong>StudentInput</strong> ??Student information input</li>
+</ul>
+<p>All these components follow the unified API (<code>mount</code>, <code>getValue</code>, <code>setValue</code>, <code>destroy</code>).</p>
+<hr>
+<h2>8. Social Components</h2>
+<p>Social components (<code>social/</code>) provide UI elements for social networking features including profiles, feeds, and network graphs.</p>
+<h3>8.1 Avatar ??Avatar</h3>
+<pre><code class="language-javascript">import { Avatar } from './ui_components/social/Avatar/Avatar.js';
+
+const avatar = new Avatar({
+  src: '/images/user.jpg',
+  alt: 'John Doe',
+  size: 'lg',         // 'xs'|'sm'|'md'|'lg'|'xl' (24px ~ 96px)
+  badge: 3,           // Notification count
+  onClick: () =&gt; {}
+});
+
+avatar.mount(document.getElementById('avatar-container'));
+avatar.update({ badge: 5 });
+</code></pre>
+<h3>8.2 FeedCard ??Feed Card</h3>
+<pre><code class="language-javascript">import { FeedCard } from './ui_components/social/FeedCard/FeedCard.js';
+
+const feed = new FeedCard({
+  avatar: '/images/user.jpg',
+  author: 'John Doe',
+  authorSub: 'Senior Engineer',
+  timestamp: '2026-03-01T10:30:00',
+  type: 'Announcement',
+  typeColor: 'var(--cl-primary)',
+  title: 'System Update Notice',
+  content: 'This update includes performance improvements...',
+  images: ['/images/screenshot.png'],
+  tags: ['System', 'Update'],
+  onClickDetail: () =&gt; {},
+  onClickAuthor: () =&gt; {}
+});
+
+feed.mount(document.getElementById('feed'));
+
+// Batch generate feed list
+const listHTML = FeedCard.listHTML(feedItems);
+</code></pre>
+<h3>8.3 ConnectionCard ??Connection Card</h3>
+<pre><code class="language-javascript">import { ConnectionCard } from './ui_components/social/ConnectionCard/ConnectionCard.js';
+
+const card = new ConnectionCard({
+  avatar: '/images/user.jpg',
+  name: 'Jane Smith',
+  subtitle: 'Product Manager',
+  tags: ['Design', 'UX'],
+  onClick: () =&gt; {}
+});
+
+card.mount(container);
+
+// Batch generate connection grid
+const gridHTML = ConnectionCard.gridHTML(contacts);
+</code></pre>
+<h3>8.4 StatCard ??Stat Card</h3>
+<pre><code class="language-javascript">import { StatCard } from './ui_components/social/StatCard/StatCard.js';
+
+const stat = new StatCard({
+  icon: '??',
+  label: 'Monthly Revenue',
+  value: '$120,000',
+  trend: 'up',           // 'up'|'down'|null
+  trendValue: '+12%',
+  color: 'var(--cl-success)',
+  onClick: () =&gt; {}
+});
+
+stat.mount(container);
+</code></pre>
+<h3>8.5 Timeline ??Timeline</h3>
+<pre><code class="language-javascript">import { Timeline } from './ui_components/social/Timeline/Timeline.js';
+
+const timeline = new Timeline({
+  items: [
+    {
+      timestamp: '2026-03-01T10:00:00',
+      type: 'Created',
+      color: 'var(--cl-success)',
+      icon: '??,
+      title: 'Account Created',
+      description: 'Account automatically created by the system',
+      onClick: () =&gt; {}
+    }
+  ],
+  grouped: true,       // Group by month
+  emptyText: 'No events yet'
+});
+
+timeline.mount(container);
+</code></pre>
+<hr>
+<h2>9. Visualization Components</h2>
+<p>Visualization components are located in <code>packages/javascript/browser/ui_components/viz/</code>, with 20 components total. All built with pure SVG + native DOM, zero external dependencies.</p>
+<p><img alt="Visualization Overview" src="screenshots/after/viz-Charts.png"></p>
+<h3>9.1 Chart Series</h3>
+<p>All charts inherit from <code>BaseChart</code> with a shared unified interface.</p>
+<pre><code class="language-javascript">import { BarChart } from './ui_components/viz/BarChart.js';
+import { LineChart } from './ui_components/viz/LineChart.js';
+import { PieChart } from './ui_components/viz/PieChart.js';
+import { RoseChart } from './ui_components/viz/RoseChart.js';
+
+// Bar chart
+const barChart = new BarChart({
+  title: 'Monthly Revenue',
+  data: [
+    { label: 'Jan', value: 120000 },
+    { label: 'Feb', value: 98000 },
+    { label: 'Mar', value: 150000 }
+  ],
+  width: 600,
+  height: 400
+});
+
+barChart.mount(document.getElementById('bar-chart'));
+
+// Line chart
+const lineChart = new LineChart({
+  title: 'User Trends',
+  series: [
+    { name: 'New Users', data: [100, 120, 115, 140, 160] },
+    { name: 'Active Users', data: [500, 520, 530, 550, 580] }
+  ],
+  labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May'],
+  width: 600,
+  height: 400
+});
+
+lineChart.mount(document.getElementById('line-chart'));
+
+// Pie chart
+const pieChart = new PieChart({
+  title: 'Browser Market Share',
+  data: [
+    { label: 'Chrome', value: 65, color: '#4285F4' },
+    { label: 'Safari', value: 19, color: '#FF9500' },
+    { label: 'Firefox', value: 10, color: '#FF6611' },
+    { label: 'Other', value: 6, color: '#999' }
+  ]
+});
+
+pieChart.mount(document.getElementById('pie-chart'));
+</code></pre>
+<h3>9.2 Hierarchy &amp; Relation Charts</h3>
+<pre><code class="language-javascript">import { OrgChart } from './ui_components/viz/OrgChart.js';
+import { RelationChart } from './ui_components/viz/RelationChart.js';
+
+// Org chart ??supports flat data auto-conversion to tree (flatToHierarchy)
+const orgChart = new OrgChart({
+  data: [
+    { id: 1, name: 'CEO', parentId: null },
+    { id: 2, name: 'CTO', parentId: 1 },
+    { id: 3, name: 'VP Sales', parentId: 1 },
+    { id: 4, name: 'Frontend Engineer', parentId: 2 }
+  ],
+  width: 800,
+  height: 600
+});
+
+orgChart.mount(document.getElementById('org-chart'));
+
+// Relation chart
+const relationChart = new RelationChart({
+  nodes: [
+    { id: 'a', label: 'User' },
+    { id: 'b', label: 'Order' },
+    { id: 'c', label: 'Product' }
+  ],
+  edges: [
+    { source: 'a', target: 'b', label: 'Creates' },
+    { source: 'b', target: 'c', label: 'Contains' }
+  ]
+});
+
+relationChart.mount(document.getElementById('relation-chart'));
+</code></pre>
+<h3>9.3 Other Visualization Components</h3>
+<ul>
+<li><strong>TimelineChart</strong> ??Timeline chart</li>
+<li><strong>SankeyChart</strong> ??Sankey diagram (flow visualization)</li>
+<li><strong>SunburstChart</strong> ??Sunburst chart (hierarchical proportions)</li>
+<li><strong>FlameChart</strong> ??Flame chart (performance analysis)</li>
+<li><strong>HierarchyChart</strong> ??Hierarchy structure chart</li>
+</ul>
+<h3>9.4 Map Components</h3>
+<p><img alt="Map Component" src="screenshots/after/data-RegionMap.png"></p>
+<pre><code class="language-javascript">import { LeafletMap } from './ui_components/viz/LeafletMap.js';
+
+const map = new LeafletMap({
+  center: [25.0330, 121.5654], // Taipei 101
+  zoom: 13,
+  markers: [
+    { lat: 25.0330, lng: 121.5654, popup: 'Taipei 101' }
+  ]
+});
+
+map.mount(document.getElementById('map-area'));
+</code></pre>
+<p>Other map components: MapEditor, MapEditorV2, CanvasMap.</p>
+<h4>OSMMapEditor ??OSM Map Editor</h4>
+<p>A map editor extending WebPainter, using OpenStreetMap tiles with integrated drawing tools and geographic features.</p>
+<pre><code class="language-javascript">import { OSMMapEditor } from './ui_components/viz/OSMMapEditor/OSMMapEditor.js';
+
+const editor = new OSMMapEditor({
+    container: '#map-editor',
+    width: 1000,
+    height: 700,
+    center: { lat: 25.033, lng: 121.565 },
+    zoom: 13,
+    tileLayer: 'osm',        // 'osm' | 'osmHot' | 'cartoDB'
+    showCompass: true,
+    showScale: true,
+    showCoords: true
+});
+
+// Map operations
+editor.setCenter(48.8566, 2.3522);  // Move to Paris
+editor.setZoom(15);
+
+// GeoJSON import/export
+await editor.importGeoJSON(file);
+const geojson = editor.exportGeoJSON();
+</code></pre>
+<p><strong>Features</strong>: OSM base map (3 tile sources), distance/area measurement, coordinate panel (DD/DMS), scale bar, compass, GeoJSON import/export, map capture, inherits all WebPainter drawing/layer/export features.</p>
+<h3>9.5 Drawing Tools</h3>
+<pre><code class="language-javascript">import { DrawingBoard } from './ui_components/viz/DrawingBoard/DrawingBoard.js';
+
+const board = new DrawingBoard({
+  width: 800,
+  height: 600,
+  tools: ['pen', 'line', 'rect', 'circle', 'eraser'],
+  strokeColor: '#000',
+  strokeWidth: 2
+});
+
+board.mount(document.getElementById('drawing-area'));
+
+// Export image
+const imageData = board.toDataURL('image/png');
+</code></pre>
+<h3>9.6 WebTextEditor ??Rich Text Editor</h3>
+<p>Located in <code>editor/WebTextEditor/</code>, a full WYSIWYG editor.</p>
+<pre><code class="language-javascript">import { WebTextEditor } from './ui_components/editor/WebTextEditor/WebTextEditor.js';
+
+const editor = new WebTextEditor({
+  container: '#editor-area',
+  placeholder: 'Enter content...',
+  height: '400px',
+  content: '&lt;p&gt;Initial content&lt;/p&gt;',
+  readOnly: false,
+  onChange: (html) =&gt; console.log('Content changed')
+});
+
+// Get/Set content
+const html = editor.getContent();
+editor.setContent('&lt;p&gt;New content&lt;/p&gt;');
+</code></pre>
+<p><strong>Features</strong>: Toolbar, Find/Replace (Ctrl+F/H), Export (PDF/Word/Markdown), Auto-save, History (Undo/Redo), Table editing, Image resize, Fullscreen, Word count.</p>
+<h3>9.7 RegionMap ??Taiwan Administrative Region Map</h3>
+<p>SVG map component supporting data visualization and interaction for 22 administrative regions.</p>
+<pre><code class="language-javascript">import { RegionMap } from './ui_components/data/RegionMap/RegionMap.js';
+
+const map = new RegionMap({
+  data: {
+    'TPE': { value: 2700000, label: 'Taipei', color: '#FF5722' },
+    'NWT': { value: 4000000, label: 'New Taipei', color: '#4CAF50' }
+  },
+  width: '600px',
+  height: '400px',
+  showLabels: true,
+  showValues: true,
+  colorScale: RegionMap.createColorScale(0, 5000000, ['#e3f2fd', '#1565c0']),
+  onClick: (regionCode, data) =&gt; console.log(regionCode, data)
+});
+
+map.mount(document.getElementById('map-area'));
+map.highlightRegion('TPE');
+map.setData(updatedData);
+</code></pre>
+<hr>
+<h2>10. Behavior Modules &amp; Utilities</h2>
+<h3>10.1 TriggerEngine ??Trigger Engine</h3>
+<p>TriggerEngine provides 8 built-in atomic behaviors for field-to-field cascading logic.</p>
+<pre><code class="language-javascript">import { TriggerEngine } from './page-generator/TriggerEngine.js';
+
+const engine = new TriggerEngine();
+
+// Built-in behaviors: clear, setValue, show, hide, setReadonly, setRequired, reload, reloadOptions
+
+// Define trigger rules
+engine.addRule({
+  source: 'userType',           // Source field
+  condition: (value) =&gt; value === 'admin',  // Trigger condition
+  actions: [
+    { type: 'show', target: 'adminPanel' },
+    { type: 'setRequired', target: 'adminCode', params: { required: true } }
+  ]
+});
+
+// Trigger when source field value changes
+engine.trigger('userType', 'admin');
+
+// Custom behavior
+engine.registerAction('highlight', (target, params) =&gt; {
+  const el = document.getElementById(target);
+  el.style.backgroundColor = params.color || '#FFFFCC';
+});
+</code></pre>
+<p><strong>Built-in Behaviors:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Behavior</th>
+<th>Description</th>
+<th>Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>clear</code></td>
+<td>Clear target field value</td>
+<td><code>{ type: 'clear', target: 'email' }</code></td>
+</tr>
+<tr>
+<td><code>setValue</code></td>
+<td>Set target field value</td>
+<td><code>{ type: 'setValue', target: 'status', params: { value: 'active' } }</code></td>
+</tr>
+<tr>
+<td><code>show</code></td>
+<td>Show target element</td>
+<td><code>{ type: 'show', target: 'detailSection' }</code></td>
+</tr>
+<tr>
+<td><code>hide</code></td>
+<td>Hide target element</td>
+<td><code>{ type: 'hide', target: 'detailSection' }</code></td>
+</tr>
+<tr>
+<td><code>setReadonly</code></td>
+<td>Set as read-only</td>
+<td><code>{ type: 'setReadonly', target: 'name', params: { readonly: true } }</code></td>
+</tr>
+<tr>
+<td><code>setRequired</code></td>
+<td>Set as required</td>
+<td><code>{ type: 'setRequired', target: 'phone', params: { required: true } }</code></td>
+</tr>
+<tr>
+<td><code>reload</code></td>
+<td>Reload component data</td>
+<td><code>{ type: 'reload', target: 'dataTable' }</code></td>
+</tr>
+<tr>
+<td><code>reloadOptions</code></td>
+<td>Reload options</td>
+<td><code>{ type: 'reloadOptions', target: 'cityDropdown' }</code></td>
+</tr>
+</tbody>
+</table>
+<h3>10.2 BehaviorDef ??Behavior Definition</h3>
+<p>BehaviorDef defines page-level behavior patterns:</p>
+<pre><code class="language-javascript">const behaviorDef = {
+  // Execute on page init
+  onInit: (page) =&gt; {
+    page.loadData();
+    page.setFieldReadonly('createdDate', true);
+  },
+
+  // Execute after save
+  onSave: (page, result) =&gt; {
+    Notification.success('Saved successfully');
+    page.navigateTo('/list');
+  },
+
+  // Execute after delete
+  onDelete: (page, result) =&gt; {
+    Notification.success('Deleted successfully');
+    page.navigateTo('/list');
+  },
+
+  // Field change cascading
+  fieldTriggers: {
+    'category': [
+      {
+        condition: (value) =&gt; value === 'urgent',
+        actions: [
+          { type: 'show', target: 'priorityPanel' },
+          { type: 'setRequired', target: 'deadline' }
+        ]
+      }
+    ],
+    'country': [
+      {
+        condition: () =&gt; true,
+        actions: [
+          { type: 'reloadOptions', target: 'cityDropdown' }
+        ]
+      }
+    ]
+  }
+};
+</code></pre>
+<h3>10.3 SPA Core Framework</h3>
+<p>The SPA core is located in <code>templates/spa/frontend/core/</code>, providing a complete single-page application framework.</p>
+<h4>Router ??Hash Router</h4>
+<pre><code class="language-javascript">import { Router } from './core/Router.js';
+
+const router = new Router();
+
+// Register routes
+router.addRoute('/', HomePage);
+router.addRoute('/users', UserListPage);
+router.addRoute('/users/:id', UserDetailPage);
+router.addRoute('/users/:id/edit', UserEditPage);
+
+// Nested routes
+router.addRoute('/admin', AdminPage, [
+  { path: '/admin/settings', page: AdminSettingsPage },
+  { path: '/admin/logs', page: AdminLogsPage }
+]);
+
+// Start router
+router.start();
+
+// Programmatic navigation
+router.navigate('/users/123');
+</code></pre>
+<h4>Store ??State Management</h4>
+<pre><code class="language-javascript">import { Store } from './core/Store.js';
+
+const store = new Store({
+  user: null,
+  theme: 'light',
+  notifications: []
+});
+
+// Subscribe to state changes
+store.subscribe('user', (newUser, oldUser) =&gt; {
+  console.log('User changed:', newUser);
+});
+
+// Update state
+store.set('user', { id: 1, name: 'John Doe' });
+
+// Get state
+const user = store.get('user');
+</code></pre>
+<h4>ApiService ??RESTful API Service</h4>
+<pre><code class="language-javascript">import { ApiService } from './core/ApiService.js';
+
+const api = new ApiService({
+  baseUrl: '/api',
+  // JWT is attached via the Authorization: Bearer header (tokens are stored in localStorage by default)
+});
+
+// CRUD operations
+const users = await api.get('/users');
+const user = await api.get('/users/123');
+const newUser = await api.post('/users', { name: 'Jane Smith', email: 'jane@example.com' });
+await api.put('/users/123', { name: 'Jane Smith (Updated)' });
+await api.delete('/users/123');
+
+// Paginated query
+const result = await api.get('/users', { page: 1, pageSize: 20, keyword: 'John' });
+// { data: [...], total: 100, page: 1, pageSize: 20 }
+</code></pre>
+<h4>BasePage ??Page Lifecycle</h4>
+<pre><code class="language-javascript">import { BasePage } from './core/BasePage.js';
+
+class UserListPage extends BasePage {
+  constructor() {
+    super();
+    this.title = 'User Management';
+  }
+
+  // Page lifecycle
+  async onInit() {
+    // Initialize components
+    this.table = new DataTable({ ... });
+  }
+
+  async onLoad(params) {
+    // Load data (triggered each time entering the page)
+    const data = await this.api.get('/users');
+    this.table.setData(data);
+  }
+
+  onRender(container) {
+    // Render UI
+    this.table.mount(container);
+  }
+
+  onDestroy() {
+    // Cleanup resources
+    this.table.destroy();
+  }
+}
+</code></pre>
+<h3>10.4 ComponentBinder / ComponentFactory</h3>
+<h4>ComponentBinder ??Component Data Binding</h4>
+<pre><code class="language-javascript">import { ComponentBinder } from './ui_components/binding/ComponentBinder.js';
+
+const binder = new ComponentBinder();
+
+// Bind components to data model
+binder.bind(nameInput, 'user.name');
+binder.bind(emailInput, 'user.email');
+binder.bind(roleDropdown, 'user.role');
+
+// Set data model (auto-updates component values)
+binder.setModel({
+  user: { name: 'John Doe', email: 'john@example.com', role: 'admin' }
+});
+
+// Get all bound component values
+const formData = binder.getValues();
+</code></pre>
+<h4>ComponentFactory ??Component Factory</h4>
+<pre><code class="language-javascript">import { ComponentFactory } from './ui_components/binding/ComponentFactory.js';
+
+// Dynamically create components from field definitions
+const component = ComponentFactory.create({
+  type: 'text',
+  name: 'username',
+  label: 'Username',
+  required: true,
+  maxLength: 50
+});
+
+component.mount(container);
+</code></pre>
+<h3>10.5 Utilities &amp; Services (utils/)</h3>
+<h4>security.js ??XSS Protection</h4>
+<pre><code class="language-javascript">import { escapeHtml, sanitizeUrl, sanitizeHTML } from './utils/security.js';
+
+// HTML content escaping
+const safeHtml = escapeHtml(userInput);
+element.innerHTML = `&lt;p&gt;${escapeHtml(userInput)}&lt;/p&gt;`;
+
+// URL sanitization (blocks javascript: / vbscript: protocols)
+element.innerHTML = `&lt;a href=&quot;${sanitizeUrl(userUrl)}&quot;&gt;Link&lt;/a&gt;`;
+
+// HTML tag whitelist filtering
+const cleanHtml = sanitizeHTML(dirtyHtml);
+</code></pre>
+<blockquote>
+<p><strong>Important</strong>: All user input must be escaped using <code>escapeHtml()</code> when rendered to HTML, and URLs must be sanitized with <code>sanitizeUrl()</code> to prevent XSS attacks.</p>
+</blockquote>
+<h4>GeolocationService ??Geolocation Service</h4>
+<pre><code class="language-javascript">import { GeolocationService } from './utils/GeolocationService.js';
+
+const geo = new GeolocationService();
+
+// Get current position
+const position = await geo.getCurrentPosition();
+console.log('Lat:', position.latitude, 'Lng:', position.longitude);
+</code></pre>
+<h4>WeatherService ??Weather Service</h4>
+<pre><code class="language-javascript">import { WeatherService } from './utils/WeatherService.js';
+
+const weather = new WeatherService({ apiKey: 'YOUR_API_KEY' });
+const forecast = await weather.getForecast(25.033, 121.565);
+</code></pre>
+<hr>
+<h2>11. Page Generator</h2>
+<p>The page generator is located in <code>packages/javascript/browser/page-generator/</code>, capable of auto-generating complete pages from field definitions.</p>
+<h3>11.1 Supported 30 Field Types</h3>
+<table>
+<thead>
+<tr>
+<th>Category</th>
+<th>Field Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Basic Text</td>
+<td><code>text</code></td>
+<td>Single-line text</td>
+</tr>
+<tr>
+<td></td>
+<td><code>email</code></td>
+<td>Email</td>
+</tr>
+<tr>
+<td></td>
+<td><code>password</code></td>
+<td>Password</td>
+</tr>
+<tr>
+<td></td>
+<td><code>textarea</code></td>
+<td>Multi-line text</td>
+</tr>
+<tr>
+<td></td>
+<td><code>richtext</code></td>
+<td>Rich text editor</td>
+</tr>
+<tr>
+<td>Number</td>
+<td><code>number</code></td>
+<td>Number input</td>
+</tr>
+<tr>
+<td>Date/Time</td>
+<td><code>date</code></td>
+<td>Date</td>
+</tr>
+<tr>
+<td></td>
+<td><code>time</code></td>
+<td>Time</td>
+</tr>
+<tr>
+<td></td>
+<td><code>datetime</code></td>
+<td>DateTime</td>
+</tr>
+<tr>
+<td>Selection</td>
+<td><code>select</code></td>
+<td>Single-select dropdown</td>
+</tr>
+<tr>
+<td></td>
+<td><code>multiselect</code></td>
+<td>Multi-select dropdown</td>
+</tr>
+<tr>
+<td></td>
+<td><code>checkbox</code></td>
+<td>Checkbox</td>
+</tr>
+<tr>
+<td></td>
+<td><code>toggle</code></td>
+<td>Toggle switch</td>
+</tr>
+<tr>
+<td></td>
+<td><code>radio</code></td>
+<td>Radio button</td>
+</tr>
+<tr>
+<td></td>
+<td><code>color</code></td>
+<td>Color picker</td>
+</tr>
+<tr>
+<td>Media</td>
+<td><code>image</code></td>
+<td>Image upload</td>
+</tr>
+<tr>
+<td></td>
+<td><code>file</code></td>
+<td>File upload</td>
+</tr>
+<tr>
+<td></td>
+<td><code>canvas</code></td>
+<td>Drawing canvas</td>
+</tr>
+<tr>
+<td>Advanced</td>
+<td><code>geolocation</code></td>
+<td>Geolocation</td>
+</tr>
+<tr>
+<td></td>
+<td><code>weather</code></td>
+<td>Weather info</td>
+</tr>
+<tr>
+<td></td>
+<td><code>address</code></td>
+<td>Address input</td>
+</tr>
+<tr>
+<td></td>
+<td><code>addresslist</code></td>
+<td>Multiple address input</td>
+</tr>
+<tr>
+<td></td>
+<td><code>chained</code></td>
+<td>Cascading dropdown</td>
+</tr>
+<tr>
+<td></td>
+<td><code>list</code></td>
+<td>List input</td>
+</tr>
+<tr>
+<td></td>
+<td><code>personinfo</code></td>
+<td>Person info</td>
+</tr>
+<tr>
+<td></td>
+<td><code>phonelist</code></td>
+<td>Phone list</td>
+</tr>
+<tr>
+<td></td>
+<td><code>socialmedia</code></td>
+<td>Social media accounts</td>
+</tr>
+<tr>
+<td></td>
+<td><code>organization</code></td>
+<td>Organization info</td>
+</tr>
+<tr>
+<td></td>
+<td><code>student</code></td>
+<td>Student info</td>
+</tr>
+<tr>
+<td>Other</td>
+<td><code>hidden</code></td>
+<td>Hidden field</td>
+</tr>
+</tbody>
+</table>
+<h3>11.2 Page Definition Format</h3>
+<pre><code class="language-javascript">import { PageDefinitionAdapter } from './page-generator/PageDefinitionAdapter.js';
+
+const pageDefinition = {
+  page: {
+    pageName: 'User Management',
+    entity: 'user',
+    view: 'adminList'
+  },
+  fields: [
+    {
+      fieldName: 'name',
+      label: 'Name',
+      fieldType: 'text',
+      formRow: 1,
+      formCol: 6,
+      listOrder: 1,
+      isRequired: true,
+      isSearchable: true
+    },
+    {
+      fieldName: 'role',
+      label: 'Role',
+      fieldType: 'select',
+      formRow: 1,
+      formCol: 6,
+      listOrder: 2,
+      optionsSource: {
+        type: 'static',
+        items: [
+          { value: 'admin', label: 'Admin' },
+          { value: 'editor', label: 'Editor' },
+          { value: 'viewer', label: 'Viewer' }
+        ]
+      }
+    }
+  ]
+};
+
+// Convert to the legacy format before passing into PageGenerator
+const staticDefinition = PageDefinitionAdapter.toOldFormat(pageDefinition);
+</code></pre>
+<h3>11.3 Static Generation (PageGenerator)</h3>
+<pre><code class="language-javascript">import {
+  PageDefinitionAdapter,
+  PageGenerator
+} from './page-generator/index.js';
+
+const generator = new PageGenerator();
+const staticDefinition = PageDefinitionAdapter.toOldFormat(pageDefinition);
+const result = generator.generate(staticDefinition);
+
+if (result.errors.length &gt; 0) {
+  console.error(result.errors);
+} else {
+  console.log(result.code);
+}
+</code></pre>
+<blockquote>
+<p><code>generate()</code> returns <code>{ code, errors }</code>. If the definition does not provide a complete API contract or custom behaviors, the generated file keeps <code>_save()</code> / behavior stubs for follow-up implementation.</p>
+</blockquote>
+<h3>11.4 Dynamic Rendering (DynamicPageRenderer)</h3>
+<p>DynamicPageRenderer supports three rendering modes, creating pages dynamically without generating static files.</p>
+<pre><code class="language-javascript">import { DynamicPageRenderer } from './page-generator/DynamicPageRenderer.js';
+
+const formPage = new DynamicPageRenderer({
+  definition: pageDefinition,
+  mode: 'form',
+  data: existingData,
+  onSave: async (values) =&gt; api.post('/users', values),
+  onCancel: () =&gt; router.navigate('/users')
+});
+
+await formPage.init();
+formPage.mount(document.getElementById('app'));
+
+const detailPage = new DynamicPageRenderer({
+  definition: pageDefinition,
+  mode: 'detail',
+  data: userData,
+  onBack: () =&gt; router.navigate('/users'),
+  onEdit: () =&gt; router.navigate(`/users/${userData.id}/edit`)
+});
+
+await detailPage.init();
+detailPage.mount(document.getElementById('detail'));
+
+const listPage = new DynamicPageRenderer({
+  definition: pageDefinition,
+  mode: 'list',
+  onSearch: async (params) =&gt; api.get('/users', { params }),
+  onAction: (action, row) =&gt; router.navigate(`/users/${row.id}`),
+  pageSize: 20
+});
+
+await listPage.init();
+listPage.mount(document.getElementById('list'));
+</code></pre>
+<h3>11.5 PageDefinitionAdapter - Format Conversion</h3>
+<pre><code class="language-javascript">import { PageDefinitionAdapter } from './page-generator/PageDefinitionAdapter.js';
+
+// New format (DynamicPageRenderer / page-gen CLI) -&gt; legacy format (PageGenerator)
+const oldDefinition = PageDefinitionAdapter.toOldFormat(pageDefinition);
+
+// Legacy format (PageGenerator) -&gt; new format (DynamicPageRenderer)
+const newDefinition = PageDefinitionAdapter.toNewFormat(oldDefinition);
+</code></pre>
+<hr>
+<h2>12. SPA Generator</h2>
+<p>The SPA tooling is split into two parts:</p>
+<ul>
+<li><code>tools/spa-generator/</code>: Web UI</li>
+<li><code>templates/spa/scripts/</code>: template CLI</li>
+</ul>
+<h3>12.1 Web UI (port 3080)</h3>
+<p>Startup:</p>
+<pre><code class="language-bash">npm run serve
+# Open http://localhost:3080 in your browser
+</code></pre>
+<p>The Web UI provides:</p>
+<ul>
+<li><strong>Project creation</strong>: <code>ProjectCreatePage</code> for project name, output path, ports, and admin settings</li>
+<li><strong>Page generation</strong>: <code>PageGeneratorPage</code> for frontend page scaffolding</li>
+<li><strong>API generation</strong>: <code>ApiGeneratorPage</code> for Model / Service / API route generation</li>
+<li><strong>Feature generation</strong>: <code>FeatureGeneratorPage</code> for full CRUD skeletons</li>
+<li><strong>Page Builder</strong>: <code>PageBuilderPage</code> for JSON-driven form / detail / list preview</li>
+<li><strong>Page Definition Editor</strong>: <code>PageDefinitionEditorPage</code> for GUI editing of PageDefinition</li>
+</ul>
+<h3>12.2 CLI Commands</h3>
+<pre><code class="language-bash"># Create a new project (interactive)
+node templates/spa/scripts/spa-cli.js new
+
+# Create a new project (non-interactive)
+node templates/spa/scripts/spa-cli.js new --name my-blog --output ./projects
+
+# Generate a page (frontend)
+node templates/spa/scripts/spa-cli.js page article/ArticleList
+node templates/spa/scripts/spa-cli.js page article/ArticleDetail --detail
+
+# Generate an API (backend)
+node templates/spa/scripts/spa-cli.js api Article --fields &quot;Title:string,PublishedAt:datetime&quot;
+
+# Generate a complete feature (frontend + backend)
+node templates/spa/scripts/spa-cli.js feature Article --fields &quot;Title:string,PublishedAt:datetime&quot;
+</code></pre>
+<h3>12.3 Generated Project Structure</h3>
+<pre><code>projects/my-app/
+?謚??? frontend/
+??  ?謚??? adapters/           # Frontend adapters
+??  ?謚??? components/         # Template-bundled components
+??  ?謚??? core/               # SPA core framework
+??  ??  ?謚??? Router.js       # Hash router
+??  ??  ?謚??? Store.js        # State management
+??  ??  ?謚??? ApiService.js   # API calls
+??  ??  ?謚??? BasePage.js     # Page base class
+??  ??  ?謚??? Layout.js       # Layout
+??  ??  ????? Security.js     # Security utilities
+??  ?謚??? pages/              # Pages
+??  ??  ????? users/
+??  ??      ?謚??? UserListPage.js
+??  ??      ????? UserDetailPage.js
+??  ?謚??? styles/             # Styles
+??  ????? index.html          # Entry file
+?謚??? backend/
+??  ?謚??? Controllers/        # Controllers
+??  ?謚??? Data/               # AppDb (BaseOrm) / initialization
+??  ?謚??? Models/             # Data models
+??  ?謚??? Services/           # Business logic
+??  ?謚??? Program.cs          # .NET 10 Minimal API entry
+??  ?謚??? appsettings.json    # Configuration
+??  ????? my-app.csproj       # Project file
+?謚??? tools/
+??  ????? static-server/      # Frontend static server
+?謚??? project.json            # Sanitized project config
+?謚??? start.bat               # Windows startup script
+????? start.sh                # Unix startup script
+</code></pre>
+<blockquote>
+<p>The SQLite filename is configured through <code>project.json</code> / <code>appsettings.json</code>; the actual database file is created on first run.</p>
+</blockquote>
+<hr>
+<h2>13. C# Backend Packages</h2>
+<p>C# backend packages are located in <code>packages/csharp/</code>, providing foundational architecture for .NET 10 Minimal APIs.</p>
+<h3>13.1 BaseOrm - Micro ORM Foundation</h3>
+<p><code>BaseOrm</code> is a micro ORM. It provides explicit SQL execution, attribute-driven CRUD helpers, simple schema bootstrap, and async APIs. It does not provide LINQ, change tracking, or migrations.</p>
+<pre><code class="language-csharp">using BaseOrm;
+
+await using var db = BaseDb.UseSqlite(&quot;Data Source=app.db&quot;);
+await db.EnsureTableAsync&lt;User&gt;();
+
+var users = await db.QueryAsync&lt;User&gt;(
+    &quot;SELECT * FROM Users WHERE Name LIKE @Name&quot;,
+    new { Name = &quot;%John%&quot; });
+
+var paged = await db.QueryPagedAsync&lt;User&gt;(
+    &quot;SELECT * FROM Users ORDER BY Id&quot;,
+    page: 1,
+    pageSize: 20);
+
+var id = await db.InsertAsync(new User
+{
+    Name = &quot;John Doe&quot;,
+    Email = &quot;john@example.com&quot;,
+    CreatedAt = DateTime.UtcNow
+});
+
+var user = await db.GetAsync&lt;User&gt;(id);
+user!.Email = &quot;john.updated@example.com&quot;;
+await db.UpdateAsync(user);
+await db.DeleteAsync&lt;User&gt;(id);
+</code></pre>
+<h3>13.2 Repository + UnitOfWork</h3>
+<pre><code class="language-csharp">// Repository pattern
+public class UserRepository : BaseRepository&lt;User&gt;
+{
+    public UserRepository(IDbConnection connection) : base(connection) { }
+
+    public async Task&lt;IEnumerable&lt;User&gt;&gt; GetActiveUsersAsync()
+    {
+        return await QueryAsync(&quot;SELECT * FROM Users WHERE IsActive = 1&quot;);
+    }
+}
+
+// UnitOfWork pattern
+using var uow = new UnitOfWork(connectionString);
+var userRepo = uow.GetRepository&lt;UserRepository&gt;();
+var roleRepo = uow.GetRepository&lt;RoleRepository&gt;();
+
+await userRepo.InsertAsync(newUser);
+await roleRepo.InsertAsync(newRole);
+
+uow.Commit(); // Commit transaction
+</code></pre>
+<h3>13.3 JWT Helper + PasswordHasher</h3>
+<pre><code class="language-csharp">using Security;
+
+// Password hashing (PBKDF2, 100,000 iterations)
+var hashedPassword = PasswordHasher.Hash(&quot;MyPassword123&quot;);
+bool isValid = PasswordHasher.Verify(&quot;MyPassword123&quot;, hashedPassword);
+
+// JWT generation and validation
+var jwtHelper = new JwtHelper(secretKey, issuer, audience);
+
+// Generate Token
+var token = jwtHelper.GenerateToken(new Dictionary&lt;string, string&gt;
+{
+    [&quot;userId&quot;] = &quot;123&quot;,
+    [&quot;role&quot;] = &quot;admin&quot;
+}, expiresInMinutes: 60);
+
+// Validate Token
+var claims = jwtHelper.ValidateToken(token);
+</code></pre>
+<h3>13.4 BaseController + Middleware</h3>
+<pre><code class="language-csharp">// Program.cs ??.NET 10 Minimal API
+var builder = WebApplication.CreateBuilder(args);
+var app = builder.Build();
+
+// Register middleware
+app.UseExceptionMiddleware();  // Global exception handling
+app.UseCors(&quot;AllowedOrigins&quot;);  // CORS
+app.UseAuthentication();
+app.UseAuthorization();
+
+// API endpoints
+app.MapGet(&quot;/api/users&quot;, async (UserService service, int page = 1, int pageSize = 20) =&gt;
+{
+    var result = await service.GetPagedAsync(page, pageSize);
+    return ApiResponse.Success(result);
+});
+
+app.MapPost(&quot;/api/users&quot;, async (UserService service, CreateUserDto dto) =&gt;
+{
+    var user = await service.CreateAsync(dto);
+    return ApiResponse.Created(user);
+});
+
+app.MapPut(&quot;/api/users/{id}&quot;, async (UserService service, int id, UpdateUserDto dto) =&gt;
+{
+    await service.UpdateAsync(id, dto);
+    return ApiResponse.Success();
+});
+
+app.MapDelete(&quot;/api/users/{id}&quot;, async (UserService service, int id) =&gt;
+{
+    await service.DeleteAsync(id);
+    return ApiResponse.Success();
+});
+
+app.Run();
+</code></pre>
+<h3>13.5 ApiResponse + Pagination</h3>
+<pre><code class="language-csharp">// Unified API response format
+public class ApiResponse&lt;T&gt;
+{
+    public bool Success { get; set; }
+    public string Message { get; set; }
+    public T Data { get; set; }
+    public int? Total { get; set; }
+    public int? Page { get; set; }
+    public int? PageSize { get; set; }
+}
+
+// Usage examples
+return ApiResponse.Success(data);                    // Success
+return ApiResponse.Created(newItem);                  // Created
+return ApiResponse.Error(&quot;Not found&quot;, 404);           // Error
+return ApiResponse.Paged(data, total, page, pageSize); // Paginated
+</code></pre>
+<h3>13.6 BaseCache ??In-Memory Cache</h3>
+<p>Redis-style in-memory cache supporting Key-Value, Queue, Stack, List, Hash, Set, and Pub/Sub.</p>
+<pre><code class="language-csharp">using BaseCache;
+
+var cache = new BaseCache(new CachOptions {
+    CleanupInterval = TimeSpan.FromMinutes(1),
+    MaxItems = 10000
+});
+
+// Key-Value operations
+cache.Set(&quot;user:1&quot;, userData, ttl: TimeSpan.FromMinutes(30));
+var user = cache.Get&lt;User&gt;(&quot;user:1&quot;);
+
+// GetOrSet ??Cache penetration protection
+var data = cache.GetOrSet(&quot;report:daily&quot;, () =&gt; {
+    return GenerateReport(); // Only executes on cache miss
+}, ttl: TimeSpan.FromHours(1));
+
+// Hash operations (similar to Redis HSET/HGET)
+cache.HSet(&quot;session:abc&quot;, &quot;userId&quot;, &quot;123&quot;);
+cache.HSet(&quot;session:abc&quot;, &quot;role&quot;, &quot;admin&quot;);
+var userId = cache.HGet&lt;string&gt;(&quot;session:abc&quot;, &quot;userId&quot;);
+
+// Queue and Stack
+cache.Enqueue(&quot;tasks&quot;, new Task { Id = 1 });
+var task = cache.Dequeue&lt;Task&gt;(&quot;tasks&quot;);
+
+// Pub/Sub
+cache.Subscribe(&quot;notifications&quot;, msg =&gt; Console.WriteLine(msg));
+cache.Publish(&quot;notifications&quot;, &quot;New message&quot;);
+
+// Persistence
+cache.SaveToFile(&quot;cache.json&quot;);
+cache.LoadFromFile(&quot;cache.json&quot;);
+
+// Statistics
+var stats = cache.Stats; // Hits, Misses, HitRate
+</code></pre>
+<hr>
+<h2>14. Security Guidelines</h2>
+<h3>14.1 XSS Protection</h3>
+<p><strong>All user input must be escaped when rendered.</strong></p>
+<pre><code class="language-javascript">import { escapeHtml, sanitizeUrl } from './utils/security.js';
+
+// Correct approach
+element.innerHTML = `&lt;p&gt;${escapeHtml(userInput)}&lt;/p&gt;`;
+element.innerHTML = `&lt;a href=&quot;${sanitizeUrl(url)}&quot; title=&quot;${escapeHtml(title)}&quot;&gt;Link&lt;/a&gt;`;
+
+// Wrong approach ??NEVER do this!
+element.innerHTML = `&lt;p&gt;${userInput}&lt;/p&gt;`;         // XSS vulnerability!
+element.innerHTML = `&lt;a href=&quot;${url}&quot;&gt;Link&lt;/a&gt;`;   // XSS vulnerability!
+</code></pre>
+<h3>14.2 Password Security</h3>
+<p>Using PBKDF2 algorithm with 100,000 iterations:</p>
+<pre><code class="language-csharp">// Hash password (when storing to database)
+var hashed = PasswordHasher.Hash(plainPassword);
+
+// Verify password (when logging in)
+bool isMatch = PasswordHasher.Verify(plainPassword, hashedPassword);
+</code></pre>
+<blockquote>
+<p>Never store passwords in plaintext, and do not use outdated hashing algorithms like MD5 or SHA1.</p>
+</blockquote>
+<h3>14.3 JWT Authentication</h3>
+<pre><code class="language-csharp">// Configure JWT (in Program.cs)
+var jwtKey = builder.Configuration[&quot;Jwt:Key&quot;]
+    ?? throw new InvalidOperationException(&quot;Jwt:Key is required&quot;);
+var jwtIssuer = builder.Configuration[&quot;Jwt:Issuer&quot;] ?? &quot;SpaApi&quot;;
+
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =&gt;
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer = jwtIssuer,
+            ValidAudience = jwtIssuer,
+            IssuerSigningKey = new SymmetricSecurityKey(
+                Encoding.UTF8.GetBytes(jwtKey)),
+            ClockSkew = TimeSpan.FromMinutes(1)
+        };
+    });
+</code></pre>
+<p>The current SPA template and SPA Generator send JWTs through the <code>Authorization: Bearer</code> header, with tokens stored in <code>localStorage</code> by default. If you switch to cookie transport, enable <code>HttpOnly</code>, <code>Secure</code>, and <code>SameSite</code>.</p>
+<h3>14.4 CORS Configuration</h3>
+<pre><code class="language-csharp">builder.Services.AddCors(options =&gt;
+{
+    options.AddDefaultPolicy(policy =&gt;
+    {
+        policy.WithOrigins(&quot;http://localhost:3080&quot;)  // Explicitly specify allowed origins
+              .AllowAnyMethod()
+              .AllowAnyHeader();
+    });
+});
+</code></pre>
+<blockquote>
+<p>Never use <code>AllowAnyOrigin()</code> in production. Only add <code>AllowCredentials()</code> when you actually use cookie-based authentication.</p>
+</blockquote>
+<h3>14.5 Rate Limiting</h3>
+<p>All API endpoints must implement rate limiting to prevent brute force attacks and abuse:</p>
+<pre><code class="language-csharp">// .NET 10 built-in rate limiting
+builder.Services.AddRateLimiter(options =&gt;
+{
+    options.AddFixedWindowLimiter(&quot;api&quot;, limiter =&gt;
+    {
+        limiter.PermitLimit = 100;       // 100 requests per window
+        limiter.Window = TimeSpan.FromMinutes(1);
+        limiter.QueueLimit = 0;
+    });
+});
+
+app.UseRateLimiter();
+</code></pre>
+<h3>14.6 Input Validation</h3>
+<pre><code class="language-csharp">// Backend validation example
+app.MapPost(&quot;/api/users&quot;, async (CreateUserDto dto) =&gt;
+{
+    // Validate required fields
+    if (string.IsNullOrWhiteSpace(dto.Name))
+        return ApiResponse.Error(&quot;Name is required&quot;, 400);
+
+    // Validate format
+    if (!IsValidEmail(dto.Email))
+        return ApiResponse.Error(&quot;Invalid email format&quot;, 400);
+
+    // Validate length
+    if (dto.Name.Length &gt; 100)
+        return ApiResponse.Error(&quot;Name must not exceed 100 characters&quot;, 400);
+
+    // Process after validation
+    var user = await service.CreateAsync(dto);
+    return ApiResponse.Created(user);
+});
+</code></pre>
+<h3>14.7 Security Checklist</h3>
+<p>Before deployment, verify the following:</p>
+<ul>
+<li>[ ] All user input is escaped with <code>escapeHtml()</code> / <code>sanitizeUrl()</code></li>
+<li>[ ] Passwords are hashed with PBKDF2 (100K iterations)</li>
+<li>[ ] JWT transport and storage are reviewed (default: Bearer header; if cookies are used, <code>HttpOnly</code> / <code>Secure</code> / <code>SameSite</code> are enabled)</li>
+<li>[ ] CORS has explicitly configured allowed origins (not <code>*</code>)</li>
+<li>[ ] API endpoints have rate limiting enabled</li>
+<li>[ ] All input is validated on the backend</li>
+<li>[ ] Sensitive settings (keys, connection strings) are not hardcoded</li>
+<li>[ ] HTTPS is enabled</li>
+</ul>
+<h3>14.8 Azure VM IIS Deployment</h3>
+<p>The broker now includes a governed deployment path for Azure virtual machines that host IIS.</p>
+<p>What exists now:</p>
+<ul>
+<li>broker-managed Azure IIS deployment targets</li>
+<li>dry-run request build and preview</li>
+<li>execution path that runs <code>dotnet publish</code>, packages the output, and invokes PowerShell remoting</li>
+<li>child-application deployment mode under a parent IIS site via <code>deployment_mode=iis_application</code></li>
+<li>broker route: <code>deploy_azure_vm_iis</code></li>
+</ul>
+<p>Configuration:</p>
+<ul>
+<li>define deployment credentials in <code>DeploymentSecrets:Mappings</code></li>
+<li>or expose them through environment variables derived from <code>secret_ref</code></li>
+</ul>
+<p>Limits:</p>
+<ul>
+<li>only <code>winrm_powershell</code> transport is implemented</li>
+<li>target project paths must be absolute</li>
+<li>a directory input must resolve to exactly one <code>.csproj</code></li>
+<li><code>iis_application</code> targets must define <code>application_path</code></li>
+<li>the current implementation creates or updates the IIS application, but app-specific path-base handling is still application-dependent</li>
+<li>the target VM must already expose PowerShell remoting and IIS management modules</li>
+</ul>
+<p>See:</p>
+<ul>
+<li><a href="/d:/Bricks4Agent/docs/designs/AzureVmIisDeployment.html">AzureVmIisDeployment.md</a></li>
+<li><a href="/d:/Bricks4Agent/packages/csharp/broker/tool-specs/deploy.azure-vm-iis/tool.json">tool.json</a></li>
+<li><a href="/d:/Bricks4Agent/packages/csharp/broker/tool-specs/deploy.azure-vm-iis/TOOL.html">TOOL.md</a></li>
+</ul>
+<hr>
+<blockquote>
+<p><strong>This guide covers the core features and usage of Bricks4Agent. For more detailed documentation on specific components, refer to the README.md in each component's directory.</strong></p>
+</blockquote>
+</main>
+</body>
+</html>

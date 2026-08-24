@@ -37,6 +37,21 @@ public sealed class StaticSitePackageGenerator
             throw new InvalidOperationException($"Invalid site document: {string.Join("; ", validation.Errors)}");
         }
 
+        // Determinism: emit component definitions and requests in a stable, input-order-independent
+        // order so site.json / manifest.json are byte-identical across runs and machines.
+        document.ComponentLibrary.Components.Sort(static (a, b) => string.CompareOrdinal(a.Type, b.Type));
+        document.ComponentRequests.Sort(static (a, b) =>
+        {
+            var byId = string.CompareOrdinal(a.RequestId, b.RequestId);
+            if (byId != 0)
+            {
+                return byId;
+            }
+
+            var byRole = string.CompareOrdinal(a.Role, b.Role);
+            return byRole != 0 ? byRole : string.CompareOrdinal(a.ComponentType, b.ComponentType);
+        });
+
         var quality = qualityAnalyzer.Analyze(document);
         if (options.EnforceQualityGate)
         {
@@ -62,8 +77,9 @@ public sealed class StaticSitePackageGenerator
         WriteFile(outputDirectory, "styles.css", BuildStylesCss(document), files);
         WriteFile(outputDirectory, "site.json", JsonSerializer.Serialize(document, JsonOptions), files);
         WriteFile(outputDirectory, Path.Combine("components", "manifest.json"), JsonSerializer.Serialize(document.ComponentLibrary, JsonOptions), files);
+        WriteFile(outputDirectory, Path.Combine("components", "b-binding.json"), BuildBComponentBinding(document), files);
         WriteGeneratedComponentAssets(outputDirectory, document, files);
-        WriteFile(outputDirectory, "README.md", BuildReadme(document), files);
+        WriteFile(outputDirectory, "README.html", BuildReadme(document), files);
 
         var archivePath = string.Empty;
         if (options.CreateArchive)
@@ -75,12 +91,7 @@ public sealed class StaticSitePackageGenerator
                 File.Delete(archivePath);
             }
 
-            ZipFile.CreateFromDirectory(
-                outputDirectory,
-                archivePath,
-                CompressionLevel.SmallestSize,
-                includeBaseDirectory: false,
-                entryNameEncoding: Encoding.UTF8);
+            WriteDeterministicArchive(outputDirectory, archivePath);
         }
 
         var result = new StaticSitePackageResult
@@ -125,6 +136,32 @@ public sealed class StaticSitePackageGenerator
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         File.WriteAllText(path, content);
         files.Add(path);
+    }
+
+    private static void WriteDeterministicArchive(string sourceDirectory, string archivePath)
+    {
+        // Stable archive: entries enumerated then sorted by ordinal path with a fixed timestamp,
+        // so the .zip is byte-identical across runs and machines (no filesystem-order or mtime drift).
+        var fixedTimestamp = new DateTimeOffset(2000, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        var entries = Directory
+            .EnumerateFiles(sourceDirectory, "*", SearchOption.AllDirectories)
+            .Select(fullPath => new
+            {
+                FullPath = fullPath,
+                EntryName = Path.GetRelativePath(sourceDirectory, fullPath).Replace('\\', '/'),
+            })
+            .OrderBy(entry => entry.EntryName, StringComparer.Ordinal)
+            .ToList();
+
+        using var archive = ZipFile.Open(archivePath, ZipArchiveMode.Create);
+        foreach (var entry in entries)
+        {
+            var zipEntry = archive.CreateEntry(entry.EntryName, CompressionLevel.SmallestSize);
+            zipEntry.LastWriteTime = fixedTimestamp;
+            using var entryStream = zipEntry.Open();
+            using var fileStream = File.OpenRead(entry.FullPath);
+            fileStream.CopyTo(entryStream);
+        }
     }
 
     private static void WriteGeneratedComponentAssets(
@@ -377,8 +414,40 @@ public sealed class StaticSitePackageGenerator
             The generated website uses only components declared in `components/manifest.json`.
             Generated local component definitions, if any, are under `components/generated/`.
 
+            ## Component library (B is canonical)
+
+            The canonical component implementations live in
+            `packages/javascript/browser/ui_components` (the "B" library). This package's vocabulary is
+            a closed projection of B: every component type in `components/manifest.json` declares the B
+            class it binds to (`b_component`), and `components/b-binding.json` is the flat, machine-readable
+            `type -> b_component` index for this site. The renderers inside `runtime.js` are the
+            byte-deterministic static-export realization of those B components — not a separate library.
+
             Source URL: {{document.Site.SourceUrl}}
             """;
+    }
+
+    /// <summary>
+    /// Emit the flat, deterministic <c>type -> b_component</c> index for this package — the verifiable
+    /// statement that the generated site's vocabulary is a closed projection of the B library.
+    /// </summary>
+    private static string BuildBComponentBinding(GeneratorSiteDocument document)
+    {
+        var bindings = new SortedDictionary<string, string>(StringComparer.Ordinal);
+        foreach (var component in document.ComponentLibrary.Components)
+        {
+            bindings[component.Type] = component.BComponent;
+        }
+
+        var payload = new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["library"] = "ui_components",
+            ["note"] = "Canonical implementations live in packages/javascript/browser/ui_components (B). "
+                + "Each generator type binds to the listed B class; runtime.js renderers are the "
+                + "byte-deterministic static-export projection of these components.",
+            ["bindings"] = bindings,
+        };
+        return JsonSerializer.Serialize(payload, JsonOptions);
     }
 
     private static string SanitizePathSegment(string value)
@@ -423,6 +492,9 @@ public sealed class StaticSitePackageGenerator
     }
 
     private const string RuntimeJavaScript = """
+        // runtime.js — byte-deterministic static-export projection of the canonical ui_components (B)
+        // library. Each renderer below realizes the B component named in components/b-binding.json;
+        // B is the source of truth for the vocabulary, this file is its static realization.
         const app = document.getElementById('app');
 
         const componentRenderers = {

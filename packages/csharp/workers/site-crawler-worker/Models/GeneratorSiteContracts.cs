@@ -38,10 +38,10 @@ public sealed class GeneratorSiteMetadata
 public sealed class GeneratorTheme
 {
     [JsonPropertyName("colors")]
-    public Dictionary<string, string> Colors { get; set; } = new();
+    public SortedDictionary<string, string> Colors { get; set; } = new(StringComparer.Ordinal);
 
     [JsonPropertyName("typography")]
-    public Dictionary<string, string> Typography { get; set; } = new();
+    public SortedDictionary<string, string> Typography { get; set; } = new(StringComparer.Ordinal);
 }
 
 public sealed class ComponentLibraryManifest
@@ -66,6 +66,13 @@ public sealed class ComponentDefinition
 
     [JsonPropertyName("supported_roles")]
     public List<string> SupportedRoles { get; set; } = new();
+
+    /// <summary>
+    /// Canonical ui_components (B) class this generator type binds to. The generator vocabulary is
+    /// a projection of B's closed set; this must be a member of <see cref="Services.BComponentRegistry"/>.
+    /// </summary>
+    [JsonPropertyName("b_component")]
+    public string BComponent { get; set; } = string.Empty;
 
     [JsonPropertyName("props_schema")]
     public ComponentPropsSchema PropsSchema { get; set; } = new();

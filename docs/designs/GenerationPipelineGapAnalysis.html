@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Generation Pipeline Gap Analysis</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Generation Pipeline Gap Analysis</h1>
+<h2>Status</h2>
+<p>This document captures the current convergence gaps between:</p>
+<ul>
+<li>deterministic generators</li>
+<li>DefinitionTemplate-based generation</li>
+<li>LLM-driven CRUD pipeline generation</li>
+</ul>
+<p>It is based on the repository state as of 2026-03-15.</p>
+<h2>Goal</h2>
+<p>The goal is not to replace the current architecture.</p>
+<p>The goal is to make the existing architecture converge into one coherent
+generation pipeline so that the same feature request produces structurally
+consistent outputs regardless of whether it comes from:</p>
+<ul>
+<li>CLI</li>
+<li>SPA Generator Web UI</li>
+<li>Agent pipeline</li>
+</ul>
+<h2>What Already Works</h2>
+<p>The current system already has several strong foundations:</p>
+<ul>
+<li>zero-dependency frontend and low-dependency backend/runtime profile</li>
+<li>shared templates and shared component/runtime building blocks</li>
+<li>CompletionContract guardrails around LLM-authored states</li>
+<li>PageDefinition and DefinitionTemplate as structured generation inputs</li>
+</ul>
+<p>The main problem is not that the repository lacks generators.</p>
+<p>The main problem is that multiple generator paths exist in parallel and the
+highest-visibility CRUD path does not consistently flow through the canonical
+structured representations.</p>
+<h2>Gap 1: Backend CRUD Generation Is Split</h2>
+<h3>Current state</h3>
+<p>There are two materially different backend generation paths:</p>
+<ul>
+<li><code>templates/spa/scripts/generate-api.js</code></li>
+<li>deterministic</li>
+<li>template-driven</li>
+<li>emits model, service, and endpoint snippets</li>
+<li><code>tools/agent/lib/pipelines/crud-pipeline.js</code></li>
+<li>State 2 generates <code>backend/Data/AppDbContext.cs</code></li>
+<li>State 3 generates <code>backend/Services/&lt;Entity&gt;Service.cs</code></li>
+<li>State 4 edits <code>backend/Program.cs</code></li>
+<li>all three depend on model-authored code generation</li>
+</ul>
+<h3>Impact</h3>
+<p>The same CRUD request can produce different code shape, naming, and integration
+patterns depending on whether the user goes through the CLI or the Agent.</p>
+<p>This is an architecture-level inconsistency, not just a style issue.</p>
+<p>It weakens:</p>
+<ul>
+<li>predictability</li>
+<li>testability</li>
+<li>reviewability</li>
+<li>long-term maintenance</li>
+</ul>
+<h3>Direction</h3>
+<p>The Agent SHOULD not re-author the backend CRUD layer when a deterministic
+generator already exists.</p>
+<p>Recommended target flow:</p>
+<ol>
+<li>LLM extracts entity name, plural form, fields, and route intent</li>
+<li>Agent validates that extracted structure</li>
+<li>Agent invokes <code>generate-api.js</code></li>
+<li>CompletionContract validates the emitted artifacts and integration result</li>
+</ol>
+<p>In that model, the LLM remains responsible for interpretation, but not for
+reimplementing the deterministic CRUD scaffolding.</p>
+<h2>Gap 2: Frontend Generation Has Three Competing Paths</h2>
+<h3>Current state</h3>
+<p>There are currently at least three frontend generation paths:</p>
+<ol>
+<li>Agent CRUD State 5 writes page files directly</li>
+<li><code>templates/spa/scripts/generate-page.js</code> writes <code>BasePage</code> subclasses directly</li>
+<li><code>tools/page-gen.js</code> normalizes structured definition input and invokes
+   <code>PageGenerator</code></li>
+</ol>
+<p>This means the repository has multiple frontend authoring modes that do not
+share one canonical structured flow.</p>
+<h3>Impact</h3>
+<p>This creates several problems:</p>
+<ul>
+<li>generated pages can bypass <code>PageDefinition</code> validation</li>
+<li>generated pages can bypass <code>PageGenerator</code> consistency</li>
+<li>different prompts and models can produce different page architecture</li>
+<li>the component library and field-type system are not guaranteed to be used</li>
+</ul>
+<h3>Direction</h3>
+<p>The canonical frontend generation path SHOULD be structure-first.</p>
+<p>Recommended target flow:</p>
+<ol>
+<li>LLM emits structured page intent</li>
+<li>that intent is normalized into <code>PageDefinition</code> or <code>DefinitionTemplate</code></li>
+<li><code>tools/page-gen.js</code> or the equivalent runtime path performs generation</li>
+<li>validators check both the definition and the emitted code</li>
+</ol>
+<p>Agent State 5 SHOULD become a structured-definition authoring stage, not a raw
+page-authoring stage.</p>
+<h2>Gap 3: DefinitionTemplate Exists But Is Not Yet the Main CRUD Input</h2>
+<h3>Current state</h3>
+<p><code>DefinitionTemplate</code> is already real and already consumed in some paths:</p>
+<ul>
+<li><code>tools/page-gen.js</code></li>
+<li><code>tools/app-gen.js</code></li>
+<li><code>tools/spa-generator/server.js</code></li>
+</ul>
+<p>So the problem is not that <code>DefinitionTemplate</code> is unused.</p>
+<p>The real gap is that it is not yet the canonical input for the main CRUD
+generation path.</p>
+<h3>Impact</h3>
+<p>The repository currently has a specification-capable structured format, but the
+highest-traffic CRUD path can still bypass it.</p>
+<p>That means:</p>
+<ul>
+<li>canonical comparison is harder</li>
+<li>generator equivalence is weaker</li>
+<li>structured validation is underused where it matters most</li>
+</ul>
+<h3>Direction</h3>
+<p>CRUD generation SHOULD normalize requests into a canonical structured form
+before code generation.</p>
+<p>Recommended rule:</p>
+<ul>
+<li><code>DefinitionTemplate</code> SHOULD be the canonical root input for generator-native
+  flows</li>
+<li>direct handwritten source generation SHOULD be treated as a legacy or escape
+  hatch path</li>
+</ul>
+<p>This does not require the repository to delete current tools immediately.</p>
+<p>It does require new feature work to converge on one canonical input model.</p>
+<h2>Gap 4: Last-Mile Integration Is Still Manual</h2>
+<h3>Current state</h3>
+<p><code>generate-api.js</code> still prints manual next steps for:</p>
+<ul>
+<li>table creation SQL in <code>AppDbContext.cs</code></li>
+<li>service registration in <code>Program.cs</code></li>
+<li>endpoint mapping insertion before <code>app.Run()</code></li>
+</ul>
+<p>This is currently the most fragile step in the deterministic flow.</p>
+<h3>Impact</h3>
+<p>This manual gap creates:</p>
+<ul>
+<li>easy-to-miss integration errors</li>
+<li>inconsistent host composition</li>
+<li>lower confidence in generated output</li>
+<li>more copy-paste drift over time</li>
+</ul>
+<h3>Direction</h3>
+<p>The deterministic generator SHOULD own the last-mile integration.</p>
+<p>Recommended requirements:</p>
+<ul>
+<li>patch <code>AppDbContext.cs</code> idempotently</li>
+<li>patch <code>Program.cs</code> idempotently</li>
+<li>fail fast if expected anchors are missing</li>
+<li>emit a clear machine-readable report of what was inserted or updated</li>
+</ul>
+<p>If anchor-based patching is not yet stable enough, the next best step is to add
+explicit guarded region markers and patch those markers only.</p>
+<h2>Gap 5: Lifetime And Connection Policy Are Inconsistent</h2>
+<h3>Current state</h3>
+<p>The current runtime policy is not fully aligned:</p>
+<ul>
+<li>template app registers <code>AppDb</code> as <code>Singleton</code></li>
+<li>template app registers built-in services as <code>Scoped</code></li>
+<li>SPA Generator backend registers <code>AppDb</code> as <code>Singleton</code></li>
+<li>SPA Generator backend registers built-in services as <code>Singleton</code></li>
+<li><code>generate-api.js</code> prints <code>AddSingleton&lt;IEntityService, EntityService&gt;()</code></li>
+</ul>
+<p>At the same time, <code>BaseDb</code> keeps a cached <code>DbConnection</code> instance internally
+instead of opening a fresh connection per operation.</p>
+<h3>Impact</h3>
+<p>This creates two classes of risk:</p>
+<ol>
+<li>architectural inconsistency</li>
+<li>operational concurrency risk</li>
+</ol>
+<p>The inconsistency makes it harder to reason about the intended hosting model.</p>
+<p>The connection reuse model can become a real problem with SQLite under
+concurrent access, especially once generated endpoints receive overlapping
+requests.</p>
+<h3>Direction</h3>
+<p>The repository SHOULD define one explicit runtime policy for:</p>
+<ul>
+<li>service lifetime</li>
+<li>database object lifetime</li>
+<li>connection lifetime</li>
+<li>transaction boundaries</li>
+</ul>
+<p>Recommended target:</p>
+<ul>
+<li>align service lifetime guidance across template, generator, and docs</li>
+<li>document the current SQLite profile as demo-oriented if it remains unchanged</li>
+<li>refactor <code>BaseDb</code> toward per-operation connection scope or another
+  concurrency-safe model before positioning the stack for production traffic</li>
+</ul>
+<h2>Priority Roadmap</h2>
+<table>
+<thead>
+<tr>
+<th>Priority</th>
+<th>Item</th>
+<th>Reason</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>P0</td>
+<td>Make Agent backend CRUD path call deterministic generator</td>
+<td>removes LLM variability from the most repetitive code path</td>
+</tr>
+<tr>
+<td>P0</td>
+<td>Make Agent frontend path emit structured definitions, then generate pages</td>
+<td>converges frontend output and uses the existing field system</td>
+</tr>
+<tr>
+<td>P1</td>
+<td>Automate <code>Program.cs</code> and <code>AppDbContext.cs</code> patching</td>
+<td>removes the highest-friction manual step</td>
+</tr>
+<tr>
+<td>P1</td>
+<td>Make <code>DefinitionTemplate</code> the canonical CRUD input</td>
+<td>turns the spec layer into the real source of truth</td>
+</tr>
+<tr>
+<td>P2</td>
+<td>Fix <code>BaseDb</code> connection lifecycle and align DI policy</td>
+<td>required before stronger concurrency or production claims</td>
+</tr>
+</tbody>
+</table>
+<h2>Recommended Execution Order</h2>
+<ol>
+<li>Change CRUD pipeline States 2-4 to invoke deterministic backend generation
+   instead of directly authoring CRUD code.</li>
+<li>Replace CRUD pipeline State 5 with structured page-definition emission plus
+   <code>tools/page-gen.js</code> invocation.</li>
+<li>Extend deterministic generators to patch host files idempotently.</li>
+<li>Add a normalization layer from CRUD intent to <code>DefinitionTemplate</code>.</li>
+<li>Unify DI lifetime policy and refactor <code>BaseDb</code> connection handling.</li>
+</ol>
+<h2>Non-Goals For This Phase</h2>
+<p>The following items are explicitly out of scope for the first convergence
+phase:</p>
+<ul>
+<li>full reverse engineering of arbitrary handwritten code back into definitions</li>
+<li>removal of CompletionContract guardrails</li>
+<li>immediate package split across the entire repository</li>
+<li>elimination of all legacy entry points in one step</li>
+</ul>
+<h2>Conclusion</h2>
+<p>The repository already contains the right building blocks:</p>
+<ul>
+<li>shared templates</li>
+<li>structured definitions</li>
+<li>deterministic generators</li>
+<li>runtime renderers</li>
+<li>validation guardrails</li>
+</ul>
+<p>The key missing work is not invention.</p>
+<p>It is convergence.</p>
+<p>Once the CRUD path, frontend path, and definition path are connected into one
+structured flow, the repository moves from "a set of strong tools" to "a
+coherent generator platform".</p>
+</main>
+</body>
+</html>

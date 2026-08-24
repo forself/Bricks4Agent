@@ -18,15 +18,20 @@ namespace LineWorker.Handlers;
 /// </summary>
 public class SendAudioHandler : ICapabilityHandler
 {
-    private readonly LineApiClient _lineApi;
+    private readonly ILineApiClient _lineApi;
     private readonly string _defaultRecipientId;
+    private readonly ILineOutboundRateLimiter _rateLimiter;
 
     public string CapabilityId => "line.audio.send";
 
-    public SendAudioHandler(LineApiClient lineApi, string defaultRecipientId)
+    public SendAudioHandler(
+        ILineApiClient lineApi,
+        string defaultRecipientId,
+        ILineOutboundRateLimiter? rateLimiter = null)
     {
         _lineApi = lineApi;
         _defaultRecipientId = defaultRecipientId;
+        _rateLimiter = rateLimiter ?? new LineOutboundRateLimiter();
     }
 
     public async Task<(bool Success, string? ResultPayload, string? Error)> ExecuteAsync(
@@ -61,6 +66,9 @@ public class SendAudioHandler : ICapabilityHandler
             else if (root.TryGetProperty("text", out var textProp))
             {
                 var text = textProp.GetString() ?? "";
+                if (!_rateLimiter.TryAcquire(to, CapabilityId, out var fallbackRetryAfter))
+                    return (false, null, $"Outbound LINE rate limit exceeded for {CapabilityId}; retry after {FormatRetryAfter(fallbackRetryAfter)}.");
+
                 // TODO: 對接 TTS 服務（Azure / Google / OpenAI）
                 // ttsResult = await _ttsService.SynthesizeAsync(text, ct);
                 // audioUrl = ttsResult.Url;
@@ -91,6 +99,9 @@ public class SendAudioHandler : ICapabilityHandler
             if (string.IsNullOrEmpty(audioUrl))
                 return (false, null, "Failed to resolve audio URL.");
 
+            if (!_rateLimiter.TryAcquire(to, CapabilityId, out var retryAfter))
+                return (false, null, $"Outbound LINE rate limit exceeded for {CapabilityId}; retry after {FormatRetryAfter(retryAfter)}.");
+
             var (success, sendError) = await _lineApi.PushAudioMessageAsync(to, audioUrl, durationMs, ct);
 
             if (!success)
@@ -110,5 +121,11 @@ public class SendAudioHandler : ICapabilityHandler
         {
             return (false, null, $"SendAudio error: {ex.Message}");
         }
+    }
+
+    private static string FormatRetryAfter(TimeSpan retryAfter)
+    {
+        var seconds = Math.Max(1, (int)Math.Ceiling(retryAfter.TotalSeconds));
+        return $"{seconds}s";
     }
 }

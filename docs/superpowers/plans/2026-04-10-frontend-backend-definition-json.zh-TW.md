@@ -15,48 +15,83 @@
 ### Create
 
 - `packages/javascript/browser/definition-json/architecture-schema.js`
+
 - `packages/javascript/browser/definition-json/frontend-schema.js`
+
 - `packages/javascript/browser/definition-json/backend-schema.js`
+
 - `packages/javascript/browser/definition-json/validators.js`
+
 - `packages/javascript/browser/definition-json/load-definition.mjs`
+
 - `templates/spa/frontend/runtime/materializers/FrontendDefinitionMaterializer.js`
+
 - `templates/spa/frontend/runtime/materializers/surfaces/MessagePanelSurface.js`
+
 - `templates/spa/frontend/runtime/materializers/surfaces/SearchFormSurface.js`
+
 - `templates/spa/frontend/runtime/materializers/surfaces/DataTableSurface.js`
+
 - `templates/spa/frontend/runtime/materializers/surfaces/EmbeddedActionFormSurface.js`
+
 - `templates/spa/frontend/runtime/pages/DefinitionListPage.js`
+
 - `templates/spa/frontend/runtime/pages/DefinitionContentPage.js`
+
 - `templates/spa/frontend/runtime/pages/DefinitionAuthFormPage.js`
+
 - `templates/spa/backend/Generated/DefinitionBackendMaterializer.cs`
+
 - `templates/spa/backend/Generated/DefinitionBackendModels.cs`
+
 - `templates/spa/backend/Generated/DefinitionBackendModuleRegistry.cs`
+
 - `templates/spa/frontend/definition/architecture.json`
+
 - `templates/spa/frontend/definition/frontend-definition.json`
+
 - `templates/spa/backend/definition/backend-definition.json`
+
 - `packages/javascript/browser/__tests__/definition-json/DefinitionValidation.test.js`
+
 - `packages/javascript/browser/__tests__/definition-json/FrontendDefinitionMaterializer.test.js`
+
 - `templates/spa/backend.Tests/DefinitionBackendMaterializerTests.cs`
 
 ### Modify
 
 - `templates/spa/frontend/runtime/DefinitionRuntimePage.js`
+
 - `templates/spa/frontend/pages/routes.js`
+
 - `templates/spa/frontend/core/App.js`
+
 - `templates/spa/frontend/pages/admin/productFormDefinition.js`
+
 - `tests/e2e/ui/spa-commerce-proof.spec.ts`
+
 - `tests/e2e/playwright.config.ts`
+
 - `templates/spa/backend/Program.cs`
+
 - `templates/spa/backend/Data/DbInitializer.cs`
+
 - `templates/spa/backend/Generated/DefinitionTemplateGeneratedComposition.cs`
 
 ### Reuse
 
 - `packages/javascript/browser/page-generator/PageDefinitionAdapter.js`
+
 - `packages/javascript/browser/page-generator/DynamicPageRenderer.js`
+
 - `packages/javascript/browser/page-generator/DynamicFormRenderer.js`
+
 - `packages/javascript/browser/ui_components/form/SearchForm/SearchForm.js`
+
 - `packages/javascript/browser/ui_components/layout/DataTable/DataTable.js`
+
 - `templates/spa/backend/Data/AppDbContext.cs`
+
 - `templates/spa/backend/Services/AuthService.cs`
 
 ---
@@ -127,6 +162,7 @@ describe('Definition validation', () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `npm.cmd --prefix packages/javascript/browser run test -- DefinitionValidation.test.js`  
+
 Expected: FAIL with missing `definition-json` modules.
 
 - [ ] **Step 3: Implement minimal schema validators**
@@ -207,6 +243,7 @@ export function loadDefinitionBundle(rootDir, architecturePath) {
 - [ ] **Step 5: Run tests to verify they pass**
 
 Run: `npm.cmd --prefix packages/javascript/browser run test -- DefinitionValidation.test.js`  
+
 Expected: PASS
 
 - [ ] **Step 6: Commit**
@@ -293,6 +330,7 @@ describe('FrontendDefinitionMaterializer', () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `npm.cmd --prefix packages/javascript/browser run test -- FrontendDefinitionMaterializer.test.js`  
+
 Expected: FAIL with missing materializer modules.
 
 - [ ] **Step 3: Implement the minimal materializer**
@@ -389,6 +427,7 @@ _resolveDefinition() {
 - [ ] **Step 6: Run tests to verify they pass**
 
 Run: `npm.cmd --prefix packages/javascript/browser run test -- FrontendDefinitionMaterializer.test.js`  
+
 Expected: PASS
 
 - [ ] **Step 7: Commit**
@@ -423,6 +462,7 @@ test('loads products route from frontend-definition json', async ({ page }) => {
 - [ ] **Step 2: Run the E2E proof to verify the JSON route path is not wired yet**
 
 Run: `npx.cmd playwright test tests/e2e/ui/spa-commerce-proof.spec.ts --config tests/e2e/playwright.config.ts`  
+
 Expected: FAIL after route bootstrap starts reading frontend definitions without materialized route registration.
 
 - [ ] **Step 3: Add canonical JSON fixtures for the proof app**
@@ -523,6 +563,7 @@ const STATUS_OPTIONS = enums.status_options;
 - [ ] **Step 6: Run the full Playwright proof to verify the JSON-backed routes are green**
 
 Run: `npx.cmd playwright test tests/e2e/ui/spa-commerce-proof.spec.ts --config tests/e2e/playwright.config.ts`  
+
 Expected: PASS
 
 - [ ] **Step 7: Commit**
@@ -581,6 +622,7 @@ public class DefinitionBackendMaterializerTests
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `dotnet test templates/spa/backend.Tests/SpaApi.Template.Tests.csproj --filter DefinitionBackendMaterializerTests -v minimal`  
+
 Expected: FAIL with missing backend definition types/materializer.
 
 - [ ] **Step 3: Implement backend definition models and materializer**
@@ -643,6 +685,7 @@ if (materializedBackend is not null && materializedBackend.RequiredModules.Conta
 - [ ] **Step 6: Run backend template tests**
 
 Run: `dotnet test templates/spa/backend.Tests/SpaApi.Template.Tests.csproj -v minimal`  
+
 Expected: PASS
 
 - [ ] **Step 7: Commit**
@@ -671,16 +714,19 @@ await expect.poll(async () => page.evaluate(() => location.hash)).toContain('#/a
 - [ ] **Step 2: Run browser unit tests**
 
 Run: `npm.cmd --prefix packages/javascript/browser run test`  
+
 Expected: PASS
 
 - [ ] **Step 3: Run backend template tests**
 
 Run: `dotnet test templates/spa/backend.Tests/SpaApi.Template.Tests.csproj -v minimal`  
+
 Expected: PASS
 
 - [ ] **Step 4: Run proof E2E**
 
 Run: `npx.cmd playwright test tests/e2e/ui/spa-commerce-proof.spec.ts --config tests/e2e/playwright.config.ts`  
+
 Expected: PASS
 
 - [ ] **Step 5: Update the spec with implementation status notes only if needed**
@@ -707,20 +753,27 @@ git commit -m "test: verify definition json commerce proof"
 ### Spec coverage
 
 - `architecture.json` canonical source: covered by Task 1 and Task 3
+
 - `frontend-definition.json` route + surfaces model: covered by Task 2 and Task 3
+
 - `backend-definition.json` tier + template + modules model: covered by Task 4
+
 - commerce proof instance JSON: covered by Task 3 and Task 4
+
 - deterministic materialization instead of AI: enforced across Tasks 2–4
 
 ### Placeholder scan
 
 - No `TBD`, `TODO`, or “implement later”
+
 - Each test step has an exact command
+
 - Each implementation step contains concrete code shape
 
 ### Type consistency
 
 - `architecture.json`, `frontend-definition.json`, `backend-definition.json` names are consistent across all tasks
-- `resource_list_page`, `resource_form_page`, `embedded_action_form` names match the spec
-- backend tier names are consistently `N1/N2/N3`
 
+- `resource_list_page`, `resource_form_page`, `embedded_action_form` names match the spec
+
+- backend tier names are consistently `N1/N2/N3`

@@ -1,6 +1,7 @@
 import { escapeHtml } from '../../utils/security.js';
 import Locale from '../../i18n/index.js';
 import { createComponentState } from '../../utils/component-state.js';
+import { Icon } from '../../common/Icon/index.js';
 
 function parseTime(value) {
     if (!value) return { hour: null, minute: null };
@@ -211,7 +212,14 @@ export class TimePicker {
 
         if (label) {
             const labelEl = document.createElement('label');
-            labelEl.innerHTML = `${escapeHtml(label)}${required ? '<span style="color:var(--cl-danger);margin-left:2px;">*</span>' : ''}`;
+            labelEl.innerHTML = escapeHtml(label);
+            if (required) {
+                // CSP style-src 'self':inline style 屬性會被剝除,改用 CSSOM cssText
+                const requiredMark = document.createElement('span');
+                requiredMark.style.cssText = 'color:var(--cl-danger);margin-left:2px;';
+                requiredMark.textContent = '*';
+                labelEl.appendChild(requiredMark);
+            }
             labelEl.style.cssText = `
                 display: block;
                 font-size: var(--cl-font-size-md);
@@ -248,10 +256,8 @@ export class TimePicker {
 
         const icon = document.createElement('span');
         icon.className = 'timepicker__icon';
-        icon.innerHTML = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-            <circle cx="8" cy="8" r="6" stroke="var(--cl-text-secondary)" stroke-width="1.5"/>
-            <path d="M8 4V8L11 10" stroke="var(--cl-text-secondary)" stroke-width="1.5" stroke-linecap="round"/>
-        </svg>`;
+        this._clockIcon = new Icon({ name: 'clock', size: 16, color: 'var(--cl-text-secondary)' });
+        this._clockIcon.mount(icon);
         icon.style.cssText = `
             position: absolute;
             right: 10px;
@@ -567,6 +573,8 @@ export class TimePicker {
     }
 
     destroy() {
+        this._clockIcon?.destroy();
+        this._clockIcon = null;
         this.send('DESTROY');
         if (this._onDocumentClick) {
             document.removeEventListener('click', this._onDocumentClick);

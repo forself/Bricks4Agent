@@ -1,0 +1,433 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>三賢者系統 (Three Sages System)</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>三賢者系統 (Three Sages System)</h1>
+<h2>概述</h2>
+<p>三賢者系統是一個多層級審核機制，用於確保程式碼品質、安全性和架構一致性。
+系統由三個獨立的 AI 審核者組成，各自負責不同的審核面向。</p>
+<h2>架構設計</h2>
+<pre><code>┌─────────────────────────────────────────────────────────────────┐
+│                        提交審核請求                              │
+└─────────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                      審核調度器 (Scheduler)                      │
+│  - 接收審核請求                                                  │
+│  - 分配給三賢者                                                  │
+│  - 收集審核結果                                                  │
+│  - 產生最終報告                                                  │
+└─────────────────────────────────────────────────────────────────┘
+                                │
+            ┌───────────────────┼───────────────────┐
+            ▼                   ▼                   ▼
+┌───────────────────┐ ┌───────────────────┐ ┌───────────────────┐
+│   🛡️ 安全賢者     │ │   🏗️ 架構賢者     │ │   ✨ 品質賢者     │
+│   (Security)      │ │   (Architecture)  │ │   (Quality)       │
+│                   │ │                   │ │                   │
+│ - 資安漏洞檢測    │ │ - 設計模式審查    │ │ - 程式碼風格      │
+│ - OWASP Top 10    │ │ - SOLID 原則      │ │ - 測試覆蓋率      │
+│ - 敏感資料處理    │ │ - 相依性管理      │ │ - 文件完整性      │
+│ - 加密實作審查    │ │ - 效能考量        │ │ - 可維護性        │
+│ - 輸入驗證        │ │ - 擴展性          │ │ - 命名規範        │
+└───────────────────┘ └───────────────────┘ └───────────────────┘
+            │                   │                   │
+            └───────────────────┼───────────────────┘
+                                ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                      審核結果彙整                                │
+│  - 問題嚴重度分類 (Critical/High/Medium/Low/Info)               │
+│  - 修改建議                                                     │
+│  - 通過/駁回決定                                                │
+│  - 學習記錄                                                     │
+└─────────────────────────────────────────────────────────────────┘
+</code></pre>
+<h2>三賢者職責</h2>
+<h3>🛡️ 安全賢者 (Security Sage)</h3>
+<p>專注於程式碼的安全性審查：</p>
+<table>
+<thead>
+<tr>
+<th>檢查項目</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SQL Injection</td>
+<td>檢查 SQL 查詢是否使用參數化</td>
+</tr>
+<tr>
+<td>XSS</td>
+<td>檢查輸出是否正確編碼</td>
+</tr>
+<tr>
+<td>CSRF</td>
+<td>檢查是否有 CSRF 保護</td>
+</tr>
+<tr>
+<td>認證漏洞</td>
+<td>密碼處理、Session 管理</td>
+</tr>
+<tr>
+<td>授權漏洞</td>
+<td>權限檢查、存取控制</td>
+</tr>
+<tr>
+<td>敏感資料</td>
+<td>加密、遮蔽、日誌安全</td>
+</tr>
+<tr>
+<td>相依套件</td>
+<td>CVE 漏洞檢查</td>
+</tr>
+<tr>
+<td>密碼學</td>
+<td>正確使用加密演算法</td>
+</tr>
+</tbody>
+</table>
+<h3>🏗️ 架構賢者 (Architecture Sage)</h3>
+<p>專注於程式碼的架構設計：</p>
+<table>
+<thead>
+<tr>
+<th>檢查項目</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SOLID 原則</td>
+<td>單一職責、開放封閉等</td>
+</tr>
+<tr>
+<td>設計模式</td>
+<td>適當使用設計模式</td>
+</tr>
+<tr>
+<td>分層架構</td>
+<td>正確的層級分離</td>
+</tr>
+<tr>
+<td>相依性</td>
+<td>依賴注入、循環依賴</td>
+</tr>
+<tr>
+<td>介面設計</td>
+<td>API 一致性、版本相容</td>
+</tr>
+<tr>
+<td>效能</td>
+<td>演算法複雜度、資源使用</td>
+</tr>
+<tr>
+<td>擴展性</td>
+<td>水平/垂直擴展能力</td>
+</tr>
+<tr>
+<td>可測試性</td>
+<td>單元測試友善設計</td>
+</tr>
+</tbody>
+</table>
+<h3>✨ 品質賢者 (Quality Sage)</h3>
+<p>專注於程式碼的品質和可維護性：</p>
+<table>
+<thead>
+<tr>
+<th>檢查項目</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>命名規範</td>
+<td>變數、函數、類別命名</td>
+</tr>
+<tr>
+<td>程式碼風格</td>
+<td>一致的格式和縮排</td>
+</tr>
+<tr>
+<td>註解品質</td>
+<td>有意義的註解、文件</td>
+</tr>
+<tr>
+<td>複雜度</td>
+<td>圈複雜度、認知複雜度</td>
+</tr>
+<tr>
+<td>重複程式碼</td>
+<td>DRY 原則</td>
+</tr>
+<tr>
+<td>錯誤處理</td>
+<td>完整的例外處理</td>
+</tr>
+<tr>
+<td>測試覆蓋</td>
+<td>單元測試、整合測試</td>
+</tr>
+<tr>
+<td>可讀性</td>
+<td>程式碼清晰易懂</td>
+</tr>
+</tbody>
+</table>
+<h2>審核流程</h2>
+<h3>1. 提交審核</h3>
+<pre><code class="language-typescript">interface ReviewRequest {
+  id: string;
+  type: 'commit' | 'pr' | 'file' | 'module';
+  language: string;
+  files: FileChange[];
+  context?: string;
+  priority: 'normal' | 'urgent';
+  requestedBy: string;
+  timestamp: Date;
+}
+
+interface FileChange {
+  path: string;
+  content: string;
+  diff?: string;
+  language: string;
+}
+</code></pre>
+<h3>2. 分配審核</h3>
+<pre><code class="language-typescript">interface ReviewAssignment {
+  requestId: string;
+  sage: 'security' | 'architecture' | 'quality';
+  assignedAt: Date;
+  deadline: Date;
+  status: 'pending' | 'in_progress' | 'completed';
+}
+</code></pre>
+<h3>3. 審核結果</h3>
+<pre><code class="language-typescript">interface ReviewResult {
+  requestId: string;
+  sage: string;
+  status: 'approved' | 'rejected' | 'needs_changes';
+  findings: Finding[];
+  summary: string;
+  score: number; // 0-100
+  reviewedAt: Date;
+}
+
+interface Finding {
+  id: string;
+  severity: 'critical' | 'high' | 'medium' | 'low' | 'info';
+  category: string;
+  title: string;
+  description: string;
+  location: {
+    file: string;
+    line?: number;
+    column?: number;
+  };
+  suggestion?: string;
+  codeExample?: string;
+  references?: string[];
+}
+</code></pre>
+<h3>4. 最終決定</h3>
+<pre><code class="language-typescript">interface FinalVerdict {
+  requestId: string;
+  decision: 'approved' | 'rejected' | 'conditional';
+  overallScore: number;
+  sageResults: {
+    security: ReviewResult;
+    architecture: ReviewResult;
+    quality: ReviewResult;
+  };
+  mustFix: Finding[];      // 必須修正
+  shouldFix: Finding[];    // 建議修正
+  mayFix: Finding[];       // 可選修正
+  summary: string;
+  decidedAt: Date;
+}
+</code></pre>
+<h2>評分機制</h2>
+<h3>嚴重度權重</h3>
+<table>
+<thead>
+<tr>
+<th>嚴重度</th>
+<th>扣分</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Critical</td>
+<td>-25</td>
+</tr>
+<tr>
+<td>High</td>
+<td>-15</td>
+</tr>
+<tr>
+<td>Medium</td>
+<td>-8</td>
+</tr>
+<tr>
+<td>Low</td>
+<td>-3</td>
+</tr>
+<tr>
+<td>Info</td>
+<td>0</td>
+</tr>
+</tbody>
+</table>
+<h3>通過標準</h3>
+<table>
+<thead>
+<tr>
+<th>條件</th>
+<th>要求</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>總分</td>
+<td>≥ 70 分</td>
+</tr>
+<tr>
+<td>Critical 問題</td>
+<td>0 個</td>
+</tr>
+<tr>
+<td>High 問題</td>
+<td>≤ 2 個</td>
+</tr>
+<tr>
+<td>安全賢者評分</td>
+<td>≥ 60 分</td>
+</tr>
+</tbody>
+</table>
+<h3>條件通過</h3>
+<ul>
+<li>總分 60-69 分</li>
+<li>無 Critical 問題</li>
+<li>High 問題 ≤ 5 個</li>
+<li>需在指定時間內修正</li>
+</ul>
+<h2>API 設計</h2>
+<h3>提交審核</h3>
+<pre><code>POST /api/review/submit
+</code></pre>
+<pre><code class="language-json">{
+  &quot;type&quot;: &quot;pr&quot;,
+  &quot;language&quot;: &quot;typescript&quot;,
+  &quot;files&quot;: [
+    {
+      &quot;path&quot;: &quot;src/auth/login.ts&quot;,
+      &quot;content&quot;: &quot;...&quot;,
+      &quot;diff&quot;: &quot;...&quot;
+    }
+  ],
+  &quot;context&quot;: &quot;New login flow with MFA&quot;,
+  &quot;priority&quot;: &quot;normal&quot;
+}
+</code></pre>
+<h3>查詢審核狀態</h3>
+<pre><code>GET /api/review/{requestId}/status
+</code></pre>
+<h3>取得審核結果</h3>
+<pre><code>GET /api/review/{requestId}/result
+</code></pre>
+<h3>申請複審</h3>
+<pre><code>POST /api/review/{requestId}/appeal
+</code></pre>
+<h2>學習機制</h2>
+<p>系統會記錄所有審核結果，用於：</p>
+<ol>
+<li><strong>模式識別</strong>：常見問題類型統計</li>
+<li><strong>團隊改進</strong>：針對性培訓建議</li>
+<li><strong>規則調整</strong>：根據誤判率調整規則</li>
+<li><strong>知識庫</strong>：建立最佳實踐案例庫</li>
+</ol>
+<h2>整合方式</h2>
+<h3>Git Hook 整合</h3>
+<pre><code class="language-bash"># pre-commit hook
+three-sages review --type=commit --quick
+
+# pre-push hook
+three-sages review --type=pr --full
+</code></pre>
+<h3>CI/CD 整合</h3>
+<pre><code class="language-yaml"># GitHub Actions
+- name: Three Sages Review
+  uses: component-library/three-sages-action@v1
+  with:
+    threshold: 70
+    fail-on-critical: true
+</code></pre>
+<h3>IDE 整合</h3>
+<ul>
+<li>VS Code Extension</li>
+<li>JetBrains Plugin</li>
+<li>即時審核建議</li>
+</ul>
+<h2>配置選項</h2>
+<pre><code class="language-yaml"># .three-sages.yml
+version: 1
+
+rules:
+  security:
+    enabled: true
+    severity_threshold: medium
+    ignore_patterns:
+      - &quot;**/test/**&quot;
+      - &quot;**/*.test.ts&quot;
+
+  architecture:
+    enabled: true
+    max_complexity: 15
+    max_file_lines: 500
+
+  quality:
+    enabled: true
+    min_coverage: 80
+    require_docs: true
+
+scoring:
+  pass_threshold: 70
+  conditional_threshold: 60
+
+notifications:
+  slack: &quot;https://hooks.slack.com/...&quot;
+  email: [&quot;team@example.com&quot;]
+</code></pre>
+<h2>下一步實作</h2>
+<ol>
+<li><strong>核心引擎</strong>：審核調度器和結果彙整</li>
+<li><strong>三賢者 AI</strong>：各領域專家 Prompt 設計</li>
+<li><strong>API 服務</strong>：RESTful API 實作</li>
+<li><strong>Web 介面</strong>：審核結果查看和管理</li>
+<li><strong>整合工具</strong>：Git Hook、CI/CD Action</li>
+</ol>
+</main>
+</body>
+</html>

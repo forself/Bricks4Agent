@@ -7,6 +7,9 @@
  * @module PageDefinition
  */
 
+import { validateToolPageDefinition } from './ToolPageDefinition.js';
+import { isDeclarativeListDefinition, validateQueryDefinition } from './QueryDefinitionAdapter.js';
+
 /**
  * 頁面定義 Schema
  * @typedef {Object} PageDefinition
@@ -99,6 +102,7 @@ export const FieldTypes = {
 
     // 日期時間
     DATE: 'date',
+    ROCDATE: 'rocDate',
     TIME: 'time',
     DATETIME: 'datetime',
 
@@ -124,6 +128,10 @@ export const FieldTypes = {
     ORGANIZATION: 'organization',   // 需要 OrganizationInput
     STUDENT: 'student',             // 需要 StudentInput
 
+    // 數值滑桿 / 多行純文字
+    SLIDER: 'slider',           // 需要 Slider
+    MEMO: 'memo',               // 需要 TextArea(多行純文字)
+
     // 評分 / 標籤
     RATING: 'rating',
     TAGS: 'tags',
@@ -140,7 +148,8 @@ export const PageTypes = {
     FORM: 'form',           // 表單頁面（新增/編輯）
     LIST: 'list',           // 列表頁面
     DETAIL: 'detail',       // 詳情頁面（唯讀）
-    DASHBOARD: 'dashboard'  // 儀表板
+    DASHBOARD: 'dashboard', // 儀表板
+    TOOL: 'tool'            // 宣告式工具頁面
 };
 
 // ============================================================
@@ -150,6 +159,7 @@ export const PageTypes = {
 export const ComponentMapping = {
     // 欄位類型 -> 元件名稱
     [FieldTypes.DATE]: 'DatePicker',
+    [FieldTypes.ROCDATE]: 'DatePicker',
     [FieldTypes.DATETIME]: 'DateTimeInput',
     [FieldTypes.COLOR]: 'ColorPicker',
     [FieldTypes.IMAGE]: 'ImageViewer',
@@ -157,6 +167,8 @@ export const ComponentMapping = {
     [FieldTypes.CANVAS]: 'DrawingBoard',
     [FieldTypes.GEOLOCATION]: 'GeolocationService',
     [FieldTypes.WEATHER]: 'WeatherService',
+    [FieldTypes.SLIDER]: 'Slider',
+    [FieldTypes.MEMO]: 'TextArea',
     // 複合輸入元件
     [FieldTypes.ADDRESS]: 'AddressInput',
     [FieldTypes.ADDRESSLIST]: 'AddressListInput',
@@ -226,7 +238,9 @@ export const AvailableComponents = {
         'PhoneListInput',
         'SocialMediaList',
         'OrganizationInput',
-        'StudentInput'
+        'StudentInput',
+        // Tool/PageDefinition explicit container (schema → form/API/database designer)
+        'FormDesigner'
     ]
 };
 
@@ -240,6 +254,24 @@ export const AvailableComponents = {
  * @returns {{ valid: boolean, errors: string[] }}
  */
 export function validateDefinition(definition) {
+    let typeDescriptor = null;
+    if (definition !== null && typeof definition === 'object') {
+        try {
+            typeDescriptor = Object.getOwnPropertyDescriptor(definition, 'type');
+        } catch {
+            return { valid: false, errors: ['definition.type cannot be inspected safely.'] };
+        }
+    }
+    if (typeDescriptor?.get || typeDescriptor?.set) {
+        return { valid: false, errors: ['definition.type must be a data property.'] };
+    }
+    if (isDeclarativeListDefinition(definition)) {
+        return validateQueryDefinition(definition);
+    }
+    if (typeDescriptor?.value === PageTypes.TOOL) {
+        return validateToolPageDefinition(definition);
+    }
+
     const errors = [];
 
     // 必要欄位檢查
@@ -304,7 +336,7 @@ export function inferComponents(fields) {
     const components = new Set();
 
     for (const field of fields) {
-        const component = ComponentMapping[field.type];
+        const component = field.component || ComponentMapping[field.type];
         if (component) {
             components.add(component);
         }

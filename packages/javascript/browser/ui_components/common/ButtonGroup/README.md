@@ -11,7 +11,7 @@ new ButtonGroup(options?)
 ```
 
 | 參數 | 型別 | 預設值 | 說明 |
-|------|------|--------|------|
+|---|---|---|---|
 | `options.buttons` | `Array` | `[]` | 按鈕陣列（具 `element` 屬性的物件或 HTMLElement） |
 | `options.direction` | `string` | `'horizontal'` | 佈局方向：`'horizontal'`/`'vertical'` |
 | `options.gap` | `string` | `'4px'` | 按鈕間距 |
@@ -19,12 +19,12 @@ new ButtonGroup(options?)
 | `options.separatorColor` | `string` | `null` | 分隔線顏色（預設依主題） |
 | `options.theme` | `string` | `'light'` | 主題：`'light'`/`'dark'`/`'gradient'` |
 | `options.align` | `string` | `'start'` | 對齊：`'start'`/`'center'`/`'end'` |
-| `options.wrap` | `boolean` | `false` | 是否允許換行 |
+| `options.wrap` | `boolean` | `true` | 是否允許換行 |
 
 ### ButtonGroup 方法
 
 | 方法 | 回傳 | 說明 |
-|------|------|------|
+|---|---|---|
 | `addButton(button)` | `this` | 新增按鈕 |
 | `removeButton(index)` | `this` | 依索引移除按鈕 |
 | `clear()` | `this` | 清空所有按鈕 |
@@ -38,7 +38,7 @@ new EditorToolbar(options?)
 ```
 
 | 參數 | 型別 | 預設值 | 說明 |
-|------|------|--------|------|
+|---|---|---|---|
 | `options.groups` | `Array` | `[]` | ButtonGroup 實例陣列 |
 | `options.theme` | `string` | `'light'` | 主題 |
 | `options.position` | `string` | `'top'` | 位置：`'top'`/`'bottom'` |
@@ -49,7 +49,7 @@ new EditorToolbar(options?)
 ### EditorToolbar 方法
 
 | 方法 | 回傳 | 說明 |
-|------|------|------|
+|---|---|---|
 | `addGroup(group)` | `this` | 新增群組 |
 | `mount(container)` | `this` | 掛載至容器 |
 | `destroy()` | `void` | 銷毀元件 |

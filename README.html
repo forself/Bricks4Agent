@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bricks4Agent</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Bricks4Agent</h1>
+<p>中文版本：<a href="README.zh-TW.html">README.zh-TW.md</a></p>
+<h2>What this is</h2>
+<p><code>Bricks4Agent</code> is a <strong>zero-runtime-dependency Vanilla JS UI component library</strong> plus a
+<strong>page/SPA generator</strong> that turns a JSON <code>PageDefinition</code> into working pages.</p>
+<ul>
+<li><strong>UI component library</strong> — 116 components (form, layout, common, input, viz, social, editor, sections, data, analytics), pure vanilla JS, theme-token styling, built-in XSS protection and i18n.</li>
+<li><strong>Page generator</strong> — a <code>PageDefinition</code> (JSON) becomes a page in one of two ways: <strong>static code generation</strong> (emits <code>.js</code> page files) or <strong>dynamic rendering</strong> (renders at runtime from the JSON).</li>
+<li><strong>SPA tooling</strong> — a CLI and a Web UI that scaffold full-stack CRUD (frontend pages + optional .NET 10 backend).</li>
+<li><strong>Form application studio</strong> — imports a table schema, visually arranges fields, and generates a form <code>PageDefinition</code>, .NET 10 Minimal API/BaseOrm code, and database SQL. A blank connection string targets local SQLite.</li>
+</ul>
+<blockquote>
+<p>Building on top of this library? Read <a href="AGENT-UI-GUIDE.html">AGENT-UI-GUIDE.md</a> first — it is the calling-convention entry point for both humans and AI agents.</p>
+</blockquote>
+<h2>Main areas</h2>
+<h3>UI component library</h3>
+<ul>
+<li><a href="packages/javascript/browser/ui_components">ui_components</a> — the components</li>
+<li><a href="packages/javascript/browser/ui_components/index.js">ui_components/index.js</a> — single import barrel</li>
+<li><a href="packages/javascript/browser/ui_components/metadata/component-catalog.json">metadata/component-catalog.json</a> — the authoritative component list</li>
+<li><a href="packages/javascript/browser/ui_components/STYLE_CONVENTION.html">STYLE_CONVENTION.md</a> — theming / token rules</li>
+</ul>
+<h3>Page generator</h3>
+<ul>
+<li><a href="packages/javascript/browser/page-generator">page-generator</a> — engine (static + dynamic)</li>
+<li><a href="packages/javascript/browser/page-generator/README.html">page-generator/README.md</a></li>
+</ul>
+<h3>SPA scaffolding</h3>
+<ul>
+<li><a href="templates/spa">templates/spa</a> — SPA project template (frontend core + .NET 10 backend)</li>
+<li><a href="templates/spa/scripts">templates/spa/scripts</a> — <code>spa-cli.js</code>, <code>generate-page.js</code>, <code>generate-api.js</code></li>
+<li><a href="tools/spa-generator">tools/spa-generator</a> — generator Web UI (port 3080)</li>
+<li><a href="tools/page-gen.js">tools/page-gen.js</a> — standalone PageDefinition CLI (<a href="tools/page-gen.README.html">docs</a>)</li>
+<li><a href="tools/static-server">tools/static-server</a> — static file server for previewing</li>
+<li><a href="tools/form-application-studio">tools/form-application-studio</a> — JSON-self-hosted form/API/database designer</li>
+</ul>
+<h2>Quick start</h2>
+<p>Use Node.js 22 and the .NET 10 SDK. The checked-in <code>global.json</code> accepts the latest installed .NET 10 feature band.</p>
+<h3>Use the component library</h3>
+<pre><code class="language-js">import { TextInput, DataTable, BarChart } from './packages/javascript/browser/ui_components/index.js';
+
+new TextInput({ label: 'Name', required: true }).mount('#app');
+</code></pre>
+<p>Every component follows the same contract: <code>new X(options)</code> → <code>.mount(container)</code> → <code>.destroy()</code>.
+See <a href="AGENT-UI-GUIDE.html">AGENT-UI-GUIDE.md</a> for the full convention and the component inventory.</p>
+<h3>Generate a page from a definition</h3>
+<pre><code class="language-bash"># validate / generate / list supported field types
+node tools/page-gen.js --def page.json --mode static --output ./out/
+node tools/page-gen.js --list-types
+</code></pre>
+<h3>Scaffold full-stack CRUD</h3>
+<pre><code class="language-bash"># create a project, then generate a feature (frontend pages + C# Model/Service/API)
+node templates/spa/scripts/spa-cli.js new --name my-app --output ./out
+node templates/spa/scripts/spa-cli.js feature Article --fields &quot;Title:string,Content:text,IsPublic:bool&quot;
+</code></pre>
+<h3>Run the generator Web UI</h3>
+<pre><code class="language-bash">npm run serve   # serves tools/spa-generator/frontend on port 3080
+</code></pre>
+<h2>Tests</h2>
+<pre><code class="language-bash">npm test                        # page-generator test suite
+npm run validate:ui-library     # UI library checks
+npm run audit:ui-styles         # style-token audit
+npm run test:studio:self-host   # one authoritative JSON + component provenance
+npm run test:studio:browser     # same-page tabs + Theme/Custom JSON round-trip
+npm run test:form-designer:all  # form application unit, self-host and browser acceptance
+npm run test:form-designer:dotnet # generate and compile all four provider backends
+npm run test:dotnet10           # enforce net10.0; build all 35 projects with every warning as an error
+dotnet test packages/csharp/tests/unit/Unit.Tests.csproj
+dotnet test packages/csharp/tests/integration/Integration.Tests.csproj
+dotnet test templates/spa/backend.Tests/SpaApi.Template.Tests.csproj
+</code></pre>
+<p>Pull requests targeting <code>main</code> and pushes to <code>main</code> run the portable JavaScript, policy,
+metadata, warning-free .NET 10 project matrix and generated-backend checks through
+<a href=".github/workflows/ci.yml">GitHub Actions</a>. The real Edge interaction harness remains
+a local acceptance gate because it intentionally uses the repository's pre-existing
+external Playwright/Edge runtime instead of adding npm dependencies.</p>
+<p>The .NET 10 migration preserves the existing PBKDF2 password storage formats. Fixed
+compatibility vectors cover Broker, MFA and the SPA template, so existing hashes remain
+verifiable while new builds use the current static PBKDF2 API.</p>
+<h2>Documentation</h2>
+<ul>
+<li><a href="AGENT-UI-GUIDE.html">AGENT-UI-GUIDE.md</a> — component calling convention + React-rewrite playbook (for AI agents)</li>
+<li><a href="CUSTOM-COMPONENTS.html">CUSTOM-COMPONENTS.md</a> — JSON-generated self-host Studio, three-tier custom components and folder loading</li>
+<li><a href="tools/form-application-studio/README.html">tools/form-application-studio/README.md</a> — schema-to-form/API/database designer and connection policy</li>
+<li><a href="AGENT.html">AGENT.md</a> — SPA generator operation manual (for AI agents)</li>
+<li><a href="CLAUDE.html">CLAUDE.md</a> — Claude Code rules for this repo</li>
+<li><a href="packages/javascript/browser/page-generator/README.html">page-generator/README.md</a> — page generator details</li>
+<li><a href="templates/spa/README.html">templates/spa/README.md</a> — SPA template</li>
+</ul>
+</main>
+</body>
+</html>

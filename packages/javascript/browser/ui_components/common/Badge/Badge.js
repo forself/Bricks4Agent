@@ -62,7 +62,6 @@ export class Badge {
             DESTROY: (state) => ({ ...state, lifecycle: 'destroyed' })
         });
 
-        this._injectStyles();
         this._create();
         this._applyState();
     }
@@ -87,124 +86,70 @@ export class Badge {
         };
     }
 
-    _injectStyles() {
-        if (document.getElementById('badge-component-styles')) return;
+    /**
+     * Compose the full inline style for the current state (CSP-safe, no <style> injection).
+     * @private
+     * @param {Object} content
+     * @param {string} visibility
+     * @returns {string}
+     */
+    _composeCss(content, visibility) {
+        const sizeStyles = {
+            small: 'font-size: var(--cl-font-size-2xs); padding: 2px 6px; min-width: 16px; height: 16px;',
+            medium: 'font-size: var(--cl-font-size-xs); padding: 2px 8px; min-width: 20px; height: 20px;',
+            large: 'font-size: var(--cl-font-size-sm); padding: 3px 10px; min-width: 24px; height: 24px;'
+        };
 
-        const style = document.createElement('style');
-        style.id = 'badge-component-styles';
-        style.textContent = `
-            .cl-badge {
-                display: inline-flex;
-                align-items: center;
-                justify-content: center;
-                font-family: var(--cl-font-family);
-                font-weight: 600;
-                white-space: nowrap;
-                vertical-align: middle;
-                border-radius: var(--cl-radius-pill);
-                transition: background var(--cl-transition-fast),
-                            color var(--cl-transition-fast),
-                            transform var(--cl-transition-fast);
-                box-sizing: border-box;
-                line-height: 1;
-            }
+        const dotSizeStyles = {
+            small: 'width: 6px; height: 6px; min-width: 6px;',
+            medium: 'width: 8px; height: 8px; min-width: 8px;',
+            large: 'width: 10px; height: 10px; min-width: 10px;'
+        };
 
-            .cl-badge--small {
-                font-size: var(--cl-font-size-2xs);
-                padding: 2px 6px;
-                min-width: 16px;
-                height: 16px;
-            }
+        const variantStyles = {
+            default: 'background: var(--cl-bg-secondary); color: var(--cl-text-secondary); border: 1px solid var(--cl-border);',
+            primary: 'background: var(--cl-primary); color: var(--cl-text-inverse);',
+            success: 'background: var(--cl-success); color: var(--cl-text-inverse);',
+            warning: 'background: var(--cl-warning); color: var(--cl-text-inverse);',
+            danger: 'background: var(--cl-danger); color: var(--cl-text-inverse);',
+            info: 'background: var(--cl-info); color: var(--cl-text-inverse);'
+        };
 
-            .cl-badge--medium {
-                font-size: var(--cl-font-size-xs);
-                padding: 2px 8px;
-                min-width: 20px;
-                height: 20px;
-            }
+        const parts = [
+            // Base (display must be an explicit value; '' would collapse layout)
+            `display: ${visibility === 'hidden' ? 'none' : 'inline-flex'};`,
+            'align-items: center;',
+            'justify-content: center;',
+            'font-family: var(--cl-font-family);',
+            'font-weight: 600;',
+            'white-space: nowrap;',
+            'vertical-align: middle;',
+            'border-radius: var(--cl-radius-pill);',
+            'transition: background var(--cl-transition-fast), color var(--cl-transition-fast), transform var(--cl-transition-fast);',
+            'box-sizing: border-box;',
+            'line-height: 1;',
+            sizeStyles[content.size] || sizeStyles.medium,
+            variantStyles[content.variant] || variantStyles.default
+        ];
 
-            .cl-badge--large {
-                font-size: var(--cl-font-size-sm);
-                padding: 3px 10px;
-                min-width: 24px;
-                height: 24px;
-            }
+        if (content.type === Badge.TYPES.COUNT) {
+            parts.push('border-radius: var(--cl-radius-pill);');
+            parts.push('padding-left: 6px; padding-right: 6px;');
+        } else if (content.type === Badge.TYPES.DOT) {
+            parts.push('padding: 0;');
+            parts.push('border-radius: var(--cl-radius-round);');
+            parts.push(dotSizeStyles[content.size] || dotSizeStyles.medium);
+        }
 
-            .cl-badge--count {
-                border-radius: var(--cl-radius-pill);
-                padding-left: 6px;
-                padding-right: 6px;
+        if (content.attached) {
+            if (content.type === Badge.TYPES.DOT) {
+                parts.push('position: absolute; top: 2px; right: 2px; transform: translate(50%, -50%); z-index: 1;');
+            } else {
+                parts.push('position: absolute; top: 0; right: 0; transform: translate(50%, -50%); z-index: 1;');
             }
+        }
 
-            .cl-badge--dot {
-                padding: 0;
-                border-radius: var(--cl-radius-round);
-            }
-
-            .cl-badge--dot.cl-badge--small {
-                width: 6px;
-                height: 6px;
-                min-width: 6px;
-            }
-
-            .cl-badge--dot.cl-badge--medium {
-                width: 8px;
-                height: 8px;
-                min-width: 8px;
-            }
-
-            .cl-badge--dot.cl-badge--large {
-                width: 10px;
-                height: 10px;
-                min-width: 10px;
-            }
-
-            .cl-badge--default {
-                background: var(--cl-bg-secondary);
-                color: var(--cl-text-secondary);
-                border: 1px solid var(--cl-border);
-            }
-
-            .cl-badge--primary {
-                background: var(--cl-primary);
-                color: var(--cl-text-inverse);
-            }
-
-            .cl-badge--success {
-                background: var(--cl-success);
-                color: var(--cl-text-inverse);
-            }
-
-            .cl-badge--warning {
-                background: var(--cl-warning);
-                color: var(--cl-text-inverse);
-            }
-
-            .cl-badge--danger {
-                background: var(--cl-danger);
-                color: var(--cl-text-inverse);
-            }
-
-            .cl-badge--info {
-                background: var(--cl-info);
-                color: var(--cl-text-inverse);
-            }
-
-            .cl-badge--attached {
-                position: absolute;
-                top: 0;
-                right: 0;
-                transform: translate(50%, -50%);
-                z-index: 1;
-            }
-
-            .cl-badge--attached.cl-badge--dot {
-                top: 2px;
-                right: 2px;
-                transform: translate(50%, -50%);
-            }
-        `;
-        document.head.appendChild(style);
+        return parts.join(' ');
     }
 
     _create() {
@@ -247,7 +192,7 @@ export class Badge {
         }
 
         this.element.className = classes.join(' ');
-        this.element.style.display = visibility === 'hidden' ? 'none' : '';
+        this.element.style.cssText = this._composeCss(content, visibility);
         this.element.textContent = content.type === Badge.TYPES.DOT ? '' : content.text;
     }
 

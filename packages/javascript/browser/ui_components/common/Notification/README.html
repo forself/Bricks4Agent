@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Notification</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Notification</h1>
+<p>通知訊息元件，提供 Toast 風格通知，支援 success/error/warning/info 四種類型和六種位置。</p>
+<h2>API</h2>
+<h3>Constructor</h3>
+<pre><code class="language-js">new Notification(options?)
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>參數</th>
+<th>型別</th>
+<th>預設值</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>options.type</code></td>
+<td><code>string</code></td>
+<td><code>'info'</code></td>
+<td>類型：<code>'success'</code>/<code>'error'</code>/<code>'warning'</code>/<code>'info'</code></td>
+</tr>
+<tr>
+<td><code>options.title</code></td>
+<td><code>string</code></td>
+<td><code>''</code></td>
+<td>標題</td>
+</tr>
+<tr>
+<td><code>options.message</code></td>
+<td><code>string</code></td>
+<td><code>''</code></td>
+<td>訊息內容</td>
+</tr>
+<tr>
+<td><code>options.duration</code></td>
+<td><code>number</code></td>
+<td><code>4000</code></td>
+<td>顯示時間 (ms)，<code>0</code> 為不自動關閉</td>
+</tr>
+<tr>
+<td><code>options.position</code></td>
+<td><code>string</code></td>
+<td><code>'top-right'</code></td>
+<td>位置（見靜態常數）</td>
+</tr>
+<tr>
+<td><code>options.closable</code></td>
+<td><code>boolean</code></td>
+<td><code>true</code></td>
+<td>是否可手動關閉</td>
+</tr>
+<tr>
+<td><code>options.onClose</code></td>
+<td><code>Function</code></td>
+<td><code>null</code></td>
+<td>關閉回調</td>
+</tr>
+<tr>
+<td><code>options.icon</code></td>
+<td><code>string</code></td>
+<td><code>null</code></td>
+<td>自訂圖示</td>
+</tr>
+</tbody>
+</table>
+<h3>靜態常數</h3>
+<ul>
+<li><code>Notification.TYPES</code> — <code>{ SUCCESS, ERROR, WARNING, INFO }</code></li>
+<li><code>Notification.POSITIONS</code> — <code>{ TOP_RIGHT, TOP_LEFT, TOP_CENTER, BOTTOM_RIGHT, BOTTOM_LEFT, BOTTOM_CENTER }</code></li>
+</ul>
+<h3>實例方法</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>回傳</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>show()</code></td>
+<td><code>this</code></td>
+<td>顯示通知</td>
+</tr>
+<tr>
+<td><code>close()</code></td>
+<td><code>void</code></td>
+<td>關閉通知（含動畫）</td>
+</tr>
+</tbody>
+</table>
+<h3>靜態方法（建立並立即顯示）</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Notification.success(message, options?)</code></td>
+<td>成功通知</td>
+</tr>
+<tr>
+<td><code>Notification.error(message, options?)</code></td>
+<td>錯誤通知（預設不自動關閉）</td>
+</tr>
+<tr>
+<td><code>Notification.warning(message, options?)</code></td>
+<td>警告通知</td>
+</tr>
+<tr>
+<td><code>Notification.info(message, options?)</code></td>
+<td>資訊通知</td>
+</tr>
+<tr>
+<td><code>Notification.closeAll()</code></td>
+<td>關閉所有通知</td>
+</tr>
+</tbody>
+</table>
+<h2>使用範例</h2>
+<pre><code class="language-js">import { Notification } from './Notification.js';
+
+// 靜態方法（最常用）
+Notification.success('儲存成功');
+Notification.error('操作失敗，請稍後再試');
+
+// 自訂選項
+Notification.warning('即將到期', {
+    duration: 8000,
+    position: 'top-center'
+});
+</code></pre>
+<h2>Demo</h2>
+<p>開啟 <code>demo.html</code> 直接在瀏覽器測試。</p>
+</main>
+</body>
+</html>

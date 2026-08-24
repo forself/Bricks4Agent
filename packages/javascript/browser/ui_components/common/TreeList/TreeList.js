@@ -2,10 +2,12 @@
  * TreeList Component
  * 現代化極簡風格的導航樹狀列表
  * - 支援無限層級
- * - 唯讀展示 (ReadOnly)
- * - 點擊展開/收合
+ * - 葉節點與父節點皆可選取
+ * - 展開箭頭獨立控制展開/收合
  * - 目前頁面高亮
  */
+
+import { Icon } from '../Icon/index.js';
 
 export class TreeList {
     /**
@@ -29,6 +31,7 @@ export class TreeList {
         this.data = this.options.data;
         this.activeId = this.options.activeId;
         this.expandedIds = new Set();
+        this._icons = [];
 
         // Theme Configurations
         this.themes = {
@@ -124,6 +127,8 @@ export class TreeList {
     }
 
     _renderContent(container) {
+        this._icons.forEach((icon) => icon.destroy());
+        this._icons = [];
         container.innerHTML = '';
         this.data.forEach((node, index, arr) => {
             // Pass isLast for guide rendering
@@ -144,6 +149,8 @@ export class TreeList {
 
         // 1. 節點本體 (Row)
         const row = document.createElement('div');
+        row.className = 'tree-node-row';
+        row.dataset.nodeId = String(node.id);
         const isActive = node.id === this.activeId;
 
         // Style adjustments based on theme
@@ -201,6 +208,8 @@ export class TreeList {
         const isExpanded = this.expandedIds.has(node.id);
 
         const arrow = document.createElement('div');
+        arrow.className = 'tree-node-toggle';
+        arrow.dataset.nodeId = String(node.id);
         arrow.style.cssText = `
             width: 20px;
             height: 20px;
@@ -215,13 +224,13 @@ export class TreeList {
         `;
 
         // Different arrows for themes
-        if (theme.arrowStyle === 'triangle') {
-            arrow.innerHTML = `<svg width="8" height="8" viewBox="0 0 10 10"><path d="M0 0 L0 10 L8 5 Z" fill="currentColor"/></svg>`; // Solid Triangle
-        } else if (theme.arrowStyle === 'carets') {
-            arrow.innerHTML = `<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>`;
-        } else {
-            arrow.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>`; // Chevron
-        }
+        const arrowIcons = {
+            triangle: { name: 'triangle-right', size: 10 },
+            carets: { name: 'caret-right', size: 10 },
+            chevron: { name: 'chevron-right', size: 16 },
+            default: { name: 'chevron-right', size: 16 }
+        };
+        this._mountIcon(arrow, { ...(arrowIcons[theme.arrowStyle] || arrowIcons.default), color: 'currentColor' });
 
         // 點擊箭頭單獨控制展開/收合
         if (hasChildren) {
@@ -250,29 +259,25 @@ export class TreeList {
         // 預設圖示邏輯：如果有自定義 icon 則顯示，否則視為資料夾或檔案
         if (node.icon) {
             // 判斷是否為 emoji 或 SVG 字串
-            if (node.icon.length <= 2) { // Emoji
-                icon.textContent = node.icon;
-            } else { // SVG string
-                icon.innerHTML = node.icon;
-            }
+            this._renderNodeIcon(icon, node.icon);
         } else {
             // Theme specific icons
             if (this.options.theme === 'classic' || this.options.theme === 'dark') {
                 // Folder / File specific icons
                 if (hasChildren) {
                     // Yellow Folder icon (same for both expanded and collapsed)
-                    icon.innerHTML = `<svg width="16" height="16" viewBox="0 0 16 16" fill="var(--cl-warning)"><path d="M14 4h-4l-1-1h-6a1 1 0 00-1 1v10a1 1 0 001 1h12a1 1 0 001-1v-8a1 1 0 00-1-1z"/></svg>`;
+                    this._mountIcon(icon, { name: 'folder', size: 16, color: 'var(--cl-warning)' });
                 } else {
-                    icon.innerHTML = `<svg width="16" height="16" viewBox="0 0 16 16" fill="var(--cl-primary)"><path d="M13 2H6l-2 2h9v9l2-2V4a2 2 0 00-2-2z"/><path d="M3 6v9h9V6H3zm8 8H4V7h7v7z"/></svg>`; // Blue File
+                    this._mountIcon(icon, { name: 'file', size: 16, color: 'var(--cl-primary)' });
                 }
             } else {
                 // Minimal / Modern icons
                 if (hasChildren) {
                     // Folder icon (same for both expanded and collapsed)
-                    icon.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>`;
+                    this._mountIcon(icon, { name: 'folder', size: 16, color: 'currentColor' });
                 } else {
                     // File icon
-                    icon.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>`;
+                    this._mountIcon(icon, { name: 'file', size: 16, color: 'currentColor' });
                 }
             }
         }
@@ -289,15 +294,9 @@ export class TreeList {
         `;
         row.appendChild(label);
 
-        // Row Click Event
+        // 整行永遠負責選取；父節點的展開/收合由箭頭獨立處理，避免互相搶事件。
         row.onclick = () => {
-            if (hasChildren) {
-                // 如果是資料夾，點擊整行也觸發展開/收合 (Notion 風格)
-                this._toggleExpand(node.id);
-            } else {
-                // 如果是葉節點，觸發選取
-                this._handleSelect(node);
-            }
+            this._handleSelect(node);
         };
 
         wrapper.appendChild(row);
@@ -391,8 +390,10 @@ export class TreeList {
      * 更新資料
      */
     setData(data) {
-        this.data = data;
+        this.data = Array.isArray(data) ? data : [];
+        this.options.data = this.data;
         this._renderContent(this.element);
+        return this;
     }
 
     /**
@@ -400,8 +401,47 @@ export class TreeList {
      */
     setActive(id) {
         this.activeId = id;
+        this.options.activeId = id;
         this._expandToId(this.data, id);
         this._renderContent(this.element);
+        return this;
+    }
+
+    setActiveId(id) {
+        return this.setActive(id);
+    }
+
+    _mountIcon(container, options) {
+        const icon = new Icon(options);
+        this._icons.push(icon);
+        icon.mount(container);
+        return icon;
+    }
+
+    _renderNodeIcon(container, value) {
+        if (typeof value === 'string') {
+            const candidate = value.trim();
+            if (Icon.has(candidate)) {
+                this._mountIcon(container, { name: candidate, size: 16, color: 'currentColor' });
+                return;
+            }
+
+            const characters = Array.from(candidate);
+            const isShortEmoji = characters.length > 0
+                && characters.length <= 2
+                && characters.some((character) => /\p{Extended_Pictographic}/u.test(character));
+            if (isShortEmoji) {
+                container.textContent = candidate;
+                return;
+            }
+
+            const rejectedKind = /<\s*\/?[a-z][^>]*>/i.test(candidate) ? 'markup/SVG' : 'unknown';
+            console.warn(`[TreeList] Rejected ${rejectedKind} node.icon; use an Icon registry name or an emoji of at most two characters.`);
+        } else {
+            console.warn('[TreeList] Rejected non-string node.icon; use an Icon registry name or an emoji of at most two characters.');
+        }
+
+        this._mountIcon(container, { name: 'help', size: 16, color: 'currentColor' });
     }
 
     /**
@@ -413,6 +453,12 @@ export class TreeList {
             : container;
         if (target) target.appendChild(this.element);
         return this;
+    }
+
+    destroy() {
+        this._icons.forEach((icon) => icon.destroy());
+        this._icons = [];
+        this.element?.remove();
     }
 }
 

@@ -1,74 +1,63 @@
-# Bricks4Agent — AI Agent 操作手冊
+# Bricks4Agent — AI Agent 操作手冊（SPA 生成器）
 
 > 本手冊專為 AI Agent 設計（適用於任何語言模型：GPT、Claude、Llama、Qwen、DeepSeek、Gemini 等，含離線地端模型）。
-> 提供結構化的指令格式、欄位對應表與操作流程。
-> 人類工程師請參閱 `docs/manuals/engineer-guide.md`。
->
-> **AI Agent 進入本專案後，請優先閱讀本文件（AGENT.md）。**
+> 內容是**頁面／SPA 生成器**的指令格式、欄位對應表與操作流程。
 
-### 支援的 AI Agent 框架入口
+> **要在元件庫上手刻頁面（呼叫元件、缺件補庫）請優先讀 [AGENT-UI-GUIDE.md](AGENT-UI-GUIDE.md)；本文件講的是用生成器批次產頁。**
 
-本專案為以下 AI 程式助手框架提供了入口檔案，所有入口都指向本手冊：
+### AI Agent 框架入口
 
-| 框架 | 入口檔案 |
-|------|----------|
-| Cursor IDE | `.cursorrules` |
-| Windsurf (Codeium) | `.windsurfrules` |
-| GitHub Copilot | `.github/copilot-instructions.md` |
-| Cline | `.clinerules` |
-| Claude Code | `.claude/CLAUDE.md` |
-| Aider | `.aider.conf.yml` |
-| 通用 / 其他 | `.agentrc` |
+- 通用 / 其他框架：`.agentrc`（指向本手冊）
+
+- Claude Code：[CLAUDE.md](CLAUDE.md)
 
 ---
 
 ## 1. 專案概觀
 
-Bricks4Agent 目前的主要定位是 **broker-centered governed AI operations platform**。
+Bricks4Agent 是一套**零 runtime 依賴的 Vanilla JS UI 元件庫**，加上一個把 JSON `PageDefinition` 轉成頁面的**頁面／SPA 生成器**。
 
-目前 canonical live path 是：
+組成：
 
-```text
-LINE webhook -> ngrok public URL -> line-worker -> broker /api/v1/high-level/line/process
-```
+- **前端 UI 元件庫**（Vanilla JS，零外部 runtime dependency，116 個元件）
 
-重要邊界：
+- **頁面生成引擎**（PageGenerator，支援 30 種欄位類型；靜態產碼 + 動態渲染）
 
-- `line-worker -> broker high-level coordinator` 是正式 LINE 路徑
-- `tools/agent --line-listen` 只保留作為 legacy / development-only 路徑
-- broker 是 control plane，不是任意 autonomous planner
-- high-level model 可以對話、澄清、提出 intent；broker 負責驗證、記錄與 promotion gate
-- execution layer 消費結構化 intent，不應直接吃 raw conversation
-
-本 repo 仍包含既有的 generator / UI library 子系統：
-
-- **前端 UI 元件庫**（Vanilla JS，零外部 runtime dependency）
-- **C# 後端模組**（.NET 8 Minimal API）
-- **頁面生成引擎**（PageGenerator，支援多種欄位類型）
 - **SPA 生成器**（CLI + Web UI，一鍵產生全端 CRUD）
 
-AI agent 修改本專案時，優先以 `README.md`、`CLAUDE.md`、`docs/reports/CurrentArchitectureAndProgress-2026-06-13.md`（接替 2026-03-26 版）的 control-plane 架構為準；本文件後半段的 SPA/generator 指令是子系統操作手冊。
+- **C# 後端範本**（.NET 10 Minimal API，供生成器產出後端；ORM 為輕量 BaseOrm）
 
-### 1.1 目前 live control-plane 核心
+AI agent 動手前的優先閱讀：手刻頁面／補元件看 [AGENT-UI-GUIDE.md](AGENT-UI-GUIDE.md)；用生成器批次產頁看本文件；規則看 [CLAUDE.md](CLAUDE.md)。
 
-- Broker：`packages/csharp/broker`
-- Broker core：`packages/csharp/broker-core`
-- LINE worker：`packages/csharp/workers/line-worker`
-- Governed agent runtime：`tools/agent`
-- Local admin console：`http://127.0.0.1:5361/line-admin.html`
+### 1.1 核心子系統位置
+
+- UI 元件庫：`packages/javascript/browser/ui_components`（權威清單：`metadata/component-catalog.json`）
+
+- 頁面生成引擎：`packages/javascript/browser/page-generator`
+
+- SPA 範本：`templates/spa`（前端核心 `frontend/core` + 後端 `backend/SpaApi.csproj`）
+
+- 生成器 CLI：`templates/spa/scripts`、`tools/page-gen.js`
+
+- 生成器 Web UI：`tools/spa-generator`（port 3080）
+
+- Schema→表單/API/資料表工作台：`tools/form-application-studio`（未給連線字串時生成本地 SQLite；只產碼、不連線）
+
+- 表單應用定義與生成器：`packages/javascript/browser/form-application`
 
 ### 1.2 Build 與 test 入口
 
 ```powershell
-dotnet build packages/csharp/ControlPlane.slnx
-dotnet run --project packages/csharp/tests/broker-tests/Broker.Tests.csproj
-npm.cmd test
-```
+npm test                        # 頁面生成器測試
+npm run validate:ui-library     # UI 元件庫檢查
+npm run audit:ui-styles         # 樣式 token 稽核
+npm run test:form-designer:dotnet # 生成並編譯 SQLite/SQL Server/PostgreSQL/MySQL 後端
+npm run test:dotnet10           # 35 個 net10.0 專案；任何建置警告都視為錯誤
+npm run serve                   # 啟動生成器 Web UI（port 3080）
 
-Integration tests 需要先啟動 broker instance：
-
-```powershell
-dotnet run --project packages/csharp/tests/broker-tests/Broker.Tests.csproj -- --integration http://localhost:{port}
+# 生成器產出的 .NET 10 後端（SPA 範本）
+dotnet build templates/spa/backend/SpaApi.csproj
+dotnet test templates/spa/backend.Tests/SpaApi.Template.Tests.csproj
 ```
 
 ### 核心工具鏈
@@ -95,11 +84,13 @@ node templates/spa/scripts/spa-cli.js feature <名稱> --fields "<欄位定義>"
 - `--fields`：欄位定義字串，格式為 `"欄位名:類型,欄位名:類型,..."`
 
 **範例：**
+
 ```bash
 node templates/spa/scripts/spa-cli.js feature Diary --fields "Title:string,Content:text,Date:date,Mood:string,IsPublic:bool"
 ```
 
 **產出：**
+
 ```
 backend/Models/Diary.cs              ← C# Model + DTO
 backend/Services/DiaryService.cs     ← CRUD Service
@@ -125,6 +116,7 @@ node templates/spa/scripts/generate-page.js <路徑/名稱> --detail
 ```
 
 **範例：**
+
 ```bash
 # 元件庫表單頁
 node scripts/generate-page.js orders/OrderList --fields "Name:string,Price:decimal" --api-path "/api/orders"
@@ -201,7 +193,7 @@ node templates/spa/scripts/spa-cli.js new --name my-app --output ./projects
 `templates/spa/frontend/components/` 中的元件會隨 `spa new` 一起複製到新專案。PageGenerator 生成的頁面會自動 import 這些元件：
 
 | 元件 | 路徑 | 用途 |
-|------|------|------|
+|---|---|---|
 | TextInput | `components/TextInput/TextInput.js` | 文字輸入（含 XSS 防護） |
 | NumberInput | `components/NumberInput/NumberInput.js` | 數字輸入（含 +/- 按鈕） |
 | Dropdown | `components/Dropdown/Dropdown.js` | 下拉選單（含搜尋） |
@@ -219,9 +211,13 @@ node templates/spa/scripts/spa-cli.js new --name my-app --output ./projects
 使用 `--fields` 生成頁面時，`routes.js` 會自動更新：
 
 1. 在最後一個 `import` 後插入新的 import 語句
+
 2. 在 `];` 前插入新的路由條目
+
 3. 自動處理逗號分隔
+
 4. 重複檢查：若 className 已存在則跳過
+
 5. 保持原始換行符號（CRLF/LF）
 
 **不使用 `--fields`**（原始模板）時，需手動更新 routes.js，終端會輸出所需的程式碼。
@@ -235,21 +231,24 @@ Bricks4Agent/
 ├── AGENT.md                              ← 本手冊
 ├── packages/
 │   ├── javascript/browser/
-│   │   ├── ui_components/                ← 75 個 UI 元件（完整版）
-│   │   │   ├── form/                     ← 表單 (12)
-│   │   │   ├── common/                   ← 通用 (18)
-│   │   │   ├── layout/                   ← 佈局 (10)
+│   │   ├── ui_components/                ← 116 個 UI 元件（完整版）
+│   │   │   ├── form/                     ← 表單 (18)
+│   │   │   ├── common/                   ← 通用 (40)
+│   │   │   ├── layout/                   ← 佈局 (13)
 │   │   │   ├── input/                    ← 進階輸入 (10)
-│   │   │   ├── viz/                      ← 視覺化 (18)
+│   │   │   ├── viz/                      ← 視覺化 (23)
 │   │   │   ├── social/                   ← 社群 (5)
+│   │   │   ├── sections/                 ← 區塊 (4)
 │   │   │   ├── editor/                   ← 編輯器 (1)
+│   │   │   ├── analytics/                ← 分析 (1)
 │   │   │   └── data/                     ← 資料展示 (1)
 │   │   └── page-generator/              ← PageGenerator 引擎
-│   │       ├── PageGenerator.js          ← 核心：PageDefinition → 頁面程式碼
-│   │       ├── PageDefinition.js         ← 定義格式與驗證
-│   │       ├── ComponentMapping.js       ← 30 種欄位 → 元件映射
-│   │       └── FieldRenderers.js         ← 各元件的 mount 渲染邏輯
-│   └── csharp/                           ← 21 個 C# 後端模組
+│   │       ├── PageGenerator.js          ← 靜態產碼：PageDefinition → 頁面程式碼
+│   │       ├── PageDefinition.js         ← 定義格式、驗證、欄位→元件映射
+│   │       ├── FieldResolver.js          ← 欄位型別 → 元件實例
+│   │       ├── TriggerEngine.js          ← 欄位連動（8 種動作）
+│   │       └── DynamicPageRenderer.js    ← 動態渲染（執行期依 JSON 畫出）
+│   └── csharp/                           ← C# 後端模組（生成器產出的後端所用）
 ├── templates/spa/                        ← SPA 專案範本
 │   ├── scripts/
 │   │   ├── spa-cli.js                    ← CLI 入口（new/feature/page/api）
@@ -260,14 +259,12 @@ Bricks4Agent/
 │   │   ├── core/                         ← 框架核心（BasePage, Router, Store）
 │   │   ├── pages/                        ← 頁面範本
 │   │   │   └── routes.js                 ← 路由配置（自動更新）
-│   │   └── components/                   ← 9 個 SPA 範本元件
-│   └── backend/                          ← .NET 8 後端範本
+│   │   └── components/                   ← SPA 範本元件
+│   └── backend/                          ← .NET 10 後端範本（SpaApi.csproj）
 └── tools/
-    ├── agent/                            ← Ollama AI Agent CLI（本機模型代理化）
-    │   ├── agent.js                     ← CLI 入口
-    │   └── lib/                         ← 核心模組（13 個檔案）
     ├── spa-generator/                    ← SPA 生成器 Web UI（port 3080）
-    └── page-gen.js                       ← PageDefinition CLI（獨立工具）
+    ├── page-gen.js                       ← PageDefinition CLI（獨立工具）
+    └── static-server/                    ← 預覽用靜態伺服器
 ```
 
 ---
@@ -311,7 +308,7 @@ const result = generator.generate(definition);
 ### 7.1 完整 30 種欄位類型
 
 | 類型 | 元件 | 類型 | 元件 |
-|------|------|------|------|
+|---|---|---|---|
 | text | TextInput | number | NumberInput |
 | textarea | WebTextEditor | toggle | ToggleSwitch |
 | date | DatePicker | datetime | DateTimeInput |
@@ -348,7 +345,9 @@ node scripts/generate-page.js orders/OrderList --api-path "/api/orders"
 ### 8.3 CJS 與 ESM
 
 - `generate-page.js`、`spa-cli.js`：CommonJS（使用 `require`）
+
 - `PageGenerator.js`、所有元件：ESM（使用 `import/export`）
+
 - 橋接方式：`const { pathToFileURL } = require('url')` + `await import(path)`
 
 ### 8.4 import 路徑深度
@@ -387,21 +386,16 @@ dotnet run              # 後端
 
 ---
 
-## 10. Ollama AI Agent CLI
+## 10. 延伸閱讀
 
-若你不是透過商業 AI 工具（Claude Code、Cursor 等）進入本專案，可以使用內建的 Ollama Agent CLI：
+- 手刻頁面／呼叫元件／缺件補庫：[AGENT-UI-GUIDE.md](AGENT-UI-GUIDE.md)
 
-```bash
-# 啟動互動式對話
-node tools/agent/agent.js
+- JSON 客製元件、三層分類、資料夾載入與 DynamicPageRenderer 接線：[CUSTOM-COMPONENTS.md](CUSTOM-COMPONENTS.md)
 
-# 單次執行
-node tools/agent/agent.js --run "生成一個部落格功能"
+- JSON 產生的工具頁、可信 commands、state bindings 與 self-host Studio：[page-generator/README.md](packages/javascript/browser/page-generator/README.md#tool-pagedefinition-與自舉工具頁)
 
-# 指定模型
-node tools/agent/agent.js --model qwen2.5:14b
-```
+- 頁面生成器細節：[page-generator/README.md](packages/javascript/browser/page-generator/README.md)
 
-**零外部依賴**，只需 Node.js + Ollama。自動偵測並載入本手冊（AGENT.md）。
+- 獨立 PageDefinition CLI：[tools/page-gen.README.md](tools/page-gen.README.html)
 
-詳見 `tools/agent/README.md`。
+- SPA 範本：[templates/spa/README.md](templates/spa/README.md)

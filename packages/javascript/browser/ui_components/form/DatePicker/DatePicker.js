@@ -1,11 +1,24 @@
 import { escapeHtml } from '../../utils/security.js';
 import Locale from '../../i18n/index.js';
 import { createComponentState } from '../../utils/component-state.js';
+import { Icon } from '../../common/Icon/index.js';
 
 function normalizeDate(value) {
     if (!value) return null;
 
-    const date = value instanceof Date ? value : new Date(value);
+    // Date-only values are business dates, not instants. Parsing an ISO-looking
+    // value through `new Date(string)` may apply a UTC offset and move the date.
+    let date;
+    if (value instanceof Date) {
+        date = value;
+    } else if (typeof value === 'string') {
+        const match = value.trim().match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+        date = match
+            ? new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
+            : new Date(value);
+    } else {
+        date = new Date(value);
+    }
     if (Number.isNaN(date.getTime())) return null;
 
     return new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -42,9 +55,13 @@ export class DatePicker {
             ...options
         };
 
+        // 明示的 format 永遠優先;未明示 format 時,尊重呼叫端明示的 useROC(舊參數),
+        // 避免預設 format:'western' 靜默覆蓋 useROC:true(民國曆失效)。
+        const hasExplicitFormat = Object.prototype.hasOwnProperty.call(options, 'format');
+        const hasExplicitUseROC = Object.prototype.hasOwnProperty.call(options, 'useROC');
         if (this.options.format === 'taiwan') {
             this.options.useROC = true;
-        } else if (this.options.format === 'western') {
+        } else if (this.options.format === 'western' && (hasExplicitFormat || !hasExplicitUseROC)) {
             this.options.useROC = false;
         }
 
@@ -210,7 +227,14 @@ export class DatePicker {
 
         if (label) {
             const labelEl = document.createElement('label');
-            labelEl.innerHTML = `${escapeHtml(label)}${required ? '<span style="color:var(--cl-danger);margin-left:2px;">*</span>' : ''}`;
+            labelEl.innerHTML = escapeHtml(label);
+            if (required) {
+                // CSP style-src 'self':inline style 屬性會被剝除,改用 CSSOM cssText
+                const requiredMark = document.createElement('span');
+                requiredMark.style.cssText = 'color:var(--cl-danger);margin-left:2px;';
+                requiredMark.textContent = '*';
+                labelEl.appendChild(requiredMark);
+            }
             labelEl.style.cssText = `
                 display: block;
                 font-size: var(--cl-font-size-md);
@@ -247,10 +271,8 @@ export class DatePicker {
 
         const icon = document.createElement('span');
         icon.className = 'datepicker__icon';
-        icon.innerHTML = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-            <rect x="2" y="3" width="12" height="11" rx="2" stroke="var(--cl-text-secondary)" stroke-width="1.5"/>
-            <path d="M2 6H14M5 1V4M11 1V4" stroke="var(--cl-text-secondary)" stroke-width="1.5" stroke-linecap="round"/>
-        </svg>`;
+        this._calendarIcon = new Icon({ name: 'calendar', size: 16, color: 'var(--cl-text-secondary)' });
+        this._calendarIcon.mount(icon);
         icon.style.cssText = `
             position: absolute;
             right: 10px;
@@ -451,7 +473,7 @@ export class DatePicker {
                 border-radius: var(--cl-radius-sm);
                 cursor: ${isDisabled ? 'not-allowed' : 'pointer'};
                 font-size: var(--cl-font-size-sm);
-                background: ${isSelected ? 'var(--cl-primary)' : isToday ? 'var(--cl-primary-light)' : 'transparent'};
+                background: ${isSelected ? 'var(--cl-primary)' : 'transparent'};
                 color: ${isDisabled ? 'var(--cl-border-dark)' : isSelected ? 'var(--cl-text-inverse)' : 'var(--cl-text)'};
                 ${isToday && !isSelected ? 'font-weight:600;' : ''}
                 ${isDisabled ? 'opacity:0.5;' : ''}
@@ -504,7 +526,57 @@ export class DatePicker {
                 this.close();
             }
         };
+        this._onViewportChange = () => {
+            if (this.snapshot().open) this._positionCalendar();
+        };
         document.addEventListener('click', this._onDocumentClick);
+        window.addEventListener('resize', this._onViewportChange);
+        window.addEventListener('scroll', this._onViewportChange, true);
+    }
+
+    _getCalendarVerticalBounds() {
+        let top = 8;
+        let bottom = Math.max(top, window.innerHeight - 8);
+        let ancestor = this.element?.parentElement;
+
+        while (ancestor && ancestor !== document.body && ancestor !== document.documentElement) {
+            const style = window.getComputedStyle(ancestor);
+            const clipsY = [style.overflow, style.overflowY]
+                .some(value => /^(auto|scroll|hidden|clip)$/.test(value));
+            if (clipsY) {
+                const rect = ancestor.getBoundingClientRect();
+                top = Math.max(top, rect.top);
+                bottom = Math.min(bottom, rect.bottom);
+            }
+            ancestor = ancestor.parentElement;
+        }
+
+        return { top, bottom };
+    }
+
+    _positionCalendar() {
+        if (!this.calendar || !this.inputWrapper || !this.snapshot().open) return;
+
+        this.calendar.style.top = '100%';
+        this.calendar.style.bottom = 'auto';
+        this.calendar.style.marginTop = '4px';
+        this.calendar.style.marginBottom = '0';
+
+        const inputRect = this.inputWrapper.getBoundingClientRect();
+        const calendarRect = this.calendar.getBoundingClientRect();
+        const calendarHeight = calendarRect.height || this.calendar.scrollHeight || 0;
+        const bounds = this._getCalendarVerticalBounds();
+        const spaceBelow = bounds.bottom - inputRect.bottom - 4;
+        const spaceAbove = inputRect.top - bounds.top - 4;
+        const placeAbove = calendarHeight > spaceBelow && spaceAbove > spaceBelow;
+
+        if (placeAbove) {
+            this.calendar.style.top = 'auto';
+            this.calendar.style.bottom = '100%';
+            this.calendar.style.marginTop = '0';
+            this.calendar.style.marginBottom = '4px';
+        }
+        this.calendar.dataset.placement = placeAbove ? 'top' : 'bottom';
     }
 
     _syncLegacyFields(state) {
@@ -541,6 +613,7 @@ export class DatePicker {
         }
 
         this._renderCalendar();
+        if (state.open) this._positionCalendar();
     }
 
     _isDateInRange(date) {
@@ -663,9 +736,15 @@ export class DatePicker {
     }
 
     destroy() {
+        this._calendarIcon?.destroy();
+        this._calendarIcon = null;
         this.send('DESTROY');
         if (this._onDocumentClick) {
             document.removeEventListener('click', this._onDocumentClick);
+        }
+        if (this._onViewportChange) {
+            window.removeEventListener('resize', this._onViewportChange);
+            window.removeEventListener('scroll', this._onViewportChange, true);
         }
         if (this.element?.parentNode) {
             this.element.remove();

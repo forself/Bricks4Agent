@@ -621,7 +621,7 @@ function materializeAppProject(template, appId, outputRoot) {
     }
 
     const projectJsonPath = path.join(backendResult.projectRoot, 'project.json');
-    const readmePath = path.join(backendResult.projectRoot, 'README.md');
+    const readmePath = path.join(backendResult.projectRoot, 'README.html');
     const manifest = buildProjectManifest(appEntry, outputRoot, Boolean(frontendDir));
 
     fs.writeFileSync(projectJsonPath, JSON.stringify(manifest, null, 2), 'utf8');

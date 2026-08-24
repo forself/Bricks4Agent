@@ -4,6 +4,7 @@
  */
 
 import { BasePanel } from './BasePanel.js';
+import { Icon } from '../../common/Icon/index.js';
 
 export class ToastPanel extends BasePanel {
     static POSITIONS = {
@@ -62,8 +63,8 @@ export class ToastPanel extends BasePanel {
         // 圖示
         const icon = document.createElement('span');
         icon.className = 'toast__icon';
-        icon.innerHTML = this._getIcon();
         icon.style.cssText = `display: flex; flex-shrink: 0;`;
+        this._mountTypeIcon(icon);
         toast.appendChild(icon);
 
         // 內容
@@ -77,9 +78,11 @@ export class ToastPanel extends BasePanel {
         if (this.options.closable) {
             const closeBtn = document.createElement('button');
             closeBtn.type = 'button';
-            closeBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                <path d="M3 3L11 11M3 11L11 3" stroke="var(--cl-text-placeholder)" stroke-width="2" stroke-linecap="round"/>
-            </svg>`;
+            this._closeIcon = new Icon({
+                name: 'close',
+                size: 14,
+                color: 'var(--cl-text-placeholder)'
+            }).mount(closeBtn);
             closeBtn.style.cssText = `
                 display: flex;
                 border: none;
@@ -95,7 +98,7 @@ export class ToastPanel extends BasePanel {
         return toast;
     }
 
-    _getIcon() {
+    _mountTypeIcon(container) {
         const { type } = this.options;
         const colors = {
             info: 'var(--cl-primary)',
@@ -105,26 +108,19 @@ export class ToastPanel extends BasePanel {
         };
         const color = colors[type] || colors.info;
 
-        const icons = {
-            info: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                <circle cx="10" cy="10" r="8" stroke="${color}" stroke-width="2"/>
-                <path d="M10 9V14M10 6V7" stroke="${color}" stroke-width="2" stroke-linecap="round"/>
-            </svg>`,
-            success: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                <circle cx="10" cy="10" r="8" stroke="${color}" stroke-width="2"/>
-                <path d="M6 10L9 13L14 7" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>`,
-            warning: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                <path d="M10 2L18 17H2L10 2Z" stroke="${color}" stroke-width="2" stroke-linejoin="round"/>
-                <path d="M10 8V11M10 14V15" stroke="${color}" stroke-width="2" stroke-linecap="round"/>
-            </svg>`,
-            error: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                <circle cx="10" cy="10" r="8" stroke="${color}" stroke-width="2"/>
-                <path d="M7 7L13 13M7 13L13 7" stroke="${color}" stroke-width="2" stroke-linecap="round"/>
-            </svg>`
+        const iconNames = {
+            info: 'info',
+            success: 'check',
+            warning: 'warning',
+            error: 'error'
         };
 
-        return icons[type] || icons.info;
+        this._toastIcon?.destroy();
+        this._toastIcon = new Icon({
+            name: iconNames[type] || iconNames.info,
+            size: 20,
+            color
+        }).mount(container);
     }
 
     _applyToastStyle() {
@@ -191,25 +187,39 @@ export class ToastPanel extends BasePanel {
     close() {
         if (this.timeoutId) {
             clearTimeout(this.timeoutId);
+            this.timeoutId = null;
         }
+
+        if (this._closeTransitionId) clearTimeout(this._closeTransitionId);
 
         this.element.style.opacity = '0';
         this.element.style.transform = 'translateX(100%)';
 
-        setTimeout(() => {
-            if (this.element?.parentNode) {
-                this.element.remove();
-            }
+        this._closeTransitionId = setTimeout(() => {
+            this._closeTransitionId = null;
+            this.destroy();
         }, 300);
 
         return this;
+    }
+
+    destroy() {
+        if (this.timeoutId) clearTimeout(this.timeoutId);
+        if (this._closeTransitionId) clearTimeout(this._closeTransitionId);
+        this.timeoutId = null;
+        this._closeTransitionId = null;
+        this._toastIcon?.destroy();
+        this._toastIcon = null;
+        super.destroy();
     }
 
     // === 靜態方法 ===
 
     static show(message, options = {}) {
         const toast = new ToastPanel(options);
-        toast.setContent(message);
+        const content = document.createElement('span');
+        content.textContent = String(message ?? '');
+        toast.setContent(content);
         toast.show();
         return toast;
     }

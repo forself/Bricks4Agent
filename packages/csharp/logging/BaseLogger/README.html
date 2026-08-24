@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BaseLogger</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>BaseLogger</h1>
+<p>輕量級日誌元件，支援多種輸出目標。可與 BaseCache、BaseOrm 整合。</p>
+<h2>特點</h2>
+<ul>
+<li><strong>零依賴</strong> - 核心功能不需要任何 NuGet 套件</li>
+<li><strong>多輸出目標</strong> - Console、File、Database、Memory Cache</li>
+<li><strong>結構化日誌</strong> - 支援 JSON 格式</li>
+<li><strong>非同步寫入</strong> - 不阻塞主執行緒</li>
+<li><strong>檔案輪替</strong> - 自動依大小輪替日誌檔</li>
+<li><strong>Fluent API</strong> - 鏈式配置</li>
+<li><strong>BaseCache 整合</strong> - 記憶體快取 + 即時串流</li>
+<li><strong>BaseOrm 整合</strong> - 資料庫持久化</li>
+</ul>
+<h2>快速開始</h2>
+<pre><code class="language-csharp">using BaseLogger;
+
+// 簡單使用
+var logger = new Logger();
+logger.Info(&quot;Application started&quot;);
+logger.Error(&quot;Something went wrong&quot;, exception);
+
+// 靜態存取
+Log.Info(&quot;Hello World&quot;);
+Log.Error(&quot;Failed&quot;, ex);
+</code></pre>
+<h2>日誌等級</h2>
+<table>
+<thead>
+<tr>
+<th>等級</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Trace</td>
+<td>最詳細的追蹤資訊</td>
+</tr>
+<tr>
+<td>Debug</td>
+<td>除錯資訊</td>
+</tr>
+<tr>
+<td>Info</td>
+<td>一般資訊</td>
+</tr>
+<tr>
+<td>Warn</td>
+<td>警告</td>
+</tr>
+<tr>
+<td>Error</td>
+<td>錯誤</td>
+</tr>
+<tr>
+<td>Fatal</td>
+<td>致命錯誤</td>
+</tr>
+</tbody>
+</table>
+<h2>配置選項</h2>
+<pre><code class="language-csharp">var logger = new Logger(new LoggerOptions
+{
+    MinLevel = LogLevel.Debug,        // 最低等級
+    EnableConsole = true,             // Console 輸出
+    EnableColors = true,              // 彩色輸出
+    UseJsonFormat = false,            // JSON 格式
+    AsyncFlush = true,                // 非同步刷新
+    FlushInterval = TimeSpan.FromSeconds(1),
+    BufferSize = 100,                 // 緩衝大小
+    MaxFileSize = 10 * 1024 * 1024,   // 檔案大小上限 (10MB)
+    MaxRollingFiles = 5               // 輪替檔案數
+});
+</code></pre>
+<h2>輸出目標</h2>
+<h3>Console 輸出</h3>
+<pre><code class="language-csharp">var logger = new Logger(new LoggerOptions
+{
+    EnableConsole = true,
+    EnableColors = true
+});
+</code></pre>
+<h3>檔案輸出</h3>
+<pre><code class="language-csharp">var logger = new Logger()
+    .AddFile(&quot;logs/app.log&quot;)
+    .AddFile(&quot;logs/errors.log&quot;, LogLevel.Error);  // 只記錄錯誤
+</code></pre>
+<h3>記憶體快取輸出 (BaseCache)</h3>
+<pre><code class="language-csharp">using BaseCache;
+using BaseLogger;
+
+var cache = new BaseCache();
+var logger = new Logger()
+    .AddMemoryCache(cache, &quot;log:&quot;, maxEntries: 1000);
+
+// 取得最近的日誌
+var target = logger.Targets.OfType&lt;MemoryCacheLogTarget&gt;().First();
+var recentLogs = target.GetRecentLogs(100);
+
+// 訂閱即時日誌串流
+target.Subscribe(entry =&gt; {
+    Console.WriteLine($&quot;[LIVE] {entry.Message}&quot;);
+});
+
+// 取得統計
+var stats = target.GetStats();
+// { &quot;Error&quot;: 5, &quot;Warn&quot;: 10, &quot;Info&quot;: 100, ... }
+</code></pre>
+<h3>資料庫輸出 (BaseOrm)</h3>
+<pre><code class="language-csharp">using BaseOrm;
+using BaseLogger;
+
+var db = new BaseDb(&quot;Data Source=app.db&quot;);
+var logger = new Logger()
+    .AddDatabase(db, &quot;AppLogs&quot;);
+
+// 會自動建立資料表：
+// CREATE TABLE AppLogs (
+//     Id INTEGER PRIMARY KEY,
+//     Timestamp TEXT,
+//     Level INTEGER,
+//     Message TEXT,
+//     Category TEXT,
+//     Exception TEXT,
+//     Properties TEXT,
+//     TraceId TEXT,
+//     ThreadId TEXT
+// )
+</code></pre>
+<h3>自訂輸出目標</h3>
+<pre><code class="language-csharp">logger.AddCustomTarget(entry =&gt; {
+    // 發送到外部服務
+    SendToElasticSearch(entry);
+}, LogLevel.Error);
+</code></pre>
+<h2>結構化日誌</h2>
+<h3>附加屬性</h3>
+<pre><code class="language-csharp">logger.Info(&quot;User logged in&quot;, new Dictionary&lt;string, object?&gt;
+{
+    [&quot;userId&quot;] = 123,
+    [&quot;ip&quot;] = &quot;192.168.1.1&quot;,
+    [&quot;browser&quot;] = &quot;Chrome&quot;
+});
+</code></pre>
+<h3>使用 Fluent API</h3>
+<pre><code class="language-csharp">logger
+    .ForCategory(&quot;Auth&quot;)
+    .WithProperty(&quot;userId&quot;, 123)
+    .WithTraceId(&quot;abc-123&quot;)
+    .Info(&quot;Login successful&quot;);
+</code></pre>
+<h3>JSON 輸出</h3>
+<pre><code class="language-csharp">var logger = new Logger(new LoggerOptions { UseJsonFormat = true });
+
+// 輸出:
+// {&quot;Timestamp&quot;:&quot;2026-01-25T10:30:00Z&quot;,&quot;Level&quot;:2,&quot;Message&quot;:&quot;User logged in&quot;,&quot;Properties&quot;:{&quot;userId&quot;:123}}
+</code></pre>
+<h2>進階用法</h2>
+<h3>分類日誌</h3>
+<pre><code class="language-csharp">var authLogger = logger.ForCategory(&quot;Auth&quot;);
+var dbLogger = logger.ForCategory(&quot;Database&quot;);
+
+authLogger.Info(&quot;User logged in&quot;);  // [Auth] User logged in
+dbLogger.Debug(&quot;Query executed&quot;);   // [Database] Query executed
+</code></pre>
+<h3>追蹤 ID</h3>
+<pre><code class="language-csharp">// 在請求開始時設定
+var requestLogger = logger.WithTraceId(Guid.NewGuid().ToString());
+
+requestLogger.Info(&quot;Request started&quot;);
+requestLogger.Info(&quot;Processing...&quot;);
+requestLogger.Info(&quot;Request completed&quot;);
+// 所有日誌都會包含相同的 TraceId
+</code></pre>
+<h3>執行時間追蹤</h3>
+<pre><code class="language-csharp">// 使用 Scope
+using (logger.BeginScope(&quot;ProcessOrder&quot;))
+{
+    // ... 執行操作
+}
+// 自動記錄: Begin: ProcessOrder
+//          End: ProcessOrder (duration_ms: 150)
+
+// 使用 LogExecution
+var result = logger.LogExecution(&quot;FetchData&quot;, () =&gt; {
+    return database.GetData();
+});
+
+// 非同步版本
+var data = await logger.LogExecutionAsync(&quot;FetchDataAsync&quot;, async () =&gt; {
+    return await database.GetDataAsync();
+});
+</code></pre>
+<h3>靜態存取</h3>
+<pre><code class="language-csharp">// 設定預設 Logger
+Log.Default = new Logger()
+    .AddFile(&quot;logs/app.log&quot;)
+    .AddMemoryCache(cache);
+
+// 使用靜態方法
+Log.Info(&quot;Application started&quot;);
+Log.Error(&quot;Failed&quot;, exception);
+
+// 應用程式結束時
+Log.CloseAndFlush();
+</code></pre>
+<h2>完整範例</h2>
+<pre><code class="language-csharp">using BaseCache;
+using BaseOrm;
+using BaseLogger;
+
+// 建立依賴
+var cache = new BaseCache();
+var db = new BaseDb(&quot;Data Source=app.db&quot;);
+
+// 配置日誌
+var logger = new Logger(new LoggerOptions
+{
+    MinLevel = LogLevel.Debug,
+    EnableColors = true,
+    AsyncFlush = true
+})
+.AddFile(&quot;logs/app.log&quot;)
+.AddFile(&quot;logs/errors.log&quot;, LogLevel.Error)
+.AddMemoryCache(cache, &quot;log:&quot;, 1000)
+.AddDatabase(db, &quot;Logs&quot;);
+
+// 設為預設
+Log.Default = logger;
+
+// 使用
+var authLogger = Log.Default.ForCategory(&quot;Auth&quot;);
+
+try
+{
+    authLogger.Info(&quot;User login attempt&quot;, new Dictionary&lt;string, object?&gt;
+    {
+        [&quot;email&quot;] = &quot;user@example.com&quot;
+    });
+
+    // ... 登入邏輯
+
+    authLogger.Info(&quot;Login successful&quot;);
+}
+catch (Exception ex)
+{
+    authLogger.Error(&quot;Login failed&quot;, ex);
+}
+
+// 取得即時統計
+var cacheTarget = logger.Targets.OfType&lt;MemoryCacheLogTarget&gt;().First();
+var stats = cacheTarget.GetStats();
+Console.WriteLine($&quot;Errors: {stats[&quot;Error&quot;]}, Warnings: {stats[&quot;Warn&quot;]}&quot;);
+
+// 應用程式結束
+Log.CloseAndFlush();
+</code></pre>
+<h2>ASP.NET Core 整合</h2>
+<pre><code class="language-csharp">// Program.cs
+var logger = new Logger()
+    .AddFile(&quot;logs/api.log&quot;)
+    .AddMemoryCache(cache);
+
+Log.Default = logger;
+
+// Middleware
+app.Use(async (context, next) =&gt;
+{
+    var requestLogger = Log.Default
+        .ForCategory(&quot;HTTP&quot;)
+        .WithTraceId(context.TraceIdentifier);
+
+    requestLogger.Info($&quot;{context.Request.Method} {context.Request.Path}&quot;);
+
+    var sw = Stopwatch.StartNew();
+    await next();
+    sw.Stop();
+
+    requestLogger.Info($&quot;Response {context.Response.StatusCode}&quot;, new Dictionary&lt;string, object?&gt;
+    {
+        [&quot;duration_ms&quot;] = sw.ElapsedMilliseconds
+    });
+});
+</code></pre>
+<h2>注意事項</h2>
+<ol>
+<li><strong>非同步刷新</strong> - 預設啟用，程式結束前請呼叫 <code>Flush()</code> 或 <code>Dispose()</code></li>
+<li><strong>檔案權限</strong> - 確保應用程式有寫入日誌目錄的權限</li>
+<li><strong>記憶體使用</strong> - MemoryCache 會保留指定數量的日誌在記憶體中</li>
+<li><strong>資料庫效能</strong> - DatabaseLogTarget 使用批次寫入，每 5 秒刷新一次</li>
+</ol>
+<h2>License</h2>
+<p>MIT</p>
+</main>
+</body>
+</html>

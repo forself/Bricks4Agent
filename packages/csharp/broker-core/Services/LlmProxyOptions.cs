@@ -12,4 +12,5 @@ public class LlmProxyOptions
     public bool SupportsToolCalling { get; set; } = true;
     public bool StreamingEnabled { get; set; }
     public int TimeoutSeconds { get; set; } = 120;
+    public int MaxOutputTokens { get; set; } = AnthropicMessagesAdapter.DefaultMaxOutputTokens;
 }

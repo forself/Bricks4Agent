@@ -5,10 +5,15 @@ Base controller class that provides common functionality for all API controllers
 ## Features
 
 - Unified response format using ApiResponse
+
 - Built-in user authentication helpers
+
 - Common HTTP response methods (200, 201, 400, 401, 403, 404, 409, 500)
+
 - ModelState validation helpers
+
 - Action execution wrappers with error handling
+
 - Automatic trace ID assignment
 
 ## Usage
@@ -180,50 +185,77 @@ public IActionResult ValidateModel([FromBody] DataDto dto)
 ### Success Responses
 
 - `Success<T>(T data, string message)` - 200 OK with data
+
 - `Success(string message)` - 200 OK without data
+
 - `Created<T>(T data, string message)` - 201 Created with data
+
 - `NoContent()` - 204 No Content
 
 ### Error Responses
 
 - `BadRequest(string message)` - 400 Bad Request
+
 - `BadRequest(List<string> errors, string message)` - 400 with validation errors
+
 - `Unauthorized(string message)` - 401 Unauthorized
+
 - `Forbidden(string message)` - 403 Forbidden
+
 - `NotFound(string message)` - 404 Not Found
+
 - `Conflict(string message)` - 409 Conflict
+
 - `InternalServerError(string message)` - 500 Internal Server Error
+
 - `InternalServerError(Exception ex)` - 500 with exception details
 
 ## Available Properties
 
 - `CurrentUserId` - Get current user ID from JWT claims
+
 - `CurrentUsername` - Get current username from JWT claims
+
 - `CurrentUserEmail` - Get current user email from JWT claims
+
 - `CurrentUserRoles` - Get current user roles from JWT claims
+
 - `TraceId` - Get request trace ID for logging
 
 ## Available Helper Methods
 
 - `HasRole(string role)` - Check if current user has specific role
+
 - `GetModelStateErrors()` - Get all ModelState validation errors
+
 - `BadRequestWithModelState()` - Return 400 with ModelState errors
+
 - `ExecuteAction(Action action, string successMessage)` - Execute action with error handling
+
 - `ExecuteActionAsync(Func<Task> action, string successMessage)` - Execute async action with error handling
+
 - `ExecuteFunction<T>(Func<T> func, string successMessage)` - Execute function with error handling
+
 - `ExecuteFunctionAsync<T>(Func<Task<T>> func, string successMessage)` - Execute async function with error handling
 
 ## Dependencies
 
 - Microsoft.AspNetCore.Mvc (ASP.NET Core)
+
 - ApiResponse component
+
 - .NET 6.0 or higher
 
 ## Benefits
 
 1. **DRY Principle** - Eliminate repetitive response code
+
 2. **Consistency** - All controllers return uniform responses
+
 3. **Error Handling** - Built-in exception handling
+
 4. **User Context** - Easy access to authenticated user information
+
 5. **Trace ID** - Automatic request tracking for debugging
+
 6. **Type Safety** - Strongly-typed responses

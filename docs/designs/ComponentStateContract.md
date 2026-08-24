@@ -13,12 +13,15 @@ agent policy.
 This document applies only to:
 
 - `packages/javascript/browser/ui_components`
+
 - the internal implementation model of components owned by the library
 
 This document does not define:
 
 - how applications must use components
+
 - how generators must emit component calls
+
 - how agents must invoke components
 
 Those concerns belong to other layers.
@@ -31,13 +34,17 @@ That does not mean every component must use the same heavyweight FSM pattern.
 It means each component must have:
 
 - a current state
+
 - explicit transitions
+
 - render output that is a projection of that state
 
 The main difference between components is complexity:
 
 - some components are mostly externally driven
+
 - some components are internally interactive
+
 - some components orchestrate child component state
 
 ## Non-Negotiable Constraints
@@ -53,13 +60,17 @@ or external machine registries just to use a component.
 Accepted:
 
 - component-local transitions
+
 - library-owned shared state helpers
+
 - same-folder helpers when they reduce duplication without hiding behavior
 
 Not accepted:
 
 - consumer-supplied machine schema as a requirement for normal use
+
 - remote registries or app-owned machine orchestration as a prerequisite
+
 - thin wrapper components whose real behavior lives somewhere else
 
 ### 2. Early phases must preserve generator compatibility
@@ -71,10 +82,15 @@ At minimum, migrated field components must keep working through the current
 generator/runtime call surface:
 
 - `mount`
+
 - `destroy`
+
 - `getValue`
+
 - `setValue`
+
 - `setDisabled`
+
 - `clear`
 
 New state-machine methods such as `snapshot()` and `send()` may be added, but
@@ -95,11 +111,17 @@ All migrated components should use the smallest honest subset of these state
 regions:
 
 - `lifecycle`: `created | mounted | destroyed`
+
 - `visibility`: `visible | hidden`
+
 - `availability`: `enabled | disabled`
+
 - `interaction`: such as `idle | focused | open | active`
+
 - `value`
+
 - `validation`
+
 - `async`
 
 Not every component needs every region.
@@ -109,6 +131,7 @@ Not every component needs every region.
 Each migrated component should expose:
 
 - `snapshot()`
+
 - `send(event, payload?)`
 
 But legacy public methods remain valid and should map to those transitions.
@@ -116,8 +139,11 @@ But legacy public methods remain valid and should map to those transitions.
 Examples:
 
 - `setValue(value)` -> `send('SET_VALUE', { value })`
+
 - `setDisabled(true)` -> `send('SET_DISABLED', { disabled: true })`
+
 - `clear()` -> `send('CLEAR')`
+
 - `mount(container)` -> append DOM + `send('MOUNT')`
 
 ## Migration Strategy
@@ -125,7 +151,9 @@ Examples:
 ### Phase 0
 
 - define the contract
+
 - add a minimal library-owned state helper
+
 - add baseline tests for the helper and pilot components
 
 ### Phase 1
@@ -133,11 +161,13 @@ Examples:
 Pilot components:
 
 - one simple display component
+
 - one generator-facing field component
 
 Current pilot choice:
 
 - `Badge`
+
 - `TextInput`
 
 ### Phase 2
@@ -145,6 +175,7 @@ Current pilot choice:
 Simple field components:
 
 - `NumberInput`
+
 - `Checkbox`
 
 ### Phase 3
@@ -152,8 +183,11 @@ Simple field components:
 Interactive field components:
 
 - `Dropdown`
+
 - `DatePicker`
+
 - `TimePicker`
+
 - `MultiSelectDropdown`
 
 ### Phase 4
@@ -161,8 +195,11 @@ Interactive field components:
 Composite orchestrators:
 
 - `ChainedInput`
+
 - `DateTimeInput`
+
 - `ListInput`
+
 - related composite inputs
 
 ### Phase 5
@@ -170,8 +207,11 @@ Composite orchestrators:
 High-complexity async/editor components:
 
 - `BatchUploader`
+
 - `WebTextEditor`
+
 - `WebPainter`
+
 - `OSMMapEditor`
 
 ## Checkpoints
@@ -179,7 +219,9 @@ High-complexity async/editor components:
 Every phase must keep these gates green:
 
 - existing UI library validation
+
 - explicit state tests for newly migrated components
+
 - legacy API compatibility checks for generator-facing components
 
 If a phase needs generator changes just to keep current behavior working, it is

@@ -18,7 +18,7 @@ builder.Services.AddScoped<IUserSessionService, UserSessionService>();
 ## 檔案說明
 
 | 檔案 | 說明 |
-|------|------|
+|---|---|
 | `MfaAuthController.cs` | 基本 MFA 認證控制器（註冊、登入、MFA 設定） |
 | `RateLimitedAuthController.cs` | 進階認證控制器（在 MFA 基礎上加入 IP 速率限制、工作階段管理） |
 
@@ -27,7 +27,7 @@ builder.Services.AddScoped<IUserSessionService, UserSessionService>();
 ### MfaAuthController — 基本認證
 
 | 方法 | 路由 | 說明 | 權限 |
-|------|------|------|------|
+|---|---|---|---|
 | `POST` | `/api/auth/register` | 註冊新使用者（可選啟用 MFA） | 匿名 |
 | `POST` | `/api/auth/login` | 登入第一步 — 驗證帳密 | 匿名 |
 | `POST` | `/api/auth/login/mfa` | 登入第二步 — 驗證 MFA 碼 | 匿名 |
@@ -43,7 +43,7 @@ builder.Services.AddScoped<IUserSessionService, UserSessionService>();
 繼承 MfaAuthController 的所有端點，額外加入：
 
 | 方法 | 路由 | 說明 | 權限 |
-|------|------|------|------|
+|---|---|---|---|
 | `POST` | `/api/auth/register` | 註冊（含 IP 速率限制） | 匿名 |
 | `POST` | `/api/auth/login` | 登入（含 IP 封鎖檢查 + 速率限制 + 工作階段建立） | 匿名 |
 | `POST` | `/api/auth/login/mfa` | MFA 驗證（含速率限制 + 工作階段建立） | 匿名 |
@@ -125,7 +125,7 @@ Content-Type: application/json
 ## 依賴清單
 
 | 依賴 | 說明 |
-|------|------|
+|---|---|
 | `IMfaAuthService` | MFA 認證服務介面（兩個控制器皆需要） |
 | `IIpRateLimiter` | IP 速率限制服務（僅 RateLimitedAuthController） |
 | `IConnectionInfoService` | 連線資訊服務（僅 RateLimitedAuthController） |
@@ -137,7 +137,11 @@ Content-Type: application/json
 ## 安全特性
 
 - IP 遮罩：日誌中的 IP 僅顯示前三組（如 `192.168.1.*`）
+
 - Email 遮罩：日誌中的 Email 僅顯示首尾字元（如 `u***r@example.com`）
+
 - Session ID 遮罩：僅顯示前後 4 碼
+
 - 登入失敗時不回傳具體錯誤原因（防止使用者列舉）
+
 - MFA Token 有時效性，過期自動失效

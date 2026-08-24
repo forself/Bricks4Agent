@@ -1,0 +1,136 @@
+{
+  "schema_version": 1,
+  "component_count": 4,
+  "components": [
+    {
+      "component_id": "custom.application_toolbar",
+      "registry_name": "CustomApplicationToolbar",
+      "display_name": "Custom Application Toolbar",
+      "version": "1.0.0",
+      "kind": "template",
+      "path": "definitions/application-toolbar.json",
+      "metrics": {
+        "max_depth": 3,
+        "atomic_leaf_count": 5,
+        "custom_reference_count": 2,
+        "composite_reference_count": 2,
+        "unresolved": [],
+        "cycles": []
+      }
+    },
+    {
+      "component_id": "custom.atomic_icon",
+      "registry_name": "CustomAtomicIcon",
+      "display_name": "Custom Atomic Icon",
+      "version": "1.0.0",
+      "kind": "atomic",
+      "path": "definitions/atomic-icon.json",
+      "metrics": {
+        "max_depth": 0,
+        "atomic_leaf_count": 1,
+        "custom_reference_count": 0,
+        "composite_reference_count": 0,
+        "unresolved": [],
+        "cycles": []
+      }
+    },
+    {
+      "component_id": "custom.button_row",
+      "registry_name": "CustomButtonRow",
+      "display_name": "Custom Button Row",
+      "version": "1.0.0",
+      "kind": "composite",
+      "path": "definitions/button-row.json",
+      "metrics": {
+        "max_depth": 1,
+        "atomic_leaf_count": 2,
+        "custom_reference_count": 0,
+        "composite_reference_count": 0,
+        "unresolved": [],
+        "cycles": []
+      }
+    },
+    {
+      "component_id": "custom.search_actions",
+      "registry_name": "CustomSearchActions",
+      "display_name": "Custom Search Actions",
+      "version": "1.0.0",
+      "kind": "composite",
+      "path": "definitions/search-actions.json",
+      "metrics": {
+        "max_depth": 2,
+        "atomic_leaf_count": 3,
+        "custom_reference_count": 0,
+        "composite_reference_count": 0,
+        "unresolved": [],
+        "cycles": []
+      }
+    }
+  ],
+  "by_registry_name": {
+    "CustomApplicationToolbar": {
+      "component_id": "custom.application_toolbar",
+      "registry_name": "CustomApplicationToolbar",
+      "display_name": "Custom Application Toolbar",
+      "version": "1.0.0",
+      "kind": "template",
+      "path": "definitions/application-toolbar.json",
+      "metrics": {
+        "max_depth": 3,
+        "atomic_leaf_count": 5,
+        "custom_reference_count": 2,
+        "composite_reference_count": 2,
+        "unresolved": [],
+        "cycles": []
+      }
+    },
+    "CustomAtomicIcon": {
+      "component_id": "custom.atomic_icon",
+      "registry_name": "CustomAtomicIcon",
+      "display_name": "Custom Atomic Icon",
+      "version": "1.0.0",
+      "kind": "atomic",
+      "path": "definitions/atomic-icon.json",
+      "metrics": {
+        "max_depth": 0,
+        "atomic_leaf_count": 1,
+        "custom_reference_count": 0,
+        "composite_reference_count": 0,
+        "unresolved": [],
+        "cycles": []
+      }
+    },
+    "CustomButtonRow": {
+      "component_id": "custom.button_row",
+      "registry_name": "CustomButtonRow",
+      "display_name": "Custom Button Row",
+      "version": "1.0.0",
+      "kind": "composite",
+      "path": "definitions/button-row.json",
+      "metrics": {
+        "max_depth": 1,
+        "atomic_leaf_count": 2,
+        "custom_reference_count": 0,
+        "composite_reference_count": 0,
+        "unresolved": [],
+        "cycles": []
+      }
+    },
+    "CustomSearchActions": {
+      "component_id": "custom.search_actions",
+      "registry_name": "CustomSearchActions",
+      "display_name": "Custom Search Actions",
+      "version": "1.0.0",
+      "kind": "composite",
+      "path": "definitions/search-actions.json",
+      "metrics": {
+        "max_depth": 2,
+        "atomic_leaf_count": 3,
+        "custom_reference_count": 0,
+        "composite_reference_count": 0,
+        "unresolved": [],
+        "cycles": []
+      }
+    }
+  }
+}

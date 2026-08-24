@@ -38,6 +38,8 @@ public static class ApprovalLifecycleTests
         TestUserCannotApproveOthersUserTier();
         TestListForApproverFiltersByTierAndOwner();
         TestApprovalDetailRendersPatch();
+        TestDualApprovalWaitsForSecondDistinctAdmin();
+        TestDualApprovalRejectsDuplicateApprover();
 
         Console.WriteLine();
         Console.WriteLine($"=== Approval Lifecycle Results: {_passed} passed, {_failed} failed ===");
@@ -58,7 +60,8 @@ public static class ApprovalLifecycleTests
     // 擱置一個待審請求(模擬 PolicyEngine 已回 RequireApproval 後的狀態)
     private static string SeedPending(BrokerDb db, string capabilityId,
         ApproverTier tier = ApproverTier.Admin, string owner = "prn_a",
-        string payload = "{\"route\":\"read_file\",\"args\":{}}")
+        string payload = "{\"route\":\"read_file\",\"args\":{}}",
+        int requiredApprovalCount = 1)
     {
         new CapabilityCatalog(db).CreateGrant(
             "task_a", "ses_a", owner, capabilityId, "{}", -1, DateTime.UtcNow.AddHours(1));
@@ -91,6 +94,7 @@ public static class ApprovalLifecycleTests
             Reason = "risk requires approval",
             Status = ApprovalStatus.Pending,
             ApproverTier = tier,
+            RequiredApprovalCount = requiredApprovalCount,
             OwnerPrincipalId = owner,
             CreatedAt = DateTime.UtcNow,
             ExpiresAt = DateTime.UtcNow.AddHours(1),
@@ -273,6 +277,74 @@ public static class ApprovalLifecycleTests
             var bDetail = broker.GetApprovalDetail(bId);
             AssertEqual("detail-kind-command", bDetail?.Rendered.Kind, "command");
             AssertEqual("detail-command", bDetail?.Rendered.Command, "dotnet test");
+        }
+        finally { TryDelete(dir); }
+    }
+
+    private static void TestDualApprovalWaitsForSecondDistinctAdmin()
+    {
+        Console.WriteLine("--- Dual approval waits for second distinct admin ---");
+        var dir = NewTempDir("dual-admin");
+        try
+        {
+            using var db = new BrokerDb($"Data Source={Path.Combine(dir, "broker.db")}");
+            new BrokerDbInitializer(db).Initialize();
+            var broker = NewBroker(db);
+            var approvalId = SeedPending(db, "command.execute", ApproverTier.Admin, requiredApprovalCount: 2);
+
+            var first = broker.ApproveExecutionAsync(approvalId, "admin_1", "first approval", isAdmin: true)
+                .GetAwaiter().GetResult();
+            var afterFirst = db.Get<ApprovalRequest>(approvalId);
+            var requestAfterFirst = first == null ? null : db.Get<ExecutionRequest>(first.RequestId);
+
+            AssertTrue("dual-first-returns-request", first != null);
+            AssertEqual("dual-first-keeps-approval-pending", afterFirst?.Status.ToString(), "Pending");
+            AssertEqual("dual-first-keeps-request-pending", requestAfterFirst?.ExecutionState.ToString(), "PendingApproval");
+            AssertEqual("dual-pending-after-first", broker.ListPendingApprovals().Count.ToString(), "1");
+            AssertEqual("dual-first-admin-actionable-empty",
+                broker.ListPendingApprovalDetailsForApprover("admin_1", isAdmin: true).Count.ToString(), "0");
+            AssertEqual("dual-second-admin-actionable-one",
+                broker.ListPendingApprovalDetailsForApprover("admin_2", isAdmin: true).Count.ToString(), "1");
+
+            var second = broker.ApproveExecutionAsync(approvalId, "admin_2", "second approval", isAdmin: true)
+                .GetAwaiter().GetResult();
+            var afterSecond = db.Get<ApprovalRequest>(approvalId);
+
+            AssertTrue("dual-second-returns-request", second != null);
+            AssertEqual("dual-second-dispatches", second?.ExecutionState.ToString(), "Succeeded");
+            AssertEqual("dual-final-status-approved", afterSecond?.Status.ToString(), "Approved");
+            AssertEqual("dual-pending-empty-after-second", broker.ListPendingApprovals().Count.ToString(), "0");
+        }
+        finally { TryDelete(dir); }
+    }
+
+    private static void TestDualApprovalRejectsDuplicateApprover()
+    {
+        Console.WriteLine("--- Dual approval rejects duplicate approver ---");
+        var dir = NewTempDir("dual-duplicate");
+        try
+        {
+            using var db = new BrokerDb($"Data Source={Path.Combine(dir, "broker.db")}");
+            new BrokerDbInitializer(db).Initialize();
+            var broker = NewBroker(db);
+            var approvalId = SeedPending(db, "command.execute", ApproverTier.Admin, requiredApprovalCount: 2);
+
+            var first = broker.ApproveExecutionAsync(approvalId, "admin_1", "first approval", isAdmin: true)
+                .GetAwaiter().GetResult();
+            var duplicate = broker.ApproveExecutionAsync(approvalId, "admin_1", "duplicate approval", isAdmin: true)
+                .GetAwaiter().GetResult();
+            var afterDuplicate = db.Get<ApprovalRequest>(approvalId);
+
+            AssertTrue("dual-duplicate-first-returns-request", first != null);
+            AssertTrue("dual-duplicate-returns-null", duplicate == null);
+            AssertEqual("dual-duplicate-still-pending", afterDuplicate?.Status.ToString(), "Pending");
+            AssertEqual("dual-duplicate-pending-count", broker.ListPendingApprovals().Count.ToString(), "1");
+
+            var second = broker.ApproveExecutionAsync(approvalId, "admin_2", "second approval", isAdmin: true)
+                .GetAwaiter().GetResult();
+
+            AssertTrue("dual-duplicate-second-succeeds", second != null);
+            AssertEqual("dual-duplicate-second-dispatches", second?.ExecutionState.ToString(), "Succeeded");
         }
         finally { TryDelete(dir); }
     }

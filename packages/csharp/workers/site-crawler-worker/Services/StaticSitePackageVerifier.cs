@@ -19,7 +19,7 @@ public sealed class StaticSitePackageVerifier
         "styles.css",
         "site.json",
         "components/manifest.json",
-        "README.md",
+        "README.html",
     ];
 
     private static readonly Regex RuntimeRendererEntryPattern = new(

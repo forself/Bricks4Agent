@@ -20,6 +20,7 @@
  */
 
 import { escapeHtml } from '../../utils/security.js';
+import { Icon } from '../../common/Icon/Icon.js';
 
 export class StatCard {
     /**
@@ -45,73 +46,55 @@ export class StatCard {
         };
 
         this.element = null;
-        this._injectStyles();
+        this._iconComponent = null;
     }
 
-    _injectStyles() {
-        if (document.getElementById('social-stat-card-styles')) return;
+    /**
+     * CSP style-src 'self' 相容:樣式於掛載後以 CSSOM 指派(原 <style> 注入已移除,值逐字等值)。
+     * :hover → mouseenter/mouseleave 事件(庫慣例)。
+     */
+    _applyStyles() {
+        const el = this.element;
+        if (!el) return;
+        const clickable = !!this.options.onClick;
+        el.style.cssText =
+            'background: var(--cl-bg); border-radius: var(--cl-radius-xl); padding: 20px;' +
+            ' display: flex; align-items: center; gap: 16px; box-shadow: var(--cl-shadow-sm);' +
+            ' transition: transform var(--cl-transition), box-shadow var(--cl-transition);' +
+            (clickable ? ' cursor: pointer;' : '');
+        el.addEventListener('mouseenter', () => {
+            el.style.transform = 'translateY(-2px)';
+            el.style.boxShadow = 'var(--cl-shadow-md)';
+        });
+        el.addEventListener('mouseleave', () => {
+            el.style.transform = '';
+            el.style.boxShadow = 'var(--cl-shadow-sm)';
+        });
 
-        const style = document.createElement('style');
-        style.id = 'social-stat-card-styles';
-        style.textContent = `
-            .social-stat-card {
-                background: var(--cl-bg);
-                border-radius: var(--cl-radius-xl);
-                padding: 20px;
-                display: flex;
-                align-items: center;
-                gap: 16px;
-                box-shadow: var(--cl-shadow-sm);
-                transition: transform var(--cl-transition), box-shadow var(--cl-transition);
-            }
-            .social-stat-card:hover {
-                transform: translateY(-2px);
-                box-shadow: var(--cl-shadow-md);
-            }
-            .social-stat-card--clickable {
-                cursor: pointer;
-            }
-            .social-stat-card__icon {
-                width: 48px;
-                height: 48px;
-                border-radius: var(--cl-radius-xl);
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                font-size: 22px;
-                flex-shrink: 0;
-            }
-            .social-stat-card__content {
-                flex: 1;
-                min-width: 0;
-            }
-            .social-stat-card__value {
-                font-size: var(--cl-font-size-3xl);
-                font-weight: 700;
-                color: var(--cl-text);
-                line-height: 1.2;
-            }
-            .social-stat-card__label {
-                font-size: var(--cl-font-size-md);
-                color: var(--cl-text-secondary);
-                margin-top: 2px;
-            }
-            .social-stat-card__trend {
-                font-size: var(--cl-font-size-sm);
-                font-weight: 600;
-                display: inline-flex;
-                align-items: center;
-                gap: 2px;
-                margin-left: 8px;
-            }
-            .social-stat-card__trend--up {
-                color: var(--cl-success);
-            }
-            .social-stat-card__trend--down {
-                color: var(--cl-danger);
-            }
-        `;
-        document.head.appendChild(style);
+        const resolvedColor = this._resolveColor(this.options.color);
+        const icon = el.querySelector('.social-stat-card__icon');
+        if (icon) {
+            icon.style.cssText =
+                'width: 48px; height: 48px; border-radius: var(--cl-radius-xl); display: flex;' +
+                ' align-items: center; justify-content: center; font-size: var(--cl-font-size-3xl); flex-shrink: 0;' +
+                ` background: ${this._getIconBackground(resolvedColor)}; color: ${resolvedColor};`;
+        }
+        const content = el.querySelector('.social-stat-card__content');
+        if (content) content.style.cssText = 'flex: 1; min-width: 0;';
+        const value = el.querySelector('.social-stat-card__value');
+        if (value) {
+            const compact = String(this.options.value ?? '').length > 12;
+            value.style.cssText = `font-size: ${compact ? 'var(--cl-font-size-lg)' : 'var(--cl-font-size-3xl)'}; font-weight: 700; color: var(--cl-text); line-height: 1.25; overflow-wrap:anywhere;`;
+        }
+        const label = el.querySelector('.social-stat-card__label');
+        if (label) label.style.cssText = 'font-size: var(--cl-font-size-md); color: var(--cl-text-secondary); margin-top: 2px;';
+        const trend = el.querySelector('.social-stat-card__trend');
+        if (trend) {
+            const trendColor = trend.classList.contains('social-stat-card__trend--up') ? 'var(--cl-success)' : 'var(--cl-danger)';
+            trend.style.cssText =
+                'font-size: var(--cl-font-size-sm); font-weight: 600; display: inline-flex;' +
+                ` align-items: center; gap: 2px; margin-left: 8px; color: ${trendColor};`;
+        }
     }
 
     /**
@@ -125,9 +108,7 @@ export class StatCard {
         const safeValue = escapeHtml(String(value));
         const safeIcon = escapeHtml(icon);
         const safeTrendValue = escapeHtml(trendValue);
-
-        // 圖示背景用淡色
-        const iconBg = this._getIconBackground(color);
+        // 圖示背景/主題色改於 _applyStyles() 以 CSSOM 指派(CSP 相容)
 
         let trendHTML = '';
         if (trend && trendValue) {
@@ -136,7 +117,7 @@ export class StatCard {
         }
 
         return `<div class="social-stat-card${clickClass}">
-            <div class="social-stat-card__icon" style="background:${iconBg};color:${escapeHtml(color)};">
+            <div class="social-stat-card__icon">
                 ${safeIcon}
             </div>
             <div class="social-stat-card__content">
@@ -159,8 +140,22 @@ export class StatCard {
             : container;
         if (!target) return;
 
+        this._iconComponent?.destroy?.();
+        this._iconComponent = null;
         target.innerHTML = this.toHTML();
         this.element = target.querySelector('.social-stat-card');
+        this._applyStyles();
+
+        const iconHost = this.element?.querySelector('.social-stat-card__icon');
+        if (iconHost && Icon.has(this.options.icon)) {
+            iconHost.replaceChildren();
+            this._iconComponent = new Icon({
+                name: this.options.icon,
+                size: 24,
+                color: this._resolveColor(this.options.color),
+            });
+            this._iconComponent.mount(iconHost);
+        }
 
         if (this.options.onClick && this.element) {
             this.element.addEventListener('click', this.options.onClick);
@@ -182,7 +177,20 @@ export class StatCard {
         return `color-mix(in srgb, ${color} 12%, transparent)`;
     }
 
+    _resolveColor(color) {
+        const semantic = {
+            primary: 'var(--cl-primary)',
+            success: 'var(--cl-success)',
+            warning: 'var(--cl-warning)',
+            danger: 'var(--cl-danger)',
+            info: 'var(--cl-info)',
+        };
+        return semantic[color] || color || 'var(--cl-primary)';
+    }
+
     destroy() {
+        this._iconComponent?.destroy?.();
+        this._iconComponent = null;
         if (this.element) {
             this.element.remove();
             this.element = null;

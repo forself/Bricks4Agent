@@ -14,8 +14,8 @@ public sealed class SiteIntentExtractor
             SiteKind = ResolveSiteKind(crawl),
             ThemeHints = new ExtractedThemeTokens
             {
-                Colors = new Dictionary<string, string>(crawl.ExtractedModel.ThemeTokens.Colors, StringComparer.Ordinal),
-                Typography = new Dictionary<string, string>(crawl.ExtractedModel.ThemeTokens.Typography, StringComparer.Ordinal),
+                Colors = new SortedDictionary<string, string>(crawl.ExtractedModel.ThemeTokens.Colors, StringComparer.Ordinal),
+                Typography = new SortedDictionary<string, string>(crawl.ExtractedModel.ThemeTokens.Typography, StringComparer.Ordinal),
             },
         };
 

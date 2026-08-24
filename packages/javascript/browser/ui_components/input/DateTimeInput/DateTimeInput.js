@@ -74,10 +74,12 @@ export class DateTimeInput {
 
         const inputRow = document.createElement('div');
         inputRow.className = 'datetime-input__row';
-        inputRow.style.cssText = 'display:flex;gap:12px;align-items:flex-start;';
+        // RWD:窄容器時日期/時間自動換行,避免固定 312px 並排溢出
+        inputRow.style.cssText = 'display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap;';
 
         const dateContainer = document.createElement('div');
-        dateContainer.style.cssText = 'flex:1;min-width:160px;';
+        // RWD:basis 160px 保持寬版並排,min-width:0 允許窄容器收縮
+        dateContainer.style.cssText = 'flex:1 1 160px;min-width:0;max-width:100%;';
         inputRow.appendChild(dateContainer);
 
         this.datePicker = new DatePicker({
@@ -94,7 +96,8 @@ export class DateTimeInput {
 
         if (this.options.showTime) {
             const timeContainer = document.createElement('div');
-            timeContainer.style.cssText = 'min-width:140px;';
+            // RWD:basis 140px,換行後可縮至容器寬
+            timeContainer.style.cssText = 'flex:1 1 140px;min-width:0;max-width:100%;';
             inputRow.appendChild(timeContainer);
 
             this.timePicker = new TimePicker({

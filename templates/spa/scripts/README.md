@@ -5,15 +5,16 @@ This directory contains the CLI scripts used to generate projects from the SPA t
 Current scripts include:
 
 - `spa-cli.js`
+
 - `create-project.js`
+
 - `generate-page.js`
+
 - `generate-api.js`
 
 ## Scope
 
 This CLI helps scaffold SPA-style projects from the template.
-
-It does not describe the broker control plane, the LINE sidecar, or the production-style governed runtime.
 
 ## Commands
 
@@ -43,12 +44,19 @@ node spa-cli.js api Order --fields "CustomerId:int,Total:decimal,Status:string"
 Supported field aliases include:
 
 - `string`
+
 - `int`, `integer`
+
 - `long`
+
 - `decimal`
+
 - `float`, `double`
+
 - `bool`, `boolean`
+
 - `datetime`, `date`
+
 - `guid`
 
 ### Generate a feature
@@ -73,7 +81,9 @@ Generated output still needs manual integration.
 Typical follow-up work includes:
 
 1. update backend schema/bootstrap in `backend/Data/AppDbContext.cs`
+
 2. update backend routing in `backend/Program.cs`
+
 3. update frontend routing in `frontend/pages/routes.js`
 
 This CLI is a scaffold helper, not a full end-to-end product compiler.

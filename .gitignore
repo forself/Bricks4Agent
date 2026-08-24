@@ -31,6 +31,8 @@ Api.txt
 test-ad998-6cabc8537e96.json
 client_secret_586440721354-4q0jdtj0step5nt50iuo8hg9k5sugl2b.apps.googleusercontent.com.json
 *.key
+*.pfx
+*.p12
 .env
 .env.*
 
@@ -45,6 +47,8 @@ packages/.claude/
 # Issue tracking reports (local only)
 ISSUES/
 docs/0[0-9][0-9][0-9]/
+!docs/0329/
+!docs/0329/*.html
 
 # SQLite databases
 *.db
@@ -65,5 +69,5 @@ ngrok_recovery_codes.txt
 packages/csharp/broker/appsettings.Development.json
 packages/csharp/workers/line-worker/appsettings.json
 packages/csharp/workers/line-worker/.last-tunnel-url
-packages/csharp/workers/line-worker/bin/Debug/net8.0/pending_messages/
+packages/csharp/workers/line-worker/bin/Debug/net10.0/pending_messages/
 *.webp

@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SocialMediaList</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>SocialMediaList</h1>
+<p>社群軟體帳號列表輸入元件，繼承 <code>ListInput</code>，每筆項目包含平台與帳號。</p>
+<h2>API</h2>
+<h3>Constructor</h3>
+<pre><code class="language-js">new SocialMediaList(options?)
+</code></pre>
+<p>繼承 <code>ListInput</code> 所有選項，預設值：</p>
+<table>
+<thead>
+<tr>
+<th>參數</th>
+<th>預設值</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>title</code></td>
+<td><code>'社群軟體列表'</code></td>
+<td>標題</td>
+</tr>
+<tr>
+<td><code>minItems</code></td>
+<td><code>0</code></td>
+<td>最少項目數</td>
+</tr>
+<tr>
+<td><code>maxItems</code></td>
+<td><code>5</code></td>
+<td>最多項目數</td>
+</tr>
+<tr>
+<td><code>addButtonText</code></td>
+<td><code>'新增帳號'</code></td>
+<td>新增按鈕文字</td>
+</tr>
+</tbody>
+</table>
+<p>每筆項目欄位：</p>
+<table>
+<thead>
+<tr>
+<th>欄位 name</th>
+<th>type</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>platform</code></td>
+<td><code>select</code></td>
+<td>平台（LINE/Facebook/Instagram/Twitter (X)/WeChat/Telegram/Other）</td>
+</tr>
+<tr>
+<td><code>account</code></td>
+<td><code>text</code></td>
+<td>帳號 ID 或連結</td>
+</tr>
+</tbody>
+</table>
+<h3>方法</h3>
+<p>繼承 <code>ListInput</code> 所有方法：<code>mount(container)</code>、<code>getValues()</code>、<code>setValues(items)</code>。</p>
+<h2>使用範例</h2>
+<pre><code class="language-js">import { SocialMediaList } from './input/SocialMediaList/index.js';
+
+const social = new SocialMediaList({
+    onChange: (items) =&gt; console.log(items)
+});
+social.mount('#container');
+
+// 取得所有帳號
+const data = social.getValues();
+// [{platform: 'LINE', account: 'my-line-id'}, ...]
+</code></pre>
+<h2>Demo</h2>
+<p><code>packages/javascript/browser/ui_components/input/demo.html</code></p>
+</main>
+</body>
+</html>

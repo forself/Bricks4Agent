@@ -11,9 +11,13 @@
 目前 `main` 的狀態：
 
 - `/proj`、`#專案名稱`、規模收斂、網站結構方向收斂、review artifact generation 已可用
+
 - `/ok`、`/revise`、`/cancel` 已可用
+
 - LINE 對外 prompts 已是中英文且偏一般使用者文案
+
 - 內部 scale/template 識別字仍只留在 broker 內部，不直接暴露給使用者
+
 - 更深一層的需求訪談與自動實作交接仍是後續工作
 
 **架構：** 在既有 broker high-level 路徑上擴充一個獨立的 `project_interview` 狀態機與每版本一張的 DAG。真相由 broker 擁有並持久化在 assertion documents 與 version-graph documents 中；LLM 只負責提出 interpretation 與 restatement options。已確認 assertions 會被編譯成 canonical `project-instance JSON`，再驅動 PDF review 文件與 artifact delivery。模板選擇則由既有 browser page-generator / component runtime 之上的 JSON catalog 驅動。
@@ -53,6 +57,7 @@ JSON/PDF 不是單純對話摘要，而是由已確認 assertions 推導出的�
 ## 語言版本
 
 - 英文主計劃：`docs/superpowers/plans/2026-03-31-line-project-interview-agent.md`
+
 - 繁體中文對應版：`docs/superpowers/plans/2026-03-31-line-project-interview-agent.zh-TW.md`
 
 說明：
@@ -67,44 +72,75 @@ JSON/PDF 不是單純對話摘要，而是由已確認 assertions 推導出的�
 ### 新增
 
 - `packages/csharp/broker/Services/ProjectInterviewModels.cs`
-  - 定義 session state、assertion、restatement option、version-graph node/edge、project-definition DTO。
+
+- 定義 session state、assertion、restatement option、version-graph node/edge、project-definition DTO。
+
 - `packages/csharp/broker/Services/ProjectInterviewStateService.cs`
-  - 讀寫 `hlm.project-interview.*` 文件，提供 broker 擁有的 canonical task state API。
+
+- 讀寫 `hlm.project-interview.*` 文件，提供 broker 擁有的 canonical task state API。
+
 - `packages/csharp/broker/Services/ProjectInterviewStateMachine.cs`
-  - 管 `/proj`、`/ok`、`/revise`、`/cancel` 與 phase progression。
+
+- 管 `/proj`、`/ok`、`/revise`、`/cancel` 與 phase progression。
+
 - `packages/csharp/broker/Services/ProjectInterviewRestatementService.cs`
-  - 將模型提案轉成 bounded explicit statement options，並附 conservative escape option。
+
+- 將模型提案轉成 bounded explicit statement options，並附 conservative escape option。
+
 - `packages/csharp/broker/Services/ProjectInterviewTemplateCatalogService.cs`
-  - 載入 template manifests，依 project scale、modules、constraints 收斂候選模板。
+
+- 載入 template manifests，依 project scale、modules、constraints 收斂候選模板。
+
 - `packages/csharp/broker/Services/ProjectInterviewProjectDefinitionCompiler.cs`
-  - 從 confirmed assertions 編譯 canonical `project_instance_definition` JSON 與 immutable per-version DAG。
+
+- 從 confirmed assertions 編譯 canonical `project_instance_definition` JSON 與 immutable per-version DAG。
+
 - `packages/csharp/broker/Services/ProjectInterviewWorkflowDesignService.cs`
-  - 建立 deterministic workflow-design view model 與 render manifest。
+
+- 建立 deterministic workflow-design view model 與 render manifest。
+
 - `packages/csharp/broker/Services/ProjectInterviewPdfRenderService.cs`
-  - 產出 versioned PDF，並寫入 task/version/digest metadata。
+
+- 產出 versioned PDF，並寫入 task/version/digest metadata。
+
 - `packages/csharp/tests/integration/Api/ProjectInterviewLifecycleTests.cs`
+
 - `packages/csharp/tests/integration/Api/ProjectInterviewReviewTests.cs`
+
 - `packages/javascript/browser/templates/catalog.json`
+
 - `packages/javascript/browser/templates/*/template.manifest.json`
+
 - `packages/javascript/browser/__tests__/templates/TemplateCatalog.test.js`
 
 ### 修改
 
 - `packages/csharp/broker/Services/HighLevelCommandParser.cs`
+
 - `packages/csharp/broker/Services/HighLevelCoordinator.cs`
+
 - `packages/csharp/broker/Services/HighLevelLlmOptions.cs`
+
 - `packages/csharp/broker/Services/LineArtifactDeliveryService.cs`
+
 - `packages/csharp/broker/Program.cs`
+
 - `packages/csharp/broker/appsettings.json`
+
 - `packages/csharp/broker/appsettings.Development.example.json`
+
 - `packages/csharp/broker/verify/Program.cs`
+
 - `packages/javascript/browser/package.json`
 
 ### 重用，不做結構改造
 
 - `packages/csharp/broker/Services/HighLevelDocumentArtifactService.cs`
+
 - `packages/csharp/broker/Services/HighLevelMemoryStore.cs`
+
 - `packages/javascript/browser/page-generator/PageDefinitionAdapter.js`
+
 - `templates/spa/frontend/runtime/page-generator/DynamicPageRenderer.js`
 
 ---
@@ -262,8 +298,11 @@ JSON/PDF 不是單純對話摘要，而是由已確認 assertions 推導出的�
 ## 執行與同步規則
 
 - 程式碼區塊與 shell commands：以英文版為 canonical source
+
 - 中文版任務編號、檔案責任、驗證邏輯、commit 邏輯：必須與英文版一致
+
 - 若英文版有新增/刪除 task，中文版需同步
+
 - 若中文版審查提出設計變更，必須先回寫英文版，再保持兩份同步
 
 ## 自檢
@@ -271,26 +310,39 @@ JSON/PDF 不是單純對話摘要，而是由已確認 assertions 推導出的�
 ### 規格覆蓋
 
 - `/proj` 入口、review commands、task-scoped state machine：Task 1
+
 - confirmed-restatement assertion model：Task 2
+
 - scale classification、template-family narrowing、JSON template catalog：Task 3
+
 - canonical project-instance JSON 與 per-version DAG：Task 4
+
 - versioned PDF/JSON generation 與 review workflow：Task 5
+
 - delivery safety、verification、docs sync：Task 6
 
 ### 無 placeholder
 
 - 不保留 `TODO`、`TBD`、`implement later`
+
 - 中文版不重新發明新 task，只翻譯既有結構
 
 ### 型別一致性
 
 - `ProjectInterviewSessionState`
+
 - `ProjectInterviewStateMachine`
+
 - `ProjectInterviewTaskDocument`
+
 - `ProjectInterviewRestatementService`
+
 - `ProjectInterviewTemplateCatalogService`
+
 - `ProjectInterviewProjectDefinitionCompiler`
+
 - `ProjectInstanceDefinition`
+
 - `ProjectInterviewVersionDag`
 
 這些名稱必須在中英文文件中保持一致，避免後續規劃與實作對不上。

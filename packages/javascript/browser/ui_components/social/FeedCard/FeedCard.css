@@ -1,0 +1,16 @@
+/**
+ * FeedCard — 響應式規則(CSP style-src 'self' 相容:同源樣式表,由 FeedCard.js 以 <link> 載入)。
+ * 元素層樣式由 JS 以 inline CSSOM 指派,故本檔的 @media 覆蓋必須 !important 才能勝過 inline。
+ * 內容與原 <style> 注入的 @media 區塊逐字等值(僅加 !important)。
+ */
+@media (max-width: 768px) {
+    .social-feed-card__header,
+    .social-feed-card__body,
+    .social-feed-card__footer {
+        padding-left: 14px !important;
+        padding-right: 14px !important;
+    }
+    .social-feed-card__images--1 .social-feed-card__image {
+        height: 200px !important;
+    }
+}

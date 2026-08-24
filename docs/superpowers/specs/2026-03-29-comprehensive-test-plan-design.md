@@ -11,7 +11,7 @@
 ### 1.1 現有測試基礎
 
 | 面向 | 現狀 |
-|------|------|
+|---|---|
 | 測試框架 | 無（自建 Assert 函式，Console.WriteLine 輸出） |
 | 單元/自驗證 | `broker-tests` + `broker/verify` 並存，已覆蓋 query/browser helper、artifact delivery、signed download、JSON redaction、middleware bypass |
 | 整合測試 | xUnit + WebApplicationFactory，當前已驗證 10 個 broker integration scenarios |
@@ -76,7 +76,7 @@
 ### 2.2 技術選型
 
 | 層級 | 框架 | 理由 |
-|------|------|------|
+|---|---|---|
 | C# 單元測試 | **xUnit** + FluentAssertions + NSubstitute | .NET 生態最成熟，取代自建 Assert |
 | C# 整合測試 | **WebApplicationFactory** (Microsoft.AspNetCore.Mvc.Testing) | 記憶體內 Broker，無需手動啟動 |
 | 前端單元測試 | **Vitest** + jsdom | 零配置、ES Module 原生支援、適合 vanilla JS |
@@ -839,7 +839,7 @@ cd packages/javascript/browser && npx vitest run --coverage
 ### 7.2 覆蓋率目標
 
 | 層級 | 目標 | 優先級 |
-|------|------|--------|
+|---|---|---|
 | PolicyEngine | 100% 分支覆蓋 | P0 |
 | EnvelopeCrypto | 100% 分支覆蓋 | P0 |
 | SessionService | ≥90% | P0 |
@@ -881,41 +881,60 @@ PR 提交時（快速，<2 分鐘）：
 ### Phase 1: 基礎建設（第 1 週）
 
 1. 建立 xUnit 專案結構，設定 NSubstitute + FluentAssertions
+
 2. 建立 WebApplicationFactory Fixture（記憶體內 Broker）
+
 3. 建立 Vitest 環境（jsdom 設定）
+
 4. 將測試專案加入 ControlPlane.slnx
+
 5. 遷移現有 62 個斷言到 xUnit 格式
 
 ### Phase 2: P0 安全核心測試（第 2 週）
 
-6. PolicyEngine 7 規則完整測試
-7. EnvelopeCrypto 加解密測試
-8. SessionService 生命週期測試
-9. ScopedTokenService 測試
-10. BrokerService PEP 管線整合測試
+1. PolicyEngine 7 規則完整測試
+
+2. EnvelopeCrypto 加解密測試
+
+3. SessionService 生命週期測試
+
+4. ScopedTokenService 測試
+
+5. BrokerService PEP 管線整合測試
 
 ### Phase 3: P1 業務邏輯測試（第 3 週）
 
-11. Worker Handler 單元測試（LINE/File/Browser）
-12. FunctionPool（Registry + Dispatchers + Health）
-13. 前端核心元件測試（P0 元件 ~10 個）
-14. FieldResolver + TriggerEngine 測試
+1. Worker Handler 單元測試（LINE/File/Browser）
+
+2. FunctionPool（Registry + Dispatchers + Health）
+
+3. 前端核心元件測試（P0 元件 ~10 個）
+
+4. FieldResolver + TriggerEngine 測試
 
 ### Phase 4: 整合 + UI 測試（第 4 週）
 
-15. API 端點整合測試
-16. 中介軟體管線測試
-17. 快取叢集整合測試
-18. line-admin.html UI 測試（Playwright）
+1. API 端點整合測試
+
+2. 中介軟體管線測試
+
+3. 快取叢集整合測試
+
+4. line-admin.html UI 測試（Playwright）
 
 ### Phase 5: E2E 行為模擬（第 5 週）
 
-19. Playwright 環境建立 + Fixture
-20. LINE 對話全鏈路模擬
-21. 審核工作流模擬
-22. Admin 介面操作模擬
-23. Worker 容錯模擬
-24. Artifact 遞送模擬
+1. Playwright 環境建立 + Fixture
+
+2. LINE 對話全鏈路模擬
+
+3. 審核工作流模擬
+
+4. Admin 介面操作模擬
+
+5. Worker 容錯模擬
+
+6. Artifact 遞送模擬
 
 ---
 
@@ -924,28 +943,37 @@ PR 提交時（快速，<2 分鐘）：
 ### 9.1 為何選 xUnit 而非 NUnit/MSTest
 
 - xUnit 是 .NET 社群最活躍的框架，`IAsyncLifetime` 更適合 WebApplicationFactory
+
 - `[Theory]` + `[InlineData]` 適合策略規則的參數化測試
+
 - 與 `dotnet test` 無縫整合
 
 ### 9.2 為何選 Vitest 而非 Jest
 
 - 原生 ESM 支援（專案使用 ES modules）
+
 - 零配置、啟動快
+
 - 與 Vite 生態一致（如未來需要打包）
 
 ### 9.3 為何 WebApplicationFactory 而非獨立啟動
 
 - 記憶體內運行，無需佔用 port，測試間隔離
+
 - 可替換 DI 服務（in-memory DB、mock Worker）
+
 - 測試結束自動清理
 
 ### 9.4 為何不用 Docker 做整合測試
 
 - 增加 CI 複雜度和時間
+
 - WebApplicationFactory + in-memory SQLite 已足夠
+
 - 快取叢集測試可用多進程模擬（無需 Docker）
 
 ### 9.5 保留現有測試
 
 - 不刪除 `broker-tests/` 和 `e2e-bridge/`，保持向後相容
+
 - 新測試建立在新結構中，逐步遷移

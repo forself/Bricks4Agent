@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>site-crawler-worker</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>site-crawler-worker</h1>
+<p>Crawls a website and reconstructs a deterministic static package whose components are a closed
+projection of the canonical <code>ui_components</code> (B) library.</p>
+<h2>Broker mode (default)</h2>
+<p>Run with no subcommand to connect to the broker and serve capabilities
+(<code>site.crawl_source</code>, <code>site.generate_package</code>, <code>site.reconstruct_package</code>):</p>
+<pre><code class="language-bash">dotnet run --project packages/csharp/workers/site-crawler-worker
+</code></pre>
+<h2>Local <code>reconstruct</code> CLI (no broker)</h2>
+<p>Runs one crawl → reconstruct-package locally, invoking the same production
+<code>SiteReconstructPackageHandler</code> the broker path uses. Useful for an end-to-end smoke without
+standing up a broker.</p>
+<pre><code class="language-bash">dotnet run --project packages/csharp/workers/site-crawler-worker -- \
+  reconstruct --url https://www.ntut.edu.tw/ --out ./out --package-name ntut --max-pages 5
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Default</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--url</code></td>
+<td>(required)</td>
+<td>Start URL to crawl</td>
+</tr>
+<tr>
+<td><code>--out</code></td>
+<td><code>%TEMP%/bricks4agent-generated-sites</code></td>
+<td>Output directory</td>
+</tr>
+<tr>
+<td><code>--package-name</code></td>
+<td><code>generated-site</code></td>
+<td>Package folder / archive name</td>
+</tr>
+<tr>
+<td><code>--max-pages</code></td>
+<td><code>8</code></td>
+<td>Page budget (visual capture capped at 5)</td>
+</tr>
+<tr>
+<td><code>--max-depth</code></td>
+<td><code>1</code></td>
+<td>Link depth (same-origin)</td>
+</tr>
+<tr>
+<td><code>--visual</code></td>
+<td><code>true</code></td>
+<td>Playwright DOM render (needs Chromium)</td>
+</tr>
+<tr>
+<td><code>--archive</code></td>
+<td><code>true</code></td>
+<td>Also write a deterministic <code>.zip</code></td>
+</tr>
+<tr>
+<td><code>--quality-gate</code></td>
+<td><code>false</code></td>
+<td>Fail if any component gap / generated component</td>
+</tr>
+<tr>
+<td><code>--json</code></td>
+<td><code>false</code></td>
+<td>Also print the full <code>SiteReconstructPackageResult</code> JSON</td>
+</tr>
+<tr>
+<td><code>--timeout-seconds</code></td>
+<td><code>240</code></td>
+<td>Crawl wall-clock budget</td>
+</tr>
+</tbody>
+</table>
+<p>Output package: <code>index.html</code>, <code>runtime.js</code>, <code>styles.css</code>, <code>site.json</code>,
+<code>components/{manifest.json, b-binding.json}</code>, <code>README.md</code>. <code>b-binding.json</code> is the flat
+<code>type -&gt; b_component</code> index proving the output's vocabulary is a closed projection of B.</p>
+<blockquote>
+<p>Visual mode launches headless Chromium via Microsoft.Playwright (browsers auto-download on
+first use). Set <code>--visual false</code> to skip it (HTML-only crawl, fewer extracted regions).</p>
+</blockquote>
+</main>
+</body>
+</html>

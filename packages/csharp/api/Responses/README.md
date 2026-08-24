@@ -5,10 +5,15 @@ A generic response wrapper for consistent API responses across your application.
 ## Features
 
 - Generic and non-generic versions
+
 - Built-in factory methods for common response types
+
 - Automatic timestamp tracking
+
 - Support for multiple error messages
+
 - Trace ID support for debugging
+
 - Standard HTTP status codes
 
 ## Usage
@@ -116,12 +121,17 @@ return Ok(response);
 ## Benefits
 
 1. **Consistency** - All API responses follow the same format
+
 2. **Error Handling** - Standardized error response structure
+
 3. **Debugging** - Built-in timestamp and trace ID
+
 4. **Client-Friendly** - Easy to parse and handle on client side
+
 5. **Type Safety** - Generic type support for strongly-typed data
 
 ## Dependencies
 
 - .NET 6.0 or higher
+
 - No external NuGet packages required

@@ -1,0 +1,751 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Broker Control Plane Console 設計</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Broker Control Plane Console 設計</h1>
+<p>Date: 2026-03-31<br>
+Status: draft for review</p>
+<h2>目的</h2>
+<p>將現有以 <a href="/d:/Bricks4Agent/packages/csharp/broker/wwwroot/line-admin.html">line-admin.html</a> 為核心的本機管理頁，升級為真正的 <strong>Broker Control Plane Console</strong>。</p>
+<p>這個 console 不再只是 LINE sidecar 的操作面，而是整個 broker 的：</p>
+<ul>
+<li>身分與註冊入口</li>
+<li>使用者管理面</li>
+<li>對話與任務工作台</li>
+<li>記憶與狀態觀測面</li>
+<li>Artifact / Delivery / Review 控制面</li>
+<li>Browser / Deployment / Tool / Alert 操作面</li>
+</ul>
+<p>LINE 仍然是一般使用者的重要入口，但完整功能以 <strong>Web</strong> 提供。</p>
+<hr>
+<h2>問題定義</h2>
+<p>現有 <code>line-admin.html</code> 已經有可用雛型，但仍有明顯限制：</p>
+<ul>
+<li>結構上仍是 LINE operator 頁，而不是完整 control plane</li>
+<li>身分系統只有 localhost local-admin，沒有正式 web 使用者註冊/登入</li>
+<li>對一般使用者與 operator/admin 沒有明確角色分層</li>
+<li>對話、workflow、memory、artifact、delivery、browser、deployment 仍是分散視圖，缺乏同一使用者/任務的整體工作台</li>
+<li><code>/proj</code> 與 project interview 已上線，但沒有對應的 operator-grade 管理與審查介面</li>
+<li>記憶目前可存在 broker 中，但缺少完整的可視化、稽核與控制能力</li>
+</ul>
+<p>這會造成兩個問題：</p>
+<ol>
+<li>
+<p><strong>操作斷裂</strong><br>
+   一般使用者在 LINE 啟動流程，進到 web 後卻沒有同一套身份與工作台。</p>
+</li>
+<li>
+<p><strong>控制面不足</strong><br>
+   Broker 雖然已經擁有高階協調、artifact delivery、workflow、browser binding 等控制能力，但管理端沒有把這些真相組織成可操作的 console。</p>
+</li>
+</ol>
+<hr>
+<h2>設計目標</h2>
+<p>第 1 版 Control Plane Console 要達成：</p>
+<ol>
+<li>
+<p>提供 <strong>正式 web 身分入口</strong>
+   - 註冊
+   - 登入
+   - 待審核狀態
+   - 與 LINE identity 綁定</p>
+</li>
+<li>
+<p>提供 <strong>角色分層</strong>
+   - <code>admin</code>
+   - <code>operator</code>
+   - <code>reviewer</code>
+   - <code>user</code></p>
+</li>
+<li>
+<p>提供 <strong>雙工作面</strong>
+   - 使用者工作區
+   - 管理/操作控制台</p>
+</li>
+<li>
+<p>提供 <strong>任務與記憶觀測面</strong>
+   - 對話紀錄
+   - profile / projected memory
+   - project interview assertions / versions / DAG
+   - execution intents / handoffs</p>
+</li>
+<li>
+<p>提供 <strong>artifact 與 delivery 控制面</strong>
+   - artifact 列表與詳細資料
+   - Drive delivery 狀態
+   - broker signed download fallback 狀態
+   - retry / regenerate / inspect</p>
+</li>
+<li>
+<p>保持 <strong>broker 為唯一真相</strong>
+   - console 只讀寫 broker 擁有的狀態
+   - 不建立前端自有真相模型</p>
+</li>
+</ol>
+<hr>
+<h2>非目標</h2>
+<p>第 1 版不做：</p>
+<ul>
+<li>完整 public SaaS multi-tenant portal</li>
+<li>外部 OAuth SSO</li>
+<li>email magic link</li>
+<li>任意第三方身份供應商登入</li>
+<li>重新設計整個前端 runtime</li>
+<li>將整個 console 重寫成 React/Vue SPA</li>
+</ul>
+<hr>
+<h2>核心設計決策</h2>
+<h3>1. 不是重做新前端，而是升級現有 <code>line-admin</code></h3>
+<p>建議採 <strong>演化式升級</strong>，不是丟棄既有頁面重做。</p>
+<p>實際做法：</p>
+<ul>
+<li>保留現有 vanilla JS / single-file admin shell 模式</li>
+<li>新增新的 entry，例如：</li>
+<li><code>control-plane.html</code></li>
+<li>原有：</li>
+<li><code>line-admin.html</code>
+  保留為相容入口，可導向新的 shell 或作為 alias</li>
+</ul>
+<p>原因：</p>
+<ul>
+<li>現有頁面已經連好了大量 <code>/api/v1/local-admin/*</code> 端點</li>
+<li>目前需求是擴充控制面，不是更換前端技術棧</li>
+<li>在同 repo 現況下，增量重構比框架重寫更可控</li>
+</ul>
+<h3>2. console 需要角色化，而不只是 admin-only</h3>
+<p>第 1 版角色：</p>
+<ul>
+<li><code>admin</code></li>
+<li>系統設定、使用者核准、權限調整、危險操作</li>
+<li><code>operator</code></li>
+<li>看 dashboard、對話、workflow、delivery、browser、deployment</li>
+<li>可執行低到中風險操作</li>
+<li><code>reviewer</code></li>
+<li>看 project interview review、artifact、task state</li>
+<li>可做 <code>/ok</code> 類型審核或人工備註</li>
+<li><code>user</code></li>
+<li>只看自己的對話、任務、artifact、review 文件、綁定狀態</li>
+</ul>
+<h3>3. 身分必須支援 Web 與 LINE 綁定</h3>
+<p>第 1 版身份模型：</p>
+<ul>
+<li><code>web account</code> 可自行註冊帳密</li>
+<li><code>line identity</code> 可獨立存在</li>
+<li>兩者可綁定成同一個 broker user identity</li>
+</ul>
+<p>這代表系統內至少要分清：</p>
+<ul>
+<li><code>account</code></li>
+<li><code>identity</code></li>
+<li><code>user</code></li>
+</ul>
+<p>建議概念：</p>
+<ul>
+<li><code>user</code>：業務上的使用者實體</li>
+<li><code>identity</code>：登入或通道身份（web / line）</li>
+<li><code>account</code>：web 認證資料（帳號密碼）</li>
+</ul>
+<h3>4. 註冊先開放，但必須審核</h3>
+<p>第 1 版採：</p>
+<ul>
+<li>web 可自助註冊</li>
+<li>註冊完成後狀態是 <code>pending_review</code></li>
+<li>未核准前不可進入完整 console</li>
+<li>admin/operator 可在 console 中審核通過或拒絕</li>
+</ul>
+<p>原因：</p>
+<ul>
+<li>control plane 不是一般 public app</li>
+<li>先做審核式開放，風險可控</li>
+<li>日後若要改成 invite-only 或 allow-all，比較容易</li>
+</ul>
+<h3>5. 記憶要以 broker 擁有的文件與狀態為中心</h3>
+<p>console 內要能看見與控制的記憶，不應只是聊天列表，而應包含多層狀態：</p>
+<ul>
+<li>raw conversation log</li>
+<li>user profile</li>
+<li>projected memory</li>
+<li>high-level interpretation records</li>
+<li>execution intents</li>
+<li>handoffs</li>
+<li>project interview task documents</li>
+<li>assertions / pending options / confirmed restatements</li>
+<li>per-version review DAG</li>
+</ul>
+<hr>
+<h2>資訊架構</h2>
+<p>建議將現有 <code>line-admin</code> 重新整理成兩大工作區：</p>
+<h3>A. User Workspace</h3>
+<p>給一般 web 使用者與已綁定 LINE 使用者使用。</p>
+<p>包含：</p>
+<ol>
+<li>
+<p><code>My Home</code>
+   - 帳號狀態
+   - 綁定狀態
+   - 最近任務
+   - 最近 artifact</p>
+</li>
+<li>
+<p><code>My Conversations</code>
+   - 自己的對話歷史
+   - 可切換 LINE / web 對話</p>
+</li>
+<li>
+<p><code>My Projects</code>
+   - <code>/proj</code> 任務列表
+   - review 狀態
+   - workflow-design PDF / JSON</p>
+</li>
+<li>
+<p><code>My Artifacts</code>
+   - 文件、網站原型、scaffold zip
+   - delivery 狀態
+   - Drive / broker 下載連結</p>
+</li>
+<li>
+<p><code>Account &amp; Linking</code>
+   - 基本資料
+   - 密碼
+   - LINE 綁定</p>
+</li>
+</ol>
+<h3>B. Control Plane Workspace</h3>
+<p>給 admin/operator/reviewer。</p>
+<p>包含：</p>
+<ol>
+<li>
+<p><code>Dashboard</code>
+   - 系統健康
+   - active users
+   - active conversations
+   - active tasks
+   - pending registrations
+   - pending reviews
+   - delivery failures
+   - browser/deployment alerts</p>
+</li>
+<li>
+<p><code>Users</code>
+   - 使用者列表
+   - pending registration queue
+   - 身分綁定
+   - 角色與權限
+   - 使用者狀態</p>
+</li>
+<li>
+<p><code>Conversations</code>
+   - 對話列表
+   - 對話詳情
+   - channel 切換
+   - 測試送訊息
+   - 清除或封存</p>
+</li>
+<li>
+<p><code>Memory</code>
+   - profile memory
+   - projected memory
+   - interpretation records
+   - execution intent store
+   - handoff records
+   - memory search / delete / inspect</p>
+</li>
+<li>
+<p><code>Project Interviews</code>
+   - active sessions
+   - session phase
+   - assertions
+   - pending options
+   - version history
+   - per-version DAG
+   - review artifact actions</p>
+</li>
+<li>
+<p><code>Artifacts &amp; Delivery</code>
+   - artifact 列表
+   - detail
+   - delivery status
+   - retry drive
+   - retry notification
+   - fallback link visibility</p>
+</li>
+<li>
+<p><code>Browser</code>
+   - site bindings
+   - user grants
+   - system bindings
+   - leases
+   - executions</p>
+</li>
+<li>
+<p><code>Deployment</code>
+   - targets
+   - previews
+   - executions</p>
+</li>
+<li>
+<p><code>Tool Specs</code>
+   - registry list
+   - detail view</p>
+</li>
+<li>
+<p><code>Alerts &amp; Audit</code>
+   - system alerts
+   - auth / registration / delivery / deployment 異常</p>
+</li>
+</ol>
+<hr>
+<h2>主要使用流程</h2>
+<h3>1. Web 註冊流程</h3>
+<ol>
+<li>使用者打開 web console</li>
+<li>看見登入 / 註冊頁</li>
+<li>使用帳號密碼註冊</li>
+<li>帳號狀態進入 <code>pending_review</code></li>
+<li>admin/operator 在 <code>Users &gt; Pending Registration</code> 審核</li>
+<li>核准後，使用者可登入 user workspace</li>
+</ol>
+<h3>2. LINE 綁定流程</h3>
+<ol>
+<li>使用者已登入 web</li>
+<li>到 <code>Account &amp; Linking</code></li>
+<li>系統顯示綁定碼或綁定步驟</li>
+<li>使用者透過 LINE 完成身份確認</li>
+<li>broker 建立 <code>web identity</code> 與 <code>line identity</code> 的對應</li>
+</ol>
+<h3>3. <code>/proj</code> 審查流程</h3>
+<ol>
+<li>使用者在 LINE 啟動 <code>/proj</code></li>
+<li>broker 建立 <code>project_interview</code> session</li>
+<li>session 狀態、assertions、versions 在 console 可見</li>
+<li>review artifact 生成後：
+   - 使用者可在 LINE 或 web 看
+   - reviewer/operator 可從 console 檢視</li>
+<li><code>/ok</code>、<code>/revise</code>、<code>/cancel</code> 在 console 也可做對應管理操作</li>
+</ol>
+<h3>4. 記憶檢查與控制流程</h3>
+<ol>
+<li>operator 進入某個使用者</li>
+<li>看到：
+   - conversations
+   - profile
+   - projected memory
+   - interpretations
+   - execution intents
+   - project interview assertions</li>
+<li>可做：
+   - inspect
+   - compare
+   - clear
+   - mark
+   - export</li>
+</ol>
+<hr>
+<h2>UI 設計原則</h2>
+<h3>1. 不是一般後台表單堆疊</h3>
+<p>這個 console 應是 <strong>operator workspace</strong>，不是一組 CRUD 表單拼起來的頁面。</p>
+<p>應採：</p>
+<ul>
+<li>左側 global navigation</li>
+<li>上方 context bar</li>
+<li>主區多 pane 工作台</li>
+<li>detail drawer / inspector panel</li>
+<li>timeline / event-oriented views</li>
+</ul>
+<h3>2. 一切以實體關聯切換</h3>
+<p>應支援從任何核心實體切換到關聯實體：</p>
+<ul>
+<li>user -&gt; conversations -&gt; project interview -&gt; artifacts -&gt; delivery</li>
+<li>task -&gt; assertions -&gt; version DAG -&gt; review artifact</li>
+<li>artifact -&gt; delivery -&gt; notification -&gt; owner</li>
+</ul>
+<h3>3. 對一般使用者與 operator 分開語氣</h3>
+<ul>
+<li>User workspace：簡潔、少術語</li>
+<li>Control plane：可暴露內部名詞，但仍要可讀</li>
+</ul>
+<hr>
+<h2>Broker 端需要補的能力</h2>
+<p>目前已有不少 <code>/api/v1/local-admin/*</code> 端點，但要支撐完整 control plane，還需要新增或整理下列能力。</p>
+<h3>A. Auth / Registration</h3>
+<p>新增建議：</p>
+<ul>
+<li><code>POST /api/v1/web-auth/register</code></li>
+<li><code>POST /api/v1/web-auth/login</code></li>
+<li><code>POST /api/v1/web-auth/logout</code></li>
+<li><code>GET /api/v1/web-auth/me</code></li>
+<li><code>POST /api/v1/web-auth/change-password</code></li>
+<li><code>GET /api/v1/local-admin/web-users</code></li>
+<li><code>POST /api/v1/local-admin/web-users/review</code></li>
+<li><code>POST /api/v1/local-admin/web-users/roles</code></li>
+</ul>
+<h3>B. Identity Linking</h3>
+<ul>
+<li><code>POST /api/v1/web/linking/start-line-link</code></li>
+<li><code>POST /api/v1/high-level/line/link/complete</code></li>
+<li><code>GET /api/v1/local-admin/users/{userId}/identities</code></li>
+</ul>
+<h3>C. Memory / State Inspection</h3>
+<ul>
+<li><code>GET /api/v1/local-admin/memory/users/{userId}/profile</code></li>
+<li><code>GET /api/v1/local-admin/memory/users/{userId}/projected</code></li>
+<li><code>GET /api/v1/local-admin/memory/users/{userId}/interpretations</code></li>
+<li><code>GET /api/v1/local-admin/memory/users/{userId}/execution-intents</code></li>
+<li><code>GET /api/v1/local-admin/memory/users/{userId}/handoffs</code></li>
+<li><code>GET /api/v1/local-admin/project-interviews</code></li>
+<li><code>GET /api/v1/local-admin/project-interviews/{taskId}</code></li>
+<li><code>GET /api/v1/local-admin/project-interviews/{taskId}/versions/{version}</code></li>
+<li><code>POST /api/v1/local-admin/project-interviews/{taskId}/actions</code></li>
+</ul>
+<h3>D. Dashboard</h3>
+<ul>
+<li><code>GET /api/v1/local-admin/dashboard/summary</code></li>
+<li><code>GET /api/v1/local-admin/dashboard/queues</code></li>
+<li><code>GET /api/v1/local-admin/dashboard/failures</code></li>
+</ul>
+<hr>
+<h2>資料模型建議</h2>
+<h3>Web 使用者相關</h3>
+<p>建議新增：</p>
+<ul>
+<li><code>web_users</code></li>
+<li><code>web_user_sessions</code></li>
+<li><code>user_identities</code></li>
+<li><code>user_links</code></li>
+</ul>
+<p>至少需要：</p>
+<ul>
+<li><code>web_user_id</code></li>
+<li><code>user_id</code></li>
+<li><code>username</code></li>
+<li><code>password_hash</code></li>
+<li><code>status</code></li>
+<li><code>pending_review</code></li>
+<li><code>active</code></li>
+<li><code>rejected</code></li>
+<li><code>disabled</code></li>
+<li><code>role</code></li>
+<li><code>user</code></li>
+<li><code>reviewer</code></li>
+<li><code>operator</code></li>
+<li><code>admin</code></li>
+</ul>
+<h3>身分綁定</h3>
+<p><code>user_identities</code> 至少需要：</p>
+<ul>
+<li><code>identity_id</code></li>
+<li><code>user_id</code></li>
+<li><code>identity_type</code></li>
+<li><code>web</code></li>
+<li><code>line</code></li>
+<li><code>external_id</code></li>
+<li><code>linked_at</code></li>
+<li><code>status</code></li>
+</ul>
+<h3>Project interview admin projection</h3>
+<p>目前 <code>project_interview</code> 真相仍存在 broker 文件中；第 1 版不建議複製一份新的 SQL 真相，而是：</p>
+<ul>
+<li>以 document 為真相</li>
+<li>需要 dashboard / list 時再做 projection 或 summary cache</li>
+</ul>
+<hr>
+<h2>前端實作策略</h2>
+<h3>路線選擇</h3>
+<p>推薦使用：</p>
+<ul>
+<li><strong>保留 vanilla JS + 單頁 shell</strong></li>
+<li><strong>模組化拆分現有 <code>line-admin.html</code> 的 script</strong></li>
+<li><strong>逐步從單檔 HTML 演進成多檔 JS module</strong></li>
+</ul>
+<p>不建議第 1 版：</p>
+<ul>
+<li>直接整頁重寫成 React</li>
+<li>同時改寫 broker 前端 runtime</li>
+</ul>
+<h3>建議檔案拆分</h3>
+<p>新增建議：</p>
+<ul>
+<li><code>packages/csharp/broker/wwwroot/control-plane.html</code></li>
+<li><code>packages/csharp/broker/wwwroot/control-plane/</code></li>
+<li><code>app.js</code></li>
+<li><code>state.js</code></li>
+<li><code>api.js</code></li>
+<li><code>auth.js</code></li>
+<li><code>dashboard.js</code></li>
+<li><code>users.js</code></li>
+<li><code>conversations.js</code></li>
+<li><code>memory.js</code></li>
+<li><code>project-interviews.js</code></li>
+<li><code>artifacts.js</code></li>
+<li><code>delivery.js</code></li>
+<li><code>browser.js</code></li>
+<li><code>deployment.js</code></li>
+<li><code>tools.js</code></li>
+<li><code>alerts.js</code></li>
+<li><code>styles.css</code></li>
+</ul>
+<p>相容策略：</p>
+<ul>
+<li><code>line-admin.html</code> 可先保留</li>
+<li>再視需要轉為：</li>
+<li>redirect 到 <code>control-plane.html</code></li>
+<li>或載入同一組 JS shell</li>
+</ul>
+<hr>
+<h2>分階段實作計畫</h2>
+<h3>Phase 1: Console Foundation</h3>
+<p>目標：</p>
+<ul>
+<li>建立新的 <code>control-plane.html</code> shell</li>
+<li>將現有 <code>line-admin</code> 主要分頁模組化</li>
+<li>補 <code>Dashboard</code> 與共用 app shell</li>
+</ul>
+<p>交付：</p>
+<ul>
+<li>可登入 local admin</li>
+<li>可切換 dashboard / users / conversations / delivery / workflow</li>
+</ul>
+<h3>Phase 2: Web Auth + Registration</h3>
+<p>目標：</p>
+<ul>
+<li>web 使用者註冊 / 登入</li>
+<li>pending review queue</li>
+<li>role-based access</li>
+</ul>
+<p>交付：</p>
+<ul>
+<li><code>user</code> workspace 初版</li>
+<li>admin/operator registration review</li>
+</ul>
+<h3>Phase 3: Memory &amp; Project Interview Console</h3>
+<p>目標：</p>
+<ul>
+<li>完整 project interview 管理面</li>
+<li>assertion / version / DAG 可視化</li>
+<li>memory inspection 面板</li>
+</ul>
+<p>交付：</p>
+<ul>
+<li>operator/reviewer 可完整檢視 <code>/proj</code> 任務狀態</li>
+</ul>
+<h3>Phase 4: Identity Linking + Unified Workspace</h3>
+<p>目標：</p>
+<ul>
+<li>web 與 LINE identity 綁定</li>
+<li>user workspace 與 LINE 任務整合</li>
+</ul>
+<p>交付：</p>
+<ul>
+<li>同一使用者能在 web 看自己在 LINE 啟動的 <code>/proj</code> 任務與 artifacts</li>
+</ul>
+<hr>
+<h2>測試策略</h2>
+<h3>後端</h3>
+<ul>
+<li>xUnit unit tests</li>
+<li>auth / registration</li>
+<li>identity linking</li>
+<li>role checks</li>
+<li>dashboard summary composition</li>
+<li>
+<p>project interview projection</p>
+</li>
+<li>
+<p>xUnit integration tests</p>
+</li>
+<li>web register / login / review</li>
+<li>role-gated endpoints</li>
+<li>project interview admin detail</li>
+<li>artifact / delivery / fallback views</li>
+</ul>
+<h3>前端</h3>
+<ul>
+<li>Vitest</li>
+<li>dashboard rendering</li>
+<li>user list / detail</li>
+<li>project interview inspector</li>
+<li>
+<p>memory panel rendering</p>
+</li>
+<li>
+<p>Playwright</p>
+</li>
+<li>admin login</li>
+<li>registration review</li>
+<li>select user -&gt; inspect conversation -&gt; inspect memory -&gt; inspect artifacts</li>
+<li>reviewer open project interview -&gt; inspect versions -&gt; open PDF/JSON link</li>
+</ul>
+<hr>
+<h2>建議的第一個實作切片</h2>
+<p>若進入實作，我建議第一批不要同時碰所有功能，而是先做這個最小切片：</p>
+<ol>
+<li>新 <code>control-plane.html</code> shell</li>
+<li>從 <code>line-admin.html</code> 拆出：
+   - dashboard
+   - users
+   - conversations
+   - delivery</li>
+<li>補 <code>Dashboard</code> API</li>
+<li>補 <code>Project Interviews</code> read-only operator view</li>
+<li>補 <code>web register/login/review</code> 基礎骨架</li>
+</ol>
+<p>這樣能最快把「admin 頁」升級成真正的 control plane 雛型，同時把 <code>/proj</code> 與使用者註冊兩條線接進來。</p>
+<hr>
+<h2>設計結論</h2>
+<p>這個功能不應被視為「把 <code>line-admin.html</code> 多加幾個 tab」。</p>
+<p>更正確的定位是：</p>
+<ul>
+<li>建立一個 <strong>Broker Control Plane Console</strong></li>
+<li>以 broker 為唯一真相</li>
+<li>將 LINE、Web、Workflow、Memory、Artifact、Delivery、Browser、Deployment 統一到同一個操作面</li>
+</ul>
+<p>第 1 版的最務實路線是：</p>
+<ul>
+<li>演化現有 <code>line-admin</code></li>
+<li>補正式 web auth / registration / review</li>
+<li>建立 role-based console</li>
+<li>先把 <code>/proj</code> 與 memory/state inspection 串起來</li>
+</ul>
+<p>這樣既不會把工程重心浪費在前端重寫，也能真正補上目前平台最缺的控制面。</p>
+<hr>
+<h2>圖表總覽</h2>
+<p>以下圖表用來補足這份設計文件的整體視角。<br>
+原則上：</p>
+<ul>
+<li>使用者先看圖，再讀各章節細節</li>
+<li>圖中的英文識別字以實作命名為準</li>
+<li>圖的語意說明以中文為主</li>
+</ul>
+<h3>圖 1：整體控制面架構</h3>
+<pre><code class="language-mermaid">flowchart LR
+    A[一般使用者&lt;br/&gt;LINE / Web] --&gt; B[Broker Control Plane Console]
+    A --&gt; C[LINE 對話入口]
+
+    B --&gt; D[Web Auth / Registration]
+    B --&gt; E[User Workspace]
+    B --&gt; F[Operator Workspace]
+
+    C --&gt; G[HighLevelCoordinator]
+    E --&gt; G
+    F --&gt; G
+
+    G --&gt; H[Broker State / Documents]
+    G --&gt; I[Workflow / Project Interview]
+    G --&gt; J[Artifact / Delivery]
+    G --&gt; K[Browser / Deployment / Tool Specs]
+
+    H --&gt; L[(broker.db / document state)]
+    I --&gt; L
+    J --&gt; L
+    K --&gt; L
+</code></pre>
+<h3>圖 2：角色與工作區</h3>
+<pre><code class="language-mermaid">flowchart TD
+    A[Web Console] --&gt; B{角色}
+
+    B --&gt; C[user]
+    B --&gt; D[reviewer]
+    B --&gt; E[operator]
+    B --&gt; F[admin]
+
+    C --&gt; C1[My Home]
+    C --&gt; C2[My Conversations]
+    C --&gt; C3[My Projects]
+    C --&gt; C4[My Artifacts]
+    C --&gt; C5[Account and Linking]
+
+    D --&gt; D1[Review Queue]
+    D --&gt; D2[Project Interview Versions]
+    D --&gt; D3[Artifact Review]
+
+    E --&gt; E1[Dashboard]
+    E --&gt; E2[Users]
+    E --&gt; E3[Conversations]
+    E --&gt; E4[Memory]
+    E --&gt; E5[Artifacts and Delivery]
+    E --&gt; E6[Browser / Deployment]
+
+    F --&gt; F1[Registration Review]
+    F --&gt; F2[Role and Permission Control]
+    F --&gt; F3[System Settings]
+    F --&gt; F4[High-risk Operations]
+</code></pre>
+<h3>圖 3：身份與綁定模型</h3>
+<pre><code class="language-mermaid">flowchart LR
+    A[Web Account&lt;br/&gt;username + password] --&gt; B[Broker User]
+    C[LINE Identity&lt;br/&gt;line user id] --&gt; B
+
+    B --&gt; D[User Workspace]
+    B --&gt; E[Conversations]
+    B --&gt; F[Project Interviews]
+    B --&gt; G[Artifacts]
+
+    H[Pending Registration] --&gt; A
+    I[Admin / Operator Review] --&gt; H
+    J[Linking Flow] --&gt; C
+    J --&gt; A
+</code></pre>
+<h3>圖 4：<code>/proj</code> 與審查控制面</h3>
+<pre><code class="language-mermaid">flowchart TD
+    A[LINE 使用者輸入 /proj] --&gt; B[Project Interview Session]
+    B --&gt; C[Project Name]
+    C --&gt; D[Project Scale]
+    D --&gt; E[Structure Direction]
+    E --&gt; F[Confirmed Assertions]
+    F --&gt; G[Project Definition JSON]
+    G --&gt; H[workflow-design PDF / JSON]
+
+    H --&gt; I{使用者或 reviewer 表態}
+    I --&gt;|/ok| J[Confirmed]
+    I --&gt;|/revise| K[New Version DAG]
+    I --&gt;|/cancel| L[Cancelled]
+
+    M[Control Plane Console] --&gt; B
+    M --&gt; F
+    M --&gt; G
+    M --&gt; H
+    M --&gt; K
+</code></pre>
+<h3>圖 5：建議分階段實作順序</h3>
+<pre><code class="language-mermaid">flowchart LR
+    P1[Phase 1&lt;br/&gt;Console Foundation] --&gt; P2[Phase 2&lt;br/&gt;Web Auth and Registration]
+    P2 --&gt; P3[Phase 3&lt;br/&gt;Memory and Project Interview Views]
+    P3 --&gt; P4[Phase 4&lt;br/&gt;Identity Linking and Unified Workspace]
+
+    P1 --&gt; A1[control-plane shell]
+    P1 --&gt; A2[dashboard]
+    P1 --&gt; A3[users / conversations / delivery]
+
+    P2 --&gt; B1[register / login]
+    P2 --&gt; B2[pending review]
+    P2 --&gt; B3[role-based access]
+
+    P3 --&gt; C1[memory panels]
+    P3 --&gt; C2[assertions / versions / DAG]
+    P3 --&gt; C3[review artifact visibility]
+
+    P4 --&gt; D1[web + line identity link]
+    P4 --&gt; D2[user workspace unification]
+    P4 --&gt; D3[project + artifact continuity]
+</code></pre>
+</main>
+</body>
+</html>

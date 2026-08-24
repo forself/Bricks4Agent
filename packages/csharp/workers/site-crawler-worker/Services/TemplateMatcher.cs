@@ -160,14 +160,18 @@ public sealed class TemplateMatcher
 
         if (string.IsNullOrWhiteSpace(chosen))
         {
-            chosen = string.IsNullOrWhiteSpace(fallback)
-                ? availableComponents.FirstOrDefault(type => type == "AtomicSection") ?? availableComponents.First()
-                : fallback;
+            // Fail-closed: when no accepted component matches, fall back only to a designated neutral
+            // container that exists in the manifest — never an arbitrary `.First()` pick, never a
+            // fabricated component. If even the neutral container is absent, leave the slot unresolved
+            // and record the gap.
+            chosen = !string.IsNullOrWhiteSpace(fallback) ? fallback : NeutralContainer();
             AddComponentRequest(
                 plan,
                 slot.Name,
                 preferred,
-                "component_gap:no accepted component is declared in the loaded manifest",
+                string.IsNullOrWhiteSpace(chosen)
+                    ? "component_gap:fail_closed:no accepted or neutral component is available"
+                    : "component_gap:no accepted component is declared in the loaded manifest",
                 page.PageUrl,
                 block?.Section.SourceSelector ?? string.Empty);
         }
@@ -191,6 +195,12 @@ public sealed class TemplateMatcher
             Confidence = block?.Confidence ?? 0.5,
             Reasons = block?.Reasons.ToList() ?? [$"required_slot:{slot.Name}"],
         };
+    }
+
+    private string NeutralContainer()
+    {
+        return new[] { "AtomicSection", "ContentSection" }
+            .FirstOrDefault(availableComponents.Contains) ?? string.Empty;
     }
 
     private static SiteIntentBlock? SelectBlockForSlot(

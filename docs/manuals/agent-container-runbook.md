@@ -13,11 +13,16 @@ Date: 2026-06-13
 ## 2. 前置需求
 
 - **podman**(Windows 用 podman machine / WSL backend)。首次需 `podman machine start`(若 `LAST UP: Never`)。
+
 - **node**(跑 stack 啟動腳本)。
+
 - LLM 後端三選一:
-  - mock(內建,無需外部)
-  - 本機 **ollama**(`localhost:11434`,需先 `ollama pull <model>`)
-  - **商用 API**(OpenAI/ChatGPT,需 API key)
+
+- mock(內建,無需外部)
+
+- 本機 **ollama**(`localhost:11434`,需先 `ollama pull <model>`)
+
+- **商用 API**(OpenAI-compatible 或 Anthropic Claude,需 API key)
 
 ## 3. 三條 LLM 路徑(都已實測通過 2026-06-13)
 
@@ -39,9 +44,9 @@ node tools/agent/tests/test-podman-governed-stack.js
 node tools/agent/tests/test-podman-ollama-host-stack.js
 ```
 
-自動選 `/api/tags` 第一個模型。要指定模型用 `STACK_MODEL`。實測:qwen3.6(23GB,native tool calling)→ `OLLAMA_STACK_OK`。
+自動從 `/api/tags` 選一個可用模型。要指定模型用 `STACK_MODEL`。這條 live-host 驗證會檢查 broker-mediated Ollama round-trip、agent completion、session close 與無 broker/API error；精確 sentinel 文字只由 mock stack 保證，因為不同本機模型可能改寫回覆。
 
-### 3.3 商用 API(ChatGPT)
+### 3.3 商用 API(OpenAI-compatible / Claude)
 
 broker `LlmProxy` 的 openai provider 支援 `v1/chat/completions`(chat)與 `v1/responses`(responses),帶 Bearer key。把 BaseUrl 指向真實 OpenAI 即可:
 
@@ -53,14 +58,19 @@ $env:STACK_MODEL = "gpt-5.4-mini"
 node tools/agent/tests/test-podman-openai-compatible-stack.js
 ```
 
-不設 `OPENAI_BASE_URL` 時預設指向內建 mock-openai。實測:真實 gpt-5.4-mini(responses)→ broker `GET /v1/models` + `POST /v1/responses` 皆 200,agent 收到回應經治理鏈回 `STACK_OK`。
+不設 `OPENAI_BASE_URL` 時預設指向內建 mock-openai，這是目前可離線重跑的 OpenAI-compatible protocol 驗證。若設定 `OPENAI_BASE_URL=https://api.openai.com`、`OPENAI_API_KEY`、`OPENAI_API_FORMAT` 與 `STACK_MODEL`，同一 compose path 會改由 broker `LlmProxy` 打真實 OpenAI；真實模型測試依外部 API key 與模型行為而定。
 
-> 兩條 LLM 路徑釐清:LINE 高階模型(`HighLevelLlm`,appsettings)早已配真實 OpenAI(api.openai.com / gpt-5.4-mini);受控代理容器走 broker `LlmProxy`,本節補的是它也能用商用 API。
+`LlmProxy` 也支援 Anthropic Claude Messages API (`Provider=anthropic`, `BaseUrl=https://api.anthropic.com`, `ApiFormat=messages`, `DefaultModel=claude-sonnet-4-6`)；這條目前由 broker/sidecar 設定與單元測試覆蓋，不把既有 OpenAI-compatible compose 測試誤稱為 Claude compose stack。
 
-## 4. 用真實 OpenAI 時的注意
+> 兩條 LLM 路徑釐清:LINE 高階模型(`HighLevelLlm`)目前 sidecar 會優先讀 `ANTHROPIC_API_KEY` 並設定 `anthropic` / `claude-sonnet-4-6`;沒有該 key 時才走 OpenAI-compatible `Api.txt` fallback。受控代理容器走 broker `LlmProxy`,agent 不直接持有 provider key。
+
+## 4. 用真實商用 API 時的注意
 
 - `OPENAI_API_FORMAT`:responses API 的原始回應把文字放在 `output[].content[].output_text`(頂層 `output_text` 是 SDK 便利欄位,真實 API 不一定有);broker parser 兩者皆支援。gpt-5 系列的 `output[]` 會夾帶 reasoning item,parser 會略過。
-- key 不應放進 repo;放 `C:\secure\Bricks4Agent\Api.txt` 或環境變數。
+
+- Claude Messages API 需要 `max_tokens`;目前預設 `MaxOutputTokens=4096`。
+
+- key 不應放進 repo;Anthropic 使用 `ANTHROPIC_API_KEY`,OpenAI-compatible fallback 使用 `C:\secure\Bricks4Agent\Api.txt` 或環境變數。
 
 ## 5. FunctionPool 與健康端點
 
@@ -69,16 +79,17 @@ node tools/agent/tests/test-podman-openai-compatible-stack.js
 ## 6. 疑難排解(2026-06-13 通電時實際遇到並修掉的)
 
 | 症狀 | 根因 | 已修 |
-|------|------|------|
+|---|---|---|
 | broker 容器 build `NETSDK1152` | broker 引用 site-crawler-worker,worker appsettings 流入 publish | broker.csproj publish target 移除重複 |
 | broker `FunctionPool=false` 啟動即崩 | HealthScoreService 無條件依賴 IWorkerRegistry | 監控只在 FunctionPool 啟用時註冊 |
 | register 回 500 `No data exists` | Linux Sqlite `IsDBNull` edge case | BaseOrm 改用 `GetValue` |
 | `GET /api/v1/health` 回 `Body was inferred` | health endpoint 在 FunctionPool=false 仍註冊但服務缺失 | endpoint 註冊也 gate 在 FunctionPool |
 | 真實 OpenAI 回 200 但 agent 輸出空 | parser 只認頂層 `output_text` | 從 `output[]` 聚合 message content |
+| Claude 回 `400` | Messages API 缺 `max_tokens` 或 request shape 不符 | 確認 `Provider=anthropic` 且使用 broker Claude adapter |
 
 ## 7. 網路隔離(§13.1,已實作 2026-06-13)
 
-三條 compose stack 都把 **agent 容器單獨放在 `internal: true` 的 `agent-net`**——該網路無對外閘道,agent 只能連 broker、無法自行對外連網。broker 另接 bridge 網路(`egress`/`control-net`/`worker-net`),保有對外出口(真實 OpenAI、host ollama)與 host port-publishing;商用 API 仍可用,因為**出口是 broker 不是 agent**(agent 不持金鑰)。agent 無 published port,故放 internal 網路安全(ingress 走 broker)。
+三條 compose stack 都把 **agent 容器單獨放在 `internal: true` 的 `agent-net`**——該網路無對外閘道,agent 只能連 broker、無法自行對外連網。broker 另接 bridge 網路(`egress`/`control-net`/`worker-net`),保有對外出口(真實 OpenAI/Claude、host ollama)與 host port-publishing;商用 API 仍可用,因為**出口是 broker 不是 agent**(agent 不持金鑰)。agent 無 published port,故放 internal 網路安全(ingress 走 broker)。
 
 為何不直接把共用網路設成 internal:會連帶封住同網路上「有 published port 的 mock LLM」(internal 網路上的 port-publishing 在 docker/podman 行為不可靠)。所以只密封 agent。
 
@@ -100,7 +111,7 @@ mock stack 已實測:agent 在 `agent-net` 仍能註冊 session、經 broker 裁
 三條 compose stack 的 **agent 服務**(受控主體,不受信任)都套上 OS 層沙箱:
 
 | 設定 | 作用 |
-|------|------|
+|---|---|
 | `read_only: true` | rootfs 唯讀;`/workspace` bind mount 仍可寫(唯讀不影響掛載卷) |
 | `tmpfs: [/tmp]` | 唯一可寫的 rootfs 路徑放 tmpfs(`os.tmpdir()` 用) |
 | `cap_drop: [ALL]` | 丟掉所有 Linux capability(agent 以非 root uid 10001 跑,無需任何 cap) |
@@ -125,6 +136,7 @@ mock stack 已實測:套上述 hardening 後 agent 仍能完成 governed `read_f
 `execution-adapter-worker` 讓受控 agent 能真的做事(不再只讀):agent 產生結構化請求 → broker 裁決(grant/quota/scope/policy)→ adapter worker 執行並附證據。agent 永遠碰不到 adapter,只有 broker 會 dispatch。
 
 兩個能力:
+
 | 能力 / route | 行為 |
 |------|------|
 | `repo.patch.apply` / `execution.repo.apply_patch` | 驗 patch(非自由 shell)、驗 base_commit==HEAD、限 `scope.allowed_paths`、`git apply --check` 後套用、存 diff 證據、支援 idempotency_key(重放回前次結果不重套) |
@@ -133,6 +145,7 @@ mock stack 已實測:套上述 hardening 後 agent 仍能完成 governed `read_f
 adapter 是**受信任執行節點**:套 §13.2 OS 加固(非 root uid 10004、read-only rootfs、cap-drop ALL、no-new-privileges、無 docker socket),但與 agent 不同 —— 可寫 workspace(它就是經控制平面中介的寫入路徑)、有出口(build/test restore)。
 
 驗證:
+
 ```bash
 # broker 單元測試(含 38 條執行配接器斷言,對真實 git 操作)
 dotnet run --project packages/csharp/tests/broker-tests/Broker.Tests.csproj

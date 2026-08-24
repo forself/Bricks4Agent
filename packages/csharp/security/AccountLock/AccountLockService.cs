@@ -37,7 +37,7 @@ namespace Bricks4Agent.Security.AccountLock
         /// <summary>
         /// Lock a user account
         /// </summary>
-        AccountLockRecord LockAccount(LockAccountRequest request, int? adminUserId = null, string adminUsername = null);
+        AccountLockRecord LockAccount(LockAccountRequest request, int? adminUserId = null, string? adminUsername = null);
 
         /// <summary>
         /// Lock account due to failed login attempts
@@ -62,7 +62,7 @@ namespace Bricks4Agent.Security.AccountLock
         /// <summary>
         /// Unlock specific lock by ID
         /// </summary>
-        bool UnlockById(long lockId, int adminUserId, string adminUsername, string reason);
+        bool UnlockById(long lockId, int adminUserId, string adminUsername, string? reason);
 
         #endregion
 
@@ -149,15 +149,15 @@ namespace Bricks4Agent.Security.AccountLock
         private readonly IFailedAttemptTracker _attemptTracker;
 
         // Event for notifying other systems
-        public event Action<AccountLockRecord> OnAccountLocked;
-        public event Action<AccountLockRecord> OnAccountUnlocked;
-        public event Action<IpLock> OnIpLocked;
-        public event Action<IpLock> OnIpUnlocked;
+        public event Action<AccountLockRecord>? OnAccountLocked;
+        public event Action<AccountLockRecord>? OnAccountUnlocked;
+        public event Action<IpLock>? OnIpLocked;
+        public event Action<IpLock>? OnIpUnlocked;
 
         public AccountLockService(
             IAccountLockRepository repository,
-            AccountLockConfig config = null,
-            IFailedAttemptTracker attemptTracker = null)
+            AccountLockConfig? config = null,
+            IFailedAttemptTracker? attemptTracker = null)
         {
             _repository = repository ?? throw new ArgumentNullException(nameof(repository));
             _config = config ?? new AccountLockConfig();
@@ -238,7 +238,7 @@ namespace Bricks4Agent.Security.AccountLock
         #region Account Lock Operations
 
         /// <inheritdoc />
-        public AccountLockRecord LockAccount(LockAccountRequest request, int? adminUserId = null, string adminUsername = null)
+        public AccountLockRecord LockAccount(LockAccountRequest request, int? adminUserId = null, string? adminUsername = null)
         {
             if (request == null)
                 throw new ArgumentNullException(nameof(request));
@@ -350,7 +350,7 @@ namespace Bricks4Agent.Security.AccountLock
 
             if (request.LockId.HasValue)
             {
-                var success = UnlockById(request.LockId.Value, adminUserId, adminUsername, request.Reason);
+                var success = UnlockById(request.LockId.Value, adminUserId, unlockedBy, request.Reason);
                 count = success ? 1 : 0;
             }
             else if (request.Scope.HasValue)
@@ -369,7 +369,7 @@ namespace Bricks4Agent.Security.AccountLock
         }
 
         /// <inheritdoc />
-        public bool UnlockById(long lockId, int adminUserId, string adminUsername, string reason)
+        public bool UnlockById(long lockId, int adminUserId, string adminUsername, string? reason)
         {
             var lockRecord = _repository.GetLock(lockId);
             if (lockRecord == null || !lockRecord.IsActive)
@@ -653,7 +653,7 @@ namespace Bricks4Agent.Security.AccountLock
         private static string HashIpAddress(string ipAddress)
         {
             if (string.IsNullOrEmpty(ipAddress))
-                return null;
+                return string.Empty;
 
             using var sha256 = SHA256.Create();
             var bytes = Encoding.UTF8.GetBytes(ipAddress.ToLowerInvariant());

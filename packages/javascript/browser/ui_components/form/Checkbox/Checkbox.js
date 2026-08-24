@@ -1,4 +1,5 @@
 import { createComponentState } from '../../utils/component-state.js';
+import { Icon } from '../../common/Icon/index.js';
 
 export class Checkbox {
     constructor(options = {}) {
@@ -44,15 +45,6 @@ export class Checkbox {
             availability: this.options.disabled ? 'disabled' : 'enabled',
             checked: this.checked
         };
-    }
-
-    _getCheckmarkMarkup(size) {
-        const iconSize = Math.max(10, size - 8);
-        return `
-            <svg viewBox="0 0 12 12" fill="none" style="width: ${iconSize}px; height: ${iconSize}px;">
-                <path d="M2 6L5 9L10 3" stroke="var(--cl-text-inverse)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-        `;
     }
 
     _getSizeStyles() {
@@ -163,7 +155,12 @@ export class Checkbox {
         if (this.box) {
             this.box.style.borderColor = state.checked ? 'var(--cl-primary)' : 'var(--cl-text-light)';
             this.box.style.background = state.checked ? 'var(--cl-primary)' : 'var(--cl-bg)';
-            this.box.innerHTML = state.checked ? this._getCheckmarkMarkup(size) : '';
+            this._checkIcon?.destroy();
+            this._checkIcon = null;
+            if (state.checked) {
+                this._checkIcon = new Icon({ name: 'check', size: Math.max(10, size - 8), color: 'var(--cl-text-inverse)' });
+                this._checkIcon.mount(this.box);
+            }
         }
     }
 
@@ -224,6 +221,8 @@ export class Checkbox {
 
     destroy() {
         this.send('DESTROY');
+        this._checkIcon?.destroy();
+        this._checkIcon = null;
         if (this.element?.parentNode) {
             this.element.remove();
         }

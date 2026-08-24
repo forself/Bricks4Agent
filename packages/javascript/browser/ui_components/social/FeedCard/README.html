@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FeedCard</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>FeedCard</h1>
+<p>Facebook 風格的動態貼文卡片，顯示作者、時間、類型、內容、圖片 Grid 和標籤。支援內容截斷展開。</p>
+<h2>API</h2>
+<h3>Constructor</h3>
+<pre><code class="language-js">import { FeedCard } from './FeedCard.js';
+
+const feed = new FeedCard(options);
+</code></pre>
+<p><strong>options 參數：</strong></p>
+<table>
+<thead>
+<tr>
+<th>參數</th>
+<th>型別</th>
+<th>預設值</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>avatar</code></td>
+<td><code>string</code></td>
+<td><code>''</code></td>
+<td>作者頭像 URL</td>
+</tr>
+<tr>
+<td><code>author</code></td>
+<td><code>string</code></td>
+<td><code>''</code></td>
+<td>作者名稱</td>
+</tr>
+<tr>
+<td><code>authorSub</code></td>
+<td><code>string</code></td>
+<td><code>''</code></td>
+<td>作者副標題（如所屬組織）</td>
+</tr>
+<tr>
+<td><code>timestamp</code></td>
+<td><code>string</code></td>
+<td><code>''</code></td>
+<td>時間（ISO 字串），自動轉為相對時間</td>
+</tr>
+<tr>
+<td><code>type</code></td>
+<td><code>string</code></td>
+<td><code>''</code></td>
+<td>類型標籤</td>
+</tr>
+<tr>
+<td><code>typeColor</code></td>
+<td><code>string</code></td>
+<td><code>''</code></td>
+<td>類型色彩（可選，依 type 自動選色）</td>
+</tr>
+<tr>
+<td><code>title</code></td>
+<td><code>string</code></td>
+<td><code>''</code></td>
+<td>標題</td>
+</tr>
+<tr>
+<td><code>content</code></td>
+<td><code>string</code></td>
+<td><code>''</code></td>
+<td>內容（超過 150 字自動截斷）</td>
+</tr>
+<tr>
+<td><code>images</code></td>
+<td><code>string[]</code></td>
+<td><code>[]</code></td>
+<td>圖片 URL 陣列（最多顯示 4 張，超過顯示 +N）</td>
+</tr>
+<tr>
+<td><code>tags</code></td>
+<td><code>string[]</code></td>
+<td><code>[]</code></td>
+<td>標籤陣列（最多 5 個）</td>
+</tr>
+<tr>
+<td><code>relatedCount</code></td>
+<td><code>number</code></td>
+<td><code>0</code></td>
+<td>關聯人數</td>
+</tr>
+<tr>
+<td><code>onClickDetail</code></td>
+<td><code>Function|null</code></td>
+<td><code>null</code></td>
+<td>點擊「查看詳情」回調</td>
+</tr>
+<tr>
+<td><code>onClickAuthor</code></td>
+<td><code>Function|null</code></td>
+<td><code>null</code></td>
+<td>點擊作者名稱回調</td>
+</tr>
+</tbody>
+</table>
+<h3>靜態屬性</h3>
+<ul>
+<li><code>FeedCard.TYPE_COLORS</code> — 類型預設色彩映射（緊急事件、一般活動等）</li>
+</ul>
+<h3>靜態方法</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>回傳</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>FeedCard.listHTML(items)</code></td>
+<td><code>string</code></td>
+<td>批次產生多張貼文的 HTML</td>
+</tr>
+</tbody>
+</table>
+<h3>實例方法</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>回傳</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>toHTML()</code></td>
+<td><code>string</code></td>
+<td>產生 HTML 字串</td>
+</tr>
+<tr>
+<td><code>mount(container)</code></td>
+<td><code>void</code></td>
+<td>掛載到容器</td>
+</tr>
+<tr>
+<td><code>update(options)</code></td>
+<td><code>void</code></td>
+<td>更新配置並重新渲染</td>
+</tr>
+<tr>
+<td><code>destroy()</code></td>
+<td><code>void</code></td>
+<td>移除 DOM 元素</td>
+</tr>
+</tbody>
+</table>
+<h3>依賴</h3>
+<ul>
+<li><code>Avatar</code> — 內部使用 Avatar 元件渲染作者頭像</li>
+</ul>
+<h3>使用範例</h3>
+<pre><code class="language-js">import { FeedCard } from '../packages/javascript/browser/ui_components/social/FeedCard/FeedCard.js';
+
+const feed = new FeedCard({
+    author: '張三',
+    authorSub: '工程團隊',
+    timestamp: '2026-02-15T14:30:00',
+    type: '緊急事件',
+    title: '販毒案件',
+    content: '於台北市中山區查獲販毒案件...',
+    tags: ['販毒', '台北市'],
+    relatedCount: 3,
+    onClickDetail: () =&gt; console.log('detail'),
+    onClickAuthor: () =&gt; console.log('author')
+});
+feed.mount('#feed-container');
+</code></pre>
+<h2>Demo</h2>
+<p><code>demo.html</code> — 在瀏覽器直接開啟（需本地伺服器支援 ES module）。</p>
+</main>
+</body>
+</html>

@@ -8,12 +8,13 @@ export const COMPONENT_CATEGORIES = [
     'form',
     'input',
     'layout',
+    'sections',
     'social',
     'editor',
     'data',
     'viz',
     'utils',
-];
+, 'analytics'];
 
 export const COMPONENT_KINDS = [
     'atomic',

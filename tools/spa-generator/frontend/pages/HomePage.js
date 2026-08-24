@@ -165,7 +165,7 @@ export class HomePage extends BasePage {
                         </div>
                         ${!systemInfo.dotnetVersion ? `
                             <div class="alert alert-warning">
-                                <strong>注意：</strong> 未偵測到 .NET SDK。若要建立專案，請先安裝 .NET 8 SDK。
+                                <strong>注意：</strong> 未偵測到 .NET SDK。若要建立專案，請先安裝 .NET 10 SDK。
                             </div>
                         ` : ''}
                     ` : `
@@ -192,7 +192,7 @@ export class HomePage extends BasePage {
                         <div class="spec-category">
                             <h4>後端</h4>
                             <ul>
-                                <li>.NET 8 Minimal API</li>
+                                <li>.NET 10 Minimal API</li>
                                 <li>SQLite 資料庫</li>
                                 <li>BaseOrm 輕量 ORM</li>
                                 <li>JWT 認證</li>

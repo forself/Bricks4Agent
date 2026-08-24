@@ -1,6 +1,6 @@
 /**
  * WorkflowPanel
- * 稽核流程時間軸元件 - 水平佈局，每行最多 5 個節點
+ * 稽核流程時間軸元件 - 水平佈局，依容器寬自動調整每列節點數（RWD）
  */
 import Locale from '../../i18n/index.js';
 
@@ -25,10 +25,16 @@ export class WorkflowPanel {
         Replenish: { name: '補件', icon: '📎', color: 'var(--cl-light-green)' }
     };
 
+    // RWD 版面常數：節點可收縮到 72px 仍可辨識；連接線最小 24px + 左右 margin 16px
+    static NODE_MIN_WIDTH = 72;
+    static NODE_MAX_WIDTH = 100;
+    static CONNECTOR_MIN_TOTAL = 40; // min-width 24 + margin 16
+    static CONNECTOR_MAX_TOTAL = 76; // max 60 + margin 16
+
     /**
      * @param {Object} options
      * @param {Array} options.data - 流程歷程資料
-     * @param {number} options.itemsPerRow - 每行節點數（預設 5）
+     * @param {number} options.itemsPerRow - 每列節點數上限（預設 5，實際依容器寬自動計算）
      * @param {Object} options.nextStage - 下一階段資訊 { StageName, NextUnit }
      * @param {Function} options.onNodeClick - 節點點擊回調
      */
@@ -42,10 +48,54 @@ export class WorkflowPanel {
             ...options
         };
 
-        // itemsPerRow 限制範圍：3-7
+        // itemsPerRow 限制範圍：3-7（語意為「每列上限」，實際列數依容器寬自動縮減）
         this.options.itemsPerRow = Math.max(3, Math.min(7, this.options.itemsPerRow));
 
+        // 目前生效的每列節點數（由 ResizeObserver 調整；1 = 垂直單欄模式）
+        this._effectiveItemsPerRow = this.options.itemsPerRow;
+        this._resizeObserver = null;
+        this._rafId = null;
+
         this.element = this._createElement();
+        this._observeResize();
+    }
+
+    /**
+     * 監看容器寬度變化，自動重算每列節點數（容器導向 RWD）
+     */
+    _observeResize() {
+        if (typeof ResizeObserver === 'undefined') return; // 無 RO 環境維持靜態版面
+        this._resizeObserver = new ResizeObserver((entries) => {
+            const width = entries[0]?.contentRect?.width || 0;
+            if (width <= 0) return; // display:none 等情況忽略
+            const n = this._computeItemsPerRow(width);
+            if (n === this._effectiveItemsPerRow) return;
+            this._effectiveItemsPerRow = n;
+            // 以 rAF 重排，避免 ResizeObserver 迴圈警告
+            if (this._rafId) cancelAnimationFrame(this._rafId);
+            this._rafId = requestAnimationFrame(() => {
+                this._rafId = null;
+                this._rerender();
+            });
+        });
+        this._resizeObserver.observe(this.element);
+    }
+
+    /**
+     * 依內容寬計算每列節點數：floor((寬+線min) / (節點min+線min))，上限 itemsPerRow，下限 1
+     */
+    _computeItemsPerRow(width) {
+        const unit = WorkflowPanel.NODE_MIN_WIDTH + WorkflowPanel.CONNECTOR_MIN_TOTAL;
+        const n = Math.floor((width + WorkflowPanel.CONNECTOR_MIN_TOTAL) / unit);
+        return Math.max(1, Math.min(this.options.itemsPerRow, n));
+    }
+
+    /**
+     * 清空並重繪面板內容（資料都在 this.options 上）
+     */
+    _rerender() {
+        this.element.innerHTML = '';
+        this._renderTimeline(this.element);
     }
 
     _createElement() {
@@ -64,7 +114,9 @@ export class WorkflowPanel {
     }
 
     _renderTimeline(container) {
-        const { data, itemsPerRow, nextStage } = this.options;
+        const { data, nextStage } = this.options;
+        // 實際每列數由容器寬決定（上限 = options.itemsPerRow）
+        const itemsPerRow = this._effectiveItemsPerRow;
 
         // 依日期排序
         const sortedData = [...data].sort((a, b) =>
@@ -83,17 +135,21 @@ export class WorkflowPanel {
             });
         }
 
+        // 極窄容器（一列放不下 2 節點）：退化為垂直單欄
+        if (itemsPerRow < 2) {
+            this._renderVertical(container, displayData, sortedData);
+            return;
+        }
+
         // 分行
         const rows = [];
         for (let i = 0; i < displayData.length; i += itemsPerRow) {
             rows.push(displayData.slice(i, i + itemsPerRow));
         }
 
-        // 計算一行的最大寬度（用於對齊）
-        // 節點寬度 100px + 連接線最大 76px (60px + margin 16px) * (n-1 條線)
-        const nodeWidth = 100;
-        const connectorWidth = 76;
-        const maxRowWidth = nodeWidth * itemsPerRow + connectorWidth * (itemsPerRow - 1);
+        // 一行寬度「上限」（用於對齊）；實際寬度隨容器以 flex 收縮
+        const maxRowWidth = WorkflowPanel.NODE_MAX_WIDTH * itemsPerRow
+            + WorkflowPanel.CONNECTOR_MAX_TOTAL * (itemsPerRow - 1);
 
         // 渲染每一行
         rows.forEach((row, rowIndex) => {
@@ -108,7 +164,8 @@ export class WorkflowPanel {
                 justify-content: ${isReversed ? 'flex-end' : 'flex-start'};
                 margin-bottom: ${rowIndex < rows.length - 1 ? '30px' : '0'};
                 position: relative;
-                width: ${maxRowWidth}px;
+                width: 100%;
+                max-width: ${maxRowWidth}px;
             `;
 
             const displayRow = isReversed ? [...row].reverse() : row;
@@ -149,6 +206,67 @@ export class WorkflowPanel {
         });
     }
 
+    /**
+     * 垂直單欄模式（極窄容器）：節點直排、節點間以向下箭頭連接
+     */
+    _renderVertical(container, displayData, sortedData) {
+        const column = document.createElement('div');
+        column.className = 'workflow-column';
+        column.style.cssText = `
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+        `;
+
+        displayData.forEach((item, index) => {
+            const isLast = index === sortedData.length - 1 && !item.isNext;
+            const node = this._createNode(item, isLast, item.isNext);
+            node.style.flex = '0 0 auto'; // 直欄中取消水平用的伸縮設定
+            column.appendChild(node);
+
+            // 節點間的向下連接線
+            if (index < displayData.length - 1) {
+                column.appendChild(this._createDownConnector());
+            }
+        });
+
+        container.appendChild(column);
+    }
+
+    /**
+     * 垂直單欄用的向下連接線（一般流內元素，非絕對定位）
+     */
+    _createDownConnector() {
+        const connector = document.createElement('div');
+        connector.className = 'workflow-down-connector';
+        connector.style.cssText = `
+            flex: 0 0 auto;
+            width: 3px;
+            height: 24px;
+            margin: 6px 0 14px;
+            background: linear-gradient(180deg, var(--cl-success), var(--cl-primary));
+            border-radius: var(--cl-radius-xs);
+            position: relative;
+        `;
+
+        // 向下箭頭
+        const arrow = document.createElement('div');
+        arrow.style.cssText = `
+            position: absolute;
+            bottom: -8px;
+            left: -4px;
+            width: 0;
+            height: 0;
+            border-left: 5px solid transparent;
+            border-right: 5px solid transparent;
+            border-top: 8px solid var(--cl-primary);
+        `;
+        connector.appendChild(arrow);
+
+        return connector;
+    }
+
     _createNode(item, isCurrent, isNext) {
         const stage = WorkflowPanel.STAGES[item.StageName] || {
             name: item.StageName,
@@ -162,7 +280,9 @@ export class WorkflowPanel {
             display: flex;
             flex-direction: column;
             align-items: center;
-            min-width: 100px;
+            flex: 1 1 ${WorkflowPanel.NODE_MIN_WIDTH}px;
+            min-width: ${WorkflowPanel.NODE_MIN_WIDTH}px;
+            max-width: ${WorkflowPanel.NODE_MAX_WIDTH}px;
             cursor: ${this.options.onNodeClick && !isNext ? 'pointer' : 'default'};
             opacity: ${isNext ? '0.5' : '1'};
             ${isNext ? 'filter: grayscale(50%);' : ''}
@@ -179,7 +299,7 @@ export class WorkflowPanel {
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 20px;
+            font-size: var(--cl-font-size-2xl);
             box-shadow: ${isCurrent ? `0 0 0 4px ${stage.color}40` : 'none'};
             transition: all var(--cl-transition-slow);
         `;
@@ -230,7 +350,7 @@ export class WorkflowPanel {
                 font-size: var(--cl-font-size-xs);
                 color: var(--cl-text-secondary);
                 text-align: center;
-                max-width: 100px;
+                max-width: 100%;
                 overflow: hidden;
                 text-overflow: ellipsis;
                 white-space: nowrap;
@@ -280,9 +400,9 @@ export class WorkflowPanel {
         const connector = document.createElement('div');
         connector.className = 'workflow-connector';
         connector.style.cssText = `
-            flex: 1;
-            min-width: 30px;
-            max-width: 60px;
+            flex: 0 1 auto;
+            width: 60px;
+            min-width: 24px;
             height: 3px;
             background: linear-gradient(${isReversed ? '270deg' : '90deg'}, var(--cl-primary), var(--cl-success));
             margin: 0 8px;
@@ -358,8 +478,7 @@ export class WorkflowPanel {
      */
     setData(data) {
         this.options.data = data;
-        this.element.innerHTML = '';
-        this._renderTimeline(this.element);
+        this._rerender();
         return this;
     }
 
@@ -368,8 +487,7 @@ export class WorkflowPanel {
      */
     setNextStage(nextStage) {
         this.options.nextStage = nextStage;
-        this.element.innerHTML = '';
-        this._renderTimeline(this.element);
+        this._rerender();
         return this;
     }
 
@@ -382,6 +500,15 @@ export class WorkflowPanel {
     }
 
     destroy() {
+        // 清理 ResizeObserver 與待執行的重排
+        if (this._resizeObserver) {
+            this._resizeObserver.disconnect();
+            this._resizeObserver = null;
+        }
+        if (this._rafId) {
+            cancelAnimationFrame(this._rafId);
+            this._rafId = null;
+        }
         if (this.element?.parentNode) {
             this.element.remove();
         }

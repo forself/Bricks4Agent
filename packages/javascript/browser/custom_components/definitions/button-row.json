@@ -1,0 +1,38 @@
+{
+  "$schema": "../custom-component.schema.json",
+  "schema_version": 1,
+  "component_id": "custom.button_row",
+  "registry_name": "CustomButtonRow",
+  "display_name": "Custom Button Row",
+  "version": "1.0.0",
+  "kind": "composite",
+  "description": "A one-layer composition of built-in button and icon atoms.",
+  "root": {
+    "type": "group",
+    "id": "button-row",
+    "layout": {
+      "mode": "row",
+      "gap": "sm",
+      "align": "center"
+    },
+    "class_names": ["custom-button-row"],
+    "children": [
+      {
+        "type": "component",
+        "id": "primary-action",
+        "component": "BasicButton",
+        "options": {
+          "label": "Continue"
+        }
+      },
+      {
+        "type": "component",
+        "id": "action-icon",
+        "component": "Icon",
+        "options": {
+          "name": "arrow-right"
+        }
+      }
+    ]
+  }
+}

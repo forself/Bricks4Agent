@@ -134,7 +134,7 @@ public class TemplateFrameworkLoaderTests : IDisposable
             "workers",
             "site-crawler-worker",
             "template-framework",
-            "README.md"));
+            "README.html"));
 
         foreach (var template in templates.Templates)
         {

@@ -15,23 +15,37 @@
 Create:
 
 - `packages/csharp/workers/site-crawler-worker/Models/TemplateFrameworkContracts.cs`
+
 - `packages/csharp/workers/site-crawler-worker/Services/TemplateFrameworkLoader.cs`
+
 - `packages/csharp/workers/site-crawler-worker/Services/SiteIntentExtractor.cs`
+
 - `packages/csharp/workers/site-crawler-worker/Services/TemplateMatcher.cs`
+
 - `packages/csharp/workers/site-crawler-worker/Services/TemplateCompiler.cs`
+
 - `packages/csharp/workers/site-crawler-worker/template-framework/institutional_site.json`
+
 - `packages/csharp/tests/unit/Workers/SiteCrawler/TemplateFrameworkLoaderTests.cs`
+
 - `packages/csharp/tests/unit/Workers/SiteCrawler/SiteIntentExtractorTests.cs`
+
 - `packages/csharp/tests/unit/Workers/SiteCrawler/TemplateMatcherTests.cs`
+
 - `packages/csharp/tests/unit/Workers/SiteCrawler/TemplateCompilerTests.cs`
 
 Modify:
 
 - `packages/csharp/workers/site-crawler-worker/SiteCrawlerWorker.csproj`
+
 - `packages/csharp/workers/site-crawler-worker/component-libraries/bricks4agent.default/manifest.json`
+
 - `packages/csharp/workers/site-crawler-worker/Services/SiteGeneratorConverter.cs`
+
 - `packages/csharp/workers/site-crawler-worker/Services/StaticSitePackageGenerator.cs`
+
 - `packages/csharp/tests/unit/Workers/SiteCrawler/SiteGeneratorConverterTests.cs`
+
 - `packages/csharp/tests/unit/Workers/SiteCrawler/StaticSitePackageGeneratorTests.cs`
 
 ---
@@ -170,11 +184,17 @@ Expected: compile failure because `SiteIntentExtractor` does not exist.
 Rules:
 
 - Prefer `VisualPageSnapshot.Regions` over static `ExtractedPageModel.Sections`.
+
 - Preserve visual order by region bounds `y`.
+
 - Classify site kind as `university` when title/text/url contains `university`, `college`, `school`, `大學`, `學院`, or `學校`; otherwise `institutional`.
+
 - `Depth == 0` is `home`.
+
 - Repeated items or many links/dates become `listing`.
+
 - Long body text with low item count becomes `article`.
+
 - Region roles map to intent kinds:
 
 ```csharp
@@ -308,9 +328,13 @@ Expected: compile/test failure because compiler does not exist and converter sti
 The compiler builds:
 
 - `PageShell` root per route.
+
 - `MegaHeader` or `SiteHeader` from shared header intent.
+
 - Slot component nodes in template order.
+
 - `InstitutionFooter` or `SiteFooter` from shared footer intent.
+
 - `FormBlock` for extracted forms.
 
 Component props:
@@ -494,7 +518,9 @@ git commit -m "test: verify site template framework"
 ## Self-Review
 
 - Spec coverage: contracts, deterministic intent extraction, matcher, compiler, manifest-only output, component requests, runtime rendering, link rewriting, route preservation, and live SHU smoke are covered by Tasks 1-6.
+
 - Placeholder scan: no task uses open-ended TODO/TBD language; each task has concrete files, assertions, commands, and expected results.
+
 - Type consistency: contracts use `TemplateFrameworkManifest`, `SiteIntentModel`, `TemplatePlan`, and `GeneratorSiteDocument` consistently across loader, extractor, matcher, compiler, and converter wiring.
 
 ## Execution Choice

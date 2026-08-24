@@ -73,7 +73,7 @@ public class ComponentLibraryLoaderTests : IDisposable
             "site-crawler-worker",
             "component-libraries",
             "bricks4agent.default",
-            "README.md"));
+            "README.html"));
 
         foreach (var component in manifest.Components)
         {
@@ -96,7 +96,8 @@ public class ComponentLibraryLoaderTests : IDisposable
             {
                 Required = ["title"],
                 Properties = { ["title"] = new ComponentPropSchema { Type = "string" } },
-            }));
+            },
+            bComponent: "Alert"));
         File.WriteAllText(path, JsonSerializer.Serialize(manifest, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
         var loader = new ComponentLibraryLoader();
 

@@ -1,0 +1,425 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>安全審查清單 (Security Review Checklist)</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>安全審查清單 (Security Review Checklist)</h1>
+<h2>概述</h2>
+<p>本清單用於審查 Bricks4Agent 各語言實作的安全性，確保所有模組符合安全最佳實踐。</p>
+<hr>
+<h2>1. 認證與授權 (Authentication &amp; Authorization)</h2>
+<h3>1.1 密碼處理</h3>
+<ul>
+<li>[ ] 使用安全的雜湊演算法 (PBKDF2/bcrypt/Argon2)</li>
+<li>[ ] 足夠的迭代次數 (≥100,000 for PBKDF2)</li>
+<li>[ ] 使用隨機鹽值 (≥16 bytes)</li>
+<li>[ ] 密碼比對使用常數時間函數</li>
+<li>[ ] 禁止明文儲存密碼</li>
+<li>[ ] 密碼強度驗證</li>
+</ul>
+<h3>1.2 MFA 實作</h3>
+<ul>
+<li>[ ] TOTP 符合 RFC 6238</li>
+<li>[ ] 使用安全的隨機數生成器產生密鑰</li>
+<li>[ ] 密鑰儲存已加密</li>
+<li>[ ] 復原碼使用一次性設計</li>
+<li>[ ] 復原碼已雜湊儲存</li>
+<li>[ ] 限制 MFA 嘗試次數</li>
+</ul>
+<h3>1.3 Session 管理</h3>
+<ul>
+<li>[ ] Session ID 使用安全隨機數</li>
+<li>[ ] Session 有適當的過期時間</li>
+<li>[ ] 支援 Session 撤銷</li>
+<li>[ ] 登出時正確銷毀 Session</li>
+<li>[ ] 敏感操作需重新驗證</li>
+</ul>
+<h3>1.4 JWT 實作</h3>
+<ul>
+<li>[ ] 使用強加密演算法 (RS256/ES256)</li>
+<li>[ ] 適當的 Token 有效期</li>
+<li>[ ] 包含必要的 Claims</li>
+<li>[ ] 驗證所有 Claims</li>
+<li>[ ] Refresh Token 安全儲存</li>
+</ul>
+<hr>
+<h2>2. 輸入驗證 (Input Validation)</h2>
+<h3>2.1 一般輸入</h3>
+<ul>
+<li>[ ] 驗證所有用戶輸入</li>
+<li>[ ] 使用白名單驗證</li>
+<li>[ ] 驗證資料類型和範圍</li>
+<li>[ ] 限制輸入長度</li>
+<li>[ ] 處理特殊字元</li>
+</ul>
+<h3>2.2 SQL Injection 防護</h3>
+<ul>
+<li>[ ] 使用參數化查詢</li>
+<li>[ ] 禁止字串拼接 SQL</li>
+<li>[ ] ORM 正確使用</li>
+<li>[ ] 動態查詢有額外驗證</li>
+</ul>
+<h3>2.3 XSS 防護</h3>
+<ul>
+<li>[ ] 輸出編碼 (HTML/JS/URL)</li>
+<li>[ ] Content-Type 正確設定</li>
+<li>[ ] CSP Header 設定</li>
+<li>[ ] 避免使用 innerHTML</li>
+</ul>
+<h3>2.4 正則表達式</h3>
+<ul>
+<li>[ ] 設定超時限制 (ReDoS 防護)</li>
+<li>[ ] 避免複雜的巢狀量詞</li>
+<li>[ ] 輸入長度限制</li>
+</ul>
+<hr>
+<h2>3. 加密 (Cryptography)</h2>
+<h3>3.1 加密演算法</h3>
+<ul>
+<li>[ ] 使用現代加密標準 (AES-256, RSA-2048+)</li>
+<li>[ ] 禁止使用過時演算法 (MD5, SHA1, DES)</li>
+<li>[ ] 使用安全的操作模式 (GCM, CTR)</li>
+<li>[ ] IV/Nonce 不重複使用</li>
+</ul>
+<h3>3.2 金鑰管理</h3>
+<ul>
+<li>[ ] 金鑰安全儲存</li>
+<li>[ ] 金鑰不寫入日誌</li>
+<li>[ ] 支援金鑰輪換</li>
+<li>[ ] 環境變數/密鑰管理服務</li>
+</ul>
+<h3>3.3 隨機數生成</h3>
+<ul>
+<li>[ ] 使用密碼學安全的 PRNG</li>
+<li>[ ] 禁止使用 Math.random() 等</li>
+<li>[ ] 足夠的隨機性</li>
+</ul>
+<hr>
+<h2>4. 錯誤處理 (Error Handling)</h2>
+<h3>4.1 錯誤訊息</h3>
+<ul>
+<li>[ ] 不洩漏敏感資訊</li>
+<li>[ ] 不洩漏堆疊追蹤</li>
+<li>[ ] 不洩漏系統路徑</li>
+<li>[ ] 統一的錯誤格式</li>
+</ul>
+<h3>4.2 日誌安全</h3>
+<ul>
+<li>[ ] 不記錄密碼</li>
+<li>[ ] 不記錄完整 Token</li>
+<li>[ ] IP 地址適當遮蔽</li>
+<li>[ ] Email 適當遮蔽</li>
+<li>[ ] 敏感資料脫敏</li>
+</ul>
+<hr>
+<h2>5. 限流與防護 (Rate Limiting &amp; Protection)</h2>
+<h3>5.1 限流實作</h3>
+<ul>
+<li>[ ] 滑動視窗演算法正確</li>
+<li>[ ] 計數器執行緒安全</li>
+<li>[ ] 適當的限流閾值</li>
+<li>[ ] 記憶體使用有限制</li>
+</ul>
+<h3>5.2 帳戶保護</h3>
+<ul>
+<li>[ ] 登入失敗鎖定</li>
+<li>[ ] 漸進式鎖定</li>
+<li>[ ] 可疑活動偵測</li>
+<li>[ ] IP 封鎖功能</li>
+</ul>
+<h3>5.3 DDoS 防護</h3>
+<ul>
+<li>[ ] 請求大小限制</li>
+<li>[ ] 連線數限制</li>
+<li>[ ] 超時設定</li>
+</ul>
+<hr>
+<h2>6. 資料保護 (Data Protection)</h2>
+<h3>6.1 敏感資料</h3>
+<ul>
+<li>[ ] 識別所有敏感資料</li>
+<li>[ ] 傳輸加密 (TLS)</li>
+<li>[ ] 儲存加密</li>
+<li>[ ] 存取控制</li>
+</ul>
+<h3>6.2 GDPR/隱私</h3>
+<ul>
+<li>[ ] 支援資料刪除</li>
+<li>[ ] 支援資料匯出</li>
+<li>[ ] 資料最小化原則</li>
+<li>[ ] 保留期限設定</li>
+</ul>
+<hr>
+<h2>7. 相依性安全 (Dependency Security)</h2>
+<h3>7.1 套件安全</h3>
+<ul>
+<li>[ ] 檢查已知漏洞 (CVE)</li>
+<li>[ ] 使用最新穩定版</li>
+<li>[ ] 鎖定版本號</li>
+<li>[ ] 定期更新</li>
+</ul>
+<h3>7.2 供應鏈安全</h3>
+<ul>
+<li>[ ] 驗證套件來源</li>
+<li>[ ] 檢查套件完整性</li>
+<li>[ ] 最小化相依</li>
+</ul>
+<hr>
+<h2>8. API 安全 (API Security)</h2>
+<h3>8.1 認證</h3>
+<ul>
+<li>[ ] 所有端點需認證</li>
+<li>[ ] 適當的權限檢查</li>
+<li>[ ] CORS 正確設定</li>
+<li>[ ] CSRF 保護</li>
+</ul>
+<h3>8.2 資料驗證</h3>
+<ul>
+<li>[ ] 請求體驗證</li>
+<li>[ ] 回應不洩漏敏感資料</li>
+<li>[ ] 適當的 HTTP 狀態碼</li>
+</ul>
+<h3>8.3 文件安全</h3>
+<ul>
+<li>[ ] API 文件不包含敏感資訊</li>
+<li>[ ] 範例不使用真實資料</li>
+</ul>
+<hr>
+<h2>9. 程式碼品質 (Code Quality)</h2>
+<h3>9.1 安全編碼</h3>
+<ul>
+<li>[ ] 無硬編碼的密鑰/密碼</li>
+<li>[ ] 無不安全的反序列化</li>
+<li>[ ] 無命令注入風險</li>
+<li>[ ] 無路徑遍歷風險</li>
+</ul>
+<h3>9.2 執行緒安全</h3>
+<ul>
+<li>[ ] 共享資源正確鎖定</li>
+<li>[ ] 避免競態條件</li>
+<li>[ ] 適當的並發控制</li>
+</ul>
+<hr>
+<h2>10. 各語言特定檢查</h2>
+<h3>10.1 Rust</h3>
+<ul>
+<li>[ ] 適當使用 unsafe</li>
+<li>[ ] 記憶體安全</li>
+<li>[ ] 錯誤處理完整</li>
+<li>[ ] 無 panic 在生產代碼</li>
+</ul>
+<h3>10.2 Python</h3>
+<ul>
+<li>[ ] 無 eval/exec 使用</li>
+<li>[ ] pickle 安全使用</li>
+<li>[ ] 適當的異常處理</li>
+<li>[ ] 類型提示完整</li>
+</ul>
+<h3>10.3 Node.js/TypeScript</h3>
+<ul>
+<li>[ ] 無 eval 使用</li>
+<li>[ ] 無 Function() 建構</li>
+<li>[ ] 原型污染防護</li>
+<li>[ ] 嚴格模式啟用</li>
+</ul>
+<h3>10.4 前端 JavaScript</h3>
+<ul>
+<li>[ ] 無 innerHTML 直接賦值</li>
+<li>[ ] 無 document.write</li>
+<li>[ ] localStorage 敏感資料加密</li>
+<li>[ ] postMessage 來源驗證</li>
+</ul>
+<hr>
+<h2>審查結果記錄</h2>
+<table>
+<thead>
+<tr>
+<th>模組</th>
+<th>語言</th>
+<th>審查日期</th>
+<th>審查者</th>
+<th>問題數</th>
+<th>狀態</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>MFA</td>
+<td>Rust</td>
+<td></td>
+<td></td>
+<td></td>
+<td>⏳</td>
+</tr>
+<tr>
+<td>MFA</td>
+<td>Python</td>
+<td></td>
+<td></td>
+<td></td>
+<td>⏳</td>
+</tr>
+<tr>
+<td>MFA</td>
+<td>Node.js</td>
+<td></td>
+<td></td>
+<td></td>
+<td>⏳</td>
+</tr>
+<tr>
+<td>RateLimiting</td>
+<td>Rust</td>
+<td></td>
+<td></td>
+<td></td>
+<td>⏳</td>
+</tr>
+<tr>
+<td>RateLimiting</td>
+<td>Python</td>
+<td></td>
+<td></td>
+<td></td>
+<td>⏳</td>
+</tr>
+<tr>
+<td>RateLimiting</td>
+<td>Node.js</td>
+<td></td>
+<td></td>
+<td></td>
+<td>⏳</td>
+</tr>
+<tr>
+<td>AuditLog</td>
+<td>Rust</td>
+<td></td>
+<td></td>
+<td></td>
+<td>⏳</td>
+</tr>
+<tr>
+<td>AuditLog</td>
+<td>Python</td>
+<td></td>
+<td></td>
+<td></td>
+<td>⏳</td>
+</tr>
+<tr>
+<td>AuditLog</td>
+<td>Node.js</td>
+<td></td>
+<td></td>
+<td></td>
+<td>⏳</td>
+</tr>
+<tr>
+<td>AccountLock</td>
+<td>Rust</td>
+<td></td>
+<td></td>
+<td></td>
+<td>⏳</td>
+</tr>
+<tr>
+<td>AccountLock</td>
+<td>Python</td>
+<td></td>
+<td></td>
+<td></td>
+<td>⏳</td>
+</tr>
+<tr>
+<td>AccountLock</td>
+<td>Node.js</td>
+<td></td>
+<td></td>
+<td></td>
+<td>⏳</td>
+</tr>
+<tr>
+<td>Frontend</td>
+<td>JavaScript</td>
+<td></td>
+<td></td>
+<td></td>
+<td>⏳</td>
+</tr>
+<tr>
+<td>Admin Portal</td>
+<td>JavaScript</td>
+<td></td>
+<td></td>
+<td></td>
+<td>⏳</td>
+</tr>
+<tr>
+<td>Mobile App</td>
+<td>Dart</td>
+<td></td>
+<td></td>
+<td></td>
+<td>⏳</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>問題嚴重度定義</h2>
+<table>
+<thead>
+<tr>
+<th>等級</th>
+<th>定義</th>
+<th>修復時限</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>🔴 Critical</td>
+<td>可被遠端利用，直接危害系統或資料</td>
+<td>立即</td>
+</tr>
+<tr>
+<td>🟠 High</td>
+<td>嚴重漏洞，需要特定條件利用</td>
+<td>24小時</td>
+</tr>
+<tr>
+<td>🟡 Medium</td>
+<td>中等風險，可能導致資訊洩漏</td>
+<td>7天</td>
+</tr>
+<tr>
+<td>🟢 Low</td>
+<td>低風險，最佳實踐建議</td>
+<td>30天</td>
+</tr>
+<tr>
+<td>⚪ Info</td>
+<td>資訊性建議，非安全問題</td>
+<td>可選</td>
+</tr>
+</tbody>
+</table>
+</main>
+</body>
+</html>

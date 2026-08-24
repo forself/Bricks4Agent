@@ -46,8 +46,11 @@ broker/high-level intake 不直接執行 crawl，而是回問爬取範圍：
 若起始 URL 是 `https://example.com/docs/`：
 
 - 只擷取這個頁面：只抓 `/docs/`
+
 - 第一層：抓 `/docs/a`、`/docs/b`，不抓 `/docs/a/detail`
+
 - 兩層以內：抓 `/docs/a`、`/docs/a/detail`
+
 - N 層：抓深度小於或等於 N 的同路徑子頁
 
 使用者回答後，系統建立 crawl intent：
@@ -158,15 +161,21 @@ LINE user
 Crawler 先 canonicalize start URL：
 
 - 移除 fragment。
+
 - 正規化 trailing slash。
+
 - 只允許 `http` 與 `https`。
+
 - `path_prefix_lock = true` 時，只展開以起始 path prefix 開頭的 URL。
+
 - `same_origin_only = true` 時，只展開同 scheme、host、port 的 URL。
 
 Depth 計算以 start path 為 root：
 
 - start URL depth = 0
+
 - start path 下第一個子 segment = 1
+
 - 再下一層 = 2
 
 Query string 不增加 depth，但不同 query 預設不展開，除非後續版本明確支援 faceted pages。
@@ -313,7 +322,9 @@ Resolver 的輸入是 extracted sections 與元件 catalog。輸出必須分成�
 以下情況可直接映射：
 
 - section 是 form field，且 field type 對應 catalog 中 `generator.usage_mode = field_direct` 的元件。
+
 - section 是明確 action group，且可對應 `definition_explicit` 元件。
+
 - section 是 generator 既有 page type 可表達的 `form`、`list`、`detail`、`dashboard`。
 
 Resolver 需要記錄 evidence：
@@ -333,7 +344,9 @@ Resolver 需要記錄 evidence：
 以下情況必須生成新元件：
 
 - 視覺或互動結構無法用現有 `field_direct`、`definition_explicit` 或 page type 表達。
+
 - catalog 中只有 `manual_only` 元件，且 generator 不能直接 consume。
+
 - 原站有複合區塊，例如價格方案卡、品牌 hero、特殊 carousel、產品比較表、互動 map、非標準 article layout。
 
 生成要求：
@@ -405,9 +418,13 @@ Resolver 需要記錄 evidence：
 目前 `PageGenerator` 的 `ComponentPaths` 與 `AvailableComponents` 是靜態清單。為支援新元件，實作時需要新增一層 dynamic component registry：
 
 1. 讀取既有 `component-catalog.json`。
+
 2. 讀取 bundle 中的 `generated_components[]`。
+
 3. 合併成 runtime component path map。
+
 4. `PageGenerator.generate()` 接受 `componentPathOverrides` 或 `componentRegistry`。
+
 5. validation 不再只看靜態 `AvailableComponents.custom`，也要看 registry 中 `generator.usable = true` 的元件。
 
 這是本功能的必要前置改造；否則新元件即使產生，generator 仍會報 unavailable。
@@ -417,16 +434,23 @@ Resolver 需要記錄 evidence：
 LLM 只允許處理：
 
 - 將 deterministic sections 命名為人可讀頁面名稱。
+
 - 將相近 sections 歸納成 component requirement。
+
 - 在 schema 內填寫 description、props 名稱、content labels。
+
 - 產生新元件程式碼時，必須以 component requirement、theme tokens、asset refs 為輸入。
 
 LLM 不允許：
 
 - 自行新增 crawler 未抓到的頁面。
+
 - 自行新增沒有 source evidence 的 section。
+
 - 自行改變 path depth scope。
+
 - 自行引用不存在的元件。
+
 - 輸出未通過 schema validation 的 JSON。
 
 ## 11. 安全約束
@@ -434,17 +458,25 @@ LLM 不允許：
 Crawler 必須防 SSRF：
 
 - 拒絕 localhost、loopback、private IP、link-local、metadata IP。
+
 - 拒絕 `file:`、`data:`、`ftp:`、`chrome:` 等非 http/https scheme。
+
 - redirect 後仍需重新檢查 URL。
+
 - DNS resolution 結果若落在禁止網段，拒絕。
+
 - 同 origin/path prefix/depth 檢查在每次 enqueue 與 fetch 前都要做。
 
 資源限制：
 
 - 預設 `max_pages = 50`。
+
 - 預設 `max_total_bytes = 10MB`。
+
 - 預設 `max_asset_bytes = 2MB`。
+
 - 預設 `wall_clock_timeout_seconds = 180`。
+
 - 超限時保留 partial bundle，但標記 `limits.truncated = true`，不得宣稱完整轉換。
 
 ## 12. Artifacts
@@ -452,11 +484,17 @@ Crawler 必須防 SSRF：
 流程產出以下 broker-managed artifacts：
 
 - `crawl-source-bundle.json`
+
 - `extracted-site-model.json`
+
 - `component-resolution.json`
+
 - `generated-components/`
+
 - `site-generator-bundle.json`
+
 - `validation-report.json`
+
 - 可選：`source-screenshots.zip`
 
 LINE 回覆只提供摘要與 artifact link，不直接貼大量 JSON。
@@ -464,14 +502,23 @@ LINE 回覆只提供摘要與 artifact link，不直接貼大量 JSON。
 ## 13. 驗收條件
 
 1. 使用者只提供 URL 時，系統必須先問 path depth scope。
+
 2. Crawler 不會抓取 path prefix 之外的頁面。
+
 3. Crawler 不會抓取 private/localhost/metadata 網段。
+
 4. Converter 必須先產生 deterministic extracted model。
+
 5. 每個 output page block 必須有 source evidence。
+
 6. 每個 component reference 必須能解析到既有元件或新生成元件。
+
 7. `component_resolution.unresolved` 在成功交付時必須為空。
+
 8. 新生成元件必須有 JS、CSS、manifest、generator import path。
+
 9. `PageGenerator.generate()` 必須能使用 bundle registry 成功產生 page code。
+
 10. 若任何 validation 失敗，LINE 回覆要說明失敗階段與可修正方向。
 
 ## 14. 分階段實作建議
@@ -501,8 +548,13 @@ LINE 回覆只提供摘要與 artifact link，不直接貼大量 JSON。
 以下能力不列入 v1，但設計不封死：
 
 - robots.txt policy mode。
+
 - sitemap.xml seed。
+
 - user-delegated authenticated crawl。
+
 - form interaction replay。
+
 - multi-origin asset mirroring。
+
 - visual diff validation against screenshots。

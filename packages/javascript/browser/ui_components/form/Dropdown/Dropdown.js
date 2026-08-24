@@ -1,5 +1,6 @@
 import Locale from '../../i18n/index.js';
 import { createComponentState } from '../../utils/component-state.js';
+import { Icon } from '../../common/Icon/index.js';
 
 export class Dropdown {
     static VARIANTS = {
@@ -17,8 +18,10 @@ export class Dropdown {
             size: 'medium',
             disabled: false,
             clearable: false,
-            width: '200px',
+            width: '100%', // RWD:未指定時跟隨容器寬(原固定 200px 在窄容器會溢出);呼叫端仍可傳固定寬
+            menuMinWidth: null,
             emptyText: Locale.t('dropdown.emptyText'),
+            footer: null,
             ...options
         };
 
@@ -54,11 +57,15 @@ export class Dropdown {
             CLOSE: (state) => ({
                 ...state,
                 open: false,
-                highlightIndex: -1
+                highlightIndex: -1,
+                // Search text is only a filter, never a selectable value. Clearing it
+                // when the menu closes restores the committed option label (or the
+                // placeholder) instead of displaying an uncommitted arbitrary string.
+                filterQuery: ''
             }),
             TOGGLE: (state) => (
                 state.open
-                    ? { ...state, open: false, highlightIndex: -1 }
+                    ? { ...state, open: false, highlightIndex: -1, filterQuery: '' }
                     : (state.availability === 'disabled'
                         ? state
                         : {
@@ -72,6 +79,7 @@ export class Dropdown {
             SET_VALUE: (state, payload) => ({
                 ...state,
                 selectedValue: payload?.value ?? null,
+                filterQuery: '',
                 open: false,
                 highlightIndex: -1
             }),
@@ -142,16 +150,20 @@ export class Dropdown {
     }
 
     _createElement() {
-        const { variant, placeholder, disabled, width } = this.options;
+        const { variant, placeholder, disabled, width, menuMinWidth } = this.options;
         const sizeStyles = this._getSizeStyles();
         const isSearchable = variant === Dropdown.VARIANTS.SEARCHABLE;
 
         const container = document.createElement('div');
         container.className = `dropdown dropdown--${variant}`;
+        // RWD:max-width 鎖容器寬,即使呼叫端給固定寬也不溢出;min-width:0 允許 flex 情境收縮
         container.style.cssText = `
             position: relative;
             display: inline-block;
             width: ${width};
+            max-width: 100%;
+            min-width: 0;
+            box-sizing: border-box;
             font-family: inherit;
         `;
 
@@ -218,9 +230,8 @@ export class Dropdown {
 
         const arrow = document.createElement('span');
         arrow.className = 'dropdown__arrow';
-        arrow.innerHTML = `<svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-            <path d="M3 4.5L6 7.5L9 4.5" stroke="var(--cl-text-secondary)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>`;
+        this._arrowIcon = new Icon({ name: 'chevron-down', size: 12, color: 'var(--cl-text-secondary)' });
+        this._arrowIcon.mount(arrow);
         arrow.style.cssText = 'display: flex; transition: transform var(--cl-transition);';
         icons.appendChild(arrow);
         selector.appendChild(icons);
@@ -238,6 +249,7 @@ export class Dropdown {
             border-radius: var(--cl-radius-md);
             box-shadow: var(--cl-shadow-md);
             max-height: 240px;
+            min-width: ${menuMinWidth || '100%'};
             overflow-y: auto;
             z-index: 1000;
             display: none;
@@ -316,6 +328,8 @@ export class Dropdown {
 
         const state = this.snapshot();
         const { emptyText, placeholder } = this.options;
+        this._itemIcons?.forEach((icon) => icon.destroy());
+        this._itemIcons = [];
         menu.innerHTML = '';
 
         if (state.filteredItems.length === 0) {
@@ -329,6 +343,7 @@ export class Dropdown {
                 font-size: var(--cl-font-size-md);
             `;
             menu.appendChild(empty);
+            this._appendFooter(menu);
             return;
         }
 
@@ -393,9 +408,9 @@ export class Dropdown {
 
             if (isSelected) {
                 const check = document.createElement('span');
-                check.innerHTML = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                    <path d="M3 7L6 10L11 4" stroke="var(--cl-primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>`;
+                const checkIcon = new Icon({ name: 'check', size: 14, color: 'var(--cl-primary)' });
+                checkIcon.mount(check);
+                this._itemIcons.push(checkIcon);
                 option.appendChild(check);
             }
 
@@ -417,6 +432,16 @@ export class Dropdown {
 
             menu.appendChild(option);
         });
+        this._appendFooter(menu);
+    }
+
+    _appendFooter(menu) {
+        const footer = this.options.footer;
+        if (!footer) return;
+        const element = footer.element || footer;
+        if (!(element instanceof Element)) return;
+        element.classList.add('dropdown__footer');
+        menu.appendChild(element);
     }
 
     _clearSelection() {
@@ -513,11 +538,16 @@ export class Dropdown {
     }
 
     _selectItem(item) {
+        this.input?.blur?.();
         this.send('SET_VALUE', { value: item.value });
 
         if (this.options.onChange) {
             this.options.onChange(item.value, item);
         }
+        // Searchable inputs can regain focus after the clicked option is re-rendered.
+        // Close once more at the end of the event turn so a completed selection never
+        // leaves the suggestion menu covering the following form fields.
+        globalThis.queueMicrotask?.(() => this.close());
     }
 
     snapshot() {
@@ -595,6 +625,10 @@ export class Dropdown {
 
     destroy() {
         this.send('DESTROY');
+        this._arrowIcon?.destroy();
+        this._arrowIcon = null;
+        this._itemIcons?.forEach((icon) => icon.destroy());
+        this._itemIcons = [];
         if (this._onDocumentClick) {
             document.removeEventListener('click', this._onDocumentClick);
         }

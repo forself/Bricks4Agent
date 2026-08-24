@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Site Crawl Source</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Site Crawl Source</h1>
+<p>Safely crawls a public HTTP/HTTPS website within a confirmed link-depth scope and returns rendered visual/function cues plus auxiliary source hints for downstream generator reconstruction.</p>
+<h2>Capability</h2>
+<ul>
+<li>Tool ID: <code>site.crawl.source</code></li>
+<li>Capability ID: <code>site.crawl_source</code></li>
+<li>Route: <code>site_crawl_source</code></li>
+<li>Status: <code>beta</code></li>
+<li>Risk: medium</li>
+</ul>
+<h2>Required Pre-Execution Confirmation</h2>
+<p>Before execution, the user must confirm the crawl depth as one of:</p>
+<ul>
+<li>entry page links: <code>max_depth = 1</code></li>
+<li>within two link hops: <code>max_depth = 2</code></li>
+<li>N link hops: <code>max_depth = N</code></li>
+</ul>
+<p>Root/current page only, <code>max_depth = 0</code>, is supported only as an explicit manual/safety mode when requested.</p>
+<p>The scope is link-depth based. URL path depth is not used as the website layer definition. Link-depth crawls are breadth-first: lower layers must be completed before deeper layers when any safety budget is reached.</p>
+<p>For institutional or multi-subdomain sites, callers may include public same-site subdomains with <code>scope.allowed_host_suffixes</code>, for example <code>["ntub.edu.tw"]</code>. This keeps public HTTP/HTTPS and private-network safety checks while allowing <code>www.ntub.edu.tw</code>, <code>sec.ntub.edu.tw</code>, and similar subdomains to be crawled as one site. Do not use this to widen to unrelated domains.</p>
+<h2>Safety Rules</h2>
+<ul>
+<li>Public HTTP/HTTPS URLs only.</li>
+<li>No authenticated access, delegated credentials, cookies, private sessions, localhost, loopback, link-local, or private-network targets.</li>
+<li>Do not widen from the confirmed same-origin or allowed same-site host-suffix scope during execution.</li>
+<li>Budgets are safety limits, not substitutes for user-confirmed path depth.</li>
+</ul>
+<h2>Output Contract</h2>
+<p>The result is a <code>SiteCrawlResult</code> package containing <code>crawl_run_id</code>, <code>status</code>, <code>root</code>, <code>pages</code>, <code>excluded</code>, <code>extracted_model</code>, and <code>limits</code>.</p>
+<p>Pages include rendered visual snapshots for a bounded set of representative pages when available: visible regions, layout boxes, text hierarchy, media, links, forms, and source selectors. The crawl can still include more pages/routes than rendered snapshots; source-oriented fields such as <code>html</code>, <code>text_excerpt</code>, <code>links</code>, and <code>forms</code> remain auxiliary evidence.</p>
+<p>The output is rendered layout cue capture, but it is not full CSS/assets capture, full JavaScript behavior capture, authenticated flow capture, or an equivalent clone.</p>
+<h2>Downstream Generator Rule</h2>
+<p>Use rendered visual cues as the primary reconstruction reference and source HTML only as auxiliary evidence. The downstream converter must map those cues to the custom component library; it must not produce a DOM, pixel, label-equivalent, rendered-behavior, or otherwise equivalent clone. If no existing component maps to a referenced function or layout cue, the converter phase must first compose from atomic components and only then record a component-library gap.</p>
+</main>
+</body>
+</html>

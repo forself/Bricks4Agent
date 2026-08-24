@@ -17,6 +17,7 @@ public class HighLevelProductionRoutingTests : IClassFixture<BrokerFixture>
     public async Task Production_CreativeWritingRequest_UsesDocGenWithoutProjectName()
     {
         var userId = $"line-production-creative-doc-{Guid.NewGuid():N}";
+        await _fixture.EnableLineProductionAsync(userId);
 
         using var response = await _fixture.SendHighLevelLineTextAsync("/建立 童話故事", userId);
         var data = response.RootElement.GetProperty("data");
@@ -32,6 +33,7 @@ public class HighLevelProductionRoutingTests : IClassFixture<BrokerFixture>
     public async Task Production_CreativeWritingWebsiteRequest_StillUsesCodeGen()
     {
         var userId = $"line-production-creative-site-{Guid.NewGuid():N}";
+        await _fixture.EnableLineProductionAsync(userId);
 
         using var response = await _fixture.SendHighLevelLineTextAsync("/建立 童話故事網站", userId);
         var draft = response.RootElement.GetProperty("data").GetProperty("draft");

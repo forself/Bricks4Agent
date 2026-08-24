@@ -465,6 +465,9 @@ function buildCrudPipeline(config) {
                 validators: [
                     (content) => {
                         const errors = [];
+                        if (content.includes('DbContext') || content.includes('_context')) {
+                            errors.push('[EF Core violation] Services must inject AppDb/BaseOrm abstractions, not DbContext/_context.');
+                        }
                         const methods = ['GetAllAsync', 'GetByIdAsync', 'CreateAsync', 'UpdateAsync', 'DeleteAsync'];
                         for (const m of methods) {
                             if (!content.includes(m)) {
@@ -515,6 +518,10 @@ function buildCrudPipeline(config) {
         ],
         constraints: [
             `Deterministic backend generation for ${entityName} via generate-api.js functions`,
+            '禁止使用 EntityFrameworkCore',
+            '只能注入 AppDb，不能使用 DbContext 或 EntityFrameworkCore',
+            'BaseOrm API: Query<T>(sql, param?), Insert(entity)',
+            'Service async wrappers must use Task.FromResult for synchronous BaseOrm results; do not use EF async APIs',
         ],
     });
 

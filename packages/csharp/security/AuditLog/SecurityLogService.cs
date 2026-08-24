@@ -33,7 +33,7 @@ namespace Bricks4Agent.Security.AuditLog
         /// Log a successful login
         /// </summary>
         void LogLoginSuccess(int userId, string username, string ipAddress, string userAgent,
-            string sessionId = null, bool mfaVerified = false, string mfaMethod = null);
+            string? sessionId = null, bool mfaVerified = false, string? mfaMethod = null);
 
         /// <summary>
         /// Log a failed login
@@ -43,31 +43,31 @@ namespace Bricks4Agent.Security.AuditLog
         /// <summary>
         /// Log a logout
         /// </summary>
-        void LogLogout(int userId, string username, string ipAddress, string sessionId = null);
+        void LogLogout(int userId, string username, string ipAddress, string? sessionId = null);
 
         /// <summary>
         /// Log MFA event
         /// </summary>
         void LogMfaEvent(SecurityEventType eventType, int userId, string username, string ipAddress,
-            bool success, string method = null, string details = null);
+            bool success, string? method = null, string? details = null);
 
         /// <summary>
         /// Log account event
         /// </summary>
         void LogAccountEvent(SecurityEventType eventType, int userId, string username, string ipAddress,
-            string details = null);
+            string? details = null);
 
         /// <summary>
         /// Log security event (rate limit, suspicious activity, etc.)
         /// </summary>
         void LogSecurityEvent(SecurityEventType eventType, string ipAddress, string userAgent,
-            string message, SecuritySeverity severity = SecuritySeverity.Medium, string details = null);
+            string message, SecuritySeverity severity = SecuritySeverity.Medium, string? details = null);
 
         /// <summary>
         /// Log admin action
         /// </summary>
         void LogAdminAction(int adminUserId, string adminUsername, string action, string targetResource,
-            string ipAddress, string details = null);
+            string ipAddress, string? details = null);
 
         /// <summary>
         /// Query security logs
@@ -77,7 +77,7 @@ namespace Bricks4Agent.Security.AuditLog
         /// <summary>
         /// Get log by ID
         /// </summary>
-        SecurityLogEntry GetById(long id);
+        SecurityLogEntry? GetById(long id);
 
         /// <summary>
         /// Get user's login history
@@ -112,7 +112,7 @@ namespace Bricks4Agent.Security.AuditLog
         /// <summary>
         /// Get IP activity summary
         /// </summary>
-        IpActivitySummary GetIpActivity(string ipAddress, DateTime? since = null);
+        IpActivitySummary? GetIpActivity(string ipAddress, DateTime? since = null);
 
         /// <summary>
         /// Get security statistics
@@ -152,14 +152,14 @@ namespace Bricks4Agent.Security.AuditLog
     {
         private readonly ISecurityLogRepository _logRepository;
         private readonly ILoginRecordRepository _loginRepository;
-        private readonly ISecurityAlertRepository _alertRepository;
+        private readonly ISecurityAlertRepository? _alertRepository;
         private readonly SecurityLogOptions _options;
 
         public SecurityLogService(
             ISecurityLogRepository logRepository,
             ILoginRecordRepository loginRepository,
-            ISecurityAlertRepository alertRepository = null,
-            SecurityLogOptions options = null)
+            ISecurityAlertRepository? alertRepository = null,
+            SecurityLogOptions? options = null)
         {
             _logRepository = logRepository ?? throw new ArgumentNullException(nameof(logRepository));
             _loginRepository = loginRepository ?? throw new ArgumentNullException(nameof(loginRepository));
@@ -269,7 +269,7 @@ namespace Bricks4Agent.Security.AuditLog
 
         /// <inheritdoc />
         public void LogLoginSuccess(int userId, string username, string ipAddress, string userAgent,
-            string sessionId = null, bool mfaVerified = false, string mfaMethod = null)
+            string? sessionId = null, bool mfaVerified = false, string? mfaMethod = null)
         {
             var record = new LoginRecord
             {
@@ -313,7 +313,7 @@ namespace Bricks4Agent.Security.AuditLog
         }
 
         /// <inheritdoc />
-        public void LogLogout(int userId, string username, string ipAddress, string sessionId = null)
+        public void LogLogout(int userId, string username, string ipAddress, string? sessionId = null)
         {
             Log(b => b
                 .WithEventType(SecurityEventType.LogoutSuccess)
@@ -327,7 +327,7 @@ namespace Bricks4Agent.Security.AuditLog
 
         /// <inheritdoc />
         public void LogMfaEvent(SecurityEventType eventType, int userId, string username, string ipAddress,
-            bool success, string method = null, string details = null)
+            bool success, string? method = null, string? details = null)
         {
             var severity = eventType switch
             {
@@ -350,7 +350,7 @@ namespace Bricks4Agent.Security.AuditLog
 
         /// <inheritdoc />
         public void LogAccountEvent(SecurityEventType eventType, int userId, string username, string ipAddress,
-            string details = null)
+            string? details = null)
         {
             var severity = eventType switch
             {
@@ -374,7 +374,7 @@ namespace Bricks4Agent.Security.AuditLog
 
         /// <inheritdoc />
         public void LogSecurityEvent(SecurityEventType eventType, string ipAddress, string userAgent,
-            string message, SecuritySeverity severity = SecuritySeverity.Medium, string details = null)
+            string message, SecuritySeverity severity = SecuritySeverity.Medium, string? details = null)
         {
             Log(b => b
                 .WithEventType(eventType)
@@ -389,7 +389,7 @@ namespace Bricks4Agent.Security.AuditLog
 
         /// <inheritdoc />
         public void LogAdminAction(int adminUserId, string adminUsername, string action, string targetResource,
-            string ipAddress, string details = null)
+            string ipAddress, string? details = null)
         {
             Log(b => b
                 .WithEventType(SecurityEventType.AdminAction)
@@ -410,7 +410,7 @@ namespace Bricks4Agent.Security.AuditLog
         }
 
         /// <inheritdoc />
-        public SecurityLogEntry GetById(long id)
+        public SecurityLogEntry? GetById(long id)
         {
             return _logRepository.GetById(id);
         }
@@ -454,7 +454,7 @@ namespace Bricks4Agent.Security.AuditLog
         }
 
         /// <inheritdoc />
-        public IpActivitySummary GetIpActivity(string ipAddress, DateTime? since = null)
+        public IpActivitySummary? GetIpActivity(string ipAddress, DateTime? since = null)
         {
             var hash = HashIpAddress(ipAddress);
             return _logRepository.GetIpActivity(hash, since);
@@ -504,7 +504,7 @@ namespace Bricks4Agent.Security.AuditLog
         private static string HashIpAddress(string ipAddress)
         {
             if (string.IsNullOrEmpty(ipAddress))
-                return null;
+                return string.Empty;
 
             using var sha256 = SHA256.Create();
             var bytes = Encoding.UTF8.GetBytes(ipAddress.ToLowerInvariant());
@@ -607,7 +607,7 @@ namespace Bricks4Agent.Security.AuditLog
                 record.DeviceType = "Desktop";
         }
 
-        private static string GetMfaEventMessage(SecurityEventType eventType, bool success, string method)
+        private static string GetMfaEventMessage(SecurityEventType eventType, bool success, string? method)
         {
             return eventType switch
             {
@@ -746,7 +746,7 @@ namespace Bricks4Agent.Security.AuditLog
             return this;
         }
 
-        public SecurityLogEntryBuilder WithUser(int userId, string username = null)
+        public SecurityLogEntryBuilder WithUser(int userId, string? username = null)
         {
             _entry.UserId = userId;
             _entry.Username = username;
@@ -771,7 +771,7 @@ namespace Bricks4Agent.Security.AuditLog
             return this;
         }
 
-        public SecurityLogEntryBuilder WithSessionId(string sessionId)
+        public SecurityLogEntryBuilder WithSessionId(string? sessionId)
         {
             _entry.SessionId = sessionId;
             return this;
@@ -795,13 +795,13 @@ namespace Bricks4Agent.Security.AuditLog
             return this;
         }
 
-        public SecurityLogEntryBuilder WithDetails(string details)
+        public SecurityLogEntryBuilder WithDetails(string? details)
         {
             _entry.Details = details;
             return this;
         }
 
-        public SecurityLogEntryBuilder WithDetails(object details)
+        public SecurityLogEntryBuilder WithDetails(object? details)
         {
             _entry.Details = details != null ? JsonSerializer.Serialize(details) : null;
             return this;
@@ -827,7 +827,7 @@ namespace Bricks4Agent.Security.AuditLog
             return this;
         }
 
-        public SecurityLogEntryBuilder WithLocation(string location, string countryCode = null)
+        public SecurityLogEntryBuilder WithLocation(string location, string? countryCode = null)
         {
             _entry.Location = location;
             _entry.CountryCode = countryCode;

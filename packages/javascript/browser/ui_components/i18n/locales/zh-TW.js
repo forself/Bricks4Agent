@@ -265,6 +265,21 @@ export default {
         lastPage: '最後一頁'
     },
 
+    /** DynamicDetailRenderer — 定義驅動明細頁 */
+    dynamicDetail: {
+        action: '操作',
+        actions: '操作',
+        attachments: '附件',
+        history: '歷程記錄',
+        media: '媒體',
+        subtable: '明細表',
+        source: '資料來源',
+        tableName: '資料表',
+        tablePk: '主鍵',
+        emptyTable: '尚無資料',
+        emptyValue: '—'
+    },
+
     /** ModalPanel — 模態面板 */
     modalPanel: {
         confirmTitle: '確認',

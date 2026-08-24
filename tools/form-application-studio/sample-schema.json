@@ -1,0 +1,13 @@
+{
+  "table": "CustomerRequests",
+  "display_name": "客戶申請",
+  "primary_key": "Id",
+  "columns": [
+    { "name": "Id", "type": "integer", "primary_key": true, "identity": true, "nullable": false },
+    { "name": "Name", "type": "string", "label": "姓名", "max_length": 100, "nullable": false },
+    { "name": "Email", "type": "email", "label": "電子郵件", "max_length": 200, "nullable": false },
+    { "name": "BirthDate", "type": "date", "label": "出生日期", "nullable": true },
+    { "name": "Notes", "type": "text", "label": "備註", "nullable": true },
+    { "name": "IsActive", "type": "boolean", "label": "啟用", "nullable": false, "default": true }
+  ]
+}

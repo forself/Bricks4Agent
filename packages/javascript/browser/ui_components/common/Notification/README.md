@@ -11,7 +11,7 @@ new Notification(options?)
 ```
 
 | 參數 | 型別 | 預設值 | 說明 |
-|------|------|--------|------|
+|---|---|---|---|
 | `options.type` | `string` | `'info'` | 類型：`'success'`/`'error'`/`'warning'`/`'info'` |
 | `options.title` | `string` | `''` | 標題 |
 | `options.message` | `string` | `''` | 訊息內容 |
@@ -24,19 +24,20 @@ new Notification(options?)
 ### 靜態常數
 
 - `Notification.TYPES` — `{ SUCCESS, ERROR, WARNING, INFO }`
+
 - `Notification.POSITIONS` — `{ TOP_RIGHT, TOP_LEFT, TOP_CENTER, BOTTOM_RIGHT, BOTTOM_LEFT, BOTTOM_CENTER }`
 
 ### 實例方法
 
 | 方法 | 回傳 | 說明 |
-|------|------|------|
+|---|---|---|
 | `show()` | `this` | 顯示通知 |
 | `close()` | `void` | 關閉通知（含動畫） |
 
 ### 靜態方法（建立並立即顯示）
 
 | 方法 | 說明 |
-|------|------|
+|---|---|
 | `Notification.success(message, options?)` | 成功通知 |
 | `Notification.error(message, options?)` | 錯誤通知（預設不自動關閉） |
 | `Notification.warning(message, options?)` | 警告通知 |

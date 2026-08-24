@@ -18,6 +18,9 @@
  * Tooltip.create(myElement, 'Save changes', { position: 'bottom' });
  */
 
+import { nextUid } from '../../utils/uid.js';
+import { sanitizeHTML } from '../../utils/security.js';
+
 export class Tooltip {
     /* ------------------------------------------------------------------ */
     /*  Static constants                                                   */
@@ -93,8 +96,6 @@ export class Tooltip {
         this._onClick = this._handleClick.bind(this);
         this._onDocClick = this._handleDocumentClick.bind(this);
         this._onKeyDown = this._handleKeyDown.bind(this);
-
-        Tooltip._injectStyles();
     }
 
     /* ------------------------------------------------------------------ */
@@ -152,6 +153,7 @@ export class Tooltip {
 
         this._position();
         this._el.classList.add('cl-tooltip--visible');
+        this._el.style.opacity = '1';
         this._visible = true;
 
         return this;
@@ -168,6 +170,7 @@ export class Tooltip {
         if (!this._el || !this._visible) return this;
 
         this._el.classList.remove('cl-tooltip--visible');
+        this._el.style.opacity = '0';
         this._visible = false;
 
         // Remove from DOM after transition
@@ -213,7 +216,7 @@ export class Tooltip {
             const body = this._el.querySelector('.cl-tooltip__body');
             if (body) {
                 if (this.options.html) {
-                    body.innerHTML = text;
+                    body.innerHTML = sanitizeHTML(text);
                 } else {
                     body.textContent = text;
                 }
@@ -238,94 +241,53 @@ export class Tooltip {
     }
 
     /* ------------------------------------------------------------------ */
-    /*  Style injection (singleton)                                        */
+    /*  Internal: Arrow styling (CSP-safe, element-level CSSOM)            */
     /* ------------------------------------------------------------------ */
 
-    /** @private */
-    static _stylesInjected = false;
+    /**
+     * @private Apply position-variant arrow styles via CSSOM.
+     * Replaces the former .cl-tooltip--{pos} .cl-tooltip__arrow CSS rules.
+     * @param {string} pos - top | bottom | left | right
+     */
+    _applyArrowStyles(pos) {
+        const arrow = this._el?.querySelector('.cl-tooltip__arrow');
+        if (!arrow) return;
 
-    /** @private Inject component CSS once into <head> */
-    static _injectStyles() {
-        if (Tooltip._stylesInjected) return;
-        Tooltip._stylesInjected = true;
+        const s = Tooltip.ARROW_SIZE;
 
-        const style = document.createElement('style');
-        style.id = 'cl-tooltip-styles';
-        style.textContent = `
-            /* ========== Tooltip Container ========== */
-            .cl-tooltip {
-                position: fixed;
-                z-index: 10000;
-                pointer-events: none;
-                opacity: 0;
-                transition: opacity var(--cl-transition-fast);
-                max-width: 280px;
-                width: max-content;
-            }
-            .cl-tooltip--visible {
-                opacity: 1;
-            }
+        // Reset to base arrow styles (clears previous variant properties)
+        arrow.style.cssText = 'position: absolute; width: 0; height: 0; border-style: solid; border-color: transparent;';
 
-            /* ========== Tooltip Body ========== */
-            .cl-tooltip__body {
-                background: var(--cl-bg-dark);
-                color: var(--cl-text-inverse);
-                font-family: var(--cl-font-family);
-                font-size: var(--cl-font-size-sm);
-                line-height: 1.45;
-                padding: 6px 10px;
-                border-radius: var(--cl-radius-sm);
-                box-shadow: var(--cl-shadow-md);
-                word-wrap: break-word;
-                overflow-wrap: break-word;
-            }
-
-            /* ========== Arrow / Caret ========== */
-            .cl-tooltip__arrow {
-                position: absolute;
-                width: 0;
-                height: 0;
-                border-style: solid;
-                border-color: transparent;
-            }
-
-            /* Arrow for position=top  (arrow points DOWN) */
-            .cl-tooltip--top .cl-tooltip__arrow {
-                bottom: -6px;
-                left: 50%;
-                transform: translateX(-50%);
-                border-width: 6px 6px 0 6px;
-                border-top-color: var(--cl-bg-dark);
-            }
-
-            /* Arrow for position=bottom (arrow points UP) */
-            .cl-tooltip--bottom .cl-tooltip__arrow {
-                top: -6px;
-                left: 50%;
-                transform: translateX(-50%);
-                border-width: 0 6px 6px 6px;
-                border-bottom-color: var(--cl-bg-dark);
-            }
-
-            /* Arrow for position=left (arrow points RIGHT) */
-            .cl-tooltip--left .cl-tooltip__arrow {
-                right: -6px;
-                top: 50%;
-                transform: translateY(-50%);
-                border-width: 6px 0 6px 6px;
-                border-left-color: var(--cl-bg-dark);
-            }
-
-            /* Arrow for position=right (arrow points LEFT) */
-            .cl-tooltip--right .cl-tooltip__arrow {
-                left: -6px;
-                top: 50%;
-                transform: translateY(-50%);
-                border-width: 6px 6px 6px 0;
-                border-right-color: var(--cl-bg-dark);
-            }
-        `;
-        document.head.appendChild(style);
+        switch (pos) {
+            case 'top': // arrow points DOWN
+                arrow.style.bottom = `-${s}px`;
+                arrow.style.left = '50%';
+                arrow.style.transform = 'translateX(-50%)';
+                arrow.style.borderWidth = `${s}px ${s}px 0 ${s}px`;
+                arrow.style.borderTopColor = 'var(--cl-bg-dark)';
+                break;
+            case 'bottom': // arrow points UP
+                arrow.style.top = `-${s}px`;
+                arrow.style.left = '50%';
+                arrow.style.transform = 'translateX(-50%)';
+                arrow.style.borderWidth = `0 ${s}px ${s}px ${s}px`;
+                arrow.style.borderBottomColor = 'var(--cl-bg-dark)';
+                break;
+            case 'left': // arrow points RIGHT
+                arrow.style.right = `-${s}px`;
+                arrow.style.top = '50%';
+                arrow.style.transform = 'translateY(-50%)';
+                arrow.style.borderWidth = `${s}px 0 ${s}px ${s}px`;
+                arrow.style.borderLeftColor = 'var(--cl-bg-dark)';
+                break;
+            case 'right': // arrow points LEFT
+                arrow.style.left = `-${s}px`;
+                arrow.style.top = '50%';
+                arrow.style.transform = 'translateY(-50%)';
+                arrow.style.borderWidth = `${s}px ${s}px ${s}px 0`;
+                arrow.style.borderRightColor = 'var(--cl-bg-dark)';
+                break;
+        }
     }
 
     /* ------------------------------------------------------------------ */
@@ -336,10 +298,11 @@ export class Tooltip {
     _createElement() {
         const wrapper = document.createElement('div');
         wrapper.className = 'cl-tooltip';
+        wrapper.style.cssText = 'position: fixed; z-index: 10000; pointer-events: none; opacity: 0; transition: opacity var(--cl-transition-fast); max-width: 280px; width: max-content;';
         wrapper.setAttribute('role', 'tooltip');
 
         // Unique id for aria-describedby
-        const id = `cl-tooltip-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
+        const id = this.options.id || nextUid('cl-tooltip');
         wrapper.id = id;
 
         // Set max-width from options
@@ -348,8 +311,9 @@ export class Tooltip {
         // Body
         const body = document.createElement('div');
         body.className = 'cl-tooltip__body';
+        body.style.cssText = 'background: var(--cl-bg-dark); color: var(--cl-text-inverse); font-family: var(--cl-font-family); font-size: var(--cl-font-size-sm); line-height: 1.45; padding: 6px 10px; border-radius: var(--cl-radius-sm); box-shadow: var(--cl-shadow-md); word-wrap: break-word; overflow-wrap: break-word;';
         if (this.options.html) {
-            body.innerHTML = this.options.text;
+            body.innerHTML = sanitizeHTML(this.options.text);
         } else {
             body.textContent = this.options.text;
         }
@@ -358,6 +322,7 @@ export class Tooltip {
         // Arrow
         const arrow = document.createElement('div');
         arrow.className = 'cl-tooltip__arrow';
+        arrow.style.cssText = 'position: absolute; width: 0; height: 0; border-style: solid; border-color: transparent;';
         wrapper.appendChild(arrow);
 
         this._el = wrapper;
@@ -434,7 +399,7 @@ export class Tooltip {
         this._el.style.top = `${top}px`;
         this._el.style.left = `${left}px`;
 
-        // Apply the position class (controls arrow direction)
+        // Apply the position class (kept for compatibility) and arrow styles
         this._el.classList.remove(
             'cl-tooltip--top',
             'cl-tooltip--bottom',
@@ -442,6 +407,7 @@ export class Tooltip {
             'cl-tooltip--right',
         );
         this._el.classList.add(`cl-tooltip--${pos}`);
+        this._applyArrowStyles(pos);
 
         // Adjust arrow position when tooltip is clamped horizontally
         const arrow = this._el.querySelector('.cl-tooltip__arrow');

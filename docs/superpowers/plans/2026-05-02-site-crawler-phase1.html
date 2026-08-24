@@ -1,0 +1,1823 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Site Crawler Phase 1 Implementation Plan</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Site Crawler Phase 1 Implementation Plan</h1>
+<blockquote>
+<p><strong>For agentic workers:</strong> REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (<code>- [ ]</code>) syntax for tracking.</p>
+</blockquote>
+<p><strong>Goal:</strong> Build the first working slice of the site crawler: a safe path-depth crawler worker that returns raw crawl source and deterministic extraction output.</p>
+<p><strong>Architecture:</strong> Add a new <code>site-crawler-worker</code> executable using the existing <code>WorkerSdk.WorkerHost</code> pattern. The worker owns URL safety, path-depth traversal, page fetching, source/resource capture, and deterministic extraction. Broker integration in this phase is limited to registering a tool spec/capability; LINE orchestration and generator conversion are later phases.</p>
+<p><strong>Tech Stack:</strong> .NET 8, xUnit, FluentAssertions, <code>WorkerSdk</code>, <code>HttpClient</code>, <code>System.Text.Json</code>, deterministic HTML parsing with <code>HtmlAgilityPack</code>.</p>
+<hr>
+<h2>File Structure</h2>
+<p>Create:</p>
+<ul>
+<li><code>packages/csharp/workers/site-crawler-worker/SiteCrawlerWorker.csproj</code></li>
+<li><code>packages/csharp/workers/site-crawler-worker/Program.cs</code></li>
+<li><code>packages/csharp/workers/site-crawler-worker/appsettings.json</code></li>
+<li><code>packages/csharp/workers/site-crawler-worker/Models/SiteCrawlContracts.cs</code></li>
+<li><code>packages/csharp/workers/site-crawler-worker/Services/SafeUrlPolicy.cs</code></li>
+<li><code>packages/csharp/workers/site-crawler-worker/Services/PathDepthScope.cs</code></li>
+<li><code>packages/csharp/workers/site-crawler-worker/Services/SiteCrawlerService.cs</code></li>
+<li><code>packages/csharp/workers/site-crawler-worker/Services/DeterministicSiteExtractor.cs</code></li>
+<li><code>packages/csharp/workers/site-crawler-worker/Services/HttpPageFetcher.cs</code></li>
+<li><code>packages/csharp/workers/site-crawler-worker/Handlers/SiteCrawlSourceHandler.cs</code></li>
+<li><code>packages/csharp/broker/tool-specs/site.crawl.source/tool.json</code></li>
+<li><code>packages/csharp/broker/tool-specs/site.crawl.source/TOOL.md</code></li>
+<li><code>packages/csharp/tests/unit/Workers/SiteCrawler/SafeUrlPolicyTests.cs</code></li>
+<li><code>packages/csharp/tests/unit/Workers/SiteCrawler/PathDepthScopeTests.cs</code></li>
+<li><code>packages/csharp/tests/unit/Workers/SiteCrawler/DeterministicSiteExtractorTests.cs</code></li>
+<li><code>packages/csharp/tests/unit/Workers/SiteCrawler/SiteCrawlerServiceTests.cs</code></li>
+<li><code>packages/csharp/tests/unit/Workers/SiteCrawler/SiteCrawlSourceHandlerTests.cs</code></li>
+</ul>
+<p>Modify:</p>
+<ul>
+<li><code>packages/csharp/ControlPlane.slnx</code></li>
+<li><code>packages/csharp/tests/unit/Unit.Tests.csproj</code></li>
+</ul>
+<hr>
+<h3>Task 1: Add Project Shell</h3>
+<p><strong>Files:</strong>
+- Create: <code>packages/csharp/workers/site-crawler-worker/SiteCrawlerWorker.csproj</code>
+- Create: <code>packages/csharp/workers/site-crawler-worker/appsettings.json</code>
+- Modify: <code>packages/csharp/ControlPlane.slnx</code>
+- Modify: <code>packages/csharp/tests/unit/Unit.Tests.csproj</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Create the worker project file</strong></li>
+</ul>
+<p>Create <code>packages/csharp/workers/site-crawler-worker/SiteCrawlerWorker.csproj</code>:</p>
+<pre><code class="language-xml">&lt;Project Sdk=&quot;Microsoft.NET.Sdk&quot;&gt;
+  &lt;PropertyGroup&gt;
+    &lt;OutputType&gt;Exe&lt;/OutputType&gt;
+    &lt;TargetFramework&gt;net8.0&lt;/TargetFramework&gt;
+    &lt;ImplicitUsings&gt;enable&lt;/ImplicitUsings&gt;
+    &lt;Nullable&gt;enable&lt;/Nullable&gt;
+    &lt;RootNamespace&gt;SiteCrawlerWorker&lt;/RootNamespace&gt;
+    &lt;Version&gt;1.0.0&lt;/Version&gt;
+    &lt;Description&gt;Site crawler worker for safe path-depth website source capture and deterministic extraction&lt;/Description&gt;
+    &lt;Authors&gt;Bricks4Agent&lt;/Authors&gt;
+  &lt;/PropertyGroup&gt;
+
+  &lt;ItemGroup&gt;
+    &lt;ProjectReference Include=&quot;..\..\worker-sdk\WorkerSdk.csproj&quot; /&gt;
+  &lt;/ItemGroup&gt;
+
+  &lt;ItemGroup&gt;
+    &lt;PackageReference Include=&quot;HtmlAgilityPack&quot; Version=&quot;1.11.71&quot; /&gt;
+    &lt;PackageReference Include=&quot;Microsoft.Extensions.Configuration.Json&quot; Version=&quot;8.0.0&quot; /&gt;
+    &lt;PackageReference Include=&quot;Microsoft.Extensions.Configuration.EnvironmentVariables&quot; Version=&quot;8.0.0&quot; /&gt;
+    &lt;PackageReference Include=&quot;Microsoft.Extensions.Configuration.CommandLine&quot; Version=&quot;8.0.0&quot; /&gt;
+    &lt;PackageReference Include=&quot;Microsoft.Extensions.Logging.Console&quot; Version=&quot;8.0.0&quot; /&gt;
+  &lt;/ItemGroup&gt;
+
+  &lt;ItemGroup&gt;
+    &lt;Content Include=&quot;appsettings.json&quot; CopyToOutputDirectory=&quot;PreserveNewest&quot; /&gt;
+  &lt;/ItemGroup&gt;
+&lt;/Project&gt;
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 2: Create default worker config</strong></li>
+</ul>
+<p>Create <code>packages/csharp/workers/site-crawler-worker/appsettings.json</code>:</p>
+<pre><code class="language-json">{
+  &quot;Worker&quot;: {
+    &quot;BrokerHost&quot;: &quot;localhost&quot;,
+    &quot;BrokerPort&quot;: 7000,
+    &quot;WorkerId&quot;: &quot;&quot;,
+    &quot;MaxConcurrent&quot;: 2,
+    &quot;HeartbeatIntervalSeconds&quot;: 5,
+    &quot;Auth&quot;: {
+      &quot;WorkerType&quot;: &quot;site-crawler-worker&quot;,
+      &quot;KeyId&quot;: &quot;&quot;,
+      &quot;SharedSecret&quot;: &quot;&quot;
+    }
+  },
+  &quot;Crawler&quot;: {
+    &quot;DefaultMaxPages&quot;: 50,
+    &quot;DefaultMaxTotalBytes&quot;: 10485760,
+    &quot;DefaultMaxAssetBytes&quot;: 2097152,
+    &quot;DefaultWallClockTimeoutSeconds&quot;: 180,
+    &quot;UserAgent&quot;: &quot;Bricks4Agent-SiteCrawler/1.0&quot;
+  }
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 3: Add project to solution</strong></li>
+</ul>
+<p>Modify <code>packages/csharp/ControlPlane.slnx</code> by adding this folder entry under <code>/workers/</code>:</p>
+<pre><code class="language-xml">  &lt;Folder Name=&quot;/workers/site-crawler-worker/&quot;&gt;
+    &lt;Project Path=&quot;workers/site-crawler-worker/SiteCrawlerWorker.csproj&quot; /&gt;
+  &lt;/Folder&gt;
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 4: Reference worker project from unit tests</strong></li>
+</ul>
+<p>Modify <code>packages/csharp/tests/unit/Unit.Tests.csproj</code> and add:</p>
+<pre><code class="language-xml">    &lt;ProjectReference Include=&quot;../../workers/site-crawler-worker/SiteCrawlerWorker.csproj&quot; /&gt;
+</code></pre>
+<p>Place it with the other worker project references.</p>
+<ul>
+<li>[ ] <strong>Step 5: Verify project shell builds</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet build packages/csharp/workers/site-crawler-worker/SiteCrawlerWorker.csproj
+</code></pre>
+<p>Expected: build fails because <code>Program.cs</code> is missing. This confirms the project is included and ready for implementation.</p>
+<ul>
+<li>[ ] <strong>Step 6: Commit</strong></li>
+</ul>
+<pre><code class="language-powershell">git add packages/csharp/workers/site-crawler-worker/SiteCrawlerWorker.csproj packages/csharp/workers/site-crawler-worker/appsettings.json packages/csharp/ControlPlane.slnx packages/csharp/tests/unit/Unit.Tests.csproj
+git commit -m &quot;feat: add site crawler worker project shell&quot;
+</code></pre>
+<hr>
+<h3>Task 2: Define Contracts</h3>
+<p><strong>Files:</strong>
+- Create: <code>packages/csharp/workers/site-crawler-worker/Models/SiteCrawlContracts.cs</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Add contracts</strong></li>
+</ul>
+<p>Create <code>packages/csharp/workers/site-crawler-worker/Models/SiteCrawlContracts.cs</code>:</p>
+<pre><code class="language-csharp">using System.Text.Json.Serialization;
+
+namespace SiteCrawlerWorker.Models;
+
+public sealed class SiteCrawlRequest
+{
+    [JsonPropertyName(&quot;request_id&quot;)]
+    public string RequestId { get; set; } = string.Empty;
+
+    [JsonPropertyName(&quot;start_url&quot;)]
+    public string StartUrl { get; set; } = string.Empty;
+
+    [JsonPropertyName(&quot;scope&quot;)]
+    public SiteCrawlScope Scope { get; set; } = new();
+
+    [JsonPropertyName(&quot;capture&quot;)]
+    public SiteCrawlCaptureOptions Capture { get; set; } = new();
+
+    [JsonPropertyName(&quot;budgets&quot;)]
+    public SiteCrawlBudgets Budgets { get; set; } = new();
+}
+
+public sealed class SiteCrawlScope
+{
+    [JsonPropertyName(&quot;kind&quot;)]
+    public string Kind { get; set; } = &quot;path_depth&quot;;
+
+    [JsonPropertyName(&quot;max_depth&quot;)]
+    public int MaxDepth { get; set; }
+
+    [JsonPropertyName(&quot;same_origin_only&quot;)]
+    public bool SameOriginOnly { get; set; } = true;
+
+    [JsonPropertyName(&quot;path_prefix_lock&quot;)]
+    public bool PathPrefixLock { get; set; } = true;
+}
+
+public sealed class SiteCrawlCaptureOptions
+{
+    [JsonPropertyName(&quot;html&quot;)]
+    public bool Html { get; set; } = true;
+
+    [JsonPropertyName(&quot;rendered_dom&quot;)]
+    public bool RenderedDom { get; set; } = true;
+
+    [JsonPropertyName(&quot;css&quot;)]
+    public bool Css { get; set; } = true;
+
+    [JsonPropertyName(&quot;scripts&quot;)]
+    public bool Scripts { get; set; } = true;
+
+    [JsonPropertyName(&quot;assets&quot;)]
+    public bool Assets { get; set; } = true;
+
+    [JsonPropertyName(&quot;screenshots&quot;)]
+    public bool Screenshots { get; set; }
+}
+
+public sealed class SiteCrawlBudgets
+{
+    [JsonPropertyName(&quot;max_pages&quot;)]
+    public int MaxPages { get; set; } = 50;
+
+    [JsonPropertyName(&quot;max_total_bytes&quot;)]
+    public long MaxTotalBytes { get; set; } = 10 * 1024 * 1024;
+
+    [JsonPropertyName(&quot;max_asset_bytes&quot;)]
+    public long MaxAssetBytes { get; set; } = 2 * 1024 * 1024;
+
+    [JsonPropertyName(&quot;wall_clock_timeout_seconds&quot;)]
+    public int WallClockTimeoutSeconds { get; set; } = 180;
+}
+
+public sealed class SiteCrawlResult
+{
+    [JsonPropertyName(&quot;crawl_run_id&quot;)]
+    public string CrawlRunId { get; set; } = string.Empty;
+
+    [JsonPropertyName(&quot;status&quot;)]
+    public string Status { get; set; } = &quot;completed&quot;;
+
+    [JsonPropertyName(&quot;root&quot;)]
+    public SiteCrawlRoot Root { get; set; } = new();
+
+    [JsonPropertyName(&quot;pages&quot;)]
+    public List&lt;SiteCrawlPage&gt; Pages { get; set; } = new();
+
+    [JsonPropertyName(&quot;assets&quot;)]
+    public List&lt;SiteCrawlAsset&gt; Assets { get; set; } = new();
+
+    [JsonPropertyName(&quot;excluded&quot;)]
+    public List&lt;SiteCrawlExcludedUrl&gt; Excluded { get; set; } = new();
+
+    [JsonPropertyName(&quot;extracted_model&quot;)]
+    public ExtractedSiteModel ExtractedModel { get; set; } = new();
+
+    [JsonPropertyName(&quot;limits&quot;)]
+    public SiteCrawlLimitState Limits { get; set; } = new();
+}
+
+public sealed class SiteCrawlRoot
+{
+    [JsonPropertyName(&quot;start_url&quot;)]
+    public string StartUrl { get; set; } = string.Empty;
+
+    [JsonPropertyName(&quot;normalized_start_url&quot;)]
+    public string NormalizedStartUrl { get; set; } = string.Empty;
+
+    [JsonPropertyName(&quot;origin&quot;)]
+    public string Origin { get; set; } = string.Empty;
+
+    [JsonPropertyName(&quot;path_prefix&quot;)]
+    public string PathPrefix { get; set; } = &quot;/&quot;;
+}
+
+public sealed class SiteCrawlPage
+{
+    [JsonPropertyName(&quot;url&quot;)]
+    public string Url { get; set; } = string.Empty;
+
+    [JsonPropertyName(&quot;final_url&quot;)]
+    public string FinalUrl { get; set; } = string.Empty;
+
+    [JsonPropertyName(&quot;depth&quot;)]
+    public int Depth { get; set; }
+
+    [JsonPropertyName(&quot;status_code&quot;)]
+    public int StatusCode { get; set; }
+
+    [JsonPropertyName(&quot;title&quot;)]
+    public string Title { get; set; } = string.Empty;
+
+    [JsonPropertyName(&quot;html&quot;)]
+    public string Html { get; set; } = string.Empty;
+
+    [JsonPropertyName(&quot;text_excerpt&quot;)]
+    public string TextExcerpt { get; set; } = string.Empty;
+
+    [JsonPropertyName(&quot;links&quot;)]
+    public List&lt;string&gt; Links { get; set; } = new();
+
+    [JsonPropertyName(&quot;forms&quot;)]
+    public List&lt;ExtractedForm&gt; Forms { get; set; } = new();
+
+    [JsonPropertyName(&quot;resources&quot;)]
+    public List&lt;string&gt; Resources { get; set; } = new();
+}
+
+public sealed class SiteCrawlAsset
+{
+    [JsonPropertyName(&quot;url&quot;)]
+    public string Url { get; set; } = string.Empty;
+
+    [JsonPropertyName(&quot;type&quot;)]
+    public string Type { get; set; } = string.Empty;
+
+    [JsonPropertyName(&quot;sha256&quot;)]
+    public string Sha256 { get; set; } = string.Empty;
+}
+
+public sealed class SiteCrawlExcludedUrl
+{
+    [JsonPropertyName(&quot;url&quot;)]
+    public string Url { get; set; } = string.Empty;
+
+    [JsonPropertyName(&quot;reason&quot;)]
+    public string Reason { get; set; } = string.Empty;
+}
+
+public sealed class SiteCrawlLimitState
+{
+    [JsonPropertyName(&quot;truncated&quot;)]
+    public bool Truncated { get; set; }
+
+    [JsonPropertyName(&quot;page_limit_hit&quot;)]
+    public bool PageLimitHit { get; set; }
+
+    [JsonPropertyName(&quot;byte_limit_hit&quot;)]
+    public bool ByteLimitHit { get; set; }
+}
+
+public sealed class ExtractedSiteModel
+{
+    [JsonPropertyName(&quot;pages&quot;)]
+    public List&lt;ExtractedPageModel&gt; Pages { get; set; } = new();
+
+    [JsonPropertyName(&quot;theme_tokens&quot;)]
+    public ExtractedThemeTokens ThemeTokens { get; set; } = new();
+
+    [JsonPropertyName(&quot;route_graph&quot;)]
+    public ExtractedRouteGraph RouteGraph { get; set; } = new();
+}
+
+public sealed class ExtractedPageModel
+{
+    [JsonPropertyName(&quot;page_url&quot;)]
+    public string PageUrl { get; set; } = string.Empty;
+
+    [JsonPropertyName(&quot;sections&quot;)]
+    public List&lt;ExtractedSection&gt; Sections { get; set; } = new();
+}
+
+public sealed class ExtractedSection
+{
+    [JsonPropertyName(&quot;id&quot;)]
+    public string Id { get; set; } = string.Empty;
+
+    [JsonPropertyName(&quot;tag&quot;)]
+    public string Tag { get; set; } = string.Empty;
+
+    [JsonPropertyName(&quot;role&quot;)]
+    public string Role { get; set; } = &quot;content&quot;;
+
+    [JsonPropertyName(&quot;headline&quot;)]
+    public string Headline { get; set; } = string.Empty;
+
+    [JsonPropertyName(&quot;body&quot;)]
+    public string Body { get; set; } = string.Empty;
+
+    [JsonPropertyName(&quot;source_selector&quot;)]
+    public string SourceSelector { get; set; } = string.Empty;
+}
+
+public sealed class ExtractedForm
+{
+    [JsonPropertyName(&quot;selector&quot;)]
+    public string Selector { get; set; } = string.Empty;
+
+    [JsonPropertyName(&quot;method&quot;)]
+    public string Method { get; set; } = &quot;get&quot;;
+
+    [JsonPropertyName(&quot;action&quot;)]
+    public string Action { get; set; } = string.Empty;
+
+    [JsonPropertyName(&quot;fields&quot;)]
+    public List&lt;ExtractedFormField&gt; Fields { get; set; } = new();
+}
+
+public sealed class ExtractedFormField
+{
+    [JsonPropertyName(&quot;name&quot;)]
+    public string Name { get; set; } = string.Empty;
+
+    [JsonPropertyName(&quot;type&quot;)]
+    public string Type { get; set; } = &quot;text&quot;;
+
+    [JsonPropertyName(&quot;label&quot;)]
+    public string Label { get; set; } = string.Empty;
+
+    [JsonPropertyName(&quot;required&quot;)]
+    public bool Required { get; set; }
+}
+
+public sealed class ExtractedThemeTokens
+{
+    [JsonPropertyName(&quot;colors&quot;)]
+    public Dictionary&lt;string, string&gt; Colors { get; set; } = new();
+
+    [JsonPropertyName(&quot;typography&quot;)]
+    public Dictionary&lt;string, string&gt; Typography { get; set; } = new();
+}
+
+public sealed class ExtractedRouteGraph
+{
+    [JsonPropertyName(&quot;routes&quot;)]
+    public List&lt;ExtractedRoute&gt; Routes { get; set; } = new();
+
+    [JsonPropertyName(&quot;edges&quot;)]
+    public List&lt;ExtractedRouteEdge&gt; Edges { get; set; } = new();
+}
+
+public sealed class ExtractedRoute
+{
+    [JsonPropertyName(&quot;path&quot;)]
+    public string Path { get; set; } = string.Empty;
+
+    [JsonPropertyName(&quot;page_id&quot;)]
+    public string PageId { get; set; } = string.Empty;
+
+    [JsonPropertyName(&quot;depth&quot;)]
+    public int Depth { get; set; }
+
+    [JsonPropertyName(&quot;title&quot;)]
+    public string Title { get; set; } = string.Empty;
+}
+
+public sealed class ExtractedRouteEdge
+{
+    [JsonPropertyName(&quot;from&quot;)]
+    public string From { get; set; } = string.Empty;
+
+    [JsonPropertyName(&quot;to&quot;)]
+    public string To { get; set; } = string.Empty;
+
+    [JsonPropertyName(&quot;kind&quot;)]
+    public string Kind { get; set; } = &quot;internal_link&quot;;
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 2: Build to verify contracts compile</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet build packages/csharp/workers/site-crawler-worker/SiteCrawlerWorker.csproj
+</code></pre>
+<p>Expected: still fails because <code>Program.cs</code> is missing, but no errors should reference <code>SiteCrawlContracts.cs</code>.</p>
+<ul>
+<li>[ ] <strong>Step 3: Commit</strong></li>
+</ul>
+<pre><code class="language-powershell">git add packages/csharp/workers/site-crawler-worker/Models/SiteCrawlContracts.cs
+git commit -m &quot;feat: define site crawl contracts&quot;
+</code></pre>
+<hr>
+<h3>Task 3: URL Safety Policy</h3>
+<p><strong>Files:</strong>
+- Create: <code>packages/csharp/workers/site-crawler-worker/Services/SafeUrlPolicy.cs</code>
+- Create: <code>packages/csharp/tests/unit/Workers/SiteCrawler/SafeUrlPolicyTests.cs</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Write failing tests</strong></li>
+</ul>
+<p>Create <code>packages/csharp/tests/unit/Workers/SiteCrawler/SafeUrlPolicyTests.cs</code>:</p>
+<pre><code class="language-csharp">using FluentAssertions;
+using SiteCrawlerWorker.Services;
+
+namespace Unit.Tests.Workers.SiteCrawler;
+
+public class SafeUrlPolicyTests
+{
+    [Theory]
+    [InlineData(&quot;https://example.com/docs&quot;)]
+    [InlineData(&quot;http://example.com/&quot;)]
+    public void ValidateAcceptsPublicHttpUrls(string url)
+    {
+        var result = SafeUrlPolicy.Validate(url);
+
+        result.IsAllowed.Should().BeTrue();
+        result.Uri.Should().NotBeNull();
+        result.Reason.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData(&quot;file:///c:/secret.txt&quot;, &quot;unsupported_scheme&quot;)]
+    [InlineData(&quot;data:text/plain,hello&quot;, &quot;unsupported_scheme&quot;)]
+    [InlineData(&quot;ftp://example.com/file&quot;, &quot;unsupported_scheme&quot;)]
+    [InlineData(&quot;https://localhost/admin&quot;, &quot;blocked_host&quot;)]
+    [InlineData(&quot;http://127.0.0.1/&quot;, &quot;blocked_host&quot;)]
+    [InlineData(&quot;http://[::1]/&quot;, &quot;blocked_host&quot;)]
+    [InlineData(&quot;http://169.254.169.254/latest/meta-data&quot;, &quot;blocked_host&quot;)]
+    [InlineData(&quot;http://10.0.0.1/&quot;, &quot;blocked_host&quot;)]
+    [InlineData(&quot;http://172.16.0.1/&quot;, &quot;blocked_host&quot;)]
+    [InlineData(&quot;http://192.168.0.1/&quot;, &quot;blocked_host&quot;)]
+    public void ValidateRejectsUnsafeUrls(string url, string expectedReason)
+    {
+        var result = SafeUrlPolicy.Validate(url);
+
+        result.IsAllowed.Should().BeFalse();
+        result.Reason.Should().Be(expectedReason);
+    }
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 2: Run tests and verify failure</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter SafeUrlPolicyTests
+</code></pre>
+<p>Expected: compile failure because <code>SafeUrlPolicy</code> does not exist.</p>
+<ul>
+<li>[ ] <strong>Step 3: Implement URL policy</strong></li>
+</ul>
+<p>Create <code>packages/csharp/workers/site-crawler-worker/Services/SafeUrlPolicy.cs</code>:</p>
+<pre><code class="language-csharp">using System.Net;
+using System.Net.Sockets;
+
+namespace SiteCrawlerWorker.Services;
+
+public sealed record SafeUrlValidationResult(bool IsAllowed, Uri? Uri, string Reason)
+{
+    public static SafeUrlValidationResult Allow(Uri uri) =&gt; new(true, uri, string.Empty);
+    public static SafeUrlValidationResult Deny(string reason) =&gt; new(false, null, reason);
+}
+
+public static class SafeUrlPolicy
+{
+    public static SafeUrlValidationResult Validate(string? rawUrl)
+    {
+        if (string.IsNullOrWhiteSpace(rawUrl))
+            return SafeUrlValidationResult.Deny(&quot;url_required&quot;);
+
+        if (!Uri.TryCreate(rawUrl.Trim(), UriKind.Absolute, out var uri))
+            return SafeUrlValidationResult.Deny(&quot;invalid_url&quot;);
+
+        if (uri.Scheme != Uri.UriSchemeHttp &amp;&amp; uri.Scheme != Uri.UriSchemeHttps)
+            return SafeUrlValidationResult.Deny(&quot;unsupported_scheme&quot;);
+
+        if (IsBlockedHost(uri.Host))
+            return SafeUrlValidationResult.Deny(&quot;blocked_host&quot;);
+
+        return SafeUrlValidationResult.Allow(Normalize(uri));
+    }
+
+    public static Uri Normalize(Uri uri)
+    {
+        var builder = new UriBuilder(uri)
+        {
+            Fragment = string.Empty
+        };
+
+        if (string.IsNullOrEmpty(builder.Path))
+            builder.Path = &quot;/&quot;;
+
+        return builder.Uri;
+    }
+
+    private static bool IsBlockedHost(string host)
+    {
+        if (string.IsNullOrWhiteSpace(host))
+            return true;
+
+        if (host.Equals(&quot;localhost&quot;, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (IPAddress.TryParse(host, out var ip))
+            return IsBlockedIp(ip);
+
+        return false;
+    }
+
+    private static bool IsBlockedIp(IPAddress ip)
+    {
+        if (IPAddress.IsLoopback(ip))
+            return true;
+
+        if (ip.AddressFamily == AddressFamily.InterNetworkV6)
+            return ip.IsIPv6LinkLocal || ip.IsIPv6SiteLocal || ip.IsIPv6Multicast;
+
+        var bytes = ip.GetAddressBytes();
+        var first = bytes[0];
+        var second = bytes[1];
+
+        return first == 10 ||
+               first == 127 ||
+               (first == 169 &amp;&amp; second == 254) ||
+               (first == 172 &amp;&amp; second &gt;= 16 &amp;&amp; second &lt;= 31) ||
+               (first == 192 &amp;&amp; second == 168) ||
+               first == 0;
+    }
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 4: Run tests and verify pass</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter SafeUrlPolicyTests
+</code></pre>
+<p>Expected: all <code>SafeUrlPolicyTests</code> pass.</p>
+<ul>
+<li>[ ] <strong>Step 5: Commit</strong></li>
+</ul>
+<pre><code class="language-powershell">git add packages/csharp/workers/site-crawler-worker/Services/SafeUrlPolicy.cs packages/csharp/tests/unit/Workers/SiteCrawler/SafeUrlPolicyTests.cs
+git commit -m &quot;feat: add site crawler url safety policy&quot;
+</code></pre>
+<hr>
+<h3>Task 4: Path Depth Scope</h3>
+<p><strong>Files:</strong>
+- Create: <code>packages/csharp/workers/site-crawler-worker/Services/PathDepthScope.cs</code>
+- Create: <code>packages/csharp/tests/unit/Workers/SiteCrawler/PathDepthScopeTests.cs</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Write failing tests</strong></li>
+</ul>
+<p>Create <code>packages/csharp/tests/unit/Workers/SiteCrawler/PathDepthScopeTests.cs</code>:</p>
+<pre><code class="language-csharp">using FluentAssertions;
+using SiteCrawlerWorker.Models;
+using SiteCrawlerWorker.Services;
+
+namespace Unit.Tests.Workers.SiteCrawler;
+
+public class PathDepthScopeTests
+{
+    [Fact]
+    public void CreateLocksStartPathPrefix()
+    {
+        var scope = PathDepthScope.Create(
+            new Uri(&quot;https://example.com/docs/&quot;),
+            new SiteCrawlScope { MaxDepth = 1 });
+
+        scope.PathPrefix.Should().Be(&quot;/docs/&quot;);
+        scope.Origin.Should().Be(&quot;https://example.com&quot;);
+    }
+
+    [Theory]
+    [InlineData(&quot;https://example.com/docs/&quot;, 0, true)]
+    [InlineData(&quot;https://example.com/docs/a&quot;, 1, true)]
+    [InlineData(&quot;https://example.com/docs/b/&quot;, 1, true)]
+    [InlineData(&quot;https://example.com/docs/a/detail&quot;, 2, false)]
+    [InlineData(&quot;https://example.com/other&quot;, -1, false)]
+    [InlineData(&quot;https://other.example.com/docs/a&quot;, -1, false)]
+    public void EvaluateUsesPathDepth(string url, int expectedDepth, bool expectedAllowed)
+    {
+        var scope = PathDepthScope.Create(
+            new Uri(&quot;https://example.com/docs/&quot;),
+            new SiteCrawlScope
+            {
+                MaxDepth = 1,
+                SameOriginOnly = true,
+                PathPrefixLock = true
+            });
+
+        var result = scope.Evaluate(new Uri(url));
+
+        result.Depth.Should().Be(expectedDepth);
+        result.IsAllowed.Should().Be(expectedAllowed);
+    }
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 2: Run tests and verify failure</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter PathDepthScopeTests
+</code></pre>
+<p>Expected: compile failure because <code>PathDepthScope</code> does not exist.</p>
+<ul>
+<li>[ ] <strong>Step 3: Implement path scope</strong></li>
+</ul>
+<p>Create <code>packages/csharp/workers/site-crawler-worker/Services/PathDepthScope.cs</code>:</p>
+<pre><code class="language-csharp">using SiteCrawlerWorker.Models;
+
+namespace SiteCrawlerWorker.Services;
+
+public sealed record PathDepthEvaluation(bool IsAllowed, int Depth, string Reason)
+{
+    public static PathDepthEvaluation Allow(int depth) =&gt; new(true, depth, string.Empty);
+    public static PathDepthEvaluation Deny(string reason) =&gt; new(false, -1, reason);
+}
+
+public sealed class PathDepthScope
+{
+    private readonly SiteCrawlScope _scope;
+
+    private PathDepthScope(Uri startUri, SiteCrawlScope scope)
+    {
+        StartUri = startUri;
+        _scope = scope;
+        Origin = $&quot;{startUri.Scheme}://{startUri.Authority}&quot;;
+        PathPrefix = NormalizePrefix(startUri.AbsolutePath);
+    }
+
+    public Uri StartUri { get; }
+    public string Origin { get; }
+    public string PathPrefix { get; }
+
+    public static PathDepthScope Create(Uri startUri, SiteCrawlScope scope)
+        =&gt; new(startUri, scope);
+
+    public PathDepthEvaluation Evaluate(Uri candidate)
+    {
+        if (_scope.SameOriginOnly &amp;&amp;
+            !string.Equals(candidate.Scheme, StartUri.Scheme, StringComparison.OrdinalIgnoreCase))
+            return PathDepthEvaluation.Deny(&quot;outside_origin&quot;);
+
+        if (_scope.SameOriginOnly &amp;&amp;
+            !string.Equals(candidate.Authority, StartUri.Authority, StringComparison.OrdinalIgnoreCase))
+            return PathDepthEvaluation.Deny(&quot;outside_origin&quot;);
+
+        var candidatePath = NormalizePath(candidate.AbsolutePath);
+        if (_scope.PathPrefixLock &amp;&amp;
+            !candidatePath.StartsWith(PathPrefix, StringComparison.OrdinalIgnoreCase))
+            return PathDepthEvaluation.Deny(&quot;outside_path_prefix&quot;);
+
+        var depth = CalculateDepth(candidatePath);
+        if (depth &gt; _scope.MaxDepth)
+            return new PathDepthEvaluation(false, depth, &quot;outside_path_depth&quot;);
+
+        return PathDepthEvaluation.Allow(depth);
+    }
+
+    private int CalculateDepth(string candidatePath)
+    {
+        var relative = candidatePath[PathPrefix.Length..].Trim('/');
+        if (string.IsNullOrWhiteSpace(relative))
+            return 0;
+
+        return relative.Split('/', StringSplitOptions.RemoveEmptyEntries).Length;
+    }
+
+    private static string NormalizePrefix(string path)
+    {
+        var normalized = NormalizePath(path);
+        return normalized.EndsWith('/') ? normalized : normalized + &quot;/&quot;;
+    }
+
+    private static string NormalizePath(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            return &quot;/&quot;;
+
+        var normalized = Uri.UnescapeDataString(path);
+        if (!normalized.StartsWith('/'))
+            normalized = &quot;/&quot; + normalized;
+
+        return normalized;
+    }
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 4: Run tests and verify pass</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter PathDepthScopeTests
+</code></pre>
+<p>Expected: all <code>PathDepthScopeTests</code> pass.</p>
+<ul>
+<li>[ ] <strong>Step 5: Commit</strong></li>
+</ul>
+<pre><code class="language-powershell">git add packages/csharp/workers/site-crawler-worker/Services/PathDepthScope.cs packages/csharp/tests/unit/Workers/SiteCrawler/PathDepthScopeTests.cs
+git commit -m &quot;feat: add path depth crawl scope&quot;
+</code></pre>
+<hr>
+<h3>Task 5: Deterministic Extractor</h3>
+<p><strong>Files:</strong>
+- Create: <code>packages/csharp/workers/site-crawler-worker/Services/DeterministicSiteExtractor.cs</code>
+- Create: <code>packages/csharp/tests/unit/Workers/SiteCrawler/DeterministicSiteExtractorTests.cs</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Write failing tests</strong></li>
+</ul>
+<p>Create <code>packages/csharp/tests/unit/Workers/SiteCrawler/DeterministicSiteExtractorTests.cs</code>:</p>
+<pre><code class="language-csharp">using FluentAssertions;
+using SiteCrawlerWorker.Services;
+
+namespace Unit.Tests.Workers.SiteCrawler;
+
+public class DeterministicSiteExtractorTests
+{
+    [Fact]
+    public void ExtractPageFindsHeroLinksAndFormFields()
+    {
+        const string html = &quot;&quot;&quot;
+            &lt;!doctype html&gt;
+            &lt;html&gt;
+              &lt;head&gt;
+                &lt;title&gt;Docs Home&lt;/title&gt;
+                &lt;style&gt;:root { --brand: #3366ff; } body { font-family: Inter, sans-serif; }&lt;/style&gt;
+              &lt;/head&gt;
+              &lt;body&gt;
+                &lt;main&gt;
+                  &lt;section class=&quot;hero&quot;&gt;
+                    &lt;h1&gt;Build Faster&lt;/h1&gt;
+                    &lt;p&gt;Convert source pages into generator definitions.&lt;/p&gt;
+                    &lt;a href=&quot;/docs/start&quot;&gt;Start&lt;/a&gt;
+                  &lt;/section&gt;
+                  &lt;form action=&quot;/contact&quot; method=&quot;post&quot;&gt;
+                    &lt;label&gt;Email &lt;input type=&quot;email&quot; name=&quot;email&quot; required&gt;&lt;/label&gt;
+                  &lt;/form&gt;
+                &lt;/main&gt;
+              &lt;/body&gt;
+            &lt;/html&gt;
+            &quot;&quot;&quot;;
+
+        var extractor = new DeterministicSiteExtractor();
+        var page = extractor.ExtractPage(new Uri(&quot;https://example.com/docs/&quot;), html);
+
+        page.Title.Should().Be(&quot;Docs Home&quot;);
+        page.Links.Should().Contain(&quot;https://example.com/docs/start&quot;);
+        page.Forms.Should().ContainSingle();
+        page.Forms[0].Fields.Should().ContainSingle(field =&gt;
+            field.Name == &quot;email&quot; &amp;&amp; field.Type == &quot;email&quot; &amp;&amp; field.Required);
+        page.Model.Sections.Should().ContainSingle(section =&gt;
+            section.Role == &quot;hero&quot; &amp;&amp; section.Headline == &quot;Build Faster&quot;);
+        page.ThemeTokens.Colors.Should().ContainKey(&quot;brand&quot;);
+        page.ThemeTokens.Typography.Should().ContainKey(&quot;font_family&quot;);
+    }
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 2: Run tests and verify failure</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter DeterministicSiteExtractorTests
+</code></pre>
+<p>Expected: compile failure because <code>DeterministicSiteExtractor</code> does not exist.</p>
+<ul>
+<li>[ ] <strong>Step 3: Implement extractor</strong></li>
+</ul>
+<p>Create <code>packages/csharp/workers/site-crawler-worker/Services/DeterministicSiteExtractor.cs</code>:</p>
+<pre><code class="language-csharp">using System.Text.RegularExpressions;
+using HtmlAgilityPack;
+using SiteCrawlerWorker.Models;
+
+namespace SiteCrawlerWorker.Services;
+
+public sealed class DeterministicSiteExtractor
+{
+    private static readonly Regex CssVarColorRegex = new(@&quot;--(?&lt;name&gt;[a-zA-Z0-9_-]+)\s*:\s*(?&lt;value&gt;#[0-9a-fA-F]{3,8})&quot;, RegexOptions.Compiled);
+    private static readonly Regex FontFamilyRegex = new(@&quot;font-family\s*:\s*(?&lt;value&gt;[^;]+);&quot;, RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    public ExtractedPageResult ExtractPage(Uri pageUri, string html)
+    {
+        var doc = new HtmlDocument();
+        doc.LoadHtml(html ?? string.Empty);
+
+        var title = doc.DocumentNode.SelectSingleNode(&quot;//title&quot;)?.InnerText.Trim() ?? string.Empty;
+        var links = ExtractLinks(pageUri, doc);
+        var forms = ExtractForms(doc);
+        var sections = ExtractSections(doc);
+        var tokens = ExtractThemeTokens(doc);
+        var text = HtmlEntity.DeEntitize(doc.DocumentNode.InnerText ?? string.Empty);
+        text = Regex.Replace(text, @&quot;\s+&quot;, &quot; &quot;).Trim();
+
+        return new ExtractedPageResult
+        {
+            Title = title,
+            Links = links,
+            Forms = forms,
+            TextExcerpt = text.Length &lt;= 1000 ? text : text[..1000],
+            ThemeTokens = tokens,
+            Model = new ExtractedPageModel
+            {
+                PageUrl = pageUri.ToString(),
+                Sections = sections
+            }
+        };
+    }
+
+    private static List&lt;string&gt; ExtractLinks(Uri pageUri, HtmlDocument doc)
+    {
+        var links = new List&lt;string&gt;();
+        foreach (var anchor in doc.DocumentNode.SelectNodes(&quot;//a[@href]&quot;) ?? Enumerable.Empty&lt;HtmlNode&gt;())
+        {
+            var href = anchor.GetAttributeValue(&quot;href&quot;, string.Empty).Trim();
+            if (href.Length == 0 || href.StartsWith(&quot;#&quot;, StringComparison.Ordinal))
+                continue;
+
+            if (Uri.TryCreate(pageUri, href, out var resolved) &amp;&amp;
+                (resolved.Scheme == Uri.UriSchemeHttp || resolved.Scheme == Uri.UriSchemeHttps))
+            {
+                var builder = new UriBuilder(resolved) { Fragment = string.Empty };
+                links.Add(builder.Uri.ToString());
+            }
+        }
+
+        return links.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    private static List&lt;ExtractedForm&gt; ExtractForms(HtmlDocument doc)
+    {
+        var forms = new List&lt;ExtractedForm&gt;();
+        var nodes = doc.DocumentNode.SelectNodes(&quot;//form&quot;) ?? Enumerable.Empty&lt;HtmlNode&gt;();
+        var index = 0;
+        foreach (var form in nodes)
+        {
+            index++;
+            var extracted = new ExtractedForm
+            {
+                Selector = $&quot;form:nth-of-type({index})&quot;,
+                Method = form.GetAttributeValue(&quot;method&quot;, &quot;get&quot;).ToLowerInvariant(),
+                Action = form.GetAttributeValue(&quot;action&quot;, string.Empty)
+            };
+
+            foreach (var input in form.SelectNodes(&quot;.//input|.//textarea|.//select&quot;) ?? Enumerable.Empty&lt;HtmlNode&gt;())
+            {
+                var name = input.GetAttributeValue(&quot;name&quot;, string.Empty);
+                if (string.IsNullOrWhiteSpace(name))
+                    name = input.GetAttributeValue(&quot;id&quot;, string.Empty);
+                if (string.IsNullOrWhiteSpace(name))
+                    continue;
+
+                extracted.Fields.Add(new ExtractedFormField
+                {
+                    Name = name,
+                    Type = NormalizeFieldType(input),
+                    Label = FindLabel(input),
+                    Required = input.Attributes[&quot;required&quot;] != null
+                });
+            }
+
+            forms.Add(extracted);
+        }
+
+        return forms;
+    }
+
+    private static string NormalizeFieldType(HtmlNode input)
+    {
+        if (input.Name.Equals(&quot;textarea&quot;, StringComparison.OrdinalIgnoreCase))
+            return &quot;textarea&quot;;
+        if (input.Name.Equals(&quot;select&quot;, StringComparison.OrdinalIgnoreCase))
+            return &quot;select&quot;;
+        return input.GetAttributeValue(&quot;type&quot;, &quot;text&quot;).ToLowerInvariant();
+    }
+
+    private static string FindLabel(HtmlNode input)
+    {
+        var id = input.GetAttributeValue(&quot;id&quot;, string.Empty);
+        if (!string.IsNullOrWhiteSpace(id))
+        {
+            var doc = input.OwnerDocument;
+            var label = doc.DocumentNode.SelectSingleNode($&quot;//label[@for='{id}']&quot;);
+            if (label != null)
+                return CleanText(label.InnerText);
+        }
+
+        var parent = input.ParentNode;
+        while (parent != null)
+        {
+            if (parent.Name.Equals(&quot;label&quot;, StringComparison.OrdinalIgnoreCase))
+                return CleanText(parent.InnerText);
+            parent = parent.ParentNode;
+        }
+
+        return input.GetAttributeValue(&quot;placeholder&quot;, string.Empty);
+    }
+
+    private static List&lt;ExtractedSection&gt; ExtractSections(HtmlDocument doc)
+    {
+        var candidates = doc.DocumentNode.SelectNodes(&quot;//main//section|//section|//article|//header|//footer&quot;) ??
+            Enumerable.Empty&lt;HtmlNode&gt;();
+        var sections = new List&lt;ExtractedSection&gt;();
+        var index = 0;
+        foreach (var node in candidates)
+        {
+            var body = CleanText(node.InnerText);
+            if (body.Length == 0)
+                continue;
+
+            index++;
+            sections.Add(new ExtractedSection
+            {
+                Id = $&quot;sec_{index}&quot;,
+                Tag = node.Name,
+                Role = InferRole(node),
+                Headline = CleanText(node.SelectSingleNode(&quot;.//h1|.//h2|.//h3&quot;)?.InnerText ?? string.Empty),
+                Body = body.Length &lt;= 500 ? body : body[..500],
+                SourceSelector = $&quot;{node.Name}:nth-of-type({index})&quot;
+            });
+        }
+
+        return sections;
+    }
+
+    private static ExtractedThemeTokens ExtractThemeTokens(HtmlDocument doc)
+    {
+        var tokens = new ExtractedThemeTokens();
+        var css = string.Join(&quot;\n&quot;, (doc.DocumentNode.SelectNodes(&quot;//style&quot;) ?? Enumerable.Empty&lt;HtmlNode&gt;())
+            .Select(node =&gt; node.InnerText));
+
+        foreach (Match match in CssVarColorRegex.Matches(css))
+        {
+            tokens.Colors[match.Groups[&quot;name&quot;].Value] = match.Groups[&quot;value&quot;].Value;
+        }
+
+        var font = FontFamilyRegex.Match(css);
+        if (font.Success)
+            tokens.Typography[&quot;font_family&quot;] = font.Groups[&quot;value&quot;].Value.Trim();
+
+        return tokens;
+    }
+
+    private static string InferRole(HtmlNode node)
+    {
+        var cls = node.GetAttributeValue(&quot;class&quot;, string.Empty).ToLowerInvariant();
+        var id = node.GetAttributeValue(&quot;id&quot;, string.Empty).ToLowerInvariant();
+        var marker = $&quot;{cls} {id}&quot;;
+        if (node.Name.Equals(&quot;header&quot;, StringComparison.OrdinalIgnoreCase) || marker.Contains(&quot;hero&quot;))
+            return &quot;hero&quot;;
+        if (node.Name.Equals(&quot;footer&quot;, StringComparison.OrdinalIgnoreCase))
+            return &quot;footer&quot;;
+        if (node.Name.Equals(&quot;article&quot;, StringComparison.OrdinalIgnoreCase))
+            return &quot;article&quot;;
+        if (marker.Contains(&quot;card&quot;) || marker.Contains(&quot;grid&quot;))
+            return &quot;card_grid&quot;;
+        if (node.SelectSingleNode(&quot;.//form&quot;) != null)
+            return &quot;form&quot;;
+        return &quot;content&quot;;
+    }
+
+    private static string CleanText(string value)
+        =&gt; Regex.Replace(HtmlEntity.DeEntitize(value ?? string.Empty), @&quot;\s+&quot;, &quot; &quot;).Trim();
+}
+
+public sealed class ExtractedPageResult
+{
+    public string Title { get; set; } = string.Empty;
+    public string TextExcerpt { get; set; } = string.Empty;
+    public List&lt;string&gt; Links { get; set; } = new();
+    public List&lt;ExtractedForm&gt; Forms { get; set; } = new();
+    public ExtractedThemeTokens ThemeTokens { get; set; } = new();
+    public ExtractedPageModel Model { get; set; } = new();
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 4: Run tests and verify pass</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter DeterministicSiteExtractorTests
+</code></pre>
+<p>Expected: all <code>DeterministicSiteExtractorTests</code> pass.</p>
+<ul>
+<li>[ ] <strong>Step 5: Commit</strong></li>
+</ul>
+<pre><code class="language-powershell">git add packages/csharp/workers/site-crawler-worker/Services/DeterministicSiteExtractor.cs packages/csharp/tests/unit/Workers/SiteCrawler/DeterministicSiteExtractorTests.cs
+git commit -m &quot;feat: add deterministic site extraction&quot;
+</code></pre>
+<hr>
+<h3>Task 6: BFS Crawler Service</h3>
+<p><strong>Files:</strong>
+- Create: <code>packages/csharp/workers/site-crawler-worker/Services/HttpPageFetcher.cs</code>
+- Create: <code>packages/csharp/workers/site-crawler-worker/Services/SiteCrawlerService.cs</code>
+- Create: <code>packages/csharp/tests/unit/Workers/SiteCrawler/SiteCrawlerServiceTests.cs</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Write failing tests</strong></li>
+</ul>
+<p>Create <code>packages/csharp/tests/unit/Workers/SiteCrawler/SiteCrawlerServiceTests.cs</code>:</p>
+<pre><code class="language-csharp">using FluentAssertions;
+using Microsoft.Extensions.Logging.Abstractions;
+using SiteCrawlerWorker.Models;
+using SiteCrawlerWorker.Services;
+
+namespace Unit.Tests.Workers.SiteCrawler;
+
+public class SiteCrawlerServiceTests
+{
+    [Fact]
+    public async Task CrawlAsyncFollowsOnlyAllowedPathDepth()
+    {
+        var pages = new Dictionary&lt;string, string&gt;(StringComparer.OrdinalIgnoreCase)
+        {
+            [&quot;https://example.com/docs/&quot;] = &quot;&quot;&quot;
+                &lt;html&gt;&lt;head&gt;&lt;title&gt;Root&lt;/title&gt;&lt;/head&gt;&lt;body&gt;
+                &lt;section&gt;&lt;h1&gt;Root&lt;/h1&gt;&lt;a href=&quot;/docs/a&quot;&gt;A&lt;/a&gt;&lt;a href=&quot;/docs/a/detail&quot;&gt;Detail&lt;/a&gt;&lt;a href=&quot;/other&quot;&gt;Other&lt;/a&gt;&lt;/section&gt;
+                &lt;/body&gt;&lt;/html&gt;
+                &quot;&quot;&quot;,
+            [&quot;https://example.com/docs/a&quot;] = &quot;&quot;&quot;
+                &lt;html&gt;&lt;head&gt;&lt;title&gt;A&lt;/title&gt;&lt;/head&gt;&lt;body&gt;&lt;section&gt;&lt;h1&gt;A&lt;/h1&gt;&lt;/section&gt;&lt;/body&gt;&lt;/html&gt;
+                &quot;&quot;&quot;
+        };
+
+        var service = new SiteCrawlerService(
+            new FakePageFetcher(pages),
+            new DeterministicSiteExtractor(),
+            NullLogger&lt;SiteCrawlerService&gt;.Instance);
+
+        var result = await service.CrawlAsync(new SiteCrawlRequest
+        {
+            StartUrl = &quot;https://example.com/docs/&quot;,
+            Scope = new SiteCrawlScope { MaxDepth = 1 },
+            Budgets = new SiteCrawlBudgets { MaxPages = 10 }
+        }, CancellationToken.None);
+
+        result.Pages.Select(p =&gt; p.FinalUrl).Should().BeEquivalentTo(
+            &quot;https://example.com/docs/&quot;,
+            &quot;https://example.com/docs/a&quot;);
+        result.Excluded.Should().Contain(e =&gt; e.Url == &quot;https://example.com/docs/a/detail&quot; &amp;&amp; e.Reason == &quot;outside_path_depth&quot;);
+        result.Excluded.Should().Contain(e =&gt; e.Url == &quot;https://example.com/other&quot; &amp;&amp; e.Reason == &quot;outside_path_prefix&quot;);
+        result.ExtractedModel.Pages.Should().HaveCount(2);
+        result.ExtractedModel.RouteGraph.Routes.Should().HaveCount(2);
+    }
+
+    private sealed class FakePageFetcher : IPageFetcher
+    {
+        private readonly Dictionary&lt;string, string&gt; _pages;
+
+        public FakePageFetcher(Dictionary&lt;string, string&gt; pages)
+        {
+            _pages = pages;
+        }
+
+        public Task&lt;PageFetchResult&gt; FetchAsync(Uri uri, CancellationToken ct)
+        {
+            return _pages.TryGetValue(uri.ToString(), out var html)
+                ? Task.FromResult(PageFetchResult.Ok(uri, 200, &quot;text/html&quot;, html))
+                : Task.FromResult(PageFetchResult.Fail(uri, 404, &quot;missing&quot;));
+        }
+    }
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 2: Run tests and verify failure</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter SiteCrawlerServiceTests
+</code></pre>
+<p>Expected: compile failure because <code>SiteCrawlerService</code>, <code>IPageFetcher</code>, and <code>PageFetchResult</code> do not exist.</p>
+<ul>
+<li>[ ] <strong>Step 3: Implement page fetcher</strong></li>
+</ul>
+<p>Create <code>packages/csharp/workers/site-crawler-worker/Services/HttpPageFetcher.cs</code>:</p>
+<pre><code class="language-csharp">namespace SiteCrawlerWorker.Services;
+
+public interface IPageFetcher
+{
+    Task&lt;PageFetchResult&gt; FetchAsync(Uri uri, CancellationToken ct);
+}
+
+public sealed class PageFetchResult
+{
+    public bool Success { get; set; }
+    public Uri Uri { get; set; } = new(&quot;https://invalid.local/&quot;);
+    public Uri FinalUri { get; set; } = new(&quot;https://invalid.local/&quot;);
+    public int StatusCode { get; set; }
+    public string ContentType { get; set; } = string.Empty;
+    public string Html { get; set; } = string.Empty;
+    public string Error { get; set; } = string.Empty;
+
+    public static PageFetchResult Ok(Uri finalUri, int statusCode, string contentType, string html)
+        =&gt; new()
+        {
+            Success = true,
+            Uri = finalUri,
+            FinalUri = finalUri,
+            StatusCode = statusCode,
+            ContentType = contentType,
+            Html = html
+        };
+
+    public static PageFetchResult Fail(Uri uri, int statusCode, string error)
+        =&gt; new()
+        {
+            Success = false,
+            Uri = uri,
+            FinalUri = uri,
+            StatusCode = statusCode,
+            Error = error
+        };
+}
+
+public sealed class HttpPageFetcher : IPageFetcher
+{
+    private readonly HttpClient _httpClient;
+
+    public HttpPageFetcher(HttpClient httpClient)
+    {
+        _httpClient = httpClient;
+    }
+
+    public async Task&lt;PageFetchResult&gt; FetchAsync(Uri uri, CancellationToken ct)
+    {
+        using var response = await _httpClient.GetAsync(uri, ct);
+        var finalUri = response.RequestMessage?.RequestUri ?? uri;
+        var contentType = response.Content.Headers.ContentType?.MediaType ?? string.Empty;
+        if (!response.IsSuccessStatusCode)
+            return PageFetchResult.Fail(finalUri, (int)response.StatusCode, $&quot;http_{(int)response.StatusCode}&quot;);
+
+        if (!contentType.Contains(&quot;html&quot;, StringComparison.OrdinalIgnoreCase))
+            return PageFetchResult.Fail(finalUri, (int)response.StatusCode, &quot;non_html&quot;);
+
+        var html = await response.Content.ReadAsStringAsync(ct);
+        return PageFetchResult.Ok(finalUri, (int)response.StatusCode, contentType, html);
+    }
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 4: Implement crawler service</strong></li>
+</ul>
+<p>Create <code>packages/csharp/workers/site-crawler-worker/Services/SiteCrawlerService.cs</code>:</p>
+<pre><code class="language-csharp">using Microsoft.Extensions.Logging;
+using SiteCrawlerWorker.Models;
+
+namespace SiteCrawlerWorker.Services;
+
+public sealed class SiteCrawlerService
+{
+    private readonly IPageFetcher _fetcher;
+    private readonly DeterministicSiteExtractor _extractor;
+    private readonly ILogger&lt;SiteCrawlerService&gt; _logger;
+
+    public SiteCrawlerService(
+        IPageFetcher fetcher,
+        DeterministicSiteExtractor extractor,
+        ILogger&lt;SiteCrawlerService&gt; logger)
+    {
+        _fetcher = fetcher;
+        _extractor = extractor;
+        _logger = logger;
+    }
+
+    public async Task&lt;SiteCrawlResult&gt; CrawlAsync(SiteCrawlRequest request, CancellationToken ct)
+    {
+        var validation = SafeUrlPolicy.Validate(request.StartUrl);
+        if (!validation.IsAllowed || validation.Uri == null)
+            throw new InvalidOperationException(validation.Reason);
+
+        var startUri = validation.Uri;
+        var scope = PathDepthScope.Create(startUri, request.Scope);
+        var crawlRunId = string.IsNullOrWhiteSpace(request.RequestId)
+            ? $&quot;crawl_{Guid.NewGuid():N}&quot;[..24]
+            : $&quot;crawl_{request.RequestId}&quot;;
+
+        var result = new SiteCrawlResult
+        {
+            CrawlRunId = crawlRunId,
+            Root = new SiteCrawlRoot
+            {
+                StartUrl = request.StartUrl,
+                NormalizedStartUrl = startUri.ToString(),
+                Origin = scope.Origin,
+                PathPrefix = scope.PathPrefix
+            }
+        };
+
+        var queue = new Queue&lt;Uri&gt;();
+        var seen = new HashSet&lt;string&gt;(StringComparer.OrdinalIgnoreCase);
+        queue.Enqueue(startUri);
+        seen.Add(startUri.ToString());
+
+        while (queue.Count &gt; 0 &amp;&amp; !ct.IsCancellationRequested)
+        {
+            if (result.Pages.Count &gt;= request.Budgets.MaxPages)
+            {
+                result.Limits.PageLimitHit = true;
+                result.Limits.Truncated = true;
+                break;
+            }
+
+            var current = queue.Dequeue();
+            var eval = scope.Evaluate(current);
+            if (!eval.IsAllowed)
+            {
+                result.Excluded.Add(new SiteCrawlExcludedUrl { Url = current.ToString(), Reason = eval.Reason });
+                continue;
+            }
+
+            var safety = SafeUrlPolicy.Validate(current.ToString());
+            if (!safety.IsAllowed)
+            {
+                result.Excluded.Add(new SiteCrawlExcludedUrl { Url = current.ToString(), Reason = safety.Reason });
+                continue;
+            }
+
+            _logger.LogInformation(&quot;Crawling {Url}&quot;, current);
+            var fetch = await _fetcher.FetchAsync(current, ct);
+            if (!fetch.Success)
+            {
+                result.Excluded.Add(new SiteCrawlExcludedUrl { Url = current.ToString(), Reason = fetch.Error });
+                continue;
+            }
+
+            var extracted = _extractor.ExtractPage(fetch.FinalUri, fetch.Html);
+            var page = new SiteCrawlPage
+            {
+                Url = current.ToString(),
+                FinalUrl = fetch.FinalUri.ToString(),
+                Depth = eval.Depth,
+                StatusCode = fetch.StatusCode,
+                Title = extracted.Title,
+                Html = request.Capture.Html ? fetch.Html : string.Empty,
+                TextExcerpt = extracted.TextExcerpt,
+                Links = extracted.Links,
+                Forms = extracted.Forms
+            };
+            result.Pages.Add(page);
+            result.ExtractedModel.Pages.Add(extracted.Model);
+            MergeThemeTokens(result.ExtractedModel.ThemeTokens, extracted.ThemeTokens);
+            result.ExtractedModel.RouteGraph.Routes.Add(new ExtractedRoute
+            {
+                Path = fetch.FinalUri.AbsolutePath,
+                PageId = ToPageId(fetch.FinalUri.AbsolutePath),
+                Depth = eval.Depth,
+                Title = extracted.Title
+            });
+
+            foreach (var link in extracted.Links)
+            {
+                if (!Uri.TryCreate(link, UriKind.Absolute, out var linkUri))
+                    continue;
+
+                var linkSafety = SafeUrlPolicy.Validate(linkUri.ToString());
+                if (!linkSafety.IsAllowed || linkSafety.Uri == null)
+                {
+                    result.Excluded.Add(new SiteCrawlExcludedUrl { Url = link, Reason = linkSafety.Reason });
+                    continue;
+                }
+
+                var linkEval = scope.Evaluate(linkSafety.Uri);
+                if (!linkEval.IsAllowed)
+                {
+                    result.Excluded.Add(new SiteCrawlExcludedUrl { Url = linkSafety.Uri.ToString(), Reason = linkEval.Reason });
+                    continue;
+                }
+
+                result.ExtractedModel.RouteGraph.Edges.Add(new ExtractedRouteEdge
+                {
+                    From = fetch.FinalUri.AbsolutePath,
+                    To = linkSafety.Uri.AbsolutePath
+                });
+
+                if (seen.Add(linkSafety.Uri.ToString()))
+                    queue.Enqueue(linkSafety.Uri);
+            }
+        }
+
+        return result;
+    }
+
+    private static void MergeThemeTokens(ExtractedThemeTokens target, ExtractedThemeTokens source)
+    {
+        foreach (var item in source.Colors)
+            target.Colors.TryAdd(item.Key, item.Value);
+        foreach (var item in source.Typography)
+            target.Typography.TryAdd(item.Key, item.Value);
+    }
+
+    private static string ToPageId(string path)
+    {
+        var cleaned = path.Trim('/').Replace('/', '-');
+        return string.IsNullOrWhiteSpace(cleaned) ? &quot;home&quot; : cleaned;
+    }
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 5: Run tests and verify pass</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter SiteCrawlerServiceTests
+</code></pre>
+<p>Expected: all <code>SiteCrawlerServiceTests</code> pass.</p>
+<ul>
+<li>[ ] <strong>Step 6: Commit</strong></li>
+</ul>
+<pre><code class="language-powershell">git add packages/csharp/workers/site-crawler-worker/Services/HttpPageFetcher.cs packages/csharp/workers/site-crawler-worker/Services/SiteCrawlerService.cs packages/csharp/tests/unit/Workers/SiteCrawler/SiteCrawlerServiceTests.cs
+git commit -m &quot;feat: add path depth site crawler service&quot;
+</code></pre>
+<hr>
+<h3>Task 7: Worker Handler</h3>
+<p><strong>Files:</strong>
+- Create: <code>packages/csharp/workers/site-crawler-worker/Handlers/SiteCrawlSourceHandler.cs</code>
+- Create: <code>packages/csharp/tests/unit/Workers/SiteCrawler/SiteCrawlSourceHandlerTests.cs</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Write failing tests</strong></li>
+</ul>
+<p>Create <code>packages/csharp/tests/unit/Workers/SiteCrawler/SiteCrawlSourceHandlerTests.cs</code>:</p>
+<pre><code class="language-csharp">using System.Text.Json;
+using FluentAssertions;
+using Microsoft.Extensions.Logging.Abstractions;
+using SiteCrawlerWorker.Handlers;
+using SiteCrawlerWorker.Models;
+using SiteCrawlerWorker.Services;
+
+namespace Unit.Tests.Workers.SiteCrawler;
+
+public class SiteCrawlSourceHandlerTests
+{
+    [Fact]
+    public async Task ExecuteAsyncReturnsSerializedCrawlResult()
+    {
+        var pages = new Dictionary&lt;string, string&gt;(StringComparer.OrdinalIgnoreCase)
+        {
+            [&quot;https://example.com/docs/&quot;] = &quot;&lt;html&gt;&lt;head&gt;&lt;title&gt;Root&lt;/title&gt;&lt;/head&gt;&lt;body&gt;&lt;section&gt;&lt;h1&gt;Root&lt;/h1&gt;&lt;/section&gt;&lt;/body&gt;&lt;/html&gt;&quot;
+        };
+        var service = new SiteCrawlerService(
+            new FakePageFetcher(pages),
+            new DeterministicSiteExtractor(),
+            NullLogger&lt;SiteCrawlerService&gt;.Instance);
+        var handler = new SiteCrawlSourceHandler(service, NullLogger&lt;SiteCrawlSourceHandler&gt;.Instance);
+
+        var payload = JsonSerializer.Serialize(new
+        {
+            args = new
+            {
+                start_url = &quot;https://example.com/docs/&quot;,
+                scope = new { kind = &quot;path_depth&quot;, max_depth = 0, same_origin_only = true, path_prefix_lock = true }
+            }
+        });
+
+        var result = await handler.ExecuteAsync(&quot;req_1&quot;, &quot;site_crawl_source&quot;, payload, &quot;{}&quot;, CancellationToken.None);
+
+        result.Success.Should().BeTrue();
+        result.ResultPayload.Should().NotBeNullOrWhiteSpace();
+        using var doc = JsonDocument.Parse(result.ResultPayload!);
+        doc.RootElement.GetProperty(&quot;pages&quot;).GetArrayLength().Should().Be(1);
+    }
+
+    [Fact]
+    public async Task ExecuteAsyncRejectsMissingUrl()
+    {
+        var service = new SiteCrawlerService(
+            new FakePageFetcher(new Dictionary&lt;string, string&gt;()),
+            new DeterministicSiteExtractor(),
+            NullLogger&lt;SiteCrawlerService&gt;.Instance);
+        var handler = new SiteCrawlSourceHandler(service, NullLogger&lt;SiteCrawlSourceHandler&gt;.Instance);
+
+        var result = await handler.ExecuteAsync(&quot;req_1&quot;, &quot;site_crawl_source&quot;, &quot;{}&quot;, &quot;{}&quot;, CancellationToken.None);
+
+        result.Success.Should().BeFalse();
+        result.Error.Should().Be(&quot;start_url is required.&quot;);
+    }
+
+    private sealed class FakePageFetcher : IPageFetcher
+    {
+        private readonly Dictionary&lt;string, string&gt; _pages;
+
+        public FakePageFetcher(Dictionary&lt;string, string&gt; pages)
+        {
+            _pages = pages;
+        }
+
+        public Task&lt;PageFetchResult&gt; FetchAsync(Uri uri, CancellationToken ct)
+        {
+            return _pages.TryGetValue(uri.ToString(), out var html)
+                ? Task.FromResult(PageFetchResult.Ok(uri, 200, &quot;text/html&quot;, html))
+                : Task.FromResult(PageFetchResult.Fail(uri, 404, &quot;missing&quot;));
+        }
+    }
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 2: Run tests and verify failure</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter SiteCrawlSourceHandlerTests
+</code></pre>
+<p>Expected: compile failure because <code>SiteCrawlSourceHandler</code> does not exist.</p>
+<ul>
+<li>[ ] <strong>Step 3: Implement handler</strong></li>
+</ul>
+<p>Create <code>packages/csharp/workers/site-crawler-worker/Handlers/SiteCrawlSourceHandler.cs</code>:</p>
+<pre><code class="language-csharp">using System.Text.Json;
+using Microsoft.Extensions.Logging;
+using SiteCrawlerWorker.Models;
+using SiteCrawlerWorker.Services;
+using WorkerSdk;
+
+namespace SiteCrawlerWorker.Handlers;
+
+public sealed class SiteCrawlSourceHandler : ICapabilityHandler
+{
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
+        PropertyNameCaseInsensitive = true,
+        WriteIndented = false
+    };
+
+    private readonly SiteCrawlerService _crawler;
+    private readonly ILogger&lt;SiteCrawlSourceHandler&gt; _logger;
+
+    public SiteCrawlSourceHandler(SiteCrawlerService crawler, ILogger&lt;SiteCrawlSourceHandler&gt; logger)
+    {
+        _crawler = crawler;
+        _logger = logger;
+    }
+
+    public string CapabilityId =&gt; &quot;site.crawl_source&quot;;
+
+    public async Task&lt;(bool Success, string? ResultPayload, string? Error)&gt; ExecuteAsync(
+        string requestId,
+        string route,
+        string payload,
+        string scope,
+        CancellationToken ct)
+    {
+        try
+        {
+            var request = ParseRequest(requestId, payload);
+            if (string.IsNullOrWhiteSpace(request.StartUrl))
+                return (false, null, &quot;start_url is required.&quot;);
+
+            var result = await _crawler.CrawlAsync(request, ct);
+            return (true, JsonSerializer.Serialize(result, JsonOptions), null);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, &quot;site.crawl_source failed for request {RequestId}&quot;, requestId);
+            return (false, null, ex.Message);
+        }
+    }
+
+    private static SiteCrawlRequest ParseRequest(string requestId, string payload)
+    {
+        if (string.IsNullOrWhiteSpace(payload))
+            return new SiteCrawlRequest { RequestId = requestId };
+
+        using var document = JsonDocument.Parse(payload);
+        var root = document.RootElement;
+        var source = root.TryGetProperty(&quot;args&quot;, out var args) &amp;&amp; args.ValueKind == JsonValueKind.Object
+            ? args
+            : root;
+
+        var request = source.Deserialize&lt;SiteCrawlRequest&gt;(JsonOptions) ?? new SiteCrawlRequest();
+        request.RequestId = string.IsNullOrWhiteSpace(request.RequestId) ? requestId : request.RequestId;
+        request.Scope ??= new SiteCrawlScope();
+        request.Capture ??= new SiteCrawlCaptureOptions();
+        request.Budgets ??= new SiteCrawlBudgets();
+        return request;
+    }
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 4: Run tests and verify pass</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter SiteCrawlSourceHandlerTests
+</code></pre>
+<p>Expected: all <code>SiteCrawlSourceHandlerTests</code> pass.</p>
+<ul>
+<li>[ ] <strong>Step 5: Commit</strong></li>
+</ul>
+<pre><code class="language-powershell">git add packages/csharp/workers/site-crawler-worker/Handlers/SiteCrawlSourceHandler.cs packages/csharp/tests/unit/Workers/SiteCrawler/SiteCrawlSourceHandlerTests.cs
+git commit -m &quot;feat: add site crawl source handler&quot;
+</code></pre>
+<hr>
+<h3>Task 8: Worker Program</h3>
+<p><strong>Files:</strong>
+- Create: <code>packages/csharp/workers/site-crawler-worker/Program.cs</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Add executable entry point</strong></li>
+</ul>
+<p>Create <code>packages/csharp/workers/site-crawler-worker/Program.cs</code>:</p>
+<pre><code class="language-csharp">using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
+using SiteCrawlerWorker.Handlers;
+using SiteCrawlerWorker.Services;
+using WorkerSdk;
+
+var config = new ConfigurationBuilder()
+    .SetBasePath(Directory.GetCurrentDirectory())
+    .AddJsonFile(&quot;appsettings.json&quot;, optional: true)
+    .AddEnvironmentVariables(&quot;WORKER_&quot;)
+    .AddCommandLine(args)
+    .Build();
+
+using var loggerFactory = LoggerFactory.Create(builder =&gt;
+{
+    builder.AddConsole();
+    builder.SetMinimumLevel(LogLevel.Information);
+});
+
+var logger = loggerFactory.CreateLogger&lt;WorkerHost&gt;();
+var workerAuthType = config.GetValue&lt;string&gt;(&quot;Worker:Auth:WorkerType&quot;) ?? &quot;site-crawler-worker&quot;;
+var workerAuthKeyId = config.GetValue&lt;string&gt;(&quot;Worker:Auth:KeyId&quot;) ?? string.Empty;
+var workerAuthSharedSecret = config.GetValue&lt;string&gt;(&quot;Worker:Auth:SharedSecret&quot;) ?? string.Empty;
+var userAgent = config.GetValue&lt;string&gt;(&quot;Crawler:UserAgent&quot;) ?? &quot;Bricks4Agent-SiteCrawler/1.0&quot;;
+
+var workerOptions = new WorkerHostOptions
+{
+    BrokerHost = config.GetValue&lt;string&gt;(&quot;Worker:BrokerHost&quot;) ?? &quot;localhost&quot;,
+    BrokerPort = config.GetValue(&quot;Worker:BrokerPort&quot;, 7000),
+    WorkerId = config.GetValue&lt;string&gt;(&quot;Worker:WorkerId&quot;) ?? $&quot;site-crawler-wkr-{Guid.NewGuid():N}&quot;[..24],
+    MaxConcurrent = config.GetValue(&quot;Worker:MaxConcurrent&quot;, 2),
+    HeartbeatIntervalSeconds = config.GetValue(&quot;Worker:HeartbeatIntervalSeconds&quot;, 5),
+    WorkerType = workerAuthType,
+    WorkerAuthKeyId = workerAuthKeyId,
+    WorkerAuthSharedSecret = workerAuthSharedSecret
+};
+
+var httpClient = new HttpClient
+{
+    Timeout = TimeSpan.FromSeconds(config.GetValue(&quot;Crawler:DefaultWallClockTimeoutSeconds&quot;, 180))
+};
+httpClient.DefaultRequestHeaders.UserAgent.ParseAdd(userAgent);
+
+var fetcher = new HttpPageFetcher(httpClient);
+var extractor = new DeterministicSiteExtractor();
+var crawler = new SiteCrawlerService(
+    fetcher,
+    extractor,
+    loggerFactory.CreateLogger&lt;SiteCrawlerService&gt;());
+
+var host = new WorkerHost(workerOptions, logger);
+host.RegisterHandler(new SiteCrawlSourceHandler(
+    crawler,
+    loggerFactory.CreateLogger&lt;SiteCrawlSourceHandler&gt;()));
+
+logger.LogInformation(
+    &quot;SiteCrawlerWorker starting: broker={Host}:{Port} capability=site.crawl_source&quot;,
+    workerOptions.BrokerHost,
+    workerOptions.BrokerPort);
+
+using var cts = new CancellationTokenSource();
+Console.CancelKeyPress += (_, e) =&gt;
+{
+    e.Cancel = true;
+    cts.Cancel();
+    logger.LogInformation(&quot;Shutdown signal received.&quot;);
+};
+
+await host.RunAsync(cts.Token);
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 2: Build worker</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet build packages/csharp/workers/site-crawler-worker/SiteCrawlerWorker.csproj
+</code></pre>
+<p>Expected: build succeeds.</p>
+<ul>
+<li>[ ] <strong>Step 3: Commit</strong></li>
+</ul>
+<pre><code class="language-powershell">git add packages/csharp/workers/site-crawler-worker/Program.cs
+git commit -m &quot;feat: wire site crawler worker host&quot;
+</code></pre>
+<hr>
+<h3>Task 9: Tool Spec Capability</h3>
+<p><strong>Files:</strong>
+- Create: <code>packages/csharp/broker/tool-specs/site.crawl.source/tool.json</code>
+- Create: <code>packages/csharp/broker/tool-specs/site.crawl.source/TOOL.md</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Add tool spec JSON</strong></li>
+</ul>
+<p>Create <code>packages/csharp/broker/tool-specs/site.crawl.source/tool.json</code>:</p>
+<pre><code class="language-json">{
+  &quot;tool_id&quot;: &quot;site.crawl.source&quot;,
+  &quot;display_name&quot;: &quot;Site Crawl Source&quot;,
+  &quot;summary&quot;: &quot;Safely crawl a public website path-depth scope and return source plus deterministic extraction output.&quot;,
+  &quot;kind&quot;: &quot;crawler&quot;,
+  &quot;status&quot;: &quot;active&quot;,
+  &quot;version&quot;: &quot;2026-05-02&quot;,
+  &quot;tags&quot;: [&quot;site&quot;, &quot;crawler&quot;, &quot;source&quot;, &quot;path-depth&quot;, &quot;generator&quot;],
+  &quot;capability_template&quot;: {
+    &quot;action_type&quot;: &quot;read&quot;,
+    &quot;resource_type&quot;: &quot;web&quot;,
+    &quot;risk_level&quot;: &quot;medium&quot;,
+    &quot;approval_policy&quot;: &quot;auto&quot;,
+    &quot;ttl_seconds&quot;: 900,
+    &quot;audit_level&quot;: &quot;summary&quot;,
+    &quot;quota&quot;: { &quot;max_calls&quot;: 10, &quot;per_window_seconds&quot;: 3600 }
+  },
+  &quot;capability_bindings&quot;: [
+    {
+      &quot;capability_id&quot;: &quot;site.crawl_source&quot;,
+      &quot;route&quot;: &quot;site_crawl_source&quot;,
+      &quot;purpose&quot;: &quot;Broker-mediated path-depth website source capture for generator conversion.&quot;
+    }
+  ],
+  &quot;input_schema&quot;: {
+    &quot;type&quot;: &quot;object&quot;,
+    &quot;properties&quot;: {
+      &quot;start_url&quot;: { &quot;type&quot;: &quot;string&quot; },
+      &quot;scope&quot;: {
+        &quot;type&quot;: &quot;object&quot;,
+        &quot;properties&quot;: {
+          &quot;kind&quot;: { &quot;type&quot;: &quot;string&quot;, &quot;enum&quot;: [&quot;path_depth&quot;] },
+          &quot;max_depth&quot;: { &quot;type&quot;: &quot;integer&quot; },
+          &quot;same_origin_only&quot;: { &quot;type&quot;: &quot;boolean&quot; },
+          &quot;path_prefix_lock&quot;: { &quot;type&quot;: &quot;boolean&quot; }
+        },
+        &quot;required&quot;: [&quot;kind&quot;, &quot;max_depth&quot;]
+      },
+      &quot;budgets&quot;: {
+        &quot;type&quot;: &quot;object&quot;,
+        &quot;properties&quot;: {
+          &quot;max_pages&quot;: { &quot;type&quot;: &quot;integer&quot; },
+          &quot;max_total_bytes&quot;: { &quot;type&quot;: &quot;integer&quot; },
+          &quot;max_asset_bytes&quot;: { &quot;type&quot;: &quot;integer&quot; },
+          &quot;wall_clock_timeout_seconds&quot;: { &quot;type&quot;: &quot;integer&quot; }
+        }
+      }
+    },
+    &quot;required&quot;: [&quot;start_url&quot;, &quot;scope&quot;]
+  },
+  &quot;output_schema&quot;: {
+    &quot;type&quot;: &quot;object&quot;,
+    &quot;properties&quot;: {
+      &quot;crawl_run_id&quot;: { &quot;type&quot;: &quot;string&quot; },
+      &quot;status&quot;: { &quot;type&quot;: &quot;string&quot; },
+      &quot;pages&quot;: { &quot;type&quot;: &quot;array&quot; },
+      &quot;assets&quot;: { &quot;type&quot;: &quot;array&quot; },
+      &quot;excluded&quot;: { &quot;type&quot;: &quot;array&quot; },
+      &quot;extracted_model&quot;: { &quot;type&quot;: &quot;object&quot; },
+      &quot;limits&quot;: { &quot;type&quot;: &quot;object&quot; }
+    }
+  },
+  &quot;source_policy&quot;: {
+    &quot;allowed_sources&quot;: [&quot;public_web&quot;]
+  },
+  &quot;execution_rules&quot;: {
+    &quot;runtime_required&quot;: &quot;site_crawler_worker&quot;,
+    &quot;requires_user_scope_confirmation&quot;: true,
+    &quot;scope_model&quot;: &quot;path_depth&quot;,
+    &quot;allow_private_network&quot;: false,
+    &quot;allow_authenticated_access&quot;: false
+  },
+  &quot;response_contract&quot;: {
+    &quot;must_include_crawl_run_id&quot;: true,
+    &quot;must_include_excluded_urls&quot;: true,
+    &quot;must_mark_truncation&quot;: true
+  }
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 2: Add tool documentation</strong></li>
+</ul>
+<p>Create <code>packages/csharp/broker/tool-specs/site.crawl.source/TOOL.md</code>:</p>
+<pre><code class="language-markdown"># Site Crawl Source
+
+Safely crawls a public website path scope and returns raw page source plus deterministic extraction output.
+
+## Capability
+
+- Capability ID: `site.crawl_source`
+- Route: `site_crawl_source`
+- Risk: medium
+
+## Scope Model
+
+The caller must provide a confirmed path-depth scope before execution. Page count is only a safety budget, not the user's crawl intent.
+
+## Safety
+
+The worker rejects private network hosts, localhost, loopback, link-local addresses, unsupported schemes, and URLs outside the confirmed path prefix.
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 3: Build broker to verify tool spec compiles into content</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet build packages/csharp/broker/Broker.csproj
+</code></pre>
+<p>Expected: build succeeds.</p>
+<ul>
+<li>[ ] <strong>Step 4: Commit</strong></li>
+</ul>
+<pre><code class="language-powershell">git add packages/csharp/broker/tool-specs/site.crawl.source/tool.json packages/csharp/broker/tool-specs/site.crawl.source/TOOL.md
+git commit -m &quot;feat: register site crawl source capability&quot;
+</code></pre>
+<hr>
+<h3>Task 10: Full Verification</h3>
+<p><strong>Files:</strong>
+- No new files.</p>
+<ul>
+<li>[ ] <strong>Step 1: Run focused unit tests</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter SiteCrawler
+</code></pre>
+<p>Expected: all site crawler tests pass.</p>
+<ul>
+<li>[ ] <strong>Step 2: Run worker build</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet build packages/csharp/workers/site-crawler-worker/SiteCrawlerWorker.csproj
+</code></pre>
+<p>Expected: build succeeds with 0 errors.</p>
+<ul>
+<li>[ ] <strong>Step 3: Run solution build</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet build packages/csharp/ControlPlane.slnx
+</code></pre>
+<p>Expected: build succeeds with 0 errors.</p>
+<ul>
+<li>[ ] <strong>Step 4: Run existing unit test suite</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --no-restore
+</code></pre>
+<p>Expected: all unit tests pass.</p>
+<ul>
+<li>[ ] <strong>Step 5: Inspect git status</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">git status --short
+</code></pre>
+<p>Expected: only unrelated pre-existing dirty files remain. No uncommitted site crawler implementation files should remain.</p>
+<hr>
+<h2>Scope Boundary for the Next Plan</h2>
+<p>This Phase 1 plan stops after safe crawl and deterministic extraction. The next implementation plan should cover:</p>
+<ul>
+<li>Dynamic generator component registry.</li>
+<li>Component resolver.</li>
+<li>Generated component synthesizer.</li>
+<li><code>site.convert_to_generator_json</code> worker.</li>
+<li>LINE <code>/clone</code> high-level intake and path-depth clarification.</li>
+</ul>
+</main>
+</body>
+</html>

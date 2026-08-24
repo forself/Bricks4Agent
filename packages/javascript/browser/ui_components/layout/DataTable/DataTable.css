@@ -1,0 +1,141 @@
+/**
+ * DataTable.css — DataTable 元件樣式
+ *
+ * 嚴格 CSP（style-src 'self'）合規：
+ *   HTML 剖析出的 style 屬性會被剝除，故大量重複節點（列/儲存格/表頭/分頁鈕）
+ *   的樣式集中於本檔，由 DataTable.js 建構時自動注入同源 <link>（id: b4a-datatable-styles）。
+ * 顏色一律使用 theme.css 的 var(--cl-*) 變數（支援深色主題），不硬編色碼。
+ * 兩種 variant（default / search）對應 .b4a-dt--default / .b4a-dt--search。
+ */
+
+/* ── 根容器 ── */
+.b4a-dt {
+    box-shadow: none;
+    background: var(--cl-bg);
+}
+
+/* ── 捲動區與表格 ── */
+.b4a-dt__scroll {
+    overflow-x: auto;
+}
+
+.b4a-dt__table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    table-layout: auto;
+}
+
+/* ── 表頭 ── */
+.b4a-dt__th {
+    border: 3px solid var(--cl-bg);
+    text-align: center;
+    padding: 0px;
+    background-color: var(--cl-light-green);
+    color: var(--cl-text-inverse);
+    font-weight: bold;
+    user-select: none;
+}
+.b4a-dt--default .b4a-dt__th { font-size: 1.10rem; height: auto; }
+.b4a-dt--search  .b4a-dt__th { font-size: .90rem;  height: 50px; }
+.b4a-dt__th--sortable { cursor: pointer; }
+.b4a-dt__th--select { width: 48px; padding: 4px; }
+
+.b4a-dt__th-inner {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* ── 資料列（奇偶/選取/hover；hover 蓋過選取，與舊 JS 行為一致） ── */
+.b4a-dt__tr {
+    background-color: var(--cl-bg-secondary);
+    transition: background-color 0.15s;
+}
+.b4a-dt--default .b4a-dt__tr { height: auto; }
+.b4a-dt--search  .b4a-dt__tr { height: 40px; }
+.b4a-dt__tr--even { background-color: var(--cl-bg-tertiary); }
+.b4a-dt__tr--selected { background-color: var(--cl-bg-active); }
+.b4a-dt .b4a-dt__tr:hover { background-color: var(--cl-bg-hover); }
+
+/* ── 儲存格 ── */
+.b4a-dt__td {
+    border: 3px solid var(--cl-bg);
+    text-align: center;
+    padding: 0px;
+}
+.b4a-dt--default .b4a-dt__td { font-size: 1.00rem; word-break: normal; }
+.b4a-dt--search  .b4a-dt__td { font-size: inherit; word-break: break-word; }
+.b4a-dt__td--select { width: 48px; padding: 4px; }
+.b4a-dt__td--empty { padding: 24px; color: var(--cl-text-secondary); }
+
+.b4a-dt__checkbox { cursor: pointer; }
+
+/* ── 工具列 ── */
+.b4a-dt__toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 0;
+    background: transparent;
+}
+
+.b4a-dt__toolbar--select {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 16px;
+    background-color: var(--cl-bg-active);
+    min-height: 48px;
+}
+
+.b4a-dt__toolbar-text { font-weight: 500; }
+
+.b4a-dt__title { font-weight: bold; }
+
+/* ── 分頁 ── */
+.b4a-dt__pagination {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 12px 0;
+    gap: 16px;
+    font-size: 0.875rem;
+    flex-wrap: wrap;
+}
+
+.b4a-dt__pagination-group {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.b4a-dt__page-size {
+    padding: 4px 8px;
+    border-radius: var(--cl-radius-sm);
+    border: 1px solid var(--cl-border-dark);
+    background: var(--cl-bg);
+    color: var(--cl-text);
+}
+
+.b4a-dt__page-btns {
+    display: flex;
+    gap: 2px;
+}
+
+.b4a-dt__page-btn {
+    padding: 4px 8px;
+    border: 1px solid var(--cl-border-dark);
+    border-radius: var(--cl-radius-sm);
+    background: var(--cl-bg);
+    cursor: pointer;
+    color: var(--cl-text);
+    min-width: 28px;
+    font-size: 0.8rem;
+    line-height: 1.5;
+}
+.b4a-dt__page-btn:disabled {
+    background: var(--cl-bg-secondary);
+    cursor: default;
+    color: var(--cl-text-placeholder);
+}

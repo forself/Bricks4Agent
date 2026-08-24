@@ -366,7 +366,3 @@ export class TabContainer {
 
 // 導出供外部使用
 export default TabContainer;
-
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = TabContainer;
-}

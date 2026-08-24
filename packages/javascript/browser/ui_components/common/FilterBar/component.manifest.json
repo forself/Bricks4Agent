@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "component_id": "common.filter_bar",
+  "registry_name": "FilterBar",
+  "display_name": "FilterBar",
+  "category": "common",
+  "kind": "composite",
+  "source_path": "ui_components/common/FilterBar/FilterBar.js",
+  "docs_path": "",
+  "maturity": "beta",
+  "generator": {
+    "usable": false,
+    "usage_mode": "manual_only",
+    "supported_field_types": [],
+    "supported_page_types": [],
+    "definition_runtime": false
+  },
+  "composition": {
+    "role": "input",
+    "requires_form_field_wrapper": true,
+    "manual_only": true
+  },
+  "binding": {
+    "value_io": false,
+    "listener_events": [
+      "change"
+    ],
+    "target_actions": [
+      "setReadonly",
+      "setRequired"
+    ]
+  },
+  "styling": {
+    "theme_token_only": true,
+    "style_knobs": [
+      "disabled",
+      "readonly",
+      "required"
+    ]
+  }
+}

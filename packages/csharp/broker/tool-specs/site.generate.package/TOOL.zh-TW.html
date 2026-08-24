@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>網站產生打包</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>網站產生打包</h1>
+<p>從 <code>SiteCrawlResult</code> 或有效的 <code>GeneratorSiteDocument</code> 產生本機靜態網站包。</p>
+<p>預設會啟用網站產生品質門檻。只有當文件可以完全使用已載入的元件庫渲染，且沒有生成元件或未解決的元件需求時，才會寫出 package。<code>enforce_quality_gate = false</code> 只應用於診斷元件庫缺口。</p>
+<p>設定 <code>create_archive = true</code> 時，會額外輸出可攜式 zip 檔。若未指定 <code>archive_path</code>，zip 會建立在 package 目錄旁，檔名為 <code>&lt;package_name&gt;.zip</code>。</p>
+<p>每個產出的 package 都會包含 <code>verification_report</code>。驗收器會檢查必要檔案、重新讀取 <code>site.json</code>、透過品質分析器確認可由元件庫渲染，並在有 zip 時檢查 archive 條目。</p>
+<h2>能力</h2>
+<ul>
+<li>Tool ID: <code>site.generate.package</code></li>
+<li>Capability ID: <code>site.generate_package</code></li>
+<li>Route: <code>site_generate_package</code></li>
+<li>Status: <code>beta</code></li>
+<li>Risk: medium</li>
+</ul>
+<h2>Package 契約</h2>
+<p>Package 進入點是 <code>index.html</code>。HTML 只是一個包含 <code>#app</code> 並載入 <code>runtime.js</code> 的外殼。</p>
+<p>Runtime 會載入：</p>
+<ul>
+<li><code>site.json</code></li>
+<li><code>components/manifest.json</code></li>
+</ul>
+<p>接著 runtime 會根據 <code>site.json</code> 裡的元件樹渲染網站。</p>
+<p>Worker 會在有設定時從 <code>Generator:ComponentLibraryPath</code> 載入元件庫 manifest。若未設定，會使用內建預設 manifest：<code>component-libraries/bricks4agent.default/manifest.json</code>。</p>
+<h2>元件規則</h2>
+<p>產出的 package 只能渲染 <code>components/manifest.json</code> 宣告的元件類型。</p>
+<p>如果來源線索無法以內建元件表示，轉換步驟必須在 manifest 新增本地生成元件定義，並記錄 <code>component_requests</code>。Runtime 只有在該生成元件已宣告於 manifest 時才能渲染它。</p>
+<p>Generator 不得產生任意頁面 HTML、DOM 等價複製、像素等價複製，或藏在元件樹以外的自由版面。</p>
+<p>在 strict mode 中，生成元件定義與 component request 都會被視為品質失敗。呼叫端會收到結構化的 <code>quality_report</code>，且不會寫出 package。</p>
+<p>Strict mode 也會把 package 驗收失敗視為交付阻擋。呼叫端會收到結構化的 <code>verification_report</code>，失敗的 package 產物會在可行時被移除。</p>
+<h2>Package 驗收</h2>
+<p>正常交付時，驗收必須通過。驗收器會檢查：</p>
+<ul>
+<li><code>index.html</code></li>
+<li><code>runtime.js</code></li>
+<li><code>styles.css</code></li>
+<li><code>site.json</code></li>
+<li><code>components/manifest.json</code></li>
+<li><code>README.md</code></li>
+<li><code>index.html</code> 宣告 <code>#app</code> 並載入 <code>./runtime.js</code></li>
+<li><code>runtime.js</code> 載入 <code>./site.json</code> 與 <code>./components/manifest.json</code></li>
+<li><code>components/manifest.json</code> 宣告 <code>site.json</code> 使用到的每一種元件類型</li>
+<li><code>site.json</code> 使用到的每一種非生成元件都必須有 <code>runtime.js</code> renderer</li>
+<li>生成元件必須有本地 <code>components/generated/&lt;Type&gt;.js</code> 與 <code>.json</code> 資產</li>
+<li><code>create_archive = true</code> 時的 zip 條目</li>
+</ul>
+<p><code>verification_report.runtime_renderer_types</code> 會列出從 <code>runtime.js</code> 解析出的 renderer key。</p>
+<p>若 <code>enforce_quality_gate = false</code>，診斷 package 仍可能被寫出，並帶有失敗的 <code>quality_report</code> 與 <code>verification_report</code>。這類輸出只用於元件庫缺口分析，不適合作為使用者交付物。</p>
+<h2>輸出</h2>
+<p>結果包含：</p>
+<ul>
+<li><code>output_directory</code></li>
+<li><code>entry_point</code></li>
+<li><code>site_json_path</code></li>
+<li><code>manifest_path</code></li>
+<li><code>archive_path</code></li>
+<li><code>files</code></li>
+<li><code>quality_report</code></li>
+<li><code>verification_report</code></li>
+</ul>
+</main>
+</body>
+</html>

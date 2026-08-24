@@ -14,7 +14,7 @@ builder.Services.AddScoped<ISecurityLogService, SecurityLogService>();
 ### 當前使用者端點
 
 | 方法 | 路由 | 說明 | 權限 |
-|------|------|------|------|
+|---|---|---|---|
 | `GET` | `/api/security-logs/my/login-history?page=1&pageSize=20` | 取得自己的登入歷史 | `[Authorize]` |
 | `GET` | `/api/security-logs/my/activity?days=30` | 取得自己的活動摘要 | `[Authorize]` |
 | `GET` | `/api/security-logs/my/failed-logins?count=10` | 取得自己最近的失敗登入 | `[Authorize]` |
@@ -22,7 +22,7 @@ builder.Services.AddScoped<ISecurityLogService, SecurityLogService>();
 ### 管理員 — 日誌查詢
 
 | 方法 | 路由 | 說明 | 權限 |
-|------|------|------|------|
+|---|---|---|---|
 | `POST` | `/api/security-logs/query` | 依多重條件查詢安全日誌 | `Admin,SecurityAdmin` |
 | `GET` | `/api/security-logs/{id}` | 依 ID 取得日誌詳情 | `Admin,SecurityAdmin` |
 | `POST` | `/api/security-logs/export` | 匯出日誌為 CSV（上限 10,000 筆） | `Admin,SecurityAdmin` |
@@ -30,7 +30,7 @@ builder.Services.AddScoped<ISecurityLogService, SecurityLogService>();
 ### 管理員 — 使用者活動
 
 | 方法 | 路由 | 說明 | 權限 |
-|------|------|------|------|
+|---|---|---|---|
 | `GET` | `/api/security-logs/users/{userId}/login-history` | 取得指定使用者的登入歷史 | `Admin,SecurityAdmin` |
 | `GET` | `/api/security-logs/users/{userId}/activity?days=30` | 取得指定使用者的活動摘要 | `Admin,SecurityAdmin` |
 | `DELETE` | `/api/security-logs/users/{userId}` | 刪除使用者日誌（GDPR） | `Admin` |
@@ -38,14 +38,14 @@ builder.Services.AddScoped<ISecurityLogService, SecurityLogService>();
 ### 管理員 — IP / 可疑活動
 
 | 方法 | 路由 | 說明 | 權限 |
-|------|------|------|------|
+|---|---|---|---|
 | `GET` | `/api/security-logs/ips/{ipHash}/activity?days=30` | 取得 IP 活動摘要 | `Admin,SecurityAdmin` |
 | `GET` | `/api/security-logs/suspicious-logins?hours=24&count=100` | 取得可疑登入記錄 | `Admin,SecurityAdmin` |
 
 ### 管理員 — 統計與告警
 
 | 方法 | 路由 | 說明 | 權限 |
-|------|------|------|------|
+|---|---|---|---|
 | `GET` | `/api/security-logs/statistics?days=7` | 取得安全統計（天數） | `Admin,SecurityAdmin` |
 | `POST` | `/api/security-logs/statistics` | 取得安全統計（日期範圍，上限 90 天） | `Admin,SecurityAdmin` |
 | `GET` | `/api/security-logs/alerts` | 取得未確認的安全告警 | `Admin,SecurityAdmin` |
@@ -54,7 +54,7 @@ builder.Services.AddScoped<ISecurityLogService, SecurityLogService>();
 ### 管理員 — 儀表板
 
 | 方法 | 路由 | 說明 | 權限 |
-|------|------|------|------|
+|---|---|---|---|
 | `GET` | `/api/security-logs/dashboard` | 取得儀表板摘要（24h + 7d 統計） | `Admin,SecurityAdmin` |
 
 ## 使用範例
@@ -107,7 +107,7 @@ Content-Type: application/json
 ## 依賴清單
 
 | 依賴 | 說明 |
-|------|------|
+|---|---|
 | `ISecurityLogService` | 安全日誌服務介面（需自行實作） |
 | `ILogger<SecurityLogController>` | ASP.NET Core 日誌服務 |
 | `Microsoft.AspNetCore.Authorization` | 授權屬性 |
@@ -116,7 +116,11 @@ Content-Type: application/json
 ## 相關 DTO
 
 - `SecurityLogQueryRequest` — 查詢請求（StartDate, EndDate, EventTypes, Severities, Outcome, UserId, SearchText, Tags 等）
+
 - `DateRangeRequest` — 日期範圍請求
+
 - `AcknowledgeAlertRequest` — 告警確認請求（Note）
+
 - `DeleteLogsResponse` — 刪除日誌回應（DeletedCount）
+
 - `DashboardSummary` — 儀表板摘要（24h/7d 統計、趨勢、告警數等）

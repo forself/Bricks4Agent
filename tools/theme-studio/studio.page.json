@@ -1,0 +1,374 @@
+{
+  "schema_version": 1,
+  "name": "ThemeStudioPage",
+  "type": "tool",
+  "description": "Bricks4Agent 元件客製工作台",
+  "root": {
+    "type": "tabs",
+    "id": "workspace-tabs",
+    "options": {
+      "position": "top",
+      "closable": false,
+      "animated": false
+    },
+    "events": {
+      "onTabChange": "studio.workspace-change"
+    },
+    "tabs": [
+      {
+        "id": "theme",
+        "title": "樣式客製",
+        "content": {
+          "type": "group",
+          "id": "theme-workspace",
+          "class_names": ["studio-pane", "theme-workspace"],
+          "layout": { "mode": "stack", "gap": "none", "align": "stretch" },
+          "children": [
+            {
+              "type": "group",
+              "id": "theme-toolbar",
+              "class_names": ["studio-toolbar"],
+              "layout": { "mode": "row", "gap": "sm", "align": "center" },
+              "children": [
+                { "type": "component", "id": "theme-title", "component": "Heading", "options": { "text": "Theme Studio — 元件樣式客製", "level": 1 } },
+                { "type": "component", "id": "theme-component-select", "component": "Dropdown", "options": { "items": [], "placeholder": "選擇元件個別調整" }, "bindings": { "items": "theme.components", "value": "theme.selectedComponent" }, "events": { "onChange": "theme.select-component" } },
+                { "type": "component", "id": "theme-mode", "component": "ToggleSwitch", "options": { "label": "深色", "checked": false }, "bindings": { "checked": "theme.dark" }, "events": { "onChange": "theme.mode" } },
+                { "type": "component", "id": "theme-save", "component": "BasicButton", "options": { "type": "custom", "customLabel": "儲存", "variant": "primary" }, "events": { "onClick": "theme.save" } },
+                { "type": "component", "id": "theme-export-json", "component": "DownloadButton", "options": { "type": "json", "showLabel": true, "tooltip": "匯出 theme.tokens.json" }, "events": { "onClick": "theme.export-json" } },
+                { "type": "component", "id": "theme-export-css", "component": "DownloadButton", "options": { "type": "css", "showLabel": true, "tooltip": "匯出 theme.custom.css" }, "events": { "onClick": "theme.export-css" } },
+                { "type": "component", "id": "theme-import-json", "component": "UploadButton", "options": { "type": "file", "showLabel": true, "tooltip": "匯入 theme.tokens.json", "customAccept": ".json,application/json", "multiple": false, "maxSize": 1048576 }, "events": { "onSelect": "theme.import-json" } },
+                { "type": "component", "id": "theme-reset", "component": "BasicButton", "options": { "type": "custom", "customLabel": "重設", "variant": "secondary" }, "events": { "onClick": "theme.reset" } }
+              ]
+            },
+            {
+              "type": "group",
+              "id": "theme-gallery-help",
+              "class_names": ["studio-section", "studio-help", "theme-gallery-help"],
+              "layout": { "mode": "stack", "gap": "sm", "align": "stretch" },
+              "children": [
+                { "type": "component", "id": "theme-gallery-help-heading", "component": "Heading", "options": { "text": "元件導覽與展示", "level": 2 } },
+                { "type": "component", "id": "theme-gallery-help-text", "component": "Text", "options": { "tag": "p", "variant": "body", "text": "下方展示廊依 component catalog 呈現全部正式元件。可用上方下拉選擇單一元件，再調整全域或元件專屬的 theme token；展示結果會即時更新。" } },
+                {
+                  "type": "group",
+                  "id": "theme-gallery-help-links",
+                  "class_names": ["studio-help-links"],
+                  "layout": { "mode": "row", "gap": "md", "align": "center" },
+                  "children": [
+                    { "type": "component", "id": "theme-open-components-link", "component": "Link", "options": { "text": "要組合或匯出客製元件？開啟元件組合 Studio", "href": "?tab=components", "scope": "internal" }, "events": { "onClick": "studio.open-components" } },
+                    { "type": "component", "id": "theme-ui-guide-link", "component": "Link", "options": { "text": "閱讀元件呼叫與擴充指南", "href": "/AGENT-UI-GUIDE.md", "scope": "internal" } },
+                    { "type": "component", "id": "theme-form-application-link", "component": "Link", "options": { "text": "設計表單、API 與資料表", "href": "/tools/form-application-studio/index.html", "scope": "internal" } }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "group",
+              "id": "theme-body",
+              "class_names": ["theme-body"],
+              "layout": { "mode": "row", "gap": "none", "align": "stretch" },
+              "children": [
+                {
+                  "type": "tabs",
+                  "id": "theme-token-tabs",
+                  "class_names": ["theme-token-tabs"],
+                  "options": { "position": "top", "closable": false, "animated": false },
+                  "tabs": [
+                    {
+                      "id": "colors",
+                      "title": "色彩",
+                      "content": {
+                        "type": "group",
+                        "id": "theme-colors",
+                        "class_names": ["studio-fields"],
+                        "layout": { "mode": "stack", "gap": "sm", "align": "stretch" },
+                        "children": [
+                          { "type": "component", "id": "token-primary", "component": "ColorPicker", "options": { "label": "主色", "token": "--cl-primary" }, "bindings": { "value": "theme.tokens.primary" }, "events": { "onChange": "theme.token-change" } },
+                          { "type": "component", "id": "token-success", "component": "ColorPicker", "options": { "label": "成功", "token": "--cl-success" }, "bindings": { "value": "theme.tokens.success" }, "events": { "onChange": "theme.token-change" } },
+                          { "type": "component", "id": "token-warning", "component": "ColorPicker", "options": { "label": "警告", "token": "--cl-warning" }, "bindings": { "value": "theme.tokens.warning" }, "events": { "onChange": "theme.token-change" } },
+                          { "type": "component", "id": "token-danger", "component": "ColorPicker", "options": { "label": "危險", "token": "--cl-danger" }, "bindings": { "value": "theme.tokens.danger" }, "events": { "onChange": "theme.token-change" } },
+                          { "type": "component", "id": "token-info", "component": "ColorPicker", "options": { "label": "資訊", "token": "--cl-info" }, "bindings": { "value": "theme.tokens.info" }, "events": { "onChange": "theme.token-change" } },
+                          { "type": "component", "id": "token-text", "component": "ColorPicker", "options": { "label": "文字", "token": "--cl-text" }, "bindings": { "value": "theme.tokens.text" }, "events": { "onChange": "theme.token-change" } },
+                          { "type": "component", "id": "token-text-secondary", "component": "ColorPicker", "options": { "label": "次要文字", "token": "--cl-text-secondary" }, "bindings": { "value": "theme.tokens.textSecondary" }, "events": { "onChange": "theme.token-change" } },
+                          { "type": "component", "id": "token-bg", "component": "ColorPicker", "options": { "label": "背景", "token": "--cl-bg" }, "bindings": { "value": "theme.tokens.bg" }, "events": { "onChange": "theme.token-change" } },
+                          { "type": "component", "id": "token-bg-secondary", "component": "ColorPicker", "options": { "label": "次要背景", "token": "--cl-bg-secondary" }, "bindings": { "value": "theme.tokens.bgSecondary" }, "events": { "onChange": "theme.token-change" } },
+                          { "type": "component", "id": "token-border", "component": "ColorPicker", "options": { "label": "邊框", "token": "--cl-border" }, "bindings": { "value": "theme.tokens.border" }, "events": { "onChange": "theme.token-change" } }
+                        ]
+                      }
+                    },
+                    {
+                      "id": "radius",
+                      "title": "圓角",
+                      "content": {
+                        "type": "group",
+                        "id": "theme-radius",
+                        "class_names": ["studio-fields"],
+                        "layout": { "mode": "stack", "gap": "sm", "align": "stretch" },
+                        "children": [
+                          { "type": "component", "id": "token-radius-sm", "component": "Slider", "options": { "label": "小圓角", "min": 0, "max": 16, "step": 1, "unit": "px", "token": "--cl-radius-sm" }, "bindings": { "value": "theme.tokens.radiusSm" }, "events": { "onInput": "theme.token-change" } },
+                          { "type": "component", "id": "token-radius-md", "component": "Slider", "options": { "label": "中圓角", "min": 0, "max": 24, "step": 1, "unit": "px", "token": "--cl-radius-md" }, "bindings": { "value": "theme.tokens.radiusMd" }, "events": { "onInput": "theme.token-change" } },
+                          { "type": "component", "id": "token-radius-lg", "component": "Slider", "options": { "label": "大圓角", "min": 0, "max": 32, "step": 1, "unit": "px", "token": "--cl-radius-lg" }, "bindings": { "value": "theme.tokens.radiusLg" }, "events": { "onInput": "theme.token-change" } },
+                          { "type": "component", "id": "token-radius-xl", "component": "Slider", "options": { "label": "特大圓角", "min": 0, "max": 48, "step": 1, "unit": "px", "token": "--cl-radius-xl" }, "bindings": { "value": "theme.tokens.radiusXl" }, "events": { "onInput": "theme.token-change" } }
+                        ]
+                      }
+                    },
+                    {
+                      "id": "font-size",
+                      "title": "字級",
+                      "content": {
+                        "type": "group",
+                        "id": "theme-font-size",
+                        "class_names": ["studio-fields"],
+                        "layout": { "mode": "stack", "gap": "sm", "align": "stretch" },
+                        "children": [
+                          { "type": "component", "id": "token-font-md", "component": "Slider", "options": { "label": "正文", "min": 10, "max": 20, "step": 1, "unit": "px", "token": "--cl-font-size-md" }, "bindings": { "value": "theme.tokens.fontMd" }, "events": { "onInput": "theme.token-change" } },
+                          { "type": "component", "id": "token-font-lg", "component": "Slider", "options": { "label": "大", "min": 10, "max": 24, "step": 1, "unit": "px", "token": "--cl-font-size-lg" }, "bindings": { "value": "theme.tokens.fontLg" }, "events": { "onInput": "theme.token-change" } },
+                          { "type": "component", "id": "token-font-xl", "component": "Slider", "options": { "label": "標題小", "min": 12, "max": 28, "step": 1, "unit": "px", "token": "--cl-font-size-xl" }, "bindings": { "value": "theme.tokens.fontXl" }, "events": { "onInput": "theme.token-change" } },
+                          { "type": "component", "id": "token-font-2xl", "component": "Slider", "options": { "label": "標題", "min": 14, "max": 40, "step": 1, "unit": "px", "token": "--cl-font-size-2xl" }, "bindings": { "value": "theme.tokens.font2xl" }, "events": { "onInput": "theme.token-change" } }
+                        ]
+                      }
+                    },
+                    {
+                      "id": "effects",
+                      "title": "效果／字體",
+                      "content": {
+                        "type": "group",
+                        "id": "theme-effects",
+                        "class_names": ["studio-fields"],
+                        "layout": { "mode": "stack", "gap": "sm", "align": "stretch" },
+                        "children": [
+                          { "type": "component", "id": "token-shadow-md", "component": "TextInput", "options": { "label": "陰影（中）", "token": "--cl-shadow-md" }, "bindings": { "value": "theme.tokens.shadowMd" }, "events": { "onChange": "theme.token-change" } },
+                          { "type": "component", "id": "token-transition", "component": "TextInput", "options": { "label": "過渡", "token": "--cl-transition" }, "bindings": { "value": "theme.tokens.transition" }, "events": { "onChange": "theme.token-change" } },
+                          { "type": "component", "id": "token-font-family", "component": "TextInput", "options": { "label": "字體", "token": "--cl-font-family" }, "bindings": { "value": "theme.tokens.fontFamily" }, "events": { "onChange": "theme.token-change" } },
+                          { "type": "component", "id": "token-font-family-cjk", "component": "TextInput", "options": { "label": "中文字體", "token": "--cl-font-family-cjk" }, "bindings": { "value": "theme.tokens.fontFamilyCjk" }, "events": { "onChange": "theme.token-change" } },
+                          { "type": "component", "id": "token-font-family-mono", "component": "TextInput", "options": { "label": "等寬字體", "token": "--cl-font-family-mono" }, "bindings": { "value": "theme.tokens.fontFamilyMono" }, "events": { "onChange": "theme.token-change" } }
+                        ]
+                      }
+                    },
+                    {
+                      "id": "component",
+                      "title": "個別元件",
+                      "content": {
+                        "type": "group",
+                        "id": "theme-component-tokens",
+                        "class_names": ["studio-fields"],
+                        "layout": { "mode": "stack", "gap": "sm", "align": "stretch" },
+                        "children": [
+                          { "type": "component", "id": "theme-component-name", "component": "TextInput", "options": { "label": "目前元件", "readonly": true }, "bindings": { "value": "theme.selectedComponent" } },
+                          { "type": "component", "id": "theme-component-class", "component": "TextInput", "options": { "label": "套用 class 名稱" }, "bindings": { "value": "theme.component.className" }, "events": { "onChange": "theme.component-class" } },
+                          { "type": "component", "id": "theme-component-primary", "component": "ColorPicker", "options": { "label": "元件主色", "token": "--cl-primary", "scoped": true }, "bindings": { "value": "theme.component.primary" }, "events": { "onChange": "theme.component-token" } },
+                          { "type": "component", "id": "theme-component-bg", "component": "ColorPicker", "options": { "label": "元件背景", "token": "--cl-bg", "scoped": true }, "bindings": { "value": "theme.component.bg" }, "events": { "onChange": "theme.component-token" } },
+                          { "type": "component", "id": "theme-component-text", "component": "ColorPicker", "options": { "label": "元件文字", "token": "--cl-text", "scoped": true }, "bindings": { "value": "theme.component.text" }, "events": { "onChange": "theme.component-token" } },
+                          { "type": "component", "id": "theme-component-border", "component": "ColorPicker", "options": { "label": "元件邊框", "token": "--cl-border", "scoped": true }, "bindings": { "value": "theme.component.border" }, "events": { "onChange": "theme.component-token" } },
+                          { "type": "component", "id": "theme-component-clear", "component": "BasicButton", "options": { "type": "custom", "customLabel": "清除元件個別設定", "variant": "secondary" }, "events": { "onClick": "theme.component-clear" } }
+                        ]
+                      }
+                    },
+                    {
+                      "id": "advanced",
+                      "title": "進階 JSON",
+                      "content": {
+                        "type": "group",
+                        "id": "theme-advanced",
+                        "class_names": ["studio-fields"],
+                        "layout": { "mode": "stack", "gap": "sm", "align": "stretch" },
+                        "children": [
+                          { "type": "component", "id": "theme-advanced-json", "component": "TextArea", "options": { "label": "任意 token JSON", "rows": 10, "monospace": true, "placeholder": "{\n  \"--cl-primary\": \"#3355ff\"\n}" } },
+                          { "type": "component", "id": "theme-apply-json", "component": "BasicButton", "options": { "type": "custom", "customLabel": "套用 JSON", "variant": "primary" }, "events": { "onClick": "theme.apply-json" } }
+                        ]
+                      }
+                    }
+                  ]
+                },
+                { "type": "slot", "id": "theme-gallery", "class_names": ["theme-gallery"], "aria_label": "元件預覽展示區" }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": "components",
+        "title": "元件組合",
+        "content": {
+          "type": "group",
+          "id": "component-workspace",
+          "class_names": ["studio-pane", "component-workspace"],
+          "layout": { "mode": "stack", "gap": "md", "align": "stretch" },
+          "children": [
+            {
+              "type": "group",
+              "id": "component-toolbar",
+              "class_names": ["studio-toolbar"],
+              "layout": { "mode": "row", "gap": "sm", "align": "center" },
+              "children": [
+                { "type": "component", "id": "component-title", "component": "Heading", "options": { "text": "元件組合 Studio", "level": 1 } },
+                { "type": "component", "id": "component-theme", "component": "Dropdown", "options": { "items": [{ "value": "light", "label": "淺色" }, { "value": "dark", "label": "深色" }], "value": "light", "placeholder": "主題" }, "bindings": { "value": "custom.theme" }, "events": { "onChange": "custom.theme" } },
+                { "type": "component", "id": "component-locale", "component": "Dropdown", "options": { "items": [{ "value": "zh-TW", "label": "繁體中文" }, { "value": "en", "label": "English" }], "value": "zh-TW", "placeholder": "語言" }, "bindings": { "value": "custom.locale" }, "events": { "onChange": "custom.locale" } },
+                { "type": "component", "id": "component-validate", "component": "BasicButton", "options": { "type": "custom", "customLabel": "驗證", "variant": "primary" }, "events": { "onClick": "custom.validate" } },
+                { "type": "component", "id": "component-import-json", "component": "UploadButton", "options": { "type": "file", "showLabel": true, "tooltip": "匯入元件 JSON", "customAccept": ".json,application/json", "multiple": false, "maxSize": 2097152, "inputId": "ccs-import-file" }, "events": { "onSelect": "custom.import-json" } },
+                { "type": "component", "id": "component-export-json", "component": "DownloadButton", "options": { "type": "json", "showLabel": true, "tooltip": "匯出元件 JSON" }, "events": { "onClick": "custom.export-json" } },
+                { "type": "component", "id": "component-copy-json", "component": "BasicButton", "options": { "type": "custom", "customLabel": "複製 JSON", "variant": "secondary" }, "events": { "onClick": "custom.copy-json" } }
+              ]
+            },
+            {
+              "type": "group",
+              "id": "component-help",
+              "class_names": ["studio-section", "studio-help", "component-help"],
+              "layout": { "mode": "stack", "gap": "md", "align": "stretch" },
+              "children": [
+                { "type": "component", "id": "component-help-heading", "component": "Heading", "options": { "text": "元件組合使用說明", "level": 2 } },
+                { "type": "component", "id": "component-help-summary", "component": "Alert", "options": { "variant": "info", "closable": false, "message": "先從 Palette 加入元件，再用 Outline 調整結構並在 Inspector 設定選取節點；層級會由結構自動判定，完成後請先驗證再匯出 JSON。" } },
+                { "type": "component", "id": "component-help-steps", "component": "StepIndicator", "options": { "current": 1, "steps": [{ "label": "填寫基本資料" }, { "label": "組合與調整" }, { "label": "驗證並匯出" }, { "label": "放入 definitions 並驗收" }] } },
+                {
+                  "type": "group",
+                  "id": "component-help-rules",
+                  "class_names": ["component-help-rules"],
+                  "layout": { "mode": "grid", "gap": "sm", "columns": 3, "align": "stretch" },
+                  "children": [
+                    {
+                      "type": "group",
+                      "id": "component-help-atomic",
+                      "class_names": ["component-help-rule"],
+                      "layout": { "mode": "stack", "gap": "xs", "align": "stretch" },
+                      "children": [
+                        { "type": "component", "id": "component-help-atomic-title", "component": "Heading", "options": { "text": "原子元件 atomic", "level": 3 } },
+                        { "type": "component", "id": "component-help-atomic-text", "component": "Text", "options": { "tag": "p", "variant": "body", "text": "根節點直接是一個內建元件；系統會自動分類為 atomic。" } }
+                      ]
+                    },
+                    {
+                      "type": "group",
+                      "id": "component-help-composite",
+                      "class_names": ["component-help-rule"],
+                      "layout": { "mode": "stack", "gap": "xs", "align": "stretch" },
+                      "children": [
+                        { "type": "component", "id": "component-help-composite-title", "component": "Heading", "options": { "text": "複合元件 composite", "level": 3 } },
+                        { "type": "component", "id": "component-help-composite-text", "component": "Text", "options": { "tag": "p", "variant": "body", "text": "由原子元件組合，最大群組深度不超過 3，且不含模板、未同時引用兩個以上複合元件。" } }
+                      ]
+                    },
+                    {
+                      "type": "group",
+                      "id": "component-help-template",
+                      "class_names": ["component-help-rule"],
+                      "layout": { "mode": "stack", "gap": "xs", "align": "stretch" },
+                      "children": [
+                        { "type": "component", "id": "component-help-template-title", "component": "Heading", "options": { "text": "模板元件 template", "level": 3 } },
+                        { "type": "component", "id": "component-help-template-text", "component": "Text", "options": { "tag": "p", "variant": "body", "text": "最大群組深度超過 3、引用模板，或由兩個以上複合元件組成；任一條件成立即自動分類為 template。" } }
+                      ]
+                    }
+                  ]
+                },
+                { "type": "component", "id": "component-help-publish-title", "component": "Heading", "options": { "text": "匯出後交付流程", "level": 3 } },
+                { "type": "component", "id": "component-help-publish-text", "component": "Text", "options": { "tag": "p", "variant": "body", "text": "下載 JSON 後放入 custom_components/definitions 資料夾，再重建 registry 並執行檢查與測試；通過後即可由 Runtime 或 ComponentFactory 使用。" } },
+                { "type": "component", "id": "component-help-commands", "component": "CodeBlock", "options": { "language": "powershell", "code": "packages/javascript/browser/custom_components/definitions/{registry-name}.json\n\nnpm run custom-components:build\nnpm run custom-components:check\nnpm run test:custom-components" } },
+                {
+                  "type": "group",
+                  "id": "component-help-links",
+                  "class_names": ["studio-help-links"],
+                  "layout": { "mode": "row", "gap": "md", "align": "center" },
+                  "children": [
+                    { "type": "component", "id": "component-help-doc-link", "component": "Link", "options": { "text": "閱讀 CUSTOM-COMPONENTS.md：JSON、Runtime 與 ComponentFactory 完整規格", "href": "/CUSTOM-COMPONENTS.md", "scope": "internal" } },
+                    { "type": "component", "id": "component-open-gallery-link", "component": "Link", "options": { "text": "返回元件導覽與展示", "href": "?tab=theme", "scope": "internal" }, "events": { "onClick": "studio.open-theme" } },
+                    { "type": "component", "id": "component-form-application-link", "component": "Link", "options": { "text": "以 schema 設計表單、API 與資料表", "href": "/tools/form-application-studio/index.html", "scope": "internal" } }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "group",
+              "id": "component-metadata",
+              "class_names": ["studio-section", "metadata-section"],
+              "layout": { "mode": "grid", "gap": "sm", "columns": 3, "align": "stretch" },
+              "children": [
+                { "type": "component", "id": "metadata-component-id", "component": "TextInput", "options": { "label": "元件 ID" }, "bindings": { "value": "custom.metadata.component_id" }, "events": { "onChange": "custom.metadata-change" } },
+                { "type": "component", "id": "metadata-registry-name", "component": "TextInput", "options": { "label": "Registry 名稱" }, "bindings": { "value": "custom.metadata.registry_name" }, "events": { "onChange": "custom.metadata-change" } },
+                { "type": "component", "id": "metadata-display-name", "component": "TextInput", "options": { "label": "顯示名稱" }, "bindings": { "value": "custom.metadata.display_name" }, "events": { "onChange": "custom.metadata-change" } },
+                { "type": "component", "id": "metadata-version", "component": "TextInput", "options": { "label": "版本" }, "bindings": { "value": "custom.metadata.version" }, "events": { "onChange": "custom.metadata-change" } },
+                { "type": "component", "id": "metadata-kind", "component": "TextInput", "options": { "label": "自動分類", "readonly": true }, "bindings": { "value": "custom.metadata.kind" } },
+                { "type": "component", "id": "metadata-description", "component": "TextInput", "options": { "label": "說明" }, "bindings": { "value": "custom.metadata.description" }, "events": { "onChange": "custom.metadata-change" } }
+              ]
+            },
+            {
+              "type": "group",
+              "id": "component-editor",
+              "class_names": ["component-editor"],
+              "layout": { "mode": "grid", "gap": "md", "columns": 12, "align": "stretch" },
+              "children": [
+                {
+                  "type": "group",
+                  "id": "component-palette-panel",
+                  "class_names": ["studio-section", "palette-panel"],
+                  "layout": { "mode": "stack", "gap": "sm", "align": "stretch" },
+                  "children": [
+                    { "type": "component", "id": "palette-heading", "component": "Heading", "options": { "text": "元件 Palette", "level": 2 } },
+                    { "type": "component", "id": "palette-search", "component": "TextInput", "options": { "type": "search", "label": "搜尋", "placeholder": "名稱或分類" }, "bindings": { "value": "custom.palette.query" }, "events": { "onChange": "custom.palette-search" } },
+                    { "type": "component", "id": "palette-category", "component": "Dropdown", "options": { "items": [{ "value": "all", "label": "全部分類" }], "value": "all", "placeholder": "分類" }, "bindings": { "items": "custom.palette.categories", "value": "custom.palette.category" }, "events": { "onChange": "custom.palette-category" } },
+                    { "type": "component", "id": "palette-list", "component": "List", "options": { "items": [] }, "bindings": { "items": "custom.palette.items", "activeId": "custom.palette.activeId" }, "events": { "onItemClick": "custom.palette-add" } }
+                  ]
+                },
+                {
+                  "type": "group",
+                  "id": "component-outline-panel",
+                  "class_names": ["studio-section", "outline-panel"],
+                  "layout": { "mode": "stack", "gap": "sm", "align": "stretch" },
+                  "children": [
+                    { "type": "component", "id": "outline-heading", "component": "Heading", "options": { "text": "結構 Outline", "level": 2 } },
+                    { "type": "component", "id": "outline-tree", "component": "TreeList", "options": { "data": [] }, "bindings": { "data": "custom.outline.data", "activeId": "custom.outline.activeId" }, "events": { "onSelect": "custom.outline-select" } },
+                    {
+                      "type": "group",
+                      "id": "outline-actions",
+                      "class_names": ["outline-actions"],
+                      "layout": { "mode": "row", "gap": "xs", "align": "center" },
+                      "children": [
+                        { "type": "component", "id": "outline-up", "component": "BasicButton", "options": { "type": "custom", "customLabel": "上移", "variant": "secondary" }, "events": { "onClick": "custom.move-up" } },
+                        { "type": "component", "id": "outline-down", "component": "BasicButton", "options": { "type": "custom", "customLabel": "下移", "variant": "secondary" }, "events": { "onClick": "custom.move-down" } },
+                        { "type": "component", "id": "outline-wrap", "component": "BasicButton", "options": { "type": "custom", "customLabel": "包成群組", "variant": "secondary" }, "events": { "onClick": "custom.wrap" } },
+                        { "type": "component", "id": "outline-add-group", "component": "BasicButton", "options": { "type": "custom", "customLabel": "新增群組", "variant": "secondary" }, "events": { "onClick": "custom.add-group" } },
+                        { "type": "component", "id": "outline-remove", "component": "BasicButton", "options": { "type": "custom", "customLabel": "刪除", "variant": "secondary" }, "events": { "onClick": "custom.remove" } }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "group",
+                  "id": "component-preview-panel",
+                  "class_names": ["studio-section", "preview-panel"],
+                  "layout": { "mode": "stack", "gap": "sm", "align": "stretch" },
+                  "children": [
+                    { "type": "component", "id": "preview-heading", "component": "Heading", "options": { "text": "即時預覽", "level": 2 } },
+                    { "type": "slot", "id": "component-preview", "class_names": ["component-preview", "ccs-preview"], "aria_label": "客製元件即時預覽" }
+                  ]
+                },
+                {
+                  "type": "group",
+                  "id": "component-inspector-panel",
+                  "class_names": ["studio-section", "inspector-panel"],
+                  "layout": { "mode": "stack", "gap": "sm", "align": "stretch" },
+                  "children": [
+                    { "type": "component", "id": "inspector-heading", "component": "Heading", "options": { "text": "Inspector", "level": 2 } },
+                    { "type": "component", "id": "inspector-node-type", "component": "TextInput", "options": { "label": "節點類型", "readonly": true }, "bindings": { "value": "custom.inspector.type" } },
+                    { "type": "component", "id": "inspector-component-name", "component": "TextInput", "options": { "label": "元件名稱", "readonly": true }, "bindings": { "value": "custom.inspector.component" } },
+                    { "type": "component", "id": "inspector-options", "component": "TextArea", "options": { "label": "Options JSON", "rows": 10, "monospace": true }, "bindings": { "value": "custom.inspector.options" }, "events": { "onInput": "custom.inspector-options" } },
+                    { "type": "component", "id": "inspector-mode", "component": "Dropdown", "options": { "items": [{ "value": "stack", "label": "Stack" }, { "value": "row", "label": "Row" }, { "value": "grid", "label": "Grid" }], "value": "stack", "placeholder": "Layout mode" }, "bindings": { "value": "custom.inspector.mode" }, "events": { "onChange": "custom.inspector-layout" } },
+                    { "type": "component", "id": "inspector-gap", "component": "Dropdown", "options": { "items": [{ "value": "none", "label": "無" }, { "value": "xs", "label": "極小" }, { "value": "sm", "label": "小" }, { "value": "md", "label": "中" }, { "value": "lg", "label": "大" }, { "value": "xl", "label": "極大" }], "value": "md", "placeholder": "間距" }, "bindings": { "value": "custom.inspector.gap" }, "events": { "onChange": "custom.inspector-layout" } },
+                    { "type": "component", "id": "inspector-columns", "component": "NumberInput", "options": { "label": "欄數", "min": 1, "max": 12, "step": 1, "value": 1 }, "bindings": { "value": "custom.inspector.columns" }, "events": { "onChange": "custom.inspector-layout" } },
+                    { "type": "component", "id": "inspector-align", "component": "Dropdown", "options": { "items": [{ "value": "start", "label": "起點" }, { "value": "center", "label": "置中" }, { "value": "end", "label": "終點" }, { "value": "stretch", "label": "延展" }], "value": "stretch", "placeholder": "對齊" }, "bindings": { "value": "custom.inspector.align" }, "events": { "onChange": "custom.inspector-layout" } },
+                    { "type": "component", "id": "inspector-aria-label", "component": "TextInput", "options": { "label": "ARIA 標籤" }, "bindings": { "value": "custom.inspector.ariaLabel" }, "events": { "onChange": "custom.inspector-aria" } }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "group",
+              "id": "component-feedback",
+              "class_names": ["studio-section", "feedback-section"],
+              "layout": { "mode": "stack", "gap": "xs", "align": "stretch" },
+              "children": [
+                { "type": "component", "id": "component-status", "component": "Text", "options": { "text": "Studio 準備完成。", "variant": "muted" }, "bindings": { "text": "custom.status" } },
+                { "type": "component", "id": "component-diagnostics", "component": "List", "options": { "items": [] }, "bindings": { "items": "custom.diagnostics" } }
+              ]
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

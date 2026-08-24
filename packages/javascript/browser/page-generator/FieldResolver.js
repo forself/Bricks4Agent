@@ -31,8 +31,12 @@ export class FieldResolver {
         /** @type {Map<string, Function>} component 名稱 → 元件工廠函式 */
         this._componentMap = new Map();
 
+        /** @type {Map<string, Function>} 可被 field.component 明示引用的內建元件 */
+        this._builtinComponentMap = new Map();
+
         // 註冊內建映射
         this._registerBuiltins();
+        this._registerBuiltinComponents();
     }
 
     /**
@@ -48,11 +52,18 @@ export class FieldResolver {
         // number
         this._typeMap.set('number', (def) => this._createNumberInput(def));
 
-        // textarea
-        this._typeMap.set('textarea', (def) => this._createTextarea(def));
+        // textarea / memo / plaintext 全部交由 B4A TextArea 元件。
+        this._typeMap.set('textarea', (def) => this._createTextArea(def));
+        this._typeMap.set('memo', (def) => this._createTextArea(def));
+        this._typeMap.set('plaintext', (def) => this._createTextArea(def));
+        this._typeMap.set('slider', (def) => this._createSlider(def));
 
         // date
         this._typeMap.set('date', (def) => this._createDatePicker(def));
+        this._typeMap.set('rocDate', (def) => this._createDatePicker({
+            ...def,
+            format: 'taiwan',
+        }));
 
         // time
         this._typeMap.set('time', (def) => this._createTimePicker(def));
@@ -131,13 +142,61 @@ export class FieldResolver {
         this._typeMap.set('student', (def) => this._createStudentInput(def));
     }
 
+    /**
+     * 註冊可安全明示的既有 field 元件名稱。
+     * 這與 fieldType 推論分開，讓未知 field.component 能 fail-closed，
+     * 同時保留既有內建名稱的使用方式。
+     */
+    _registerBuiltinComponents() {
+        const textInput = (def) => {
+            const type = ['email', 'password'].includes(def.fieldType) ? def.fieldType : 'text';
+            return this._createTextInput(def, type);
+        };
+        const entries = {
+            TextInput: textInput,
+            NumberInput: (def) => this._createNumberInput(def),
+            Slider: (def) => this._createSlider(def),
+            TextArea: (def) => this._createTextArea(def),
+            Textarea: (def) => this._createTextArea(def),
+            DatePicker: (def) => this._createDatePicker(def),
+            TimePicker: (def) => this._createTimePicker(def),
+            Dropdown: (def) => this._createDropdown(def),
+            MultiSelectDropdown: (def) => this._createMultiSelectDropdown(def),
+            Checkbox: (def) => this._createCheckbox(def),
+            ToggleSwitch: (def) => this._createToggleSwitch(def),
+            Radio: (def) => this._createRadio(def),
+            ColorPicker: (def) => this._createColorPicker(def),
+            ImageViewer: (def) => this._createImageViewer(def),
+            BatchUploader: (def) => this._createBatchUploader(def),
+            HiddenInput: (def) => this._createHiddenInput(def),
+            DateTimeInput: (def) => this._createDateTimeInput(def),
+            WebTextEditor: (def) => this._createWebTextEditor(def),
+            DrawingBoard: (def) => this._createDrawingBoard(def),
+            GeolocationService: (def) => this._createGeolocationService(def),
+            WeatherService: (def) => this._createWeatherService(def),
+            AddressInput: (def) => this._createAddressInput(def),
+            AddressListInput: (def) => this._createAddressListInput(def),
+            ChainedInput: (def) => this._createChainedInput(def),
+            ListInput: (def) => this._createListInput(def),
+            PersonInfoList: (def) => this._createPersonInfoList(def),
+            PhoneListInput: (def) => this._createPhoneListInput(def),
+            SocialMediaList: (def) => this._createSocialMediaList(def),
+            OrganizationInput: (def) => this._createOrganizationInput(def),
+            StudentInput: (def) => this._createStudentInput(def),
+        };
+
+        for (const [name, factory] of Object.entries(entries)) {
+            this._builtinComponentMap.set(name, factory);
+        }
+    }
+
     // ─── 元件工廠方法 ───
 
     _createTextInput(def, type) {
         const { TextInput } = this._getModule('TextInput');
         const opts = {
             type,
-            placeholder: def.label,
+            placeholder: def.placeholder || def.label,
             disabled: def.isReadonly,
             required: def.isRequired,
         };
@@ -162,54 +221,50 @@ export class FieldResolver {
         return new NumberInput(opts);
     }
 
-    _createTextarea(def) {
-        // 原生 textarea 包裝
-        const wrapper = {
-            element: null,
-            _textarea: null,
-            mount(container) {
-                const target = typeof container === 'string' ? document.querySelector(container) : container;
-                if (target) target.appendChild(this.element);
-                return this;
-            },
-            destroy() {
-                this.element?.remove();
-            },
-            getValue() { return this._textarea.value; },
-            setValue(v) { this._textarea.value = v || ''; },
-            clear() { this._textarea.value = ''; },
-            options: {}
+    _createSlider(def) {
+        const { Slider } = this._getModule('Slider');
+        const opts = { label: def.label, disabled: def.isReadonly };
+        if (def.validation) {
+            if (def.validation.min != null) opts.min = def.validation.min;
+            if (def.validation.max != null) opts.max = def.validation.max;
+            if (def.validation.step != null) opts.step = def.validation.step;
+        }
+        if (def.defaultValue != null) opts.value = Number(def.defaultValue);
+        return new Slider(opts);
+    }
+
+    _createTextArea(def) {
+        const { TextArea } = this._getModule('TextArea');
+        // FormField already renders the field label. Keeping TextArea's own label
+        // empty prevents generated forms from displaying it twice.
+        const opts = {
+            label: '',
+            placeholder: def.placeholder || '',
+            rows: Number(def.rows || def.componentOptions?.rows || 4),
+            required: def.isRequired,
+            disabled: def.isReadonly,
+            readonly: def.isReadonly,
         };
-
-        const el = document.createElement('div');
-        const textarea = document.createElement('textarea');
-        textarea.placeholder = def.label || '';
-        textarea.readOnly = !!def.isReadonly;
-        textarea.required = !!def.isRequired;
-        textarea.style.cssText = `
-            width:100%;min-height:80px;padding:8px 12px;border: 1px solid var(--cl-border);
-            border-radius:6px;font-size:14px;font-family:inherit;resize:vertical;
-            outline:none;transition:border-color 0.2s;box-sizing:border-box;
-        `;
-        textarea.addEventListener('focus', () => { textarea.style.borderColor = 'var(--cl-primary)'; });
-        textarea.addEventListener('blur', () => { textarea.style.borderColor = 'var(--cl-border)'; });
-
-        if (def.validation?.maxLength) textarea.maxLength = def.validation.maxLength;
-        if (def.defaultValue) textarea.value = def.defaultValue;
-
-        el.appendChild(textarea);
-        wrapper.element = el;
-        wrapper._textarea = textarea;
-        return wrapper;
+        if (def.validation && def.validation.maxLength != null) opts.maxLength = def.validation.maxLength;
+        if (def.defaultValue != null) opts.value = String(def.defaultValue);
+        return new TextArea(opts);
     }
 
     _createDatePicker(def) {
         const { DatePicker } = this._getModule('DatePicker');
         const opts = {
-            placeholder: def.label,
+            placeholder: def.placeholder || def.label,
             disabled: def.isReadonly,
             required: def.isRequired,
         };
+        if (def.format) opts.format = def.format;
+        if (def.fieldType === 'rocDate' && !opts.format) opts.format = 'taiwan';
+        if (def.min) opts.min = def.min;
+        if (def.max) opts.max = def.max;
+        if (def.maxYearOffset !== null && def.maxYearOffset !== undefined && !opts.max) {
+            const year = new Date().getFullYear() + Number(def.maxYearOffset || 0);
+            opts.max = new Date(year, 11, 31);
+        }
         if (def.defaultValue === 'today') opts.value = new Date();
         else if (def.defaultValue) opts.value = def.defaultValue;
         return new DatePicker(opts);
@@ -230,7 +285,7 @@ export class FieldResolver {
         const { Dropdown } = this._getModule('Dropdown');
         const opts = {
             variant: 'searchable',
-            placeholder: `請選擇${def.label}`,
+            placeholder: def.placeholder || `請選擇${def.label}`,
             disabled: def.isReadonly,
             items: this._resolveStaticOptions(def),
         };
@@ -255,7 +310,8 @@ export class FieldResolver {
     _createCheckbox(def) {
         const { Checkbox } = this._getModule('Checkbox');
         const opts = {
-            label: def.label,
+            // FormField owns the field label; the checkbox remains the control.
+            label: def.componentOptions?.controlLabel || '',
             disabled: def.isReadonly,
             checked: def.defaultValue === 'true',
         };
@@ -307,7 +363,17 @@ export class FieldResolver {
 
     _createBatchUploader(def) {
         const { BatchUploader } = this._getModule('BatchUploader');
-        return new BatchUploader({});
+        const componentOptions = def.componentOptions || {};
+        const validation = def.validation || {};
+        const opts = {
+            ...componentOptions,
+            multiple: componentOptions.multiple ?? validation.multiple ?? true,
+            maxFiles: componentOptions.maxFiles ?? validation.maxItems ?? 10,
+            maxFileSize: componentOptions.maxFileSize ?? validation.maxFileSize ?? 10 * 1024 * 1024,
+            allowedExtensions: componentOptions.allowedExtensions ?? validation.allowedExtensions ?? null,
+            autoUpload: componentOptions.autoUpload ?? false,
+        };
+        return new BatchUploader(opts);
     }
 
     _createHiddenInput(def) {
@@ -447,6 +513,7 @@ export class FieldResolver {
      * 解析靜態選項
      */
     _resolveStaticOptions(def) {
+        if (Array.isArray(def.options)) return def.options;
         if (!def.optionsSource) return [];
         if (def.optionsSource.type === 'static' && Array.isArray(def.optionsSource.items)) {
             return def.optionsSource.items;
@@ -476,6 +543,8 @@ export class FieldResolver {
         const modules = {
             TextInput: () => import('../ui_components/form/TextInput/TextInput.js'),
             NumberInput: () => import('../ui_components/form/NumberInput/NumberInput.js'),
+            Slider: () => import('../ui_components/form/Slider/Slider.js'),
+            TextArea: () => import('../ui_components/form/TextArea/TextArea.js'),
             DatePicker: () => import('../ui_components/form/DatePicker/DatePicker.js'),
             TimePicker: () => import('../ui_components/form/TimePicker/TimePicker.js'),
             Dropdown: () => import('../ui_components/form/Dropdown/Dropdown.js'),
@@ -528,9 +597,18 @@ export class FieldResolver {
     resolve(fieldDef) {
         let component;
 
-        // 優先使用指定 component
-        if (fieldDef.component && this._componentMap.has(fieldDef.component)) {
-            component = this._componentMap.get(fieldDef.component)(fieldDef);
+        // 明示 component 不得靜默回退到 fieldType；只接受已註冊 custom
+        // component 或上述相容性 allowlist 中的內建 field component。
+        if (fieldDef.component !== null && fieldDef.component !== undefined && fieldDef.component !== '') {
+            if (typeof fieldDef.component !== 'string') {
+                throw new TypeError('field.component must be a registered component name.');
+            }
+            const factory = this._componentMap.get(fieldDef.component)
+                || this._builtinComponentMap.get(fieldDef.component);
+            if (!factory) {
+                throw new Error(`[FieldResolver] 未註冊的 component: ${fieldDef.component}`);
+            }
+            component = factory(fieldDef);
         } else {
             // 依 fieldType 推論
             const factory = this._typeMap.get(fieldDef.fieldType);
@@ -543,17 +621,31 @@ export class FieldResolver {
         }
 
         // 包裝為 FormField
-        const formField = new FormField({
-            fieldName: fieldDef.fieldName,
-            label: fieldDef.fieldType === 'hidden' ? '' : fieldDef.label,
-            required: fieldDef.isRequired,
-            col: fieldDef.formCol,
-            component
-        });
+        let formField = null;
+        try {
+            formField = new FormField({
+                fieldName: fieldDef.fieldName,
+                label: fieldDef.fieldType === 'hidden' ? '' : fieldDef.label,
+                required: fieldDef.isRequired,
+                col: fieldDef.formCol,
+                component
+            });
 
-        // hidden 欄位直接隱藏
-        if (fieldDef.fieldType === 'hidden') {
-            formField.hide();
+            // hidden 欄位直接隱藏
+            if (fieldDef.fieldType === 'hidden') {
+                formField.hide();
+            }
+        } catch (error) {
+            const cleanupErrors = [];
+            this._destroyResolvedEntry({ component, formField }, cleanupErrors);
+            if (cleanupErrors.length > 0 && error && typeof error === 'object') {
+                try {
+                    error.cleanupErrors = cleanupErrors;
+                } catch {
+                    // Preserve the original failure even when it is non-extensible.
+                }
+            }
+            throw error;
         }
 
         return { component, formField };
@@ -565,11 +657,73 @@ export class FieldResolver {
      * @returns {Map<string, { component, formField }>}
      */
     resolveAll(fieldDefs) {
+        if (!Array.isArray(fieldDefs)) {
+            throw new TypeError('resolveAll(fieldDefs) requires an array.');
+        }
+
+        // Preflight before creating anything so duplicate keys can never cause
+        // a silently overwritten component or partially-created form.
+        const fieldNames = new Set();
+        for (const def of fieldDefs) {
+            const fieldName = def?.fieldName;
+            if (fieldNames.has(fieldName)) {
+                throw new Error(`[FieldResolver] 重複的 fieldName: ${String(fieldName)}`);
+            }
+            fieldNames.add(fieldName);
+        }
+
         const result = new Map();
-        fieldDefs.forEach(def => {
-            result.set(def.fieldName, this.resolve(def));
-        });
-        return result;
+        try {
+            for (const def of fieldDefs) {
+                result.set(def.fieldName, this.resolve(def));
+            }
+            return result;
+        } catch (error) {
+            const cleanupErrors = [];
+            const entries = [...result.values()];
+            for (let index = entries.length - 1; index >= 0; index -= 1) {
+                this._destroyResolvedEntry(entries[index], cleanupErrors);
+            }
+            result.clear();
+            if (cleanupErrors.length > 0 && error && typeof error === 'object') {
+                try {
+                    error.cleanupErrors = [
+                        ...(Array.isArray(error.cleanupErrors) ? error.cleanupErrors : []),
+                        ...cleanupErrors,
+                    ];
+                } catch {
+                    // Preserve the original failure even when it is non-extensible.
+                }
+            }
+            throw error;
+        }
+    }
+
+    /**
+     * Best-effort cleanup for a resolved entry without masking the root error.
+     * FormField owns its component, so a successful FormField.destroy() is enough.
+     *
+     * @private
+     */
+    _destroyResolvedEntry(entry, cleanupErrors = []) {
+        if (!entry) return;
+
+        if (typeof entry.formField?.destroy === 'function') {
+            try {
+                entry.formField.destroy();
+                return;
+            } catch (error) {
+                cleanupErrors.push(error);
+            }
+        }
+
+        if (typeof entry.component?.destroy === 'function') {
+            try {
+                entry.component.destroy();
+            } catch (error) {
+                cleanupErrors.push(error);
+            }
+        }
     }
 }
 

@@ -29,9 +29,12 @@ export class FeatureCard {
         this.onClick = options.onClick || null;
         this.elevated = options.elevated !== undefined ? options.elevated : true;
         this.customData = options.customData || {};
-        
+
         this.element = null;
-        
+        this._containerEl = null;
+        this._light = false;
+        this._hovered = false;
+
         this._init();
     }
 
@@ -43,13 +46,13 @@ export class FeatureCard {
         this.element = document.createElement('div');
         this.element.className = 'feature-card';
         
-        // 建立卡片結構
+        // 建立卡片結構（不含 style 屬性；樣式一律走 CSSOM，CSP 相容）
         this.element.innerHTML = `
             <div class="feature-card__container">
                 <div class="feature-card__header">
                     <h3 class="feature-card__title">
                         ${this._escapeHtml(this.title)}
-                        ${this.badge ? `<span class="feature-card__badge" style="background: ${this.badgeColor}">${this._escapeHtml(this.badge)}</span>` : ''}
+                        ${this.badge ? `<span class="feature-card__badge">${this._escapeHtml(this.badge)}</span>` : ''}
                     </h3>
                 </div>
                 <p class="feature-card__description">${this._escapeHtml(this.description)}</p>
@@ -69,117 +72,127 @@ export class FeatureCard {
     }
 
     /**
-     * 應用卡片樣式
+     * 應用卡片樣式（元素層 CSSOM，CSP 相容）
      * @private
      */
     _applyStyles() {
-        // 確保樣式已注入
-        if (!document.getElementById('feature-card-styles')) {
-            const style = document.createElement('style');
-            style.id = 'feature-card-styles';
-            style.textContent = `
-                .feature-card {
-                    display: block;
-                    text-decoration: none;
-                    color: inherit;
-                    height: 100%;
-                }
+        // 根元素
+        this.element.style.cssText = 'display: block; text-decoration: none; color: inherit; height: 100%;';
 
-                .feature-card__container {
-                    background: var(--cl-bg-inverse-soft);
-                    border: 1px solid var(--cl-divider-inverse);
-                    border-radius: var(--cl-radius-xl);
-                    padding: 24px;
-                    transition: transform var(--cl-transition-slow), box-shadow var(--cl-transition-slow), border-color var(--cl-transition-slow), background var(--cl-transition-slow);
-                    cursor: pointer;
-                    height: 100%;
-                    display: flex;
-                    flex-direction: column;
-                }
+        // 容器
+        const container = this.element.querySelector('.feature-card__container');
+        this._containerEl = container;
+        if (container) {
+            container.style.cssText = 'background: var(--cl-bg-inverse-soft); border: 1px solid var(--cl-divider-inverse); border-radius: var(--cl-radius-xl); padding: 24px; transition: transform var(--cl-transition-slow), box-shadow var(--cl-transition-slow), border-color var(--cl-transition-slow), background var(--cl-transition-slow); cursor: pointer; height: 100%; display: flex; flex-direction: column;';
 
-                .feature-card__container:hover {
-                    transform: translateY(-8px);
-                    border-color: var(--cl-gradient-start);
-                    box-shadow: var(--cl-shadow-lg);
-                    background: var(--cl-bg-inverse-soft-hover);
-                }
-
-                .feature-card__header {
-                    margin-bottom: 12px;
-                }
-
-                .feature-card__title {
-                    font-size: 1.3rem;
-                    font-weight: 600;
-                    color: var(--cl-bg);
-                    margin: 0;
-                    display: flex;
-                    align-items: center;
-                    gap: 10px;
-                    flex-wrap: wrap;
-                }
-
-                .feature-card__badge {
-                    font-size: 0.7rem;
-                    padding: 2px 8px;
-                    border-radius: var(--cl-radius-xl);
-                    color: var(--cl-bg);
-                    font-weight: 500;
-                    text-transform: uppercase;
-                }
-
-                .feature-card__description {
-                    font-size: 0.95rem;
-                    color: var(--cl-purple-light);
-                    line-height: 1.6;
-                    margin: 0 0 16px 0;
-                    flex: 1;
-                }
-
-                .feature-card__tags {
-                    display: flex;
-                    gap: 8px;
-                    flex-wrap: wrap;
-                }
-
-                .feature-card__tag {
-                    font-size: 0.75rem;
-                    padding: 4px 10px;
-                    background: var(--cl-bg-inverse-soft-hover);
-                    border-radius: var(--cl-radius-lg);
-                    color: var(--cl-bg);
-                }
-
-                /* 無上升效果的變體 */
-                .feature-card--no-elevation .feature-card__container:hover {
-                    transform: none;
-                }
-
-                /* 適用於淺色背景的變體 */
-                .feature-card--light .feature-card__container {
-                    background: var(--cl-bg);
-                    border-color: var(--cl-border-light);
-                }
-
-                .feature-card--light .feature-card__title {
-                    color: var(--cl-text);
-                }
-
-                .feature-card--light .feature-card__description {
-                    color: var(--cl-text-secondary);
-                }
-
-                .feature-card--light .feature-card__tag {
-                    background: var(--cl-bg-subtle);
-                    color: var(--cl-text-secondary);
-                }
-            `;
-            document.head.appendChild(style);
+            // :hover 效果（CSP 相容，改用事件）
+            container.addEventListener('mouseenter', () => {
+                this._hovered = true;
+                this._applyContainerState();
+            });
+            container.addEventListener('mouseleave', () => {
+                this._hovered = false;
+                this._applyContainerState();
+            });
         }
 
-        // 應用修飾類
+        const header = this.element.querySelector('.feature-card__header');
+        if (header) {
+            header.style.cssText = 'margin-bottom: 12px;';
+        }
+
+        const title = this.element.querySelector('.feature-card__title');
+        if (title) {
+            title.style.cssText = 'font-size: 1.3rem; font-weight: 600; color: var(--cl-bg); margin: 0; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;';
+        }
+
+        const desc = this.element.querySelector('.feature-card__description');
+        if (desc) {
+            desc.style.cssText = 'font-size: 0.95rem; color: var(--cl-purple-light); line-height: 1.6; margin: 0 0 16px 0; flex: 1;';
+        }
+
+        const tags = this.element.querySelector('.feature-card__tags');
+        if (tags) {
+            tags.style.cssText = 'display: flex; gap: 8px; flex-wrap: wrap;';
+        }
+
+        const badgeEl = this.element.querySelector('.feature-card__badge');
+        if (badgeEl) {
+            this._styleBadge(badgeEl);
+        }
+
+        this.element.querySelectorAll('.feature-card__tag').forEach(tag => this._styleTag(tag));
+
+        // 應用修飾類（保留 class 供外部辨識）
         if (!this.elevated) {
             this.element.classList.add('feature-card--no-elevation');
+        }
+
+        this._applyThemeStyles();
+    }
+
+    /**
+     * 徽章樣式（取代 innerHTML 內的 style 屬性）
+     * @private
+     */
+    _styleBadge(badgeEl) {
+        badgeEl.style.cssText = `font-size: 0.7rem; padding: 2px 8px; border-radius: var(--cl-radius-xl); color: var(--cl-bg); font-weight: 500; text-transform: uppercase; background: ${this.badgeColor};`;
+    }
+
+    /**
+     * 標籤樣式（依 light/dark 主題）
+     * @private
+     */
+    _styleTag(tagEl) {
+        const bg = this._light ? 'var(--cl-bg-subtle)' : 'var(--cl-bg-inverse-soft-hover)';
+        const color = this._light ? 'var(--cl-text-secondary)' : 'var(--cl-bg)';
+        tagEl.style.cssText = `font-size: 0.75rem; padding: 4px 10px; background: ${bg}; border-radius: var(--cl-radius-lg); color: ${color};`;
+    }
+
+    /**
+     * 依主題（light/dark）套用文字與標籤顏色
+     * @private
+     */
+    _applyThemeStyles() {
+        const light = this._light;
+
+        const title = this.element.querySelector('.feature-card__title');
+        if (title) {
+            title.style.color = light ? 'var(--cl-text)' : 'var(--cl-bg)';
+        }
+
+        const desc = this.element.querySelector('.feature-card__description');
+        if (desc) {
+            desc.style.color = light ? 'var(--cl-text-secondary)' : 'var(--cl-purple-light)';
+        }
+
+        this.element.querySelectorAll('.feature-card__tag').forEach(tag => this._styleTag(tag));
+
+        this._applyContainerState();
+    }
+
+    /**
+     * 依 hover / 主題 / elevated 狀態套用容器樣式
+     * （取代 .feature-card__container:hover 等 CSS 規則）
+     * @private
+     */
+    _applyContainerState() {
+        const c = this._containerEl;
+        if (!c) return;
+
+        const light = this._light;
+
+        if (this._hovered) {
+            c.style.transform = this.elevated ? 'translateY(-8px)' : 'none';
+            c.style.boxShadow = 'var(--cl-shadow-lg)';
+            // 原 CSS 中 light 變體以較晚宣告覆蓋 hover 的背景/邊框色
+            c.style.borderColor = light ? 'var(--cl-border-light)' : 'var(--cl-gradient-start)';
+            c.style.background = light ? 'var(--cl-bg)' : 'var(--cl-bg-inverse-soft-hover)';
+        } else {
+            c.style.transform = 'none';
+            c.style.boxShadow = 'none';
+            c.style.borderColor = light ? 'var(--cl-border-light)' : 'var(--cl-divider-inverse)';
+            c.style.background = light ? 'var(--cl-bg)' : 'var(--cl-bg-inverse-soft)';
         }
     }
 
@@ -227,8 +240,11 @@ export class FeatureCard {
         this.title = title;
         const titleEl = this.element.querySelector('.feature-card__title');
         if (titleEl) {
-            const badgeHtml = this.badge ? `<span class="feature-card__badge" style="background: ${this.badgeColor}">${this._escapeHtml(this.badge)}</span>` : '';
+            const badgeHtml = this.badge ? `<span class="feature-card__badge">${this._escapeHtml(this.badge)}</span>` : '';
             titleEl.innerHTML = `${this._escapeHtml(title)} ${badgeHtml}`;
+            // CSP:徽章樣式以 CSSOM 指派(與初始渲染同一 helper)
+            const badgeEl = titleEl.querySelector('.feature-card__badge');
+            if (badgeEl) this._styleBadge(badgeEl);
         }
     }
 

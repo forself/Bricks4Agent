@@ -7,46 +7,81 @@
 This guide now reflects a repository-wide validation run on 2026-03-22.
 
 - Verified environment:
-  - Node.js `v22.17.1`
-  - npm `11.5.1`
-  - .NET SDK `10.0.104`
-  - Podman `5.5.2`
+
+- Node.js `v22.17.1`
+
+- npm `11.5.1`
+
+- .NET SDK `10.0.104`
+
+- Podman `5.5.2`
+
 - Verified passing checks:
-  - solution build
-  - page-generator examples
-  - UI library validation
-  - browser smoke
-  - UI state contract validation
-  - broker scope and governed-agent validation
-  - broker LLM proxy integration
-  - BaseOrm verification
-  - governed Podman stacks
-  - LINE sidecar webhook ingress and high-level broker routing
+
+- solution build
+
+- page-generator examples
+
+- UI library validation
+
+- browser smoke
+
+- UI state contract validation
+
+- broker scope and governed-agent validation
+
+- broker LLM proxy integration
+
+- BaseOrm verification
+
+- governed Podman stacks
+
+- LINE sidecar webhook ingress and high-level broker routing
+
 - Verified high-level query behavior:
-  - explicit `?search <keywords>` now executes broker-mediated DuckDuckGo search
-  - plain `?query` still routes to the high-level dialogue path
+
+- explicit `?search <keywords>` now executes broker-mediated DuckDuckGo search
+
+- plain `?query` still routes to the high-level dialogue path
+
 - Important current limit:
-  - real-time broker-mediated search is currently explicit rather than automatic; if the user wants controlled live search, use `?search <keywords>`
+
+- real-time broker-mediated search is currently explicit rather than automatic; if the user wants controlled live search, use `?search <keywords>`
+
 - Important backend note:
-  - the solution builds successfully, but it still emits `207` existing warnings, mostly in `Mfa`, `AuditLog`, and `AccountLock`
+
+- the solution builds successfully, but it still emits `207` existing warnings, mostly in `Mfa`, `AuditLog`, and `AccountLock`
 
 ---
 
 ## Table of Contents
 
 1. [Getting Started](#1-getting-started)
+
 2. [Component Overview](#2-component-overview)
+
 3. [Theme & Styling System](#3-theme--styling-system)
+
 4. [Form Components](#4-form-components)
+
 5. [Common Components](#5-common-components)
+
 6. [Layout Components](#6-layout-components)
+
 7. [Advanced Input Components](#7-advanced-input-components)
+
 8. [Social Components](#8-social-components)
+
 9. [Visualization Components](#9-visualization-components)
+
 10. [Behavior Modules & Utilities](#10-behavior-modules--utilities)
+
 11. [Page Generator](#11-page-generator)
+
 12. [SPA Generator](#12-spa-generator)
+
 13. [C# Backend Packages](#13-c-backend-packages)
+
 14. [Security Guidelines](#14-security-guidelines)
 
 ---
@@ -56,8 +91,11 @@ This guide now reflects a repository-wide validation run on 2026-03-22.
 ### 1.1 Prerequisites
 
 - Node.js 18+
-- .NET 8 SDK or newer (`10.0.104` verified)
+
+- .NET 10 SDK or newer (`10.0.104` verified)
+
 - Git
+
 - Podman 5+ for the full governed-stack validation matrix
 
 ### 1.2 Installation & Startup
@@ -103,7 +141,7 @@ Bricks4Agent/
 ?謚??? templates/
 ??  ????? spa/                             # SPA project template
 ??      ?謚??? frontend/                    # Frontend template
-??      ?謚??? backend/                     # .NET 8 backend template
+??      ?謚??? backend/                     # .NET 10 backend template
 ??      ????? scripts/                     # Template CLI (spa-cli.js)
 ????? tools/
     ?謚??? spa-generator/                   # SPA Generator Web UI
@@ -115,6 +153,7 @@ Bricks4Agent/
 The SPA toolchain is split into two parts:
 
 - `tools/spa-generator/`: Web UI
+
 - `templates/spa/scripts/`: template CLI
 
 ```bash
@@ -138,7 +177,7 @@ node templates/spa/scripts/spa-cli.js feature User --fields "Name:string,Email:s
 ### 2.1 Component Categories
 
 | Category | Directory | Count | Description |
-|----------|-----------|-------|-------------|
+|---|---|---|---|
 | Form | `form/` | 12 | Text, number, date, dropdown and other form inputs |
 | Common | `common/` | 23 | Buttons, badges, tags, tooltips, progress bars, dividers, dialogs, notifications, pagination and other general UI |
 | Layout | `layout/` | 10 | Panels, tables, side menus, tabs and other layout elements |
@@ -153,6 +192,7 @@ node templates/spa/scripts/spa-cli.js feature User --fields "Name:string,Email:s
 > Import path note: code snippets below use shortened paths for readability. If you validate them directly from this repo root, treat `./ui_components/...` as `./packages/javascript/browser/ui_components/...` and `./page-generator/...` as `./packages/javascript/browser/page-generator/...`.
 
 ### 2.2 Unified API Convention
+
 All components follow a consistent API pattern to reduce the learning curve:
 
 ```javascript
@@ -182,7 +222,7 @@ input.destroy();
 **API Method Quick Reference:**
 
 | Method | Description | Applies To |
-|--------|-------------|------------|
+|---|---|---|
 | `new Component(options)` | Create component instance | All components |
 | `.mount(container)` | Mount to a DOM container | All components |
 | `.getValue()` | Get current value | Form/Input components |
@@ -1334,8 +1374,11 @@ orgInput.mount(document.getElementById('org-field'));
 ### 7.7 Other Advanced Inputs
 
 - **DateTimeInput** ??DateTime composite input
+
 - **ListInput** ??Generic list input (add/remove/reorder items)
+
 - **SocialMediaList** ??Social media account list
+
 - **StudentInput** ??Student information input
 
 All these components follow the unified API (`mount`, `getValue`, `setValue`, `destroy`).
@@ -1549,9 +1592,13 @@ relationChart.mount(document.getElementById('relation-chart'));
 ### 9.3 Other Visualization Components
 
 - **TimelineChart** ??Timeline chart
+
 - **SankeyChart** ??Sankey diagram (flow visualization)
+
 - **SunburstChart** ??Sunburst chart (hierarchical proportions)
+
 - **FlameChart** ??Flame chart (performance analysis)
+
 - **HierarchyChart** ??Hierarchy structure chart
 
 ### 9.4 Map Components
@@ -1709,7 +1756,7 @@ engine.registerAction('highlight', (target, params) => {
 **Built-in Behaviors:**
 
 | Behavior | Description | Example |
-|----------|-------------|---------|
+|---|---|---|
 | `clear` | Clear target field value | `{ type: 'clear', target: 'email' }` |
 | `setValue` | Set target field value | `{ type: 'setValue', target: 'status', params: { value: 'active' } }` |
 | `show` | Show target element | `{ type: 'show', target: 'detailSection' }` |
@@ -1966,36 +2013,36 @@ The page generator is located in `packages/javascript/browser/page-generator/`, 
 ### 11.1 Supported 30 Field Types
 
 | Category | Field Type | Description |
-|----------|-----------|-------------|
+|---|---|---|
 | Basic Text | `text` | Single-line text |
-| | `email` | Email |
-| | `password` | Password |
-| | `textarea` | Multi-line text |
-| | `richtext` | Rich text editor |
+|  | `email` | Email |
+|  | `password` | Password |
+|  | `textarea` | Multi-line text |
+|  | `richtext` | Rich text editor |
 | Number | `number` | Number input |
 | Date/Time | `date` | Date |
-| | `time` | Time |
-| | `datetime` | DateTime |
+|  | `time` | Time |
+|  | `datetime` | DateTime |
 | Selection | `select` | Single-select dropdown |
-| | `multiselect` | Multi-select dropdown |
-| | `checkbox` | Checkbox |
-| | `toggle` | Toggle switch |
-| | `radio` | Radio button |
-| | `color` | Color picker |
+|  | `multiselect` | Multi-select dropdown |
+|  | `checkbox` | Checkbox |
+|  | `toggle` | Toggle switch |
+|  | `radio` | Radio button |
+|  | `color` | Color picker |
 | Media | `image` | Image upload |
-| | `file` | File upload |
-| | `canvas` | Drawing canvas |
+|  | `file` | File upload |
+|  | `canvas` | Drawing canvas |
 | Advanced | `geolocation` | Geolocation |
-| | `weather` | Weather info |
-| | `address` | Address input |
-| | `addresslist` | Multiple address input |
-| | `chained` | Cascading dropdown |
-| | `list` | List input |
-| | `personinfo` | Person info |
-| | `phonelist` | Phone list |
-| | `socialmedia` | Social media accounts |
-| | `organization` | Organization info |
-| | `student` | Student info |
+|  | `weather` | Weather info |
+|  | `address` | Address input |
+|  | `addresslist` | Multiple address input |
+|  | `chained` | Cascading dropdown |
+|  | `list` | List input |
+|  | `personinfo` | Person info |
+|  | `phonelist` | Phone list |
+|  | `socialmedia` | Social media accounts |
+|  | `organization` | Organization info |
+|  | `student` | Student info |
 | Other | `hidden` | Hidden field |
 
 ### 11.2 Page Definition Format
@@ -2124,6 +2171,7 @@ const newDefinition = PageDefinitionAdapter.toNewFormat(oldDefinition);
 The SPA tooling is split into two parts:
 
 - `tools/spa-generator/`: Web UI
+
 - `templates/spa/scripts/`: template CLI
 
 ### 12.1 Web UI (port 3080)
@@ -2138,10 +2186,15 @@ npm run serve
 The Web UI provides:
 
 - **Project creation**: `ProjectCreatePage` for project name, output path, ports, and admin settings
+
 - **Page generation**: `PageGeneratorPage` for frontend page scaffolding
+
 - **API generation**: `ApiGeneratorPage` for Model / Service / API route generation
+
 - **Feature generation**: `FeatureGeneratorPage` for full CRUD skeletons
+
 - **Page Builder**: `PageBuilderPage` for JSON-driven form / detail / list preview
+
 - **Page Definition Editor**: `PageDefinitionEditorPage` for GUI editing of PageDefinition
 
 ### 12.2 CLI Commands
@@ -2163,8 +2216,6 @@ node templates/spa/scripts/spa-cli.js api Article --fields "Title:string,Publish
 # Generate a complete feature (frontend + backend)
 node templates/spa/scripts/spa-cli.js feature Article --fields "Title:string,PublishedAt:datetime"
 ```
-
-
 
 ### 12.3 Generated Project Structure
 
@@ -2191,7 +2242,7 @@ projects/my-app/
 ??  ?謚??? Data/               # AppDb (BaseOrm) / initialization
 ??  ?謚??? Models/             # Data models
 ??  ?謚??? Services/           # Business logic
-??  ?謚??? Program.cs          # .NET 8 Minimal API entry
+??  ?謚??? Program.cs          # .NET 10 Minimal API entry
 ??  ?謚??? appsettings.json    # Configuration
 ??  ????? my-app.csproj       # Project file
 ?謚??? tools/
@@ -2206,7 +2257,8 @@ projects/my-app/
 ---
 
 ## 13. C# Backend Packages
-C# backend packages are located in `packages/csharp/`, providing foundational architecture for .NET 8 Minimal APIs.
+
+C# backend packages are located in `packages/csharp/`, providing foundational architecture for .NET 10 Minimal APIs.
 
 ### 13.1 BaseOrm - Micro ORM Foundation
 
@@ -2239,6 +2291,7 @@ user!.Email = "john.updated@example.com";
 await db.UpdateAsync(user);
 await db.DeleteAsync<User>(id);
 ```
+
 ### 13.2 Repository + UnitOfWork
 
 ```csharp
@@ -2290,7 +2343,7 @@ var claims = jwtHelper.ValidateToken(token);
 ### 13.4 BaseController + Middleware
 
 ```csharp
-// Program.cs ??.NET 8 Minimal API
+// Program.cs ??.NET 10 Minimal API
 var builder = WebApplication.CreateBuilder(args);
 var app = builder.Build();
 
@@ -2474,7 +2527,7 @@ builder.Services.AddCors(options =>
 All API endpoints must implement rate limiting to prevent brute force attacks and abuse:
 
 ```csharp
-// .NET 8 built-in rate limiting
+// .NET 10 built-in rate limiting
 builder.Services.AddRateLimiter(options =>
 {
     options.AddFixedWindowLimiter("api", limiter =>
@@ -2517,12 +2570,19 @@ app.MapPost("/api/users", async (CreateUserDto dto) =>
 Before deployment, verify the following:
 
 - [ ] All user input is escaped with `escapeHtml()` / `sanitizeUrl()`
+
 - [ ] Passwords are hashed with PBKDF2 (100K iterations)
+
 - [ ] JWT transport and storage are reviewed (default: Bearer header; if cookies are used, `HttpOnly` / `Secure` / `SameSite` are enabled)
+
 - [ ] CORS has explicitly configured allowed origins (not `*`)
+
 - [ ] API endpoints have rate limiting enabled
+
 - [ ] All input is validated on the backend
+
 - [ ] Sensitive settings (keys, connection strings) are not hardcoded
+
 - [ ] HTTPS is enabled
 
 ### 14.8 Azure VM IIS Deployment
@@ -2532,30 +2592,42 @@ The broker now includes a governed deployment path for Azure virtual machines th
 What exists now:
 
 - broker-managed Azure IIS deployment targets
+
 - dry-run request build and preview
+
 - execution path that runs `dotnet publish`, packages the output, and invokes PowerShell remoting
+
 - child-application deployment mode under a parent IIS site via `deployment_mode=iis_application`
+
 - broker route: `deploy_azure_vm_iis`
 
 Configuration:
 
 - define deployment credentials in `DeploymentSecrets:Mappings`
+
 - or expose them through environment variables derived from `secret_ref`
 
 Limits:
 
 - only `winrm_powershell` transport is implemented
+
 - target project paths must be absolute
+
 - a directory input must resolve to exactly one `.csproj`
+
 - `iis_application` targets must define `application_path`
+
 - the current implementation creates or updates the IIS application, but app-specific path-base handling is still application-dependent
+
 - the target VM must already expose PowerShell remoting and IIS management modules
 
 See:
 
-- [AzureVmIisDeployment.md](/d:/Bricks4Agent/docs/designs/AzureVmIisDeployment.md)
+- [AzureVmIisDeployment.md](/d:/Bricks4Agent/docs/designs/AzureVmIisDeployment.html)
+
 - [tool.json](/d:/Bricks4Agent/packages/csharp/broker/tool-specs/deploy.azure-vm-iis/tool.json)
-- [TOOL.md](/d:/Bricks4Agent/packages/csharp/broker/tool-specs/deploy.azure-vm-iis/TOOL.md)
+
+- [TOOL.md](/d:/Bricks4Agent/packages/csharp/broker/tool-specs/deploy.azure-vm-iis/TOOL.html)
 
 ---
 

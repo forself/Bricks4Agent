@@ -15,47 +15,81 @@
 ### Create
 
 - `packages/csharp/broker-core/Contracts/Transport/TransportQueryRequest.cs`
+
 - `packages/csharp/broker-core/Contracts/Transport/TransportQueryResponse.cs`
+
 - `packages/csharp/broker-core/Contracts/Transport/TransportFollowUpOption.cs`
+
 - `packages/csharp/workers/transport-tdx-worker/TransportTdxWorker.csproj`
+
 - `packages/csharp/workers/transport-tdx-worker/Program.cs`
+
 - `packages/csharp/workers/transport-tdx-worker/Handlers/TransportQueryHandler.cs`
+
 - `packages/csharp/workers/transport-tdx-worker/Services/TransportQuerySufficiencyAnalyzer.cs`
+
 - `packages/csharp/workers/transport-tdx-worker/Services/TransportFollowUpBuilder.cs`
+
 - `packages/csharp/workers/transport-tdx-worker/Services/TransportRangeAnswerBuilder.cs`
+
 - `packages/csharp/workers/transport-tdx-worker/Services/TdxTransportProvider.cs`
+
 - `packages/csharp/workers/transport-tdx-worker/Services/TdxTokenService.cs`
+
 - `packages/csharp/workers/transport-tdx-worker/Services/TdxEntityResolver.cs`
+
 - `packages/csharp/tests/unit/Transport/TransportQuerySufficiencyAnalyzerTests.cs`
+
 - `packages/csharp/tests/unit/Transport/TransportFollowUpBuilderTests.cs`
+
 - `packages/csharp/tests/unit/Transport/TransportRangeAnswerBuilderTests.cs`
+
 - `packages/csharp/tests/integration/Transport/TransportQueryCapabilityTests.cs`
+
 - `packages/csharp/tests/integration/Transport/TransportCompatibilityRouteTests.cs`
+
 - `packages/csharp/broker/tool-specs/transport.query/tool.json`
 
 ### Modify
 
 - `packages/csharp/ControlPlane.slnx`
+
 - `packages/csharp/broker/Program.cs`
+
 - `packages/csharp/broker/Services/HighLevelQueryToolMediator.cs`
+
 - `packages/csharp/broker/Services/HighLevelCoordinator.cs`
+
 - `packages/csharp/broker/Adapters/InProcessDispatcher.cs`
+
 - `packages/csharp/broker/verify/Program.cs`
+
 - `packages/csharp/broker/Handlers/Travel/TravelRailSearchHandler.cs`
+
 - `packages/csharp/broker/Handlers/Travel/TravelHsrSearchHandler.cs`
+
 - `packages/csharp/broker/Handlers/Travel/TravelBusSearchHandler.cs`
+
 - `packages/csharp/broker/Handlers/Travel/TravelFlightSearchHandler.cs`
+
 - `packages/csharp/broker/tool-specs/travel.rail.search/tool.json`
+
 - `packages/csharp/broker/tool-specs/travel.hsr.search/tool.json`
+
 - `packages/csharp/broker/tool-specs/travel.bus.search/tool.json`
+
 - `packages/csharp/broker/tool-specs/travel.flight.search/tool.json`
+
 - `packages/csharp/worker-sdk/WorkerHostOptions.cs`
+
 - `packages/csharp/workers/line-worker/Program.cs`
 
 ### Reuse / Migrate logic from
 
 - `packages/csharp/broker/Handlers/Travel/TdxTravelHelper.cs`
+
 - `packages/csharp/broker/Handlers/Travel/TdxBusTravelHelper.cs`
+
 - `packages/csharp/broker/Handlers/Travel/TravelTdxResponseHelper.cs`
 
 ---
@@ -113,6 +147,7 @@ public class TransportContractSerializationTests
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter TransportContractSerializationTests -v minimal`  
+
 Expected: FAIL with missing `BrokerCore.Contracts.Transport` types.
 
 - [ ] **Step 3: Write minimal transport contracts**
@@ -206,6 +241,7 @@ public sealed class TransportFollowUpOption
 - [ ] **Step 5: Run test to verify it passes**
 
 Run: `dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter TransportContractSerializationTests -v minimal`  
+
 Expected: PASS
 
 - [ ] **Step 6: Commit**
@@ -250,6 +286,7 @@ public class TransportWorkerRegistrationTests
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `dotnet test packages/csharp/tests/integration/Integration.Tests.csproj --filter TransportWorkerRegistrationTests -v minimal`  
+
 Expected: FAIL because worker project/harness does not exist.
 
 - [ ] **Step 3: Add worker project and minimal registration**
@@ -317,6 +354,7 @@ public sealed class TransportQueryHandler : ICapabilityHandler
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `dotnet test packages/csharp/tests/integration/Integration.Tests.csproj --filter TransportWorkerRegistrationTests -v minimal`  
+
 Expected: PASS
 
 - [ ] **Step 5: Commit**
@@ -378,6 +416,7 @@ public class TransportQuerySufficiencyAnalyzerTests
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter "TransportQuerySufficiencyAnalyzerTests|TransportFollowUpBuilderTests|TransportRangeAnswerBuilderTests" -v minimal`  
+
 Expected: FAIL because analyzer/builders do not exist.
 
 - [ ] **Step 3: Implement analyzer and builders**
@@ -523,6 +562,7 @@ public sealed class TransportRangeAnswerBuilder
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter "TransportQuerySufficiencyAnalyzerTests|TransportFollowUpBuilderTests|TransportRangeAnswerBuilderTests" -v minimal`  
+
 Expected: PASS
 
 - [ ] **Step 5: Commit**
@@ -577,6 +617,7 @@ public class TdxTransportProviderTests
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter TdxTransportProviderTests -v minimal`  
+
 Expected: FAIL because provider service does not exist.
 
 - [ ] **Step 3: Implement provider service with migrated helpers**
@@ -639,6 +680,7 @@ public sealed class TdxTransportProvider
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter TdxTransportProviderTests -v minimal`  
+
 Expected: PASS
 
 - [ ] **Step 5: Commit**
@@ -682,6 +724,7 @@ public class TransportQueryCapabilityTests
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `dotnet test packages/csharp/tests/integration/Integration.Tests.csproj --filter TransportQueryCapabilityTests -v minimal`  
+
 Expected: FAIL because broker still routes to old `travel_*` paths.
 
 - [ ] **Step 3: Update broker to use transport.query as primary path**
@@ -723,6 +766,7 @@ Compatibility mapping:
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `dotnet test packages/csharp/tests/integration/Integration.Tests.csproj --filter TransportQueryCapabilityTests -v minimal`  
+
 Expected: PASS
 
 - [ ] **Step 5: Commit**
@@ -770,6 +814,7 @@ public class TransportCompatibilityRouteTests
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `dotnet test packages/csharp/tests/integration/Integration.Tests.csproj --filter TransportCompatibilityRouteTests -v minimal`  
+
 Expected: FAIL because legacy paths still produce old direct broker behavior.
 
 - [ ] **Step 3: Make legacy handlers forward to transport.query**
@@ -798,6 +843,7 @@ tool spec note:
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `dotnet test packages/csharp/tests/integration/Integration.Tests.csproj --filter TransportCompatibilityRouteTests -v minimal`  
+
 Expected: PASS
 
 - [ ] **Step 5: Commit**
@@ -832,6 +878,7 @@ await AssertTransportQueryAsync("?bus 台北市 307", expectedResultType: "final
 - [ ] **Step 2: Run verify to confirm failure**
 
 Run: `dotnet run --project packages/csharp/broker/verify/Broker.Verify.csproj --disable-build-servers`  
+
 Expected: FAIL because new transport capability path is not fully wired yet.
 
 - [ ] **Step 3: Update verify helpers and docs**
@@ -878,10 +925,15 @@ git commit -m "test: verify transport query worker flow"
 ### Spec coverage
 
 - 獨立 `transport-tdx worker`：Task 2, Task 4
+
 - broker 僅保留 capability / dispatch：Task 5, Task 6
+
 - `transport.query` 統一 contract：Task 1
+
 - sufficiency / follow-up / range answer：Task 3
+
 - compatibility layer：Task 6
+
 - verify / docs：Task 7
 
 無明顯 spec coverage gap。
@@ -889,21 +941,28 @@ git commit -m "test: verify transport query worker flow"
 ### Placeholder scan
 
 - 無 `TBD` / `TODO` / `implement later`
+
 - 每個 task 都列出明確檔案、測試、命令與 commit
 
 ### Type consistency
 
 - capability 對外名稱固定為 `transport.query`
+
 - dispatcher route 內部固定為 `transport_query`
+
 - response type 固定為：
-  - `final_answer`
-  - `need_follow_up`
-  - `range_answer`
+
+- `final_answer`
+
+- `need_follow_up`
+
+- `range_answer`
 
 ---
 
 ## Notes
 
 - 目前 root workspace 尚有未提交的 transport TDX-only 改動；執行本 plan 前先決定要不要將現有改動納入 feature branch 起點。
+
 - 第一批不做 MaaS/道路/停車/POI 的全量整合，只聚焦 rail/hsr/bus/flight 的 worker 邊界重建。
-```
+  \`\`\`

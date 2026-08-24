@@ -3,6 +3,7 @@
  * 流程操作按鈕元件 - 新增、刪除、編輯、詳細、送出、退回、歸檔、整合
  */
 import Locale from '../../i18n/index.js';
+import { Icon } from '../Icon/index.js';
 
 
 export class ActionButton {
@@ -22,142 +23,85 @@ export class ActionButton {
             color: 'var(--cl-success)',
             hoverColor: 'var(--cl-success)',
             label: Locale.t('actionButton.add'),
-            icon: `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
-                <path d="M12 7V17M7 12H17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-            </svg>`
+            icon: 'add-circle'
         },
         delete: {
             color: 'var(--cl-danger)',
             hoverColor: 'var(--cl-danger)',
             label: Locale.t('actionButton.delete'),
-            icon: `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M6 7V18C6 19.1 6.9 20 8 20H16C17.1 20 18 19.1 18 18V7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                <path d="M4 7H20" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                <path d="M10 4H14C14.55 4 15 4.45 15 5V7H9V5C9 4.45 9.45 4 10 4Z" stroke="currentColor" stroke-width="2"/>
-                <path d="M10 11V16M14 11V16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-            </svg>`
+            icon: 'delete'
         },
         edit: {
             color: 'var(--cl-warning)',
             hoverColor: 'var(--cl-warning)',
             label: Locale.t('actionButton.edit'),
-            icon: `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M16.5 3.5L20.5 7.5L7 21H3V17L16.5 3.5Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
-                <path d="M14 6L18 10" stroke="currentColor" stroke-width="2"/>
-            </svg>`
+            icon: 'edit'
         },
         detail: {
             color: 'var(--cl-primary)',
             hoverColor: 'var(--cl-primary-dark)',
             label: Locale.t('actionButton.detail'),
-            icon: `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/>
-                <path d="M16 16L21 21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                <circle cx="11" cy="11" r="1" fill="currentColor"/>
-                <path d="M11 8V11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-            </svg>`
+            icon: 'search'
         },
         submit: {
             color: 'var(--cl-teal)',
             hoverColor: 'var(--cl-teal-dark)',
             label: Locale.t('actionButton.submit'),
-            icon: `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M5 12L10 17L20 7" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-                <path d="M20 12V18C20 19.1 19.1 20 18 20H6C4.9 20 4 19.1 4 18V6C4 4.9 4.9 4 6 4H16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-            </svg>`
+            icon: 'check'
         },
         reject: {
             color: 'var(--cl-pink)',
             hoverColor: 'var(--cl-pink-dark)',
             label: Locale.t('actionButton.reject'),
-            icon: `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M9 10L4 15L9 20" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                <path d="M4 15H15C17.76 15 20 12.76 20 10V4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-            </svg>`
+            icon: 'arrow-back'
         },
         archive: {
             color: 'var(--cl-brown)',
             hoverColor: 'var(--cl-brown-dark)',
             label: Locale.t('actionButton.archive'),
-            icon: `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M3 6H21V9H3V6Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
-                <path d="M5 9V19C5 19.55 5.45 20 6 20H18C18.55 20 19 19.55 19 19V9" stroke="currentColor" stroke-width="2"/>
-                <path d="M10 13H14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-            </svg>`
+            icon: 'file'
         },
         merge: {
             color: 'var(--cl-purple)',
             hoverColor: 'var(--cl-purple-dark)',
             label: Locale.t('actionButton.merge'),
-            icon: `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <circle cx="6" cy="6" r="3" stroke="currentColor" stroke-width="2"/>
-                <circle cx="18" cy="6" r="3" stroke="currentColor" stroke-width="2"/>
-                <circle cx="12" cy="18" r="3" stroke="currentColor" stroke-width="2"/>
-                <path d="M6 9V12C6 14 8 16 12 16M18 9V12C18 14 16 16 12 16" stroke="currentColor" stroke-width="2"/>
-                <path d="M12 16V15" stroke="currentColor" stroke-width="2"/>
-            </svg>`
+            icon: 'queue'
         },
         verify: {
             color: 'var(--cl-cyan)',
             hoverColor: 'var(--cl-cyan-dark)',
             label: Locale.t('actionButton.verify'),
-            icon: `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M9 12L11 14L15 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/>
-                <path d="M12 3V5M12 19V21M3 12H5M19 12H21" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-            </svg>`
+            icon: 'done-all'
         },
         withdraw: {
             color: 'var(--cl-purple)',
             hoverColor: 'var(--cl-purple-dark)',
             label: Locale.t('actionButton.withdraw'),
-            icon: `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M19 12H5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                <path d="M12 5L5 12L12 19" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                <circle cx="18" cy="12" r="3" stroke="currentColor" stroke-width="2"/>
-            </svg>`
+            icon: 'arrow-back'
         },
         report: {
             color: 'var(--cl-warning)',
             hoverColor: 'var(--cl-warning)',
             label: Locale.t('actionButton.report'),
-            icon: `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M12 4L12 14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                <path d="M8 10L12 14L16 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                <path d="M5 18H19" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                <path d="M8 20H16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-            </svg>`
+            icon: 'download'
         },
         transfer: {
             color: 'var(--cl-indigo)',
             hoverColor: 'var(--cl-indigo-dark)',
             label: Locale.t('actionButton.transfer'),
-            icon: `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M5 12H19" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                <path d="M14 7L19 12L14 17" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                <circle cx="7" cy="12" r="2" stroke="currentColor" stroke-width="2"/>
-            </svg>`
+            icon: 'arrow-forward'
         },
         approve: {
             color: 'var(--cl-success)',
             hoverColor: 'var(--cl-success)',
             label: Locale.t('actionButton.approve'),
-            icon: `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M4 12L9 17L20 6" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-                <circle cx="17" cy="17" r="4" stroke="currentColor" stroke-width="2"/>
-                <path d="M17 15V17H19" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-            </svg>`
+            icon: 'check'
         },
         modify: {
             color: 'var(--cl-deep-orange)',
             hoverColor: 'var(--cl-deep-orange-dark)',
             label: Locale.t('actionButton.modify'),
-            icon: `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M4 20H20" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                <path d="M14.5 5.5L18.5 9.5L10 18H6V14L14.5 5.5Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
-                <path d="M12 8L16 12" stroke="currentColor" stroke-width="2"/>
-            </svg>`
+            icon: 'edit'
         }
     };
 
@@ -275,7 +219,8 @@ export class ActionButton {
             justify-content: center;
             ${isIconOnly ? 'width: 100%; height: 100%;' : sizeStyles.icon}
         `;
-        iconWrapper.innerHTML = iconConfig.icon;
+        this._icon = new Icon({ name: iconConfig.icon, size: Number.parseFloat(sizeStyles.icon.match(/\d+/)?.[0] || '18') });
+        this._icon.mount(iconWrapper);
         button.appendChild(iconWrapper);
 
         // 文字標籤
@@ -394,6 +339,7 @@ export class ActionButton {
      * 移除
      */
     destroy() {
+        this._icon?.destroy();
         if (this.element?.parentNode) {
             this.element.remove();
         }
@@ -404,6 +350,7 @@ export class ActionButton {
      */
     static createGroup(buttons, groupOptions = {}) {
         const group = document.createElement('div');
+        const components = [];
         group.className = 'action-btn-group';
         group.style.cssText = `
             display: inline-flex;
@@ -414,7 +361,23 @@ export class ActionButton {
 
         buttons.forEach(btnOptions => {
             const btn = new ActionButton({ ...groupOptions, ...btnOptions });
+            components.push(btn);
             group.appendChild(btn.element);
+        });
+
+        Object.defineProperty(group, '_components', {
+            value: components,
+            enumerable: false
+        });
+        let destroyed = false;
+        Object.defineProperty(group, 'destroy', {
+            enumerable: false,
+            value: () => {
+                if (destroyed) return;
+                destroyed = true;
+                components.splice(0).forEach(component => component.destroy());
+                group.remove();
+            }
         });
 
         return group;

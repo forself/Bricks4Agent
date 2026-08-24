@@ -1,0 +1,33 @@
+{
+  "$schema": "../custom-component.schema.json",
+  "schema_version": 1,
+  "component_id": "custom.application_toolbar",
+  "registry_name": "CustomApplicationToolbar",
+  "display_name": "Custom Application Toolbar",
+  "version": "1.0.0",
+  "kind": "template",
+  "description": "A template that composes two custom composite definitions.",
+  "root": {
+    "type": "group",
+    "id": "application-toolbar",
+    "layout": {
+      "mode": "grid",
+      "gap": "lg",
+      "columns": 2,
+      "align": "stretch"
+    },
+    "aria_label": "Application toolbar",
+    "children": [
+      {
+        "type": "custom",
+        "id": "toolbar-actions",
+        "component": "CustomButtonRow"
+      },
+      {
+        "type": "custom",
+        "id": "toolbar-search",
+        "component": "CustomSearchActions"
+      }
+    ]
+  }
+}

@@ -26,7 +26,27 @@
       "alternative_components": [],
       "status": "wrapped"
     },
+    "memo": {
+      "default_component": "TextArea",
+      "alternative_components": [],
+      "status": "supported"
+    },
+    "plaintext": {
+      "default_component": "TextArea",
+      "alternative_components": [],
+      "status": "supported"
+    },
+    "slider": {
+      "default_component": "Slider",
+      "alternative_components": [],
+      "status": "supported"
+    },
     "date": {
+      "default_component": "DatePicker",
+      "alternative_components": [],
+      "status": "supported"
+    },
+    "rocDate": {
       "default_component": "DatePicker",
       "alternative_components": [],
       "status": "supported"
@@ -169,6 +189,7 @@
   "trigger_support": {
     "clear": {
       "component_roles": [
+        "command_input",
         "container",
         "display",
         "editor",
@@ -186,12 +207,15 @@
     },
     "setValue": {
       "component_roles": [
+        "command_input",
+        "container",
         "editor",
         "feedback",
         "input",
         "search"
       ],
       "usage_modes": [
+        "definition_explicit",
         "field_direct",
         "manual_only"
       ]
@@ -229,11 +253,16 @@
       ]
     },
     "reload": {
-      "component_roles": [],
-      "usage_modes": []
+      "component_roles": [
+        "display"
+      ],
+      "usage_modes": [
+        "manual_only"
+      ]
     },
     "reloadOptions": {
       "component_roles": [
+        "display",
         "input",
         "navigation"
       ],
@@ -245,50 +274,83 @@
   },
   "manual_only_components": [
     "ActionButton",
+    "Alert",
     "AuthButton",
     "Avatar",
     "Badge",
+    "BannerSection",
     "BarChart",
-    "BaseChart",
     "Breadcrumb",
     "CanvasMap",
+    "CardGrid",
+    "ClusterGraph",
+    "CodeBlock",
+    "CommandComposer",
     "ConnectionCard",
+    "ContentSection",
+    "DataExplorer",
     "DataTable",
+    "DescriptionList",
     "Divider",
     "DocumentWall",
     "DownloadButton",
+    "DropdownMenu",
+    "EditableTable",
+    "EmptyState",
     "FeatureCard",
     "FeedCard",
+    "FilterBar",
     "FlameChart",
+    "Form",
     "FormField",
     "FormRow",
     "FunctionMenu",
+    "Heading",
+    "HeatmapChart",
     "HierarchyChart",
+    "Icon",
     "InfoPanel",
     "LeafletMap",
     "LineChart",
+    "Link",
+    "List",
     "LoadingSpinner",
     "MapEditor",
     "MapEditorV2",
+    "MediaPlayer",
     "Notification",
     "OSMMapEditor",
     "OrgChart",
+    "PageFooter",
+    "PageHeader",
     "Pagination",
     "PhotoCard",
     "PhotoWall",
     "PieChart",
     "Progress",
+    "Rating",
+    "RegionMap",
     "RelationChart",
+    "ResultList",
     "RoseChart",
     "SankeyChart",
+    "ScatterChart",
     "SearchForm",
     "SideMenu",
     "SimpleDialog",
+    "Skeleton",
     "SortButton",
+    "Sparkline",
     "StatCard",
+    "StatGrid",
+    "StepIndicator",
+    "Stepper",
     "SunburstChart",
+    "TGOSMapEditor",
     "TabContainer",
     "Tag",
+    "TagInput",
+    "Text",
     "Timeline",
     "TimelineChart",
     "Tooltip",

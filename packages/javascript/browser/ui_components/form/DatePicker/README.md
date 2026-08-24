@@ -5,12 +5,19 @@
 ## 功能特性
 
 - ✅ **雙曆法支援**: 西元年 / 民國年（ROC）格式切換
+
 - ✅ **日期範圍限制**: 設定最小/最大可選日期
+
 - ✅ **三種尺寸**: Small、Medium、Large
+
 - ✅ **視覺回饋**: 禁用日期自動標示為灰色不可點擊
+
 - ✅ **月份導航**: 下拉選單快速切換年月
+
 - ✅ **今日標記**: 自動高亮顯示今天日期
+
 - ✅ **響應式設計**: 自適應不同螢幕尺寸
+
 - ✅ **無外部依賴**: 純 JavaScript 實作
 
 ---
@@ -23,13 +30,9 @@
 import { DatePicker } from './packages/javascript/browser/ui_components/form/DatePicker/DatePicker.js';
 ```
 
-### CSS 樣式（可選）
+### CSS 樣式
 
-DatePicker 使用 inline styles，但如果需要全域樣式調整，可以導入 CSS 檔：
-
-```html
-<link rel="stylesheet" href="./packages/javascript/browser/ui_components/form/DatePicker/DatePicker.css">
-```
+DatePicker 使用 inline styles，無需額外導入 CSS 檔。
 
 ---
 
@@ -109,7 +112,7 @@ pickerRange.mount('#date-range-container');
 ### 構造函數選項
 
 | 參數 | 類型 | 預設值 | 說明 |
-|------|------|--------|------|
+|---|---|---|---|
 | `label` | String | `''` | 標籤文字 |
 | `placeholder` | String | `'請選擇日期'` | 未選擇時的提示文字 |
 | `value` | Date | `null` | 初始日期值 |
@@ -126,6 +129,7 @@ pickerRange.mount('#date-range-container');
 ### 公開方法
 
 #### `mount(container)`
+
 將組件掛載到指定容器。
 
 ```javascript
@@ -142,6 +146,7 @@ picker.mount(document.getElementById('container'));
 ---
 
 #### `render(container)`
+
 渲染組件並掛載到容器（與 `mount()` 功能相同）。
 
 ```javascript
@@ -151,6 +156,7 @@ const element = picker.render('#container');
 ---
 
 #### `getValue()`
+
 獲取當前選擇的日期（Date 物件）。
 
 ```javascript
@@ -163,6 +169,7 @@ console.log(selectedDate); // Date object or null
 ---
 
 #### `getFormattedValue()`
+
 獲取格式化後的日期字串。
 
 ```javascript
@@ -175,6 +182,7 @@ console.log(formatted); // "2026/01/24" 或 "115/01/24"
 ---
 
 #### `setValue(value)`
+
 設定日期值。
 
 ```javascript
@@ -187,6 +195,7 @@ picker.setValue(new Date('2026-01-24'));
 ---
 
 #### `clear()`
+
 清除當前選擇的日期。
 
 ```javascript
@@ -196,6 +205,7 @@ picker.clear();
 ---
 
 #### `open()`
+
 打開日曆面板。
 
 ```javascript
@@ -205,6 +215,7 @@ picker.open();
 ---
 
 #### `close()`
+
 關閉日曆面板。
 
 ```javascript
@@ -214,6 +225,7 @@ picker.close();
 ---
 
 #### `toggle()`
+
 切換日曆面板的開啟/關閉狀態。
 
 ```javascript
@@ -223,6 +235,7 @@ picker.toggle();
 ---
 
 #### `destroy()`
+
 銷毀組件並從 DOM 中移除。
 
 ```javascript
@@ -376,7 +389,7 @@ new DatePicker({
 超出範圍的日期會自動套用以下樣式：
 
 | 屬性 | 效果 |
-|------|------|
+|---|---|
 | `color` | 灰色 (`#ccc`) |
 | `opacity` | 半透明 (0.5) |
 | `cursor` | 禁止圖標 (`not-allowed`) |
@@ -397,7 +410,9 @@ const picker = new DatePicker({
 ### 雙重驗證機制
 
 1. **渲染層面**: 禁用日期添加 `data-disabled="true"` 屬性
+
 2. **事件層面**: 點擊事件檢查 `data-disabled` 屬性
+
 3. **邏輯層面**: `_selectDate()` 方法內再次檢查日期範圍
 
 這種三層防護確保絕對不會選擇超出範圍的日期。
@@ -456,7 +471,7 @@ const picker = new DatePicker({
 ### 尺寸對照表
 
 | 尺寸 | 高度 | 內距 | 字體大小 |
-|------|------|------|----------|
+|---|---|---|---|
 | `small` | 32px | 0 8px | 13px |
 | `medium` | 40px | 0 12px | 14px |
 | `large` | 48px | 0 16px | 16px |
@@ -488,7 +503,7 @@ new DatePicker({
 ## 瀏覽器相容性
 
 | 瀏覽器 | 最低版本 |
-|--------|----------|
+|---|---|
 | Chrome | 90+ |
 | Firefox | 88+ |
 | Safari | 14+ |
@@ -681,26 +696,32 @@ form.addEventListener('submit', (e) => {
 
 ## 相關檔案
 
-- **組件原始碼**: [DatePicker.js](DatePicker.js:1)
-- **樣式檔案**: [DatePicker.css](DatePicker.css:1)
-- **Demo 範例**: `demos/form/DatePicker.html`
-- **測試頁面**: `demos/test_datepicker_range.html`
-- **實作報告**: `demos/DATEPICKER_RANGE_COMPLETE.md`
+- **組件原始碼**: [DatePicker.js](DatePicker.js)
+
+- **Demo 範例**: `demo.html`（同目錄）
 
 ---
 
 ## 更新日誌
 
 ### v2.0.0 (2026-01-24)
+
 - ✨ 新增 `min` 和 `max` 參數支援日期範圍限制
+
 - ✨ 新增 `format` 參數（`'western'` / `'taiwan'`）
+
 - ✨ 禁用日期視覺效果（灰色、半透明、不可點擊）
+
 - 🐛 修復民國年顯示錯誤問題
+
 - 📚 新增完整文檔和測試頁面
 
 ### v1.0.0
+
 - 🎉 初始版本
+
 - ✅ 基本日期選擇功能
+
 - ✅ 民國年支援（`useROC` 參數）
 
 ---

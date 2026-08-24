@@ -2,19 +2,19 @@
 
 This directory contains the scaffold template used by the SPA generation flow.
 
-It is a template artifact, not the canonical live Bricks4Agent runtime.
-
-That distinction matters:
-
-- this template describes the generated SPA shape
-- it does not describe the broker/LINE sidecar/control-plane path
+It is a template artifact: it describes the shape of a generated SPA, which the
+generator copies and fills in.
 
 ## What this template currently represents
 
 - frontend: Vanilla JS SPA
-- backend: ASP.NET Core 8 minimal API
+
+- backend: ASP.NET Core 10 minimal API
+
 - persistence: SQLite + `BaseOrm`
+
 - auth: JWT bearer auth
+
 - local static serving options for the frontend
 
 ## Current Layout
@@ -78,8 +78,15 @@ The backend is currently **not** an EF Core sample.
 From the current code:
 
 - `Data/AppDbContext.cs` defines `AppDb : BaseDb`
+
 - table bootstrap happens through `EnsureCreated()`
+
 - `DbInitializer` seeds the initial admin account
+
+Password hashes retain the existing `iterations.salt.hash` PBKDF2-SHA256 storage
+format. The .NET 10 implementation uses the static PBKDF2 API, and
+`backend.Tests/PasswordHashCompatibilityTests.cs` verifies both an existing fixed
+hash and newly generated hashes.
 
 ## Seed Admin Behavior
 
@@ -90,6 +97,7 @@ Default seed admin email in the template:
 If `SeedData:AdminPassword` is not configured:
 
 - the backend generates a development password
+
 - the password is printed to the backend console at startup
 
 So the template does **not** currently guarantee a fixed checked-in password.
@@ -99,29 +107,43 @@ So the template does **not** currently guarantee a fixed checked-in password.
 The scaffold includes:
 
 - hash-based routing
+
 - page classes via `BasePage` and `NestedPage`
+
 - a small client store
+
 - an `ApiService` wrapper
+
 - generated page modules under `pages/`
 
 ## Backend Architecture
 
 The scaffold currently uses:
 
-- ASP.NET Core 8 minimal API
+- ASP.NET Core 10 minimal API
+
 - SQLite
+
 - `BaseOrm`
+
 - JWT bearer authentication
+
 - rate limiting
+
 - CORS
+
 - security headers
 
 Representative endpoints include:
 
 - `/health`
+
 - `/api/auth/login`
+
 - `/api/auth/register`
+
 - `/api/users`
+
 - `/api/dashboard`
 
 ## Extension Notes
@@ -131,8 +153,22 @@ When you extend a generated project, you still need to wire both the frontend an
 Typical follow-up work still includes:
 
 1. update backend schema / `EnsureCreated()`
+
 2. add backend service and endpoint wiring
+
 3. update frontend routes
+
 4. connect generated pages to real backend behavior
 
 This template is useful, but it is still a scaffold. It is not the same thing as a finished product path.
+
+## Verification
+
+From the repository root:
+
+```bash
+dotnet test templates/spa/backend.Tests/SpaApi.Template.Tests.csproj
+npm run test:dotnet10
+```
+
+The repository-wide command enforces `net10.0` and fails on any build warning.

@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>腳手架引用機制:開發直連、發佈快照</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>腳手架引用機制:開發直連、發佈快照</h1>
+<p><strong>設計目標</strong>:開發階段<strong>直接使用</strong> Bricks4Agent 腳手架(改元件即時生效、零複製漂移);發佈時引用落地為<strong>專案內複本</strong>並打包(產物完全自含,附來源憑證)。</p>
+<h2>核心不變式:引用字面永遠是 <code>lib/…</code> 相對路徑</h2>
+<p>程式碼在開發與發佈<strong>一字不改</strong>——變的只有 <code>lib\</code> 的實體:</p>
+<table>
+<thead>
+<tr>
+<th>階段</th>
+<th><code>lib\</code> 是什麼</th>
+<th>建立方式</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>開發</td>
+<td><strong>NTFS junction</strong> → <code>Bricks4Agent\packages\javascript\browser\{ui_components,page-generator}</code>(活腳手架)</td>
+<td><code>node scripts/dev-link.mjs</code></td>
+</tr>
+<tr>
+<td>無腳手架的機器</td>
+<td>真實複本(手動同步)</td>
+<td><code>node scripts/sync-lib.mjs</code>(複本模式後備,junction 護欄拒跑)</td>
+</tr>
+<tr>
+<td>發佈</td>
+<td><code>dist\lib\</code> 真實快照(cpSync dereference 穿透連結取實體檔)</td>
+<td><code>node scripts/publish.mjs</code></td>
+</tr>
+</tbody>
+</table>
+<p>不用 import map(嚴格 CSP 下內聯 importmap 需 hash 豁免)、不做發佈期改寫(改寫器本身就是風險面)——junction 讓兩個需求同時成立。</p>
+<h3>相對深度規則(寫新頁面必守)</h3>
+<p>import 的 <code>../</code> 層數 = 檔案到專案根的深度:</p>
+<pre><code>src/frontend/X.js                 → '../../lib/ui_components/...'
+src/frontend/core/X.js            → '../../../lib/ui_components/...'
+src/frontend/pages/&lt;域&gt;/X.js      → '../../../../lib/ui_components/...'
+</code></pre>
+<p><strong>禁</strong>:根絕對 <code>/lib/...</code>(綁死部署根)、<code>../Bricks4Agent/...</code>、<code>packages/javascript/browser/...</code>(逃出專案)。發佈驗證器會全部擋下。</p>
+<h2>日常指令</h2>
+<pre><code class="language-powershell">node scripts/dev-link.mjs          # 一次性:lib 轉 junction(開發模式)
+node scripts/dev.mjs               # 靜態伺服 8123(root=專案根)
+node scripts/publish.mjs           # 發佈:dist\(快照+憑證+封閉驗證,違規即 fail)
+</code></pre>
+<h3>腳手架位置解析(腳本內零寫死路徑)</h3>
+<p>各 script 經 <code>scripts/resolve-b4a.mjs</code> 解析,順序:
+1. 環境變數 <strong><code>B4A_ROOT</code></strong>(機器/CI 層級)
+2. 專案根 <strong><code>.b4a-root</code></strong> 檔(單行路徑;每機自有、gitignored;建案時自動寫入)
+3. <strong>同層搜尋</strong>:專案往上 3 層找 <code>Bricks4Agent\</code>(標準佈局零設定)</p>
+<p>換機器 clone 後:符合同層佈局即直接可用;否則設 <code>B4A_ROOT</code> 或寫 <code>.b4a-root</code> 一行。</p>
+<h2>發佈產物(dist)</h2>
+<pre><code>dist\
+  index.html            # 轉導 src/frontend/
+  lib\                  # 腳手架真快照(排除 node_modules、*.test.mjs、page-generator/examples)
+  lib\SNAPSHOT.json     # 來源憑證:Bricks4Agent tree/dirty、repository commit、專案 commit、UTC 時間、檔數/位元組
+  src\frontend\         # 應用(與 repo 同幾何 → import 原樣可用)
+</code></pre>
+<p>部署=任何靜態伺服器指向 dist(或作為後端的 wwwroot);進入點 <code>/src/frontend/index.html</code>。</p>
+<h2>釘版與強制(團隊/CI 模式)</h2>
+<table>
+<thead>
+<tr>
+<th>檔案</th>
+<th>性質</th>
+<th>作用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>b4a.lock.json</code>(專案根)</td>
+<td><strong>入版控</strong></td>
+<td>全隊統一、由目前 branch 可達的腳手架 Git tree（<code>node scripts/sync-lib.mjs --pin</code> 產生/更新）</td>
+</tr>
+<tr>
+<td><code>lib/.sync-state.json</code></td>
+<td>gitignored(隨 lib)</td>
+<td>記錄 lib 實際同步自哪個 tree/source、是否釘版</td>
+</tr>
+<tr>
+<td><code>scripts/mechanism.json</code></td>
+<td>入版控</td>
+<td>機制版本 + <code>customized</code> 清單(升級工具跳過自訂檔)</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>複本模式 + lock</strong>：v2 lock 直接釘 Git tree object；只接受乾淨、已 commit 且可由目前 branch 到達的 B4A tree。淺層或 <code>--no-tags</code> clone 不需額外 tag/split commit。</li>
+<li><strong>publish 強制</strong>：lock 存在時，連結模式要求目前 tree==lock 且乾淨；複本模式要求 sync-state tree/source==lock。違者 fail；<code>--allow-drift</code> 已停用。</li>
+<li><strong>建案分流</strong>:<code>create-project.mjs</code> 預設連結(腳手架維護者);<code>--no-junction</code> 走複本並<strong>自動釘版</strong>(團隊成員/CI)。</li>
+<li><strong>機制升級</strong>:<code>node &lt;B4A&gt;/tools/create-project/upgrade-project.mjs --dest &lt;專案&gt; [--dry-run]</code>——只更新機制腳本、跳過 customized、印變更清單,git diff 審閱後 commit。</li>
+</ul>
+<h2>封閉性驗證(scripts\verify-sealed.mjs)</h2>
+<p>publish 內建、可單獨跑:<code>node scripts\verify-sealed.mjs dist</code>。逐檔靜態解析 JS(import/from/動態 import/new URL,先剝註解)、HTML(src/href)、CSS(@import/url()),斷言每個相對引用 (a) 不逃出 dist 根 (b) 目標存在;另擋:引用含 <code>packages/javascript/browser</code>|<code>Bricks4Agent</code>、根絕對路徑、JS bare 匯入。<code>${…}</code> 模板字串與 <code>node:</code>/http(s)/data: 協定略過。</p>
+<h2>陷阱備忘</h2>
+<ul>
+<li><code>lib/</code>、<code>dist/</code> 不入版控；可重現性靠 v2 tree lock 與 SNAPSHOT.json。</li>
+<li>PS 5.1 腳本一律英文註解(無 BOM UTF-8 中文會 parse 失敗);PS 內呼叫 git 走 <code>cmd /c … 2&gt;nul</code>(原生 stderr 轉錄陷阱)。</li>
+<li>別手改 <code>lib\</code> 內容(junction 模式下那就是腳手架本體!改元件回 Bricks4Agent repo 走正規流程)。</li>
+</ul>
+</main>
+</body>
+</html>

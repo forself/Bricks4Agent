@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Site Reconstruct Package</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Site Reconstruct Package</h1>
+<p>Crawls a confirmed public URL, converts rendered visual/function cues into a component-library <code>site.json</code>, enforces generation quality, and writes a local static website package.</p>
+<h2>Capability</h2>
+<ul>
+<li>Tool ID: <code>site.reconstruct.package</code></li>
+<li>Capability ID: <code>site.reconstruct_package</code></li>
+<li>Route: <code>site_reconstruct_package</code></li>
+<li>Status: <code>beta</code></li>
+<li>Risk: medium</li>
+</ul>
+<h2>Required Pre-Execution Confirmation</h2>
+<p>Before execution, the user must confirm crawl depth as link depth:</p>
+<ul>
+<li>entry page links: <code>max_depth = 1</code></li>
+<li>within two link hops: <code>max_depth = 2</code></li>
+<li>N link hops: <code>max_depth = N</code></li>
+</ul>
+<p>Root/current page only, <code>max_depth = 0</code>, is supported as an explicit diagnostic/manual mode.</p>
+<p>The crawl is breadth-first for <code>link_depth</code>: lower layers must be completed before deeper layers when any safety budget is reached. URL path depth is not used as the website layer definition.</p>
+<p>For institutional or multi-subdomain sites, callers may include public same-site subdomains with <code>scope.allowed_host_suffixes</code>, for example <code>["ntub.edu.tw"]</code>. This keeps public HTTP/HTTPS and private-network safety checks while allowing <code>www.ntub.edu.tw</code>, <code>sec.ntub.edu.tw</code>, and similar subdomains to be reconstructed as one site. Do not use this to widen to unrelated domains.</p>
+<p>Rendered visual snapshots may be bounded for performance, but this bound must not be used as the page/route crawl limit.</p>
+<h2>Flow</h2>
+<ol>
+<li>Crawl only the confirmed public HTTP/HTTPS scope.</li>
+<li>Prefer rendered visual/function cues when available; use source HTML as auxiliary evidence.</li>
+<li>Convert the site intent into template slots and component-library nodes.</li>
+<li>Enforce the quality gate by default.</li>
+<li>Write a package whose entry point is <code>index.html</code>.</li>
+<li>Write a portable zip archive by default for artifact delivery.</li>
+<li>Verify the package files, <code>site.json</code> renderability, and archive contents.</li>
+</ol>
+<p>The package runtime loads <code>site.json</code> and <code>components/manifest.json</code>, then renders the component tree. It must not write arbitrary page HTML or a DOM-equivalent clone.</p>
+<h2>Strict Quality Gate</h2>
+<p>Strict mode is enabled by default. It blocks package creation when:</p>
+<ul>
+<li>the document contains unresolved <code>component_requests</code>;</li>
+<li>the manifest declares generated components;</li>
+<li>routes use unknown component types;</li>
+<li>route paths are duplicated;</li>
+<li>a route root is not <code>PageShell</code>.</li>
+</ul>
+<p>On failure the tool returns a structured <code>quality_report</code> and does not write the package.</p>
+<p>Strict mode also blocks delivery when package verification fails. The tool returns a structured <code>verification_report</code>, and failed package artifacts are removed when possible.</p>
+<h2>Package Verification</h2>
+<p>Successful output includes <code>package.verification_report</code>. The verifier checks:</p>
+<ul>
+<li><code>index.html</code></li>
+<li><code>runtime.js</code></li>
+<li><code>styles.css</code></li>
+<li><code>site.json</code></li>
+<li><code>components/manifest.json</code></li>
+<li><code>README.md</code></li>
+<li><code>index.html</code> declares <code>#app</code> and loads <code>./runtime.js</code></li>
+<li><code>runtime.js</code> loads <code>./site.json</code> and <code>./components/manifest.json</code></li>
+<li><code>components/manifest.json</code> declares every component type used by <code>site.json</code></li>
+<li>every non-generated component type used by <code>site.json</code> has a <code>runtime.js</code> renderer</li>
+<li>generated component types have local <code>components/generated/&lt;Type&gt;.js</code> and <code>.json</code> assets</li>
+<li>zip archive entries</li>
+</ul>
+<p>For normal user delivery, both <code>package.quality_report.is_passed</code> and <code>package.verification_report.is_passed</code> must be true.</p>
+<p>The <code>package.verification_report.runtime_renderer_types</code> field lists renderer keys parsed from <code>runtime.js</code>.</p>
+<h2>Output</h2>
+<p>The success result includes:</p>
+<ul>
+<li><code>crawl_run_id</code></li>
+<li><code>page_count</code></li>
+<li><code>excluded_count</code></li>
+<li><code>package.output_directory</code></li>
+<li><code>package.entry_point</code></li>
+<li><code>package.site_json_path</code></li>
+<li><code>package.manifest_path</code></li>
+<li><code>package.archive_path</code></li>
+<li><code>package.files</code></li>
+<li><code>package.quality_report</code></li>
+<li><code>package.verification_report</code></li>
+</ul>
+<p>The result is a reusable reconstruction package, not an equivalent clone of the source website.</p>
+</main>
+</body>
+</html>

@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Backend Capability Governance</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Backend Capability Governance</h1>
+<h2>Goal</h2>
+<p>Support generated backend code for complex enterprise or government systems
+without letting generated code depend directly on arbitrary third-party
+libraries.</p>
+<p>The rule is not "generated code may only use the standard library".
+The rule is:</p>
+<ul>
+<li>generated code may use the standard library</li>
+<li>generated code may use approved Bricks4Agent platform abstractions</li>
+<li>third-party libraries are allowed only inside adapter implementations</li>
+</ul>
+<h2>Layering</h2>
+<h3>1. Generated application layer</h3>
+<p>This layer includes:</p>
+<ul>
+<li>controllers</li>
+<li>request and response DTOs</li>
+<li>use cases</li>
+<li>query orchestration</li>
+<li>report request composition</li>
+</ul>
+<p>Allowed dependencies:</p>
+<ul>
+<li><code>System.*</code></li>
+<li>approved Bricks4Agent abstraction packages</li>
+<li>application query interfaces</li>
+</ul>
+<p>Forbidden dependencies:</p>
+<ul>
+<li>direct third-party SDK usage</li>
+<li>direct filesystem writes for export features</li>
+<li>direct message-bus or cache client construction</li>
+<li>direct cryptography or auth protocol implementations</li>
+</ul>
+<h3>2. Platform abstraction layer</h3>
+<p>This layer defines narrow contracts for generated code.</p>
+<p>Examples:</p>
+<ul>
+<li><code>IExcelReportService</code></li>
+<li><code>IPdfReportService</code></li>
+<li><code>IObjectStorage</code></li>
+<li><code>IMessagePublisher</code></li>
+<li><code>IIdentityProvider</code></li>
+<li><code>IClock</code></li>
+<li><code>IIdGenerator</code></li>
+</ul>
+<p>Generated code should call these abstractions and nothing below them.</p>
+<h3>3. Adapter layer</h3>
+<p>This layer owns the actual third-party library integration.</p>
+<p>Examples:</p>
+<ul>
+<li><code>ClosedXmlExcelReportAdapter</code></li>
+<li><code>QuestPdfReportAdapter</code></li>
+<li><code>S3ObjectStorageAdapter</code></li>
+<li><code>RabbitMqMessagePublisher</code></li>
+<li><code>OpenIdConnectIdentityAdapter</code></li>
+</ul>
+<p>This is the only layer allowed to reference third-party implementation
+packages directly.</p>
+<h3>4. Host layer</h3>
+<p>This layer wires the system together.</p>
+<p>Responsibilities:</p>
+<ul>
+<li>dependency injection registration</li>
+<li>profile selection</li>
+<li>environment configuration</li>
+<li>feature toggles</li>
+</ul>
+<h2>Capability profiles</h2>
+<p>Generated backend systems should be assigned a capability profile instead of
+having unrestricted access to every backend feature.</p>
+<p>Suggested profiles:</p>
+<ul>
+<li><code>core</code></li>
+<li><code>enterprise</code></li>
+<li><code>government</code></li>
+<li><code>internet_facing</code></li>
+</ul>
+<p>Example:</p>
+<ul>
+<li><code>core</code>: CRUD, logging, validation, persistence</li>
+<li><code>enterprise</code>: <code>core</code> plus Excel, PDF, mail, workflow, directory integration</li>
+<li><code>government</code>: <code>enterprise</code> plus audit, document signing, certificate-backed flows</li>
+<li><code>internet_facing</code>: <code>core</code> plus public auth, antiforgery, rate limiting, storage</li>
+</ul>
+<h2>Generator-friendly design rules</h2>
+<p>To keep low-level AI and rule-based generators effective, platform contracts
+must stay narrow and stable.</p>
+<p>Good contract:</p>
+<pre><code class="language-csharp">Task&lt;ReportFile&gt; GenerateAsync(ExcelReportRequest request, CancellationToken cancellationToken = default);
+</code></pre>
+<p>Bad contract:</p>
+<pre><code class="language-csharp">Task&lt;object&gt; ExportAnythingAsync(object data, object options);
+</code></pre>
+<p>The generator should only do these steps:</p>
+<ol>
+<li>query business data</li>
+<li>map rows into a contract object</li>
+<li>call a platform abstraction</li>
+<li>return or persist the result</li>
+</ol>
+<p>The generator should never be asked to:</p>
+<ol>
+<li>choose an Excel library</li>
+<li>manage workbook styling APIs</li>
+<li>handle OpenXML details</li>
+<li>decide infrastructure wiring</li>
+</ol>
+<h2>Excel report example</h2>
+<p>The reporting abstraction in <a href="/d:/Bricks4Agent/packages/csharp/reporting/Reporting.Abstractions.csproj">Reporting.Abstractions.csproj</a>
+shows the intended pattern:</p>
+<ul>
+<li>generated code composes <code>ExcelReportRequest</code></li>
+<li>generated code calls <code>IExcelReportService</code></li>
+<li>the adapter package owns the third-party Excel library</li>
+</ul>
+<p>See:</p>
+<ul>
+<li><a href="/d:/Bricks4Agent/packages/csharp/reporting/README.html">README.md</a></li>
+<li><a href="/d:/Bricks4Agent/packages/csharp/reporting/Services/IExcelReportService.cs">IExcelReportService.cs</a></li>
+<li><a href="/d:/Bricks4Agent/packages/csharp/reporting/Examples/ExportEmployeesReportUseCase.cs">ExportEmployeesReportUseCase.cs</a></li>
+<li><a href="/d:/Bricks4Agent/packages/csharp/reporting/CapabilitySchemas/excel-report.enterprise.json">excel-report.enterprise.json</a></li>
+</ul>
+<h2>Suggested enforcement</h2>
+<ol>
+<li>Use <code>.csproj</code> dependency policies to restrict project references.</li>
+<li>Add package version governance with a central props file.</li>
+<li>Add banned API rules for direct filesystem, clock, and third-party usage.</li>
+<li>Add architecture tests for generated layer -&gt; abstraction layer -&gt; adapter layer boundaries.</li>
+<li>Emit capability schema metadata for low-level AI and rule-based generators.</li>
+</ol>
+<h2>Initial enforcement assets in this repo</h2>
+<p>The first enforcement pass is intentionally small and explicit.</p>
+<ul>
+<li>policy file:
+  <a href="/d:/Bricks4Agent/tools/scripts/dotnet-dependency-policy.json">dotnet-dependency-policy.json</a></li>
+<li>validator:
+  <a href="/d:/Bricks4Agent/tools/scripts/validate-dotnet-dependencies.mjs">validate-dotnet-dependencies.mjs</a></li>
+<li>API usage policy:
+  <a href="/d:/Bricks4Agent/tools/scripts/dotnet-api-usage-policy.json">dotnet-api-usage-policy.json</a></li>
+<li>API usage validator:
+  <a href="/d:/Bricks4Agent/tools/scripts/validate-dotnet-api-usage.mjs">validate-dotnet-api-usage.mjs</a></li>
+</ul>
+<p>Current policy coverage includes:</p>
+<ul>
+<li><a href="/d:/Bricks4Agent/packages/csharp/broker/Broker.csproj">Broker.csproj</a></li>
+<li><a href="/d:/Bricks4Agent/packages/csharp/broker-core/BrokerCore.csproj">BrokerCore.csproj</a></li>
+<li><a href="/d:/Bricks4Agent/packages/csharp/reporting/Reporting.Abstractions.csproj">Reporting.Abstractions.csproj</a></li>
+<li><a href="/d:/Bricks4Agent/packages/csharp/reporting/ClosedXmlAdapter/ClosedXmlAdapter.csproj">ClosedXmlAdapter.csproj</a></li>
+<li><a href="/d:/Bricks4Agent/packages/csharp/reporting/ExampleHost/ReportingExampleHost.csproj">ReportingExampleHost.csproj</a></li>
+<li><a href="/d:/Bricks4Agent/templates/spa/backend/SpaApi.csproj">SpaApi.csproj</a></li>
+<li><a href="/d:/Bricks4Agent/tools/spa-generator/backend/spa-generator.csproj">spa-generator.csproj</a></li>
+<li><a href="/d:/Bricks4Agent/projects/ShopBricks-Gen/backend/ShopBricks.csproj">ShopBricks.csproj</a></li>
+</ul>
+<p>Run it with:</p>
+<pre><code class="language-bash">node tools/scripts/validate-dotnet-dependencies.mjs
+</code></pre>
+<p>Run the source-level API policy with:</p>
+<pre><code class="language-bash">node tools/scripts/validate-dotnet-api-usage.mjs
+</code></pre>
+<p>Or run both checks together with:</p>
+<pre><code class="language-bash">npm run validate:backend-governance
+</code></pre>
+<p>The current API usage policy is intentionally narrow. It now covers:</p>
+<ul>
+<li>reporting abstraction, adapter, and host layers</li>
+<li>template SPA backend service/model/data layers</li>
+<li>SPA generator backend service/model/data layers</li>
+<li>generated ShopBricks backend service/model/data layers</li>
+<li>selected generated backend host <code>Program.cs</code> files</li>
+</ul>
+<p>For a concrete host/composition example, see:</p>
+<ul>
+<li><a href="/d:/Bricks4Agent/packages/csharp/reporting/ExampleHost/Program.cs">Program.cs</a></li>
+<li><a href="/d:/Bricks4Agent/packages/csharp/reporting/ExampleHost/README.html">README.md</a></li>
+</ul>
+</main>
+</body>
+</html>

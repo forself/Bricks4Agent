@@ -1,0 +1,466 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Site Crawler to Generator JSON 設計</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Site Crawler to Generator JSON 設計</h1>
+<p>日期：2026-05-02
+狀態：approved design draft
+範圍：從使用者在 LINE 指定網站，到產出可由現有 generator 消費的網站定義 JSON；若現有元件庫無法覆蓋，產生新元件與元件 manifest。</p>
+<h2>1. 問題定義</h2>
+<p>使用者希望提供一個網址，系統爬取該網址範圍內的網站程式碼與資產，並轉換成可以直接交給既有 SPA/page generator 使用的 JSON。此流程不能讓 LLM 自由猜測網站結構，因為輸出必須能落到現有 generator、元件庫與可驗證的 artifacts。</p>
+<p>本設計取代舊的「網站分析報告」思路。新目標不是只產生 <code>site-map.json</code> 或 markdown 分析，而是產生 generator-native bundle。</p>
+<h2>2. 核心原則</h2>
+<ol>
+<li>
+<p>使用者意圖先決
+   - 系統在開始爬取前必須取得使用者對爬取範圍的意圖。
+   - 範圍以起始 URL 的路徑層級定義，不以頁數作為主要語意。</p>
+</li>
+<li>
+<p>Deterministic extraction 先決
+   - crawler 與 extractor 必須先以確定性規則產生 DOM tree、CSS tokens、asset manifest、route graph、forms/interactions、layout blocks。
+   - LLM 只允許在固定 schema 內做命名、歸納、語意分類與缺口說明。</p>
+</li>
+<li>
+<p>元件庫對應先決
+   - 每個頁面區塊必須先嘗試對應到 <code>packages/javascript/browser/ui_components/metadata/component-catalog.json</code> 中的可用元件。
+   - 若無法對應，系統必須產生新的元件規格、元件程式、樣式、manifest 與 generator import mapping。
+   - 最終輸出不得包含無法被 generator 解析的裸區塊。</p>
+</li>
+</ol>
+<h2>3. 使用者問答流程</h2>
+<p>當使用者只給 URL，例如：</p>
+<pre><code class="language-text">/clone https://example.com/docs/
+</code></pre>
+<p>broker/high-level intake 不直接執行 crawl，而是回問爬取範圍：</p>
+<pre><code class="language-text">請選擇要擷取的範圍：
+1. 只擷取這個頁面
+2. 擷取這個路徑下第一層
+3. 擷取這個路徑下兩層以內
+4. 指定 N 層
+</code></pre>
+<p>若起始 URL 是 <code>https://example.com/docs/</code>：</p>
+<ul>
+<li>只擷取這個頁面：只抓 <code>/docs/</code></li>
+<li>第一層：抓 <code>/docs/a</code>、<code>/docs/b</code>，不抓 <code>/docs/a/detail</code></li>
+<li>兩層以內：抓 <code>/docs/a</code>、<code>/docs/a/detail</code></li>
+<li>N 層：抓深度小於或等於 N 的同路徑子頁</li>
+</ul>
+<p>使用者回答後，系統建立 crawl intent：</p>
+<pre><code class="language-json">{
+  &quot;start_url&quot;: &quot;https://example.com/docs/&quot;,
+  &quot;scope&quot;: {
+    &quot;kind&quot;: &quot;path_depth&quot;,
+    &quot;max_depth&quot;: 2,
+    &quot;same_origin_only&quot;: true,
+    &quot;path_prefix_lock&quot;: true
+  },
+  &quot;budgets&quot;: {
+    &quot;max_pages&quot;: 50,
+    &quot;max_total_bytes&quot;: 10485760,
+    &quot;max_asset_bytes&quot;: 2097152,
+    &quot;wall_clock_timeout_seconds&quot;: 180
+  }
+}
+</code></pre>
+<p><code>max_pages</code> 與 byte budgets 是安全上限，不代表使用者語意。</p>
+<h2>4. 系統架構</h2>
+<h3>4.1 元件</h3>
+<ol>
+<li>
+<p><code>site-crawler-worker</code>
+   - capability：<code>site.crawl_source</code>
+   - route：<code>site_crawl_source</code>
+   - 責任：安全抓取 URL、同路徑 BFS、收集 HTML/CSS/JS/asset metadata、輸出 raw crawl bundle。</p>
+</li>
+<li>
+<p><code>site-generator-agent-worker</code>
+   - capability：<code>site.convert_to_generator_json</code>
+   - route：<code>site_convert_to_generator_json</code>
+   - 責任：將 crawl bundle 轉成 generator-native bundle。
+   - 這個 agent 在執行層是特殊 worker，不是自由聊天 agent。</p>
+</li>
+<li>
+<p><code>SiteCloneCoordinator</code>
+   - broker service。
+   - 責任：LINE intake 狀態管理、crawl intent 建立、呼叫兩個 worker、保存 artifacts、回傳結果。</p>
+</li>
+<li>
+<p><code>ComponentResolver</code>
+   - 讀取元件 catalog。
+   - 將 extracted blocks 對應到既有元件。
+   - 無法對應時產生 new component requirement。</p>
+</li>
+<li>
+<p><code>GeneratedComponentSynthesizer</code>
+   - 依 new component requirement 產生元件 JS、CSS、manifest 與 generator mapping。
+   - 新元件必須可被 generator import。</p>
+</li>
+<li>
+<p><code>GeneratorBundleValidator</code>
+   - 驗證輸出的 page definitions、component mappings、generated components、asset references。
+   - 必須在交付前實際跑 generator validation。</p>
+</li>
+</ol>
+<h3>4.2 資料流</h3>
+<pre><code class="language-text">LINE user
+  -&gt; line-worker
+  -&gt; broker high-level intake
+  -&gt; scope clarification
+  -&gt; SiteCloneCoordinator
+  -&gt; site-crawler-worker
+  -&gt; deterministic extraction
+  -&gt; ComponentResolver
+  -&gt; GeneratedComponentSynthesizer
+  -&gt; site-generator-agent-worker constrained summarization
+  -&gt; GeneratorBundleValidator
+  -&gt; artifact delivery
+  -&gt; LINE reply
+</code></pre>
+<h2>5. Crawler Worker 設計</h2>
+<h3>5.1 Request</h3>
+<pre><code class="language-json">{
+  &quot;request_id&quot;: &quot;req_123&quot;,
+  &quot;start_url&quot;: &quot;https://example.com/docs/&quot;,
+  &quot;scope&quot;: {
+    &quot;kind&quot;: &quot;path_depth&quot;,
+    &quot;max_depth&quot;: 2,
+    &quot;same_origin_only&quot;: true,
+    &quot;path_prefix_lock&quot;: true
+  },
+  &quot;capture&quot;: {
+    &quot;html&quot;: true,
+    &quot;rendered_dom&quot;: true,
+    &quot;css&quot;: true,
+    &quot;scripts&quot;: true,
+    &quot;assets&quot;: true,
+    &quot;screenshots&quot;: false
+  },
+  &quot;budgets&quot;: {
+    &quot;max_pages&quot;: 50,
+    &quot;max_total_bytes&quot;: 10485760,
+    &quot;max_asset_bytes&quot;: 2097152,
+    &quot;wall_clock_timeout_seconds&quot;: 180
+  }
+}
+</code></pre>
+<h3>5.2 Path depth 規則</h3>
+<p>Crawler 先 canonicalize start URL：</p>
+<ul>
+<li>移除 fragment。</li>
+<li>正規化 trailing slash。</li>
+<li>只允許 <code>http</code> 與 <code>https</code>。</li>
+<li><code>path_prefix_lock = true</code> 時，只展開以起始 path prefix 開頭的 URL。</li>
+<li><code>same_origin_only = true</code> 時，只展開同 scheme、host、port 的 URL。</li>
+</ul>
+<p>Depth 計算以 start path 為 root：</p>
+<ul>
+<li>start URL depth = 0</li>
+<li>start path 下第一個子 segment = 1</li>
+<li>再下一層 = 2</li>
+</ul>
+<p>Query string 不增加 depth，但不同 query 預設不展開，除非後續版本明確支援 faceted pages。</p>
+<h3>5.3 Output</h3>
+<pre><code class="language-json">{
+  &quot;crawl_run_id&quot;: &quot;crawl_123&quot;,
+  &quot;status&quot;: &quot;completed&quot;,
+  &quot;root&quot;: {
+    &quot;start_url&quot;: &quot;https://example.com/docs/&quot;,
+    &quot;normalized_start_url&quot;: &quot;https://example.com/docs/&quot;,
+    &quot;origin&quot;: &quot;https://example.com&quot;,
+    &quot;path_prefix&quot;: &quot;/docs/&quot;
+  },
+  &quot;pages&quot;: [
+    {
+      &quot;url&quot;: &quot;https://example.com/docs/a&quot;,
+      &quot;final_url&quot;: &quot;https://example.com/docs/a&quot;,
+      &quot;depth&quot;: 1,
+      &quot;status_code&quot;: 200,
+      &quot;title&quot;: &quot;A&quot;,
+      &quot;html_ref&quot;: &quot;artifacts/crawl_123/pages/a.html&quot;,
+      &quot;rendered_dom_ref&quot;: &quot;artifacts/crawl_123/pages/a.dom.json&quot;,
+      &quot;text_excerpt&quot;: &quot;Visible text excerpt&quot;,
+      &quot;links&quot;: [],
+      &quot;forms&quot;: [],
+      &quot;resources&quot;: []
+    }
+  ],
+  &quot;assets&quot;: [
+    {
+      &quot;url&quot;: &quot;https://example.com/assets/app.css&quot;,
+      &quot;type&quot;: &quot;stylesheet&quot;,
+      &quot;content_ref&quot;: &quot;artifacts/crawl_123/assets/app.css&quot;,
+      &quot;sha256&quot;: &quot;...&quot;
+    }
+  ],
+  &quot;excluded&quot;: [
+    {
+      &quot;url&quot;: &quot;https://example.com/private&quot;,
+      &quot;reason&quot;: &quot;outside_path_depth&quot;
+    }
+  ],
+  &quot;limits&quot;: {
+    &quot;truncated&quot;: false,
+    &quot;page_limit_hit&quot;: false,
+    &quot;byte_limit_hit&quot;: false
+  }
+}
+</code></pre>
+<h2>6. Deterministic Extraction</h2>
+<p>Extractor 對每個 page 產出以下中介資料，供 converter 使用。</p>
+<h3>6.1 DOM section tree</h3>
+<pre><code class="language-json">{
+  &quot;page_url&quot;: &quot;https://example.com/docs/a&quot;,
+  &quot;sections&quot;: [
+    {
+      &quot;id&quot;: &quot;sec_hero&quot;,
+      &quot;tag&quot;: &quot;section&quot;,
+      &quot;role&quot;: &quot;hero&quot;,
+      &quot;text&quot;: {
+        &quot;headline&quot;: &quot;Product Name&quot;,
+        &quot;body&quot;: &quot;Short intro&quot;
+      },
+      &quot;media&quot;: [],
+      &quot;children&quot;: [],
+      &quot;source_selector&quot;: &quot;main &gt; section:nth-of-type(1)&quot;
+    }
+  ]
+}
+</code></pre>
+<p>Roles 由 deterministic rule 先給候選值，例如 <code>hero</code>、<code>navigation</code>、<code>card_grid</code>、<code>form</code>、<code>table</code>、<code>gallery</code>、<code>article</code>、<code>footer</code>。LLM 可以重新命名 label，但不能創造不存在的 source section。</p>
+<h3>6.2 CSS/theme tokens</h3>
+<pre><code class="language-json">{
+  &quot;colors&quot;: {
+    &quot;primary&quot;: &quot;#1f6feb&quot;,
+    &quot;surface&quot;: &quot;#ffffff&quot;,
+    &quot;text&quot;: &quot;#111827&quot;
+  },
+  &quot;typography&quot;: {
+    &quot;font_family&quot;: &quot;Inter, sans-serif&quot;,
+    &quot;heading_scale&quot;: [&quot;32px&quot;, &quot;24px&quot;, &quot;20px&quot;]
+  },
+  &quot;spacing&quot;: {
+    &quot;unit&quot;: 8,
+    &quot;observed&quot;: [&quot;8px&quot;, &quot;16px&quot;, &quot;24px&quot;, &quot;32px&quot;]
+  }
+}
+</code></pre>
+<h3>6.3 Route graph</h3>
+<pre><code class="language-json">{
+  &quot;routes&quot;: [
+    {
+      &quot;path&quot;: &quot;/docs/a&quot;,
+      &quot;page_id&quot;: &quot;docs-a&quot;,
+      &quot;depth&quot;: 1,
+      &quot;title&quot;: &quot;A&quot;
+    }
+  ],
+  &quot;edges&quot;: [
+    {
+      &quot;from&quot;: &quot;/docs/&quot;,
+      &quot;to&quot;: &quot;/docs/a&quot;,
+      &quot;kind&quot;: &quot;internal_link&quot;
+    }
+  ]
+}
+</code></pre>
+<h3>6.4 Interaction inventory</h3>
+<p>Forms、buttons、menus、tabs、filters、search boxes 先以 DOM/event attributes 推斷。無法確認的行為標記為 <code>static_replica</code>，不得推測後端 API。</p>
+<h2>7. Component Resolver</h2>
+<p>Resolver 的輸入是 extracted sections 與元件 catalog。輸出必須分成三類：</p>
+<pre><code class="language-json">{
+  &quot;mapped&quot;: [],
+  &quot;generated&quot;: [],
+  &quot;unresolved&quot;: []
+}
+</code></pre>
+<p>交付前 <code>unresolved</code> 必須為空。若無法清空，整個流程回傳失敗並說明缺口。</p>
+<h3>7.1 可直接映射</h3>
+<p>以下情況可直接映射：</p>
+<ul>
+<li>section 是 form field，且 field type 對應 catalog 中 <code>generator.usage_mode = field_direct</code> 的元件。</li>
+<li>section 是明確 action group，且可對應 <code>definition_explicit</code> 元件。</li>
+<li>section 是 generator 既有 page type 可表達的 <code>form</code>、<code>list</code>、<code>detail</code>、<code>dashboard</code>。</li>
+</ul>
+<p>Resolver 需要記錄 evidence：</p>
+<pre><code class="language-json">{
+  &quot;source_section_id&quot;: &quot;sec_contact_form&quot;,
+  &quot;component_id&quot;: &quot;form.text_input&quot;,
+  &quot;registry_name&quot;: &quot;TextInput&quot;,
+  &quot;reason&quot;: &quot;input[type=email] maps to field type email&quot;,
+  &quot;confidence&quot;: 0.95
+}
+</code></pre>
+<h3>7.2 必須生成新元件</h3>
+<p>以下情況必須生成新元件：</p>
+<ul>
+<li>視覺或互動結構無法用現有 <code>field_direct</code>、<code>definition_explicit</code> 或 page type 表達。</li>
+<li>catalog 中只有 <code>manual_only</code> 元件，且 generator 不能直接 consume。</li>
+<li>原站有複合區塊，例如價格方案卡、品牌 hero、特殊 carousel、產品比較表、互動 map、非標準 article layout。</li>
+</ul>
+<p>生成要求：</p>
+<pre><code class="language-json">{
+  &quot;component_id&quot;: &quot;generated.pricing_plan_grid&quot;,
+  &quot;registry_name&quot;: &quot;GeneratedPricingPlanGrid&quot;,
+  &quot;category&quot;: &quot;generated&quot;,
+  &quot;source_section_ids&quot;: [&quot;sec_pricing&quot;],
+  &quot;props_schema&quot;: {
+    &quot;plans&quot;: &quot;array&quot;,
+    &quot;cta_label&quot;: &quot;string&quot;
+  },
+  &quot;style_contract&quot;: {
+    &quot;uses_theme_tokens&quot;: true,
+    &quot;css_file&quot;: &quot;GeneratedPricingPlanGrid.css&quot;
+  },
+  &quot;behavior_contract&quot;: {
+    &quot;events&quot;: [&quot;selectPlan&quot;],
+    &quot;side_effects&quot;: []
+  }
+}
+</code></pre>
+<h2>8. Generator Bundle Contract</h2>
+<p>最終輸出是一個 bundle，不只是單一 page definition。</p>
+<pre><code class="language-json">{
+  &quot;kind&quot;: &quot;site-generator-bundle&quot;,
+  &quot;version&quot;: &quot;0.1.0&quot;,
+  &quot;source&quot;: {
+    &quot;crawl_run_id&quot;: &quot;crawl_123&quot;,
+    &quot;start_url&quot;: &quot;https://example.com/docs/&quot;,
+    &quot;scope&quot;: {
+      &quot;kind&quot;: &quot;path_depth&quot;,
+      &quot;max_depth&quot;: 2
+    }
+  },
+  &quot;definitions&quot;: {
+    &quot;pages&quot;: [],
+    &quot;apps&quot;: []
+  },
+  &quot;theme_tokens&quot;: {},
+  &quot;asset_manifest&quot;: [],
+  &quot;component_resolution&quot;: {
+    &quot;mapped&quot;: [],
+    &quot;generated&quot;: [],
+    &quot;unresolved&quot;: []
+  },
+  &quot;generated_components&quot;: [],
+  &quot;generator_overrides&quot;: {
+    &quot;component_paths&quot;: {}
+  },
+  &quot;validation&quot;: {
+    &quot;page_definitions_valid&quot;: true,
+    &quot;component_imports_valid&quot;: true,
+    &quot;unresolved_count&quot;: 0
+  }
+}
+</code></pre>
+<p><code>definitions.pages[].definition</code> 必須符合目前 <code>PageDefinition</code> 可接受的 <code>name</code>、<code>type</code>、<code>description</code>、<code>components</code>、<code>fields</code>、<code>api</code>、<code>behaviors</code>、<code>styles</code> 結構。若生成新元件，bundle 必須同時提供 <code>generator_overrides.component_paths</code>，讓 generator 能解析新元件 import path。</p>
+<h2>9. Generator 相容性調整</h2>
+<p>目前 <code>PageGenerator</code> 的 <code>ComponentPaths</code> 與 <code>AvailableComponents</code> 是靜態清單。為支援新元件，實作時需要新增一層 dynamic component registry：</p>
+<ol>
+<li>讀取既有 <code>component-catalog.json</code>。</li>
+<li>讀取 bundle 中的 <code>generated_components[]</code>。</li>
+<li>合併成 runtime component path map。</li>
+<li><code>PageGenerator.generate()</code> 接受 <code>componentPathOverrides</code> 或 <code>componentRegistry</code>。</li>
+<li>validation 不再只看靜態 <code>AvailableComponents.custom</code>，也要看 registry 中 <code>generator.usable = true</code> 的元件。</li>
+</ol>
+<p>這是本功能的必要前置改造；否則新元件即使產生，generator 仍會報 unavailable。</p>
+<h2>10. LLM 使用邊界</h2>
+<p>LLM 只允許處理：</p>
+<ul>
+<li>將 deterministic sections 命名為人可讀頁面名稱。</li>
+<li>將相近 sections 歸納成 component requirement。</li>
+<li>在 schema 內填寫 description、props 名稱、content labels。</li>
+<li>產生新元件程式碼時，必須以 component requirement、theme tokens、asset refs 為輸入。</li>
+</ul>
+<p>LLM 不允許：</p>
+<ul>
+<li>自行新增 crawler 未抓到的頁面。</li>
+<li>自行新增沒有 source evidence 的 section。</li>
+<li>自行改變 path depth scope。</li>
+<li>自行引用不存在的元件。</li>
+<li>輸出未通過 schema validation 的 JSON。</li>
+</ul>
+<h2>11. 安全約束</h2>
+<p>Crawler 必須防 SSRF：</p>
+<ul>
+<li>拒絕 localhost、loopback、private IP、link-local、metadata IP。</li>
+<li>拒絕 <code>file:</code>、<code>data:</code>、<code>ftp:</code>、<code>chrome:</code> 等非 http/https scheme。</li>
+<li>redirect 後仍需重新檢查 URL。</li>
+<li>DNS resolution 結果若落在禁止網段，拒絕。</li>
+<li>同 origin/path prefix/depth 檢查在每次 enqueue 與 fetch 前都要做。</li>
+</ul>
+<p>資源限制：</p>
+<ul>
+<li>預設 <code>max_pages = 50</code>。</li>
+<li>預設 <code>max_total_bytes = 10MB</code>。</li>
+<li>預設 <code>max_asset_bytes = 2MB</code>。</li>
+<li>預設 <code>wall_clock_timeout_seconds = 180</code>。</li>
+<li>超限時保留 partial bundle，但標記 <code>limits.truncated = true</code>，不得宣稱完整轉換。</li>
+</ul>
+<h2>12. Artifacts</h2>
+<p>流程產出以下 broker-managed artifacts：</p>
+<ul>
+<li><code>crawl-source-bundle.json</code></li>
+<li><code>extracted-site-model.json</code></li>
+<li><code>component-resolution.json</code></li>
+<li><code>generated-components/</code></li>
+<li><code>site-generator-bundle.json</code></li>
+<li><code>validation-report.json</code></li>
+<li>可選：<code>source-screenshots.zip</code></li>
+</ul>
+<p>LINE 回覆只提供摘要與 artifact link，不直接貼大量 JSON。</p>
+<h2>13. 驗收條件</h2>
+<ol>
+<li>使用者只提供 URL 時，系統必須先問 path depth scope。</li>
+<li>Crawler 不會抓取 path prefix 之外的頁面。</li>
+<li>Crawler 不會抓取 private/localhost/metadata 網段。</li>
+<li>Converter 必須先產生 deterministic extracted model。</li>
+<li>每個 output page block 必須有 source evidence。</li>
+<li>每個 component reference 必須能解析到既有元件或新生成元件。</li>
+<li><code>component_resolution.unresolved</code> 在成功交付時必須為空。</li>
+<li>新生成元件必須有 JS、CSS、manifest、generator import path。</li>
+<li><code>PageGenerator.generate()</code> 必須能使用 bundle registry 成功產生 page code。</li>
+<li>若任何 validation 失敗，LINE 回覆要說明失敗階段與可修正方向。</li>
+</ol>
+<h2>14. 分階段實作建議</h2>
+<h3>Phase 1：安全 crawler 與 path depth scope</h3>
+<p>建立 <code>site-crawler-worker</code>，只產出 crawl source bundle 與 extracted site model。先不做 generator conversion。</p>
+<h3>Phase 2：component resolver 與 generator registry 改造</h3>
+<p>讓 generator 能吃 catalog 與 component path overrides。建立 resolver 的 deterministic mapping。</p>
+<h3>Phase 3：converter worker</h3>
+<p>建立 <code>site-generator-agent-worker</code>，輸出 <code>site-generator-bundle.json</code>，並跑 validator。</p>
+<h3>Phase 4：generated component synthesizer</h3>
+<p>補上無法對應元件時的新元件生成、manifest 生成、smoke validation。</p>
+<h3>Phase 5：LINE high-level orchestration</h3>
+<p>將 <code>/clone</code> 或同義 production intent 接到問答、crawl、convert、artifact delivery。</p>
+<h2>15. 需要保留的未來能力</h2>
+<p>以下能力不列入 v1，但設計不封死：</p>
+<ul>
+<li>robots.txt policy mode。</li>
+<li>sitemap.xml seed。</li>
+<li>user-delegated authenticated crawl。</li>
+<li>form interaction replay。</li>
+<li>multi-origin asset mirroring。</li>
+<li>visual diff validation against screenshots。</li>
+</ul>
+</main>
+</body>
+</html>

@@ -5,11 +5,13 @@
 
 import { PhotoCard } from '../../common/PhotoCard/index.js';
 import { ImageViewer } from '../../common/ImageViewer/index.js';
+import { Icon } from '../../common/Icon/index.js';
 import { ModalPanel } from '../Panel/index.js';
 import { ActionButton } from '../../common/ActionButton/index.js';
 import { UploadButton } from '../../common/UploadButton/index.js';
 import { DownloadButton } from '../../common/DownloadButton/index.js';
 import SimpleZip from '../../utils/SimpleZip.js';
+import { nextUid } from '../../utils/uid.js';
 
 import Locale from '../../i18n/index.js';
 export class PhotoWall {
@@ -33,6 +35,9 @@ export class PhotoWall {
 
         this.photos = [...this.options.photos];
         this.selectedIds = new Set();
+        this._renderIcons = [];
+        this._downloadIcon = null;
+        this._cards = [];
         this.element = this._createElement();
 
         // Trigger initial change notification to sync state
@@ -66,7 +71,6 @@ export class PhotoWall {
 
         // 下載按鈕
         this.downloadBtn = document.createElement('button');
-        this.downloadBtn.textContent = Locale.t('photoWall.downloadSelected', { count: 0 });
         this.downloadBtn.className = 'photo-wall__download-btn';
         this.downloadBtn.style.cssText = `
             padding: 8px 16px;
@@ -84,14 +88,13 @@ export class PhotoWall {
             transition: all var(--cl-transition);
         `;
         // 加入 icon
-        this.downloadBtn.innerHTML = `
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                <polyline points="7 10 12 15 17 10"></polyline>
-                <line x1="12" y1="15" x2="12" y2="3"></line>
-            </svg>
-            <span>下載選取 (0)</span>
-        `;
+        this._downloadIcon = new Icon({ name: 'download', size: 16, color: 'currentColor' });
+        this._downloadIcon.mount(this.downloadBtn);
+        const downloadLabel = document.createElement('span');
+        downloadLabel.className = 'photo-wall__download-label';
+        downloadLabel.textContent = Locale.t('photoWall.downloadSelected', { count: 0 });
+        this.downloadBtn.appendChild(downloadLabel);
+        this.downloadLabel = downloadLabel;
 
         this.downloadBtn.addEventListener('click', () => this._handleDownload());
         toolbar.appendChild(this.downloadBtn);
@@ -116,6 +119,9 @@ export class PhotoWall {
     }
 
     render() {
+        this._destroyRenderIcons();
+        this._cards.forEach((card) => card.destroy());
+        this._cards = [];
         this.container.innerHTML = '';
 
         // 渲染照片列表
@@ -131,6 +137,7 @@ export class PhotoWall {
                 clickable: true,
                 width: '100%'
             });
+            this._cards.push(card);
 
             // 覆寫點擊行為
             card.element.onclick = (e) => {
@@ -163,7 +170,7 @@ export class PhotoWall {
             `;
 
             if (isSelected) {
-                checkbox.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--cl-text-inverse)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+                this._mountRenderIcon({ name: 'check', size: 16, color: 'var(--cl-text-inverse)' }, checkbox);
             }
 
             checkbox.onclick = (e) => {
@@ -179,12 +186,7 @@ export class PhotoWall {
             // 為了美觀，將刪除移至 *左上角* 
             if (!this.options.readOnly) {
                 const deleteBtn = document.createElement('div');
-                deleteBtn.innerHTML = `
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <line x1="18" y1="6" x2="6" y2="18"></line>
-                        <line x1="6" y1="6" x2="18" y2="18"></line>
-                    </svg>
-                `;
+                this._mountRenderIcon({ name: 'close', size: 16, color: 'currentColor' }, deleteBtn);
                 deleteBtn.style.cssText = `
                     position: absolute;
                     top: 8px;
@@ -236,13 +238,12 @@ export class PhotoWall {
                 transition: all var(--cl-transition);
                 color: var(--cl-text-placeholder);
             `;
-            addBtn.innerHTML = `
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <line x1="12" y1="5" x2="12" y2="19"></line>
-                    <line x1="5" y1="12" x2="19" y2="12"></line>
-                </svg>
-                <span style="font-size: var(--cl-font-size-md); margin-top: 8px;">新增照片</span>
-            `;
+            this._mountRenderIcon({ name: 'add', size: 32, color: 'currentColor' }, addBtn);
+            // CSP（style-src 'self'）合規：HTML 剖析出的 style 屬性會被剝除，改用 CSSOM
+            const addLabel = document.createElement('span');
+            addLabel.textContent = '新增照片';
+            addLabel.style.cssText = 'font-size: var(--cl-font-size-md); margin-top: 8px;';
+            addBtn.appendChild(addLabel);
 
             addBtn.addEventListener('mouseenter', () => {
                 addBtn.style.background = 'var(--cl-bg-input)';
@@ -265,6 +266,18 @@ export class PhotoWall {
         this._updateDownloadBtn(); // Initial update for download button state
     }
 
+    _mountRenderIcon(options, container) {
+        const icon = new Icon(options);
+        this._renderIcons.push(icon);
+        icon.mount(container);
+        return icon;
+    }
+
+    _destroyRenderIcons() {
+        this._renderIcons.forEach((icon) => icon.destroy());
+        this._renderIcons = [];
+    }
+
     _toggleSelect(id) {
         if (this.selectedIds.has(id)) {
             this.selectedIds.delete(id);
@@ -278,8 +291,9 @@ export class PhotoWall {
     _updateDownloadBtn() {
         const count = this.selectedIds.size;
 
-        const textSpan = this.downloadBtn.querySelector('span');
-        if (textSpan) textSpan.textContent = Locale.t('photoWall.downloadSelected', { count });
+        if (this.downloadLabel) {
+            this.downloadLabel.textContent = Locale.t('photoWall.downloadSelected', { count });
+        }
 
         if (count > 0) {
             this.downloadBtn.style.opacity = '1';
@@ -315,8 +329,8 @@ export class PhotoWall {
 
     async _downloadAsZip(photos) {
         // 設定 loading 狀態 (這裡簡化，可以加個 spinner)
-        const originalText = this.downloadBtn.querySelector('span').textContent;
-        this.downloadBtn.querySelector('span').textContent = Locale.t('photoWall.packing');
+        const originalText = this.downloadLabel.textContent;
+        this.downloadLabel.textContent = Locale.t('photoWall.packing');
         this.downloadBtn.disabled = true;
 
         try {
@@ -333,13 +347,13 @@ export class PhotoWall {
             }
 
             const zipBlob = await zip.generateAsync();
-            this._triggerDownload(URL.createObjectURL(zipBlob), `photos_${Date.now()}.zip`);
+            this._triggerDownload(URL.createObjectURL(zipBlob), `${nextUid('photos')}.zip`);
 
         } catch (error) {
             console.error('ZIP 打包失敗:', error);
             ModalPanel.alert({ message: Locale.t('photoWall.packError') });
         } finally {
-            this.downloadBtn.querySelector('span').textContent = originalText; // Restore original text
+            this.downloadLabel.textContent = originalText; // Restore original text
             this._updateDownloadBtn(); // Re-evaluate button state
         }
     }
@@ -445,6 +459,16 @@ export class PhotoWall {
             : container;
         if (target) target.appendChild(this.element);
         return this;
+    }
+
+    destroy() {
+        this._destroyRenderIcons();
+        this._cards.forEach((card) => card.destroy());
+        this._cards = [];
+        this._downloadIcon?.destroy();
+        this._downloadIcon = null;
+        this.downloadLabel = null;
+        this.element?.remove();
     }
 }
 

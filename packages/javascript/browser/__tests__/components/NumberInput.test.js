@@ -24,4 +24,17 @@ describe('NumberInput', () => {
         expect(input.getValue()).toBe(99);
         expect(input.input.value).toBe('99');
     });
+
+    it('does not emit a user change for a declarative state update unless requested', () => {
+        const changes = [];
+        const input = new NumberInput({ onChange: (value) => changes.push(value) });
+        input.mount(container);
+
+        input.setValue(7);
+        expect(input.getValue()).toBe(7);
+        expect(changes).toEqual([]);
+
+        input.setValue(8, { emit: true });
+        expect(changes).toEqual([8]);
+    });
 });

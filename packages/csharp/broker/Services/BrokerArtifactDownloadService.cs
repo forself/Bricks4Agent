@@ -21,6 +21,19 @@ public sealed class BrokerArtifactDownloadService
 
     public string? CreateSignedDownloadUrl(string artifactId, DateTimeOffset? now = null)
     {
+        var signedPath = CreateSignedDownloadPath(artifactId, now);
+        if (string.IsNullOrWhiteSpace(signedPath))
+            return null;
+
+        var publicBaseUrl = _publicUrlResolver.TryGetPublicBaseUrl();
+        if (string.IsNullOrWhiteSpace(publicBaseUrl))
+            return null;
+
+        return $"{publicBaseUrl}{signedPath}";
+    }
+
+    public string? CreateSignedDownloadPath(string artifactId, DateTimeOffset? now = null)
+    {
         if (string.IsNullOrWhiteSpace(_options.SigningSecret))
             return null;
 
@@ -28,15 +41,11 @@ public sealed class BrokerArtifactDownloadService
         if (artifact == null || string.IsNullOrWhiteSpace(artifact.FilePath) || !File.Exists(artifact.FilePath))
             return null;
 
-        var publicBaseUrl = _publicUrlResolver.TryGetPublicBaseUrl();
-        if (string.IsNullOrWhiteSpace(publicBaseUrl))
-            return null;
-
         var issuedAt = now ?? DateTimeOffset.UtcNow;
         var minutes = _options.LinkTtlMinutes <= 0 ? 60 : _options.LinkTtlMinutes;
         var exp = issuedAt.AddMinutes(minutes).ToUnixTimeSeconds();
         var sig = ComputeSignature(artifact.ArtifactId, artifact.FileName, exp);
-        return $"{publicBaseUrl}/api/v1/artifacts/download/{Uri.EscapeDataString(artifact.ArtifactId)}?exp={exp}&sig={Uri.EscapeDataString(sig)}";
+        return $"/api/v1/artifacts/download/{Uri.EscapeDataString(artifact.ArtifactId)}?exp={exp}&sig={Uri.EscapeDataString(sig)}";
     }
 
     public BrokerArtifactDownloadResolution ValidateAndResolve(

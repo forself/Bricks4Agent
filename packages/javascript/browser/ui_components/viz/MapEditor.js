@@ -1,4 +1,5 @@
 import { ModalPanel } from '../layout/Panel/index.js';
+import { nextUid } from '../utils/uid.js';
 
 /**
  * MapEditor - Interactive Map/Image Editor with Annotations
@@ -747,7 +748,7 @@ export class MapEditor {
         // Create download link
         const blob = new Blob([pngWithMetadata], { type: 'image/png' });
         const link = document.createElement('a');
-        link.download = 'map-edited-' + Date.now() + '.png';
+        link.download = `${nextUid('map-edited')}.png`;
         link.href = URL.createObjectURL(blob);
         link.click();
         URL.revokeObjectURL(link.href);
@@ -941,7 +942,7 @@ export class MapEditor {
         };
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
         const link = document.createElement('a');
-        link.download = 'map-config-' + Date.now() + '.json';
+        link.download = `${nextUid('map-config')}.json`;
         link.href = URL.createObjectURL(blob);
         link.click();
     }

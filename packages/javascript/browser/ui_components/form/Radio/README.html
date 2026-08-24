@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Radio 單選按鈕</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Radio 單選按鈕</h1>
+<p>單選按鈕元件，支援群組建立、方向排列、自訂尺寸。</p>
+<h2>API</h2>
+<h3>Constructor（單一 Radio）</h3>
+<pre><code class="language-javascript">import { Radio } from './Radio.js';
+
+const radio = new Radio({
+    name: 'gender',          // 群組名稱（同群組共用）
+    label: '男',             // 標籤文字
+    value: 'male',           // 值
+    checked: false,          // 是否選中
+    disabled: false,         // 停用
+    size: 'medium',          // 'small' | 'medium' | 'large'
+    onChange: (value) =&gt; {}   // 變更回調
+});
+</code></pre>
+<h3>單一 Radio 方法</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>mount(container)</code></td>
+<td>掛載至容器</td>
+</tr>
+<tr>
+<td><code>destroy()</code></td>
+<td>銷毀元件</td>
+</tr>
+<tr>
+<td><code>isChecked()</code></td>
+<td>回傳是否選中</td>
+</tr>
+<tr>
+<td><code>setChecked(bool)</code></td>
+<td>設定選中狀態</td>
+</tr>
+</tbody>
+</table>
+<h3>靜態方法 <code>Radio.createGroup(config)</code> （推薦）</h3>
+<pre><code class="language-javascript">const group = Radio.createGroup({
+    name: 'color',
+    items: [
+        { label: '紅色', value: 'red' },
+        { label: '藍色', value: 'blue' },
+        { label: '綠色', value: 'green', disabled: true }
+    ],
+    value: 'red',                    // 初始選中值
+    direction: 'horizontal',         // 'vertical' | 'horizontal'
+    size: 'medium',                  // 傳遞至各 Radio
+    onChange: (value) =&gt; {}          // 選中值變更回調
+});
+</code></pre>
+<h3>Group 方法</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>group.mount(container)</code></td>
+<td>掛載群組至容器</td>
+</tr>
+<tr>
+<td><code>group.getValue()</code></td>
+<td>取得選中值</td>
+</tr>
+<tr>
+<td><code>group.setValue(value)</code></td>
+<td>設定選中值</td>
+</tr>
+<tr>
+<td><code>group.setValue(null)</code></td>
+<td>清除選取（所有 Radio 取消選中）</td>
+</tr>
+<tr>
+<td><code>group.destroy()</code></td>
+<td>銷毀群組（含所有 Radio）</td>
+</tr>
+</tbody>
+</table>
+<h2>使用範例</h2>
+<pre><code class="language-javascript">import { Radio } from './Radio.js';
+
+const group = Radio.createGroup({
+    name: 'priority',
+    items: [
+        { label: '高', value: 'high' },
+        { label: '中', value: 'medium' },
+        { label: '低', value: 'low' }
+    ],
+    value: 'medium',
+    direction: 'horizontal',
+    onChange: (val) =&gt; console.log('優先級:', val)
+});
+group.mount('#priority-container');
+</code></pre>
+<h2>Demo</h2>
+<p><code>demo.html</code>（同目錄）</p>
+</main>
+</body>
+</html>

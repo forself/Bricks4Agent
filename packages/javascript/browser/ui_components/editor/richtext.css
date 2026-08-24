@@ -1,0 +1,49 @@
+/*
+ * richtext.css — 富文本結構樣式 class(字級/對齊/行距)+ 渲染容器
+ *
+ * 顏色與透明度改由 palette.css 提供(--cl-<hue>-<step> token + .rt-color-* + .opacity-*)。
+ * 編輯器與「渲染已存富文本」的頁面需同時引入 palette.css + 本檔。
+ * class 白名單見 richtext-palette.js ALLOWED_CLASS_PATTERN。
+ */
+
+/* ── 字級(rt-size-*) ── */
+.rt-size-xs { font-size: var(--cl-font-size-xs); }
+.rt-size-sm { font-size: var(--cl-font-size-sm); }
+.rt-size-md { font-size: var(--cl-font-size-md); }
+.rt-size-lg { font-size: var(--cl-font-size-lg); }
+.rt-size-xl { font-size: var(--cl-font-size-xl); }
+.rt-size-2xl { font-size: var(--cl-font-size-2xl); }
+.rt-size-3xl { font-size: var(--cl-font-size-3xl); }
+.rt-size-4xl { font-size: var(--cl-font-size-4xl); }
+.rt-size-5xl { font-size: var(--cl-font-size-5xl); }
+
+/* ── 對齊(rt-align-*) ── */
+.rt-align-left { text-align: left; }
+.rt-align-center { text-align: center; }
+.rt-align-right { text-align: right; }
+.rt-align-justify { text-align: justify; }
+
+/* ── 行距(rt-lh-*) ── */
+.rt-lh-1 { line-height: 1; }
+.rt-lh-15 { line-height: 1.5; }
+.rt-lh-2 { line-height: 2; }
+.rt-lh-3 { line-height: 3; }
+
+/* ── 渲染容器:頁面顯示「已存富文本」時包一層 .rich-content ── */
+.rich-content { color: var(--cl-text); font-family: var(--cl-font-family-cjk), var(--cl-font-family); line-height: 1.6; word-break: break-word; }
+.rich-content h1 { font-size: var(--cl-font-size-3xl); margin: 0.6em 0 0.4em; }
+.rich-content h2 { font-size: var(--cl-font-size-2xl); margin: 0.6em 0 0.4em; }
+.rich-content h3 { font-size: var(--cl-font-size-xl); margin: 0.6em 0 0.4em; }
+.rich-content p { margin: 0.4em 0; }
+.rich-content blockquote { border-left: 4px solid var(--cl-border); margin: 0.6em 0; padding: 4px 12px; color: var(--cl-text-secondary); }
+.rich-content pre, .rich-content code { font-family: var(--cl-font-family-mono); background: var(--cl-bg-secondary); border-radius: var(--cl-radius-sm); }
+.rich-content pre { padding: 8px 12px; overflow: auto; }
+.rich-content hr { border: none; border-top: 1px solid var(--cl-border); margin: 1em 0; }
+.rich-content a { color: var(--cl-primary); }
+.rich-content img { max-width: 100%; }
+.rich-content ul, .rich-content ol { margin: 0.4em 0; padding-left: 1.6em; }
+.rich-content table { border-collapse: collapse; width: 100%; margin: 0.6em 0; }
+.rich-content table td, .rich-content table th { border: 1px solid var(--cl-border); padding: 8px; text-align: left; }
+.rich-content table th { background: var(--cl-bg-secondary); font-weight: bold; }
+/* WebPainter 內嵌圖:unscoped,編輯器內與渲染容器內皆適用(取代舊 inline style) */
+.web-painter-embed { cursor: pointer; border: 2px dashed var(--cl-border-dark); max-width: 100%; display: block; margin: 10px auto; }

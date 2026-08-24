@@ -267,6 +267,7 @@ public class BrokerService : IBrokerService
                 Reason = policyResult.Reason,
                 Status = ApprovalStatus.Pending,
                 ApproverTier = policyResult.RequiredApproverTier,
+                RequiredApprovalCount = policyResult.RequiredApprovalCount,
                 OwnerPrincipalId = principalId,
                 CreatedAt = DateTime.UtcNow,
                 ExpiresAt = DateTime.UtcNow.AddSeconds(capability.TtlSeconds > 0 ? capability.TtlSeconds : 900),
@@ -389,6 +390,12 @@ public class BrokerService : IBrokerService
     public IReadOnlyList<ApprovalRequest> ListPendingApprovalsForApprover(string approverId, bool isAdmin)
     {
         var pending = ListPendingApprovals();
+        if (isAdmin && !string.IsNullOrWhiteSpace(approverId))
+        {
+            return pending
+                .Where(a => GetApprovalDecision(a.ApprovalId, approverId) == null)
+                .ToList();
+        }
         if (isAdmin) return pending; // 管理員看全部
         // 使用者只看自己擁有的 User 層
         return pending
@@ -415,6 +422,12 @@ public class BrokerService : IBrokerService
     private ApprovalDetail BuildApprovalDetail(ApprovalRequest a)
     {
         var req = _db.Get<ExecutionRequest>(a.RequestId);
+        var approvedDecisions = ListApprovalDecisions(a.ApprovalId, ApprovalDecisionKind.Approved);
+        var approverIds = approvedDecisions
+            .Select(d => d.ApproverId)
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
         return new ApprovalDetail
         {
             ApprovalId = a.ApprovalId,
@@ -424,6 +437,9 @@ public class BrokerService : IBrokerService
             OwnerPrincipalId = a.OwnerPrincipalId,
             Reason = a.Reason,
             Intent = req?.Intent ?? string.Empty,
+            RequiredApprovalCount = RequiredApprovalCount(a),
+            ApprovedCount = approverIds.Length,
+            ApproverIds = approverIds,
             CreatedAt = a.CreatedAt,
             ExpiresAt = a.ExpiresAt,
             Rendered = BuildRendered(a.CapabilityId, req?.RequestPayload ?? "{}")
@@ -481,6 +497,44 @@ public class BrokerService : IBrokerService
             && string.Equals(approverId, approval.OwnerPrincipalId, StringComparison.Ordinal);
     }
 
+    private static int RequiredApprovalCount(ApprovalRequest approval)
+        => Math.Max(1, approval.RequiredApprovalCount);
+
+    private ApprovalDecision? GetApprovalDecision(string approvalId, string approverId)
+    {
+        return _db.QueryFirst<ApprovalDecision>(
+            "SELECT * FROM approval_decisions WHERE approval_id = @approvalId AND approver_id = @approverId",
+            new { approvalId, approverId });
+    }
+
+    private IReadOnlyList<ApprovalDecision> ListApprovalDecisions(
+        string approvalId,
+        ApprovalDecisionKind decision)
+    {
+        return _db.Query<ApprovalDecision>(
+            "SELECT * FROM approval_decisions WHERE approval_id = @approvalId AND decision = @decision ORDER BY created_at",
+            new { approvalId, decision = (int)decision });
+    }
+
+    private void RecordApprovalDecision(
+        ApprovalRequest approval,
+        string approverId,
+        string reason,
+        bool isAdmin,
+        ApprovalDecisionKind decision)
+    {
+        _db.Insert(new ApprovalDecision
+        {
+            DecisionId = IdGen.New("apd"),
+            ApprovalId = approval.ApprovalId,
+            ApproverId = approverId,
+            IsAdmin = isAdmin,
+            Decision = decision,
+            Reason = reason,
+            CreatedAt = DateTime.UtcNow
+        });
+    }
+
     /// <inheritdoc />
     public async Task<ExecutionRequest?> ApproveExecutionAsync(string approvalId, string approverId, string reason, bool isAdmin = false)
     {
@@ -489,6 +543,9 @@ public class BrokerService : IBrokerService
             return null;
 
         if (!IsAuthorizedApprover(approval, approverId, isAdmin))
+            return null;
+
+        if (string.IsNullOrWhiteSpace(approverId) || GetApprovalDecision(approvalId, approverId) != null)
             return null;
 
         var request = _db.Get<ExecutionRequest>(approval.RequestId);
@@ -517,21 +574,59 @@ public class BrokerService : IBrokerService
                 Models.PolicyDecision.Deny, "Capability or grant no longer available at approval time.");
         }
 
+        RecordApprovalDecision(approval, approverId, reason, isAdmin, ApprovalDecisionKind.Approved);
+        var approvedDecisions = ListApprovalDecisions(approvalId, ApprovalDecisionKind.Approved);
+        var requiredCount = RequiredApprovalCount(approval);
+        var approverIds = approvedDecisions
+            .Select(d => d.ApproverId)
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+
+        if (approverIds.Length < requiredCount)
+        {
+            approval.ApproverId = string.Join(",", approverIds);
+            approval.DecisionReason = $"Approved by {approverId}; waiting for {requiredCount - approverIds.Length} more approval(s).";
+            _db.Update(approval);
+
+            request.PolicyReason = $"Approval progress {approverIds.Length}/{requiredCount}.";
+            request.UpdatedAt = DateTime.UtcNow;
+            UpdateState(request);
+
+            _auditService.RecordEvent(approval.TraceId, "APPROVAL_PARTIAL_APPROVED",
+                approverId, approval.TaskId, approval.SessionId, approval.CapabilityId,
+                JsonSerializer.Serialize(new
+                {
+                    approval_id = approvalId,
+                    reason,
+                    approved_count = approverIds.Length,
+                    required_count = requiredCount
+                }));
+
+            return request;
+        }
+
         approval.Status = ApprovalStatus.Approved;
-        approval.ApproverId = approverId;
+        approval.ApproverId = string.Join(",", approverIds);
         approval.DecisionReason = reason;
         approval.DecidedAt = DateTime.UtcNow;
         _db.Update(approval);
 
         request.ExecutionState = ExecutionState.Allowed;
         request.PolicyDecision = Models.PolicyDecision.Allow;
-        request.PolicyReason = $"Approved by {approverId}: {reason}";
+        request.PolicyReason = $"Approved by {string.Join(", ", approverIds)}: {reason}";
         request.UpdatedAt = DateTime.UtcNow;
         UpdateState(request);
 
         _auditService.RecordEvent(approval.TraceId, "EXECUTION_APPROVED",
             approverId, approval.TaskId, approval.SessionId, approval.CapabilityId,
-            JsonSerializer.Serialize(new { approval_id = approvalId, reason }));
+            JsonSerializer.Serialize(new
+            {
+                approval_id = approvalId,
+                reason,
+                approved_count = approverIds.Length,
+                required_count = requiredCount
+            }));
 
         return await DispatchAndRecordAsync(request, capability, grant);
     }
@@ -545,6 +640,11 @@ public class BrokerService : IBrokerService
 
         if (!IsAuthorizedApprover(approval, approverId, isAdmin))
             return null;
+
+        if (string.IsNullOrWhiteSpace(approverId) || GetApprovalDecision(approvalId, approverId) != null)
+            return null;
+
+        RecordApprovalDecision(approval, approverId, reason, isAdmin, ApprovalDecisionKind.Rejected);
 
         approval.Status = ApprovalStatus.Rejected;
         approval.ApproverId = approverId;

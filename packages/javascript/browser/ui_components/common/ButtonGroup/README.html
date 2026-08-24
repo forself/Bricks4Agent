@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ButtonGroup</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>ButtonGroup</h1>
+<p>按鈕群組容器，將相關按鈕組織在一起，支援水平/垂直佈局、分隔線、多種主題。另含 <code>EditorToolbar</code> 類別可組合多個 ButtonGroup。</p>
+<h2>API</h2>
+<h3>ButtonGroup Constructor</h3>
+<pre><code class="language-js">new ButtonGroup(options?)
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>參數</th>
+<th>型別</th>
+<th>預設值</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>options.buttons</code></td>
+<td><code>Array</code></td>
+<td><code>[]</code></td>
+<td>按鈕陣列（具 <code>element</code> 屬性的物件或 HTMLElement）</td>
+</tr>
+<tr>
+<td><code>options.direction</code></td>
+<td><code>string</code></td>
+<td><code>'horizontal'</code></td>
+<td>佈局方向：<code>'horizontal'</code>/<code>'vertical'</code></td>
+</tr>
+<tr>
+<td><code>options.gap</code></td>
+<td><code>string</code></td>
+<td><code>'4px'</code></td>
+<td>按鈕間距</td>
+</tr>
+<tr>
+<td><code>options.showSeparator</code></td>
+<td><code>boolean</code></td>
+<td><code>false</code></td>
+<td>是否在群組末端顯示分隔線</td>
+</tr>
+<tr>
+<td><code>options.separatorColor</code></td>
+<td><code>string</code></td>
+<td><code>null</code></td>
+<td>分隔線顏色（預設依主題）</td>
+</tr>
+<tr>
+<td><code>options.theme</code></td>
+<td><code>string</code></td>
+<td><code>'light'</code></td>
+<td>主題：<code>'light'</code>/<code>'dark'</code>/<code>'gradient'</code></td>
+</tr>
+<tr>
+<td><code>options.align</code></td>
+<td><code>string</code></td>
+<td><code>'start'</code></td>
+<td>對齊：<code>'start'</code>/<code>'center'</code>/<code>'end'</code></td>
+</tr>
+<tr>
+<td><code>options.wrap</code></td>
+<td><code>boolean</code></td>
+<td><code>true</code></td>
+<td>是否允許換行</td>
+</tr>
+</tbody>
+</table>
+<h3>ButtonGroup 方法</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>回傳</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>addButton(button)</code></td>
+<td><code>this</code></td>
+<td>新增按鈕</td>
+</tr>
+<tr>
+<td><code>removeButton(index)</code></td>
+<td><code>this</code></td>
+<td>依索引移除按鈕</td>
+</tr>
+<tr>
+<td><code>clear()</code></td>
+<td><code>this</code></td>
+<td>清空所有按鈕</td>
+</tr>
+<tr>
+<td><code>mount(container)</code></td>
+<td><code>this</code></td>
+<td>掛載至容器</td>
+</tr>
+<tr>
+<td><code>destroy()</code></td>
+<td><code>void</code></td>
+<td>銷毀元件</td>
+</tr>
+</tbody>
+</table>
+<h3>EditorToolbar Constructor</h3>
+<pre><code class="language-js">new EditorToolbar(options?)
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>參數</th>
+<th>型別</th>
+<th>預設值</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>options.groups</code></td>
+<td><code>Array</code></td>
+<td><code>[]</code></td>
+<td>ButtonGroup 實例陣列</td>
+</tr>
+<tr>
+<td><code>options.theme</code></td>
+<td><code>string</code></td>
+<td><code>'light'</code></td>
+<td>主題</td>
+</tr>
+<tr>
+<td><code>options.position</code></td>
+<td><code>string</code></td>
+<td><code>'top'</code></td>
+<td>位置：<code>'top'</code>/<code>'bottom'</code></td>
+</tr>
+<tr>
+<td><code>options.sticky</code></td>
+<td><code>boolean</code></td>
+<td><code>false</code></td>
+<td>是否黏著</td>
+</tr>
+<tr>
+<td><code>options.background</code></td>
+<td><code>string</code></td>
+<td><code>null</code></td>
+<td>自訂背景色</td>
+</tr>
+<tr>
+<td><code>options.padding</code></td>
+<td><code>string</code></td>
+<td><code>'8px 12px'</code></td>
+<td>內邊距</td>
+</tr>
+</tbody>
+</table>
+<h3>EditorToolbar 方法</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>回傳</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>addGroup(group)</code></td>
+<td><code>this</code></td>
+<td>新增群組</td>
+</tr>
+<tr>
+<td><code>mount(container)</code></td>
+<td><code>this</code></td>
+<td>掛載至容器</td>
+</tr>
+<tr>
+<td><code>destroy()</code></td>
+<td><code>void</code></td>
+<td>銷毀元件</td>
+</tr>
+</tbody>
+</table>
+<h2>使用範例</h2>
+<pre><code class="language-js">import { ButtonGroup, EditorToolbar } from './ButtonGroup.js';
+
+// 建立按鈕群組
+const group = new ButtonGroup({
+    buttons: [btn1, btn2, btn3],
+    showSeparator: true
+});
+group.mount('#toolbar');
+
+// 組合為工具列
+const toolbar = new EditorToolbar({
+    groups: [group1, group2],
+    theme: 'dark',
+    sticky: true
+});
+toolbar.mount('#editor');
+</code></pre>
+<h2>Demo</h2>
+<p>開啟 <code>demo.html</code> 直接在瀏覽器測試。</p>
+</main>
+</body>
+</html>

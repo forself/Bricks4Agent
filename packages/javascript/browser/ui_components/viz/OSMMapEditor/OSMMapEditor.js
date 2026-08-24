@@ -18,6 +18,8 @@ import { EditorButton } from '../../common/EditorButton/index.js';
 import { UploadButton } from '../../common/UploadButton/index.js';
 import { ModalPanel } from '../../layout/Panel/index.js';
 import Locale from '../../i18n/index.js';
+import { nextUid } from '../../utils/uid.js';
+import { FALLBACK_PAINT, onThemeChange, resolveTokens } from '../../utils/theme-bus.js';
 
 export class OSMMapEditor extends WebPainter {
 
@@ -43,8 +45,17 @@ export class OSMMapEditor extends WebPainter {
         }
     };
 
+    /** 子類可覆寫:預設圖磚鍵 / 疊層標題(null=用 locale 字串)/ LeafletMap 初始底圖鍵('nlsc'|'nlsc-photo'|'osm') */
+    static DEFAULT_TILE_KEY = 'osm';
+    static MAP_TITLE = null;
+    static LEAFLET_BASE_LAYER = 'osm';
+
     constructor(options = {}) {
         super(options);
+
+        this._childComponents = new Set();
+        this._destroyed = false;
+        this._invalidateSizeTimer = null;
 
         // 地圖相關
         this.leafletMap = null;
@@ -52,7 +63,7 @@ export class OSMMapEditor extends WebPainter {
         this.showingMap = false;
         this.mapCenter = options.center || { lat: 25.033, lng: 121.565 };
         this.mapZoom = options.zoom || 12;
-        this.tileLayerKey = options.tileLayer || 'osm';
+        this.tileLayerKey = options.tileLayer || this.constructor.DEFAULT_TILE_KEY;
         this.customTileLayers = options.tileLayers || {};
 
         // 座標顯示
@@ -69,6 +80,8 @@ export class OSMMapEditor extends WebPainter {
         // 比例尺與指北針
         this.scaleControl = null;
         this.compassControl = null;
+        this._compassCanvas = null;
+        this._offCompassTheme = null;
         this.showCompass = options.showCompass !== false;
         this.showScale = options.showScale !== false;
         this.showCoords = options.showCoords !== false;
@@ -97,6 +110,7 @@ export class OSMMapEditor extends WebPainter {
             onClick: () => this._toggleMap()
         });
         mapBtn.mount(toolbar);
+        this._childComponents.add(mapBtn);
         this._mapBtn = mapBtn;
 
         // 分隔線
@@ -110,6 +124,7 @@ export class OSMMapEditor extends WebPainter {
             onClick: () => this._toggleMeasureMode('distance')
         });
         distanceBtn.mount(toolbar);
+        this._childComponents.add(distanceBtn);
         this._distanceBtn = distanceBtn;
 
         // 面積測量
@@ -119,6 +134,7 @@ export class OSMMapEditor extends WebPainter {
             onClick: () => this._toggleMeasureMode('area')
         });
         areaBtn.mount(toolbar);
+        this._childComponents.add(areaBtn);
         this._areaBtn = areaBtn;
 
         // 分隔線
@@ -132,6 +148,7 @@ export class OSMMapEditor extends WebPainter {
             onClick: () => this._exportGeoJSON()
         });
         exportBtn.mount(toolbar);
+        this._childComponents.add(exportBtn);
 
         // 匯入 GeoJSON
         const importBtn = new UploadButton({
@@ -141,6 +158,7 @@ export class OSMMapEditor extends WebPainter {
             onSelect: (files) => this._importGeoJSON(files[0])
         });
         importBtn.mount(toolbar);
+        this._childComponents.add(importBtn);
 
         // 建立地圖容器
         this._createMapContainer();
@@ -183,7 +201,7 @@ export class OSMMapEditor extends WebPainter {
         `;
 
         const title = document.createElement('h3');
-        title.textContent = `🗺️ ${strings.mapTitle || 'OpenStreetMap'}`;
+        title.textContent = `🗺️ ${this.constructor.MAP_TITLE || strings.mapTitle || 'OpenStreetMap'}`;
         title.style.margin = '0';
 
         const closeBtn = document.createElement('button');
@@ -272,6 +290,7 @@ export class OSMMapEditor extends WebPainter {
         });
         captureButton.element.style.cssText = 'margin-bottom: 12px; width: 100%;';
         captureButton.mount(controls);
+        this._childComponents.add(captureButton);
 
         // 圖磚源切換
         const layerSelector = document.createElement('select');
@@ -284,7 +303,7 @@ export class OSMMapEditor extends WebPainter {
             font-size: var(--cl-font-size-lg);
         `;
 
-        const allLayers = { ...OSMMapEditor.TILE_LAYERS, ...this.customTileLayers };
+        const allLayers = { ...this.constructor.TILE_LAYERS, ...this.customTileLayers };
         Object.entries(allLayers).forEach(([key, layer]) => {
             const option = document.createElement('option');
             option.value = key;
@@ -297,14 +316,16 @@ export class OSMMapEditor extends WebPainter {
         controls.appendChild(layerSelector);
 
         const hint = document.createElement('div');
-        hint.innerHTML = `
-            <div style="background: var(--cl-bg-secondary); padding: 12px; border-radius: var(--cl-radius-md); font-size: var(--cl-font-size-md); color: var(--cl-text-secondary); line-height: 1.8;">
+        const hintBox = document.createElement('div');
+        // CSP style-src 'self':inline style 屬性會被剝除,改用 CSSOM cssText
+        hintBox.style.cssText = 'background: var(--cl-bg-secondary); padding: 12px; border-radius: var(--cl-radius-md); font-size: var(--cl-font-size-md); color: var(--cl-text-secondary); line-height: 1.8;';
+        hintBox.innerHTML = `
                 <div>🗺️ ${strings.hintDrag || 'Drag to adjust position'}</div>
                 <div>🔍 ${strings.hintZoom || 'Scroll to zoom'}</div>
                 <div>📸 ${strings.hintCapture || 'Capture frame content'}</div>
                 <div>📏 ${strings.hintMeasure || 'Use toolbar to measure'}</div>
-            </div>
         `;
+        hint.appendChild(hintBox);
         controls.appendChild(hint);
 
         mapWrapper.appendChild(mapDiv);
@@ -348,7 +369,11 @@ export class OSMMapEditor extends WebPainter {
         if (this.showingMap && !this.leafletMap) {
             this._initMap();
         } else if (this.showingMap && this.leafletMap && this.leafletMap.map) {
-            setTimeout(() => this.leafletMap.map.invalidateSize(), 100);
+            if (this._invalidateSizeTimer) clearTimeout(this._invalidateSizeTimer);
+            this._invalidateSizeTimer = setTimeout(() => {
+                this._invalidateSizeTimer = null;
+                this.leafletMap?.map?.invalidateSize?.();
+            }, 100);
         }
     }
 
@@ -358,8 +383,15 @@ export class OSMMapEditor extends WebPainter {
                 container: this._mapDiv,
                 center: this.mapCenter,
                 zoom: this.mapZoom,
-                tileLayer: 'osm',
-                onReady: () => {
+                tileLayer: this.constructor.LEAFLET_BASE_LAYER,
+                preferCanvas: true,
+                onReady: (leafletMap) => {
+                    // Leaflet may initialize synchronously when its global is
+                    // already loaded, before the constructor assignment ends.
+                    this.leafletMap = leafletMap;
+                    // LeafletMap preserves custom options; set the native map
+                    // option before editor vector layers request a renderer.
+                    if (leafletMap?.map) leafletMap.map.options.preferCanvas = true;
                     // 設定自訂圖磚（覆寫 LeafletMap 預設的 NLSC）
                     this._switchTileLayer(this.tileLayerKey);
                     this._setupMapEvents();
@@ -375,7 +407,7 @@ export class OSMMapEditor extends WebPainter {
     _switchTileLayer(key) {
         if (!this.leafletMap || !this.leafletMap.map) return;
 
-        const allLayers = { ...OSMMapEditor.TILE_LAYERS, ...this.customTileLayers };
+        const allLayers = { ...this.constructor.TILE_LAYERS, ...this.customTileLayers };
         const layer = allLayers[key];
         if (!layer) return;
 
@@ -518,12 +550,21 @@ export class OSMMapEditor extends WebPainter {
     }
 
     _loadHtml2Canvas() {
-        return new Promise((resolve, reject) => {
+        // 庫內 vendored 1.4.1 優先(SHA-512 與下方 CDN SRI 相同;零外網、嚴格 CSP 可用),缺檔才退 CDN
+        const VENDOR = new URL('../../vendor/html2canvas/html2canvas.min.js', import.meta.url).href;
+        const CDN = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+        const CDN_SRI = 'sha512-BNaRQnYJYiPSqHHDb58B0yaPfCu+Wgds8Gp/gU33kqBtgNS4tSPHuGibyoeqMV/TJlSKda6FXzoEyYGjTe+vXA==';
+        const load = (src, integrity) => new Promise((resolve, reject) => {
             const script = document.createElement('script');
-            script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+            script.src = src;
+            if (integrity) { script.integrity = integrity; script.crossOrigin = 'anonymous'; }
             script.onload = resolve;
-            script.onerror = () => reject(new Error('Failed to load html2canvas'));
+            script.onerror = () => reject(new Error('Failed to load html2canvas: ' + src));
             document.head.appendChild(script);
+        });
+        return load(VENDOR).catch(() => {
+            console.warn('[OSMMapEditor] 本地 html2canvas 載入失敗,改用 CDN 備援(離線/嚴格 CSP 請確認 vendor/html2canvas/ 已部署)');
+            return load(CDN, CDN_SRI);
         });
     }
 
@@ -551,15 +592,24 @@ export class OSMMapEditor extends WebPainter {
         const coordDisplay = document.createElement('div');
         coordDisplay.style.cssText = 'margin-bottom: 8px; line-height: 1.6;';
         coordDisplay.innerHTML = `
-            <div style="color: var(--cl-text-secondary); margin-bottom: 4px;">
-                <span style="display: inline-block; width: 50px;">${strings.latitude || 'Lat'}:</span>
-                <span class="coord-lat" style="color: var(--cl-text); font-weight: bold;">--</span>
+            <div>
+                <span>${strings.latitude || 'Lat'}:</span>
+                <span class="coord-lat">--</span>
             </div>
-            <div style="color: var(--cl-text-secondary);">
-                <span style="display: inline-block; width: 50px;">${strings.longitude || 'Lng'}:</span>
-                <span class="coord-lng" style="color: var(--cl-text); font-weight: bold;">--</span>
+            <div>
+                <span>${strings.longitude || 'Lng'}:</span>
+                <span class="coord-lng">--</span>
             </div>
         `;
+        // CSP style-src 'self':inline style 屬性會被剝除,渲染後以 CSSOM 指派(結構不變)
+        coordDisplay.querySelectorAll(':scope > div').forEach((row, i) => {
+            row.style.cssText = i === 0
+                ? 'color: var(--cl-text-secondary); margin-bottom: 4px;'
+                : 'color: var(--cl-text-secondary);';
+            const [labelSpan, valueSpan] = row.children;
+            labelSpan.style.cssText = 'display: inline-block; width: 50px;';
+            valueSpan.style.cssText = 'color: var(--cl-text); font-weight: bold;';
+        });
         panel.appendChild(coordDisplay);
 
         // DD/DMS 切換
@@ -743,14 +793,14 @@ export class OSMMapEditor extends WebPainter {
             cursor: pointer;
         `;
 
-        compass.innerHTML = `
-            <svg width="40" height="40" viewBox="0 0 40 40">
-                <circle cx="20" cy="20" r="18" fill="none" stroke="var(--cl-border)" stroke-width="1"/>
-                <polygon points="20,4 24,20 20,17 16,20" fill="var(--cl-danger)" stroke="var(--cl-danger-dark)" stroke-width="0.5"/>
-                <polygon points="20,36 24,20 20,23 16,20" fill="var(--cl-grey-dark)" stroke="var(--cl-text)" stroke-width="0.5"/>
-                <text x="20" y="8" text-anchor="middle" font-size="6" font-weight="bold" fill="var(--cl-text)">N</text>
-            </svg>
-        `;
+        const canvas = document.createElement('canvas');
+        const dpr = Math.max(1, window.devicePixelRatio || 1);
+        canvas.width = Math.round(40 * dpr);
+        canvas.height = Math.round(40 * dpr);
+        canvas.style.width = '40px';
+        canvas.style.height = '40px';
+        canvas.setAttribute('aria-hidden', 'true');
+        compass.appendChild(canvas);
 
         compass.title = strings.compass || 'Compass - Click to reset';
         compass.onclick = () => {
@@ -761,6 +811,68 @@ export class OSMMapEditor extends WebPainter {
 
         mapWrapper.appendChild(compass);
         this.compassControl = compass;
+        this._compassCanvas = canvas;
+        this._drawCompass();
+        if (this._offCompassTheme) this._offCompassTheme();
+        this._offCompassTheme = onThemeChange(() => this._drawCompass());
+    }
+
+    _drawCompass() {
+        if (!this._compassCanvas) return;
+
+        const dpr = Math.max(1, window.devicePixelRatio || 1);
+        const canvas = this._compassCanvas;
+        const expectedSize = Math.round(40 * dpr);
+        if (canvas.width !== expectedSize || canvas.height !== expectedSize) {
+            canvas.width = expectedSize;
+            canvas.height = expectedSize;
+        }
+
+        const ctx = canvas.getContext('2d');
+        const tok = resolveTokens([
+            '--cl-border',
+            '--cl-danger',
+            '--cl-danger-dark',
+            '--cl-grey-dark',
+            '--cl-text'
+        ], this.compassControl);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.clearRect(0, 0, 40, 40);
+
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = tok['--cl-border'] || FALLBACK_PAINT;
+        ctx.beginPath();
+        ctx.arc(20, 20, 18, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.lineWidth = 0.5;
+        ctx.fillStyle = tok['--cl-danger'] || FALLBACK_PAINT;
+        ctx.strokeStyle = tok['--cl-danger-dark'] || FALLBACK_PAINT;
+        ctx.beginPath();
+        ctx.moveTo(20, 4);
+        ctx.lineTo(24, 20);
+        ctx.lineTo(20, 17);
+        ctx.lineTo(16, 20);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = tok['--cl-grey-dark'] || FALLBACK_PAINT;
+        ctx.strokeStyle = tok['--cl-text'] || FALLBACK_PAINT;
+        ctx.beginPath();
+        ctx.moveTo(20, 36);
+        ctx.lineTo(24, 20);
+        ctx.lineTo(20, 23);
+        ctx.lineTo(16, 20);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = tok['--cl-text'] || FALLBACK_PAINT;
+        ctx.font = 'bold 6px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'alphabetic';
+        ctx.fillText('N', 20, 8);
     }
 
     // ============================================
@@ -1070,7 +1182,7 @@ export class OSMMapEditor extends WebPainter {
 
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/geo+json' });
         const link = document.createElement('a');
-        link.download = `map-data-${Date.now()}.geojson`;
+        link.download = `${nextUid('map-data')}.geojson`;
         link.href = URL.createObjectURL(blob);
         link.click();
         URL.revokeObjectURL(link.href);
@@ -1236,6 +1348,41 @@ export class OSMMapEditor extends WebPainter {
     /** 取得底層 Leaflet map 實例 */
     getMap() {
         return this.leafletMap?.map || null;
+    }
+
+    destroy() {
+        if (this._destroyed) return;
+        this._destroyed = true;
+
+        if (this._invalidateSizeTimer) {
+            clearTimeout(this._invalidateSizeTimer);
+            this._invalidateSizeTimer = null;
+        }
+
+        if (this._offCompassTheme) {
+            this._offCompassTheme();
+            this._offCompassTheme = null;
+        }
+        if (this.leafletMap?.destroy) this.leafletMap.destroy();
+        this.leafletMap = null;
+
+        for (const component of this._childComponents) {
+            component?.destroy?.();
+        }
+        this._childComponents.clear();
+        this._mapBtn = null;
+        this._distanceBtn = null;
+        this._areaBtn = null;
+
+        this._compassCanvas = null;
+        this.compassControl = null;
+        this.scaleControl = null;
+        this.coordPanel = null;
+        this.mapContainer?.remove();
+        this.mapContainer = null;
+        this._mapDiv = null;
+        this._mapWrapper = null;
+        super.destroy();
     }
 }
 

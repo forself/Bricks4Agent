@@ -14,14 +14,14 @@ builder.Services.AddScoped<IAccountLockService, AccountLockService>();
 ### 當前使用者端點
 
 | 方法 | 路由 | 說明 | 權限 |
-|------|------|------|------|
+|---|---|---|---|
 | `GET` | `/api/account-locks/my/status` | 取得自己的鎖定狀態 | `[Authorize]` |
 | `GET` | `/api/account-locks/my/history?limit=20` | 取得自己的鎖定歷史 | `[Authorize]` |
 
 ### 管理員 — 帳號鎖定
 
 | 方法 | 路由 | 說明 | 權限 |
-|------|------|------|------|
+|---|---|---|---|
 | `GET` | `/api/account-locks/users/{userId}/check` | 檢查使用者是否被鎖定 | `Admin,SecurityAdmin` |
 | `GET` | `/api/account-locks/users/{userId}/status` | 取得使用者鎖定狀態 | `Admin,SecurityAdmin` |
 | `GET` | `/api/account-locks/users/{userId}/history?limit=50` | 取得使用者鎖定歷史 | `Admin,SecurityAdmin` |
@@ -34,7 +34,7 @@ builder.Services.AddScoped<IAccountLockService, AccountLockService>();
 ### 管理員 — IP 鎖定
 
 | 方法 | 路由 | 說明 | 權限 |
-|------|------|------|------|
+|---|---|---|---|
 | `GET` | `/api/account-locks/ips/check?ipAddress=...` | 檢查 IP 是否被鎖定 | `Admin,SecurityAdmin` |
 | `POST` | `/api/account-locks/ips/lock` | 鎖定 IP 位址 | `Admin,SecurityAdmin` |
 | `POST` | `/api/account-locks/ips/unlock` | 解鎖 IP 位址 | `Admin,SecurityAdmin` |
@@ -44,7 +44,7 @@ builder.Services.AddScoped<IAccountLockService, AccountLockService>();
 ### 統計
 
 | 方法 | 路由 | 說明 | 權限 |
-|------|------|------|------|
+|---|---|---|---|
 | `GET` | `/api/account-locks/statistics?days=7` | 取得鎖定統計（1-90 天） | `Admin,SecurityAdmin` |
 
 ## 使用範例
@@ -93,7 +93,7 @@ Content-Type: application/json
 ## 依賴清單
 
 | 依賴 | 說明 |
-|------|------|
+|---|---|
 | `IAccountLockService` | 帳號鎖定服務介面（需自行實作） |
 | `ILogger<AccountLockController>` | ASP.NET Core 日誌服務 |
 | `Microsoft.AspNetCore.Authorization` | 授權屬性 |
@@ -102,7 +102,11 @@ Content-Type: application/json
 ## 相關 DTO
 
 - `LockUserRequest` — 鎖定使用者請求（LockType, Scope, Reason, DurationMinutes 等）
+
 - `UnlockUserRequest` — 解鎖使用者請求（LockId, Scope, Reason）
+
 - `LockIpApiRequest` — 鎖定 IP 請求（IpAddress, LockType, Reason, DurationMinutes）
+
 - `UnlockIpRequest` — 解鎖 IP 請求（IpAddress）
+
 - `UnlockResponse` — 解鎖回應（UnlockedCount）

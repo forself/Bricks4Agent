@@ -30,7 +30,7 @@ const msd = new MultiSelectDropdown({
 ### 方法
 
 | 方法 | 說明 |
-|------|------|
+|---|---|
 | `mount(container)` | 掛載至容器 |
 | `destroy()` | 銷毀元件 |
 | `getValues()` | 回傳已選值陣列 |
@@ -42,6 +42,7 @@ const msd = new MultiSelectDropdown({
 ### 屬性
 
 - `element` — 根 DOM 元素
+
 - `selectedValues` — Set，目前已選值
 
 ## 使用範例

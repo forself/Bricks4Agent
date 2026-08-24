@@ -1,33 +1,27 @@
-# SPA Generator
+# SPA Generator (Web UI)
 
-This directory contains the SPA generator workbench, not the canonical Bricks4Agent live system.
+The Web UI for the page/SPA generator — a visual workbench for building `PageDefinition`s
+and scaffolding CRUD projects.
 
-It is a self-contained generator/demo area with:
+It is a self-contained generator area with:
 
-- a generated-style frontend at `frontend/`
-- a generated-style backend at `backend/`
+- a Vanilla JS frontend at `frontend/`
+
+- a .NET 10 backend at `backend/`
+
 - helper launchers such as `server.js`, `start.bat`, and `start.sh`
-
-It does **not** represent the current LINE sidecar or broker control-plane runtime.
 
 ## Scope
 
 Use this directory when you want to:
 
 - explore the SPA generator UI
+
 - test the scaffolded frontend/backend pattern
+
 - generate or inspect template-style CRUD project structure
 
-Do not use it as the authority for:
-
-- current LINE ingress
-- current broker admin console
-- current production control-plane ports
-
-For those, use:
-
-- [README.md](/d:/Bricks4Agent/README.md)
-- [packages/csharp/workers/line-worker/README.md](/d:/Bricks4Agent/packages/csharp/workers/line-worker/README.md)
+Related: [../../AGENT.md](../../AGENT.md) (generator manual) · [../../AGENT-UI-GUIDE.md](../../AGENT-UI-GUIDE.md) (component calling convention) · [../page-gen.README.md](../page-gen.README.html) (standalone CLI).
 
 ## Quick Start
 
@@ -77,15 +71,19 @@ If `SeedData:AdminPassword` is not set, the backend generates a development pass
 That means:
 
 - the password is **not** a fixed checked-in secret
+
 - the first usable password depends on current configuration or generated startup output
 
 ## Current Backend Stack
 
 The backend in this directory currently uses:
 
-- ASP.NET Core 8 minimal API
+- ASP.NET Core 10 minimal API
+
 - SQLite
+
 - `BaseOrm`
+
 - JWT bearer auth
 
 It is not an EF Core sample.
@@ -94,7 +92,7 @@ It is not an EF Core sample.
 
 ```text
 tools/spa-generator/
-├── backend/                 # .NET 8 minimal API + BaseOrm
+├── backend/                 # .NET 10 minimal API + BaseOrm
 ├── frontend/                # Vanilla JS SPA
 ├── server.js                # Node dev server
 ├── start.bat
@@ -105,5 +103,11 @@ tools/spa-generator/
 ## Notes
 
 - `server.js` is the preferred frontend launcher because it handles API routing and `/packages/` path behavior more completely than a bare static server.
-- The generator frontend and backend use their own ports (`3080` / `5002`) and should not be confused with the LINE sidecar pair (`5357` / `5361`).
-- This directory is still useful, but it should be read as generator/workbench infrastructure rather than the current system control plane.
+
+- The generator frontend and backend use ports `3080` / `5002`.
+
+- `npm run test:dotnet10` builds this backend as part of the 35-project .NET 10
+ matrix and treats every warning as an error.
+
+- Password hashing keeps the existing PBKDF2-SHA256 storage format while using
+ the current static PBKDF2 API.

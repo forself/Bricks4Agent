@@ -1,23 +1,23 @@
 # 審批 Web 介面:分析・評估・規劃 (§18.2-C2)
 
 Date: 2026-06-13
-Status: **已實作(2026-06-13)** —— 共用後端 + 管理員分頁 + 使用者簽章連結頁 + LINE 自動送連結皆完成、測過、實機 smoke 通過。僅 §6.4(4)line.send rate-limit 待做。
+Status: **已實作(2026-06-13)** —— 共用後端 + 管理員分頁 + 使用者簽章連結頁 + LINE 自動送連結皆完成、測過、實機 smoke 通過。2026-06-20 補上 `line.message.send` / `line.audio.send` worker-local outbound rate limit；分散式 quota 與 `line.notification.send` 覆蓋仍待做。
 依據: [RiskClassificationAndApproval-2026-06-13.md](RiskClassificationAndApproval-2026-06-13.md) §6.5(兩層審批)
 銜接引擎: PolicyEngine RequireApproval(+tier)、BrokerService approve/reject/list、`ApprovalRequest` 持久化
 
 ## 1. 現況分析
 
 | 面向 | 現況 |
-|------|------|
-| **管理員 web 後台** | `line-admin.html`(單檔 vanilla JS,~1700 行,深色主題,sidebar+tabs)。認證 `LocalAdminAuthService`:**僅限 localhost**、單一共享密碼、cookie 12h。加分頁的 pattern 清楚(HTML section + nav 鈕 + state + load/render + 路由)。 |
-| **使用者 web 前台** | **不存在**。系統 API-first;使用者只經 **LINE** 或加密 API 互動。無使用者 web 登入/入口。 |
+|---|---|
+| **管理員 web 後台** | `line-admin.html`(單檔 vanilla JS,~1700 行,深色主題,sidebar+tabs)。認證 `LocalAdminAuthService`:**僅限 localhost**、單一共享密碼、cookie 12h。Local admin approver id 目前由 session 形成；dual approval 可要求兩個不同 admin session/approver id，但尚非完整 named operator account。加分頁的 pattern 清楚(HTML section + nav 鈕 + state + load/render + 路由)。 |
+| **使用者 web 前台** | 已有 `user-approvals.html`，透過 LINE 短效簽章連結進入，只能查看/決定自己的 User-tier approval。 |
 | **既有 LINE 審批** | `line.approval.request` + InboundDispatcher:**記憶體內、易失**(worker 重啟即丟)、純文字 approve/deny、一次一筆、無上下文。與新的 `ApprovalRequest`(DB 持久化)是**兩套**。 |
-| **新審批引擎** | 已完成:決策含 tier、`ApprovalRequest` 持久化、approve/reject/list/授權。**只差介面**。 |
+| **新審批引擎** | 已完成:決策含 tier、`ApprovalRequest` 持久化、`required_approval_count`、每位 approver 一筆 `approval_decisions`、approve/reject/list/授權。High / `require_approval` 仍 1 次核准；Critical / `require_dual_approval` 需兩個不同 approver id。 |
 
 ## 2. 評估:Web vs LINE(為何 web 能做得更好)
 
 | 能力 | LINE | Web |
-|------|------|-----|
+|---|---|---|
 | 待審清單 | 一次一則訊息,無總覽 | **整個佇列**,可篩選(tier/能力/時間/發起者)、待審數徽章 |
 | 請求上下文 | 只有一段文字描述 | **完整細節**:intent、能力、風險原因、tier、owner、scope |
 | **看實際內容** | 做不到 | repo.patch.apply → **渲染 patch diff(逐行 +/-)**;build.test.run → 顯示命令;file.write → 顯示路徑/內容 |
@@ -36,7 +36,7 @@ Status: **已實作(2026-06-13)** —— 共用後端 + 管理員分頁 + 使用
 
 **後端端點**(`LocalAdminEndpoints.cs`,沿用 `auth.TryRequireAuthenticated` + `IBrokerService`):
 - `GET /api/v1/local-admin/approvals` → 待審清單(含關聯 ExecutionRequest 細節:intent、payload、policy_reason、tier、owner)
-- `POST /api/v1/local-admin/approvals/{id}/approve` body `{reason}` → `broker.ApproveExecutionAsync(id, adminId, reason, isAdmin:true)`
+- `POST /api/v1/local-admin/approvals/{id}/approve` body `{reason}` → `broker.ApproveExecutionAsync(id, adminSessionApproverId, reason, isAdmin:true)`；Critical 需兩個不同 admin session/approver id 才 dispatch
 - `POST /api/v1/local-admin/approvals/{id}/reject` body `{reason}` → `broker.RejectExecution(..., isAdmin:true)`
 
 **前端**(新分頁,左清單 + 右細節/動作,沿用 .panel/.list/.item/.json/.button):
@@ -55,24 +55,29 @@ Status: **已實作(2026-06-13)** —— 共用後端 + 管理員分頁 + 使用
 **問題**:目前沒有使用者 web 認證(後台是 localhost-only,不適用使用者)。使用者要在「自己的介面」批自己權限內的(§6.5 User 層),選項:
 
 - **2a(建議):輕量使用者 web 入口 + 連結式認證**。使用者在 LINE 收到一則「有待審動作,點此查看」→ 開啟帶**短時效簽章 token** 的 web 頁(綁該 userId),頁面只列**他自己的 User 層待審**,可看內容(例如 agent 想在他資料夾寫什麼)再 approve/deny。這把「LINE 一鍵」升級成「web 看了內容再決定」,正是你要的。需新增:使用者 web 認證(簽章連結,非 localhost)、`/api/v1/user/approvals/*`(`isAdmin:false`,broker 已支援 owner 授權)、`user-approvals.html`。
+
 - 2b(暫行):User 層先沿用 LINE confirm/deny,web 先做管理員(Phase 1)。
 
 建議:**先 Phase 1(管理員後台,快又高價值),再 Phase 2a(使用者連結式 web 審批)**。LINE 仍保留為「通知 + 輕量確認」管道,但「需看內容」的決策導向 web。
 
-### Phase 3 — line.send 頻率限制(獨立小項)
+### Phase 3 — LINE send 頻率限制(獨立小項)
 
-per-user quota / rate-limit,異常量才升 High。與審批 UI 無關,可並行。
+已完成基本 worker-local rate-limit：依 recipient + capability 限制 `line.message.send` / `line.audio.send`。仍待補分散式 quota、營運級 per-user/per-channel quota、異常量升 High，以及 `line.notification.send` 覆蓋。與審批 UI 無關,可並行。
 
 ## 4. 建議落地順序
 
 1. **Phase 1 管理員審批分頁 + 端點**(test-first:端點整合測 + UI 手動驗)。← 最高 CP 值,先做。
+
 2. Phase 2a 使用者連結式 web 審批(新使用者 web 認證 + 頁面)。
-3. Phase 3 line.send rate-limit。
+
+3. Phase 3 LINE send quota/rate-limit hardening。
 
 ## 5. 已定案(owner,2026-06-13)
 
 - **兩面一起規劃再做**(管理員 + 使用者)。
+
 - 使用者面走 **2a:連結式 web**(LINE 送簽章連結 → web 看內容再批)。
+
 - **內容渲染(patch diff/命令/路徑)高優先**,是賣點。
 
 ## 6. 統一設計(兩面一起)
@@ -103,7 +108,7 @@ broker 端新增一個「審批明細」組裝(從 `ApprovalRequest` + 關聯 `E
 
 端點(`LocalAdminEndpoints.cs`,`auth.TryRequireAuthenticated`):
 - `GET  /api/v1/local-admin/approvals` → 全部 pending 的審批明細(含 rendered)。
-- `POST /api/v1/local-admin/approvals/{id}/approve` `{reason}` → `ApproveExecutionAsync(id,"local-admin",reason,isAdmin:true)`。
+- `POST /api/v1/local-admin/approvals/{id}/approve` `{reason}` → `ApproveExecutionAsync(id,adminSessionApproverId,reason,isAdmin:true)`；Critical 需兩個不同 admin session/approver id 才 dispatch。
 - `POST /api/v1/local-admin/approvals/{id}/reject` `{reason}` → `RejectExecution(...,isAdmin:true)`。
 
 UI:`line-admin.html` 新「審批」分頁(見上方 mockup)。
@@ -124,9 +129,12 @@ UI:`line-admin.html` 新「審批」分頁(見上方 mockup)。
 ### 6.4 落地順序(實作)
 
 1. ✅ **共用 ApprovalDetail 組裝 + 內容渲染**(`65db870`,6 測試)。
+
 2. ✅ **管理員端點 + line-admin.html 審批分頁**(`e3015b6`,build+JS+實機 smoke)。
+
 3. ✅ **使用者簽章連結認證 + 使用者端點 + user-approvals.html**(`752f0cc`,8 token 測試 + 實機)。
 3b. ✅ **LINE 自動送連結**:`IApprovalNotifier` seam + `LineApprovalNotifier`(`3620a45`,5 測試)—— User 層審批建立時 → 組簽章連結 → `QueueLineNotification` → line-worker 送達。
-4. ⬜ line.send rate-limit(Phase 3,獨立,待做)。
+
+4. ◐ LINE send rate-limit(Phase 3,獨立): `line.message.send` / `line.audio.send` worker-local limiter 已完成；分散式 quota 與 `line.notification.send` 覆蓋待做。
 
 實機 smoke(2026-06-13,真實 broker):使用者端點 bad token→401、`user-approvals.html`/`line-admin.html`→200、管理員端點未登入→401。

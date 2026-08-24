@@ -27,6 +27,7 @@ public static class HighLevelEndpoints
             return Results.Ok(ApiResponseHelper.Success(new
             {
                 mode = result.Mode.ToString().ToLowerInvariant(),
+                effective_user_id = result.EffectiveUserId,
                 reply = result.Reply,
                 follow_up_messages = result.FollowUpMessages,
                 error = result.Error,

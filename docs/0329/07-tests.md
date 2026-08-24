@@ -8,20 +8,27 @@
 目前實際使用的驗證入口分成四層：
 
 1. **xUnit unit tests** — 位於 `packages/csharp/tests/unit/`，目前 74 個 C# 單元測試
+
 2. **xUnit integration tests** — 位於 `packages/csharp/tests/integration/`，目前 10 個 broker 整合測試
+
 3. **broker/verify** — 位於 `packages/csharp/broker/verify/`，負責 broker 目前最密集的自驗證流程，包含 artifact delivery、signed download、JSON redaction、middleware bypass 與 `/proj` review flow 行為
+
 4. **e2e-bridge / browser tests** — `packages/csharp/tests/e2e-bridge/` 保留互動式端對端工具，`packages/javascript/browser` 目前已有 91 個 browser tests
 
 目前測試體系已不再只有 console-first 驗證。`broker-tests` / `broker/verify` 仍保留，但主要自動化層已包含：
 
 - xUnit（C# unit / integration）
+
 - Vitest（browser tests）
+
 - Playwright smoke
 
 目前可重現的結果快照：
 
 - C# unit：`74/74`
+
 - C# integration：`10/10`
+
 - browser tests：`91/91`
 
 ## 測試專案結構
@@ -47,8 +54,11 @@ packages/csharp/broker/
 ### 專案相依性
 
 - `Broker.Tests.csproj` → `Broker.csproj`（透過 `InternalsVisibleTo` 可存取 `internal` 成員）
+
 - `Broker.Verify.csproj` → `Broker.csproj`（直接驗證 broker 服務、端點與序列化行為）
+
 - `E2eBridge.csproj` → `BrokerCore.csproj`（使用 `BrokerCore.Crypto` 進行 ECDH 加密）
+
 - **這些驗證入口均未加入 `ControlPlane.slnx` 主方案檔**，需個別建置與執行。
 
 ### 執行方式
@@ -83,30 +93,50 @@ dotnet run --project packages/csharp/tests/e2e-bridge/E2eBridge.csproj -- --brok
 目前實際上有兩條不同性質的程式內驗證路徑：
 
 1. **`broker-tests`**：保留傳統的查詢、HTML 擷取、部署結果模型與 local-admin API 整合測試
+
 2. **`broker/verify`**：集中驗證 broker 近期待碼變動最多、最容易回歸的區段
 
 `broker/verify/Program.cs` 現在已經取代舊版「只測輸出字串 helper」的角色，直接建構 in-memory / sandbox 資源並驗證完整行為，重點包括：
 
 - `BrokerArtifactDownloadOptions` 預設值與 `SidecarPublicUrlResolver` 路徑解析
+
 - `BrokerArtifactDownloadService` 的 signed URL 產生、簽名驗證、過期處理與路徑硬化
+
 - `ArtifactDownloadEndpoints.HandleDownloadRequest()` 的 `200/403/410/404` 行為
+
 - broker auth / encryption middleware 對 `GET /api/v1/artifacts/download/{artifactId}` 的 bypass
+
 - `LineArtifactDeliveryService` 在以下情境的通知內容與狀態：
-  - Google Drive 上傳成功
-  - Google Drive 失敗且 broker public URL 可用，改送 broker 簽名下載連結
-  - Google Drive 失敗且無法產生 public URL，退回無連結降級訊息
-  - local-only 交付，不應誤報 Drive failure，也不應出現 broker fallback link
+
+- Google Drive 上傳成功
+
+- Google Drive 失敗且 broker public URL 可用，改送 broker 簽名下載連結
+
+- Google Drive 失敗且無法產生 public URL，退回無連結降級訊息
+
+- local-only 交付，不應誤報 Drive failure，也不應出現 broker fallback link
+
 - JSON serialization redaction：
-  - artifact `DocumentsRoot`
-  - artifact `FilePath`
-  - delivery `Artifact`
-  - Google Drive `SourcePath`
+
+- artifact `DocumentsRoot`
+
+- artifact `FilePath`
+
+- delivery `Artifact`
+
+- Google Drive `SourcePath`
+
 - 檔案安全邊界：
-  - out-of-root 路徑
-  - `..` 型檔名
-  - hard link
-  - junction
-  - 缺檔
+
+- out-of-root 路徑
+
+- `..` 型檔名
+
+- hard link
+
+- junction
+
+- 缺檔
 
 ### `broker-tests` 保留範圍
 
@@ -117,7 +147,7 @@ dotnet run --project packages/csharp/tests/e2e-bridge/E2eBridge.csproj -- --brok
 **`IsReasonableAdministrativeTerm()`** — 驗證行政區名稱過濾邏輯（12 個斷言）：
 
 | 類別 | 測試案例 | 預期 |
-|------|----------|------|
+|---|---|---|
 | 接受：標準行政區 | 「台北市」、「信義區」、「臺中市」 | `true` |
 | 接受：帶後綴的長名稱 | 「臺北市信義區」（6 字元）、「新北市板橋區」（6 字元） | `true` |
 | 接受：英文名稱 | "Taipei City"、"Xinyi District" | `true` |
@@ -140,22 +170,29 @@ dotnet run --project packages/csharp/tests/e2e-bridge/E2eBridge.csproj -- --brok
 測試 `BrowserExecutionHtmlExtractor` 和 `AzureIisDeploymentHealthCheckResult`：
 
 - `ExtractTitle()`：標題擷取與 HTML entity decode
+
 - `ExtractDescription()`：`meta description` 擷取
+
 - `ExtractText()`：主內容抽取並排除 `nav/footer`
+
 - `AzureIisDeploymentHealthCheckResult.Skipped()`：部署健康檢查結果模型
 
 ### 測試模式
 
 1. **Console-first 驗證**：所有測試與 verify 都是可直接 `dotnet run` 的 console 入口
+
 2. **靜態方法 + 真服務混合**：`broker-tests` 偏向靜態 helper / API flow，`broker/verify` 會實際建構 DB、服務與 endpoint handler
+
 3. **通過計數器追蹤**：各測試檔案維護自己的 `passed`/`failed` 計數器
+
 4. **字串與行為並重**：不只驗證回覆內容，也驗證 status code、JSON redaction、檔案串流與安全邊界
+
 5. **非中斷式執行**：斷言失敗不拋例外，所有測試繼續執行直到結束
 
 ### 關鍵測試類別
 
 | 類別 | 檔案 | 性質 | 測試對象 |
-|------|------|------|----------|
+|---|---|---|---|
 | `Broker.Verify` | `packages/csharp/broker/verify/Program.cs` | broker 自驗證 | `BrokerArtifactDownloadService`, `ArtifactDownloadEndpoints`, `LineArtifactDeliveryService`, serialization redaction, middleware bypass |
 | `QueryTests` | `QueryTests.cs` | 單元測試 | `HighLevelRelationQueryService.IsReasonableAdministrativeTerm`, `HighLevelQueryToolMediator.BuildTransportReply`, `BuildSearchReply` |
 | `BrowserAndDeployTests` | `BrowserAndDeployTests.cs` | 單元測試 | `BrowserExecutionHtmlExtractor.ExtractTitle/Description/Text`, `AzureIisDeploymentHealthCheckResult` |
@@ -170,9 +207,13 @@ dotnet run --project packages/csharp/tests/e2e-bridge/E2eBridge.csproj -- --brok
 ### 測試設定與啟動
 
 - 整合測試**不自動啟動 Broker**，需要手動先啟動
+
 - 透過 `--integration [broker-url]` 命令列參數觸發（預設 `http://localhost:5000`）
+
 - 使用靜態 `HttpClient`（`Timeout = 30s`）
+
 - 支援 cookie 為基礎的認證（從 `Set-Cookie` header 擷取 session cookie）
+
 - 若無法登入（`_adminToken` 為空），跳過所有整合測試並回報 `(0, 1)`
 
 ### Broker 整合測試流程
@@ -198,65 +239,100 @@ Step 7: TestAdminHtmlDeliveryTab()
 #### LoginAdmin（步驟 1）
 
 - 呼叫 `GET /api/v1/local-admin/status` 檢查密碼狀態（`hasPassword`、`initialPasswordActive`）
+
 - 若為首次登入或 `initialPasswordActive`：以 `admin` → `test1234` 設定密碼
+
 - 若已有密碼：以 `test1234` 登入
+
 - 從回應 header 擷取 cookie 並設定到 `HttpClient.DefaultRequestHeaders`
+
 - 失敗處理：登入失敗時設定 `_failed++`，後續測試將被跳過
 
 #### TestDeliverArtifact（步驟 2）
 
 - `POST /api/v1/local-admin/line/users/artifacts/deliver`
+
 - 建立測試 artifact：
-  - `user_id`: `"test_integration_user"`
-  - `file_name`: `"integration-test.md"`
-  - `format`: `"md"`
-  - `content`: `"# Integration Test\n\nThis is a test artifact."`
-  - `upload_to_google_drive`: `false`
-  - `send_line_notification`: `true`
+
+- `user_id`: `"test_integration_user"`
+
+- `file_name`: `"integration-test.md"`
+
+- `format`: `"md"`
+
+- `content`: `"# Integration Test\n\nThis is a test artifact."`
+
+- `upload_to_google_drive`: `false`
+
+- `send_line_notification`: `true`
+
 - 驗證回應欄位（6 個斷言）：
-  - `success == true`
-  - `overallStatus == "completed"`
-  - `fileName == "integration-test.md"`
-  - `notification` 和 `artifact` 物件存在
-  - `artifact.overallStatus == "completed"`
+
+- `success == true`
+
+- `overallStatus == "completed"`
+
+- `fileName == "integration-test.md"`
+
+- `notification` 和 `artifact` 物件存在
+
+- `artifact.overallStatus == "completed"`
+
 - 若使用者 profile 不存在，會優雅地跳過（非失敗，印出 `[INFO]`）
 
 #### TestListAllArtifacts（步驟 3）
 
 - `GET /api/v1/local-admin/line/artifacts?limit=10`
+
 - 驗證 200 狀態碼、回應包含 `total` 和 `items` 陣列（3 個斷言）
 
 #### TestListUserArtifacts（步驟 4）
 
 - `GET /api/v1/local-admin/line/users/test_integration_user/artifacts?limit=10`
+
 - 僅驗證 200 狀態碼（1 個斷言）
 
 #### TestRetryDrive（步驟 5）
 
 - `POST /api/v1/local-admin/line/artifacts/{artifactId}/retry-drive`
+
 - 預期回應 200 或 400（因為 artifact 已 completed，非 partial）
+
 - 驗證正確拒絕訊息包含 `"partial"`（2 個斷言）
+
 - 若無 `artifactId` 則跳過
 
 #### TestRetryNotification（步驟 6）
 
 - 先模擬通知失敗：`POST /api/v1/high-level/line/notifications/complete`
-  - `notification_id`, `status: "failed"`, `error: "integration_test_simulated_failure"`
+
+- `notification_id`, `status: "failed"`, `error: "integration_test_simulated_failure"`
+
 - 再重試通知：`POST /api/v1/local-admin/line/notifications/{notificationId}/retry`
+
 - 驗證 200 狀態碼和回應包含 `"pending"`（2 個斷言）
+
 - 若無 `notificationId` 則跳過
 
 #### TestAdminHtmlDeliveryTab（步驟 7）
 
 - `GET /line-admin.html`
+
 - 驗證 HTML 包含 delivery tab 相關 DOM 元素（7 個斷言）：
-  - `data-tab="delivery"`
-  - `id="tab-delivery"`
-  - `id="delivery-list"`
-  - `id="delivery-status-filter"`
-  - JavaScript 函式 `retryDriveUpload`
-  - JavaScript 函式 `loadDeliveryHistory`
-  - HTTP 200 狀態碼
+
+- `data-tab="delivery"`
+
+- `id="tab-delivery"`
+
+- `id="delivery-list"`
+
+- `id="delivery-status-filter"`
+
+- JavaScript 函式 `retryDriveUpload`
+
+- JavaScript 函式 `loadDeliveryHistory`
+
+- HTTP 200 狀態碼
 
 ## E2E Bridge 測試工具
 
@@ -265,16 +341,19 @@ Step 7: TestAdminHtmlDeliveryTab()
 ### 功能
 
 1. **ECDH 交握**：使用 `ECDiffieHellman` (P-256/nistP256) 生成客戶端密鑰對，與 Broker 公鑰進行 Diffie-Hellman 密鑰交換。HKDF 推導分兩階段：
-   - 交握密鑰：`HKDF(shared_secret, salt=nonce, info="broker-handshake-v1")`
-   - Session 密鑰：`HKDF(shared_secret, salt=session_id, info="broker-session-v1")`
+ - 交握密鑰：`HKDF(shared_secret, salt=nonce, info="broker-handshake-v1")`
+ - Session 密鑰：`HKDF(shared_secret, salt=session_id, info="broker-session-v1")`
+
 2. **Session 建立**：透過 `POST /api/v1/sessions/register` 註冊 session，取得 `scoped_token`
+
 3. **加密通訊**：所有後續請求以 AES-256-GCM 加密/解密，AAD 格式為 `req:{session_id}{seq}{path}`（回應為 `resp:...`）
+
 4. **互動式指令迴圈**：以 2 秒間隔輪詢 LINE 訊息並處理指令
 
 ### 支援的指令
 
 | 指令 | Broker 能力 | 說明 |
-|------|-------------|------|
+|---|---|---|
 | `/list [path]` | `file.list` | 列出目錄內容（預設 `/workspace`，depth=2） |
 | `/read <file>` | `file.read` | 讀取檔案（limit=50 行） |
 | `/search <pattern>` | `file.search` | 搜尋內容（max_results=10） |
@@ -287,23 +366,37 @@ Step 7: TestAdminHtmlDeliveryTab()
 ### 內含元件
 
 - **`BrokerApiClient`** 類別（~290 行）：封裝完整的 Broker 通訊協定
-  - `GetAsync(path, ct)` — 未加密的 GET 請求
-  - `RegisterSessionAsync(principalId, taskId, roleId, brokerUrl, ct)` — ECDH 交握 + session 註冊
-  - `ExecuteAsync(capabilityId, route, payloadJson, ct)` — 加密的執行請求
-  - `GetBrokerPubKeyAsync(ct)` — 取得 Broker 公鑰（環境變數或 health 端點）
-  - `EncryptRequest(plaintext, seq, path)` — AES-256-GCM 加密
+
+- `GetAsync(path, ct)` — 未加密的 GET 請求
+
+- `RegisterSessionAsync(principalId, taskId, roleId, brokerUrl, ct)` — ECDH 交握 + session 註冊
+
+- `ExecuteAsync(capabilityId, route, payloadJson, ct)` — 加密的執行請求
+
+- `GetBrokerPubKeyAsync(ct)` — 取得 Broker 公鑰（環境變數或 health 端點）
+
+- `EncryptRequest(plaintext, seq, path)` — AES-256-GCM 加密
+
 - **`LineMessage`** 資料模型：`Text`、`Type`、`UserId`、`Timestamp`
+
 - **`TryParseMessages(json)`**：解析三層 Broker 回應格式（`data.result_payload` / `result_payload` / 直接 JSON）
+
 - **`ProcessCommand(client, input, ct)`**：指令路由與分發
+
 - **`IsSimpleMath(input, out result)`**：基本四則運算解析
+
 - **`FormatResult(tool, raw)`**：Broker 回應格式化（截斷超過 4500 字元）
 
 ### 注意事項
 
 - 需要 `BROKER_PUB_KEY` 環境變數，或 Broker 在 `/api/v1/health` 端點公開 `broker_public_key` / `brokerPublicKey`
+
 - 使用 2 秒輪詢間隔，每 30 個循環印出心跳訊息
+
 - 非自動化測試，需手動操作和觀察
+
 - 序列號（`_seq`）使用 `Interlocked.Increment` 確保執行緒安全
+
 - 冪等鍵格式：`{sessionId}-{seq}-{unixTimestampMs}`
 
 ## 測試輔助工具
@@ -313,7 +406,7 @@ Step 7: TestAdminHtmlDeliveryTab()
 每個測試檔案均定義自己的斷言輔助方法（**無共用基底類別**，斷言函式在各檔案重複定義）：
 
 | 函式 | 出現位置 | 行為 |
-|------|----------|------|
+|---|---|---|
 | `AssertContains(name, actual, expected)` | Program.cs, QueryTests, BrowserAndDeployTests | 驗證字串包含；失敗時印出前 200 字元的 actual |
 | `AssertNotContains(name, actual, notExpected)` | Program.cs, BrowserAndDeployTests | 驗證字串不包含 |
 | `AssertTrue(name, condition)` | IntegrationTest, QueryTests, BrowserAndDeployTests | 驗證布林條件為 true |
@@ -328,7 +421,9 @@ Step 7: TestAdminHtmlDeliveryTab()
 ### 計數器與結果回報
 
 - `Program.cs` 中的斷言使用 top-level 變數 `passed`/`failed`（closure capture）
+
 - `QueryTests`、`BrowserAndDeployTests`、`IntegrationTest` 使用靜態欄位 `_passed`/`_failed`
+
 - 各模組返回 `(int passed, int failed)` tuple，`Program.cs` 彙總後以 `Environment.Exit(1)` 回報失敗
 
 ### InternalsVisibleTo
@@ -336,6 +431,7 @@ Step 7: TestAdminHtmlDeliveryTab()
 `Broker.csproj` 目前只設定 `<InternalsVisibleTo Include="Broker.Tests" />`。也就是說：
 
 - `packages/csharp/tests/broker-tests/` 可以直接存取部分 `internal` 成員
+
 - `packages/csharp/broker/verify/` 不依賴額外 `InternalsVisibleTo`，而是以公開 service、endpoint handler 與序列化結果做驗證
 
 ## 測試覆蓋率分析
@@ -343,7 +439,7 @@ Step 7: TestAdminHtmlDeliveryTab()
 ### 已覆蓋的區域
 
 | 服務 | 檔案位置 | 覆蓋程度 | 說明 |
-|------|----------|----------|------|
+|---|---|---|---|
 | `BrokerArtifactDownloadService` | `broker/Services/BrokerArtifactDownloadService.cs` | 高 | signed URL、TTL、簽名驗證、路徑硬化 |
 | `ArtifactDownloadEndpoints` | `broker/Endpoints/ArtifactDownloadEndpoints.cs` | 高 | `200/403/410/404`、attachment disposition、generic content type |
 | `LineArtifactDeliveryService` | `broker/Services/LineArtifactDeliveryService.cs` | 高 | Drive 成功、Drive 失敗 fallback、degraded fallback、local-only neutral behavior |
@@ -361,7 +457,7 @@ Step 7: TestAdminHtmlDeliveryTab()
 以下區域仍然是明顯缺口；雖然 `broker/verify` 已補上 artifact delivery 與 signed download，但高階協調主流程仍缺乏成套自動化覆蓋：
 
 | 服務 | 檔案 | 重要性 | 說明 |
-|------|------|--------|------|
+|---|---|---|---|
 | `HighLevelCoordinator`（主流程） | `HighLevelCoordinator.cs` | 極高 | 核心協調器的 `HandleHighLevelAsync` 等主要入口方法未測試 |
 | `HighLevelCommandParser` | `HighLevelCommandParser.cs` | 高 | 使用者指令解析邏輯 |
 | `HighLevelWorkflowStateMachine` | `HighLevelWorkflowStateMachine.cs` | 高 | 工作流程狀態機轉換邏輯 |
@@ -400,7 +496,7 @@ Step 7: TestAdminHtmlDeliveryTab()
 **BrokerCore 層完全未測試**（安全與治理核心）：
 
 | 服務 | 檔案 | 重要性 | 說明 |
-|------|------|--------|------|
+|---|---|---|---|
 | `PolicyEngine` | `Services/PolicyEngine.cs` | 極高 | 策略引擎（RBAC 檢查） |
 | `SessionService` | `Services/SessionService.cs` | 極高 | Session 建立與管理 |
 | `ScopedTokenService` | `Services/ScopedTokenService.cs` | 極高 | Token 簽發與驗證（JWT） |
@@ -436,9 +532,13 @@ Broker.Tests.csproj
 ```
 
 - 無外部測試框架（無 xUnit、NUnit、MSTest）
+
 - 無 Mock 框架（無 Moq、NSubstitute）
+
 - 無程式碼覆蓋率工具（無 coverlet）
+
 - 無 assertion 函式庫（無 FluentAssertions、Shouldly）
+
 - NuGet 依賴僅來自被測專案本身
 
 ### e2e-bridge
@@ -451,7 +551,9 @@ E2eBridge.csproj
 ```
 
 - 使用 `System.Security.Cryptography`（`ECDiffieHellman`、`AesGcm`、`HKDF`、`CryptographicOperations`）
+
 - 匯入 `BrokerCore.Crypto` 命名空間（`using BrokerCore.Crypto;`），但加密邏輯實際上在 `BrokerApiClient` 自行實作
+
 - 使用 `System.Text.Json`（`JsonDocument`、`JsonNode`、`JsonSerializer`）進行 JSON 處理
 
 ## 目前狀態與成熟度
@@ -459,7 +561,7 @@ E2eBridge.csproj
 ### 評估
 
 | 維度 | 評分 | 說明 |
-|------|------|------|
+|---|---|---|
 | 框架成熟度 | 低 | 無使用標準測試框架，自製斷言在各檔案重複定義，無 test discovery/filtering/parallel execution |
 | 單元測試覆蓋率 | 低 | 僅覆蓋約 6 個服務中的靜態方法；38+ 個 Broker 服務檔案和 17+ 個 BrokerCore 服務檔案大部分未測試 |
 | 安全性測試 | 極低 | ECDH/AES-GCM 加密管線、PolicyEngine、ScopedTokenService 等核心安全元件僅有 e2e-bridge 手動測試 |
@@ -472,21 +574,35 @@ E2eBridge.csproj
 ### 主要問題
 
 1. **無測試框架**：自製斷言函式在每個檔案重複定義（`AssertContains` 出現 3 次、`AssertTrue` 出現 3 次等），無法使用 test runner 的平行執行、過濾、報告、IDE 整合等功能
+
 2. **無 Mock/Stub**：僅能測試純靜態方法，無法隔離測試有依賴注入的服務。所有有外部依賴的服務（資料庫、HTTP、LLM API）均無法在單元層級測試
+
 3. **覆蓋率嚴重不足**：核心安全元件（策略引擎、session 管理、加密）和治理元件（PromotionGate、InputTrustPolicy）完全缺乏單元測試。估計覆蓋率 < 5%
+
 4. **整合測試需手動 Broker**：沒有使用 `TestServer` 或 `WebApplicationFactory` 進行 in-process 整合測試，導致每次執行整合測試都需要手動啟動 Broker 實例
+
 5. **測試專案未加入 solution**：`ControlPlane.slnx` 不包含測試專案，`dotnet build` 不會自動編譯測試程式碼，可能導致測試程式碼與被測程式碼不同步
+
 6. **E2E Bridge 非自動化**：`e2e-bridge` 需要人工介入操作和觀察結果，無法作為 CI 的一部分
+
 7. **無負面測試**：缺乏對無效輸入、權限不足、並行競爭、大資料量等邊界情況的測試
+
 8. **測試資料清理**：整合測試建立的 `test_integration_user` 相關資料未在測試結束後清理
 
 ### 改進建議優先順序
 
 1. 引入 xUnit + `WebApplicationFactory<Program>` 進行 in-process 整合測試，消除手動啟動 Broker 的需求
+
 2. 為 `PolicyEngine`、`SessionService`、`ScopedTokenService`、`EnvelopeCrypto` 加入單元測試（安全核心）
+
 3. 為 `HighLevelCoordinator.HandleHighLevelAsync` 主流程加入測試（業務核心）
+
 4. 將測試專案加入 `ControlPlane.slnx`，確保 CI 建置自動包含測試
+
 5. 引入 Mock 框架（如 NSubstitute）以隔離測試有外部依賴的服務
+
 6. 提取共用的斷言函式到共用基底類別或工具類別
+
 7. 加入程式碼覆蓋率報告（coverlet + ReportGenerator）
+
 8. 為 `HighLevelCommandParser` 加入全面的指令解析測試（高 ROI，純邏輯）

@@ -60,7 +60,7 @@ export class ButtonGroup {
             separatorColor: null,
             theme: 'light',
             align: 'start',
-            wrap: false,
+            wrap: true,   // RWD:預設可換行(空間夠時外觀不變;不夠時換行取代爆版)
             ...options
         };
 
@@ -101,6 +101,8 @@ export class ButtonGroup {
             align-items: ${alignMap[align] || 'flex-start'};
             gap: ${gap};
             ${wrap ? 'flex-wrap: wrap;' : ''}
+            max-width: 100%;
+            min-width: 0;
         `;
 
         // 加入按鈕

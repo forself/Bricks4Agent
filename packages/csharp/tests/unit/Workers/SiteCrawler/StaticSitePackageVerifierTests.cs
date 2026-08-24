@@ -36,7 +36,7 @@ public class StaticSitePackageVerifierTests : IDisposable
         report.HasArchive.Should().BeTrue();
         report.RouteCount.Should().Be(document.Routes.Count);
         report.ComponentNodeCount.Should().BeGreaterThan(0);
-        report.RuntimeRendererTypes.Should().Contain(["PageShell", "HeroSection"]);
+        report.RuntimeRendererTypes.Should().Contain(["PageShell", "ContentSection"]);
         report.RequiredFiles.Should().Contain([
             "index.html",
             "runtime.js",

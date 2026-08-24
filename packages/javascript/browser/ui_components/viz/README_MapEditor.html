@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MapEditor - 圖片編輯器</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>MapEditor - 圖片編輯器</h1>
+<h2>📖 簡介</h2>
+<p><strong>MapEditor</strong> 是一個零依賴的純 JavaScript 圖片編輯器，基於 Canvas API 實現。使用者可以上傳任意圖片作為底圖，並在圖片上添加文字、矩形、圓形、線條、箭頭等標註，最後匯出為 PNG 圖片。</p>
+<h2>✨ 主要功能</h2>
+<h3>🖼️ 圖片管理</h3>
+<ul>
+<li>上傳本地圖片作為底圖</li>
+<li>自動適應畫布大小</li>
+<li>支援拖放操作</li>
+</ul>
+<h3>📝 文字工具</h3>
+<ul>
+<li>點擊畫布添加文字</li>
+<li>雙擊文字可編輯內容</li>
+<li>拖動調整文字位置</li>
+<li>自訂字體大小（10-72px）</li>
+<li>自訂文字顏色</li>
+</ul>
+<h3>🎨 形狀工具</h3>
+<ul>
+<li><strong>矩形</strong>：拖曳繪製矩形框</li>
+<li><strong>圓形</strong>：拖曳繪製橢圓/圓形</li>
+<li><strong>線條</strong>：繪製直線</li>
+<li><strong>箭頭</strong>：繪製帶箭頭的直線</li>
+<li>自訂線條顏色與粗細</li>
+<li>自訂填充顏色（支援透明度）</li>
+</ul>
+<h3>🔧 編輯功能</h3>
+<ul>
+<li><strong>選擇工具</strong>：選中元素進行移動</li>
+<li><strong>拖動</strong>：直接拖動元素調整位置</li>
+<li><strong>刪除</strong>：刪除選中的元素</li>
+<li><strong>清空</strong>：一鍵清除所有標註</li>
+<li><strong>復原</strong>：支援 Ctrl+Z 復原操作</li>
+</ul>
+<h3>💾 匯出功能</h3>
+<ul>
+<li><strong>PNG 圖片</strong>：將編輯後的結果匯出為 PNG 格式</li>
+<li><strong>JSON 配置</strong>：保存所有標註資料為 JSON</li>
+<li><strong>載入配置</strong>：從 JSON 還原標註狀態</li>
+<li><strong>🔥 PNG 元數據嵌入</strong>：匯出的 PNG 自動包含座標、文字、顏色等所有標註資訊</li>
+</ul>
+<h3>🔐 PNG 元數據功能（重要特色）</h3>
+<p><strong>匯出的 PNG 圖片會自動嵌入完整元數據</strong>，使用 PNG tEXt chunk 標準格式：</p>
+<p><strong>包含資訊：</strong></p>
+<ul>
+<li>✅ 所有標註元素（文字、形狀、箭頭等）</li>
+<li>✅ 完整座標資訊 (x, y, x2, y2)</li>
+<li>✅ 文字內容與樣式（字體、大小、顏色）</li>
+<li>✅ 形狀屬性（線條顏色、填充、粗細）</li>
+<li>✅ 時間戳與版本資訊</li>
+<li>✅ 畫布尺寸</li>
+</ul>
+<p><strong>優點：</strong></p>
+<ul>
+<li>📸 圖片與數據一體化，不需要分開保存</li>
+<li>🔄 隨時重新載入 PNG 即可恢復所有編輯</li>
+<li>📤 分享 PNG 時同時分享標註資訊</li>
+<li>💯 符合 PNG 標準，任何圖片查看器都可正常顯示圖片本身</li>
+</ul>
+<p><strong>使用方式：</strong></p>
+<pre><code class="language-javascript">// 匯出 PNG（自動嵌入元數據）
+editor._exportImage();
+
+// 載入帶元數據的 PNG
+const file = document.querySelector(&quot;input[type=file]&quot;).files[0];
+const metadata = await editor.loadImageWithMetadata(file);
+console.log(metadata); // 顯示所有標註資訊
+</code></pre>
+<h2>🚀 使用方式</h2>
+<h3>基本使用</h3>
+<pre><code class="language-html">&lt;!DOCTYPE html&gt;
+&lt;html&gt;
+  &lt;body&gt;
+    &lt;div id=&quot;editor-container&quot;&gt;&lt;/div&gt;
+
+    &lt;script type=&quot;module&quot;&gt;
+      import { MapEditor } from &quot;./MapEditor.js&quot;;
+
+      const editor = new MapEditor({
+        container: &quot;#editor-container&quot;,
+        width: 800,
+        height: 600,
+      });
+    &lt;/script&gt;
+  &lt;/body&gt;
+&lt;/html&gt;
+</code></pre>
+<h3>API 方法</h3>
+<pre><code class="language-javascript">// 設定背景圖片
+editor.setBackgroundImage('path/to/image.png');
+
+// 載入 JSON 配置
+editor.loadJSON({
+    elements: [...],
+    settings: {...}
+});
+
+// 清空畫布
+editor.clear();
+
+// 匯出圖片（自動觸發下載）
+editor._exportImage();
+
+// 匯出 JSON（自動觸發下載）
+editor._exportJSON();
+</code></pre>
+<h3>配置選項</h3>
+<pre><code class="language-javascript">new MapEditor({
+  container: &quot;#editor-container&quot;, // 容器選擇器或 DOM 元素
+  width: 800, // 畫布寬度（像素）
+  height: 600, // 畫布高度（像素）
+});
+</code></pre>
+<h2>⌨️ 快捷鍵</h2>
+<ul>
+<li><strong>Delete</strong>: 刪除選中元素</li>
+<li><strong>Ctrl+Z</strong>: 復原上一步操作</li>
+<li><strong>雙擊文字</strong>: 編輯文字內容</li>
+</ul>
+<h2>🎯 應用場景</h2>
+<ul>
+<li>地圖標註與說明</li>
+<li>圖片講解與教學</li>
+<li>流程圖繪製</li>
+<li>簡報圖片編輯</li>
+<li>產品功能標示</li>
+</ul>
+<h2>🛠️ 技術細節</h2>
+<h3>零依賴</h3>
+<ul>
+<li>純 JavaScript 實現</li>
+<li>使用原生 Canvas API</li>
+<li>無需任何第三方函式庫</li>
+</ul>
+<h3>瀏覽器支援</h3>
+<ul>
+<li>Chrome/Edge 90+</li>
+<li>Firefox 88+</li>
+<li>Safari 14+</li>
+<li>需要支援 ES6 模組</li>
+</ul>
+<h3>高 DPI 支持</h3>
+<ul>
+<li>自動適配高解析度螢幕</li>
+<li>使用 devicePixelRatio 確保清晰度</li>
+</ul>
+<h2>📝 啟動 Demo</h2>
+<h3>方法 1：使用 Python</h3>
+<pre><code class="language-bash">cd /path/to/Bricks4Agent
+python -m http.server 5500
+</code></pre>
+<p>訪問：<code>http://localhost:5500/packages/javascript/browser/ui_components/viz/demo_map_editor.html</code></p>
+<h3>方法 2：使用 VS Code Live Server</h3>
+<ol>
+<li>安裝 Live Server 擴充功能</li>
+<li>在 <code>demo_map_editor.html</code> 上點右鍵</li>
+<li>選擇「Open with Live Server」</li>
+</ol>
+<h3>方法 3：使用 Node.js http-server</h3>
+<pre><code class="language-bash">npm install -g http-server
+cd /path/to/Bricks4Agent
+http-server -p 5500
+</code></pre>
+<h2>🎨 介面預覽</h2>
+<p>編輯器提供完整的工具列介面：</p>
+<ol>
+<li><strong>工具列</strong>：檔案上傳、工具選擇、刪除、清空、匯出</li>
+<li><strong>設定面板</strong>：字體大小、顏色、線條粗細等</li>
+<li><strong>畫布區域</strong>：顯示圖片與標註元素</li>
+<li><strong>快捷鍵提示</strong>：方便記憶常用操作</li>
+</ol>
+<h2>📦 檔案結構</h2>
+<pre><code>packages/javascript/browser/ui_components/viz/
+├── MapEditor.js           # 核心編輯器類別
+├── demo_map_editor.html   # 完整示範頁面
+└── README_MapEditor.md    # 說明文件（本檔案）
+</code></pre>
+<h2>🔒 安全性考量</h2>
+<ul>
+<li>所有圖片僅在客戶端處理</li>
+<li>無資料上傳至伺服器</li>
+<li>匯出的 PNG/JSON 完全本地生成</li>
+</ul>
+<h2>🐛 已知限制</h2>
+<ol>
+<li><strong>ES Module 限制</strong>：必須透過 HTTP 伺服器執行，無法直接開啟 HTML 檔案（<code>file://</code> 協議）</li>
+<li><strong>大圖片效能</strong>：極大圖片可能影響渲染效能</li>
+<li><strong>歷史記錄</strong>：復原功能目前僅支援單向復原（無重做）</li>
+</ol>
+<h2>💡 未來擴展</h2>
+<ul>
+<li>[ ] 增加重做（Redo）功能</li>
+<li>[ ] 支援圖層管理</li>
+<li>[ ] 文字樣式預設（粗體、斜體）</li>
+<li>[ ] 更多形狀（多邊形、自由繪圖）</li>
+<li>[ ] 濾鏡與特效</li>
+<li>[ ] 觸控裝置支援</li>
+</ul>
+<h2>📄 授權</h2>
+<p>本組件遵循專案整體授權條款。</p>
+<hr>
+<p><strong>Created with ❤️ for dF Project</strong></p>
+</main>
+</body>
+</html>

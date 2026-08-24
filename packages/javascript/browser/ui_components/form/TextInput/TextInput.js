@@ -16,6 +16,7 @@ export class TextInput {
             hint: '',
             maxLength: null,
             width: '100%',
+            autocomplete: null,
             enableSecurity: true,
             onChange: null,
             onBlur: null,
@@ -85,6 +86,16 @@ export class TextInput {
             : { status: 'idle', message: '' };
     }
 
+    _limitInputValue(value) {
+        const text = String(value ?? '');
+        const configured = this.options.maxLength;
+        if (configured === null || configured === undefined || configured === '') return text;
+        const limit = Number(configured);
+        return Number.isInteger(limit) && limit >= 0 && text.length > limit
+            ? text.slice(0, limit)
+            : text;
+    }
+
     _create() {
         const {
             label,
@@ -98,7 +109,8 @@ export class TextInput {
             error,
             hint,
             maxLength,
-            width
+            width,
+            autocomplete
         } = this.options;
 
         const sizeStyles = {
@@ -109,17 +121,27 @@ export class TextInput {
 
         const container = document.createElement('div');
         container.className = 'text-input-container';
+        // RWD:max-width 鎖容器寬,呼叫端給固定寬也不溢出
         container.style.cssText = `
             display: flex;
             flex-direction: column;
             gap: 4px;
             width: ${width};
+            max-width: 100%;
+            min-width: 0;
         `;
 
         if (label) {
             const labelEl = document.createElement('label');
             labelEl.className = 'text-input__label';
-            labelEl.innerHTML = `${escapeHtml(label)}${required ? '<span style="color: var(--cl-danger); margin-left: 2px;">*</span>' : ''}`;
+            labelEl.innerHTML = escapeHtml(label);
+            if (required) {
+                // CSP style-src 'self':inline style 屬性會被剝除,改用 CSSOM cssText
+                const requiredMark = document.createElement('span');
+                requiredMark.style.cssText = 'color: var(--cl-danger); margin-left: 2px;';
+                requiredMark.textContent = '*';
+                labelEl.appendChild(requiredMark);
+            }
             labelEl.style.cssText = 'font-size: var(--cl-font-size-md); font-weight: 500; color: var(--cl-text);';
             container.appendChild(labelEl);
         }
@@ -131,8 +153,11 @@ export class TextInput {
         input.value = value;
         input.disabled = disabled;
         input.readOnly = readonly;
+        if (autocomplete) input.autocomplete = autocomplete;
         if (maxLength) input.maxLength = maxLength;
+        // RWD:border-box 讓 padding/border 算入 100% 寬(原 content-box 使外框比容器寬 26px 而溢出)
         input.style.cssText = `
+            box-sizing: border-box;
             width: 100%;
             height: ${sizeStyles.height};
             padding: ${sizeStyles.padding};
@@ -163,14 +188,17 @@ export class TextInput {
         });
 
         input.addEventListener('input', () => {
+            const limitedValue = this._limitInputValue(input.value);
+            if (limitedValue !== input.value) input.value = limitedValue;
+
             if (this.snapshot().validation.status === 'error') {
                 this.send('CLEAR_ERROR');
             }
 
-            this.send('SET_VALUE', { value: input.value });
+            this.send('SET_VALUE', { value: limitedValue });
 
             if (this.options.onChange) {
-                this.options.onChange(input.value);
+                this.options.onChange(limitedValue);
             }
         });
 

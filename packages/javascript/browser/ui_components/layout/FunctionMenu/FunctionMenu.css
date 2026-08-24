@@ -219,7 +219,7 @@
 }
 
 .function-menu-small .menu-item-icon i {
-    font-size: 20px;
+    font-size: var(--cl-font-size-2xl);
 }
 
 .function-menu-small .menu-item-label {

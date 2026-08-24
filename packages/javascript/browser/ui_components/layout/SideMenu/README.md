@@ -11,7 +11,7 @@ new SideMenu(options?)
 ```
 
 | 參數 | 型別 | 預設值 | 說明 |
-|------|------|--------|------|
+|---|---|---|---|
 | `options.items` | `Array` | `[]` | 選單項目 `[{id, text, icon?, href?, children?, badge?, disabled?}]` |
 | `options.activeId` | `string` | `null` | 當前選中項目 ID |
 | `options.collapsed` | `boolean` | `false` | 是否收合模式 |
@@ -24,7 +24,7 @@ new SideMenu(options?)
 ### 方法
 
 | 方法 | 回傳 | 說明 |
-|------|------|------|
+|---|---|---|
 | `toggle()` | `this` | 切換展開/收合 |
 | `expand()` | `this` | 展開選單 |
 | `collapse()` | `this` | 收合選單 |

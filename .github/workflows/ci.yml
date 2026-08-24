@@ -1,0 +1,100 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  javascript:
+    name: JavaScript and policy gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          package-manager-cache: false
+
+      - name: Page generator and pure-function tests
+        run: |
+          npm test
+          npm --prefix packages/javascript/browser test
+
+      - name: Custom component contracts
+        run: |
+          npm run custom-components:check
+          npm run test:custom-components
+
+      - name: Form application contracts
+        run: |
+          npm run test:form-designer
+          npm run test:form-designer:self-host
+
+      - name: UI library and metadata
+        run: |
+          npm run validate:ui-library
+          npm run audit:ui-styles
+          node packages/javascript/browser/ui_components/metadata/build-metadata.mjs --check
+
+      - name: Studio static self-host preflight
+        run: node tools/scripts/studio-self-host-audit.mjs --static-only
+
+      - name: CSP and SVG hard-zero gates
+        run: |
+          npm run audit:csp
+          npm run test:audit-csp-hard-zero
+          npm run audit:csp
+
+      - name: Verify tests leave the checkout clean
+        shell: bash
+        run: test -z "$(git status --porcelain)"
+
+  dotnet:
+    name: .NET 10 and generated backend
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      DOTNET_NOLOGO: '1'
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          package-manager-cache: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Enforce .NET 10 and build every SDK-style project
+        run: npm run test:dotnet10
+
+      - name: Generate and compile all provider backends
+        run: npm run test:form-designer:dotnet
+
+      - name: Verify generated test artifacts were cleaned
+        shell: bash
+        run: |
+          test ! -e .test-output
+          test -z "$(git status --porcelain)"

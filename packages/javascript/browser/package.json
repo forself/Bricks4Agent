@@ -6,12 +6,9 @@
   "scripts": {
     "metadata:build": "node ./ui_components/metadata/build-metadata.mjs",
     "metadata:check": "node ./ui_components/metadata/build-metadata.mjs --check",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
-  },
-  "devDependencies": {
-    "jsdom": "^25.0.1",
-    "vitest": "^3.1.1"
+    "custom-components:build": "node ./custom_components/build-registry.mjs",
+    "custom-components:check": "node ./custom_components/build-registry.mjs --check",
+    "test:custom-components": "node --test ./custom_components/custom-components.test.mjs ./custom_components/custom-runtime.test.mjs",
+    "test": "node ./ui_components/editor/richtext-palette.test.mjs && node ./ui_components/utils/color-scale.test.mjs && node ./ui_components/utils/aggregation-engine.test.mjs && node ./ui_components/utils/force-engine.test.mjs"
   }
 }

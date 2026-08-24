@@ -1,0 +1,343 @@
+/*
+ * palette.css —— 全站共用色彩系統(自動生成,勿手改)
+ * 來源:editor/richtext-palette.js;重生:node editor/gen-palette-css.mjs
+ * 提供:--cl-<hue>-<step> tokens(全站設計可用)+ .rt-color-* 文字色 class + .opacity-* 工具
+ */
+:root {
+    --cl-red-50: #FFEBEE;
+    --cl-red-100: #FFCDD2;
+    --cl-red-200: #EF9A9A;
+    --cl-red-300: #E57373;
+    --cl-red-400: #EF5350;
+    --cl-red-500: #F44336;
+    --cl-red-600: #E53935;
+    --cl-red-700: #D32F2F;
+    --cl-red-800: #C62828;
+    --cl-red-900: #B71C1C;
+    --cl-pink-50: #FCE4EC;
+    --cl-pink-100: #F8BBD0;
+    --cl-pink-200: #F48FB1;
+    --cl-pink-300: #F06292;
+    --cl-pink-400: #EC407A;
+    --cl-pink-500: #E91E63;
+    --cl-pink-600: #D81B60;
+    --cl-pink-700: #C2185B;
+    --cl-pink-800: #AD1457;
+    --cl-pink-900: #880E4F;
+    --cl-purple-50: #F3E5F5;
+    --cl-purple-100: #E1BEE7;
+    --cl-purple-200: #CE93D8;
+    --cl-purple-300: #BA68C8;
+    --cl-purple-400: #AB47BC;
+    --cl-purple-500: #9C27B0;
+    --cl-purple-600: #8E24AA;
+    --cl-purple-700: #7B1FA2;
+    --cl-purple-800: #6A1B9A;
+    --cl-purple-900: #4A148C;
+    --cl-indigo-50: #E8EAF6;
+    --cl-indigo-100: #C5CAE9;
+    --cl-indigo-200: #9FA8DA;
+    --cl-indigo-300: #7986CB;
+    --cl-indigo-400: #5C6BC0;
+    --cl-indigo-500: #3F51B5;
+    --cl-indigo-600: #3949AB;
+    --cl-indigo-700: #303F9F;
+    --cl-indigo-800: #283593;
+    --cl-indigo-900: #1A237E;
+    --cl-blue-50: #E3F2FD;
+    --cl-blue-100: #BBDEFB;
+    --cl-blue-200: #90CAF9;
+    --cl-blue-300: #64B5F6;
+    --cl-blue-400: #42A5F5;
+    --cl-blue-500: #2196F3;
+    --cl-blue-600: #1E88E5;
+    --cl-blue-700: #1976D2;
+    --cl-blue-800: #1565C0;
+    --cl-blue-900: #0D47A1;
+    --cl-cyan-50: #E0F7FA;
+    --cl-cyan-100: #B2EBF2;
+    --cl-cyan-200: #80DEEA;
+    --cl-cyan-300: #4DD0E1;
+    --cl-cyan-400: #26C6DA;
+    --cl-cyan-500: #00BCD4;
+    --cl-cyan-600: #00ACC1;
+    --cl-cyan-700: #0097A7;
+    --cl-cyan-800: #00838F;
+    --cl-cyan-900: #006064;
+    --cl-teal-50: #E0F2F1;
+    --cl-teal-100: #B2DFDB;
+    --cl-teal-200: #80CBC4;
+    --cl-teal-300: #4DB6AC;
+    --cl-teal-400: #26A69A;
+    --cl-teal-500: #009688;
+    --cl-teal-600: #00897B;
+    --cl-teal-700: #00796B;
+    --cl-teal-800: #00695C;
+    --cl-teal-900: #004D40;
+    --cl-green-50: #E8F5E9;
+    --cl-green-100: #C8E6C9;
+    --cl-green-200: #A5D6A7;
+    --cl-green-300: #81C784;
+    --cl-green-400: #66BB6A;
+    --cl-green-500: #4CAF50;
+    --cl-green-600: #43A047;
+    --cl-green-700: #388E3C;
+    --cl-green-800: #2E7D32;
+    --cl-green-900: #1B5E20;
+    --cl-light-green-50: #F1F8E9;
+    --cl-light-green-100: #DCEDC8;
+    --cl-light-green-200: #C5E1A5;
+    --cl-light-green-300: #AED581;
+    --cl-light-green-400: #9CCC65;
+    --cl-light-green-500: #8BC34A;
+    --cl-light-green-600: #7CB342;
+    --cl-light-green-700: #689F38;
+    --cl-light-green-800: #558B2F;
+    --cl-light-green-900: #33691E;
+    --cl-lime-50: #F9FBE7;
+    --cl-lime-100: #F0F4C3;
+    --cl-lime-200: #E6EE9C;
+    --cl-lime-300: #DCE775;
+    --cl-lime-400: #D4E157;
+    --cl-lime-500: #CDDC39;
+    --cl-lime-600: #C0CA33;
+    --cl-lime-700: #AFB42B;
+    --cl-lime-800: #9E9D24;
+    --cl-lime-900: #827717;
+    --cl-amber-50: #FFF8E1;
+    --cl-amber-100: #FFECB3;
+    --cl-amber-200: #FFE082;
+    --cl-amber-300: #FFD54F;
+    --cl-amber-400: #FFCA28;
+    --cl-amber-500: #FFC107;
+    --cl-amber-600: #FFB300;
+    --cl-amber-700: #FFA000;
+    --cl-amber-800: #FF8F00;
+    --cl-amber-900: #FF6F00;
+    --cl-orange-50: #FFF3E0;
+    --cl-orange-100: #FFE0B2;
+    --cl-orange-200: #FFCC80;
+    --cl-orange-300: #FFB74D;
+    --cl-orange-400: #FFA726;
+    --cl-orange-500: #FF9800;
+    --cl-orange-600: #FB8C00;
+    --cl-orange-700: #F57C00;
+    --cl-orange-800: #EF6C00;
+    --cl-orange-900: #E65100;
+    --cl-deep-orange-50: #FBE9E7;
+    --cl-deep-orange-100: #FFCCBC;
+    --cl-deep-orange-200: #FFAB91;
+    --cl-deep-orange-300: #FF8A65;
+    --cl-deep-orange-400: #FF7043;
+    --cl-deep-orange-500: #FF5722;
+    --cl-deep-orange-600: #F4511E;
+    --cl-deep-orange-700: #E64A19;
+    --cl-deep-orange-800: #D84315;
+    --cl-deep-orange-900: #BF360C;
+    --cl-brown-50: #EFEBE9;
+    --cl-brown-100: #D7CCC8;
+    --cl-brown-200: #BCAAA4;
+    --cl-brown-300: #A1887F;
+    --cl-brown-400: #8D6E63;
+    --cl-brown-500: #795548;
+    --cl-brown-600: #6D4C41;
+    --cl-brown-700: #5D4037;
+    --cl-brown-800: #4E342E;
+    --cl-brown-900: #3E2723;
+    --cl-grey-50: #FAFAFA;
+    --cl-grey-100: #F5F5F5;
+    --cl-grey-200: #EEEEEE;
+    --cl-grey-300: #E0E0E0;
+    --cl-grey-400: #BDBDBD;
+    --cl-grey-500: #9E9E9E;
+    --cl-grey-600: #757575;
+    --cl-grey-700: #616161;
+    --cl-grey-800: #424242;
+    --cl-grey-900: #212121;
+    --cl-blue-grey-50: #ECEFF1;
+    --cl-blue-grey-100: #CFD8DC;
+    --cl-blue-grey-200: #B0BEC5;
+    --cl-blue-grey-300: #90A4AE;
+    --cl-blue-grey-400: #78909C;
+    --cl-blue-grey-500: #607D8B;
+    --cl-blue-grey-600: #546E7A;
+    --cl-blue-grey-700: #455A64;
+    --cl-blue-grey-800: #37474F;
+    --cl-blue-grey-900: #263238;
+}
+
+.rt-color-red-50 { color: var(--cl-red-50); }
+.rt-color-red-100 { color: var(--cl-red-100); }
+.rt-color-red-200 { color: var(--cl-red-200); }
+.rt-color-red-300 { color: var(--cl-red-300); }
+.rt-color-red-400 { color: var(--cl-red-400); }
+.rt-color-red-500 { color: var(--cl-red-500); }
+.rt-color-red-600 { color: var(--cl-red-600); }
+.rt-color-red-700 { color: var(--cl-red-700); }
+.rt-color-red-800 { color: var(--cl-red-800); }
+.rt-color-red-900 { color: var(--cl-red-900); }
+.rt-color-pink-50 { color: var(--cl-pink-50); }
+.rt-color-pink-100 { color: var(--cl-pink-100); }
+.rt-color-pink-200 { color: var(--cl-pink-200); }
+.rt-color-pink-300 { color: var(--cl-pink-300); }
+.rt-color-pink-400 { color: var(--cl-pink-400); }
+.rt-color-pink-500 { color: var(--cl-pink-500); }
+.rt-color-pink-600 { color: var(--cl-pink-600); }
+.rt-color-pink-700 { color: var(--cl-pink-700); }
+.rt-color-pink-800 { color: var(--cl-pink-800); }
+.rt-color-pink-900 { color: var(--cl-pink-900); }
+.rt-color-purple-50 { color: var(--cl-purple-50); }
+.rt-color-purple-100 { color: var(--cl-purple-100); }
+.rt-color-purple-200 { color: var(--cl-purple-200); }
+.rt-color-purple-300 { color: var(--cl-purple-300); }
+.rt-color-purple-400 { color: var(--cl-purple-400); }
+.rt-color-purple-500 { color: var(--cl-purple-500); }
+.rt-color-purple-600 { color: var(--cl-purple-600); }
+.rt-color-purple-700 { color: var(--cl-purple-700); }
+.rt-color-purple-800 { color: var(--cl-purple-800); }
+.rt-color-purple-900 { color: var(--cl-purple-900); }
+.rt-color-indigo-50 { color: var(--cl-indigo-50); }
+.rt-color-indigo-100 { color: var(--cl-indigo-100); }
+.rt-color-indigo-200 { color: var(--cl-indigo-200); }
+.rt-color-indigo-300 { color: var(--cl-indigo-300); }
+.rt-color-indigo-400 { color: var(--cl-indigo-400); }
+.rt-color-indigo-500 { color: var(--cl-indigo-500); }
+.rt-color-indigo-600 { color: var(--cl-indigo-600); }
+.rt-color-indigo-700 { color: var(--cl-indigo-700); }
+.rt-color-indigo-800 { color: var(--cl-indigo-800); }
+.rt-color-indigo-900 { color: var(--cl-indigo-900); }
+.rt-color-blue-50 { color: var(--cl-blue-50); }
+.rt-color-blue-100 { color: var(--cl-blue-100); }
+.rt-color-blue-200 { color: var(--cl-blue-200); }
+.rt-color-blue-300 { color: var(--cl-blue-300); }
+.rt-color-blue-400 { color: var(--cl-blue-400); }
+.rt-color-blue-500 { color: var(--cl-blue-500); }
+.rt-color-blue-600 { color: var(--cl-blue-600); }
+.rt-color-blue-700 { color: var(--cl-blue-700); }
+.rt-color-blue-800 { color: var(--cl-blue-800); }
+.rt-color-blue-900 { color: var(--cl-blue-900); }
+.rt-color-cyan-50 { color: var(--cl-cyan-50); }
+.rt-color-cyan-100 { color: var(--cl-cyan-100); }
+.rt-color-cyan-200 { color: var(--cl-cyan-200); }
+.rt-color-cyan-300 { color: var(--cl-cyan-300); }
+.rt-color-cyan-400 { color: var(--cl-cyan-400); }
+.rt-color-cyan-500 { color: var(--cl-cyan-500); }
+.rt-color-cyan-600 { color: var(--cl-cyan-600); }
+.rt-color-cyan-700 { color: var(--cl-cyan-700); }
+.rt-color-cyan-800 { color: var(--cl-cyan-800); }
+.rt-color-cyan-900 { color: var(--cl-cyan-900); }
+.rt-color-teal-50 { color: var(--cl-teal-50); }
+.rt-color-teal-100 { color: var(--cl-teal-100); }
+.rt-color-teal-200 { color: var(--cl-teal-200); }
+.rt-color-teal-300 { color: var(--cl-teal-300); }
+.rt-color-teal-400 { color: var(--cl-teal-400); }
+.rt-color-teal-500 { color: var(--cl-teal-500); }
+.rt-color-teal-600 { color: var(--cl-teal-600); }
+.rt-color-teal-700 { color: var(--cl-teal-700); }
+.rt-color-teal-800 { color: var(--cl-teal-800); }
+.rt-color-teal-900 { color: var(--cl-teal-900); }
+.rt-color-green-50 { color: var(--cl-green-50); }
+.rt-color-green-100 { color: var(--cl-green-100); }
+.rt-color-green-200 { color: var(--cl-green-200); }
+.rt-color-green-300 { color: var(--cl-green-300); }
+.rt-color-green-400 { color: var(--cl-green-400); }
+.rt-color-green-500 { color: var(--cl-green-500); }
+.rt-color-green-600 { color: var(--cl-green-600); }
+.rt-color-green-700 { color: var(--cl-green-700); }
+.rt-color-green-800 { color: var(--cl-green-800); }
+.rt-color-green-900 { color: var(--cl-green-900); }
+.rt-color-light-green-50 { color: var(--cl-light-green-50); }
+.rt-color-light-green-100 { color: var(--cl-light-green-100); }
+.rt-color-light-green-200 { color: var(--cl-light-green-200); }
+.rt-color-light-green-300 { color: var(--cl-light-green-300); }
+.rt-color-light-green-400 { color: var(--cl-light-green-400); }
+.rt-color-light-green-500 { color: var(--cl-light-green-500); }
+.rt-color-light-green-600 { color: var(--cl-light-green-600); }
+.rt-color-light-green-700 { color: var(--cl-light-green-700); }
+.rt-color-light-green-800 { color: var(--cl-light-green-800); }
+.rt-color-light-green-900 { color: var(--cl-light-green-900); }
+.rt-color-lime-50 { color: var(--cl-lime-50); }
+.rt-color-lime-100 { color: var(--cl-lime-100); }
+.rt-color-lime-200 { color: var(--cl-lime-200); }
+.rt-color-lime-300 { color: var(--cl-lime-300); }
+.rt-color-lime-400 { color: var(--cl-lime-400); }
+.rt-color-lime-500 { color: var(--cl-lime-500); }
+.rt-color-lime-600 { color: var(--cl-lime-600); }
+.rt-color-lime-700 { color: var(--cl-lime-700); }
+.rt-color-lime-800 { color: var(--cl-lime-800); }
+.rt-color-lime-900 { color: var(--cl-lime-900); }
+.rt-color-amber-50 { color: var(--cl-amber-50); }
+.rt-color-amber-100 { color: var(--cl-amber-100); }
+.rt-color-amber-200 { color: var(--cl-amber-200); }
+.rt-color-amber-300 { color: var(--cl-amber-300); }
+.rt-color-amber-400 { color: var(--cl-amber-400); }
+.rt-color-amber-500 { color: var(--cl-amber-500); }
+.rt-color-amber-600 { color: var(--cl-amber-600); }
+.rt-color-amber-700 { color: var(--cl-amber-700); }
+.rt-color-amber-800 { color: var(--cl-amber-800); }
+.rt-color-amber-900 { color: var(--cl-amber-900); }
+.rt-color-orange-50 { color: var(--cl-orange-50); }
+.rt-color-orange-100 { color: var(--cl-orange-100); }
+.rt-color-orange-200 { color: var(--cl-orange-200); }
+.rt-color-orange-300 { color: var(--cl-orange-300); }
+.rt-color-orange-400 { color: var(--cl-orange-400); }
+.rt-color-orange-500 { color: var(--cl-orange-500); }
+.rt-color-orange-600 { color: var(--cl-orange-600); }
+.rt-color-orange-700 { color: var(--cl-orange-700); }
+.rt-color-orange-800 { color: var(--cl-orange-800); }
+.rt-color-orange-900 { color: var(--cl-orange-900); }
+.rt-color-deep-orange-50 { color: var(--cl-deep-orange-50); }
+.rt-color-deep-orange-100 { color: var(--cl-deep-orange-100); }
+.rt-color-deep-orange-200 { color: var(--cl-deep-orange-200); }
+.rt-color-deep-orange-300 { color: var(--cl-deep-orange-300); }
+.rt-color-deep-orange-400 { color: var(--cl-deep-orange-400); }
+.rt-color-deep-orange-500 { color: var(--cl-deep-orange-500); }
+.rt-color-deep-orange-600 { color: var(--cl-deep-orange-600); }
+.rt-color-deep-orange-700 { color: var(--cl-deep-orange-700); }
+.rt-color-deep-orange-800 { color: var(--cl-deep-orange-800); }
+.rt-color-deep-orange-900 { color: var(--cl-deep-orange-900); }
+.rt-color-brown-50 { color: var(--cl-brown-50); }
+.rt-color-brown-100 { color: var(--cl-brown-100); }
+.rt-color-brown-200 { color: var(--cl-brown-200); }
+.rt-color-brown-300 { color: var(--cl-brown-300); }
+.rt-color-brown-400 { color: var(--cl-brown-400); }
+.rt-color-brown-500 { color: var(--cl-brown-500); }
+.rt-color-brown-600 { color: var(--cl-brown-600); }
+.rt-color-brown-700 { color: var(--cl-brown-700); }
+.rt-color-brown-800 { color: var(--cl-brown-800); }
+.rt-color-brown-900 { color: var(--cl-brown-900); }
+.rt-color-grey-50 { color: var(--cl-grey-50); }
+.rt-color-grey-100 { color: var(--cl-grey-100); }
+.rt-color-grey-200 { color: var(--cl-grey-200); }
+.rt-color-grey-300 { color: var(--cl-grey-300); }
+.rt-color-grey-400 { color: var(--cl-grey-400); }
+.rt-color-grey-500 { color: var(--cl-grey-500); }
+.rt-color-grey-600 { color: var(--cl-grey-600); }
+.rt-color-grey-700 { color: var(--cl-grey-700); }
+.rt-color-grey-800 { color: var(--cl-grey-800); }
+.rt-color-grey-900 { color: var(--cl-grey-900); }
+.rt-color-blue-grey-50 { color: var(--cl-blue-grey-50); }
+.rt-color-blue-grey-100 { color: var(--cl-blue-grey-100); }
+.rt-color-blue-grey-200 { color: var(--cl-blue-grey-200); }
+.rt-color-blue-grey-300 { color: var(--cl-blue-grey-300); }
+.rt-color-blue-grey-400 { color: var(--cl-blue-grey-400); }
+.rt-color-blue-grey-500 { color: var(--cl-blue-grey-500); }
+.rt-color-blue-grey-600 { color: var(--cl-blue-grey-600); }
+.rt-color-blue-grey-700 { color: var(--cl-blue-grey-700); }
+.rt-color-blue-grey-800 { color: var(--cl-blue-grey-800); }
+.rt-color-blue-grey-900 { color: var(--cl-blue-grey-900); }
+
+.rt-color-default { color: var(--cl-text); }
+.rt-color-black { color: #000000; }
+.rt-color-white { color: #FFFFFF; }
+.rt-color-transparent { color: transparent; }
+
+.opacity-0 { opacity: 0; }
+.opacity-5 { opacity: 0.05; }
+.opacity-10 { opacity: 0.1; }
+.opacity-20 { opacity: 0.2; }
+.opacity-40 { opacity: 0.4; }
+.opacity-60 { opacity: 0.6; }
+.opacity-80 { opacity: 0.8; }
+.opacity-100 { opacity: 1; }
+

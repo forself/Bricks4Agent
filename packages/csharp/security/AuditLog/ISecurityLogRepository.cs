@@ -22,7 +22,7 @@ namespace Bricks4Agent.Security.AuditLog
         /// <summary>
         /// Get log entry by ID
         /// </summary>
-        SecurityLogEntry GetById(long id);
+        SecurityLogEntry? GetById(long id);
 
         /// <summary>
         /// Query logs with filters
@@ -62,7 +62,7 @@ namespace Bricks4Agent.Security.AuditLog
         /// <summary>
         /// Get IP activity summary
         /// </summary>
-        IpActivitySummary GetIpActivity(string ipAddressHash, DateTime? since = null);
+        IpActivitySummary? GetIpActivity(string ipAddressHash, DateTime? since = null);
 
         /// <summary>
         /// Delete logs older than specified date
@@ -98,7 +98,7 @@ namespace Bricks4Agent.Security.AuditLog
         /// <summary>
         /// Get login record by ID
         /// </summary>
-        LoginRecord GetById(long id);
+        LoginRecord? GetById(long id);
 
         /// <summary>
         /// Get login history for a user
@@ -164,7 +164,7 @@ namespace Bricks4Agent.Security.AuditLog
         /// <summary>
         /// Get alert configuration by ID
         /// </summary>
-        SecurityAlertConfig GetAlertConfig(int id);
+        SecurityAlertConfig? GetAlertConfig(int id);
 
         /// <summary>
         /// Get all alert configurations
@@ -184,7 +184,7 @@ namespace Bricks4Agent.Security.AuditLog
         /// <summary>
         /// Get alert by ID
         /// </summary>
-        SecurityAlert GetAlert(long id);
+        SecurityAlert? GetAlert(long id);
 
         /// <summary>
         /// Get unacknowledged alerts

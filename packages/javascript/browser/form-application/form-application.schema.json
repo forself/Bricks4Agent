@@ -1,0 +1,176 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bricks4agent.local/schemas/form-application.schema.json",
+  "title": "Bricks4Agent Form Application Definition",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "application_id",
+    "display_name",
+    "source",
+    "persistence",
+    "table",
+    "fields",
+    "form",
+    "api",
+    "generation"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "application_id": { "$ref": "#/$defs/identifier" },
+    "display_name": { "$ref": "#/$defs/safeText" },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "dialect"],
+      "properties": {
+        "mode": { "enum": ["new", "import"] },
+        "dialect": { "$ref": "#/$defs/provider" }
+      }
+    },
+    "persistence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "connection_string", "connection_string_name", "sqlite_file"],
+      "properties": {
+        "provider": { "$ref": "#/$defs/provider" },
+        "connection_string": { "type": ["string", "null"] },
+        "connection_string_name": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$" },
+        "sqlite_file": { "type": ["string", "null"], "pattern": "^data/[A-Za-z_][A-Za-z0-9_]*\\.db$" }
+      }
+    },
+    "table": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "mode", "primary_key"],
+      "properties": {
+        "name": { "$ref": "#/$defs/identifier" },
+        "mode": { "const": "create" },
+        "primary_key": { "$ref": "#/$defs/identifier" }
+      }
+    },
+    "fields": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/field" }
+    },
+    "form": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["page_name", "submit_label"],
+      "properties": {
+        "page_name": { "type": "string", "pattern": "^[A-Z][A-Za-z0-9]*Page$" },
+        "submit_label": { "$ref": "#/$defs/safeText" }
+      }
+    },
+    "api": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["route", "operations", "auth_required"],
+      "properties": {
+        "route": { "type": "string", "pattern": "^/api/[a-z0-9][a-z0-9/_-]*$" },
+        "operations": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "enum": ["list", "get", "create", "update", "delete"] }
+        },
+        "auth_required": { "type": "boolean" }
+      }
+    },
+    "generation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["target", "output_name", "mode", "apply_database"],
+      "properties": {
+        "target": { "const": "spa-net10" },
+        "output_name": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$" },
+        "mode": { "enum": ["preview", "generate-only"] },
+        "apply_database": { "const": false }
+      }
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+    },
+    "safeText": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!.*<[^>]*>)(?!.*javascript\\s*:).+$"
+    },
+    "provider": { "enum": ["sqlite", "sqlserver", "postgresql", "mysql"] },
+    "field": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "field_id",
+        "column_name",
+        "display_name",
+        "db_type",
+        "nullable",
+        "primary_key",
+        "identity",
+        "default",
+        "icon",
+        "input",
+        "validation",
+        "layout",
+        "order"
+      ],
+      "properties": {
+        "field_id": { "$ref": "#/$defs/identifier" },
+        "column_name": { "$ref": "#/$defs/identifier" },
+        "display_name": { "$ref": "#/$defs/safeText" },
+        "db_type": { "enum": ["integer", "long", "decimal", "number", "boolean", "text", "date", "datetime", "guid", "binary", "json"] },
+        "nullable": { "type": "boolean" },
+        "primary_key": { "type": "boolean" },
+        "identity": { "type": "boolean" },
+        "default": { "type": ["string", "number", "boolean", "null"] },
+        "icon": { "$ref": "#/$defs/safeText" },
+        "max_length": { "type": "integer", "minimum": 1, "maximum": 10485760 },
+        "input": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["field_type", "component", "options"],
+          "properties": {
+            "field_type": { "enum": ["hidden", "text", "textarea", "email", "password", "tel", "url", "number", "checkbox", "toggle", "date", "datetime", "select", "multiselect", "radio", "file", "richtext", "color", "slider"] },
+            "component": { "enum": ["TextInput", "TextArea", "NumberInput", "Checkbox", "ToggleSwitch", "DatePicker", "DateTimeInput", "Dropdown", "MultiSelectDropdown", "Radio", "BatchUploader", "HiddenInput", "WebTextEditor", "ColorPicker", "Slider"] },
+            "options": { "type": "object" }
+          }
+        },
+        "validation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["required"],
+          "properties": {
+            "required": { "type": "boolean" },
+            "min_length": { "type": "number", "minimum": 0 },
+            "max_length": { "type": "number", "minimum": 1 },
+            "minimum": { "type": "number" },
+            "maximum": { "type": "number" },
+            "pattern": { "$ref": "#/$defs/safeText" }
+          }
+        },
+        "layout": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["row", "column", "column_span", "row_span", "width", "height"],
+          "properties": {
+            "row": { "type": "integer", "minimum": 1 },
+            "column": { "type": "integer", "minimum": 1, "maximum": 12 },
+            "column_span": { "type": "integer", "minimum": 1, "maximum": 12 },
+            "row_span": { "type": "integer", "minimum": 1, "maximum": 12 },
+            "width": { "type": ["number", "null"], "minimum": 1 },
+            "height": { "type": ["number", "null"], "minimum": 1 }
+          }
+        },
+        "order": { "type": "integer", "minimum": 1 }
+      }
+    }
+  }
+}

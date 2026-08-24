@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>統一視覺化引擎使用指南 (Unified Visualization Engine Guide)</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>統一視覺化引擎使用指南 (Unified Visualization Engine Guide)</h1>
+<h2>數據協議：JSON 物件陣列 (JSON Array Protocol)</h2>
+<p>為了兼顧開發效率與直觀性，本引擎採用 <strong>JSON 物件陣列</strong> 作為標準輸入格式。
+This engine adopts the <strong>Array of JSON Objects</strong> as the standard input format for balance between efficiency and intuitiveness.</p>
+<h3>解決了什麼問題？ (Problem Solved)</h3>
+<ul>
+<li><strong>無需 Mapping</strong>: 欄位名稱直接寫在 JSON Key 中 (如 <code>id</code>, <code>label</code>)，通常情況下如果不需轉名，連 <code>mapping</code> 設定都可省略。</li>
+<li><strong>保持扁平 (Flat)</strong>: 後端不需組裝複雜的樹狀結構 (<code>children: []</code>)，只需回傳扁平的列表 (<code>List</code>)。</li>
+</ul>
+<hr>
+<h2>1. 怎麼用 (How to Use)</h2>
+<h3>範例：組織圖 (Org Chart) - 樹狀結構</h3>
+<p><strong>後端回傳數據 (Backend Data):</strong>
+扁平的物件陣列，只需包含 <code>id</code> 與 <code>parentId</code>。</p>
+<pre><code class="language-javascript">const employees = [
+    { id: &quot;1001&quot;, parentId: null, label: &quot;CEO John&quot; },
+    { id: &quot;1002&quot;, parentId: &quot;1001&quot;, label: &quot;CTO Jane&quot; },
+    { id: &quot;1003&quot;, parentId: &quot;1002&quot;, label: &quot;Dev Manager&quot; }
+];
+</code></pre>
+<p><strong>前端渲染 (Frontend Render):</strong></p>
+<pre><code class="language-javascript">viz.render({
+    type: 'org',
+    container: '#chart',
+    data: employees
+    // 無需 mapping，因為 key 已經是標準的 id/parentId/label
+});
+</code></pre>
+<p><em>若後端欄位名稱不同 (例如 <code>emp_id</code>)，可使用 mapping 進行別名轉換：</em></p>
+<pre><code class="language-javascript">viz.render({
+    // ...
+    mapping: { id: 'emp_id', parentId: 'manager_id' }
+});
+</code></pre>
+<hr>
+<h3>範例：關聯圖 (Relation Chart) - 網絡結構</h3>
+<p><strong>後端回傳數據 (Backend Data):</strong>
+每一列代表一條「連線 (Link)」。</p>
+<pre><code class="language-javascript">const connections = [
+    { source: &quot;UserA&quot;, target: &quot;UserB&quot;, value: 5 },
+    { source: &quot;UserB&quot;, target: &quot;UserC&quot;, value: 10 }
+];
+</code></pre>
+<p><strong>前端渲染 (Frontend Render):</strong></p>
+<pre><code class="language-javascript">viz.render({
+    type: 'relation',
+    container: '#chart',
+    data: connections
+});
+</code></pre>
+<p><em>引擎會自動從連線中提取不重複的節點 (Nodes)。</em></p>
+<hr>
+<h3>範例：時間軸 (Timeline) - 列表</h3>
+<p><strong>後端回傳數據 (Backend Data):</strong></p>
+<pre><code class="language-javascript">const tasks = [
+    { label: &quot;Task 1&quot;, group: &quot;Server&quot;, start: 1680000000, end: 1680001000 },
+    { label: &quot;Task 2&quot;, group: &quot;Client&quot;, start: 1680000500, end: 1680002000 }
+];
+</code></pre>
+<p><strong>前端渲染 (Frontend Render):</strong></p>
+<pre><code class="language-javascript">viz.render({
+    type: 'timeline',
+    container: '#chart',
+    data: tasks
+});
+</code></pre>
+<hr>
+<h2>2. 自動化轉換 (Automatic Transformation)</h2>
+<p>引擎內建了強大的轉換邏輯：</p>
+<ol>
+<li><strong>Flat-to-Tree</strong>: 對於 <code>org</code>, <code>hierarchy</code>, <code>flame</code> 等圖表，引擎會自動掃描數據中的 <code>parentId</code> 欄位，將扁平列表重組為樹狀結構。</li>
+<li><strong>別名系統 (Aliasing)</strong>: 透過 <code>mapping</code> 參數，您可以輕鬆對接任何後端既有的欄位命名，而無需修改後端 API。</li>
+</ol>
+<hr>
+<h2>3. 事件與互動 (Events)</h2>
+<p>事件回調將直接回傳該列的 JSON 物件，方便您直接取用數據。</p>
+<pre><code class="language-javascript">viz.render({
+    // ...
+    events: {
+        click: (action) =&gt; alert(`Clicked on ${action.label}`) 
+        // action: { id: &quot;1001&quot;, label: &quot;CEO John&quot;, ... }
+    }
+});
+</code></pre>
+<hr>
+<h2>4. 資安與驗證 (Security &amp; Authentication)</h2>
+<h3>4.1 JWT 整合 (JWT Integration)</h3>
+<p>引擎內建 <code>fetch</code> 方法，支援 JWT Bearer Token 驗證，並符合資安規範（不將 Token 暴露於 Log）。</p>
+<pre><code class="language-javascript">// 1. 設定 Token (通常在登入後執行)
+viz.setAuth('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...');
+
+// 2. 使用安全 Fetch 獲取數據
+viz.fetch('/api/v1/employees')
+   .then(data =&gt; {
+       viz.render({
+           type: 'org',
+           container: '#chart',
+           data: data
+       });
+   })
+   .catch(err =&gt; {
+       // 錯誤處理 (Error Handling)
+   });
+</code></pre>
+<h3>4.2 XSS 防護 (XSS Prevention)</h3>
+<ul>
+<li><strong>自動過濾</strong>: 引擎內部所有 Detail Card 與 Tooltip 渲染皆已強制實作 <code>escapeHtml()</code>。</li>
+<li><strong>數據內容</strong>: 即便後端回傳含有 <code>&lt;script&gt;</code> 的惡意字串，在前端也會被轉義為純文字顯示 (<code>&amp;lt;script&amp;gt;</code>)，確保不會執行惡意代碼。</li>
+</ul>
+</main>
+</body>
+</html>

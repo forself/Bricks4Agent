@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>後台與權限管理邊界設計</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>後台與權限管理邊界設計</h1>
+<p>日期：2026-06-26</p>
+<h2>目標</h2>
+<p>將 Bricks4Agent 的本機後台從「單一 local admin 密碼即可操作全部功能」調整為具 named operator、角色與權限閘的治理式後台。系統管理與權限管理必須明確分離，讓日常維運、權限授予、審批、稽核可被分開授權、測試與追蹤。</p>
+<h2>現況</h2>
+<p>目前 <code>line-admin.html</code> 由 <code>/api/v1/local-admin/*</code> 支援，登入模型是單一 <code>LocalAdminCredential</code> 與 <code>LocalAdminSession</code>。只要 local request 且 session 有效，多數 local-admin API 即可操作，包含系統狀態、LINE 使用者、registration policy、browser binding、deployment、Drive delivery、approval、tool specs 與 alerts。</p>
+<p>系統內另有 <code>/api/v1/admin/*</code> 與 <code>Principal</code> / <code>Role</code> / <code>RoleBinding</code>，但這套屬於 broker scoped-token / execution 授權，不適合作為後台 operator 權限的第一層來源。若直接混用，會把「人類後台操作員」與「AI / worker / task 執行角色」耦合，後續治理會更難驗證。</p>
+<h2>非目標</h2>
+<p>本階段不導入企業 SSO、MFA、外部 IAM、完整組織階層或多租戶 RBAC。這些可以在 operator 權限模型穩定後再接入。</p>
+<p>本階段不移除既有 broker scoped-token <code>role_admin</code> 機制；它仍服務 <code>/api/v1/admin/*</code> 與 execution control plane。新的後台 operator 權限只治理 <code>/api/v1/local-admin/*</code> 與 <code>line-admin.html</code>。</p>
+<h2>角色</h2>
+<h3><code>super_admin</code></h3>
+<p>Bootstrap / break-glass 角色。具備系統管理、權限管理、審批、稽核全部權限。初始單一 <code>local_admin</code> credential 會遷移為此角色，避免現有安裝被鎖在門外。</p>
+<h3><code>system_admin</code></h3>
+<p>負責平台維運與系統狀態，不得管理 operator 或授予權限。可操作：</p>
+<ul>
+<li>系統狀態、LLM、Embedding、RAG、DB 摘要。</li>
+<li>worker / container health、logs 與控制。</li>
+<li>deployment target / preview / execute。</li>
+<li>Drive delivery / OAuth 狀態與交付重試。</li>
+<li>browser system binding 與 system-level lease。</li>
+<li>alerts 與 runtime monitoring。</li>
+</ul>
+<h3><code>permission_admin</code></h3>
+<p>負責人員、使用者與權限治理，不得操作部署、worker 或系統組態。可操作：</p>
+<ul>
+<li>後台 operator 建立、停用、改密碼、角色調整。</li>
+<li>LINE / Portal 使用者權限與 registration policy。</li>
+<li>browser user grant。</li>
+<li>approval queue 的 admin-tier 審批。</li>
+<li>tool spec 與 capability catalog 的唯讀檢視。</li>
+</ul>
+<h3><code>auditor</code></h3>
+<p>唯讀稽核角色。可查看系統狀態、alerts、delivery history、approval history、audit trace 與 health score，不可修改任何狀態。</p>
+<h2>權限代碼</h2>
+<p>後端以明確 permission code 強制授權，不依賴前端隱藏按鈕。</p>
+<table>
+<thead>
+<tr>
+<th>Permission</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>system.status.read</code></td>
+<td>讀取 broker、LLM、Embedding、RAG、DB 摘要</td>
+</tr>
+<tr>
+<td><code>system.monitor.read</code></td>
+<td>讀取 health score、worker health、alerts、log 摘要</td>
+</tr>
+<tr>
+<td><code>system.worker.manage</code></td>
+<td>spawn / stop worker、讀取 container logs</td>
+</tr>
+<tr>
+<td><code>system.deployment.manage</code></td>
+<td>deployment target、preview、execute</td>
+</tr>
+<tr>
+<td><code>system.delivery.manage</code></td>
+<td>Drive OAuth、delivery、retry</td>
+</tr>
+<tr>
+<td><code>system.browser.manage</code></td>
+<td>browser site/system binding、system lease、browser execution</td>
+</tr>
+<tr>
+<td><code>permission.operator.manage</code></td>
+<td>後台 operator CRUD、重設密碼、停用 session</td>
+</tr>
+<tr>
+<td><code>permission.user.manage</code></td>
+<td>LINE / Portal 使用者權限、registration review</td>
+</tr>
+<tr>
+<td><code>permission.registration.manage</code></td>
+<td>registration policy</td>
+</tr>
+<tr>
+<td><code>permission.browser_grant.manage</code></td>
+<td>browser user grant</td>
+</tr>
+<tr>
+<td><code>approval.admin.manage</code></td>
+<td>admin-tier approval approve/reject</td>
+</tr>
+<tr>
+<td><code>tool_spec.read</code></td>
+<td>tool spec / capability catalog 讀取</td>
+</tr>
+<tr>
+<td><code>audit.read</code></td>
+<td>audit / alert / delivery / approval history 唯讀</td>
+</tr>
+<tr>
+<td><code>audit.verify</code></td>
+<td>audit chain verification</td>
+</tr>
+</tbody>
+</table>
+<p>角色預設權限：</p>
+<table>
+<thead>
+<tr>
+<th>Role</th>
+<th>Permissions</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>super_admin</code></td>
+<td>全部</td>
+</tr>
+<tr>
+<td><code>system_admin</code></td>
+<td><code>system.*</code>、<code>tool_spec.read</code>、<code>audit.read</code></td>
+</tr>
+<tr>
+<td><code>permission_admin</code></td>
+<td><code>permission.*</code>、<code>approval.admin.manage</code>、<code>tool_spec.read</code>、<code>audit.read</code></td>
+</tr>
+<tr>
+<td><code>auditor</code></td>
+<td><code>system.status.read</code>、<code>system.monitor.read</code>、<code>tool_spec.read</code>、<code>audit.read</code>、<code>audit.verify</code></td>
+</tr>
+</tbody>
+</table>
+<h2>資料模型</h2>
+<p>新增或擴充後台 operator 資料，不改變 broker execution 的 <code>Principal</code> / <code>Role</code>。</p>
+<h3><code>LocalAdminCredential</code></h3>
+<p>保留既有 table <code>local_admin_credentials</code>，但語意從 singleton credential 擴充為 operator credential。</p>
+<p>新增欄位：</p>
+<ul>
+<li><code>operator_id</code>：穩定 operator id。既有 <code>credential_id</code> 可繼續作為 key；新資料兩者相同。</li>
+<li><code>username</code>：登入名稱，唯一。</li>
+<li><code>display_name</code>：顯示名稱。</li>
+<li><code>role</code>：<code>super_admin</code> / <code>system_admin</code> / <code>permission_admin</code> / <code>auditor</code>。</li>
+<li><code>permission_overrides</code>：JSON，預留給未來額外授權或拔權。本階段預設 <code>{}</code>。</li>
+<li><code>status</code>：<code>active</code> / <code>disabled</code>。</li>
+<li><code>last_login_at</code>：最後登入時間。</li>
+</ul>
+<p>既有 <code>credential_id = local_admin</code> 會被視為 <code>operator_id = local_admin</code>、<code>username = admin</code>、<code>role = super_admin</code>。</p>
+<h3><code>LocalAdminSession</code></h3>
+<p>新增欄位：</p>
+<ul>
+<li><code>operator_id</code></li>
+<li><code>username</code></li>
+<li><code>role</code></li>
+<li><code>permissions_snapshot</code></li>
+</ul>
+<p>session 建立時寫入 role 與 permission snapshot。之後若 operator 權限被調整，系統可選擇撤銷既有 session；本階段實作會在 operator 角色變更或停用時撤銷該 operator 的所有 active sessions。</p>
+<h2>後端服務</h2>
+<p><code>LocalAdminAuthService</code> 擴充為後台 operator auth service：</p>
+<ul>
+<li><code>Login(context, username, password, newPassword)</code> 支援 named operator。</li>
+<li><code>GetStatus(context)</code> 回傳 operator、role、permissions。</li>
+<li><code>TryRequireAuthenticated(...)</code> 保留，用於少數只要求登入的場景。</li>
+<li>新增 <code>TryRequirePermission(context, permission, out session, out denied)</code>。</li>
+<li>新增 <code>TryRequireAnyPermission(context, permissions, out session, out denied)</code>。</li>
+<li>新增 operator 管理方法：list、create、update role、disable、reset password、revoke sessions。</li>
+</ul>
+<p>所有 local-admin mutation endpoint 必須使用 permission gate；唯讀 endpoint 也要用對應 read permission。</p>
+<h2>API 邊界</h2>
+<p>新增 <code>/api/v1/local-admin/operators/*</code>：</p>
+<table>
+<thead>
+<tr>
+<th>Route</th>
+<th>Permission</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GET /api/v1/local-admin/operators</code></td>
+<td><code>permission.operator.manage</code></td>
+</tr>
+<tr>
+<td><code>POST /api/v1/local-admin/operators</code></td>
+<td><code>permission.operator.manage</code></td>
+</tr>
+<tr>
+<td><code>POST /api/v1/local-admin/operators/{operatorId}/role</code></td>
+<td><code>permission.operator.manage</code></td>
+</tr>
+<tr>
+<td><code>POST /api/v1/local-admin/operators/{operatorId}/disable</code></td>
+<td><code>permission.operator.manage</code></td>
+</tr>
+<tr>
+<td><code>POST /api/v1/local-admin/operators/{operatorId}/reset-password</code></td>
+<td><code>permission.operator.manage</code></td>
+</tr>
+<tr>
+<td><code>POST /api/v1/local-admin/operators/{operatorId}/revoke-sessions</code></td>
+<td><code>permission.operator.manage</code></td>
+</tr>
+</tbody>
+</table>
+<p>既有 local-admin endpoint 權限映射：</p>
+<table>
+<thead>
+<tr>
+<th>Endpoint group</th>
+<th>Permission</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/system/status</code></td>
+<td><code>system.status.read</code></td>
+</tr>
+<tr>
+<td><code>/alerts</code></td>
+<td><code>system.monitor.read</code> 或 <code>audit.read</code></td>
+</tr>
+<tr>
+<td><code>/workflow/*</code></td>
+<td><code>system.status.read</code> 或 <code>audit.read</code></td>
+</tr>
+<tr>
+<td><code>/line/users</code>, <code>/line/conversations</code></td>
+<td><code>permission.user.manage</code> 或 <code>audit.read</code></td>
+</tr>
+<tr>
+<td><code>/line/registration-policy</code></td>
+<td>GET: <code>audit.read</code>；POST: <code>permission.registration.manage</code></td>
+</tr>
+<tr>
+<td><code>/line/users/permissions</code>, <code>/line/users/registration/review</code></td>
+<td><code>permission.user.manage</code></td>
+</tr>
+<tr>
+<td><code>/browser/user-grants/*</code></td>
+<td><code>permission.browser_grant.manage</code></td>
+</tr>
+<tr>
+<td><code>/browser/site-bindings/*</code>, <code>/browser/system-bindings/*</code>, <code>/browser/leases/*</code>, <code>/browser/execute</code></td>
+<td><code>system.browser.manage</code></td>
+</tr>
+<tr>
+<td><code>/deployment/*</code></td>
+<td><code>system.deployment.manage</code></td>
+</tr>
+<tr>
+<td><code>/delivery/*</code>, artifact delivery retry</td>
+<td><code>system.delivery.manage</code></td>
+</tr>
+<tr>
+<td><code>/tool-specs*</code></td>
+<td><code>tool_spec.read</code></td>
+</tr>
+<tr>
+<td><code>/approvals*</code> approve/reject</td>
+<td><code>approval.admin.manage</code></td>
+</tr>
+</tbody>
+</table>
+<h2>後台 UI</h2>
+<p><code>line-admin.html</code> 仍是後台入口，但登入後依 <code>authStatus.permissions</code> 呈現導航。</p>
+<p>新增分頁：</p>
+<ul>
+<li>「系統監控」：整合 system status、LLM、Embedding、RAG、DB、worker health score、health history、alerts 與 delivery/worker log 摘要。</li>
+<li>「權限管理」：operator 管理、使用者權限、registration policy、browser user grants。</li>
+</ul>
+<p>既有分頁調整：</p>
+<ul>
+<li>「LINE 與使用者」保留，但 mutation 操作只對 <code>permission.user.manage</code> 顯示。</li>
+<li>「Deployment」、「Browser 綁定」、「交付記錄」歸入系統管理權限。</li>
+<li>「審批」只對 <code>approval.admin.manage</code> 顯示。</li>
+<li>auditor 可見唯讀摘要與歷史，不顯示修改、重試、執行、刪除、核准、駁回按鈕。</li>
+</ul>
+<p>前端隱藏只改善 UX；所有安全邊界以後端 permission gate 為準。</p>
+<h2>遷移策略</h2>
+<ol>
+<li><code>BrokerDbInitializer</code> 確保新欄位存在，並建立 username 索引。</li>
+<li>若只有舊式 <code>local_admin</code> credential，補上 <code>username = admin</code>、<code>display_name = Local Super Admin</code>、<code>role = super_admin</code>、<code>status = active</code>。</li>
+<li>初始密碼流程保持相容：沒有 credential 時仍可從 localhost 用 <code>admin</code> bootstrap，但第一次必須設定新密碼。</li>
+<li>已存在的舊 session 沒有 role snapshot 時視為 <code>super_admin</code>，但第一次成功登入後會發新式 session。文件會要求升級後重新登入。</li>
+</ol>
+<h2>測試策略</h2>
+<p>採 TDD 實作。每個後端行為先寫失敗測試，再補最小實作。</p>
+<p>必要測試：</p>
+<ul>
+<li><code>LocalAdminAuthService</code> 可建立 named operator，登入後 status 回傳 role 與 permissions。</li>
+<li><code>system_admin</code> 可讀 <code>/system/status</code>，但不能呼叫 operator 管理 endpoint。</li>
+<li><code>permission_admin</code> 可管理 operator / registration policy，但不能執行 deployment。</li>
+<li><code>auditor</code> 可讀 status / alerts，但不能 mutation。</li>
+<li>role 變更或 operator disable 後，既有 session 被撤銷。</li>
+<li>舊式 <code>local_admin</code> credential 遷移為 <code>super_admin</code>。</li>
+<li><code>line-admin.html</code> static smoke：登入狀態包含 permissions 時，分頁 gating 函式可正確判斷顯示狀態。</li>
+</ul>
+<p>驗證命令：</p>
+<pre><code class="language-powershell">dotnet test packages/csharp/tests/unit/Unit.Tests.csproj
+dotnet test packages/csharp/tests/integration/Integration.Tests.csproj
+dotnet run --project packages/csharp/tests/broker-tests/Broker.Tests.csproj
+npm run validate:user-portal
+</code></pre>
+<h2>成功準則</h2>
+<ul>
+<li>後台 operator 不再是匿名單一 admin session。</li>
+<li>系統管理與權限管理在後端 API 層可被獨立授權。</li>
+<li><code>system_admin</code>、<code>permission_admin</code>、<code>auditor</code> 的拒絕行為有自動測試保護。</li>
+<li>UI 清楚呈現角色邊界，且不把無權限操作顯示成可點擊功能。</li>
+<li>既有本機安裝可平順升級，不會因新模型失去後台入口。</li>
+</ul>
+</main>
+</body>
+</html>

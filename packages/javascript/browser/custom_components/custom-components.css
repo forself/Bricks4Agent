@@ -1,0 +1,116 @@
+.custom-component,
+.custom-component__root,
+.custom-component__group,
+.custom-component__host {
+    box-sizing: border-box;
+    min-width: 0;
+}
+
+.custom-component,
+.custom-component__root,
+.custom-component__group {
+    width: 100%;
+}
+
+.custom-component--stack {
+    display: flex;
+    flex-direction: column;
+}
+
+.custom-component--row {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+}
+
+.custom-component--grid {
+    display: grid;
+}
+
+.custom-component--gap-none {
+    gap: 0;
+}
+
+.custom-component--gap-xs {
+    gap: var(--cl-space-xs);
+}
+
+.custom-component--gap-sm {
+    gap: var(--cl-space-sm);
+}
+
+.custom-component--gap-md {
+    gap: var(--cl-space-md);
+}
+
+.custom-component--gap-lg {
+    gap: var(--cl-space-lg);
+}
+
+.custom-component--gap-xl {
+    gap: var(--cl-space-xl);
+}
+
+.custom-component--columns-1 {
+    grid-template-columns: repeat(1, minmax(0, 1fr));
+}
+
+.custom-component--columns-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.custom-component--columns-3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.custom-component--columns-4 {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.custom-component--columns-5 {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.custom-component--columns-6 {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.custom-component--columns-7 {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.custom-component--columns-8 {
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+}
+
+.custom-component--columns-9 {
+    grid-template-columns: repeat(9, minmax(0, 1fr));
+}
+
+.custom-component--columns-10 {
+    grid-template-columns: repeat(10, minmax(0, 1fr));
+}
+
+.custom-component--columns-11 {
+    grid-template-columns: repeat(11, minmax(0, 1fr));
+}
+
+.custom-component--columns-12 {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+}
+
+.custom-component--align-start {
+    align-items: start;
+}
+
+.custom-component--align-center {
+    align-items: center;
+}
+
+.custom-component--align-end {
+    align-items: end;
+}
+
+.custom-component--align-stretch {
+    align-items: stretch;
+}

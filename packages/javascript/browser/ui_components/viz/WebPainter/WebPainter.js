@@ -13,9 +13,14 @@ import { SimpleDialog } from '../../common/Dialog/index.js';
 
 import { ModalPanel } from '../../layout/Panel/index.js';
 import Locale from '../../i18n/index.js';
+import { nextUid } from '../../utils/uid.js';
 
 export class WebPainter {
     constructor(options = {}) {
+        this._webPainterChildren = new Set();
+        this._painterDestroyed = false;
+        this._layerInitTimer = null;
+        this._handleKeyDown = null;
         this.container = typeof options.container === 'string'
             ? document.querySelector(options.container)
             : options.container;
@@ -94,6 +99,11 @@ export class WebPainter {
         this._saveHistory(); // 保存初始空狀態
     }
 
+    _trackPainterComponent(component) {
+        if (component) this._webPainterChildren.add(component);
+        return component;
+    }
+
     _createUI() {
         const wrapper = document.createElement('div');
         wrapper.className = 'web-painter';
@@ -129,17 +139,20 @@ export class WebPainter {
             border-radius: 0 0 var(--cl-radius-lg) var(--cl-radius-lg);
             overflow: auto;
             cursor: crosshair;
-            height: ${this.height}px;
+            max-height: ${this.height}px; /* RWD:改 max-height,畫布縮小時容器同步變矮 */
         `;
 
         const canvas = document.createElement('canvas');
         canvas.width = this.width;
         canvas.height = this.height;
+        // RWD:max-width + height:auto 讓顯示尺寸不超過容器並等比縮放(內部解析度不變)
         canvas.style.cssText = `
             display: block;
             background: var(--cl-bg);
             box-shadow: var(--cl-shadow-sm);
             margin: auto;
+            max-width: 100%;
+            height: auto;
         `;
         this.canvas = canvas;
         this.ctx = canvas.getContext('2d');
@@ -187,7 +200,7 @@ export class WebPainter {
         `;
         header.innerHTML = '<span>📜 圖層管理</span>';
 
-        const addLayerBtn = new BasicButton({
+        const addLayerBtn = this._trackPainterComponent(new BasicButton({
             type: 'custom',
             customLabel: '➕',
             size: 'small',
@@ -197,13 +210,13 @@ export class WebPainter {
                 const name = await this._prompt(Locale.t('webPainter.layerNameLabel'), Locale.t('webPainter.defaultLayerName', { n: this.layers.length + 1 }));
                 if (name) {
                     const safeName = name.trim().substring(0, 50);
-                    const newId = `layer-${Date.now()}`;
+                    const newId = this._nextLayerId();
                     this.layers.push({ id: newId, name: safeName, visible: true, locked: false });
                     this.currentLayerId = newId;
                     this._updateLayerList();
                 }
             }
-        });
+        }));
         addLayerBtn.mount(header);
 
         this.layerListContainer = document.createElement('div');
@@ -217,9 +230,19 @@ export class WebPainter {
         panel.appendChild(this.layerListContainer);
 
         // 初始更新列表
-        setTimeout(() => this._updateLayerList(), 0);
+        this._layerInitTimer = setTimeout(() => {
+            this._layerInitTimer = null;
+            if (!this._painterDestroyed) this._updateLayerList();
+        }, 0);
 
         return panel;
+    }
+
+    _nextLayerId() {
+        const used = new Set(this.layers.map(layer => layer.id));
+        let index = this.layers.length + 1;
+        while (used.has(`layer-${index}`)) index += 1;
+        return `layer-${index}`;
     }
 
     _updateLayerList() {
@@ -317,11 +340,11 @@ export class WebPainter {
 
         // 上傳圖片按鈕
         if (this.features.upload) {
-            const uploadBtn = new UploadButton({
+            const uploadBtn = this._trackPainterComponent(new UploadButton({
                 type: UploadButton.TYPES.IMAGE,
                 onSelect: (files) => this._handleImageUpload(files[0]),
                 tooltip: Locale.t('webPainter.uploadBg')
-            });
+            }));
             uploadBtn.mount(toolbar);
             this._addSeparator(toolbar);
         }
@@ -341,7 +364,7 @@ export class WebPainter {
             this.toolButtons = {};
             this.editorToolButtons = {};
 
-            const toolGroup = new ButtonGroup({
+            const toolGroup = this._trackPainterComponent(new ButtonGroup({
                 theme: 'gradient',
                 buttons: tools.map(({tool, type}) => {
                     const btn = new EditorButton({
@@ -357,7 +380,7 @@ export class WebPainter {
                     this.editorToolButtons[tool] = btn;
                     return btn;
                 })
-            });
+            }));
             toolGroup.mount(toolbar);
             this._addSeparator(toolbar);
         }
@@ -396,10 +419,10 @@ export class WebPainter {
             }
 
             if (actionButtons.length > 0) {
-                const actionGroup = new ButtonGroup({
+                const actionGroup = this._trackPainterComponent(new ButtonGroup({
                     theme: 'gradient',
                     buttons: actionButtons
-                });
+                }));
                 actionGroup.mount(toolbar);
             }
         }
@@ -407,7 +430,7 @@ export class WebPainter {
         if (this.features.export) {
             this._addSeparator(toolbar);
 
-            const exportGroup = new ButtonGroup({
+            const exportGroup = this._trackPainterComponent(new ButtonGroup({
                 theme: 'gradient',
                 buttons: [
                     new EditorButton({
@@ -421,18 +444,18 @@ export class WebPainter {
                         onClick: () => this._exportJSON()
                     })
                 ]
-            });
+            }));
             exportGroup.mount(toolbar);
         }
 
         if (this.features.layers) {
             this._addSeparator(toolbar);
 
-            const layerBtn = new EditorButton({
+            const layerBtn = this._trackPainterComponent(new EditorButton({
                 type: T.LAYERS,
                 theme: 'gradient',
                 onClick: () => this._toggleLayerPanel()
-            });
+            }));
             layerBtn.mount(toolbar);
         }
 
@@ -443,7 +466,7 @@ export class WebPainter {
             zoomText.textContent = '100%';
             zoomText.style.cssText = 'font-size: var(--cl-font-size-sm); min-width: 40px; text-align: center; font-weight: bold; color: var(--cl-text-inverse);';
 
-            const zoomGroup = new ButtonGroup({
+            const zoomGroup = this._trackPainterComponent(new ButtonGroup({
                 theme: 'gradient',
                 buttons: [
                     new EditorButton({
@@ -465,11 +488,11 @@ export class WebPainter {
                         }
                     })
                 ]
-            });
+            }));
             zoomGroup.mount(toolbar);
             toolbar.appendChild(zoomText);
 
-            const zoomResetBtn = new EditorButton({
+            const zoomResetBtn = this._trackPainterComponent(new EditorButton({
                 type: 'custom',
                 label: '100%',
                 theme: 'gradient',
@@ -478,7 +501,7 @@ export class WebPainter {
                     this._render();
                     zoomText.textContent = '100%';
                 }
-            });
+            }));
             zoomResetBtn.mount(toolbar);
         }
 
@@ -511,7 +534,7 @@ export class WebPainter {
 
         // 字體大小
         panel.appendChild(this._createLabel(Locale.t('webPainter.fontSizeLabel')));
-        const fontSizeInput = new NumberInput({
+        const fontSizeInput = this._trackPainterComponent(new NumberInput({
             value: this.settings.fontSize,
             min: 10,
             max: 72,
@@ -520,7 +543,7 @@ export class WebPainter {
             onChange: (val) => {
                 this.settings.fontSize = val;
             }
-        });
+        }));
         fontSizeInput.mount(panel);
 
         // 字型選擇
@@ -565,38 +588,38 @@ export class WebPainter {
         this.fontSelect = fontSelect; // 儲存參考以便更新
 
         // 文字顏色
-        const textColorPicker = new ColorPicker({
+        const textColorPicker = this._trackPainterComponent(new ColorPicker({
             label: Locale.t('webPainter.textColorLabel'),
             value: this.settings.textColor,
             onChange: (val) => {
                 this.settings.textColor = val;
             }
-        });
+        }));
         textColorPicker.mount(panel);
 
         // 線條顏色
-        const strokeColorPicker = new ColorPicker({
+        const strokeColorPicker = this._trackPainterComponent(new ColorPicker({
             label: Locale.t('webPainter.strokeColorLabel'),
             value: this.settings.strokeColor,
             onChange: (val) => {
                 this.settings.strokeColor = val;
             }
-        });
+        }));
         strokeColorPicker.mount(panel);
 
         // 填充顏色
-        const fillColorPicker = new ColorPicker({
+        const fillColorPicker = this._trackPainterComponent(new ColorPicker({
             label: Locale.t('webPainter.fillColorLabel'),
             value: this.settings.fillColor,
             onChange: (val) => {
                 this.settings.fillColor = val;
             }
-        });
+        }));
         fillColorPicker.mount(panel);
 
         // 線條粗細
         panel.appendChild(this._createLabel(Locale.t('webPainter.strokeWidthLabel')));
-        const lineWidthInput = new NumberInput({
+        const lineWidthInput = this._trackPainterComponent(new NumberInput({
             value: this.settings.lineWidth,
             min: 1,
             max: 20,
@@ -605,7 +628,7 @@ export class WebPainter {
             onChange: (val) => {
                 this.settings.lineWidth = val;
             }
-        });
+        }));
         lineWidthInput.mount(panel);
 
         return panel;
@@ -636,11 +659,14 @@ export class WebPainter {
     _setupCanvas() {
         const dpr = window.devicePixelRatio || 1;
         const rect = this.canvas.getBoundingClientRect();
-        this.canvas.width = rect.width * dpr;
-        this.canvas.height = rect.height * dpr;
+        // 建構時 clamp:rect 已受 max-width:100% 限制 = min(option 寬, 容器可用寬);未佈局時退回 option 尺寸
+        const w = rect.width || this.width;
+        const h = rect.height || this.height;
+        this.canvas.width = w * dpr;
+        this.canvas.height = h * dpr;
         this.ctx.scale(dpr, dpr);
-        this.canvas.style.width = rect.width + 'px';
-        this.canvas.style.height = rect.height + 'px';
+        this.canvas.style.width = w + 'px';
+        this.canvas.style.height = 'auto'; // 高度依內部比例自動,容器再變窄時僅靠 CSS 等比縮放
     }
 
     _setupEventListeners() {
@@ -649,7 +675,7 @@ export class WebPainter {
         this.canvas.addEventListener('mouseup', (e) => this._handleMouseUp(e));
         this.canvas.addEventListener('dblclick', (e) => this._handleDoubleClick(e));
         
-        document.addEventListener('keydown', (e) => {
+        this._handleKeyDown = (e) => {
             // 忽略在輸入框中的按鍵事件
             if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
 
@@ -680,7 +706,8 @@ export class WebPainter {
                 e.preventDefault();
                 this._paste();
             }
-        });
+        };
+        document.addEventListener('keydown', this._handleKeyDown);
     }
 
     _getMousePos(e) {
@@ -1289,7 +1316,7 @@ export class WebPainter {
 
         const blob = new Blob([pngWithMetadata], { type: 'image/png' });
         const link = document.createElement('a');
-        link.download = Locale.t('webPainter.exportFilename') + Date.now() + '.png';
+        link.download = `${Locale.t('webPainter.exportFilename')}${nextUid('web-painter-export')}.png`;
         link.href = URL.createObjectURL(blob);
         link.click();
         URL.revokeObjectURL(link.href);
@@ -1590,7 +1617,7 @@ export class WebPainter {
         const data = this.getData();
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
         const link = document.createElement('a');
-        link.download = Locale.t('webPainter.configFilename') + Date.now() + '.json';
+        link.download = `${Locale.t('webPainter.configFilename')}${nextUid('web-painter-config')}.json`;
         link.href = URL.createObjectURL(blob);
         link.click();
     }
@@ -2019,6 +2046,26 @@ export class WebPainter {
         if (r.x + r.width > this.width) r.x = this.width - r.width;
         if (r.y + r.height > this.height) r.y = this.height - r.height;
     }
-}
 
+    destroy() {
+        if (this._painterDestroyed) return;
+        this._painterDestroyed = true;
+        if (this._layerInitTimer) {
+            clearTimeout(this._layerInitTimer);
+            this._layerInitTimer = null;
+        }
+        if (this._handleKeyDown) {
+            document.removeEventListener('keydown', this._handleKeyDown);
+            this._handleKeyDown = null;
+        }
+        for (const component of this._webPainterChildren) component?.destroy?.();
+        this._webPainterChildren.clear();
+        this.editorToolButtons = {};
+        this.toolButtons = {};
+        this.element?.remove();
+        this.layerPanel = null;
+        this.layerListContainer = null;
+        this.canvasContainer = null;
+    }
+}
 

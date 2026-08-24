@@ -13,11 +13,17 @@
 首頁 slots:
 
 - `header`: `MegaHeader` 或 `SiteHeader`
+
 - `hero`: `HeroCarousel`, `HeroBanner`, 或 `AtomicSection`
+
 - `quick_links`: `QuickLinkRibbon`, `CardGrid`, 或 `AtomicSection`
+
 - `news`: `NewsCardCarousel`, `NewsGrid`, 或 `CardGrid`
+
 - `features`: `MediaFeatureGrid`, `CardGrid`, 或 `AtomicSection`
+
 - `content`: `ContentArticle`, `ContentSection`, 或 `AtomicSection`
+
 - `footer`: `InstitutionFooter` 或 `SiteFooter`
 
 ### `search_service_portal`
@@ -27,13 +33,21 @@
 首頁 slots:
 
 - `header`: `MegaHeader` 或 `SiteHeader`
+
 - `hero`: `HeroCarousel`, `HeroBanner`, 或 `AtomicSection`
+
 - `search`: `ServiceSearchHero`, `HeroBanner`, 或 `AtomicSection`
+
 - `news`: `NewsCardCarousel`, `NewsGrid`, 或 `CardGrid`
+
 - `tabbed_news`: `TabbedNewsBoard`, `NewsGrid`, `ArticleList`, 或 `CardGrid`
+
 - `service_categories`: `ServiceCategoryGrid`, `CardGrid`, 或 `AtomicSection`
+
 - `service_actions`: `ServiceActionGrid`, `QuickLinkRibbon`, `CardGrid`, 或 `AtomicSection`
+
 - `features`: `MediaFeatureGrid`, `ServiceCategoryGrid`, `CardGrid`, 或 `AtomicSection`
+
 - `footer`: `InstitutionFooter` 或 `SiteFooter`
 
 ### `service_action_portal`
@@ -43,12 +57,19 @@
 首頁 slots:
 
 - `header`: `MegaHeader` 或 `SiteHeader`
+
 - `hero`: `HeroCarousel`, `HeroBanner`, 或 `AtomicSection`
+
 - `service_actions`: `ServiceActionGrid`, `QuickLinkRibbon`, `CardGrid`, 或 `AtomicSection`
+
 - `news`: `NewsCardCarousel`, `NewsGrid`, 或 `CardGrid`
+
 - `tabbed_news`: `TabbedNewsBoard`, `NewsGrid`, `ArticleList`, 或 `CardGrid`
+
 - `features`: `MediaFeatureGrid`, `CardGrid`, 或 `AtomicSection`
+
 - `service_categories`: `ServiceCategoryGrid`, `CardGrid`, 或 `AtomicSection`
+
 - `footer`: `InstitutionFooter` 或 `SiteFooter`
 
 ### `search_results_portal`
@@ -58,10 +79,15 @@
 首頁 slots:
 
 - `header`: `MegaHeader` 或 `SiteHeader`
+
 - `search_box`: `SearchBoxPanel`, `ServiceSearchHero`, 或 `AtomicSection`
+
 - `filter_panel`: `FacetFilterPanel` 或 `AtomicSection`
+
 - `result_list`: `ResultList`, `ArticleList`, `CardGrid`, 或 `AtomicSection`
+
 - `pagination`: `PaginationNav`, `QuickLinkRibbon`, 或 `AtomicSection`
+
 - `footer`: `InstitutionFooter` 或 `SiteFooter`
 
 ### `report_dashboard`
@@ -71,10 +97,15 @@
 首頁 slots:
 
 - `header`: `MegaHeader` 或 `SiteHeader`
+
 - `filter_bar`: `DashboardFilterBar`, `FacetFilterPanel`, 或 `AtomicSection`
+
 - `metric_summary`: `MetricSummaryGrid` 或 `AtomicSection`
+
 - `chart_panel`: `ChartPanel`, `MediaFeatureGrid`, 或 `AtomicSection`
+
 - `data_table`: `DataTablePreview`, `ArticleList`, 或 `AtomicSection`
+
 - `footer`: `InstitutionFooter` 或 `SiteFooter`
 
 ### `input_flow`
@@ -84,10 +115,15 @@
 首頁 slots:
 
 - `header`: `MegaHeader` 或 `SiteHeader`
+
 - `step_indicator`: `StepIndicator` 或 `AtomicSection`
+
 - `form_fields`: `StructuredFormPanel`, `FormBlock`, 或 `AtomicSection`
+
 - `validation_summary`: `ValidationSummary`, `ContentSection`, 或 `AtomicSection`
+
 - `action_bar`: `FormActionBar`, `QuickLinkRibbon`, 或 `AtomicSection`
+
 - `footer`: `InstitutionFooter` 或 `SiteFooter`
 
 ### `commercial_showcase`
@@ -97,17 +133,27 @@
 首頁 slots:
 
 - `header`: `MegaHeader` 或 `SiteHeader`
+
 - `showcase_hero`: `ShowcaseHero`, `HeroBanner`, 或 `AtomicSection`
+
 - `product_cards`: `ProductCardGrid`, `MediaFeatureGrid`, `CardGrid`, 或 `AtomicSection`
+
 - `feature_grid`: `MediaFeatureGrid`, `CardGrid`, 或 `AtomicSection`
+
 - `proof_strip`: `ProofStrip`, `MetricSummaryGrid`, 或 `AtomicSection`
+
 - `pricing_panel`: `PricingPanel`, `ProductCardGrid`, `CardGrid`, 或 `AtomicSection`
+
 - `cta_band`: `CtaBand`, `QuickLinkRibbon`, 或 `AtomicSection`
+
 - `footer`: `InstitutionFooter` 或 `SiteFooter`
 
 ## 選擇規則
 
 - `SiteIntentExtractor` 會抽取 `hero`, `search`, `service_categories`, `service_actions`, `tabbed_news`, `quick_links`, `news` 等視覺/功能區塊。
+
 - `TemplateMatcher` 只依這些區塊與頁面 intent 可填入的 slots 評分。
+
 - slot 只能選擇 `bricks4agent.default/manifest.json` 或明確載入的 manifest 中宣告的元件。
+
 - 若偏好的元件不存在，會回報 `ComponentRequest`；compiler 會退回到可接受的元件庫元件，不會為這些模板產生網站專屬元件程式碼。

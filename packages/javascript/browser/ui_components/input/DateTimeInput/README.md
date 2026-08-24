@@ -11,7 +11,7 @@ new DateTimeInput(options?)
 ```
 
 | 參數 | 型別 | 預設值 | 說明 |
-|------|------|--------|------|
+|---|---|---|---|
 | `options.label` | `string` | `''` | 整體標籤 |
 | `options.useROC` | `boolean` | `true` | 使用民國年格式 |
 | `options.showTime` | `boolean` | `true` | 是否顯示時間選擇 |
@@ -23,7 +23,7 @@ new DateTimeInput(options?)
 ### 方法
 
 | 方法 | 說明 |
-|------|------|
+|---|---|
 | `mount(container)` | 掛載至 DOM 容器，回傳 `this` |
 | `getValue()` | 回傳 `{date, time}` |
 | `setValue(date?, time?)` | 設定日期和/或時間 |

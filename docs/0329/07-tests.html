@@ -1,0 +1,982 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>測試模組分析 (03/29)</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>測試模組分析 (03/29)</h1>
+<p>日期：2026-03-29
+類型：模組程式碼分析</p>
+<h2>模組概述</h2>
+<p>目前實際使用的驗證入口分成四層：</p>
+<ol>
+<li><strong>xUnit unit tests</strong> — 位於 <code>packages/csharp/tests/unit/</code>，目前 74 個 C# 單元測試</li>
+<li><strong>xUnit integration tests</strong> — 位於 <code>packages/csharp/tests/integration/</code>，目前 10 個 broker 整合測試</li>
+<li><strong>broker/verify</strong> — 位於 <code>packages/csharp/broker/verify/</code>，負責 broker 目前最密集的自驗證流程，包含 artifact delivery、signed download、JSON redaction、middleware bypass 與 <code>/proj</code> review flow 行為</li>
+<li><strong>e2e-bridge / browser tests</strong> — <code>packages/csharp/tests/e2e-bridge/</code> 保留互動式端對端工具，<code>packages/javascript/browser</code> 目前已有 91 個 browser tests</li>
+</ol>
+<p>目前測試體系已不再只有 console-first 驗證。<code>broker-tests</code> / <code>broker/verify</code> 仍保留，但主要自動化層已包含：</p>
+<ul>
+<li>xUnit（C# unit / integration）</li>
+<li>Vitest（browser tests）</li>
+<li>Playwright smoke</li>
+</ul>
+<p>目前可重現的結果快照：</p>
+<ul>
+<li>C# unit：<code>74/74</code></li>
+<li>C# integration：<code>10/10</code></li>
+<li>browser tests：<code>91/91</code></li>
+</ul>
+<h2>測試專案結構</h2>
+<pre><code>packages/csharp/tests/
+├── broker-tests/
+│   ├── Broker.Tests.csproj          # 參照 Broker.csproj（間接取得 Broker/BrokerCore）
+│   ├── Program.cs                   # 主進入點：單元測試 + 整合測試分流
+│   ├── IntegrationTest.cs           # HTTP 整合測試（靜態類別）
+│   ├── QueryTests.cs                # 查詢品質單元測試（靜態類別）
+│   └── BrowserAndDeployTests.cs     # 瀏覽器與部署單元測試（靜態類別）
+└── e2e-bridge/
+    ├── E2eBridge.csproj             # 參照 BrokerCore.csproj（使用加密模組）
+    └── Program.cs                   # 互動式 E2E 測試控制台
+
+packages/csharp/broker/
+└── verify/
+    ├── Broker.Verify.csproj         # 參照 Broker.csproj
+    └── Program.cs                   # broker 自驗證入口
+</code></pre>
+<h3>專案相依性</h3>
+<ul>
+<li><code>Broker.Tests.csproj</code> → <code>Broker.csproj</code>（透過 <code>InternalsVisibleTo</code> 可存取 <code>internal</code> 成員）</li>
+<li><code>Broker.Verify.csproj</code> → <code>Broker.csproj</code>（直接驗證 broker 服務、端點與序列化行為）</li>
+<li><code>E2eBridge.csproj</code> → <code>BrokerCore.csproj</code>（使用 <code>BrokerCore.Crypto</code> 進行 ECDH 加密）</li>
+<li><strong>這些驗證入口均未加入 <code>ControlPlane.slnx</code> 主方案檔</strong>，需個別建置與執行。</li>
+</ul>
+<h3>執行方式</h3>
+<pre><code class="language-bash"># C# unit
+dotnet test packages/csharp/tests/unit/Unit.Tests.csproj -v minimal
+
+# C# integration
+dotnet test packages/csharp/tests/integration/Integration.Tests.csproj -v minimal
+
+# broker 自驗證
+dotnet run --project packages/csharp/broker/verify/Broker.Verify.csproj
+
+# 歷史 broker-tests
+dotnet run --project packages/csharp/tests/broker-tests/Broker.Tests.csproj
+
+# 歷史 broker-tests 整合模式（需先啟動 Broker）
+dotnet run --project packages/csharp/tests/broker-tests/Broker.Tests.csproj -- --integration http://localhost:{port}
+
+# browser tests
+npm.cmd --prefix packages/javascript/browser run test
+
+# E2E Bridge（需先啟動 Broker + 設定 BROKER_PUB_KEY 環境變數）
+dotnet run --project packages/csharp/tests/e2e-bridge/E2eBridge.csproj -- --broker http://localhost:5000
+</code></pre>
+<h2>單元與自驗證測試</h2>
+<h3>測試分層</h3>
+<p>目前實際上有兩條不同性質的程式內驗證路徑：</p>
+<ol>
+<li><strong><code>broker-tests</code></strong>：保留傳統的查詢、HTML 擷取、部署結果模型與 local-admin API 整合測試</li>
+<li><strong><code>broker/verify</code></strong>：集中驗證 broker 近期待碼變動最多、最容易回歸的區段</li>
+</ol>
+<p><code>broker/verify/Program.cs</code> 現在已經取代舊版「只測輸出字串 helper」的角色，直接建構 in-memory / sandbox 資源並驗證完整行為，重點包括：</p>
+<ul>
+<li><code>BrokerArtifactDownloadOptions</code> 預設值與 <code>SidecarPublicUrlResolver</code> 路徑解析</li>
+<li><code>BrokerArtifactDownloadService</code> 的 signed URL 產生、簽名驗證、過期處理與路徑硬化</li>
+<li><code>ArtifactDownloadEndpoints.HandleDownloadRequest()</code> 的 <code>200/403/410/404</code> 行為</li>
+<li>broker auth / encryption middleware 對 <code>GET /api/v1/artifacts/download/{artifactId}</code> 的 bypass</li>
+<li><code>LineArtifactDeliveryService</code> 在以下情境的通知內容與狀態：</li>
+<li>Google Drive 上傳成功</li>
+<li>Google Drive 失敗且 broker public URL 可用，改送 broker 簽名下載連結</li>
+<li>Google Drive 失敗且無法產生 public URL，退回無連結降級訊息</li>
+<li>local-only 交付，不應誤報 Drive failure，也不應出現 broker fallback link</li>
+<li>JSON serialization redaction：</li>
+<li>artifact <code>DocumentsRoot</code></li>
+<li>artifact <code>FilePath</code></li>
+<li>delivery <code>Artifact</code></li>
+<li>Google Drive <code>SourcePath</code></li>
+<li>檔案安全邊界：</li>
+<li>out-of-root 路徑</li>
+<li><code>..</code> 型檔名</li>
+<li>hard link</li>
+<li>junction</li>
+<li>缺檔</li>
+</ul>
+<h3><code>broker-tests</code> 保留範圍</h3>
+<h4>1. 查詢品質測試（<code>QueryTests.cs</code>）</h4>
+<p>測試 <code>HighLevelRelationQueryService</code> 和 <code>HighLevelQueryToolMediator</code> 的靜態方法：</p>
+<p><strong><code>IsReasonableAdministrativeTerm()</code></strong> — 驗證行政區名稱過濾邏輯（12 個斷言）：</p>
+<table>
+<thead>
+<tr>
+<th>類別</th>
+<th>測試案例</th>
+<th>預期</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>接受：標準行政區</td>
+<td>「台北市」、「信義區」、「臺中市」</td>
+<td><code>true</code></td>
+</tr>
+<tr>
+<td>接受：帶後綴的長名稱</td>
+<td>「臺北市信義區」（6 字元）、「新北市板橋區」（6 字元）</td>
+<td><code>true</code></td>
+</tr>
+<tr>
+<td>接受：英文名稱</td>
+<td>"Taipei City"、"Xinyi District"</td>
+<td><code>true</code></td>
+</tr>
+<tr>
+<td>拒絕：過長 CJK 無後綴</td>
+<td>「這是一個超級長的名稱但沒有行政區後綴」</td>
+<td><code>false</code></td>
+</tr>
+<tr>
+<td>拒絕：含助詞/標點</td>
+<td>「台北的」、「台北，台中」</td>
+<td><code>false</code></td>
+</tr>
+<tr>
+<td>拒絕：空值</td>
+<td>空字串、<code>null</code></td>
+<td><code>false</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong><code>BuildTransportReply()</code>（空結果）</strong> — 驗證鐵路查詢無結果時的回覆格式（3 個斷言）：
+- 包含「沒有取得可用班次結果」
+- 包含使用範例 <code>?rail</code>
+- 包含格式 <code>台北 台中</code></p>
+<p><strong><code>BuildSearchReply()</code>（空結果）</strong> — 驗證搜尋無結果時的回覆格式（3 個斷言）：
+- 包含「沒有取得可用結果」
+- 包含建議「具體的關鍵詞」
+- 包含建議「英文搜尋」</p>
+<h4>2. 瀏覽器與部署測試（<code>BrowserAndDeployTests.cs</code>）</h4>
+<p>測試 <code>BrowserExecutionHtmlExtractor</code> 和 <code>AzureIisDeploymentHealthCheckResult</code>：</p>
+<ul>
+<li><code>ExtractTitle()</code>：標題擷取與 HTML entity decode</li>
+<li><code>ExtractDescription()</code>：<code>meta description</code> 擷取</li>
+<li><code>ExtractText()</code>：主內容抽取並排除 <code>nav/footer</code></li>
+<li><code>AzureIisDeploymentHealthCheckResult.Skipped()</code>：部署健康檢查結果模型</li>
+</ul>
+<h3>測試模式</h3>
+<ol>
+<li><strong>Console-first 驗證</strong>：所有測試與 verify 都是可直接 <code>dotnet run</code> 的 console 入口</li>
+<li><strong>靜態方法 + 真服務混合</strong>：<code>broker-tests</code> 偏向靜態 helper / API flow，<code>broker/verify</code> 會實際建構 DB、服務與 endpoint handler</li>
+<li><strong>通過計數器追蹤</strong>：各測試檔案維護自己的 <code>passed</code>/<code>failed</code> 計數器</li>
+<li><strong>字串與行為並重</strong>：不只驗證回覆內容，也驗證 status code、JSON redaction、檔案串流與安全邊界</li>
+<li><strong>非中斷式執行</strong>：斷言失敗不拋例外，所有測試繼續執行直到結束</li>
+</ol>
+<h3>關鍵測試類別</h3>
+<table>
+<thead>
+<tr>
+<th>類別</th>
+<th>檔案</th>
+<th>性質</th>
+<th>測試對象</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Broker.Verify</code></td>
+<td><code>packages/csharp/broker/verify/Program.cs</code></td>
+<td>broker 自驗證</td>
+<td><code>BrokerArtifactDownloadService</code>, <code>ArtifactDownloadEndpoints</code>, <code>LineArtifactDeliveryService</code>, serialization redaction, middleware bypass</td>
+</tr>
+<tr>
+<td><code>QueryTests</code></td>
+<td><code>QueryTests.cs</code></td>
+<td>單元測試</td>
+<td><code>HighLevelRelationQueryService.IsReasonableAdministrativeTerm</code>, <code>HighLevelQueryToolMediator.BuildTransportReply</code>, <code>BuildSearchReply</code></td>
+</tr>
+<tr>
+<td><code>BrowserAndDeployTests</code></td>
+<td><code>BrowserAndDeployTests.cs</code></td>
+<td>單元測試</td>
+<td><code>BrowserExecutionHtmlExtractor.ExtractTitle/Description/Text</code>, <code>AzureIisDeploymentHealthCheckResult</code></td>
+</tr>
+<tr>
+<td><code>IntegrationTest</code></td>
+<td><code>IntegrationTest.cs</code></td>
+<td>HTTP 整合測試</td>
+<td>local-admin login、artifact deliver/list/retry、admin HTML</td>
+</tr>
+</tbody>
+</table>
+<h2>整合測試</h2>
+<h3>測試範圍</h3>
+<p>整合測試透過 HTTP 呼叫一個執行中的 Broker 實例，測試完整的 API 端點流程。位於 <code>IntegrationTest.cs</code>，類別名稱 <code>Broker.Tests.IntegrationTest</code>。</p>
+<h3>測試設定與啟動</h3>
+<ul>
+<li>整合測試<strong>不自動啟動 Broker</strong>，需要手動先啟動</li>
+<li>透過 <code>--integration [broker-url]</code> 命令列參數觸發（預設 <code>http://localhost:5000</code>）</li>
+<li>使用靜態 <code>HttpClient</code>（<code>Timeout = 30s</code>）</li>
+<li>支援 cookie 為基礎的認證（從 <code>Set-Cookie</code> header 擷取 session cookie）</li>
+<li>若無法登入（<code>_adminToken</code> 為空），跳過所有整合測試並回報 <code>(0, 1)</code></li>
+</ul>
+<h3>Broker 整合測試流程</h3>
+<p>整合測試為<strong>線性流程</strong>，每一步依賴前一步的結果：</p>
+<pre><code>Step 1: LoginAdmin()
+  ↓ (取得認證 cookie)
+Step 2: TestDeliverArtifact()
+  ↓ (取得 deliveryResult JSON，含 artifactId 和 notificationId)
+Step 3: TestListAllArtifacts()
+Step 4: TestListUserArtifacts()
+Step 5: TestRetryDrive(deliveryResult)
+  ↓ (使用 Step 2 的 artifactId)
+Step 6: TestRetryNotification(deliveryResult)
+  ↓ (使用 Step 2 的 notificationId)
+Step 7: TestAdminHtmlDeliveryTab()
+</code></pre>
+<h3>關鍵測試案例</h3>
+<h4>LoginAdmin（步驟 1）</h4>
+<ul>
+<li>呼叫 <code>GET /api/v1/local-admin/status</code> 檢查密碼狀態（<code>hasPassword</code>、<code>initialPasswordActive</code>）</li>
+<li>若為首次登入或 <code>initialPasswordActive</code>：以 <code>admin</code> → <code>test1234</code> 設定密碼</li>
+<li>若已有密碼：以 <code>test1234</code> 登入</li>
+<li>從回應 header 擷取 cookie 並設定到 <code>HttpClient.DefaultRequestHeaders</code></li>
+<li>失敗處理：登入失敗時設定 <code>_failed++</code>，後續測試將被跳過</li>
+</ul>
+<h4>TestDeliverArtifact（步驟 2）</h4>
+<ul>
+<li><code>POST /api/v1/local-admin/line/users/artifacts/deliver</code></li>
+<li>建立測試 artifact：</li>
+<li><code>user_id</code>: <code>"test_integration_user"</code></li>
+<li><code>file_name</code>: <code>"integration-test.md"</code></li>
+<li><code>format</code>: <code>"md"</code></li>
+<li><code>content</code>: <code>"# Integration Test\n\nThis is a test artifact."</code></li>
+<li><code>upload_to_google_drive</code>: <code>false</code></li>
+<li><code>send_line_notification</code>: <code>true</code></li>
+<li>驗證回應欄位（6 個斷言）：</li>
+<li><code>success == true</code></li>
+<li><code>overallStatus == "completed"</code></li>
+<li><code>fileName == "integration-test.md"</code></li>
+<li><code>notification</code> 和 <code>artifact</code> 物件存在</li>
+<li><code>artifact.overallStatus == "completed"</code></li>
+<li>若使用者 profile 不存在，會優雅地跳過（非失敗，印出 <code>[INFO]</code>）</li>
+</ul>
+<h4>TestListAllArtifacts（步驟 3）</h4>
+<ul>
+<li><code>GET /api/v1/local-admin/line/artifacts?limit=10</code></li>
+<li>驗證 200 狀態碼、回應包含 <code>total</code> 和 <code>items</code> 陣列（3 個斷言）</li>
+</ul>
+<h4>TestListUserArtifacts（步驟 4）</h4>
+<ul>
+<li><code>GET /api/v1/local-admin/line/users/test_integration_user/artifacts?limit=10</code></li>
+<li>僅驗證 200 狀態碼（1 個斷言）</li>
+</ul>
+<h4>TestRetryDrive（步驟 5）</h4>
+<ul>
+<li><code>POST /api/v1/local-admin/line/artifacts/{artifactId}/retry-drive</code></li>
+<li>預期回應 200 或 400（因為 artifact 已 completed，非 partial）</li>
+<li>驗證正確拒絕訊息包含 <code>"partial"</code>（2 個斷言）</li>
+<li>若無 <code>artifactId</code> 則跳過</li>
+</ul>
+<h4>TestRetryNotification（步驟 6）</h4>
+<ul>
+<li>先模擬通知失敗：<code>POST /api/v1/high-level/line/notifications/complete</code></li>
+<li><code>notification_id</code>, <code>status: "failed"</code>, <code>error: "integration_test_simulated_failure"</code></li>
+<li>再重試通知：<code>POST /api/v1/local-admin/line/notifications/{notificationId}/retry</code></li>
+<li>驗證 200 狀態碼和回應包含 <code>"pending"</code>（2 個斷言）</li>
+<li>若無 <code>notificationId</code> 則跳過</li>
+</ul>
+<h4>TestAdminHtmlDeliveryTab（步驟 7）</h4>
+<ul>
+<li><code>GET /line-admin.html</code></li>
+<li>驗證 HTML 包含 delivery tab 相關 DOM 元素（7 個斷言）：</li>
+<li><code>data-tab="delivery"</code></li>
+<li><code>id="tab-delivery"</code></li>
+<li><code>id="delivery-list"</code></li>
+<li><code>id="delivery-status-filter"</code></li>
+<li>JavaScript 函式 <code>retryDriveUpload</code></li>
+<li>JavaScript 函式 <code>loadDeliveryHistory</code></li>
+<li>HTTP 200 狀態碼</li>
+</ul>
+<h2>E2E Bridge 測試工具</h2>
+<p><code>e2e-bridge/Program.cs</code> 是一個<strong>互動式端對端測試控制台</strong>，而非自動化測試。它實作了完整的 Broker 通訊協定：</p>
+<h3>功能</h3>
+<ol>
+<li><strong>ECDH 交握</strong>：使用 <code>ECDiffieHellman</code> (P-256/nistP256) 生成客戶端密鑰對，與 Broker 公鑰進行 Diffie-Hellman 密鑰交換。HKDF 推導分兩階段：
+   - 交握密鑰：<code>HKDF(shared_secret, salt=nonce, info="broker-handshake-v1")</code>
+   - Session 密鑰：<code>HKDF(shared_secret, salt=session_id, info="broker-session-v1")</code></li>
+<li><strong>Session 建立</strong>：透過 <code>POST /api/v1/sessions/register</code> 註冊 session，取得 <code>scoped_token</code></li>
+<li><strong>加密通訊</strong>：所有後續請求以 AES-256-GCM 加密/解密，AAD 格式為 <code>req:{session_id}{seq}{path}</code>（回應為 <code>resp:...</code>）</li>
+<li><strong>互動式指令迴圈</strong>：以 2 秒間隔輪詢 LINE 訊息並處理指令</li>
+</ol>
+<h3>支援的指令</h3>
+<table>
+<thead>
+<tr>
+<th>指令</th>
+<th>Broker 能力</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/list [path]</code></td>
+<td><code>file.list</code></td>
+<td>列出目錄內容（預設 <code>/workspace</code>，depth=2）</td>
+</tr>
+<tr>
+<td><code>/read &lt;file&gt;</code></td>
+<td><code>file.read</code></td>
+<td>讀取檔案（limit=50 行）</td>
+</tr>
+<tr>
+<td><code>/search &lt;pattern&gt;</code></td>
+<td><code>file.search</code></td>
+<td>搜尋內容（max_results=10）</td>
+</tr>
+<tr>
+<td><code>/notify &lt;msg&gt;</code></td>
+<td><code>line.notification.send</code></td>
+<td>發送 LINE 通知</td>
+</tr>
+<tr>
+<td><code>/approve &lt;desc&gt;</code></td>
+<td><code>line.approval.request</code></td>
+<td>發起審批流程（timeout=60s）</td>
+</tr>
+<tr>
+<td><code>/workers</code></td>
+<td>直接 <code>GET /api/v1/workers</code></td>
+<td>列出已註冊的 workers</td>
+</tr>
+<tr>
+<td>數學運算</td>
+<td>本地處理</td>
+<td>基本四則運算（<code>1+2</code>、<code>3*4</code>）</td>
+</tr>
+<tr>
+<td>其他文字</td>
+<td>Echo 回應</td>
+<td>回傳原文 + 指令說明</td>
+</tr>
+</tbody>
+</table>
+<h3>內含元件</h3>
+<ul>
+<li><strong><code>BrokerApiClient</code></strong> 類別（~290 行）：封裝完整的 Broker 通訊協定</li>
+<li><code>GetAsync(path, ct)</code> — 未加密的 GET 請求</li>
+<li><code>RegisterSessionAsync(principalId, taskId, roleId, brokerUrl, ct)</code> — ECDH 交握 + session 註冊</li>
+<li><code>ExecuteAsync(capabilityId, route, payloadJson, ct)</code> — 加密的執行請求</li>
+<li><code>GetBrokerPubKeyAsync(ct)</code> — 取得 Broker 公鑰（環境變數或 health 端點）</li>
+<li><code>EncryptRequest(plaintext, seq, path)</code> — AES-256-GCM 加密</li>
+<li><strong><code>LineMessage</code></strong> 資料模型：<code>Text</code>、<code>Type</code>、<code>UserId</code>、<code>Timestamp</code></li>
+<li><strong><code>TryParseMessages(json)</code></strong>：解析三層 Broker 回應格式（<code>data.result_payload</code> / <code>result_payload</code> / 直接 JSON）</li>
+<li><strong><code>ProcessCommand(client, input, ct)</code></strong>：指令路由與分發</li>
+<li><strong><code>IsSimpleMath(input, out result)</code></strong>：基本四則運算解析</li>
+<li><strong><code>FormatResult(tool, raw)</code></strong>：Broker 回應格式化（截斷超過 4500 字元）</li>
+</ul>
+<h3>注意事項</h3>
+<ul>
+<li>需要 <code>BROKER_PUB_KEY</code> 環境變數，或 Broker 在 <code>/api/v1/health</code> 端點公開 <code>broker_public_key</code> / <code>brokerPublicKey</code></li>
+<li>使用 2 秒輪詢間隔，每 30 個循環印出心跳訊息</li>
+<li>非自動化測試，需手動操作和觀察</li>
+<li>序列號（<code>_seq</code>）使用 <code>Interlocked.Increment</code> 確保執行緒安全</li>
+<li>冪等鍵格式：<code>{sessionId}-{seq}-{unixTimestampMs}</code></li>
+</ul>
+<h2>測試輔助工具</h2>
+<h3>自製斷言函式</h3>
+<p>每個測試檔案均定義自己的斷言輔助方法（<strong>無共用基底類別</strong>，斷言函式在各檔案重複定義）：</p>
+<table>
+<thead>
+<tr>
+<th>函式</th>
+<th>出現位置</th>
+<th>行為</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>AssertContains(name, actual, expected)</code></td>
+<td>Program.cs, QueryTests, BrowserAndDeployTests</td>
+<td>驗證字串包含；失敗時印出前 200 字元的 actual</td>
+</tr>
+<tr>
+<td><code>AssertNotContains(name, actual, notExpected)</code></td>
+<td>Program.cs, BrowserAndDeployTests</td>
+<td>驗證字串不包含</td>
+</tr>
+<tr>
+<td><code>AssertTrue(name, condition)</code></td>
+<td>IntegrationTest, QueryTests, BrowserAndDeployTests</td>
+<td>驗證布林條件為 true</td>
+</tr>
+<tr>
+<td><code>AssertFalse(name, condition)</code></td>
+<td>QueryTests</td>
+<td>驗證布林為 false</td>
+</tr>
+<tr>
+<td><code>AssertEqual(name, actual, expected)</code></td>
+<td>IntegrationTest, BrowserAndDeployTests</td>
+<td>驗證字串相等</td>
+</tr>
+</tbody>
+</table>
+<p>所有斷言函式的模式一致：
+- 通過時印出 <code>[PASS] {name}</code> 到 stdout 並遞增 <code>passed</code> 計數器
+- 失敗時印出 <code>[FAIL] {name}: ...</code> 到 stderr 並遞增 <code>failed</code> 計數器
+- <strong>不拋出例外</strong>，所有測試會繼續執行</p>
+<h3>計數器與結果回報</h3>
+<ul>
+<li><code>Program.cs</code> 中的斷言使用 top-level 變數 <code>passed</code>/<code>failed</code>（closure capture）</li>
+<li><code>QueryTests</code>、<code>BrowserAndDeployTests</code>、<code>IntegrationTest</code> 使用靜態欄位 <code>_passed</code>/<code>_failed</code></li>
+<li>各模組返回 <code>(int passed, int failed)</code> tuple，<code>Program.cs</code> 彙總後以 <code>Environment.Exit(1)</code> 回報失敗</li>
+</ul>
+<h3>InternalsVisibleTo</h3>
+<p><code>Broker.csproj</code> 目前只設定 <code>&lt;InternalsVisibleTo Include="Broker.Tests" /&gt;</code>。也就是說：</p>
+<ul>
+<li><code>packages/csharp/tests/broker-tests/</code> 可以直接存取部分 <code>internal</code> 成員</li>
+<li><code>packages/csharp/broker/verify/</code> 不依賴額外 <code>InternalsVisibleTo</code>，而是以公開 service、endpoint handler 與序列化結果做驗證</li>
+</ul>
+<h2>測試覆蓋率分析</h2>
+<h3>已覆蓋的區域</h3>
+<table>
+<thead>
+<tr>
+<th>服務</th>
+<th>檔案位置</th>
+<th>覆蓋程度</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>BrokerArtifactDownloadService</code></td>
+<td><code>broker/Services/BrokerArtifactDownloadService.cs</code></td>
+<td>高</td>
+<td>signed URL、TTL、簽名驗證、路徑硬化</td>
+</tr>
+<tr>
+<td><code>ArtifactDownloadEndpoints</code></td>
+<td><code>broker/Endpoints/ArtifactDownloadEndpoints.cs</code></td>
+<td>高</td>
+<td><code>200/403/410/404</code>、attachment disposition、generic content type</td>
+</tr>
+<tr>
+<td><code>LineArtifactDeliveryService</code></td>
+<td><code>broker/Services/LineArtifactDeliveryService.cs</code></td>
+<td>高</td>
+<td>Drive 成功、Drive 失敗 fallback、degraded fallback、local-only neutral behavior</td>
+</tr>
+<tr>
+<td>Artifact / Drive serialization redaction</td>
+<td><code>broker/Services/*</code>, <code>broker-core/Contracts/*</code></td>
+<td>高</td>
+<td><code>DocumentsRoot</code>、<code>FilePath</code>、<code>Artifact</code>、<code>SourcePath</code> 不對外序列化</td>
+</tr>
+<tr>
+<td><code>HighLevelRelationQueryService.IsReasonableAdministrativeTerm</code></td>
+<td><code>broker/Services/HighLevelRelationQueryService.cs</code></td>
+<td>中高</td>
+<td>正面和負面案例，含邊界條件</td>
+</tr>
+<tr>
+<td><code>HighLevelQueryToolMediator.BuildTransportReply</code></td>
+<td><code>broker/Services/HighLevelQueryToolMediator.cs</code></td>
+<td>低</td>
+<td>僅測試空結果場景</td>
+</tr>
+<tr>
+<td><code>HighLevelQueryToolMediator.BuildSearchReply</code></td>
+<td><code>broker/Services/HighLevelQueryToolMediator.cs</code></td>
+<td>低</td>
+<td>僅測試空結果場景</td>
+</tr>
+<tr>
+<td><code>BrowserExecutionHtmlExtractor</code></td>
+<td><code>broker/Services/BrowserExecutionHtmlExtractor.cs</code></td>
+<td>中</td>
+<td>Title、Description、Text 擷取</td>
+</tr>
+<tr>
+<td><code>AzureIisDeploymentHealthCheckResult</code></td>
+<td><code>broker/Services/AzureIisDeploymentHealthCheckService.cs</code></td>
+<td>低</td>
+<td><code>Skipped()</code> 工廠和欄位存在性</td>
+</tr>
+<tr>
+<td>Admin API 端點（整合測試）</td>
+<td>多個 API 端點</td>
+<td>中</td>
+<td>local-admin login / delivery / retry / delivery tab happy path</td>
+</tr>
+<tr>
+<td>ECDH 加密通訊（e2e-bridge）</td>
+<td>端對端手動</td>
+<td>手動</td>
+<td>完整通訊協定但需人工驗證</td>
+</tr>
+</tbody>
+</table>
+<h3>未覆蓋的區域（明顯缺口）</h3>
+<p>以下區域仍然是明顯缺口；雖然 <code>broker/verify</code> 已補上 artifact delivery 與 signed download，但高階協調主流程仍缺乏成套自動化覆蓋：</p>
+<table>
+<thead>
+<tr>
+<th>服務</th>
+<th>檔案</th>
+<th>重要性</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>HighLevelCoordinator</code>（主流程）</td>
+<td><code>HighLevelCoordinator.cs</code></td>
+<td>極高</td>
+<td>核心協調器的 <code>HandleHighLevelAsync</code> 等主要入口方法未測試</td>
+</tr>
+<tr>
+<td><code>HighLevelCommandParser</code></td>
+<td><code>HighLevelCommandParser.cs</code></td>
+<td>高</td>
+<td>使用者指令解析邏輯</td>
+</tr>
+<tr>
+<td><code>HighLevelWorkflowStateMachine</code></td>
+<td><code>HighLevelWorkflowStateMachine.cs</code></td>
+<td>高</td>
+<td>工作流程狀態機轉換邏輯</td>
+</tr>
+<tr>
+<td><code>HighLevelInputTrustPolicy</code></td>
+<td><code>HighLevelInputTrustPolicy.cs</code></td>
+<td>高</td>
+<td>輸入信任與過濾策略</td>
+</tr>
+<tr>
+<td><code>HighLevelExecutionPromotionGate</code></td>
+<td><code>HighLevelExecutionPromotionGate.cs</code></td>
+<td>高</td>
+<td>執行核准閘道（Governance 核心）</td>
+</tr>
+<tr>
+<td><code>HighLevelExecutionModelPlanner</code></td>
+<td><code>HighLevelExecutionModelPlanner.cs</code></td>
+<td>中高</td>
+<td>LLM 規劃邏輯</td>
+</tr>
+<tr>
+<td><code>HighLevelDocumentArtifactService</code></td>
+<td><code>HighLevelDocumentArtifactService.cs</code></td>
+<td>中</td>
+<td>文件生成服務（僅測試 Result 類別的格式化）</td>
+</tr>
+<tr>
+<td><code>HighLevelCodeArtifactService</code></td>
+<td><code>HighLevelCodeArtifactService.cs</code></td>
+<td>中</td>
+<td>程式碼 artifact 生成</td>
+</tr>
+<tr>
+<td><code>HighLevelSystemScaffoldService</code></td>
+<td><code>HighLevelSystemScaffoldService.cs</code></td>
+<td>中</td>
+<td>系統腳手架服務</td>
+</tr>
+<tr>
+<td><code>HighLevelLineWorkspaceService</code></td>
+<td><code>HighLevelLineWorkspaceService.cs</code></td>
+<td>中</td>
+<td>LINE 工作區管理</td>
+</tr>
+<tr>
+<td><code>HighLevelMemoryStore</code></td>
+<td><code>HighLevelMemoryStore.cs</code></td>
+<td>中</td>
+<td>記憶存儲</td>
+</tr>
+<tr>
+<td><code>HighLevelInteractionRecorder</code></td>
+<td><code>HighLevelInteractionRecorder.cs</code></td>
+<td>中</td>
+<td>互動記錄</td>
+</tr>
+<tr>
+<td><code>HighLevelInterpretationStore</code></td>
+<td><code>HighLevelInterpretationStore.cs</code></td>
+<td>中</td>
+<td>解釋存儲</td>
+</tr>
+<tr>
+<td><code>HighLevelExecutionIntentStore</code></td>
+<td><code>HighLevelExecutionIntentStore.cs</code></td>
+<td>中</td>
+<td>執行意圖存儲</td>
+</tr>
+<tr>
+<td><code>HighLevelWorkflowAdminService</code></td>
+<td><code>HighLevelWorkflowAdminService.cs</code></td>
+<td>中</td>
+<td>工作流程管理</td>
+</tr>
+<tr>
+<td><code>LineChatGateway</code></td>
+<td><code>LineChatGateway.cs</code></td>
+<td>中</td>
+<td>LINE 訊息閘道</td>
+</tr>
+<tr>
+<td><code>LocalAdminAuthService</code></td>
+<td><code>LocalAdminAuthService.cs</code></td>
+<td>中</td>
+<td>Admin 認證（整合測試間接測試了登入）</td>
+</tr>
+<tr>
+<td><code>GoogleDriveOAuthService</code></td>
+<td><code>GoogleDriveOAuthService.cs</code></td>
+<td>中</td>
+<td>OAuth 流程</td>
+</tr>
+<tr>
+<td><code>GoogleDriveShareService</code></td>
+<td><code>GoogleDriveShareService.cs</code></td>
+<td>中</td>
+<td>Drive 分享邏輯</td>
+</tr>
+<tr>
+<td><code>BrowserBindingService</code></td>
+<td><code>BrowserBindingService.cs</code></td>
+<td>中</td>
+<td>瀏覽器綁定管理</td>
+</tr>
+<tr>
+<td><code>BrowserExecutionRuntimeService</code></td>
+<td><code>BrowserExecutionRuntimeService.cs</code></td>
+<td>中</td>
+<td>瀏覽器執行引擎</td>
+</tr>
+<tr>
+<td><code>BrowserExecutionPreviewService</code></td>
+<td><code>BrowserExecutionPreviewService.cs</code></td>
+<td>中</td>
+<td>瀏覽器預覽服務</td>
+</tr>
+<tr>
+<td><code>BrowserExecutionRequestBuilder</code></td>
+<td><code>BrowserExecutionRequestBuilder.cs</code></td>
+<td>中</td>
+<td>瀏覽器請求建構</td>
+</tr>
+<tr>
+<td><code>AzureIisDeploymentExecutionService</code></td>
+<td><code>AzureIisDeploymentExecutionService.cs</code></td>
+<td>中</td>
+<td>部署執行服務</td>
+</tr>
+<tr>
+<td><code>AzureIisDeploymentTargetService</code></td>
+<td><code>AzureIisDeploymentTargetService.cs</code></td>
+<td>中</td>
+<td>部署目標管理</td>
+</tr>
+<tr>
+<td><code>AzureIisDeploymentRequestBuilder</code></td>
+<td><code>AzureIisDeploymentRequestBuilder.cs</code></td>
+<td>中</td>
+<td>部署請求建構</td>
+</tr>
+<tr>
+<td><code>AzureIisDeploymentPreviewService</code></td>
+<td><code>AzureIisDeploymentPreviewService.cs</code></td>
+<td>中</td>
+<td>部署預覽</td>
+</tr>
+<tr>
+<td><code>AzureIisDeploymentSecretResolver</code></td>
+<td><code>AzureIisDeploymentSecretResolver.cs</code></td>
+<td>中</td>
+<td>部署密碼解析</td>
+</tr>
+<tr>
+<td><code>ToolSpecRegistry</code></td>
+<td><code>ToolSpecRegistry.cs</code></td>
+<td>中</td>
+<td>工具規格註冊</td>
+</tr>
+<tr>
+<td><code>ToolSpecCapabilitySyncService</code></td>
+<td><code>ToolSpecCapabilitySyncService.cs</code></td>
+<td>中</td>
+<td>工具規格同步</td>
+</tr>
+<tr>
+<td><code>ToolSpecStatusChecker</code></td>
+<td><code>ToolSpecStatusChecker.cs</code></td>
+<td>中</td>
+<td>工具狀態檢查</td>
+</tr>
+<tr>
+<td><code>TdxApiService</code></td>
+<td><code>TdxApiService.cs</code></td>
+<td>中</td>
+<td>TDX 交通 API</td>
+</tr>
+<tr>
+<td><code>ProcessRunner</code></td>
+<td><code>ProcessRunner.cs</code></td>
+<td>低</td>
+<td>外部程序執行</td>
+</tr>
+<tr>
+<td><code>HighLevelLlmOptions</code></td>
+<td><code>HighLevelLlmOptions.cs</code></td>
+<td>低</td>
+<td>LLM 選項配置</td>
+</tr>
+</tbody>
+</table>
+<p><strong>BrokerCore 層完全未測試</strong>（安全與治理核心）：</p>
+<table>
+<thead>
+<tr>
+<th>服務</th>
+<th>檔案</th>
+<th>重要性</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>PolicyEngine</code></td>
+<td><code>Services/PolicyEngine.cs</code></td>
+<td>極高</td>
+<td>策略引擎（RBAC 檢查）</td>
+</tr>
+<tr>
+<td><code>SessionService</code></td>
+<td><code>Services/SessionService.cs</code></td>
+<td>極高</td>
+<td>Session 建立與管理</td>
+</tr>
+<tr>
+<td><code>ScopedTokenService</code></td>
+<td><code>Services/ScopedTokenService.cs</code></td>
+<td>極高</td>
+<td>Token 簽發與驗證（JWT）</td>
+</tr>
+<tr>
+<td><code>EnvelopeCrypto</code></td>
+<td><code>Crypto/EnvelopeCrypto.cs</code></td>
+<td>極高</td>
+<td>加密/解密（e2e-bridge 間接測試）</td>
+</tr>
+<tr>
+<td><code>TaskRouter</code></td>
+<td><code>Services/TaskRouter.cs</code></td>
+<td>高</td>
+<td>任務路由</td>
+</tr>
+<tr>
+<td><code>BrokerService</code></td>
+<td><code>Services/BrokerService.cs</code></td>
+<td>高</td>
+<td>Broker 主要服務入口</td>
+</tr>
+<tr>
+<td><code>CapabilityCatalog</code></td>
+<td><code>Services/CapabilityCatalog.cs</code></td>
+<td>高</td>
+<td>能力目錄</td>
+</tr>
+<tr>
+<td><code>RevocationService</code></td>
+<td><code>Services/RevocationService.cs</code></td>
+<td>中</td>
+<td>撤銷機制</td>
+</tr>
+<tr>
+<td><code>PlanEngine</code> / <code>PlanService</code></td>
+<td><code>Services/PlanEngine.cs</code> / <code>PlanService.cs</code></td>
+<td>中</td>
+<td>計畫引擎</td>
+</tr>
+<tr>
+<td><code>SharedContextService</code></td>
+<td><code>Services/SharedContextService.cs</code></td>
+<td>中</td>
+<td>共享上下文</td>
+</tr>
+<tr>
+<td><code>ObservationService</code></td>
+<td><code>Services/ObservationService.cs</code></td>
+<td>中</td>
+<td>觀察事件服務</td>
+</tr>
+<tr>
+<td><code>AuditService</code></td>
+<td><code>Services/AuditService.cs</code></td>
+<td>中</td>
+<td>稽核服務</td>
+</tr>
+<tr>
+<td><code>SchemaValidator</code></td>
+<td><code>Services/SchemaValidator.cs</code></td>
+<td>中</td>
+<td>Schema 驗證</td>
+</tr>
+<tr>
+<td><code>BrokerDb</code> / <code>BrokerDbInitializer</code></td>
+<td><code>Data/BrokerDb.cs</code> / <code>BrokerDbInitializer.cs</code></td>
+<td>中</td>
+<td>資料庫初始化</td>
+</tr>
+<tr>
+<td><code>LlmProxyService</code></td>
+<td><code>Services/LlmProxyService.cs</code></td>
+<td>中</td>
+<td>LLM 代理服務</td>
+</tr>
+<tr>
+<td><code>EmbeddingService</code> / <code>RagPipelineService</code></td>
+<td><code>Services/EmbeddingService.cs</code> / <code>RagPipelineService.cs</code></td>
+<td>中</td>
+<td>向量嵌入與 RAG</td>
+</tr>
+<tr>
+<td><code>AgentSpawnService</code></td>
+<td><code>Services/AgentSpawnService.cs</code></td>
+<td>中</td>
+<td>Agent 啟動服務</td>
+</tr>
+<tr>
+<td><code>DbSessionKeyStore</code> / <code>CacheSessionKeyStore</code></td>
+<td><code>Crypto/</code></td>
+<td>中</td>
+<td>Session 密鑰存儲</td>
+</tr>
+</tbody>
+</table>
+<h2>相依性</h2>
+<h3>broker-tests</h3>
+<pre><code>Broker.Tests.csproj
+  └── Broker.csproj (Microsoft.NET.Sdk.Web)
+        ├── BrokerCore.csproj
+        │     ├── BaseOrm.csproj (資料庫 ORM)
+        │     └── CacheClient.csproj (分散式快取)
+        ├── FunctionPool.csproj (功能池)
+        ├── RateLimiting.csproj (速率限制)
+        └── BaseLogger.csproj (日誌)
+</code></pre>
+<ul>
+<li>無外部測試框架（無 xUnit、NUnit、MSTest）</li>
+<li>無 Mock 框架（無 Moq、NSubstitute）</li>
+<li>無程式碼覆蓋率工具（無 coverlet）</li>
+<li>無 assertion 函式庫（無 FluentAssertions、Shouldly）</li>
+<li>NuGet 依賴僅來自被測專案本身</li>
+</ul>
+<h3>e2e-bridge</h3>
+<pre><code>E2eBridge.csproj
+  └── BrokerCore.csproj
+        ├── BaseOrm.csproj
+        └── CacheClient.csproj
+</code></pre>
+<ul>
+<li>使用 <code>System.Security.Cryptography</code>（<code>ECDiffieHellman</code>、<code>AesGcm</code>、<code>HKDF</code>、<code>CryptographicOperations</code>）</li>
+<li>匯入 <code>BrokerCore.Crypto</code> 命名空間（<code>using BrokerCore.Crypto;</code>），但加密邏輯實際上在 <code>BrokerApiClient</code> 自行實作</li>
+<li>使用 <code>System.Text.Json</code>（<code>JsonDocument</code>、<code>JsonNode</code>、<code>JsonSerializer</code>）進行 JSON 處理</li>
+</ul>
+<h2>目前狀態與成熟度</h2>
+<h3>評估</h3>
+<table>
+<thead>
+<tr>
+<th>維度</th>
+<th>評分</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>框架成熟度</td>
+<td>低</td>
+<td>無使用標準測試框架，自製斷言在各檔案重複定義，無 test discovery/filtering/parallel execution</td>
+</tr>
+<tr>
+<td>單元測試覆蓋率</td>
+<td>低</td>
+<td>僅覆蓋約 6 個服務中的靜態方法；38+ 個 Broker 服務檔案和 17+ 個 BrokerCore 服務檔案大部分未測試</td>
+</tr>
+<tr>
+<td>安全性測試</td>
+<td>極低</td>
+<td>ECDH/AES-GCM 加密管線、PolicyEngine、ScopedTokenService 等核心安全元件僅有 e2e-bridge 手動測試</td>
+</tr>
+<tr>
+<td>核心邏輯測試</td>
+<td>極低</td>
+<td><code>PolicyEngine</code>、<code>SessionService</code>、<code>HighLevelCoordinator.HandleHighLevelAsync</code> 主流程無任何自動化測試</td>
+</tr>
+<tr>
+<td>整合測試</td>
+<td>中</td>
+<td>Artifact delivery 的 happy path 有完整覆蓋；Admin API 的 CRUD 和認證流程有基本驗證</td>
+</tr>
+<tr>
+<td>CI/CD 整合</td>
+<td>低</td>
+<td>測試專案未加入 <code>ControlPlane.slnx</code>；需手動執行 <code>dotnet run</code></td>
+</tr>
+<tr>
+<td>斷言品質</td>
+<td>中</td>
+<td>主要是字串包含/不包含和布林檢查，缺乏結構化 JSON 驗證或物件圖比較</td>
+</tr>
+<tr>
+<td>錯誤路徑測試</td>
+<td>低</td>
+<td>整合測試僅處理 happy path 和已知的 graceful degradation；未覆蓋異常輸入、並行存取、逾時場景</td>
+</tr>
+</tbody>
+</table>
+<h3>主要問題</h3>
+<ol>
+<li><strong>無測試框架</strong>：自製斷言函式在每個檔案重複定義（<code>AssertContains</code> 出現 3 次、<code>AssertTrue</code> 出現 3 次等），無法使用 test runner 的平行執行、過濾、報告、IDE 整合等功能</li>
+<li><strong>無 Mock/Stub</strong>：僅能測試純靜態方法，無法隔離測試有依賴注入的服務。所有有外部依賴的服務（資料庫、HTTP、LLM API）均無法在單元層級測試</li>
+<li><strong>覆蓋率嚴重不足</strong>：核心安全元件（策略引擎、session 管理、加密）和治理元件（PromotionGate、InputTrustPolicy）完全缺乏單元測試。估計覆蓋率 &lt; 5%</li>
+<li><strong>整合測試需手動 Broker</strong>：沒有使用 <code>TestServer</code> 或 <code>WebApplicationFactory</code> 進行 in-process 整合測試，導致每次執行整合測試都需要手動啟動 Broker 實例</li>
+<li><strong>測試專案未加入 solution</strong>：<code>ControlPlane.slnx</code> 不包含測試專案，<code>dotnet build</code> 不會自動編譯測試程式碼，可能導致測試程式碼與被測程式碼不同步</li>
+<li><strong>E2E Bridge 非自動化</strong>：<code>e2e-bridge</code> 需要人工介入操作和觀察結果，無法作為 CI 的一部分</li>
+<li><strong>無負面測試</strong>：缺乏對無效輸入、權限不足、並行競爭、大資料量等邊界情況的測試</li>
+<li><strong>測試資料清理</strong>：整合測試建立的 <code>test_integration_user</code> 相關資料未在測試結束後清理</li>
+</ol>
+<h3>改進建議優先順序</h3>
+<ol>
+<li>引入 xUnit + <code>WebApplicationFactory&lt;Program&gt;</code> 進行 in-process 整合測試，消除手動啟動 Broker 的需求</li>
+<li>為 <code>PolicyEngine</code>、<code>SessionService</code>、<code>ScopedTokenService</code>、<code>EnvelopeCrypto</code> 加入單元測試（安全核心）</li>
+<li>為 <code>HighLevelCoordinator.HandleHighLevelAsync</code> 主流程加入測試（業務核心）</li>
+<li>將測試專案加入 <code>ControlPlane.slnx</code>，確保 CI 建置自動包含測試</li>
+<li>引入 Mock 框架（如 NSubstitute）以隔離測試有外部依賴的服務</li>
+<li>提取共用的斷言函式到共用基底類別或工具類別</li>
+<li>加入程式碼覆蓋率報告（coverlet + ReportGenerator）</li>
+<li>為 <code>HighLevelCommandParser</code> 加入全面的指令解析測試（高 ROI，純邏輯）</li>
+</ol>
+</main>
+</body>
+</html>

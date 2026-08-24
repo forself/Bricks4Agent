@@ -15,7 +15,7 @@ const feed = new FeedCard(options);
 **options 參數：**
 
 | 參數 | 型別 | 預設值 | 說明 |
-|------|------|--------|------|
+|---|---|---|---|
 | `avatar` | `string` | `''` | 作者頭像 URL |
 | `author` | `string` | `''` | 作者名稱 |
 | `authorSub` | `string` | `''` | 作者副標題（如所屬組織） |
@@ -37,13 +37,13 @@ const feed = new FeedCard(options);
 ### 靜態方法
 
 | 方法 | 回傳 | 說明 |
-|------|------|------|
+|---|---|---|
 | `FeedCard.listHTML(items)` | `string` | 批次產生多張貼文的 HTML |
 
 ### 實例方法
 
 | 方法 | 回傳 | 說明 |
-|------|------|------|
+|---|---|---|
 | `toHTML()` | `string` | 產生 HTML 字串 |
 | `mount(container)` | `void` | 掛載到容器 |
 | `update(options)` | `void` | 更新配置並重新渲染 |

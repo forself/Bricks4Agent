@@ -1,5 +1,5 @@
 param(
-    [string]$Model = "qwen3-coder:30b",
+    [string]$Model = "qwen3.6:latest",
     [int]$PollInterval = 2,
     [string]$ConfigPath = ""
 )
@@ -15,7 +15,7 @@ $config = Get-Content $ConfigPath -Raw | ConvertFrom-Json
 $token = $config.Line.ChannelAccessToken
 $defaultRecipient = $config.Line.DefaultRecipientId
 
-$pendingDir = Join-Path $scriptDir "bin\Debug\net8.0\pending_messages"
+$pendingDir = Join-Path $scriptDir "bin\Debug\net10.0\pending_messages"
 
 if (-not (Test-Path $pendingDir)) {
     Write-Host "Waiting for pending_messages directory: $pendingDir" -ForegroundColor Yellow

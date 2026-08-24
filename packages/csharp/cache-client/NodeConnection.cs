@@ -211,11 +211,12 @@ public class NodeConnection : IAsyncDisposable
         try { _tcpClient?.Dispose(); } catch { }
     }
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
     {
-        if (_disposed) return;
+        if (_disposed) return ValueTask.CompletedTask;
         _disposed = true;
         Close();
         _sendRecvLock.Dispose();
+        return ValueTask.CompletedTask;
     }
 }

@@ -1,0 +1,18 @@
+{
+  "$schema": "../custom-component.schema.json",
+  "schema_version": 1,
+  "component_id": "custom.atomic_icon",
+  "registry_name": "CustomAtomicIcon",
+  "display_name": "Custom Atomic Icon",
+  "version": "1.0.0",
+  "kind": "atomic",
+  "description": "An atomic custom definition backed by the built-in Icon component.",
+  "root": {
+    "type": "component",
+    "id": "icon",
+    "component": "Icon",
+    "options": {
+      "name": "info"
+    }
+  }
+}

@@ -5,9 +5,13 @@
 ## 能力
 
 - Tool ID: `site.reconstruct.package`
+
 - Capability ID: `site.reconstruct_package`
+
 - Route: `site_reconstruct_package`
+
 - Status: `beta`
+
 - Risk: medium
 
 ## 執行前必要確認
@@ -15,7 +19,9 @@
 執行前必須由使用者確認爬取深度，深度定義為「連結跳數」：
 
 - 入口頁連結：`max_depth = 1`
+
 - 兩次連結跳轉以內：`max_depth = 2`
+
 - N 次連結跳轉以內：`max_depth = N`
 
 只爬根頁或目前頁面時，`max_depth = 0` 只作為明確的診斷或手動模式。
@@ -29,11 +35,17 @@
 ## 流程
 
 1. 只在已確認的公開 HTTP/HTTPS 範圍內爬取。
+
 2. 優先使用渲染後的視覺與功能線索，原始 HTML 只作為輔助證據。
+
 3. 將網站意圖轉換為模板 slot 與元件庫節點。
+
 4. 預設執行嚴格品質檢查。
+
 5. 產生以 `index.html` 為入口的網站包。
+
 6. 預設產生可攜式 zip 檔供交付。
+
 7. 驗證 package 檔案、`site.json` 可渲染性與 archive 內容。
 
 package runtime 會載入 `site.json` 與 `components/manifest.json`，再渲染元件樹。它不得輸出任意頁面 HTML，也不得產生 DOM 等價複製。
@@ -43,9 +55,13 @@ package runtime 會載入 `site.json` 與 `components/manifest.json`，再渲染
 strict mode 預設啟用。下列狀況會阻止 package 建立：
 
 - 文件仍含未解決的 `component_requests`。
+
 - manifest 宣告 generated components。
+
 - route 使用未知 component type。
+
 - route path 重複。
+
 - route root 不是 `PageShell`。
 
 失敗時工具會回傳結構化 `quality_report`，且不寫出 package。
@@ -57,16 +73,27 @@ strict mode 也會在 package verification 失敗時阻止交付。工具會回�
 成功輸出會包含 `package.verification_report`。驗證內容包含：
 
 - `index.html`
+
 - `runtime.js`
+
 - `styles.css`
+
 - `site.json`
+
 - `components/manifest.json`
+
 - `README.md`
+
 - `index.html` 宣告 `#app` 並載入 `./runtime.js`
+
 - `runtime.js` 載入 `./site.json` 與 `./components/manifest.json`
+
 - `components/manifest.json` 宣告 `site.json` 使用的所有 component type
+
 - `site.json` 使用的每個非 generated component type 都有 `runtime.js` renderer
+
 - generated component type 具備本機 `components/generated/<Type>.js` 與 `.json` 資產
+
 - zip archive entries
 
 一般使用者交付時，`package.quality_report.is_passed` 與 `package.verification_report.is_passed` 都必須為 true。
@@ -78,15 +105,25 @@ strict mode 也會在 package verification 失敗時阻止交付。工具會回�
 成功結果包含：
 
 - `crawl_run_id`
+
 - `page_count`
+
 - `excluded_count`
+
 - `package.output_directory`
+
 - `package.entry_point`
+
 - `package.site_json_path`
+
 - `package.manifest_path`
+
 - `package.archive_path`
+
 - `package.files`
+
 - `package.quality_report`
+
 - `package.verification_report`
 
 結果是一個可重用的網站重製 package，不是來源網站的等價 clone。

@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Auth</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Auth</h1>
+<p>認證 API 控制器模組 — 提供兩種認證控制器：MFA 認證（MfaAuthController）與 IP 速率限制認證（RateLimitedAuthController）。</p>
+<h2>初始化方式</h2>
+<pre><code class="language-csharp">// 基本 MFA 認證
+builder.Services.AddScoped&lt;IMfaAuthService, MfaAuthService&gt;();
+
+// 含速率限制的認證（推薦用於生產環境）
+builder.Services.AddScoped&lt;IMfaAuthService, MfaAuthService&gt;();
+builder.Services.AddScoped&lt;IIpRateLimiter, IpRateLimiter&gt;();
+builder.Services.AddScoped&lt;IConnectionInfoService, ConnectionInfoService&gt;();
+builder.Services.AddScoped&lt;IUserSessionService, UserSessionService&gt;();
+</code></pre>
+<h2>檔案說明</h2>
+<table>
+<thead>
+<tr>
+<th>檔案</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>MfaAuthController.cs</code></td>
+<td>基本 MFA 認證控制器（註冊、登入、MFA 設定）</td>
+</tr>
+<tr>
+<td><code>RateLimitedAuthController.cs</code></td>
+<td>進階認證控制器（在 MFA 基礎上加入 IP 速率限制、工作階段管理）</td>
+</tr>
+</tbody>
+</table>
+<h2>API 列表</h2>
+<h3>MfaAuthController — 基本認證</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>路由</th>
+<th>說明</th>
+<th>權限</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/auth/register</code></td>
+<td>註冊新使用者（可選啟用 MFA）</td>
+<td>匿名</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/auth/login</code></td>
+<td>登入第一步 — 驗證帳密</td>
+<td>匿名</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/auth/login/mfa</code></td>
+<td>登入第二步 — 驗證 MFA 碼</td>
+<td>匿名</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/auth/login/mfa/email</code></td>
+<td>請求 Email OTP</td>
+<td>匿名</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/auth/mfa/status</code></td>
+<td>取得 MFA 狀態</td>
+<td><code>[Authorize]</code></td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/auth/mfa/enable</code></td>
+<td>啟用 MFA</td>
+<td><code>[Authorize]</code></td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/auth/mfa/verify</code></td>
+<td>驗證 MFA 設定（回傳復原碼）</td>
+<td><code>[Authorize]</code></td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/auth/mfa/disable</code></td>
+<td>停用 MFA</td>
+<td><code>[Authorize]</code></td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/auth/mfa/recovery-codes</code></td>
+<td>重新產生復原碼</td>
+<td><code>[Authorize]</code></td>
+</tr>
+</tbody>
+</table>
+<h3>RateLimitedAuthController — 進階認證</h3>
+<p>繼承 MfaAuthController 的所有端點，額外加入：</p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>路由</th>
+<th>說明</th>
+<th>權限</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/auth/register</code></td>
+<td>註冊（含 IP 速率限制）</td>
+<td>匿名</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/auth/login</code></td>
+<td>登入（含 IP 封鎖檢查 + 速率限制 + 工作階段建立）</td>
+<td>匿名</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/auth/login/mfa</code></td>
+<td>MFA 驗證（含速率限制 + 工作階段建立）</td>
+<td>匿名</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/auth/sessions</code></td>
+<td>取得當前使用者的工作階段列表</td>
+<td><code>[Authorize]</code></td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/auth/logout</code></td>
+<td>登出當前工作階段</td>
+<td><code>[Authorize]</code></td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/auth/logout/all</code></td>
+<td>登出所有工作階段</td>
+<td><code>[Authorize]</code></td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/auth/connection-info</code></td>
+<td>取得連線資訊（IP、裝置、瀏覽器）</td>
+<td>匿名</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/auth/login-history?count=10</code></td>
+<td>取得登入歷史</td>
+<td><code>[Authorize]</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>速率限制行為：</strong>
+- 觸發速率限制時回傳 <code>429 Too Many Requests</code>
+- 回應標頭含 <code>X-RateLimit-Limit</code>、<code>X-RateLimit-Remaining</code>、<code>X-RateLimit-Reset</code>、<code>Retry-After</code>
+- 連續 15 次以上失敗登入的 IP 會被標記為可疑（封鎖 24 小時）
+- 被封鎖的 IP 回傳 <code>403 Forbidden</code></p>
+<h2>使用範例</h2>
+<h3>註冊</h3>
+<pre><code class="language-http">POST /api/auth/register
+Content-Type: application/json
+
+{
+    &quot;email&quot;: &quot;user@example.com&quot;,
+    &quot;password&quot;: &quot;SecurePassword123!&quot;,
+    &quot;enableMfa&quot;: true
+}
+</code></pre>
+<h3>兩步驟登入</h3>
+<pre><code class="language-http"># 第一步：帳密驗證
+POST /api/auth/login
+Content-Type: application/json
+
+{
+    &quot;email&quot;: &quot;user@example.com&quot;,
+    &quot;password&quot;: &quot;SecurePassword123!&quot;
+}
+# 回傳：{ requiresMfa: true, mfaToken: &quot;...&quot; }
+
+# 第二步：MFA 驗證
+POST /api/auth/login/mfa
+Content-Type: application/json
+
+{
+    &quot;mfaToken&quot;: &quot;...&quot;,
+    &quot;code&quot;: &quot;123456&quot;,
+    &quot;method&quot;: &quot;Totp&quot;,
+    &quot;isRecoveryCode&quot;: false
+}
+</code></pre>
+<h3>啟用 MFA</h3>
+<pre><code class="language-http">POST /api/auth/mfa/enable
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+    &quot;method&quot;: &quot;Totp&quot;
+}
+# 回傳 QR Code / Secret
+
+POST /api/auth/mfa/verify
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+    &quot;code&quot;: &quot;123456&quot;,
+    &quot;method&quot;: &quot;Totp&quot;
+}
+# 回傳復原碼
+</code></pre>
+<h2>依賴清單</h2>
+<table>
+<thead>
+<tr>
+<th>依賴</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>IMfaAuthService</code></td>
+<td>MFA 認證服務介面（兩個控制器皆需要）</td>
+</tr>
+<tr>
+<td><code>IIpRateLimiter</code></td>
+<td>IP 速率限制服務（僅 RateLimitedAuthController）</td>
+</tr>
+<tr>
+<td><code>IConnectionInfoService</code></td>
+<td>連線資訊服務（僅 RateLimitedAuthController）</td>
+</tr>
+<tr>
+<td><code>IUserSessionService</code></td>
+<td>使用者工作階段服務（僅 RateLimitedAuthController）</td>
+</tr>
+<tr>
+<td><code>ILogger&lt;T&gt;</code></td>
+<td>ASP.NET Core 日誌服務</td>
+</tr>
+<tr>
+<td><code>Microsoft.AspNetCore.Authorization</code></td>
+<td>授權屬性</td>
+</tr>
+<tr>
+<td><code>Microsoft.AspNetCore.Mvc</code></td>
+<td>MVC 控制器基底</td>
+</tr>
+</tbody>
+</table>
+<h2>安全特性</h2>
+<ul>
+<li>IP 遮罩：日誌中的 IP 僅顯示前三組（如 <code>192.168.1.*</code>）</li>
+<li>Email 遮罩：日誌中的 Email 僅顯示首尾字元（如 <code>u***r@example.com</code>）</li>
+<li>Session ID 遮罩：僅顯示前後 4 碼</li>
+<li>登入失敗時不回傳具體錯誤原因（防止使用者列舉）</li>
+<li>MFA Token 有時效性，過期自動失效</li>
+</ul>
+</main>
+</body>
+</html>

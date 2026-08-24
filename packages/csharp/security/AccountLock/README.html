@@ -1,0 +1,562 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Account Lock Module</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Account Lock Module</h1>
+<p>帳戶臨時鎖定與解鎖模組，提供自動鎖定、漸進式鎖定、IP 封鎖等功能。</p>
+<h2>功能特點</h2>
+<ul>
+<li><strong>自動鎖定</strong>：登入失敗、MFA 失敗自動觸發鎖定</li>
+<li><strong>漸進式鎖定</strong>：重複違規者鎖定時間遞增</li>
+<li><strong>多範圍鎖定</strong>：帳戶、登入、MFA、敏感操作獨立鎖定</li>
+<li><strong>IP 封鎖</strong>：可疑 IP 自動或手動封鎖</li>
+<li><strong>自動解鎖</strong>：到期自動解除鎖定</li>
+<li><strong>完整歷史</strong>：鎖定/解鎖歷史記錄</li>
+</ul>
+<h2>安裝</h2>
+<pre><code class="language-bash">dotnet add package AccountLock
+</code></pre>
+<h2>快速開始</h2>
+<h3>1. 註冊服務</h3>
+<pre><code class="language-csharp">// Program.cs
+builder.Services.AddSingleton&lt;IAccountLockRepository, InMemoryAccountLockRepository&gt;();
+builder.Services.AddSingleton&lt;IAccountLockService, AccountLockService&gt;();
+builder.Services.AddSingleton(new AccountLockConfig
+{
+    MaxFailedLoginAttempts = 5,
+    FailedLoginLockMinutes = 15,
+    MaxFailedMfaAttempts = 5,
+    FailedMfaLockMinutes = 30,
+    EnableProgressiveLockout = true
+});
+</code></pre>
+<h3>2. 使用中介軟體（可選）</h3>
+<pre><code class="language-csharp">// 在認證後、授權前加入
+app.UseAuthentication();
+app.UseAccountLockCheck();  // 檢查帳戶鎖定
+app.UseAuthorization();
+</code></pre>
+<h3>3. 整合登入流程</h3>
+<pre><code class="language-csharp">public class AuthService
+{
+    private readonly IAccountLockService _lockService;
+    private readonly AuthLockIntegration _lockIntegration;
+
+    public AuthService(IAccountLockService lockService)
+    {
+        _lockService = lockService;
+        _lockIntegration = new AuthLockIntegration(lockService);
+    }
+
+    public LoginResult Login(string email, string password, string ipAddress)
+    {
+        // 1. 先檢查是否被鎖定
+        var lockCheck = _lockIntegration.CheckLoginAllowed(null, ipAddress);
+        if (lockCheck.IsLocked)
+        {
+            return new LoginResult
+            {
+                Success = false,
+                Error = lockCheck.Message,
+                RetryAfterSeconds = lockCheck.RetryAfterSeconds
+            };
+        }
+
+        // 2. 查詢用戶
+        var user = _userRepository.GetByEmail(email);
+        if (user != null)
+        {
+            // 檢查此用戶是否被鎖定
+            lockCheck = _lockIntegration.CheckLoginAllowed(user.Id, ipAddress);
+            if (lockCheck.IsLocked)
+            {
+                return new LoginResult
+                {
+                    Success = false,
+                    Error = lockCheck.Message,
+                    RetryAfterSeconds = lockCheck.RetryAfterSeconds
+                };
+            }
+        }
+
+        // 3. 驗證密碼
+        if (!ValidatePassword(user, password))
+        {
+            // 記錄失敗並檢查是否觸發鎖定
+            var failResult = _lockIntegration.HandleFailedLogin(
+                user?.Id, email, ipAddress);
+
+            if (failResult.IsLocked)
+            {
+                return new LoginResult
+                {
+                    Success = false,
+                    Error = failResult.Message,
+                    RetryAfterSeconds = failResult.RetryAfterSeconds
+                };
+            }
+
+            return new LoginResult { Success = false, Error = &quot;Invalid credentials&quot; };
+        }
+
+        // 4. 登入成功，重置計數器
+        _lockIntegration.HandleSuccessfulLogin(user.Id, ipAddress);
+
+        return new LoginResult { Success = true, User = user };
+    }
+}
+</code></pre>
+<h2>鎖定類型</h2>
+<table>
+<thead>
+<tr>
+<th>類型</th>
+<th>說明</th>
+<th>預設持續時間</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Manual</code></td>
+<td>管理員手動鎖定</td>
+<td>永久（直到解鎖）</td>
+</tr>
+<tr>
+<td><code>FailedLogin</code></td>
+<td>登入失敗過多</td>
+<td>15 分鐘</td>
+</tr>
+<tr>
+<td><code>FailedMfa</code></td>
+<td>MFA 驗證失敗過多</td>
+<td>30 分鐘</td>
+</tr>
+<tr>
+<td><code>SuspiciousActivity</code></td>
+<td>可疑活動</td>
+<td>1 小時</td>
+</tr>
+<tr>
+<td><code>RateLimitExceeded</code></td>
+<td>超過頻率限制</td>
+<td>15 分鐘</td>
+</tr>
+<tr>
+<td><code>PasswordReset</code></td>
+<td>密碼重設中</td>
+<td>視流程而定</td>
+</tr>
+<tr>
+<td><code>PolicyViolation</code></td>
+<td>違反安全政策</td>
+<td>永久</td>
+</tr>
+<tr>
+<td><code>CompromiseDetected</code></td>
+<td>帳戶疑似被入侵</td>
+<td>永久</td>
+</tr>
+<tr>
+<td><code>Inactivity</code></td>
+<td>長期未使用</td>
+<td>永久</td>
+</tr>
+<tr>
+<td><code>Maintenance</code></td>
+<td>系統維護</td>
+<td>視維護而定</td>
+</tr>
+</tbody>
+</table>
+<h2>鎖定範圍</h2>
+<table>
+<thead>
+<tr>
+<th>範圍</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Account</code></td>
+<td>鎖定整個帳戶（最嚴格）</td>
+</tr>
+<tr>
+<td><code>Login</code></td>
+<td>只鎖定登入，現有會話可用</td>
+</tr>
+<tr>
+<td><code>IpAddress</code></td>
+<td>鎖定特定 IP 對此帳戶的存取</td>
+</tr>
+<tr>
+<td><code>Mfa</code></td>
+<td>鎖定 MFA 驗證</td>
+</tr>
+<tr>
+<td><code>PasswordChange</code></td>
+<td>鎖定密碼變更</td>
+</tr>
+<tr>
+<td><code>SensitiveOperations</code></td>
+<td>鎖定敏感操作</td>
+</tr>
+</tbody>
+</table>
+<h2>漸進式鎖定</h2>
+<p>重複違規者的鎖定時間會遞增：</p>
+<table>
+<thead>
+<tr>
+<th>違規次數</th>
+<th>乘數</th>
+<th>實際鎖定時間（基準 15 分鐘）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>第 1 次</td>
+<td>1x</td>
+<td>15 分鐘</td>
+</tr>
+<tr>
+<td>第 2 次</td>
+<td>2x</td>
+<td>30 分鐘</td>
+</tr>
+<tr>
+<td>第 3 次</td>
+<td>4x</td>
+<td>1 小時</td>
+</tr>
+<tr>
+<td>第 4 次</td>
+<td>8x</td>
+<td>2 小時</td>
+</tr>
+<tr>
+<td>第 5 次+</td>
+<td>24x</td>
+<td>6 小時</td>
+</tr>
+</tbody>
+</table>
+<pre><code class="language-csharp">// 設定漸進式鎖定
+var config = new AccountLockConfig
+{
+    EnableProgressiveLockout = true,
+    ProgressiveMultipliers = new List&lt;double&gt; { 1, 2, 4, 8, 24 },
+    ProgressiveWindowHours = 24  // 24 小時內計算
+};
+</code></pre>
+<h2>API 端點</h2>
+<h3>用戶端點</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>路徑</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GET</td>
+<td><code>/api/account-locks/my/status</code></td>
+<td>取得自己的鎖定狀態</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/account-locks/my/history</code></td>
+<td>取得自己的鎖定歷史</td>
+</tr>
+</tbody>
+</table>
+<h3>管理端點（需要 Admin/SecurityAdmin 角色）</h3>
+<h4>帳戶鎖定管理</h4>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>路徑</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GET</td>
+<td><code>/api/account-locks/users/{userId}/check</code></td>
+<td>檢查用戶是否被鎖定</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/account-locks/users/{userId}/status</code></td>
+<td>取得用戶鎖定狀態</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/account-locks/users/{userId}/history</code></td>
+<td>取得用戶鎖定歷史</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/account-locks/users/{userId}/lock</code></td>
+<td>鎖定用戶</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/account-locks/users/{userId}/unlock</code></td>
+<td>解鎖用戶</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/account-locks/active</code></td>
+<td>取得所有活躍鎖定</td>
+</tr>
+<tr>
+<td>DELETE</td>
+<td><code>/api/account-locks/{lockId}</code></td>
+<td>移除特定鎖定</td>
+</tr>
+</tbody>
+</table>
+<h4>IP 鎖定管理</h4>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>路徑</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GET</td>
+<td><code>/api/account-locks/ips/check?ipAddress=x</code></td>
+<td>檢查 IP 是否被鎖定</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/account-locks/ips/lock</code></td>
+<td>鎖定 IP</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/account-locks/ips/unlock</code></td>
+<td>解鎖 IP</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/account-locks/ips/active</code></td>
+<td>取得所有活躍 IP 鎖定</td>
+</tr>
+<tr>
+<td>DELETE</td>
+<td><code>/api/account-locks/ips/{lockId}</code></td>
+<td>移除 IP 鎖定</td>
+</tr>
+</tbody>
+</table>
+<h4>統計</h4>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>路徑</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GET</td>
+<td><code>/api/account-locks/statistics</code></td>
+<td>取得鎖定統計</td>
+</tr>
+</tbody>
+</table>
+<h2>使用範例</h2>
+<h3>手動鎖定用戶</h3>
+<pre><code class="language-csharp">// 鎖定 15 分鐘
+_lockService.LockAccount(new LockAccountRequest
+{
+    UserId = userId,
+    LockType = LockType.Manual,
+    Scope = LockScope.Account,
+    Reason = &quot;Suspicious activity detected&quot;,
+    DurationMinutes = 15
+}, adminUserId: currentAdminId, adminUsername: currentAdminName);
+
+// 永久鎖定
+_lockService.LockAccount(new LockAccountRequest
+{
+    UserId = userId,
+    LockType = LockType.PolicyViolation,
+    Scope = LockScope.Account,
+    Reason = &quot;Terms of service violation&quot;,
+    DurationMinutes = null  // 永久
+}, adminUserId: currentAdminId, adminUsername: currentAdminName);
+</code></pre>
+<h3>解鎖用戶</h3>
+<pre><code class="language-csharp">// 解除所有鎖定
+_lockService.UnlockAccount(new UnlockAccountRequest
+{
+    UserId = userId,
+    Reason = &quot;Customer support request&quot;
+}, adminUserId: currentAdminId, adminUsername: currentAdminName);
+
+// 只解除登入鎖定
+_lockService.UnlockAccount(new UnlockAccountRequest
+{
+    UserId = userId,
+    Scope = LockScope.Login,
+    Reason = &quot;Password verified via phone&quot;
+}, adminUserId: currentAdminId, adminUsername: currentAdminName);
+</code></pre>
+<h3>檢查鎖定狀態</h3>
+<pre><code class="language-csharp">var result = _lockService.CheckLock(userId);
+if (result.IsLocked)
+{
+    Console.WriteLine($&quot;Account locked: {result.Message}&quot;);
+    Console.WriteLine($&quot;Unlock in: {result.RetryAfterSeconds} seconds&quot;);
+}
+
+// 取得完整狀態
+var status = _lockService.GetUserLockStatus(userId);
+Console.WriteLine($&quot;Active locks: {status.ActiveLocks.Count}&quot;);
+Console.WriteLine($&quot;Total lock history: {status.TotalLockCount}&quot;);
+</code></pre>
+<h3>鎖定 IP</h3>
+<pre><code class="language-csharp">// 鎖定可疑 IP
+_lockService.LockIpForSuspiciousActivity(
+    ipAddress: &quot;192.168.1.100&quot;,
+    reason: &quot;Brute force attack detected&quot;,
+    durationMinutes: 60);
+
+// 永久封鎖
+_lockService.LockIp(new LockIpRequest
+{
+    IpAddress = &quot;10.0.0.50&quot;,
+    LockType = LockType.Manual,
+    Reason = &quot;Known malicious IP&quot;,
+    DurationMinutes = null
+}, adminUserId: adminId);
+</code></pre>
+<h2>回應格式</h2>
+<h3>被鎖定時的 API 回應</h3>
+<pre><code class="language-json">{
+  &quot;error&quot;: &quot;account_locked&quot;,
+  &quot;message&quot;: &quot;Account temporarily locked due to multiple failed login attempts. Please try again in 14 minute(s).&quot;,
+  &quot;lockType&quot;: &quot;FailedLogin&quot;,
+  &quot;expiresAt&quot;: &quot;2026-01-25T12:30:00Z&quot;,
+  &quot;retryAfterSeconds&quot;: 840
+}
+</code></pre>
+<p>HTTP 狀態碼：<code>423 Locked</code></p>
+<p>回應標頭：<code>Retry-After: 840</code></p>
+<h2>事件通知</h2>
+<pre><code class="language-csharp">var lockService = new AccountLockService(repository, config);
+
+// 訂閱鎖定事件
+lockService.OnAccountLocked += (lock) =&gt;
+{
+    // 發送通知、記錄日誌等
+    _notificationService.NotifyUserLocked(lock.UserId, lock.Reason);
+    _auditLog.LogAccountLocked(lock);
+};
+
+lockService.OnAccountUnlocked += (lock) =&gt;
+{
+    _notificationService.NotifyUserUnlocked(lock.UserId);
+};
+
+lockService.OnIpLocked += (lock) =&gt;
+{
+    _alertService.SendSecurityAlert($&quot;IP blocked: {lock.IpAddress}&quot;);
+};
+</code></pre>
+<h2>設定選項</h2>
+<pre><code class="language-csharp">var config = new AccountLockConfig
+{
+    // 登入失敗設定
+    MaxFailedLoginAttempts = 5,        // 最大失敗次數
+    FailedLoginWindowMinutes = 15,     // 計算視窗
+    FailedLoginLockMinutes = 15,       // 鎖定時間
+
+    // MFA 失敗設定
+    MaxFailedMfaAttempts = 5,
+    FailedMfaLockMinutes = 30,
+
+    // 漸進式鎖定
+    EnableProgressiveLockout = true,
+    ProgressiveMultipliers = new List&lt;double&gt; { 1, 2, 4, 8, 24 },
+    ProgressiveWindowHours = 24,
+
+    // 自動解鎖
+    AutoUnlockExpired = true,
+
+    // 閒置鎖定（可選）
+    InactiveDaysBeforeLock = null  // 設定天數啟用
+};
+</code></pre>
+<h2>與其他模組整合</h2>
+<h3>與 RateLimiting 模組整合</h3>
+<pre><code class="language-csharp">// 當限流觸發時鎖定帳戶
+if (!rateLimitResult.IsAllowed)
+{
+    _lockService.LockAccount(new LockAccountRequest
+    {
+        UserId = userId,
+        LockType = LockType.RateLimitExceeded,
+        Scope = LockScope.Account,
+        Reason = &quot;Rate limit exceeded&quot;,
+        DurationMinutes = 15
+    });
+}
+</code></pre>
+<h3>與 AuditLog 模組整合</h3>
+<pre><code class="language-csharp">lockService.OnAccountLocked += (lock) =&gt;
+{
+    _securityLogService.LogAccountEvent(
+        SecurityEventType.AccountLocked,
+        lock.UserId,
+        lock.Username,
+        lock.TriggerIpAddress,
+        $&quot;Lock type: {lock.LockType}, Scope: {lock.Scope}, Duration: {lock.ExpiresAt}&quot;
+    );
+};
+</code></pre>
+<h2>生產環境建議</h2>
+<ol>
+<li><strong>使用資料庫儲存</strong>：替換 InMemory 實作</li>
+<li><strong>分散式鎖定</strong>：使用 Redis 實現跨實例同步</li>
+<li><strong>通知整合</strong>：鎖定時發送 Email/SMS 通知</li>
+<li><strong>監控告警</strong>：大量鎖定時觸發告警</li>
+<li><strong>定期清理</strong>：清理過期的鎖定記錄</li>
+</ol>
+<h2>相依套件</h2>
+<ul>
+<li><code>Microsoft.AspNetCore.Http.Abstractions</code> &gt;= 2.2.0</li>
+</ul>
+<h2>授權</h2>
+<p>MIT License</p>
+</main>
+</body>
+</html>

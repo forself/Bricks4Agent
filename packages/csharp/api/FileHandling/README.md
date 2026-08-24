@@ -5,10 +5,15 @@ A comprehensive file upload system with configurable path templates, upload rule
 ## Features
 
 - **Single and Batch Upload**: Support for uploading single files or multiple files at once
+
 - **Configurable Path Templates**: Dynamic path generation using template variables
+
 - **Upload Rules**: Customizable rules for file validation (extensions, size limits)
+
 - **File Tracking**: Database records for all uploaded files with metadata
+
 - **Soft Delete**: Safe deletion with option to preserve or remove physical files
+
 - **Security**: Built-in validation against path traversal and dangerous file types
 
 ## Directory Structure
@@ -93,7 +98,7 @@ public class UploadPathRuleConfiguration : IEntityTypeConfiguration<UploadPathRu
 ### File Upload
 
 | Method | Endpoint | Description |
-|--------|----------|-------------|
+|---|---|---|
 | POST | `/api/files/upload` | Upload a single file |
 | POST | `/api/files/upload-batch` | Upload multiple files |
 | GET | `/api/files` | Query file records |
@@ -104,7 +109,7 @@ public class UploadPathRuleConfiguration : IEntityTypeConfiguration<UploadPathRu
 ### Upload Rules (Admin)
 
 | Method | Endpoint | Description |
-|--------|----------|-------------|
+|---|---|---|
 | GET | `/api/upload-rules` | List all rules |
 | GET | `/api/upload-rules/{id}` | Get rule by ID |
 | POST | `/api/upload-rules` | Create new rule |
@@ -119,7 +124,7 @@ public class UploadPathRuleConfiguration : IEntityTypeConfiguration<UploadPathRu
 The path template system supports the following variables:
 
 | Variable | Description | Example |
-|----------|-------------|---------|
+|---|---|---|
 | `{PathRoot}` | Root directory from config | `uploads` |
 | `{TableName}` | Associated table name | `Products` |
 | `{TablePk}` | Table primary key | `123` |
@@ -163,6 +168,7 @@ tablePk: 42
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -196,6 +202,7 @@ tablePk: 42
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -239,6 +246,7 @@ Authorization: Bearer <token>
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -261,10 +269,15 @@ Authorization: Bearer <token>
 ## Security Considerations
 
 1. **File Extension Validation**: Configure allowed extensions per rule
+
 2. **File Size Limits**: Set maximum file size per rule (default: 10MB)
+
 3. **Dangerous Files**: Automatic blocking of executable files (.exe, .dll, .bat, etc.)
+
 4. **Path Traversal**: Prevention of `..` patterns in paths
+
 5. **Authentication**: All endpoints require authentication
+
 6. **Authorization**: Rule management requires Admin role
 
 ## Frontend Integration

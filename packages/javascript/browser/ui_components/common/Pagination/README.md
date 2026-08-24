@@ -11,7 +11,7 @@ new Pagination(options?)
 ```
 
 | 參數 | 型別 | 預設值 | 說明 |
-|------|------|--------|------|
+|---|---|---|---|
 | `options.total` | `number` | `0` | 總資料筆數 |
 | `options.page` | `number` | `1` | 當前頁碼 (1-based) |
 | `options.pageSize` | `number` | `20` | 每頁筆數 |
@@ -25,7 +25,7 @@ new Pagination(options?)
 ### 方法
 
 | 方法 | 回傳 | 說明 |
-|------|------|------|
+|---|---|---|
 | `goTo(page)` | `this` | 跳至指定頁碼 |
 | `setPageSize(pageSize)` | `this` | 設定每頁筆數 |
 | `setTotal(total)` | `this` | 設定總筆數 |
@@ -36,7 +36,7 @@ new Pagination(options?)
 ### 屬性
 
 | 屬性 | 說明 |
-|------|------|
+|---|---|
 | `totalPages` | 計算屬性，總頁數 |
 
 ## 使用範例

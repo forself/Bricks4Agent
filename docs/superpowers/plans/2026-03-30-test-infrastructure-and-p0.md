@@ -938,6 +938,7 @@ if (!document.documentElement.getAttribute('data-theme')) {
 - [ ] **Step 4: Add test script to package.json**
 
 Add to `packages/javascript/browser/package.json`:
+
 ```json
 {
     "scripts": {
@@ -1071,7 +1072,7 @@ git commit -m "test: complete Phase 1+2 — infrastructure + P0 security core te
 ## Summary
 
 | Task | Component | Tests |
-|------|-----------|-------|
+|---|---|---|
 | 1 | xUnit project setup | — |
 | 2 | Test helpers + DB fixture | 1 |
 | 3 | IdGen | 3 |
@@ -1083,7 +1084,7 @@ git commit -m "test: complete Phase 1+2 — infrastructure + P0 security core te
 | 9 | Vitest setup | 2 |
 | 10 | Locale i18n | 5 |
 | 11 | Full suite + coverage | — |
-| **Total** | | **48 tests** |
+| **Total** |  | **48 tests** |
 
 ## Important Notes
 

@@ -21,7 +21,7 @@ const toggle = new ToggleSwitch({
 ### 方法
 
 | 方法 | 說明 |
-|------|------|
+|---|---|
 | `mount(container)` | 掛載至容器 |
 | `destroy()` | 銷毀元件 |
 | `toggle()` | 切換開關狀態 |
@@ -34,6 +34,7 @@ const toggle = new ToggleSwitch({
 ### 屬性
 
 - `element` — 根 DOM 元素
+
 - `checked` — 目前布林值
 
 ## 使用範例
@@ -51,4 +52,4 @@ toggle.mount('#container');
 
 ## Demo
 
-`demos/form/ToggleSwitch.html`（專案根目錄）
+`demo.html`（同目錄）

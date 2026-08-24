@@ -59,7 +59,7 @@ namespace Bricks4Agent.Security.AccountLock
         }
 
         /// <inheritdoc />
-        public AccountLockRecord GetLock(long lockId)
+        public AccountLockRecord? GetLock(long lockId)
         {
             _accountLocks.TryGetValue(lockId, out var lockRecord);
             return lockRecord;
@@ -78,12 +78,13 @@ namespace Bricks4Agent.Security.AccountLock
                 return lockIds
                     .Select(id => _accountLocks.TryGetValue(id, out var l) ? l : null)
                     .Where(l => l != null && l.IsActive && (l.ExpiresAt == null || l.ExpiresAt > now))
+                    .OfType<AccountLockRecord>()
                     .ToList();
             }
         }
 
         /// <inheritdoc />
-        public AccountLockRecord GetActiveLock(int userId, LockScope scope)
+        public AccountLockRecord? GetActiveLock(int userId, LockScope scope)
         {
             var now = DateTime.UtcNow;
 
@@ -111,7 +112,7 @@ namespace Bricks4Agent.Security.AccountLock
                     .OrderByDescending(id => id)
                     .Take(limit)
                     .Select(id => _accountLocks.TryGetValue(id, out var l) ? l : null)
-                    .Where(l => l != null)
+                    .OfType<AccountLockRecord>()
                     .ToList();
             }
         }
@@ -166,7 +167,7 @@ namespace Bricks4Agent.Security.AccountLock
         }
 
         /// <inheritdoc />
-        public void DeactivateLock(long lockId, string unlockedBy, string reason)
+        public void DeactivateLock(long lockId, string unlockedBy, string? reason)
         {
             if (_accountLocks.TryGetValue(lockId, out var lockRecord))
             {
@@ -178,7 +179,7 @@ namespace Bricks4Agent.Security.AccountLock
         }
 
         /// <inheritdoc />
-        public int DeactivateAllLocks(int userId, string unlockedBy, string reason)
+        public int DeactivateAllLocks(int userId, string unlockedBy, string? reason)
         {
             var activeLocks = GetActiveLocks(userId);
             foreach (var lockRecord in activeLocks)
@@ -189,7 +190,7 @@ namespace Bricks4Agent.Security.AccountLock
         }
 
         /// <inheritdoc />
-        public int DeactivateLocksByScope(int userId, LockScope scope, string unlockedBy, string reason)
+        public int DeactivateLocksByScope(int userId, LockScope scope, string unlockedBy, string? reason)
         {
             var activeLocks = GetActiveLocks(userId).Where(l => l.Scope == scope).ToList();
             foreach (var lockRecord in activeLocks)
@@ -273,14 +274,14 @@ namespace Bricks4Agent.Security.AccountLock
         }
 
         /// <inheritdoc />
-        public IpLock GetIpLock(long lockId)
+        public IpLock? GetIpLock(long lockId)
         {
             _ipLocks.TryGetValue(lockId, out var lockRecord);
             return lockRecord;
         }
 
         /// <inheritdoc />
-        public IpLock GetActiveIpLock(string ipAddressHash)
+        public IpLock? GetActiveIpLock(string ipAddressHash)
         {
             if (string.IsNullOrEmpty(ipAddressHash))
                 return null;
@@ -393,7 +394,7 @@ namespace Bricks4Agent.Security.AccountLock
             if (completedLocks.Any())
             {
                 stats.AverageLockDurationMinutes = completedLocks
-                    .Average(l => (l.UnlockedAt.Value - l.LockedAt).TotalMinutes);
+                    .Average(l => (l.UnlockedAt.GetValueOrDefault() - l.LockedAt).TotalMinutes);
             }
 
             stats.TopLockedUsers = locks
@@ -453,7 +454,7 @@ namespace Bricks4Agent.Security.AccountLock
             return toDelete.Count + ipToDelete.Count;
         }
 
-        private void CleanupExpired(object state)
+        private void CleanupExpired(object? state)
         {
             // Auto-deactivate expired account locks
             var expiredAccountLocks = GetExpiredActiveLocks();

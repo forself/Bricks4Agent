@@ -19,7 +19,7 @@ namespace Bricks4Agent.Security.AccountLock
         /// <summary>
         /// Get lock by ID
         /// </summary>
-        AccountLockRecord GetLock(long lockId);
+        AccountLockRecord? GetLock(long lockId);
 
         /// <summary>
         /// Get active locks for a user
@@ -29,7 +29,7 @@ namespace Bricks4Agent.Security.AccountLock
         /// <summary>
         /// Get active lock for user with specific scope
         /// </summary>
-        AccountLockRecord GetActiveLock(int userId, LockScope scope);
+        AccountLockRecord? GetActiveLock(int userId, LockScope scope);
 
         /// <summary>
         /// Get all locks for a user (including inactive)
@@ -54,17 +54,17 @@ namespace Bricks4Agent.Security.AccountLock
         /// <summary>
         /// Deactivate a lock
         /// </summary>
-        void DeactivateLock(long lockId, string unlockedBy, string reason);
+        void DeactivateLock(long lockId, string unlockedBy, string? reason);
 
         /// <summary>
         /// Deactivate all locks for a user
         /// </summary>
-        int DeactivateAllLocks(int userId, string unlockedBy, string reason);
+        int DeactivateAllLocks(int userId, string unlockedBy, string? reason);
 
         /// <summary>
         /// Deactivate locks by scope
         /// </summary>
-        int DeactivateLocksByScope(int userId, LockScope scope, string unlockedBy, string reason);
+        int DeactivateLocksByScope(int userId, LockScope scope, string unlockedBy, string? reason);
 
         /// <summary>
         /// Get expired but still active locks
@@ -98,12 +98,12 @@ namespace Bricks4Agent.Security.AccountLock
         /// <summary>
         /// Get IP lock
         /// </summary>
-        IpLock GetIpLock(long lockId);
+        IpLock? GetIpLock(long lockId);
 
         /// <summary>
         /// Get active IP lock by IP hash
         /// </summary>
-        IpLock GetActiveIpLock(string ipAddressHash);
+        IpLock? GetActiveIpLock(string ipAddressHash);
 
         /// <summary>
         /// Check if IP is locked

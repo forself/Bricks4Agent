@@ -29,16 +29,17 @@ const input = new NumberInput({
 ### 方法
 
 | 方法 | 說明 |
-|------|------|
+|---|---|
 | `mount(container)` | 掛載至容器 |
 | `destroy()` | 銷毀元件 |
 | `getValue()` | 取得目前數值（number 或 null） |
-| `setValue(value)` | 設定數值（觸發 onChange） |
+| `setValue(value, { emit }?)` | 設定數值（預設不觸發 onChange，傳 `{ emit: true }` 才觸發） |
 | `clear()` | 清空為 null |
 
 ### 屬性
 
 - `element` — 根 DOM 元素
+
 - `value` — 目前數值
 
 ## 使用範例

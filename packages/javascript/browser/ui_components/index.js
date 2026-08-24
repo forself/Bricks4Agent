@@ -14,4 +14,8 @@ export * from './social/index.js';
 export * from './binding/index.js';
 export * from './utils/index.js';
 export * from './viz/index.js';
+export * from './sections/index.js';
 export { default as Locale } from './i18n/index.js';
+
+// Analytics 統計複合件
+export { DataExplorer } from './analytics/index.js';

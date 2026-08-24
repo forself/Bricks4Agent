@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Form Application Studio</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Form Application Studio</h1>
+<p>此工具把單一資料表 schema 轉成可調整版面的表單，以及對應的 .NET 10 Minimal API、BaseOrm 程式碼與資料庫 SQL。工具頁的唯一權威定義是 <code>studio.page.json</code>，由 <code>DynamicPageRenderer({ mode: 'tool' })</code> 產生；核心設計畫布是正式 <code>FormDesigner</code> 元件。</p>
+<h2>使用方式</h2>
+<ol>
+<li>從 repository root 啟動靜態伺服器，開啟 <code>/tools/form-application-studio/index.html</code>。</li>
+<li>貼上或匯入 schema JSON，按「解析並建立設計」。</li>
+<li>在欄位清單修改名稱、icon／元件，拖到 12 欄畫布後移動或縮放。</li>
+<li>選擇資料庫 provider 並視需要輸入連線字串。未提供或只含空白時，實際目的地固定改為本地 SQLite <code>data/&lt;application_id&gt;.db</code>。</li>
+<li>產生並下載設計 JSON或 bundle。</li>
+</ol>
+<h2>連線與寫入安全</h2>
+<ul>
+<li>預設為 preview/generate-only；Studio 不會直接連線、建表或修改外部資料庫。</li>
+<li>連線字串只存在目前頁面的 controller closure，不寫入 URL、localStorage、PageDefinition 或一般設計 JSON。</li>
+<li>一般匯出只保存 <code>connection_string_name</code>。只有明確勾選「backend-only 設定包含連線字串」時，bundle 的 backend development 設定才可包含目前值。</li>
+<li>空白連線字串不會嘗試猜測或使用所選的外部 provider，而是強制使用本地 SQLite。</li>
+<li>生成器不會產生自動 DROP／ALTER；既有表只提供差異預覽，套用工作必須另外確認 table、columns、source、write rules、exceptions 與 rollback plan。</li>
+</ul>
+<h2>Schema 範例</h2>
+<p>見 <code>sample-schema.json</code>。表名、欄位名採可攜式識別字：<code>^[A-Za-z][A-Za-z0-9_]{0,62}$</code>。不接受任意 SQL、函式、raw HTML、prototype-sensitive key 或未核准的 provider／型別／元件。</p>
+<h2>CLI 生成</h2>
+<pre><code class="language-bash">node tools/form-application-studio/generate.mjs --schema tools/form-application-studio/sample-schema.json --output ./.test-output/customer-form
+node tools/form-application-studio/generate.mjs --help
+</code></pre>
+<p>外部資料庫的連線字串只從 <code>--connection-string-env &lt;環境變數名&gt;</code> 讀取，不接受直接放在命令列。若同時指定 <code>--include-connection-string</code>，secret 只會寫入 backend development 設定；未指定時不會進入 bundle。CLI 不覆寫內容不同的既有檔案，也不會連接資料庫。</p>
+<h2>驗證</h2>
+<pre><code class="language-bash">npm run test:form-designer
+npm run test:form-designer:self-host
+npm run test:form-designer:browser
+npm run test:form-designer:dotnet
+npm run test:dotnet10
+npm run validate:ui-library
+npm run audit:ui-styles
+npm run audit:csp
+</code></pre>
+<p><code>test:form-designer:dotnet</code> 會實際生成並編譯 SQLite、SQL Server、PostgreSQL、
+MySQL 四種後端；<code>test:dotnet10</code> 會以任何警告皆為錯誤的規則建置 repo 內
+全部 35 個 SDK-style .NET 10 專案。</p>
+</main>
+</body>
+</html>

@@ -41,156 +41,18 @@ export class SideMenu {
         this._create();
     }
 
+    /**
+     * 以同源 <link> 載入 SideMenu.css（CSP style-src 'self' 相容，
+     * 取代原本的動態 <style> 注入；固定 id 去重）
+     */
     _injectStyles() {
         if (document.getElementById('side-menu-styles')) return;
 
-        const style = document.createElement('style');
-        style.id = 'side-menu-styles';
-        style.textContent = `
-            .side-menu {
-                display: flex;
-                flex-direction: column;
-                background: var(--cl-bg);
-                border-right: 1px solid var(--cl-border-light);
-                height: 100%;
-                overflow: hidden;
-                transition: width 0.3s ease;
-            }
-            .side-menu-header {
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-                padding: 16px;
-                border-bottom: 1px solid var(--cl-border-light);
-            }
-            .side-menu-toggle {
-                width: 32px;
-                height: 32px;
-                border: none;
-                background: transparent;
-                cursor: pointer;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                border-radius: var(--cl-radius-sm);
-                color: var(--cl-text-secondary);
-                transition: all var(--cl-transition);
-            }
-            .side-menu-toggle:hover {
-                background: var(--cl-bg-secondary);
-                color: var(--cl-text);
-            }
-            .side-menu-content {
-                flex: 1;
-                overflow-y: auto;
-                overflow-x: hidden;
-                padding: 8px 0;
-            }
-            .side-menu-item {
-                position: relative;
-            }
-            .side-menu-link {
-                display: flex;
-                align-items: center;
-                gap: 12px;
-                padding: 12px 16px;
-                color: var(--cl-text);
-                text-decoration: none;
-                cursor: pointer;
-                transition: all var(--cl-transition);
-                border-left: 3px solid transparent;
-                white-space: nowrap;
-            }
-            .side-menu-link:hover {
-                background: var(--cl-bg-secondary);
-            }
-            .side-menu-link.active {
-                background: var(--cl-primary-light);
-                border-left-color: var(--cl-primary);
-                color: var(--cl-primary);
-            }
-            .side-menu-link.disabled {
-                opacity: 0.5;
-                cursor: not-allowed;
-            }
-            .side-menu-icon {
-                width: 20px;
-                height: 20px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                flex-shrink: 0;
-                font-size: var(--cl-font-size-xl);
-            }
-            .side-menu-text {
-                flex: 1;
-                overflow: hidden;
-                text-overflow: ellipsis;
-                font-size: var(--cl-font-size-lg);
-            }
-            .side-menu-badge {
-                padding: 2px 8px;
-                background: var(--cl-danger);
-                color: var(--cl-bg);
-                font-size: var(--cl-font-size-xs);
-                border-radius: var(--cl-radius-pill);
-                flex-shrink: 0;
-            }
-            .side-menu-arrow {
-                width: 20px;
-                height: 20px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                transition: transform var(--cl-transition);
-                flex-shrink: 0;
-            }
-            .side-menu-arrow.expanded {
-                transform: rotate(90deg);
-            }
-            .side-menu-children {
-                overflow: hidden;
-                transition: max-height 0.3s ease;
-            }
-            .side-menu-children .side-menu-link {
-                padding-left: 48px;
-            }
-            .side-menu-children .side-menu-children .side-menu-link {
-                padding-left: 64px;
-            }
-
-            /* 收合模式 */
-            .side-menu.collapsed .side-menu-text,
-            .side-menu.collapsed .side-menu-badge,
-            .side-menu.collapsed .side-menu-arrow {
-                display: none;
-            }
-            .side-menu.collapsed .side-menu-link {
-                justify-content: center;
-                padding: 12px;
-            }
-            .side-menu.collapsed .side-menu-children {
-                display: none;
-            }
-
-            /* Tooltip for collapsed mode */
-            .side-menu.collapsed .side-menu-item:hover::after {
-                content: attr(data-title);
-                position: absolute;
-                left: 100%;
-                top: 50%;
-                transform: translateY(-50%);
-                background: var(--cl-text);
-                color: var(--cl-bg);
-                padding: 6px 12px;
-                border-radius: var(--cl-radius-sm);
-                font-size: var(--cl-font-size-md);
-                white-space: nowrap;
-                z-index: 1000;
-                margin-left: 8px;
-            }
-        `;
-        document.head.appendChild(style);
+        const link = document.createElement('link');
+        link.id = 'side-menu-styles';
+        link.rel = 'stylesheet';
+        link.href = new URL('./SideMenu.css', import.meta.url).href;
+        document.head.appendChild(link);
     }
 
     _create() {
@@ -231,6 +93,7 @@ export class SideMenu {
             itemEl.className = 'side-menu-item';
             itemEl.dataset.id = item.id;
             itemEl.dataset.title = item.text;
+            itemEl.dataset.level = String(level);
 
             const link = document.createElement('a');
             link.className = 'side-menu-link';
@@ -277,7 +140,10 @@ export class SideMenu {
                     if (item.children && item.children.length > 0) {
                         e.preventDefault();
                         this._toggleExpand(item.id);
-                    } else if (!item.href) {
+                    } else if (!item.href || this.options.onSelect) {
+                        // When a consumer supplies onSelect, it owns navigation.  In
+                        // history-mode SPAs allowing the hash href to run as well can
+                        // immediately undo the route selected by the callback.
                         e.preventDefault();
                     }
 

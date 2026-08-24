@@ -5,9 +5,13 @@
 ## 能力
 
 - Tool ID: `site.crawl.source`
+
 - Capability ID: `site.crawl_source`
+
 - Route: `site_crawl_source`
+
 - Status: `beta`
+
 - Risk: medium
 
 ## 執行前必要確認
@@ -15,7 +19,9 @@
 執行前必須由使用者確認爬取深度：
 
 - 入口頁連結：`max_depth = 1`
+
 - 兩次連結跳轉以內：`max_depth = 2`
+
 - N 次連結跳轉以內：`max_depth = N`
 
 只爬根頁或目前頁面時，`max_depth = 0` 只在使用者明確要求的手動或安全診斷模式下使用。
@@ -27,8 +33,11 @@
 ## 安全規則
 
 - 只允許公開 HTTP/HTTPS URL。
+
 - 不使用登入、委派憑證、cookies、私人 session、localhost、loopback、link-local 或私有網路目標。
+
 - 執行中不得超出已確認的 same-origin 或 allowed same-site host-suffix 範圍。
+
 - budgets 是安全限制，不可替代使用者確認的爬取深度。
 
 ## 輸出契約

@@ -35,6 +35,7 @@ const KIND_OVERRIDES = {
     Pagination: 'composite',
     SearchForm: 'composite',
     BatchUploader: 'composite',
+    CommandComposer: 'composite',
     TreeList: 'composite',
     DateTimeInput: 'composite',
     AddressInput: 'composite',
@@ -66,6 +67,25 @@ const KIND_OVERRIDES = {
     DrawingBoard: 'visualizer',
     OSMMapEditor: 'visualizer',
     WebPainter: 'visualizer',
+    // Library expansion (audited per-component 2026-06-17): these instantiate child components,
+    // so they are composites/sections, not the category-default 'atomic'/'container'.
+    PageHeader: 'composite',
+    PageFooter: 'composite',
+    BannerSection: 'composite',
+    ContentSection: 'composite',
+    ResultList: 'composite',
+    List: 'composite',
+    DescriptionList: 'composite',
+    FilterBar: 'composite',
+    StatGrid: 'composite',
+    CardGrid: 'composite',
+    StepIndicator: 'composite',
+    DropdownMenu: 'composite',
+    Alert: 'composite',
+    EmptyState: 'composite',
+    Form: 'composite',
+    TagInput: 'composite',
+    EditableTable: 'composite',
 };
 
 const ROLE_OVERRIDES = {
@@ -79,6 +99,7 @@ const ROLE_OVERRIDES = {
     Breadcrumb: 'navigation',
     Pagination: 'navigation',
     SearchForm: 'search',
+    CommandComposer: 'command_input',
     LoadingSpinner: 'feedback',
     Notification: 'feedback',
     Progress: 'feedback',
@@ -113,12 +134,22 @@ const ROLE_OVERRIDES = {
     WebPainter: 'visualizer',
     GeolocationService: 'service',
     WeatherService: 'service',
+    // Library expansion (audited per-component 2026-06-17).
+    PageHeader: 'navigation',
+    PageFooter: 'display',
+    BannerSection: 'display',
+    ContentSection: 'layout',
+    Link: 'navigation',
+    FilterBar: 'input',
+    DropdownMenu: 'navigation',
+    Alert: 'feedback',
+    Form: 'container',
+    EditableTable: 'data_view',
 };
 
 const RUNTIME_ONLY_COMPONENTS = new Set(['PanelManager']);
 const MANUAL_ONLY_COMPONENTS = new Set([
     'BarChart',
-    'BaseChart',
     'CanvasMap',
     'ConnectionCard',
     'DocumentWall',
@@ -171,6 +202,7 @@ function inferKind(category, registryName) {
     }
 
     if (category === 'layout') return 'container';
+    if (category === 'sections') return 'container';
     if (category === 'viz' || category === 'data') return 'visualizer';
     if (category === 'input' || category === 'editor' || category === 'social') return 'composite';
     return 'atomic';
@@ -183,6 +215,7 @@ function inferRole(category, registryName) {
 
     if (category === 'form' || category === 'input') return 'input';
     if (category === 'layout') return 'container';
+    if (category === 'sections') return 'container';
     if (category === 'viz' || category === 'data') return 'visualizer';
     if (category === 'editor') return 'editor';
     if (category === 'social') return 'display';

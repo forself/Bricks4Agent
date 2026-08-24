@@ -13,7 +13,7 @@ new SocialMediaList(options?)
 繼承 `ListInput` 所有選項，預設值：
 
 | 參數 | 預設值 | 說明 |
-|------|--------|------|
+|---|---|---|
 | `title` | `'社群軟體列表'` | 標題 |
 | `minItems` | `0` | 最少項目數 |
 | `maxItems` | `5` | 最多項目數 |
@@ -22,8 +22,8 @@ new SocialMediaList(options?)
 每筆項目欄位：
 
 | 欄位 name | type | 說明 |
-|-----------|------|------|
-| `platform` | `select` | 平台（LINE/Facebook/Instagram/Twitter (X)/WeChat/Telegram/其他） |
+|---|---|---|
+| `platform` | `select` | 平台（LINE/Facebook/Instagram/Twitter (X)/WeChat/Telegram/Other） |
 | `account` | `text` | 帳號 ID 或連結 |
 
 ### 方法

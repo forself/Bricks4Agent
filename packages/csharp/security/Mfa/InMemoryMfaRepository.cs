@@ -19,7 +19,7 @@ namespace Bricks4Agent.Security.Mfa
         private int _otpCodeIdCounter = 0;
 
         /// <inheritdoc />
-        public UserMfaConfig GetUserMfaConfig(int userId)
+        public UserMfaConfig? GetUserMfaConfig(int userId)
         {
             _mfaConfigs.TryGetValue(userId, out var config);
             return config;
@@ -56,7 +56,7 @@ namespace Bricks4Agent.Security.Mfa
         }
 
         /// <inheritdoc />
-        public MfaRecoveryCode GetRecoveryCode(int userId, string codeHash)
+        public MfaRecoveryCode? GetRecoveryCode(int userId, string codeHash)
         {
             if (!_recoveryCodes.TryGetValue(userId, out var codes))
                 return null;
@@ -105,7 +105,7 @@ namespace Bricks4Agent.Security.Mfa
         }
 
         /// <inheritdoc />
-        public MfaOtpCode GetValidOtpCode(int userId, string codeHash, MfaMethod method)
+        public MfaOtpCode? GetValidOtpCode(int userId, string codeHash, MfaMethod method)
         {
             if (!_otpCodes.TryGetValue(userId, out var codes))
                 return null;
@@ -161,14 +161,14 @@ namespace Bricks4Agent.Security.Mfa
         private int _userIdCounter = 0;
 
         /// <inheritdoc />
-        public UserModel GetUserById(int id)
+        public UserModel? GetUserById(int id)
         {
             _users.TryGetValue(id, out var user);
             return user;
         }
 
         /// <inheritdoc />
-        public UserModel GetUserByEmail(string email)
+        public UserModel? GetUserByEmail(string email)
         {
             if (string.IsNullOrEmpty(email))
                 return null;

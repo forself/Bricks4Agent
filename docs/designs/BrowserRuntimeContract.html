@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Browser Runtime Contract</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Browser Runtime Contract</h1>
+<h2>Goal</h2>
+<p>Define the canonical broker-to-browser-runtime request and result shapes before a real browser worker is introduced.</p>
+<p>The browser tool model now has four governance layers:</p>
+<ul>
+<li>identity</li>
+<li>session/credential binding</li>
+<li>site binding</li>
+<li>action/approval</li>
+</ul>
+<p>Those layers must survive into runtime payloads.
+If they do not, runtime code will quietly reintroduce hidden policy.</p>
+<h2>Core Rule</h2>
+<p>Browser runtime requests must carry policy context explicitly.</p>
+<p>The runtime should not need to rediscover:</p>
+<ul>
+<li>whose identity is in use</li>
+<li>how the session is bound</li>
+<li>what site class or binding is allowed</li>
+<li>what maximum action level is permitted</li>
+</ul>
+<p>That information should be attached by the broker.</p>
+<h2>BrowserExecutionRequest</h2>
+<p>Shared request fields now include:</p>
+<ul>
+<li>routing identity</li>
+<li><code>request_id</code></li>
+<li><code>tool_id</code></li>
+<li><code>capability_id</code></li>
+<li><code>route</code></li>
+<li>policy identity</li>
+<li><code>identity_mode</code></li>
+<li><code>credential_binding</code></li>
+<li><code>session_binding_mode</code></li>
+<li><code>session_reuse_scope</code></li>
+<li><code>site_binding_mode</code></li>
+<li><code>allowed_site_classes</code></li>
+<li><code>max_action_level</code></li>
+<li><code>requires_human_confirmation_on</code></li>
+<li>broker context</li>
+<li><code>principal_id</code></li>
+<li><code>task_id</code></li>
+<li><code>session_id</code></li>
+<li>optional runtime binding ids</li>
+<li><code>site_binding_id</code></li>
+<li><code>user_grant_id</code></li>
+<li><code>system_binding_id</code></li>
+<li><code>session_lease_id</code></li>
+<li>execution intent</li>
+<li><code>start_url</code></li>
+<li><code>intended_action_level</code></li>
+<li><code>arguments_json</code></li>
+<li><code>scope_json</code></li>
+</ul>
+<h2>BrowserExecutionResult</h2>
+<p>Shared result fields now include:</p>
+<ul>
+<li><code>request_id</code></li>
+<li><code>success</code></li>
+<li><code>tool_id</code></li>
+<li><code>action_level_reached</code></li>
+<li><code>final_url</code></li>
+<li><code>title</code></li>
+<li><code>content_text</code></li>
+<li><code>structured_data_json</code></li>
+<li><code>session_lease_id</code></li>
+<li><code>evidence_ref</code></li>
+<li><code>error_message</code></li>
+</ul>
+<p>This keeps browser execution results aligned with:</p>
+<ul>
+<li>audit</li>
+<li>future replay</li>
+<li>future session leasing</li>
+<li>promotion of browser results back into high-level memory or execution evidence</li>
+</ul>
+<h2>Current Phase</h2>
+<p>Current implementation direction:</p>
+<ul>
+<li>shared contracts exist in <code>BrokerCore.Contracts</code></li>
+<li>the contract is canonical before the first real browser worker is introduced</li>
+</ul>
+<p>Not yet implemented:</p>
+<ul>
+<li>request builder from tool specs</li>
+<li>browser worker runtime</li>
+<li>result normalization adapters</li>
+<li>session lease manager</li>
+<li>DOM/action replay</li>
+</ul>
+<h2>Rule</h2>
+<p>No browser runtime path should be introduced with ad hoc JSON once these contracts exist.</p>
+</main>
+</body>
+</html>

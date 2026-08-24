@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Azure VM IIS Deployment</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Azure VM IIS Deployment</h1>
+<p>Status: implemented as a broker-governed admin/deployment path.</p>
+<p>Current scope:</p>
+<ul>
+<li>register Azure VM IIS deployment targets in broker</li>
+<li>build canonical deployment requests from a tool spec</li>
+<li>preview deployment plans and generated PowerShell remoting script</li>
+<li>execute <code>dotnet publish</code>, package the output, and run a WinRM/PowerShell deployment script</li>
+<li>dispatch through broker route <code>deploy_azure_vm_iis</code></li>
+</ul>
+<p>Current broker entities:</p>
+<ul>
+<li><code>AzureIisDeploymentTarget</code></li>
+<li>provider: <code>azure_vm_iis</code></li>
+<li>transport: <code>winrm_powershell</code></li>
+<li>VM host / port / TLS</li>
+<li>IIS site name / deployment mode / app pool / physical path</li>
+<li>optional child application path under a parent site</li>
+<li>optional health check path</li>
+<li><code>secret_ref</code></li>
+</ul>
+<p>Deployment modes:</p>
+<ul>
+<li><code>site_root</code></li>
+<li>deploy directly into the registered IIS site physical path</li>
+<li>current <code>restart_site</code> behavior still applies</li>
+<li><code>iis_application</code></li>
+<li>treat <code>site_name</code> as the parent site</li>
+<li>treat <code>application_path</code> such as <code>/apps/project-a</code> as the IIS child application route</li>
+<li>create or update the IIS application during deployment</li>
+<li>recycle app pool, but do not stop/start the whole site as the main path</li>
+</ul>
+<p>Current broker admin endpoints:</p>
+<ul>
+<li><code>POST /api/v1/deployment-admin/targets/list</code></li>
+<li><code>POST /api/v1/deployment-admin/targets/get</code></li>
+<li><code>POST /api/v1/deployment-admin/targets/upsert</code></li>
+<li><code>POST /api/v1/deployment-admin/requests/build</code></li>
+<li><code>POST /api/v1/deployment-admin/requests/preview</code></li>
+<li><code>POST /api/v1/deployment-admin/requests/execute</code></li>
+</ul>
+<p>Tool spec:</p>
+<ul>
+<li><code>deploy.azure-vm-iis</code></li>
+<li>broker route: <code>deploy_azure_vm_iis</code></li>
+<li>status: <code>beta</code></li>
+</ul>
+<p>Execution flow:</p>
+<ol>
+<li>Resolve tool spec and deployment target.</li>
+<li>Resolve the project file from an absolute project path.</li>
+<li>Run <code>dotnet publish</code>.</li>
+<li>Zip the publish output.</li>
+<li>Generate a PowerShell remoting script.</li>
+<li>If the target uses <code>iis_application</code>, create or update the child IIS application under the parent site.</li>
+<li>Resolve deployment credentials from broker-side secret bindings.</li>
+<li>Run the PowerShell script against the registered VM.</li>
+</ol>
+<p>Secret resolution:</p>
+<ul>
+<li>preferred: broker configuration section <code>DeploymentSecrets:Mappings</code></li>
+<li>fallback: environment variables</li>
+<li><code>BRICKS4AGENT_DEPLOY_SECRET__&lt;NORMALIZED_SECRET_REF&gt;__USERNAME</code></li>
+<li><code>BRICKS4AGENT_DEPLOY_SECRET__&lt;NORMALIZED_SECRET_REF&gt;__PASSWORD</code></li>
+</ul>
+<p>Current limits:</p>
+<ul>
+<li>only <code>winrm_powershell</code> is implemented</li>
+<li>target project path must be absolute</li>
+<li>directory input must resolve to exactly one <code>.csproj</code></li>
+<li><code>iis_application</code> mode assumes the target VM already has a parent IIS site created</li>
+<li>application path semantics are implemented at IIS deployment level; application-specific path-base adaptation remains app-dependent</li>
+<li>the target VM must already have:</li>
+<li>PowerShell remoting enabled</li>
+<li>IIS installed</li>
+<li><code>WebAdministration</code> module available</li>
+<li>the current implementation assumes broker-owned credentials; interactive user-delegated deployment is not implemented yet</li>
+</ul>
+<p>Operational note:</p>
+<ul>
+<li>this path is intentionally broker-governed</li>
+<li>deployment credentials are never passed from the model directly</li>
+<li>the broker builds the request, resolves the secret, and executes the remote command</li>
+</ul>
+</main>
+</body>
+</html>

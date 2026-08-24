@@ -38,125 +38,21 @@ export class Pagination {
         };
 
         this.element = null;
-        this._injectStyles();
         this._create();
     }
 
-    _injectStyles() {
-        if (document.getElementById('pagination-styles')) return;
-
-        const style = document.createElement('style');
-        style.id = 'pagination-styles';
-        style.textContent = `
-            .pagination {
-                display: flex;
-                align-items: center;
-                gap: 16px;
-                font-size: var(--cl-font-size-lg);
-                color: var(--cl-text);
-                flex-wrap: wrap;
-            }
-            .pagination-total {
-                color: var(--cl-text-secondary);
-            }
-            .pagination-total strong {
-                color: var(--cl-primary);
-                font-weight: 600;
-            }
-            .pagination-pages {
-                display: flex;
-                align-items: center;
-                gap: 4px;
-            }
-            .pagination-btn {
-                min-width: 32px;
-                height: 32px;
-                padding: 0 8px;
-                border: 1px solid var(--cl-border);
-                background: var(--cl-bg);
-                border-radius: var(--cl-radius-sm);
-                cursor: pointer;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                transition: all var(--cl-transition);
-                font-size: var(--cl-font-size-lg);
-                color: var(--cl-text);
-            }
-            .pagination-btn:hover:not(:disabled):not(.active) {
-                border-color: var(--cl-primary);
-                color: var(--cl-primary);
-            }
-            .pagination-btn:disabled {
-                cursor: not-allowed;
-                opacity: 0.5;
-                background: var(--cl-bg-secondary);
-            }
-            .pagination-btn.active {
-                background: var(--cl-primary);
-                border-color: var(--cl-primary);
-                color: var(--cl-text-inverse);
-            }
-            .pagination-ellipsis {
-                min-width: 32px;
-                height: 32px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                color: var(--cl-text-placeholder);
-            }
-            .pagination-size {
-                display: flex;
-                align-items: center;
-                gap: 8px;
-            }
-            .pagination-size select {
-                height: 32px;
-                padding: 0 8px;
-                border: 1px solid var(--cl-border);
-                border-radius: var(--cl-radius-sm);
-                background: var(--cl-bg);
-                cursor: pointer;
-                font-size: var(--cl-font-size-lg);
-            }
-            .pagination-size select:focus {
-                outline: none;
-                border-color: var(--cl-primary);
-            }
-            .pagination-jumper {
-                display: flex;
-                align-items: center;
-                gap: 8px;
-            }
-            .pagination-jumper input {
-                width: 50px;
-                height: 32px;
-                padding: 0 8px;
-                border: 1px solid var(--cl-border);
-                border-radius: var(--cl-radius-sm);
-                text-align: center;
-                font-size: var(--cl-font-size-lg);
-            }
-            .pagination-jumper input:focus {
-                outline: none;
-                border-color: var(--cl-primary);
-            }
-            .pagination-jumper button {
-                height: 32px;
-                padding: 0 12px;
-                border: 1px solid var(--cl-primary);
-                background: var(--cl-primary);
-                color: var(--cl-text-inverse);
-                border-radius: var(--cl-radius-sm);
-                cursor: pointer;
-                font-size: var(--cl-font-size-md);
-                transition: all var(--cl-transition);
-            }
-            .pagination-jumper button:hover {
-                background: var(--cl-primary-dark);
-            }
-        `;
-        document.head.appendChild(style);
+    /**
+     * Wire :focus replacement on a form control (CSP-safe).
+     * @private
+     */
+    _applyFocusStyles(el) {
+        el.addEventListener('focus', () => {
+            el.style.outline = 'none';
+            el.style.borderColor = 'var(--cl-primary)';
+        });
+        el.addEventListener('blur', () => {
+            el.style.borderColor = 'var(--cl-border)';
+        });
     }
 
     get totalPages() {
@@ -166,6 +62,14 @@ export class Pagination {
     _create() {
         const container = document.createElement('div');
         container.className = 'pagination';
+        container.style.cssText = [
+            'display: flex;',
+            'align-items: center;',
+            'gap: 16px;',
+            'font-size: var(--cl-font-size-lg);',
+            'color: var(--cl-text);',
+            'flex-wrap: wrap;'
+        ].join(' ');
 
         this.element = container;
         this._render();
@@ -181,13 +85,19 @@ export class Pagination {
         if (showTotal) {
             const totalEl = document.createElement('div');
             totalEl.className = 'pagination-total';
+            totalEl.style.cssText = 'color: var(--cl-text-secondary);';
             totalEl.innerHTML = `${Locale.t('pagination.totalPrefix', null) || ''}<strong>${total}</strong> ${Locale.t('pagination.totalSuffix', null) || ''}`;
+            const strongEl = totalEl.querySelector('strong');
+            if (strongEl) {
+                strongEl.style.cssText = 'color: var(--cl-primary); font-weight: 600;';
+            }
             this.element.appendChild(totalEl);
         }
 
         // 頁碼區
         const pagesEl = document.createElement('div');
         pagesEl.className = 'pagination-pages';
+        pagesEl.style.cssText = 'display: flex; align-items: center; gap: 4px;';
 
         // 上一頁
         const prevBtn = this._createButton('‹', page > 1, () => this.goTo(page - 1));
@@ -201,10 +111,23 @@ export class Pagination {
                 const ellipsis = document.createElement('span');
                 ellipsis.className = 'pagination-ellipsis';
                 ellipsis.textContent = '...';
+                ellipsis.style.cssText = [
+                    'min-width: 32px;',
+                    'height: 32px;',
+                    'display: flex;',
+                    'align-items: center;',
+                    'justify-content: center;',
+                    'color: var(--cl-text-placeholder);'
+                ].join(' ');
                 pagesEl.appendChild(ellipsis);
             } else {
                 const btn = this._createButton(num, true, () => this.goTo(num));
-                if (num === page) btn.classList.add('active');
+                if (num === page) {
+                    btn.classList.add('active');
+                    btn.style.background = 'var(--cl-primary)';
+                    btn.style.borderColor = 'var(--cl-primary)';
+                    btn.style.color = 'var(--cl-text-inverse)';
+                }
                 pagesEl.appendChild(btn);
             }
         });
@@ -220,8 +143,19 @@ export class Pagination {
         if (showPageSize) {
             const sizeEl = document.createElement('div');
             sizeEl.className = 'pagination-size';
+            sizeEl.style.cssText = 'display: flex; align-items: center; gap: 8px;';
 
             const select = document.createElement('select');
+            select.style.cssText = [
+                'height: 32px;',
+                'padding: 0 8px;',
+                'border: 1px solid var(--cl-border);',
+                'border-radius: var(--cl-radius-sm);',
+                'background: var(--cl-bg);',
+                'cursor: pointer;',
+                'font-size: var(--cl-font-size-lg);'
+            ].join(' ');
+            this._applyFocusStyles(select);
             pageSizeOptions.forEach(size => {
                 const option = document.createElement('option');
                 option.value = size;
@@ -242,6 +176,7 @@ export class Pagination {
         if (showJumper && totalPages > 1) {
             const jumperEl = document.createElement('div');
             jumperEl.className = 'pagination-jumper';
+            jumperEl.style.cssText = 'display: flex; align-items: center; gap: 8px;';
 
             const label = document.createElement('span');
             label.textContent = Locale.t('pagination.goTo');
@@ -252,6 +187,16 @@ export class Pagination {
             input.min = 1;
             input.max = totalPages;
             input.value = page;
+            input.style.cssText = [
+                'width: 50px;',
+                'height: 32px;',
+                'padding: 0 8px;',
+                'border: 1px solid var(--cl-border);',
+                'border-radius: var(--cl-radius-sm);',
+                'text-align: center;',
+                'font-size: var(--cl-font-size-lg);'
+            ].join(' ');
+            this._applyFocusStyles(input);
             jumperEl.appendChild(input);
 
             const label2 = document.createElement('span');
@@ -261,6 +206,24 @@ export class Pagination {
             const btn = document.createElement('button');
             btn.type = 'button';
             btn.textContent = Locale.t('pagination.jump');
+            btn.style.cssText = [
+                'height: 32px;',
+                'padding: 0 12px;',
+                'border: 1px solid var(--cl-primary);',
+                'background: var(--cl-primary);',
+                'color: var(--cl-text-inverse);',
+                'border-radius: var(--cl-radius-sm);',
+                'cursor: pointer;',
+                'font-size: var(--cl-font-size-md);',
+                'transition: all var(--cl-transition);'
+            ].join(' ');
+            // :hover replacement (CSP-safe)
+            btn.addEventListener('mouseenter', () => {
+                btn.style.background = 'var(--cl-primary-dark)';
+            });
+            btn.addEventListener('mouseleave', () => {
+                btn.style.background = 'var(--cl-primary)';
+            });
             btn.addEventListener('click', () => {
                 const targetPage = parseInt(input.value, 10);
                 if (targetPage >= 1 && targetPage <= totalPages) {
@@ -286,8 +249,40 @@ export class Pagination {
         btn.className = 'pagination-btn';
         btn.textContent = text;
         btn.disabled = !enabled;
+        btn.style.cssText = [
+            'min-width: 32px;',
+            'height: 32px;',
+            'padding: 0 8px;',
+            'border: 1px solid var(--cl-border);',
+            'background: var(--cl-bg);',
+            'border-radius: var(--cl-radius-sm);',
+            'cursor: pointer;',
+            'display: flex;',
+            'align-items: center;',
+            'justify-content: center;',
+            'transition: all var(--cl-transition);',
+            'font-size: var(--cl-font-size-lg);',
+            'color: var(--cl-text);'
+        ].join(' ');
+
         if (enabled) {
             btn.addEventListener('click', onClick);
+            // :hover:not(:disabled):not(.active) replacement (CSP-safe)
+            btn.addEventListener('mouseenter', () => {
+                if (btn.disabled || btn.classList.contains('active')) return;
+                btn.style.borderColor = 'var(--cl-primary)';
+                btn.style.color = 'var(--cl-primary)';
+            });
+            btn.addEventListener('mouseleave', () => {
+                if (btn.disabled || btn.classList.contains('active')) return;
+                btn.style.borderColor = 'var(--cl-border)';
+                btn.style.color = 'var(--cl-text)';
+            });
+        } else {
+            // :disabled styles
+            btn.style.cursor = 'not-allowed';
+            btn.style.opacity = '0.5';
+            btn.style.background = 'var(--cl-bg-secondary)';
         }
         return btn;
     }

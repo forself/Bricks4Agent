@@ -12,13 +12,15 @@
  */
 
 import { EditorButton } from '../../common/EditorButton/index.js';
+import { nextUid } from '../../utils/uid.js';
 import { ButtonGroup } from '../../common/ButtonGroup/index.js';
 import { ColorPicker } from '../../common/ColorPicker/index.js';
 import { UploadButton } from '../../common/UploadButton/index.js';
 import { SimpleDialog } from '../../common/Dialog/index.js';
-import { escapeHtml, sanitizeUrl } from '../../utils/security.js';
+import { escapeHtml, sanitizeHTML, sanitizeUrl } from '../../utils/security.js';
 import { WebPainter } from '../../viz/WebPainter/index.js';
 import { NumberInput } from '../../form/NumberInput/index.js';
+import { nearestColorClass, nearestSizeClass, alignClass, nearestLhClass, RT_GROUPS } from '../richtext-palette.js';
 
 import { ModalPanel } from '../../layout/Panel/index.js';
 import Locale from '../../i18n/index.js';
@@ -45,7 +47,7 @@ export class WebTextEditor {
         };
 
         // 生成唯一實例 ID，防止多編輯器 ID 衝突
-        this.instanceId = 'wte-' + Math.random().toString(36).substr(2, 9);
+        this.instanceId = (options && options.id) || nextUid('wte');
 
         // Fixing Pattern State
         this.fixingId = this.instanceId + '-fixing';
@@ -85,6 +87,12 @@ export class WebTextEditor {
 
         // 自動儲存冷卻
         this._autoSaveTimer = null;
+        this._historyTimer = null;
+        this._componentInstances = new Set();
+        this._globalListeners = [];
+        this._activeResizeCleanup = null;
+        this._activePainterModalCleanup = null;
+        this._destroyed = false;
         this._init();
     }
 
@@ -100,7 +108,35 @@ export class WebTextEditor {
         this._checkDraft();
     }
 
+    _trackComponent(component) {
+        if (component) this._componentInstances.add(component);
+        return component;
+    }
+
+    _listenGlobal(target, type, handler, options) {
+        target.addEventListener(type, handler, options);
+        this._globalListeners.push({ target, type, handler, options });
+    }
+
+    /**
+     * 注入同源元件樣式表(偽元素 content、動態子孫 selector、:hover、全螢幕 class 等
+     * 無法以 CSSOM 逐節點表達的規則)。同源 <link rel="stylesheet"> 在嚴格 CSP
+     * (style-src 'self',無 unsafe-inline)下合規。
+     * 以固定 id 去重:多實例/重複建構時只注入一次。
+     */
+    _ensureStylesheet() {
+        const linkId = 'bricks4agent-web-text-editor-css';
+        if (document.getElementById(linkId)) return;
+        const link = document.createElement('link');
+        link.id = linkId;
+        link.rel = 'stylesheet';
+        link.href = new URL('./WebTextEditor.css', import.meta.url).href;
+        document.head.appendChild(link);
+    }
+
     _createUI() {
+        this._ensureStylesheet();
+
         // 主容器樣式
         this.container.classList.add('web-text-editor');
         this.container.style.cssText = `
@@ -112,6 +148,10 @@ export class WebTextEditor {
             background: var(--cl-bg);
             font-family: var(--cl-font-family);
             height: ${this.options.height};
+            width: 100%;
+            max-width: 100%;
+            min-width: 0;
+            box-sizing: border-box;
         `;
 
         // 1. 工具列
@@ -125,61 +165,26 @@ export class WebTextEditor {
             flex: 1;
             padding: 20px;
             overflow-y: auto;
+            overflow-x: auto;
             outline: none;
             line-height: 1.6;
             font-size: var(--cl-font-size-xl);
             position: relative;
+            width: 100%;
+            max-width: 100%;
+            min-width: 0;
+            box-sizing: border-box;
+            overflow-wrap: break-word;
         `;
+        // RWD: 寬內容(表格/長字)在編輯區內部捲動,不撐爆外容器
         
         // Placeholder 實作 (CSS 偽元素較佳，但用 JS 控制 class 也可)
         if (!this.options.content) {
             this.editor.dataset.placeholder = this.options.placeholder;
         }
 
-        // 注入基礎 CSS
-        const style = document.createElement('style');
-        style.textContent = `
-            .wte-content:empty:before {
-                content: attr(data-placeholder);
-                color: var(--cl-text-placeholder);
-                pointer-events: none;
-            }
-            .wte-content h1 { font-size: 2em; margin: 0.5em 0; border-bottom: 2px solid var(--cl-border-light); padding-bottom: 5px; }
-            .wte-content h2 { font-size: 1.5em; margin: 0.5em 0; color: var(--cl-text); }
-            .wte-content blockquote { border-left: 4px solid var(--cl-border); padding-left: 10px; color: var(--cl-text-secondary); margin: 10px 0; }
-            .wte-content img { max-width: 100%; border-radius: var(--cl-radius-sm); box-shadow: var(--cl-shadow-md); }
-            .wte-content ul, .wte-content ol { padding-left: 20px; }
-            .wte-content a { color: var(--cl-primary); text-decoration: underline; }
-            /* 表格样式 */
-            .wte-content table { border-collapse: collapse; width: 100%; margin: 15px 0; }
-            .wte-content table td, .wte-content table th { border: 1px solid var(--cl-border); padding: 8px; text-align: left; }
-            .wte-content table th { background: var(--cl-bg-secondary); font-weight: bold; }
-            .wte-content table tr:hover { background: var(--cl-bg-disabled); }
-            /* 分页符样式 */
-            .wte-page-break { 
-                margin: 20px 0; padding: 10px; border-top: 2px dashed var(--cl-text-placeholder); 
-                position: relative; text-align: center; color: var(--cl-text-placeholder); font-size: var(--cl-font-size-sm);
-                page-break-after: always;
-            }
-            .wte-page-break::before { content: Locale.t('webTextEditor.pageBreakLine'); }
-            
-            /* 分章節顯示 */
-            .wte-header, .wte-footer { 
-                padding: 10px 20px; font-size: var(--cl-font-size-md); color: var(--cl-text-muted); border: 1px dashed var(--cl-border-light); 
-                margin: 5px 0; background: var(--cl-bg-input); position: relative;
-            }
-            .wte-header::after { content: '" + Locale.t('webTextEditor.headerArea') + "'; position: absolute; right: 10px; top: 5px; font-size: var(--cl-font-size-2xs); opacity: 0.5; }
-            .wte-footer::after { content: '" + Locale.t('webTextEditor.footerArea') + "'; position: absolute; right: 10px; bottom: 5px; font-size: var(--cl-font-size-2xs); opacity: 0.5; }
-            
-            .wte-page-number { font-weight: bold; color: var(--cl-text); }
-            
-            /* 全螢幕樣式 */
-            .web-text-editor.fullscreen {
-                position: fixed; top: 0; left: 0; width: 100vw !important; height: 100vh !important;
-                z-index: 10000; border-radius: 0;
-            }
-        `;
-        this.container.appendChild(style);
+        // 基礎 CSS(偽元素/動態子孫 selector/:hover/全螢幕 class)由同源樣式表
+        // WebTextEditor.css 提供,建構時 _ensureStylesheet() 注入 <link>(CSP style-src 'self' 合規)
         this.container.appendChild(this.editor);
 
         // 3. 狀態列 (Status Bar) - 增強版字數統計
@@ -188,7 +193,9 @@ export class WebTextEditor {
         this.statusBar.style.cssText = `
             padding: 8px 15px; background: var(--cl-bg-disabled); border-top: 1px solid var(--cl-border-light);
             font-size: var(--cl-font-size-sm); color: var(--cl-text-secondary); display: flex; justify-content: space-between; align-items: center;
+            flex-wrap: wrap; gap: 4px 10px; max-width: 100%; min-width: 0; box-sizing: border-box;
         `;
+        // RWD: 窄容器時統計/存檔狀態換行,不水平溢出
         this.statusBar.innerHTML = `
             <div class="wte-stats">
                 字數: <span id="${this.instanceId}-word-count">0</span> |
@@ -294,16 +301,19 @@ export class WebTextEditor {
 
         // --- 2. 建立 UI 結構 ---
         const toolbarContainer = document.createElement('div');
+        this.toolbarContainer = toolbarContainer;
         toolbarContainer.className = 'wte-toolbar-container';
         toolbarContainer.style.cssText = `background: var(--cl-bg); border-bottom: 1px solid var(--cl-border); display: flex; flex-direction: column;`;
 
         const tabList = document.createElement('div');
         tabList.className = 'wte-tab-list';
-        tabList.style.cssText = `display: flex; background: var(--cl-bg-secondary); padding: 0 10px; border-bottom: 1px solid var(--cl-border); gap: 2px;`;
+        // RWD: 窄容器時 tab 換行,不撐爆
+        tabList.style.cssText = `display: flex; flex-wrap: wrap; background: var(--cl-bg-secondary); padding: 0 10px; border-bottom: 1px solid var(--cl-border); gap: 2px; max-width: 100%; box-sizing: border-box;`;
 
         const tabContent = document.createElement('div');
         tabContent.className = 'wte-tab-content';
-        tabContent.style.cssText = `padding: 10px; background: var(--cl-bg); display: flex; align-items: center; min-height: 45px;`;
+        // RWD: min-width:0 讓面板可收縮、按鈕群 flex-wrap 換行
+        tabContent.style.cssText = `padding: 10px; background: var(--cl-bg); display: flex; flex-wrap: wrap; align-items: center; min-height: 45px; min-width: 0; max-width: 100%; box-sizing: border-box;`;
 
         this.tabPanels = {};
         this.buttons = {};
@@ -319,7 +329,7 @@ export class WebTextEditor {
             `;
 
             const panel = document.createElement('div');
-            panel.style.cssText = `display: none; align-items: center; gap: 10px; flex-wrap: wrap;`;
+            panel.style.cssText = `display: none; align-items: center; gap: 10px; flex-wrap: wrap; min-width: 0; max-width: 100%;`;
             this.tabPanels[tabName] = panel;
 
             // 建立按鈕
@@ -329,14 +339,15 @@ export class WebTextEditor {
                 group.forEach(def => {
                     if (typeof def === 'string') {
                         if (def === 'UPLOAD_IMAGE') {
-                            const ubtn = new UploadButton({ type: UploadButton.TYPES.IMAGE, tooltip: Locale.t('webTextEditor.insertImage'), onSelect: (files) => this._insertImage(files[0]) });
+                            const ubtn = this._trackComponent(new UploadButton({ type: UploadButton.TYPES.IMAGE, tooltip: Locale.t('webTextEditor.insertImage'), onSelect: (files) => this._insertImage(files[0]) }));
                             ubtn.mount(panel);
                         } else if (def === 'COLOR_PICKER') {
-                             const cp = new ColorPicker({ value: 'var(--cl-text-dark)', onChange: (c) => { this.editor.focus(); document.execCommand('foreColor', false, c); }});
+                             const cp = this._trackComponent(new ColorPicker({ value: 'var(--cl-text-dark)', onChange: (c) => { this.editor.focus(); document.execCommand('styleWithCSS', false, true); document.execCommand('foreColor', false, c); document.execCommand('styleWithCSS', false, false); this._normalizeStyles(); }}));
                              cp.element.style.marginTop = '0';
+                             cp.element.style.maxWidth = '100%'; // RWD: 窄容器不溢出
                              cp.mount(panel);
                         } else if (def === 'FONT_SIZE') {
-                             const fs = new NumberInput({ value: 16, min: 10, max: 72, width: '70px', onChange: (v) => { this.editor.focus(); this._applyFontSize(v); }});
+                             const fs = this._trackComponent(new NumberInput({ value: 16, min: 10, max: 72, width: '70px', onChange: (v) => { this.editor.focus(); this._applyFontSize(v); }}));
                              fs.element.style.marginTop = '0';
                              fs.mount(panel);
                              this.fontSizeInput = fs;
@@ -347,6 +358,7 @@ export class WebTextEditor {
                              lineSpacingSelect.style.cssText = `
                                  padding: 4px 8px; border: 1px solid var(--cl-border); border-radius: var(--cl-radius-sm);
                                  font-size: var(--cl-font-size-md); cursor: pointer; background: var(--cl-bg);
+                                 max-width: 100%; box-sizing: border-box;
                              `;
                              const spacingOptions = [
                                  { value: '1', label: '1.0' },
@@ -370,7 +382,7 @@ export class WebTextEditor {
                              panel.appendChild(lineSpacingSelect);
                              this.lineSpacingSelect = lineSpacingSelect;
                         } else if (def === 'REMOVE_FORMAT') {
-                             const btn = new EditorButton({
+                             const btn = this._trackComponent(new EditorButton({
                                  type: T.REMOVE_FORMAT,
                                  theme: 'light',
                                  onClick: () => {
@@ -378,7 +390,7 @@ export class WebTextEditor {
                                      document.execCommand('removeFormat');
                                      document.execCommand('unlink'); // 同時移除連結
                                  }
-                             });
+                             }));
                              btn.mount(panel);
                         }
                         return;
@@ -401,7 +413,7 @@ export class WebTextEditor {
                         btnOptions.label = def.label;
                     }
 
-                    const btn = new EditorButton(btnOptions);
+                    const btn = this._trackComponent(new EditorButton(btnOptions));
                     this.buttons[def.command] = { element: btn.element, value: def.value };
 
                     // 如果是可切換狀態的按鈕，保存實例
@@ -485,8 +497,8 @@ export class WebTextEditor {
         });
 
         // 監聽捲動與縮放以更新 Overlay 位置
-        window.addEventListener('scroll', () => this._updateOverlayPosition(), true);
-        window.addEventListener('resize', () => this._updateOverlayPosition());
+        this._listenGlobal(window, 'scroll', () => this._updateOverlayPosition(), true);
+        this._listenGlobal(window, 'resize', () => this._updateOverlayPosition());
 
         // 處理鍵盤事件 (Delete 刪除物件, Escape 隱藏工具列)
         this.editor.addEventListener('keydown', (e) => {
@@ -516,10 +528,10 @@ export class WebTextEditor {
         // 監聽表格拖曳事件
         this.editor.addEventListener('mousedown', (e) => this._onTableMouseDown(e));
         this.editor.addEventListener('mousemove', (e) => this._onTableMouseMove(e));
-        document.addEventListener('mouseup', () => this._onTableMouseUp());
+        this._listenGlobal(document, 'mouseup', () => this._onTableMouseUp());
 
         // 處理全域 Escape 監聽及搜尋快捷鍵
-        document.addEventListener('keydown', (e) => {
+        this._listenGlobal(document, 'keydown', (e) => {
             if (e.key === 'Escape') {
                 if (this.searchDialog && this.searchDialog.style.display !== 'none') {
                     this._closeSearchDialog();
@@ -558,7 +570,7 @@ export class WebTextEditor {
         });
 
         // 追蹤選取範圍 (處理 Focus 丟失問題)
-        document.addEventListener('selectionchange', () => {
+        this._listenGlobal(document, 'selectionchange', () => {
             const sel = window.getSelection();
             if (sel.rangeCount > 0) {
                 const range = sel.getRangeAt(0);
@@ -656,6 +668,54 @@ export class WebTextEditor {
                 font.parentNode.replaceChild(span, font);
             }
         });
+        this._normalizeStyles();
+    }
+
+    /**
+     * 把內容區的 inline style / font 標籤 / align 屬性一律正規化為 rt-* class,
+     * 再移除所有 inline style —— 富文本樣式只走 Bricks4Agent CSS class,零自由 inline CSS。
+     * 原地操作(不重建節點,盡量保留 caret);顏色吸附到最相近的調色盤 class。
+     */
+    _normalizeStyles() {
+        if (!this.editor) return;
+
+        // font[color]/font[size] → span(styleWithCSS 關閉時的產物)
+        this.editor.querySelectorAll('font').forEach(font => {
+            const span = document.createElement('span');
+            while (font.firstChild) span.appendChild(font.firstChild);
+            const color = font.getAttribute('color');
+            if (color) span.style.color = color;
+            const sizeAttr = font.getAttribute('size');
+            if (sizeAttr) {
+                const map = { 1: 11, 2: 13, 3: 16, 4: 18, 5: 24, 6: 28, 7: 36 };
+                span.style.fontSize = (map[sizeAttr] || 16) + 'px';
+            }
+            font.replaceWith(span);
+        });
+
+        // align 屬性 → align class
+        this.editor.querySelectorAll('[align]').forEach(el => {
+            const c = alignClass(el.getAttribute('align'));
+            if (c) this._setGroupClass(el, RT_GROUPS.align, c);
+            el.removeAttribute('align');
+        });
+
+        // inline style → class,最後移除整個 style 屬性
+        this.editor.querySelectorAll('[style]').forEach(el => {
+            const st = el.style;
+            if (st.color) this._setGroupClass(el, RT_GROUPS.color, nearestColorClass(st.color));
+            if (st.fontSize) { const c = nearestSizeClass(parseFloat(st.fontSize)); if (c) this._setGroupClass(el, RT_GROUPS.size, c); }
+            if (st.textAlign) { const c = alignClass(st.textAlign); if (c) this._setGroupClass(el, RT_GROUPS.align, c); }
+            if (st.lineHeight) { const c = nearestLhClass(st.lineHeight); if (c) this._setGroupClass(el, RT_GROUPS.lh, c); }
+            el.removeAttribute('style');
+        });
+    }
+
+    /** 設定同群互斥 class(先清同群舊 class 再加新的);class 清空則移除屬性 */
+    _setGroupClass(el, group, cls) {
+        group.forEach(g => el.classList.remove(g));
+        if (cls) el.classList.add(cls);
+        if (el.getAttribute('class') === '') el.removeAttribute('class');
     }
 
     async _insertLink() {
@@ -691,7 +751,7 @@ export class WebTextEditor {
             const result = e.target.result;
             const imgObj = new Image();
             imgObj.onload = () => {
-                const id = this.instanceId + '-img-' + Date.now();
+                const id = nextUid(this.instanceId + '-img');
                 // 構造 WebPainter 初始資料，將圖片設為背景
                 const defaultData = {
                     width: imgObj.width,
@@ -702,12 +762,16 @@ export class WebTextEditor {
                 };
 
                 // 插入圖片，並標記為 web-painter-embed
-                const imgHtml = `<img src="${result}" class="web-painter-embed" id="${id}" 
-                    style="max-width: 100%; display: block; margin: 10px auto; cursor: pointer;" 
-                    title="點擊編輯圖片/繪圖" />`;
-                
+                const imgHtml = `<img src="${result}" class="web-painter-embed" id="${id}" title="點擊編輯圖片/繪圖" />`;
+
                 document.execCommand('insertHTML', false, imgHtml);
                 document.execCommand('insertHTML', false, '<p><br/></p>');
+
+                // 樣式改以 CSSOM 對插入節點設定(CSP 合規,不經 HTML 剖析)
+                const insertedImg = this.editor.querySelector('#' + id);
+                if (insertedImg) {
+                    insertedImg.style.cssText = 'max-width: 100%; display: block; margin: 10px auto; cursor: pointer;';
+                }
 
                 // 設定 dataset
                 setTimeout(() => {
@@ -725,20 +789,35 @@ export class WebTextEditor {
     // --- WebPainter 整合 ---
 
     _insertWebPainter() {
-        const id = this.instanceId + '-wp-' + Date.now();
-        // 使用英文避免 btoa 中文亂碼問題，並加上圖示
-        const svg = `
-        <svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300" style="background:var(--cl-bg-tertiary);border:1px solid var(--cl-border-medium);">
-            <rect width="100%" height="100%" fill="var(--cl-bg-tertiary)"/>
-            <text x="50%" y="45%" dominant-baseline="middle" text-anchor="middle" font-size="60">🎨</text>
-            <text x="50%" y="65%" dominant-baseline="middle" text-anchor="middle" fill="var(--cl-text-secondary)" font-family="sans-serif" font-size="20">Click to Edit Illustration</text>
-        </svg>`.trim();
-        const placeholder = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svg)));
+        const id = nextUid(this.instanceId + '-wp');
+        const placeholderCanvas = document.createElement('canvas');
+        placeholderCanvas.width = 400;
+        placeholderCanvas.height = 300;
+        const context = placeholderCanvas.getContext('2d');
+        const styles = getComputedStyle(this.editor);
+        context.fillStyle = styles.getPropertyValue('--cl-bg-tertiary').trim();
+        context.fillRect(0, 0, 400, 300);
+        context.strokeStyle = styles.getPropertyValue('--cl-border-medium').trim();
+        context.strokeRect(0.5, 0.5, 399, 299);
+        context.fillStyle = styles.getPropertyValue('--cl-text-secondary').trim();
+        context.textAlign = 'center';
+        context.textBaseline = 'middle';
+        context.font = '60px sans-serif';
+        context.fillText('🎨', 200, 135);
+        context.font = '20px sans-serif';
+        context.fillText('Click to Edit Illustration', 200, 195);
+        const placeholder = placeholderCanvas.toDataURL('image/png');
 
-        const imgHtml = `<img src="${placeholder}" class="web-painter-embed" id="${id}" style="cursor: pointer; border: 2px dashed var(--cl-border-dark); max-width: 100%; display: block; margin: 10px auto;" title="點擊編輯插圖" />`;
-        
+        const imgHtml = `<img src="${placeholder}" class="web-painter-embed" id="${id}" title="點擊編輯插圖" />`;
+
         document.execCommand('insertHTML', false, imgHtml);
         document.execCommand('insertHTML', false, '<p><br/></p>'); // 換行
+
+        // 樣式改以 CSSOM 對插入節點設定(CSP 合規)
+        const insertedImg = this.editor.querySelector('#' + id);
+        if (insertedImg) {
+            insertedImg.style.cssText = 'cursor: pointer; border: 2px dashed var(--cl-border-dark); max-width: 100%; display: block; margin: 10px auto;';
+        }
 
         // 初始化數據
         setTimeout(() => {
@@ -754,6 +833,10 @@ export class WebTextEditor {
     _openWebPainterModal(imgElement) {
         // 隱藏選取框，避免在 Modal 後方顯示
         this._deselectObject();
+        this._activePainterModalCleanup?.();
+        let painter = null;
+        let painterLoadTimer = null;
+        let closed = false;
         
         // 建立全螢幕 Modal
         const overlay = document.createElement('div');
@@ -765,7 +848,10 @@ export class WebTextEditor {
         // Modal Header
         const header = document.createElement('div');
         header.style.cssText = `padding:10px 20px;background:var(--cl-bg-secondary);border-bottom:1px solid var(--cl-border);display:flex;justify-content:space-between;align-items:center;`;
-        header.innerHTML = '<span style="font-weight:bold;font-size:var(--cl-font-size-2xl);">🎨 繪圖板編輯模式</span>';
+        const headerTitle = document.createElement('span');
+        headerTitle.style.cssText = 'font-weight:bold;font-size:var(--cl-font-size-2xl);';
+        headerTitle.textContent = '🎨 繪圖板編輯模式';
+        header.appendChild(headerTitle);
 
         const btnGroup = document.createElement('div');
         btnGroup.style.gap = '10px';
@@ -774,7 +860,22 @@ export class WebTextEditor {
         const cancelBtn = document.createElement('button');
         cancelBtn.textContent = Locale.t('webTextEditor.cancelBtn');
         cancelBtn.style.cssText = `padding:8px 16px;border:1px solid var(--cl-border-dark);background: var(--cl-bg);border-radius:var(--cl-radius-sm);cursor:pointer;font-size:var(--cl-font-size-lg);font-family:var(--cl-font-family);`;
-        cancelBtn.onclick = () => document.body.removeChild(overlay);
+        const closePainterModal = () => {
+            if (closed) return;
+            closed = true;
+            if (painterLoadTimer) {
+                clearTimeout(painterLoadTimer);
+                painterLoadTimer = null;
+            }
+            painter?.destroy?.();
+            painter = null;
+            overlay.remove();
+            if (this._activePainterModalCleanup === closePainterModal) {
+                this._activePainterModalCleanup = null;
+            }
+        };
+        this._activePainterModalCleanup = closePainterModal;
+        cancelBtn.onclick = closePainterModal;
         
         const saveBtn = document.createElement('button');
         saveBtn.textContent = Locale.t('webTextEditor.doneBtn');
@@ -815,7 +916,7 @@ export class WebTextEditor {
         painterContainer.style.width = '100%';
         painterWrapper.appendChild(painterContainer);
 
-        const painter = new WebPainter({
+        painter = new WebPainter({
             container: painterContainer,
             width: currentData.width || 800,
             height: currentData.height || 600,
@@ -833,8 +934,9 @@ export class WebTextEditor {
         });
         
         // 稍微延遲載入資料以確保 DOM ready
-        setTimeout(() => {
-            painter.loadData(currentData);
+        painterLoadTimer = setTimeout(() => {
+            painterLoadTimer = null;
+            if (!closed) painter?.loadData(currentData);
         }, 50);
 
         // 儲存邏輯
@@ -851,7 +953,7 @@ export class WebTextEditor {
                 imgElement.style.border = '1px solid var(--cl-border)'; // 移除 dashed placeholder 樣式
                 
                 // 3. 關閉視窗
-                document.body.removeChild(overlay);
+                closePainterModal();
                 this._handleChange();
             } catch(e) {
                 console.error(e);
@@ -911,7 +1013,7 @@ export class WebTextEditor {
         if (el) {
             // Commit: Change ID to unique permanent ID scoped to this instance
             this.spanCounter++;
-            el.id = `${this.instanceId}-s-${Date.now()}-${this.spanCounter}`;
+            el.id = `${this.instanceId}-s-${this.spanCounter}`;
         }
     }
 
@@ -978,7 +1080,11 @@ export class WebTextEditor {
             gap: 6px;
             transition: opacity var(--cl-transition-fast), transform var(--cl-transition-fast);
             white-space: nowrap;
+            max-width: calc(100vw - 20px);
+            flex-wrap: wrap;
+            box-sizing: border-box;
         `;
+        // RWD: 窄視窗時浮動工具列限寬並換行
         
         toolbar.onmousedown = (e) => {
              if (['INPUT', 'SELECT', 'OPTION'].includes(e.target.tagName)) return;
@@ -991,7 +1097,7 @@ export class WebTextEditor {
             btn.innerHTML = icon;
             btn.title = title || '';
             btn.style.cssText = `
-                background: transparent; border: none; color: var(--cl-border); font-size: 15px; cursor: pointer;
+                background: transparent; border: none; color: var(--cl-border); font-size: var(--cl-font-size-lg); cursor: pointer;
                 padding: 4px; min-width: 26px; height: 26px; border-radius: var(--cl-radius-sm);
                 display: flex; align-items: center; justify-content: center; transition: background var(--cl-transition-fast);
             `;
@@ -1086,7 +1192,10 @@ export class WebTextEditor {
 
         // 4. Color
         const colorWrapper = document.createElement('div');
-        colorWrapper.innerHTML = '<span style="font-size:var(--cl-font-size-xl);">🎨</span>';
+        const colorIcon = document.createElement('span');
+        colorIcon.style.cssText = 'font-size:var(--cl-font-size-xl);';
+        colorIcon.textContent = '🎨';
+        colorWrapper.appendChild(colorIcon);
         colorWrapper.style.cssText = 'position:relative; width: 26px; height: 26px; display:flex; align-items:center; justify-content:center; cursor:pointer;';
         const colorInput = document.createElement('input');
         colorInput.type = 'color';
@@ -1127,6 +1236,7 @@ export class WebTextEditor {
                 a.href = safeUrl;
                 a.id = this.fixingId; // 保持 ID 以便繼續編輯
                 a.target = '_blank';
+                a.rel = 'noopener noreferrer';
                 // 複製樣式
                 a.style.cssText = el.style.cssText;
                 // 移動內容
@@ -1227,6 +1337,11 @@ export class WebTextEditor {
         if (top < window.scrollY + 10) {
             top = rect.bottom + 10 + window.scrollY;
         }
+
+        // RWD: 夾限在視窗水平範圍內,避免窄螢幕左右溢出
+        const maxLeft = window.scrollX + document.documentElement.clientWidth - toolbarRect.width - 10;
+        if (left > maxLeft) left = maxLeft;
+        if (left < window.scrollX + 10) left = window.scrollX + 10;
 
         this.floatingToolbar.style.top = `${top}px`;
         this.floatingToolbar.style.left = `${left}px`;
@@ -1428,19 +1543,27 @@ export class WebTextEditor {
             this.isResizing = false;
             document.removeEventListener('mousemove', onMove);
             document.removeEventListener('mouseup', onUp);
+            this._activeResizeCleanup = null;
             // Trigger change
             if(this.features.onChange) this.features.onChange(this.getHTML());
         };
 
         document.addEventListener('mousemove', onMove);
         document.addEventListener('mouseup', onUp);
+        this._activeResizeCleanup = () => {
+            this.isResizing = false;
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onUp);
+            this._activeResizeCleanup = null;
+        };
     }
 
     setContent(html) {
-        this.editor.innerHTML = html;
+        this.editor.innerHTML = sanitizeHTML(String(html ?? ''));
     }
 
     getHTML() {
+        this._normalizeStyles(); // 輸出前確保只有 rt-* class、無 inline style
         return this.editor.innerHTML;
     }
 
@@ -1493,7 +1616,7 @@ export class WebTextEditor {
             }
             
             // 還原 HTML
-            this.editor.innerHTML = state.html;
+            this.editor.innerHTML = sanitizeHTML(String(state.html));
             
             // 還原 WebPainter 資料 (如果 dataset 在 HTML 中還原不完整)
             if (state.painterData) {
@@ -1687,8 +1810,9 @@ export class WebTextEditor {
      * 更新內容時的處理 (即時統計、自動儲存)
      */
     _onContentChange() {
+        this._normalizeStyles(); // 命令產生的 inline style 即時轉為 class(idempotent,無樣式時 no-op)
         this._updateStats();
-        
+
         // 自動儲存 (Debounced 5s)
         if (this._autoSaveTimer) clearTimeout(this._autoSaveTimer);
         this._autoSaveTimer = setTimeout(() => this._autoSave(), 5000);
@@ -1947,40 +2071,58 @@ export class WebTextEditor {
         // 建立搜尋對話框
         const dialog = document.createElement('div');
         dialog.className = 'wte-search-dialog';
+        // RWD: 固定 350px 改為視容器收縮,320px 容器不溢出
         dialog.style.cssText = `
             position: absolute; top: 60px; right: 20px; z-index: 10002;
             background: var(--cl-bg); border: 1px solid var(--cl-border); border-radius: var(--cl-radius-lg);
             box-shadow: var(--cl-shadow-md); padding: 15px;
-            display: flex; flex-direction: column; gap: 10px; min-width: 350px;
+            display: flex; flex-direction: column; gap: 10px;
+            width: 350px; max-width: calc(100% - 40px); min-width: 0; box-sizing: border-box;
         `;
 
         dialog.innerHTML = `
-            <div class="wte-search-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
-                <span style="font-weight:bold;font-size:var(--cl-font-size-lg);">搜尋與取代</span>
-                <button class="wte-search-close" style="background:none;border:none;font-size:var(--cl-font-size-2xl);cursor:pointer;color:var(--cl-text-placeholder);">&times;</button>
+            <div class="wte-search-header">
+                <span class="wte-search-title">搜尋與取代</span>
+                <button class="wte-search-close">&times;</button>
             </div>
-            <div style="display:flex;gap:8px;align-items:center;">
-                <input type="text" name="search" placeholder="搜尋文字..." style="flex:1;padding:8px 12px;border:1px solid var(--cl-border);border-radius:var(--cl-radius-sm);font-size:var(--cl-font-size-lg);">
-                <button class="wte-btn-prev" title="上一個" style="padding:6px 10px;border:1px solid var(--cl-border);border-radius:var(--cl-radius-sm);background: var(--cl-bg);cursor:pointer;">▲</button>
-                <button class="wte-btn-next" title="下一個" style="padding:6px 10px;border:1px solid var(--cl-border);border-radius:var(--cl-radius-sm);background: var(--cl-bg);cursor:pointer;">▼</button>
+            <div class="wte-search-row">
+                <input type="text" name="search" placeholder="搜尋文字...">
+                <button class="wte-btn-prev" title="上一個">▲</button>
+                <button class="wte-btn-next" title="下一個">▼</button>
             </div>
-            <div class="wte-replace-row" style="display:${showReplace ? 'flex' : 'none'};gap:8px;align-items:center;">
-                <input type="text" name="replace" placeholder="取代為..." style="flex:1;padding:8px 12px;border:1px solid var(--cl-border);border-radius:var(--cl-radius-sm);font-size:var(--cl-font-size-lg);">
+            <div class="wte-replace-row">
+                <input type="text" name="replace" placeholder="取代為...">
             </div>
-            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-                <label style="font-size:var(--cl-font-size-sm);display:flex;align-items:center;gap:4px;cursor:pointer;">
+            <div class="wte-search-options">
+                <label>
                     <input type="checkbox" name="caseSensitive"> 區分大小寫
                 </label>
-                <label style="font-size:var(--cl-font-size-sm);display:flex;align-items:center;gap:4px;cursor:pointer;">
+                <label>
                     <input type="checkbox" name="wholeWord"> 全字匹配
                 </label>
-                <span class="wte-match-count" style="font-size:var(--cl-font-size-sm);color:var(--cl-text-secondary);margin-left:auto;">0 個結果</span>
+                <span class="wte-match-count">0 個結果</span>
             </div>
-            <div class="wte-replace-actions" style="display:${showReplace ? 'flex' : 'none'};gap:8px;justify-content:flex-end;">
-                <button class="wte-btn-replace" style="padding:6px 12px;border:1px solid var(--cl-border);border-radius:var(--cl-radius-sm);background: var(--cl-bg);cursor:pointer;">取代</button>
-                <button class="wte-btn-replace-all" style="padding:6px 12px;border:none;border-radius:var(--cl-radius-sm);background:var(--cl-primary-dark);color:var(--cl-text-inverse);cursor:pointer;">全部取代</button>
+            <div class="wte-replace-actions">
+                <button class="wte-btn-replace">取代</button>
+                <button class="wte-btn-replace-all">全部取代</button>
             </div>
         `;
+
+        // 剖析後以 CSSOM 對節點套樣式(CSP 合規,不經 HTML style 屬性)
+        const applyCss = (sel, css) => dialog.querySelectorAll(sel).forEach(el => { el.style.cssText = css; });
+        applyCss('.wte-search-header', 'display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;');
+        applyCss('.wte-search-title', 'font-weight:bold;font-size:var(--cl-font-size-lg);');
+        applyCss('.wte-search-close', 'background:none;border:none;font-size:var(--cl-font-size-2xl);cursor:pointer;color:var(--cl-text-placeholder);');
+        applyCss('.wte-search-row', 'display:flex;gap:8px;align-items:center;');
+        applyCss('input[name="search"], input[name="replace"]', 'flex:1;min-width:0;padding:8px 12px;border:1px solid var(--cl-border);border-radius:var(--cl-radius-sm);font-size:var(--cl-font-size-lg);');
+        applyCss('.wte-btn-prev, .wte-btn-next', 'padding:6px 10px;border:1px solid var(--cl-border);border-radius:var(--cl-radius-sm);background: var(--cl-bg);cursor:pointer;');
+        applyCss('.wte-replace-row', `display:${showReplace ? 'flex' : 'none'};gap:8px;align-items:center;`);
+        applyCss('.wte-search-options', 'display:flex;gap:10px;align-items:center;flex-wrap:wrap;');
+        applyCss('.wte-search-options label', 'font-size:var(--cl-font-size-sm);display:flex;align-items:center;gap:4px;cursor:pointer;');
+        applyCss('.wte-match-count', 'font-size:var(--cl-font-size-sm);color:var(--cl-text-secondary);margin-left:auto;');
+        applyCss('.wte-replace-actions', `display:${showReplace ? 'flex' : 'none'};gap:8px;justify-content:flex-end;`);
+        applyCss('.wte-btn-replace', 'padding:6px 12px;border:1px solid var(--cl-border);border-radius:var(--cl-radius-sm);background: var(--cl-bg);cursor:pointer;');
+        applyCss('.wte-btn-replace-all', 'padding:6px 12px;border:none;border-radius:var(--cl-radius-sm);background:var(--cl-primary-dark);color:var(--cl-text-inverse);cursor:pointer;');
 
         // 設定事件監聽
         const searchInput = dialog.querySelector('input[name="search"]');
@@ -2290,6 +2432,7 @@ export class WebTextEditor {
             ModalPanel.alert({ message: Locale.t('webTextEditor.printError') });
             return;
         }
+        printWindow.opener = null;
 
         const content = this.editor.innerHTML;
         const styles = `
@@ -2626,21 +2769,18 @@ export class WebTextEditor {
         `;
 
         let tocHtml = `
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">
-                <h3 style="margin:0;">文件目錄</h3>
-                <button class="close-btn" style="background:none;border:none;font-size:var(--cl-font-size-3xl);cursor:pointer;">&times;</button>
+            <div class="wte-toc-panel-header">
+                <h3>文件目錄</h3>
+                <button class="close-btn">&times;</button>
             </div>
-            <div class="toc-list" style="margin-bottom:15px;">
+            <div class="toc-list">
         `;
 
         toc.forEach(item => {
             const indent = (item.level - 1) * 20;
             tocHtml += `
-                <div class="toc-item" data-id="${item.id}"
-                     style="padding:8px 10px;margin-left:${indent}px;cursor:pointer;border-radius:var(--cl-radius-sm);transition:background var(--cl-transition);"
-                     onmouseover="this.style.background='var(--cl-bg-secondary)'"
-                     onmouseout="this.style.background='transparent'">
-                    <span style="color:var(--cl-text-secondary);font-size:var(--cl-font-size-sm);margin-right:8px;">H${item.level}</span>
+                <div class="toc-item" data-id="${item.id}" data-indent="${indent}">
+                    <span class="toc-level">H${item.level}</span>
                     ${escapeHtml(item.text)}
                 </div>
             `;
@@ -2648,14 +2788,27 @@ export class WebTextEditor {
 
         tocHtml += `
             </div>
-            <div style="display:flex;gap:10px;justify-content:flex-end;border-top:1px solid var(--cl-border-light);padding-top:15px;">
-                <button class="insert-btn" style="padding:8px 16px;border:1px solid var(--cl-primary-dark);color:var(--cl-primary-dark);background: var(--cl-bg);border-radius:var(--cl-radius-sm);cursor:pointer;">
+            <div class="wte-toc-panel-footer">
+                <button class="insert-btn">
                     插入目錄到文件
                 </button>
             </div>
         `;
 
         panel.innerHTML = tocHtml;
+
+        // 剖析後以 CSSOM 對節點套樣式(CSP 合規,不經 HTML style 屬性)
+        const applyCss = (sel, css) => panel.querySelectorAll(sel).forEach(el => { el.style.cssText = css; });
+        applyCss('.wte-toc-panel-header', 'display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;');
+        applyCss('.wte-toc-panel-header h3', 'margin:0;');
+        applyCss('.close-btn', 'background:none;border:none;font-size:var(--cl-font-size-3xl);cursor:pointer;');
+        applyCss('.toc-list', 'margin-bottom:15px;');
+        applyCss('.toc-level', 'color:var(--cl-text-secondary);font-size:var(--cl-font-size-sm);margin-right:8px;');
+        applyCss('.wte-toc-panel-footer', 'display:flex;gap:10px;justify-content:flex-end;border-top:1px solid var(--cl-border-light);padding-top:15px;');
+        applyCss('.insert-btn', 'padding:8px 16px;border:1px solid var(--cl-primary-dark);color:var(--cl-primary-dark);background: var(--cl-bg);border-radius:var(--cl-radius-sm);cursor:pointer;');
+        panel.querySelectorAll('.toc-item').forEach(el => {
+            el.style.cssText = `padding:8px 10px;margin-left:${el.dataset.indent}px;cursor:pointer;border-radius:var(--cl-radius-sm);transition:background var(--cl-transition);`;
+        });
 
         // 事件處理
         panel.querySelector('.close-btn').onclick = () => document.body.removeChild(overlay);
@@ -2665,6 +2818,9 @@ export class WebTextEditor {
 
         // 點擊目錄項目跳轉
         panel.querySelectorAll('.toc-item').forEach(item => {
+            // hover 變色(CSP 安全,取代 inline onmouseover/onmouseout)
+            item.addEventListener('mouseenter', () => { item.style.background = 'var(--cl-bg-secondary)'; });
+            item.addEventListener('mouseleave', () => { item.style.background = 'transparent'; });
             item.onclick = () => {
                 const id = item.dataset.id;
                 const heading = document.getElementById(id);
@@ -2705,13 +2861,10 @@ export class WebTextEditor {
             existingToc.remove();
         }
 
-        // 建立目錄 HTML
+        // 建立目錄 HTML(不含 style 屬性,剖析後以 CSSOM 套樣式,CSP 合規)
         let tocHtml = `
-            <div class="wte-toc" contenteditable="false" style="
-                background: var(--cl-bg-tertiary); border: 1px solid var(--cl-border-subtle); border-radius: var(--cl-radius-lg);
-                padding: 20px; margin-bottom: 20px;
-            ">
-                <div style="font-weight:bold;font-size:var(--cl-font-size-2xl);margin-bottom:15px;border-bottom:2px solid var(--cl-border-medium);padding-bottom:10px;">
+            <div class="wte-toc" contenteditable="false">
+                <div class="wte-toc-title">
                     目錄
                 </div>
         `;
@@ -2719,9 +2872,9 @@ export class WebTextEditor {
         toc.forEach(item => {
             const indent = (item.level - 1) * 20;
             tocHtml += `
-                <div class="wte-toc-item" style="padding:5px 0;margin-left:${indent}px;">
-                    <a href="#${item.id}" style="color:var(--cl-primary-dark);text-decoration:none;"
-                       onclick="event.preventDefault();document.getElementById('${item.id}').scrollIntoView({behavior:'smooth',block:'center'});">
+                <div class="wte-toc-item" data-indent="${indent}">
+                    <a href="#${item.id}"
+                       data-toc-target="${item.id}">
                         ${escapeHtml(item.text)}
                     </a>
                 </div>
@@ -2736,11 +2889,31 @@ export class WebTextEditor {
         tocElement.innerHTML = tocHtml;
         const tocNode = tocElement.firstElementChild;
 
+        // CSSOM 套樣式(等同原 style 屬性;之後照舊由 _normalizeStyles 正規化,不影響清洗流程)
+        tocNode.style.cssText = 'background: var(--cl-bg-tertiary); border: 1px solid var(--cl-border-subtle); border-radius: var(--cl-radius-lg); padding: 20px; margin-bottom: 20px;';
+        const tocTitle = tocNode.querySelector('.wte-toc-title');
+        if (tocTitle) tocTitle.style.cssText = 'font-weight:bold;font-size:var(--cl-font-size-2xl);margin-bottom:15px;border-bottom:2px solid var(--cl-border-medium);padding-bottom:10px;';
+        tocNode.querySelectorAll('.wte-toc-item').forEach(el => {
+            el.style.cssText = `padding:5px 0;margin-left:${el.dataset.indent}px;`;
+        });
+        tocNode.querySelectorAll('a[data-toc-target]').forEach(a => {
+            a.style.cssText = 'color:var(--cl-primary-dark);text-decoration:none;';
+        });
+
         if (firstChild) {
             this.editor.insertBefore(tocNode, firstChild);
         } else {
             this.editor.appendChild(tocNode);
         }
+
+        // TOC 連結捲動(CSP 安全事件委派,取代 inline onclick)
+        tocNode.addEventListener('click', (e) => {
+            const link = e.target.closest('a[data-toc-target]');
+            if (!link) return;
+            e.preventDefault();
+            const target = document.getElementById(link.dataset.tocTarget);
+            if (target) target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        });
 
         this._handleChange();
         ModalPanel.alert({ message: Locale.t('webTextEditor.tocInserted') });
@@ -2814,5 +2987,39 @@ export class WebTextEditor {
                 console.warn('Failed to parse draft:', e);
             }
         }
+    }
+
+    destroy() {
+        if (this._destroyed) return;
+        this._destroyed = true;
+        if (this._autoSaveTimer) clearTimeout(this._autoSaveTimer);
+        if (this._historyTimer) clearTimeout(this._historyTimer);
+        this._autoSaveTimer = null;
+        this._historyTimer = null;
+        this._activeResizeCleanup?.();
+        this._activePainterModalCleanup?.();
+        this._activeResizeCleanup = null;
+        this._activePainterModalCleanup = null;
+
+        for (const { target, type, handler, options } of this._globalListeners) {
+            target.removeEventListener(type, handler, options);
+        }
+        this._globalListeners = [];
+        for (const component of this._componentInstances) component?.destroy?.();
+        this._componentInstances.clear();
+
+        this.overlay?.remove();
+        this.floatingToolbar?.remove();
+        this.searchDialog?.remove();
+        this.toolbarContainer?.remove();
+        this.editor?.remove();
+        this.statusBar?.remove();
+        this.overlay = null;
+        this.floatingToolbar = null;
+        this.searchDialog = null;
+        this.toolbarContainer = null;
+        if (this.isFullscreen) document.body.style.overflow = '';
+        this.isFullscreen = false;
+        this.container?.classList.remove('web-text-editor', 'fullscreen');
     }
 }
