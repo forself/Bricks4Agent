@@ -6,6 +6,7 @@
  * @version 1.0.0
  */
 import Locale from '../../i18n/index.js';
+import { sanitizeHTML, isRawHtml } from '../../utils/security.js';
 
 
 export class InfoPanel {
@@ -264,12 +265,17 @@ export class InfoPanel {
         const content = document.createElement('div');
         content.className = 'card-content';
 
+        // 字串與 data.html 一律經 sanitizeHTML 清洗;要塞入已知安全的 HTML,
+        // 呼叫端須以 raw() 明示 opt-in(對齊 DataTable/Tooltip 的 raw 慣例),
+        // 避免無意間把 API/使用者字串當作可執行標記注入。
         if (typeof data === 'string') {
-            content.innerHTML = data;
+            content.innerHTML = sanitizeHTML(data);
+        } else if (isRawHtml(data)) {
+            content.innerHTML = data.__html;
         } else if (data instanceof HTMLElement) {
             content.appendChild(data);
         } else if (data.html) {
-            content.innerHTML = data.html;
+            content.innerHTML = isRawHtml(data.html) ? data.html.__html : sanitizeHTML(String(data.html));
         } else if (data.text) {
             const text = document.createElement('p');
             text.textContent = data.text;

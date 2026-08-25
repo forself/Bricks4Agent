@@ -1315,14 +1315,16 @@ function modalInputType(fieldType) {
 
 function isSafeRouteHref(href) {
     if (typeof href !== 'string' || href.length === 0) return false;
-    return (href.startsWith('/') && !href.startsWith('//'))
+    // 相對路徑必須為單一前導斜線;擋掉 //host 與反斜線變體(/\、\/、\\),
+    // 瀏覽器會把 \ 正規化為 /,只擋 // 會漏 /\evil.com 造成開放重定向。
+    return (href.startsWith('/') && !/^[/\\]{2}/.test(href))
         || href.startsWith('#')
         || /^https?:\/\//i.test(href);
 }
 
 function toRuntimeRoute(href) {
     if (typeof href !== 'string') return '';
-    if (href.startsWith('/') && !href.startsWith('//')) return `#${href}`;
+    if (href.startsWith('/') && !/^[/\\]{2}/.test(href)) return `#${href}`;
     return href;
 }
 
