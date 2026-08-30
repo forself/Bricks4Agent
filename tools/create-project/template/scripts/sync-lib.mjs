@@ -1,77 +1,125 @@
-// sync-lib.mjs — 複本模式:把腳手架複製進 lib\。跨平台零依賴。支援「釘版」:
-//   node scripts/sync-lib.mjs              # 有 b4a.lock.json → 從釘住的 commit 複製(可重現);無 → 從工作區複製(附警告)
-//   node scripts/sync-lib.mjs --pin        # 釘住腳手架目前 HEAD 進 b4a.lock.json,並從該 commit 同步
-//   node scripts/sync-lib.mjs --pin <sha>  # 釘指定 commit
-// 釘版原理:git worktree 在暫存目錄展開該 commit → cpSync 取內容 → 移除 worktree(不含未 commit 的髒改動)。
-// b4a.lock.json 應入版控(全隊同版);lib/.sync-state.json 記錄實際同步來源(publish 據此強制)。
-// 首選開發模式仍是 dev-link.mjs(連結=活腳手架,腳手架維護者用);本腳本給團隊成員/CI。
+// sync-lib.mjs — 複本模式：把腳手架的已釘版內容複製進 lib/。
+//   node scripts/sync-lib.mjs              # 依 b4a.lock.json 同步
+//   node scripts/sync-lib.mjs --pin        # 以目前可達的 B4A tree 建立 v2 lock 並同步
+//   node scripts/sync-lib.mjs --pin <ref>  # 驗證 ref 與目前 B4A tree 相同後釘版
+// v2 直接釘 Git tree object；tree 由目前 branch 的 B4A 目錄可達，不依賴額外 tag 或
+// subtree-split commit。舊 commit lock 僅保留遷移相容性。
 import { existsSync, lstatSync, rmSync, cpSync, readFileSync, writeFileSync, mkdtempSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { resolveB4a } from './resolve-b4a.mjs';
+import { createB4aTreeLock, isFullGitObjectId, parseB4aLock } from './b4a-lock.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const LIBS = ['ui_components', 'page-generator'];
+const LIBS = ['ui_components', 'page-generator', 'custom_components'];
 const LOCK = path.join(root, 'b4a.lock.json');
 const args = process.argv.slice(2);
 const pinMode = args.includes('--pin');
-const pinSha = pinMode ? (args[args.indexOf('--pin') + 1] || '') : '';
+const pinRef = pinMode ? (args[args.indexOf('--pin') + 1] || '') : '';
 
-for (const d of LIBS) {
+for (const directory of LIBS) {
     try {
-        if (lstatSync(path.join(root, 'lib', d)).isSymbolicLink()) {
-            console.error(`lib/${d} 是連結(開發模式)。先跑 node scripts/dev-link.mjs --unlink,或直接續用連結即可。`);
+        if (lstatSync(path.join(root, 'lib', directory)).isSymbolicLink()) {
+            console.error(`lib/${directory} 是連結（開發模式）。先跑 node scripts/dev-link.mjs --unlink。`);
             process.exit(1);
         }
-    } catch { /* 不存在:可複製 */ }
+    } catch { /* 不存在：可複製 */ }
 }
 
 const { b4aRoot, b4aBrowser } = resolveB4a(root);
-const git = (...a) => { const r = spawnSync('git', ['-C', b4aRoot, ...a], { encoding: 'utf8' }); return r.status === 0 ? r.stdout.trim() : ''; };
-const hex40 = (s) => /^[0-9a-f]{40}$/.test(s);
-const skipNM = (src) => path.basename(src) !== 'node_modules';
+const git = (...gitArgs) => {
+    const result = spawnSync('git', ['-C', b4aRoot, ...gitArgs], { encoding: 'utf8' });
+    return result.status === 0 ? result.stdout.trim() : '';
+};
+const embeddedRoot = path.resolve(root, '..', 'packages', 'Bricks4Agent');
+const isEmbedded = path.resolve(b4aRoot).toLowerCase() === embeddedRoot.toLowerCase();
+const source = isEmbedded ? 'packages/Bricks4Agent' : '.';
+const treeExpression = reference => isEmbedded
+    ? `${reference}:packages/Bricks4Agent`
+    : `${reference}^{tree}`;
+const currentTree = () => git('rev-parse', treeExpression('HEAD'));
+const sourceStatus = () => git('status', '--porcelain', '--', '.');
+const skipNodeModules = src => path.basename(src) !== 'node_modules';
 
-let commit = '';
-let pinned = false;
+let lockInfo = null;
 if (pinMode) {
-    commit = pinSha && !pinSha.startsWith('--') ? git('rev-parse', pinSha) : git('rev-parse', 'HEAD');
-    if (!hex40(commit)) { console.error('釘版失敗:取不到 commit(腳手架 repo 無 commit 或 sha 無效)。'); process.exit(1); }
-    if (git('status', '--porcelain')) console.warn('警告:腳手架工作區 DIRTY——釘版複本=該 commit 內容,未 commit 的改動不會包含。');
-    writeFileSync(LOCK, JSON.stringify({ commit, pinnedAtUtc: new Date().toISOString() }, null, 2) + '\n');
-    pinned = true;
-    console.log('已釘版:' + commit.slice(0, 12) + ' → b4a.lock.json(請入版控)');
+    const reference = pinRef && !pinRef.startsWith('--') ? pinRef : 'HEAD';
+    const targetTree = git('rev-parse', treeExpression(reference));
+    const headTree = currentTree();
+    if (!isFullGitObjectId(targetTree) || !isFullGitObjectId(headTree)) {
+        console.error('釘版失敗：無法由目前 Git branch 解析 B4A tree。');
+        process.exit(1);
+    }
+    if (targetTree !== headTree) {
+        console.error(`釘版失敗：${reference} 的 B4A tree(${targetTree.slice(0, 12)})不是目前 branch tree(${headTree.slice(0, 12)})。`);
+        console.error('請先 checkout 含該 B4A 內容的 branch/commit；lock 不得依賴 branch 外物件。');
+        process.exit(1);
+    }
+    if (sourceStatus()) {
+        console.error('釘版失敗：B4A 工作區 DIRTY。請先審查並 commit，不能把未提交內容偽裝成釘版。');
+        process.exit(1);
+    }
+    const nextLock = createB4aTreeLock(headTree, source);
+    writeFileSync(LOCK, JSON.stringify(nextLock, null, 2) + '\n');
+    lockInfo = parseB4aLock(nextLock);
+    console.log(`已釘版 tree:${headTree.slice(0, 12)} → b4a.lock.json（branch 自含，不依賴 tag）`);
 } else if (existsSync(LOCK)) {
-    commit = JSON.parse(readFileSync(LOCK, 'utf8')).commit;
-    if (!hex40(commit)) { console.error('b4a.lock.json 的 commit 無效:' + commit); process.exit(1); }
-    pinned = true;
+    try {
+        lockInfo = parseB4aLock(JSON.parse(readFileSync(LOCK, 'utf8')));
+    } catch (error) {
+        console.error(error.message);
+        process.exit(1);
+    }
 } else {
-    console.warn('警告:無 b4a.lock.json——從腳手架「工作區」複製,不可重現。建議 node scripts/sync-lib.mjs --pin 釘版。');
+    console.warn('警告：無 b4a.lock.json——從腳手架工作區複製，不可重現。建議使用 --pin。');
 }
 
 let srcBrowser = b4aBrowser;
 let tmpWorktree = '';
-if (pinned) {
-    // 從釘住的 commit 展開暫存 worktree(乾淨、可重現)
+let pinnedTree = currentTree();
+if (lockInfo?.kind === 'tree') {
+    if (!isFullGitObjectId(pinnedTree) || pinnedTree !== lockInfo.tree) {
+        console.error(`釘版同步失敗：目前 B4A tree(${String(pinnedTree).slice(0, 12)})≠ lock(${lockInfo.tree.slice(0, 12)})。`);
+        console.error('請 checkout 含該 tree 的 branch；不要以 tag 或外部 split commit 補洞。');
+        process.exit(1);
+    }
+    if (sourceStatus()) {
+        console.error('釘版同步失敗：B4A 工作區 DIRTY，來源內容不等於 lock tree。');
+        process.exit(1);
+    }
+} else if (lockInfo?.kind === 'legacy-commit') {
+    pinnedTree = git('rev-parse', `${lockInfo.commit}^{tree}`);
+    if (!isFullGitObjectId(pinnedTree)) {
+        console.error(`舊版 lock commit ${lockInfo.commit} 不存在。請在含內嵌 B4A 的 branch 執行 node scripts/sync-lib.mjs --pin 遷移為 v2 tree lock。`);
+        process.exit(1);
+    }
     tmpWorktree = mkdtempSync(path.join(os.tmpdir(), 'b4a-pin-'));
-    rmSync(tmpWorktree, { recursive: true, force: true });   // worktree add 需要不存在的路徑
-    const r = spawnSync('git', ['-C', b4aRoot, 'worktree', 'add', '--detach', tmpWorktree, commit], { encoding: 'utf8' });
-    if (r.status !== 0) { console.error('git worktree 展開失敗:' + (r.stderr || '').trim()); process.exit(1); }
+    rmSync(tmpWorktree, { recursive: true, force: true });
+    const result = spawnSync('git', ['-C', b4aRoot, 'worktree', 'add', '--detach', tmpWorktree, lockInfo.commit], { encoding: 'utf8' });
+    if (result.status !== 0) {
+        console.error('舊版 lock worktree 展開失敗：' + (result.stderr || '').trim());
+        process.exit(1);
+    }
     srcBrowser = path.join(tmpWorktree, 'packages', 'javascript', 'browser');
+    console.warn('警告：正在讀取舊 commit lock；請用 --pin 遷移成 branch 可達的 v2 tree lock。');
 }
 
 try {
-    for (const d of LIBS) {
-        const dest = path.join(root, 'lib', d);
-        if (existsSync(dest)) rmSync(dest, { recursive: true, force: true });
-        cpSync(path.join(srcBrowser, d), dest, { recursive: true, filter: skipNM });
-        console.log(`copy: lib/${d}${pinned ? '(釘版 ' + commit.slice(0, 12) + ')' : '(工作區)'}`);
+    for (const directory of LIBS) {
+        const destination = path.join(root, 'lib', directory);
+        if (existsSync(destination)) rmSync(destination, { recursive: true, force: true });
+        cpSync(path.join(srcBrowser, directory), destination, { recursive: true, filter: skipNodeModules });
+        console.log(`copy: lib/${directory}${lockInfo ? `(釘版 tree ${pinnedTree.slice(0, 12)})` : '(工作區)'}`);
     }
     const state = {
-        mode: 'copy', pinned,
-        commit: pinned ? commit : (hex40(git('rev-parse', 'HEAD')) ? git('rev-parse', 'HEAD') : '(no commit)'),
-        dirtySource: pinned ? false : !!git('status', '--porcelain'),
+        mode: 'copy',
+        pinned: !!lockInfo,
+        ...(lockInfo?.kind === 'legacy-commit' ? { legacyCommit: lockInfo.commit } : {}),
+        tree: isFullGitObjectId(pinnedTree) ? pinnedTree : '(no tree)',
+        source: lockInfo?.source || source,
+        dirtySource: lockInfo ? false : !!sourceStatus(),
         syncedAtUtc: new Date().toISOString()
     };
     writeFileSync(path.join(root, 'lib', '.sync-state.json'), JSON.stringify(state, null, 2) + '\n');
@@ -81,4 +129,4 @@ try {
         rmSync(tmpWorktree, { recursive: true, force: true });
     }
 }
-console.log('lib/ 已同步(複本模式' + (pinned ? ',釘版可重現' : '') + ')。');
+console.log(`lib/ 已同步（複本模式${lockInfo ? '，tree 釘版可重現' : ''}）。`);

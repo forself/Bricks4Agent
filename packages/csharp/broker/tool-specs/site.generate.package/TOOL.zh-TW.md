@@ -11,9 +11,13 @@
 ## 能力
 
 - Tool ID: `site.generate.package`
+
 - Capability ID: `site.generate_package`
+
 - Route: `site_generate_package`
+
 - Status: `beta`
+
 - Risk: medium
 
 ## Package 契約
@@ -23,6 +27,7 @@ Package 進入點是 `index.html`。HTML 只是一個包含 `#app` 並載入 `ru
 Runtime 會載入：
 
 - `site.json`
+
 - `components/manifest.json`
 
 接著 runtime 會根據 `site.json` 裡的元件樹渲染網站。
@@ -46,16 +51,27 @@ Strict mode 也會把 package 驗收失敗視為交付阻擋。呼叫端會收�
 正常交付時，驗收必須通過。驗收器會檢查：
 
 - `index.html`
+
 - `runtime.js`
+
 - `styles.css`
+
 - `site.json`
+
 - `components/manifest.json`
+
 - `README.md`
+
 - `index.html` 宣告 `#app` 並載入 `./runtime.js`
+
 - `runtime.js` 載入 `./site.json` 與 `./components/manifest.json`
+
 - `components/manifest.json` 宣告 `site.json` 使用到的每一種元件類型
+
 - `site.json` 使用到的每一種非生成元件都必須有 `runtime.js` renderer
+
 - 生成元件必須有本地 `components/generated/<Type>.js` 與 `.json` 資產
+
 - `create_archive = true` 時的 zip 條目
 
 `verification_report.runtime_renderer_types` 會列出從 `runtime.js` 解析出的 renderer key。
@@ -67,10 +83,17 @@ Strict mode 也會把 package 驗收失敗視為交付阻擋。呼叫端會收�
 結果包含：
 
 - `output_directory`
+
 - `entry_point`
+
 - `site_json_path`
+
 - `manifest_path`
+
 - `archive_path`
+
 - `files`
+
 - `quality_report`
+
 - `verification_report`

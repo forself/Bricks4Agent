@@ -1,0 +1,626 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bricks4Agent UI 元件庫樣式規範</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Bricks4Agent UI 元件庫樣式規範</h1>
+<h2>核心原則</h2>
+<ol>
+<li><strong>所有元件必須使用 <code>theme.css</code> 定義的 CSS 變數</strong>（<code>--cl-*</code> 前綴），禁止硬編碼色碼</li>
+<li><strong>深色主題由 <code>[data-theme="dark"]</code> 統一處理</strong>，元件禁止自行實作 <code>@media (prefers-color-scheme: dark)</code></li>
+<li><strong>非色碼 Token（圓角、陰影、字型大小、過渡）也必須引用 CSS 變數</strong></li>
+</ol>
+<hr>
+<h2>色碼對應表</h2>
+<h3>語意色 / 品牌色</h3>
+<table>
+<thead>
+<tr>
+<th>硬編碼</th>
+<th>CSS 變數</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>#2196F3</code></td>
+<td><code>var(--cl-primary)</code></td>
+</tr>
+<tr>
+<td><code>#1976D2</code></td>
+<td><code>var(--cl-primary-dark)</code></td>
+</tr>
+<tr>
+<td><code>#e3f2fd</code></td>
+<td><code>var(--cl-primary-light)</code></td>
+</tr>
+<tr>
+<td><code>#4CAF50</code></td>
+<td><code>var(--cl-success)</code></td>
+</tr>
+<tr>
+<td><code>#2E7D32</code></td>
+<td><code>var(--cl-success-dark)</code></td>
+</tr>
+<tr>
+<td><code>#e8f5e9</code></td>
+<td><code>var(--cl-success-light)</code></td>
+</tr>
+<tr>
+<td><code>#F44336</code></td>
+<td><code>var(--cl-danger)</code></td>
+</tr>
+<tr>
+<td><code>#C62828</code></td>
+<td><code>var(--cl-danger-dark)</code></td>
+</tr>
+<tr>
+<td><code>#fdecea</code></td>
+<td><code>var(--cl-danger-light)</code></td>
+</tr>
+<tr>
+<td><code>#FF9800</code></td>
+<td><code>var(--cl-warning)</code></td>
+</tr>
+<tr>
+<td><code>#E65100</code></td>
+<td><code>var(--cl-warning-dark)</code></td>
+</tr>
+<tr>
+<td><code>#fff3e0</code></td>
+<td><code>var(--cl-warning-light)</code></td>
+</tr>
+<tr>
+<td><code>#03A9F4</code></td>
+<td><code>var(--cl-info)</code></td>
+</tr>
+</tbody>
+</table>
+<h3>Material 擴充色</h3>
+<table>
+<thead>
+<tr>
+<th>硬編碼</th>
+<th>CSS 變數</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>#9C27B0</code></td>
+<td><code>var(--cl-purple)</code></td>
+</tr>
+<tr>
+<td><code>#7B1FA2</code></td>
+<td><code>var(--cl-purple-dark)</code></td>
+</tr>
+<tr>
+<td><code>#CE93D8</code></td>
+<td><code>var(--cl-purple-light)</code></td>
+</tr>
+<tr>
+<td><code>#3F51B5</code></td>
+<td><code>var(--cl-indigo)</code></td>
+</tr>
+<tr>
+<td><code>#303F9F</code></td>
+<td><code>var(--cl-indigo-dark)</code></td>
+</tr>
+<tr>
+<td><code>#009688</code></td>
+<td><code>var(--cl-teal)</code></td>
+</tr>
+<tr>
+<td><code>#00796B</code></td>
+<td><code>var(--cl-teal-dark)</code></td>
+</tr>
+<tr>
+<td><code>#00BCD4</code></td>
+<td><code>var(--cl-cyan)</code></td>
+</tr>
+<tr>
+<td><code>#00838F</code></td>
+<td><code>var(--cl-cyan-dark)</code></td>
+</tr>
+<tr>
+<td><code>#E91E63</code></td>
+<td><code>var(--cl-pink)</code></td>
+</tr>
+<tr>
+<td><code>#C2185B</code></td>
+<td><code>var(--cl-pink-dark)</code></td>
+</tr>
+<tr>
+<td><code>#FF5722</code></td>
+<td><code>var(--cl-deep-orange)</code></td>
+</tr>
+<tr>
+<td><code>#E64A19</code></td>
+<td><code>var(--cl-deep-orange-dark)</code></td>
+</tr>
+<tr>
+<td><code>#795548</code></td>
+<td><code>var(--cl-brown)</code></td>
+</tr>
+<tr>
+<td><code>#5D4037</code></td>
+<td><code>var(--cl-brown-dark)</code></td>
+</tr>
+<tr>
+<td><code>#607D8B</code>, <code>#78909C</code></td>
+<td><code>var(--cl-blue-grey)</code></td>
+</tr>
+<tr>
+<td><code>#455A64</code></td>
+<td><code>var(--cl-blue-grey-dark)</code></td>
+</tr>
+<tr>
+<td><code>#9E9E9E</code></td>
+<td><code>var(--cl-grey)</code></td>
+</tr>
+<tr>
+<td><code>#757575</code></td>
+<td><code>var(--cl-grey-dark)</code></td>
+</tr>
+<tr>
+<td><code>#BDBDBD</code></td>
+<td><code>var(--cl-grey-light)</code></td>
+</tr>
+<tr>
+<td><code>#8BC34A</code></td>
+<td><code>var(--cl-light-green)</code></td>
+</tr>
+<tr>
+<td><code>#84cc16</code></td>
+<td><code>var(--cl-lime)</code></td>
+</tr>
+<tr>
+<td><code>#FFC107</code></td>
+<td><code>var(--cl-amber)</code></td>
+</tr>
+</tbody>
+</table>
+<h3>文字色</h3>
+<table>
+<thead>
+<tr>
+<th>硬編碼</th>
+<th>CSS 變數</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>#333</code>, <code>#333333</code></td>
+<td><code>var(--cl-text)</code></td>
+</tr>
+<tr>
+<td><code>#444</code></td>
+<td><code>var(--cl-text)</code></td>
+</tr>
+<tr>
+<td><code>#555</code>, <code>#555555</code></td>
+<td><code>var(--cl-text-secondary)</code></td>
+</tr>
+<tr>
+<td><code>#666</code>, <code>#666666</code></td>
+<td><code>var(--cl-text-secondary)</code></td>
+</tr>
+<tr>
+<td><code>#888</code>, <code>#888888</code></td>
+<td><code>var(--cl-text-muted)</code></td>
+</tr>
+<tr>
+<td><code>#999</code>, <code>#999999</code></td>
+<td><code>var(--cl-text-placeholder)</code></td>
+</tr>
+<tr>
+<td><code>#aaa</code>, <code>#aaaaaa</code></td>
+<td><code>var(--cl-text-light)</code></td>
+</tr>
+<tr>
+<td><code>#b0b0b0</code></td>
+<td><code>var(--cl-text-light)</code></td>
+</tr>
+<tr>
+<td><code>#bbb</code></td>
+<td><code>var(--cl-text-light)</code></td>
+</tr>
+<tr>
+<td><code>#000</code>, <code>#000000</code></td>
+<td><code>var(--cl-text-dark)</code></td>
+</tr>
+<tr>
+<td><code>white</code> / <code>#fff</code> (用作文字色)</td>
+<td><code>var(--cl-text-inverse)</code></td>
+</tr>
+<tr>
+<td><code>#495057</code></td>
+<td><code>var(--cl-text-heading)</code></td>
+</tr>
+<tr>
+<td><code>#8c8c8c</code></td>
+<td><code>var(--cl-text-dim)</code></td>
+</tr>
+</tbody>
+</table>
+<h3>背景色</h3>
+<table>
+<thead>
+<tr>
+<th>硬編碼</th>
+<th>CSS 變數</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>white</code>, <code>#fff</code>, <code>#ffffff</code> (背景)</td>
+<td><code>var(--cl-bg)</code></td>
+</tr>
+<tr>
+<td><code>#f5f5f5</code></td>
+<td><code>var(--cl-bg-secondary)</code></td>
+</tr>
+<tr>
+<td><code>#f9f9f9</code></td>
+<td><code>var(--cl-bg-secondary)</code></td>
+</tr>
+<tr>
+<td><code>#f3f3f3</code></td>
+<td><code>var(--cl-bg-secondary)</code></td>
+</tr>
+<tr>
+<td><code>#f8f9fa</code></td>
+<td><code>var(--cl-bg-tertiary)</code></td>
+</tr>
+<tr>
+<td><code>#fafafa</code></td>
+<td><code>var(--cl-bg-input)</code></td>
+</tr>
+<tr>
+<td><code>#f0f2f5</code></td>
+<td><code>var(--cl-bg-hover)</code></td>
+</tr>
+<tr>
+<td><code>#f0f0f0</code></td>
+<td><code>var(--cl-bg-subtle)</code></td>
+</tr>
+<tr>
+<td><code>#e3f2fd</code></td>
+<td><code>var(--cl-bg-active)</code></td>
+</tr>
+<tr>
+<td><code>#e8e8e8</code></td>
+<td><code>var(--cl-bg-hover)</code></td>
+</tr>
+<tr>
+<td><code>#2b2b2b</code></td>
+<td><code>var(--cl-bg-dark)</code></td>
+</tr>
+<tr>
+<td><code>#37352f</code></td>
+<td><code>var(--cl-bg-code)</code></td>
+</tr>
+<tr>
+<td><code>rgba(0,0,0,0.5)</code></td>
+<td><code>var(--cl-bg-overlay)</code></td>
+</tr>
+<tr>
+<td><code>#ffeb3b</code></td>
+<td><code>var(--cl-canvas-highlight)</code> 或 <code>var(--cl-amber)</code></td>
+</tr>
+<tr>
+<td><code>#ff9800</code> (highlight)</td>
+<td><code>var(--cl-warning)</code></td>
+</tr>
+<tr>
+<td><code>#ffebee</code></td>
+<td><code>var(--cl-bg-danger-light)</code></td>
+</tr>
+<tr>
+<td><code>#f1f8e9</code></td>
+<td><code>var(--cl-bg-success-light)</code></td>
+</tr>
+<tr>
+<td><code>#f0f7ff</code></td>
+<td><code>var(--cl-bg-info-light)</code></td>
+</tr>
+<tr>
+<td><code>#fff9c4</code></td>
+<td><code>var(--cl-canvas-highlight)</code></td>
+</tr>
+</tbody>
+</table>
+<h3>邊框色</h3>
+<table>
+<thead>
+<tr>
+<th>硬編碼</th>
+<th>CSS 變數</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>#ddd</code>, <code>#dddddd</code></td>
+<td><code>var(--cl-border)</code></td>
+</tr>
+<tr>
+<td><code>#e0e0e0</code></td>
+<td><code>var(--cl-border)</code></td>
+</tr>
+<tr>
+<td><code>#eee</code>, <code>#eeeeee</code></td>
+<td><code>var(--cl-border-light)</code></td>
+</tr>
+<tr>
+<td><code>#ccc</code>, <code>#cccccc</code></td>
+<td><code>var(--cl-border-dark)</code></td>
+</tr>
+<tr>
+<td><code>#dee2e6</code></td>
+<td><code>var(--cl-border-medium)</code></td>
+</tr>
+<tr>
+<td><code>#e9ecef</code></td>
+<td><code>var(--cl-border-subtle)</code></td>
+</tr>
+<tr>
+<td><code>#CFD8DC</code></td>
+<td><code>var(--cl-border-muted)</code></td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>非色碼 Token</h2>
+<h3>圓角</h3>
+<table>
+<thead>
+<tr>
+<th>硬編碼</th>
+<th>CSS 變數</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>border-radius: 2px</code></td>
+<td><code>var(--cl-radius-xs)</code></td>
+</tr>
+<tr>
+<td><code>border-radius: 3px</code></td>
+<td><code>var(--cl-radius-xs)</code></td>
+</tr>
+<tr>
+<td><code>border-radius: 4px</code></td>
+<td><code>var(--cl-radius-sm)</code></td>
+</tr>
+<tr>
+<td><code>border-radius: 6px</code></td>
+<td><code>var(--cl-radius-md)</code></td>
+</tr>
+<tr>
+<td><code>border-radius: 8px</code></td>
+<td><code>var(--cl-radius-lg)</code></td>
+</tr>
+<tr>
+<td><code>border-radius: 10px</code></td>
+<td><code>var(--cl-radius-pill)</code></td>
+</tr>
+<tr>
+<td><code>border-radius: 12px</code></td>
+<td><code>var(--cl-radius-xl)</code></td>
+</tr>
+<tr>
+<td><code>border-radius: 50%</code></td>
+<td><code>var(--cl-radius-round)</code></td>
+</tr>
+</tbody>
+</table>
+<p>複合圓角使用變數組合：<code>var(--cl-radius-xl) var(--cl-radius-xl) 0 0</code></p>
+<h3>陰影</h3>
+<table>
+<thead>
+<tr>
+<th>硬編碼</th>
+<th>CSS 變數</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0 1px 3px rgba(0,0,0,0.1)</code></td>
+<td><code>var(--cl-shadow-sm)</code></td>
+</tr>
+<tr>
+<td><code>0 2px 4px rgba(0,0,0,0.05)</code></td>
+<td><code>var(--cl-shadow-sm)</code></td>
+</tr>
+<tr>
+<td><code>0 4px 12px rgba(0,0,0,0.15)</code></td>
+<td><code>var(--cl-shadow-md)</code></td>
+</tr>
+<tr>
+<td><code>0 4px 8px rgba(0,0,0,0.1)</code></td>
+<td><code>var(--cl-shadow-md)</code></td>
+</tr>
+<tr>
+<td><code>0 8px 24px rgba(0,0,0,0.2)</code></td>
+<td><code>var(--cl-shadow-lg)</code></td>
+</tr>
+</tbody>
+</table>
+<h3>字型大小</h3>
+<table>
+<thead>
+<tr>
+<th>硬編碼</th>
+<th>CSS 變數</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>font-size: 10px</code></td>
+<td><code>var(--cl-font-size-2xs)</code></td>
+</tr>
+<tr>
+<td><code>font-size: 11px</code></td>
+<td><code>var(--cl-font-size-xs)</code></td>
+</tr>
+<tr>
+<td><code>font-size: 12px</code></td>
+<td><code>var(--cl-font-size-sm)</code></td>
+</tr>
+<tr>
+<td><code>font-size: 13px</code></td>
+<td><code>var(--cl-font-size-md)</code></td>
+</tr>
+<tr>
+<td><code>font-size: 14px</code></td>
+<td><code>var(--cl-font-size-lg)</code></td>
+</tr>
+<tr>
+<td><code>font-size: 16px</code></td>
+<td><code>var(--cl-font-size-xl)</code></td>
+</tr>
+<tr>
+<td><code>font-size: 18px</code></td>
+<td><code>var(--cl-font-size-2xl)</code></td>
+</tr>
+<tr>
+<td><code>font-size: 24px</code></td>
+<td><code>var(--cl-font-size-3xl)</code></td>
+</tr>
+<tr>
+<td><code>font-size: 28px</code></td>
+<td><code>var(--cl-font-size-4xl)</code></td>
+</tr>
+<tr>
+<td><code>font-size: 36px</code></td>
+<td><code>var(--cl-font-size-5xl)</code></td>
+</tr>
+</tbody>
+</table>
+<h3>過渡</h3>
+<table>
+<thead>
+<tr>
+<th>硬編碼</th>
+<th>CSS 變數</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0.1s ...</code></td>
+<td><code>var(--cl-transition-fast)</code></td>
+</tr>
+<tr>
+<td><code>0.15s ease</code></td>
+<td><code>var(--cl-transition-fast)</code></td>
+</tr>
+<tr>
+<td><code>0.2s ease</code></td>
+<td><code>var(--cl-transition)</code></td>
+</tr>
+<tr>
+<td><code>0.3s ease</code></td>
+<td><code>var(--cl-transition-slow)</code></td>
+</tr>
+<tr>
+<td><code>0.2s cubic-bezier(0.4, 0, 0.2, 1)</code></td>
+<td><code>var(--cl-transition-material)</code></td>
+</tr>
+</tbody>
+</table>
+<p>保留其他非標準 easing（如自訂 <code>cubic-bezier(...)</code>）。</p>
+<h3>字型</h3>
+<table>
+<thead>
+<tr>
+<th>硬編碼</th>
+<th>CSS 變數</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>-apple-system, BlinkMacSystemFont, ...</code></td>
+<td><code>var(--cl-font-family)</code></td>
+</tr>
+<tr>
+<td><code>font-family: inherit</code></td>
+<td>保留</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>保留不替換的值</h2>
+<ul>
+<li><code>transparent</code> — 保留</li>
+<li><code>currentColor</code> — 保留</li>
+<li><code>inherit</code> — 保留</li>
+<li><code>rgba(0,0,0,0.08)</code> 等低透明度 hover 效果 — 保留（無對應變數）</li>
+<li><code>rgba(255,255,255,0.15)</code> 等反色 hover 效果 — 保留</li>
+<li><code>border-bottom-color: #fff</code> 用於 tab active 技巧 — 改為 <code>var(--cl-bg)</code></li>
+<li><code>linear-gradient(...)</code> 中的色碼 — 也應換成 CSS 變數</li>
+</ul>
+<hr>
+<h2>深色主題規則</h2>
+<ol>
+<li><code>theme.css</code> 已在 <code>[data-theme="dark"]</code> 中覆寫所有 <code>--cl-*</code> 變數</li>
+<li>元件使用 CSS 變數後，切換主題自動生效</li>
+<li><strong>移除</strong>所有元件中的 <code>@media (prefers-color-scheme: dark) { ... }</code> 區塊</li>
+<li><strong>移除</strong>元件中用硬編碼色碼實作的深色模式邏輯</li>
+</ol>
+<hr>
+<h2>元件結構規範</h2>
+<h3>原子化設計（Atomic Design）</h3>
+<p>元件按複雜度分為三層：</p>
+<ol>
+<li>
+<p><strong>原子（Atoms）</strong> — 最小可重用單位，不依賴其他元件
+   - 按鈕類：BasicButton, ActionButton, EditorButton, AuthButton, SortButton, UploadButton, DownloadButton
+   - 輸入類：TextInput, NumberInput, Checkbox, Radio, ToggleSwitch, ColorPicker, Dropdown
+   - 展示類：Badge, Tag, Tooltip, Progress, Divider, LoadingSpinner, Avatar
+   - 回饋類：Notification</p>
+</li>
+<li>
+<p><strong>分子（Molecules）</strong> — 由原子組合而成
+   - FormField（Label + 任意輸入原子）
+   - SearchForm（TextInput + BasicButton）
+   - DatePicker / TimePicker / DateTimeInput
+   - Breadcrumb, Pagination, ButtonGroup</p>
+</li>
+<li>
+<p><strong>有機體（Organisms）</strong> — 由分子/原子組合的複雜元件
+   - DataTable, TabContainer, FunctionMenu, SideMenu
+   - Panel 系統（PanelManager + 多種 Panel 變體）
+   - InfoPanel, WorkflowPanel, DocumentWall, PhotoWall</p>
+</li>
+</ol>
+<h3>新元件開發規範</h3>
+<ol>
+<li><strong>每個元件一個資料夾</strong>：<code>{category}/{ComponentName}/</code></li>
+<li><strong>必要檔案</strong>：
+   - <code>ComponentName.js</code> — 主元件類別
+   - <code>index.js</code> — 重新匯出（<code>export { X } from './X.js';</code>）
+   - <code>demo.html</code> — 完整展示頁面（含深色主題切換）</li>
+<li><strong>註冊流程</strong>：
+   - 加入 <code>{category}/index.js</code> 匯出
+   - 加入 <code>binding/ComponentFactory.js</code> 工廠註冊</li>
+<li><strong>樣式方式</strong>：使用 <code>_injectStyles()</code> 動態注入 CSS，或獨立 <code>.css</code> 檔案</li>
+<li><strong>所有樣式值必須使用 <code>--cl-*</code> CSS 變數</strong>，零硬編碼</li>
+</ol>
+</main>
+</body>
+</html>

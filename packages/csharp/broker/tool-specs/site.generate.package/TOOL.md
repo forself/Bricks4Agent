@@ -11,9 +11,13 @@ Every generated package includes a `verification_report`. The verifier checks th
 ## Capability
 
 - Tool ID: `site.generate.package`
+
 - Capability ID: `site.generate_package`
+
 - Route: `site_generate_package`
+
 - Status: `beta`
+
 - Risk: medium
 
 ## Package Contract
@@ -23,6 +27,7 @@ The package entry point is `index.html`. The HTML file is only a shell containin
 The runtime loads:
 
 - `site.json`
+
 - `components/manifest.json`
 
 It then renders the site from the component tree in `site.json`.
@@ -46,16 +51,27 @@ Strict mode also treats package verification failures as delivery blockers. The 
 The verifier must pass for normal delivery. It checks:
 
 - `index.html`
+
 - `runtime.js`
+
 - `styles.css`
+
 - `site.json`
+
 - `components/manifest.json`
+
 - `README.md`
+
 - `index.html` declares `#app` and loads `./runtime.js`
+
 - `runtime.js` loads `./site.json` and `./components/manifest.json`
+
 - `components/manifest.json` declares every component type used by `site.json`
+
 - every non-generated component type used by `site.json` has a `runtime.js` renderer
+
 - generated component types have local `components/generated/<Type>.js` and `.json` assets
+
 - zip archive entries when `create_archive = true`
 
 The `verification_report.runtime_renderer_types` field lists renderer keys parsed from `runtime.js`.
@@ -67,10 +83,17 @@ If `enforce_quality_gate = false`, diagnostic packages may still be written with
 The result includes:
 
 - `output_directory`
+
 - `entry_point`
+
 - `site_json_path`
+
 - `manifest_path`
+
 - `archive_path`
+
 - `files`
+
 - `quality_report`
+
 - `verification_report`

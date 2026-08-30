@@ -15,28 +15,45 @@
 ### Create
 
 - `packages/csharp/broker-core/Services/WorkerIdentityAuthService.cs`
+
 - `packages/csharp/broker-core/Services/WorkerIdentityAuthOptions.cs`
+
 - `packages/csharp/broker-core/Services/WorkerAuthNonceStore.cs`
+
 - `packages/csharp/broker/Middleware/WorkerIdentityAuthMiddleware.cs`
+
 - `packages/csharp/tests/unit/Core/WorkerIdentityAuthServiceTests.cs`
+
 - `packages/csharp/tests/integration/Api/HighLevelWorkerAuthTests.cs`
+
 - `packages/csharp/tests/unit/FunctionPool/WorkerSessionAuthTests.cs`
- 
 
 ### Modify
 
 - `packages/csharp/broker/Program.cs`
+
 - `packages/csharp/broker/Middleware/BrokerAuthMiddleware.cs`
+
 - `packages/csharp/broker/Middleware/EncryptionMiddleware.cs`
+
 - `packages/csharp/broker/Endpoints/HighLevelEndpoints.cs`
+
 - `packages/csharp/function-pool/Network/WorkerSession.cs`
+
 - `packages/csharp/worker-sdk/WorkerHost.cs`
+
 - `packages/csharp/worker-sdk/WorkerHostOptions.cs`
+
 - `packages/csharp/workers/line-worker/Program.cs`
+
 - `packages/csharp/workers/line-worker/InboundDispatcher.cs`
+
 - `packages/csharp/tests/integration/Fixtures/BrokerFixture.cs`
+
 - `packages/csharp/tests/integration/Middleware/EncryptionBypassTests.cs`
+
 - `docs/manuals/line-sidecar-runbook.md`
+
 - `docs/manuals/line-sidecar-runbook.zh-TW.md`
 
 ---
@@ -61,6 +78,7 @@
 - [ ] **Step 2: 跑 unit test，確認 RED**
 
 Run:
+
 ```powershell
 dotnet test packages\csharp\tests\unit\Unit.Tests.csproj -v minimal --filter WorkerIdentityAuthServiceTests --disable-build-servers -p:UseSharedCompilation=false -m:1
 ```
@@ -87,6 +105,7 @@ Expected:
 - [ ] **Step 4: 重跑 unit test，確認 GREEN**
 
 Run:
+
 ```powershell
 dotnet test packages\csharp\tests\unit\Unit.Tests.csproj -v minimal --filter WorkerIdentityAuthServiceTests --disable-build-servers -p:UseSharedCompilation=false -m:1
 ```
@@ -127,6 +146,7 @@ git commit -m "feat: add worker identity auth service"
 - [ ] **Step 2: 跑 integration test，確認 RED**
 
 Run:
+
 ```powershell
 dotnet test packages\csharp\tests\integration\Integration.Tests.csproj -v minimal --filter HighLevelWorkerAuthTests --disable-build-servers -p:UseSharedCompilation=false -m:1
 ```
@@ -147,14 +167,15 @@ Expected:
 實作內容：
 - `Program.cs` 讀取 `WorkerAuth:*`
 - `InboundDispatcher` 對 broker HTTP POST 加入 `X-B4A-Worker-Type`
-  `X-B4A-Key-Id`
-  `X-B4A-Timestamp`
-  `X-B4A-Nonce`
-  `X-B4A-Signature`
+ `X-B4A-Key-Id`
+ `X-B4A-Timestamp`
+ `X-B4A-Nonce`
+ `X-B4A-Signature`
 
 - [ ] **Step 5: 重跑 targeted integration tests，確認 GREEN**
 
 Run:
+
 ```powershell
 dotnet test packages\csharp\tests\integration\Integration.Tests.csproj -v minimal --filter HighLevelWorkerAuthTests --disable-build-servers -p:UseSharedCompilation=false -m:1
 ```
@@ -165,6 +186,7 @@ Expected:
 - [ ] **Step 6: 重跑 bypass regression tests**
 
 Run:
+
 ```powershell
 dotnet test packages\csharp\tests\integration\Integration.Tests.csproj -v minimal --filter EncryptionBypassTests --disable-build-servers -p:UseSharedCompilation=false -m:1
 ```
@@ -200,6 +222,7 @@ git commit -m "feat: require worker auth on high-level line routes"
 - [ ] **Step 2: 跑 tests，確認 RED**
 
 Run:
+
 ```powershell
 dotnet test packages\csharp\tests\unit\Unit.Tests.csproj -v minimal --filter WorkerRegisterSigningTests --disable-build-servers -p:UseSharedCompilation=false -m:1
 ```
@@ -223,6 +246,7 @@ Expected:
 - [ ] **Step 5: 重跑 tests，確認 GREEN**
 
 Run:
+
 ```powershell
 dotnet test packages\csharp\tests\unit\Unit.Tests.csproj -v minimal --filter WorkerRegisterSigningTests --disable-build-servers -p:UseSharedCompilation=false -m:1
 ```
@@ -267,6 +291,7 @@ git commit -m "feat: sign and verify worker registration"
 - [ ] **Step 3: 跑完整驗證**
 
 Run:
+
 ```powershell
 dotnet test packages\csharp\tests\unit\Unit.Tests.csproj -v minimal --disable-build-servers -p:UseSharedCompilation=false -m:1
 dotnet test packages\csharp\tests\integration\Integration.Tests.csproj -v minimal --disable-build-servers -p:UseSharedCompilation=false -m:1
@@ -292,19 +317,27 @@ git commit -m "docs: document worker identity auth configuration"
 ## Spec Coverage Check
 
 - HTTP `line-worker -> broker` 驗證：Task 2
+
 - function-pool `WORKER_REGISTER` 驗證：Task 3
+
 - 每種 worker 一組 credential：Task 1 / Task 4
+
 - trusted path 改成 authenticated worker path：Task 2
+
 - docs / runbook 同步：Task 4
 
 ## Placeholder Check
 
 - 無 `TBD` / `TODO`
+
 - 每個 task 都有檔案、驗證命令、預期結果
 
 ## Type Consistency Check
 
 - 服務名稱統一為 `WorkerIdentityAuthService`
+
 - options 統一為 `WorkerIdentityAuthOptions`
+
 - nonce store 統一為 `WorkerAuthNonceStore`
+
 - `WorkerType / KeyId / SharedSecret` 命名在 broker 與 worker-sdk 一致

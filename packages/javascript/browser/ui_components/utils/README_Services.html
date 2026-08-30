@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>工具服務 (Utility Services)</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>工具服務 (Utility Services)</h1>
+<p>此目錄包含可重用的工具服務類別，用於處理常見的 Web 應用功能需求。</p>
+<h2>服務列表</h2>
+<table>
+<thead>
+<tr>
+<th>服務</th>
+<th>說明</th>
+<th>依賴</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GeolocationService</code></td>
+<td>地理位置服務</td>
+<td>Nominatim API</td>
+</tr>
+<tr>
+<td><code>WeatherService</code></td>
+<td>天氣資訊服務</td>
+<td>Open-Meteo API</td>
+</tr>
+<tr>
+<td><code>security.js</code></td>
+<td>安全工具函數</td>
+<td>無</td>
+</tr>
+<tr>
+<td><code>SimpleZip.js</code></td>
+<td>ZIP 壓縮工具</td>
+<td>無</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>GeolocationService</h2>
+<p>地理位置服務 - 取得使用者位置並進行反向地理編碼。</p>
+<h3>Features</h3>
+<ul>
+<li><strong>取得當前位置</strong>：使用 Browser Geolocation API</li>
+<li><strong>反向地理編碼</strong>：座標轉地址 (使用 Nominatim OpenStreetMap)</li>
+<li><strong>位置監聽</strong>：監聽位置變化</li>
+<li><strong>距離計算</strong>：計算兩點距離 (Haversine 公式)</li>
+<li><strong>多語言支援</strong>：支援繁體中文、英文</li>
+</ul>
+<h3>Usage</h3>
+<pre><code class="language-javascript">import { GeolocationService, GeolocationError } from './GeolocationService.js';
+
+// 建立服務實例
+const geoService = new GeolocationService({
+    language: 'zh-TW',      // 反向地理編碼語言
+    timeout: 10000,         // 定位逾時 (ms)
+    enableHighAccuracy: true
+});
+
+// 取得位置資訊（含地址）
+try {
+    const location = await geoService.getLocationInfo();
+    console.log(`位置: ${location.address.shortName}`);
+    console.log(`座標: ${location.latitude}, ${location.longitude}`);
+} catch (error) {
+    if (error instanceof GeolocationError) {
+        console.error(`定位錯誤 (${error.code}): ${error.message}`);
+    }
+}
+
+// 僅取得座標
+const position = await geoService.getCurrentPosition();
+
+// 反向地理編碼
+const address = await geoService.reverseGeocode(25.0330, 121.5654);
+console.log(address.shortName);  // &quot;台北市信義區&quot;
+
+// 監聽位置變化
+const watchId = geoService.watchPosition(
+    (position) =&gt; console.log('位置更新:', position),
+    (error) =&gt; console.error('錯誤:', error)
+);
+
+// 停止監聽
+geoService.clearWatch(watchId);
+
+// 計算兩點距離
+const distance = GeolocationService.calculateDistance(
+    25.0330, 121.5654,  // 台北101
+    24.1477, 120.6736   // 台中火車站
+);
+console.log(GeolocationService.formatDistance(distance));  // &quot;162.3 公里&quot;
+</code></pre>
+<h3>錯誤代碼</h3>
+<table>
+<thead>
+<tr>
+<th>Code</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>NOT_SUPPORTED</code></td>
+<td>瀏覽器不支援 Geolocation</td>
+</tr>
+<tr>
+<td><code>PERMISSION_DENIED</code></td>
+<td>位置權限被拒絕</td>
+</tr>
+<tr>
+<td><code>POSITION_UNAVAILABLE</code></td>
+<td>無法取得位置</td>
+</tr>
+<tr>
+<td><code>TIMEOUT</code></td>
+<td>定位逾時</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>WeatherService</h2>
+<p>天氣服務 - 使用 Open-Meteo API 取得天氣資訊。</p>
+<h3>Features</h3>
+<ul>
+<li><strong>當前天氣</strong>：溫度、體感溫度、濕度、風速</li>
+<li><strong>天氣預報</strong>：每日預報 (最多 16 天)</li>
+<li><strong>每小時預報</strong>：每小時預報 (最多 384 小時)</li>
+<li><strong>WMO 代碼解析</strong>：天氣代碼轉描述文字與圖示</li>
+<li><strong>多語言支援</strong>：繁體中文、英文</li>
+<li><strong>免費無 API Key</strong>：使用 Open-Meteo 公開 API</li>
+</ul>
+<h3>Usage</h3>
+<pre><code class="language-javascript">import { WeatherService, WeatherError } from './WeatherService.js';
+
+// 建立服務實例
+const weatherService = new WeatherService({
+    language: 'zh-TW',           // 語言
+    temperatureUnit: 'celsius'   // 溫度單位 (celsius/fahrenheit)
+});
+
+// 取得當前天氣
+try {
+    const weather = await weatherService.getCurrentWeather(25.0330, 121.5654);
+    console.log(`${weather.icon} ${weather.temperature}${weather.unit}`);
+    console.log(`天氣: ${weather.description}`);
+    console.log(`體感溫度: ${weather.feelsLike}${weather.unit}`);
+    console.log(`濕度: ${weather.humidity}%`);
+    console.log(`風速: ${weather.windSpeed} km/h (${weather.windDirectionText})`);
+} catch (error) {
+    console.error('取得天氣失敗:', error.message);
+}
+
+// 取得 7 天預報
+const forecast = await weatherService.getForecast(25.0330, 121.5654, 7);
+forecast.forEach(day =&gt; {
+    console.log(`${day.date}: ${day.icon} ${day.tempMin}~${day.tempMax}${day.unit}`);
+});
+
+// 取得每小時預報
+const hourly = await weatherService.getHourlyForecast(25.0330, 121.5654, 24);
+hourly.forEach(hour =&gt; {
+    console.log(`${hour.time}: ${hour.icon} ${hour.temperature}${hour.unit}`);
+});
+
+// 取得天氣圖示
+const icon = WeatherService.getWeatherIcon(0);  // ☀️
+
+// 取得天氣類型
+const type = WeatherService.getWeatherType(61);  // 'rain'
+
+// 格式化溫度
+const temp = WeatherService.formatTemperature(25, 'celsius');  // &quot;25°C&quot;
+</code></pre>
+<h3>WMO 天氣代碼</h3>
+<table>
+<thead>
+<tr>
+<th>代碼</th>
+<th>描述 (中文)</th>
+<th>描述 (英文)</th>
+<th>圖示</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td>晴朗</td>
+<td>Clear sky</td>
+<td>☀️</td>
+</tr>
+<tr>
+<td>1</td>
+<td>大致晴朗</td>
+<td>Mainly clear</td>
+<td>☀️</td>
+</tr>
+<tr>
+<td>2</td>
+<td>局部多雲</td>
+<td>Partly cloudy</td>
+<td>☁️</td>
+</tr>
+<tr>
+<td>3</td>
+<td>多雲</td>
+<td>Overcast</td>
+<td>☁️</td>
+</tr>
+<tr>
+<td>45-48</td>
+<td>有霧/霧凇</td>
+<td>Fog</td>
+<td>🌫️</td>
+</tr>
+<tr>
+<td>51-57</td>
+<td>毛毛雨</td>
+<td>Drizzle</td>
+<td>🌧️</td>
+</tr>
+<tr>
+<td>61-67</td>
+<td>雨</td>
+<td>Rain</td>
+<td>🌧️</td>
+</tr>
+<tr>
+<td>71-77</td>
+<td>雪</td>
+<td>Snow</td>
+<td>❄️</td>
+</tr>
+<tr>
+<td>80-82</td>
+<td>陣雨</td>
+<td>Rain showers</td>
+<td>🌧️</td>
+</tr>
+<tr>
+<td>85-86</td>
+<td>陣雪</td>
+<td>Snow showers</td>
+<td>❄️</td>
+</tr>
+<tr>
+<td>95-99</td>
+<td>雷雨</td>
+<td>Thunderstorm</td>
+<td>⛈️</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>使用範例：位置 + 天氣</h2>
+<pre><code class="language-javascript">import { GeolocationService } from './GeolocationService.js';
+import { WeatherService } from './WeatherService.js';
+
+async function getLocationWeather() {
+    const geoService = new GeolocationService({ language: 'zh-TW' });
+    const weatherService = new WeatherService({ language: 'zh-TW' });
+
+    try {
+        // 取得位置
+        const location = await geoService.getLocationInfo();
+        console.log(`📍 ${location.address.shortName}`);
+
+        // 取得天氣
+        const weather = await weatherService.getCurrentWeather(
+            location.latitude,
+            location.longitude
+        );
+        console.log(`${weather.icon} ${weather.temperature}${weather.unit} ${weather.description}`);
+
+    } catch (error) {
+        console.error('錯誤:', error.message);
+    }
+}
+
+getLocationWeather();
+</code></pre>
+<hr>
+<h2>瀏覽器支援</h2>
+<ul>
+<li>Chrome/Edge 90+</li>
+<li>Firefox 88+</li>
+<li>Safari 14+</li>
+</ul>
+<h2>API 參考</h2>
+<ul>
+<li><a href="https://nominatim.org/release-docs/latest/api/Reverse/">Nominatim OpenStreetMap</a></li>
+<li><a href="https://open-meteo.com/en/docs">Open-Meteo</a></li>
+</ul>
+<hr>
+<p><strong>Created for Bricks4Agent Project</strong></p>
+</main>
+</body>
+</html>

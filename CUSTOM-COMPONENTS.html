@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bricks4Agent 客製元件 JSON</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Bricks4Agent 客製元件 JSON</h1>
+<p>客製元件是由現有 Bricks4Agent 元件組成的純 JSON 定義。JSON 不包含 JavaScript、HTML 或任意 CSS；執行期由 <code>CustomComponentRegistry</code> 驗證、註冊，再由 <code>CustomComponentRenderer</code> 建立元件與管理生命週期。</p>
+<h2>三種層級</h2>
+<p>層級由結構自動推導，匯出檔中的 <code>kind</code> 必須與推導結果一致：</p>
+<ul>
+<li><code>atomic</code>：根節點是單一內建元件，或引用另一個 atomic 客製元件。</li>
+<li><code>composite</code>：由 group 組合元件，有效組合深度不超過 3，且未同時組合兩個以上 composite 客製元件。</li>
+<li><code>template</code>：有效組合深度超過 3、引用 template，或整棵組合圖含兩個以上 composite 客製元件。</li>
+</ul>
+<p>分類器會拒絕未知元件、循環引用、重複 node id、宣告層級不符、prototype pollution key、raw HTML key 與非 JSON 值。</p>
+<h2>資料夾契約</h2>
+<pre><code class="language-text">packages/javascript/browser/custom_components/
+├─ definitions/                  # 開發者放置 *.json
+├─ custom-component.schema.json  # JSON Schema
+├─ registry.json                 # build 產生，瀏覽器從這裡發現定義
+├─ build-registry.mjs
+└─ README.md
+</code></pre>
+<p>新增或修改 JSON 後執行：</p>
+<pre><code class="language-bash">npm run custom-components:build
+npm run custom-components:check
+npm run test:custom-components
+</code></pre>
+<p>瀏覽器不能直接列舉資料夾，因此 <code>registry.json</code> 是必要的 deterministic 索引。<code>--check</code> 只比對，不會改檔，適合 CI。</p>
+<h2>最小定義</h2>
+<pre><code class="language-json">{
+  &quot;$schema&quot;: &quot;../custom-component.schema.json&quot;,
+  &quot;schema_version&quot;: 1,
+  &quot;component_id&quot;: &quot;custom.customer_name&quot;,
+  &quot;registry_name&quot;: &quot;CustomerName&quot;,
+  &quot;display_name&quot;: &quot;客戶名稱&quot;,
+  &quot;version&quot;: &quot;1.0.0&quot;,
+  &quot;kind&quot;: &quot;atomic&quot;,
+  &quot;description&quot;: &quot;單一客戶名稱輸入&quot;,
+  &quot;root&quot;: {
+    &quot;type&quot;: &quot;component&quot;,
+    &quot;id&quot;: &quot;name&quot;,
+    &quot;component&quot;: &quot;TextInput&quot;,
+    &quot;options&quot;: {
+      &quot;label&quot;: &quot;客戶名稱&quot;,
+      &quot;placeholder&quot;: &quot;請輸入客戶名稱&quot;
+    }
+  }
+}
+</code></pre>
+<p>組合節點使用 <code>type: "group"</code>；引用另一個客製元件使用 <code>type: "custom"</code>。group 的 layout 僅接受下列 allowlist：</p>
+<ul>
+<li><code>mode</code>: <code>stack | row | grid</code></li>
+<li><code>gap</code>: <code>none | xs | sm | md | lg | xl</code></li>
+<li><code>columns</code>: <code>1..12</code></li>
+<li><code>align</code>: <code>start | center | end | stretch</code></li>
+</ul>
+<h2>Runtime 使用</h2>
+<p>客製元件樣式刻意不併入 <code>ui_components/theme.css</code>，以維持核心 UI 套件可獨立發布。使用客製元件的頁面需另外載入：</p>
+<pre><code class="language-html">&lt;link rel=&quot;stylesheet&quot; href=&quot;./packages/javascript/browser/custom_components/custom-components.css&quot;&gt;
+</code></pre>
+<pre><code class="language-js">import {
+  CustomComponentRegistry,
+} from './packages/javascript/browser/custom_components/index.js';
+
+const registry = new CustomComponentRegistry();
+await registry.loadFolder('/packages/javascript/browser/custom_components/');
+
+const component = registry.create('CustomerName', {
+  nodeOptions: {
+    name: { placeholder: '執行期覆寫，不寫回 JSON' },
+  },
+});
+component.mount(document.querySelector('#app'));
+
+// atomic 回傳單值；composite/template 回傳以 node id 為 key 的物件。
+console.log(component.getValue());
+component.destroy();
+registry.dispose();
+</code></pre>
+<p><code>loadFolder()</code> 成功後，預設也會把客製元件註冊到 <code>ComponentFactory</code>，所以可同步建立：</p>
+<pre><code class="language-js">const component = ComponentFactory.create('CustomerName');
+</code></pre>
+<p>Registry 採整批原子安裝：任何一個檔案驗證失敗時，該批次不會留下半套註冊結果；更新既有定義時會重驗整張相依圖，內建名稱也不可被覆寫。<code>dispose()</code> 只移除仍由該 Registry 擁有的 factory class，不會刪除外部後來替換的註冊。</p>
+<h2>DynamicPageRenderer 使用</h2>
+<p>動態表單可在 <code>init()</code> 的非同步邊界載入整個資料夾：</p>
+<pre><code class="language-js">const page = new DynamicPageRenderer({
+  mode: 'form',
+  customComponents: {
+    folder: '/packages/javascript/browser/custom_components/',
+  },
+  definition: {
+    fields: [
+      {
+        fieldName: 'customerName',
+        fieldType: 'text',
+        component: 'CustomerName',
+        label: '客戶名稱',
+        defaultValue: '王小明',
+      },
+    ],
+  },
+});
+
+await page.init();
+page.mount('#app');
+</code></pre>
+<p>同時提供 <code>definitions</code> 與 <code>folder</code> 時，會先取得並驗證全部來源，再一次性註冊；folder 讀取失敗不會留下 inline definition。<code>DynamicPageRenderer</code> 自建的 Registry 不會寫入全域 <code>ComponentFactory</code>，並會在 <code>destroy()</code> 清理；外部注入的 Registry 仍由呼叫端管理。</p>
+<p>SPA 的 <code>DefinitionRuntimePage</code> 不會從低信任頁面 JSON 讀取 folder URL。請由可信頁面 class 或 constructor options 提供：</p>
+<pre><code class="language-js">class CustomerPage extends DefinitionRuntimePage {
+  static customComponents = {
+    folder: '/packages/javascript/browser/custom_components/',
+  };
+}
+</code></pre>
+<p>目前這個自動接線針對 dynamic form。直接 runtime 使用不受頁面模式限制；靜態 <code>PageGenerator.generate()</code> 不會自動把 JSON 資料夾打包進輸出，產物若要使用客製元件，必須一併部署 <code>custom_components</code> 並在啟動階段 <code>loadFolder()</code>。</p>
+<h2>Studio</h2>
+<p>以 repository root 啟動靜態伺服器後開啟 Theme Studio，切到「元件組合」頁籤：</p>
+<pre><code class="language-text">/tools/theme-studio/index.html?tab=components
+</code></pre>
+<p><code>/tools/custom-component-studio/index.html</code> 保留為直接進入元件組合器的相容 URL，會導向同一頁的第二頁籤。Studio 沒有第二份手寫 UI：唯一權威頁面定義是 <code>tools/theme-studio/studio.page.json</code>，由 <code>DynamicPageRenderer</code> 的 <code>tool</code> mode 產生。JSON 只引用 Bricks4Agent 元件、state bindings 與可信 command ID；工具列、頁籤、輸入、清單、樹狀結構與按鈕都必須保有正式元件 instance provenance。只有檔案 picker、下載與剪貼簿等瀏覽器 transport 留在元件封裝或 utility 內。</p>
+<p>Studio 提供 catalog 搜尋、結構 outline、group layout、options JSON、即時分類與預覽、JSON 匯入、驗證、複製及下載匯出。匯入只接受單一 <code>.json</code> 且上限 1 MB；匯出前一定會重算 <code>kind</code> 並跑同一套 runtime validator。這裡的「客製」是操作：同一工作台可調整既有元件樣式，也可組合並匯出 atomic、composite、template 三層 JSON 定義。</p>
+<p>頁面內的「元件組合使用說明」會直接列出四步流程、三層自動分類條件、<code>custom_components/definitions/{registry-name}.json</code> 交付路徑，以及 build/check/test 指令；「元件導覽與展示」也有用途說明與前往組合器的同頁連結。這些說明與連結本身同樣定義在 <code>studio.page.json</code>，由正式 <code>Heading</code>、<code>Text</code>、<code>Alert</code>、<code>StepIndicator</code>、<code>CodeBlock</code>、<code>Link</code> 等元件產生，不是旁路手寫 UI。</p>
+<p>自舉驗收不只檢查畫面存在，也會驗證 definition URL/SHA-256、同一 renderer、切頁與 state 更新不重建 workspace DOM、所有 chrome controls 的 instance provenance、Theme 與客製元件 JSON 的實際下載／上傳 round-trip，以及 CSP/SVG hard-zero。執行 <code>npm run test:studio:self-host</code> 與 <code>npm run test:studio:browser</code>。</p>
+<h2>安全邊界</h2>
+<ul>
+<li>JSON 只允許純資料，事件 callback 必須由執行期 <code>nodeOptions</code> 注入，不得寫入 JSON。</li>
+<li>禁止 <code>innerHTML</code>、<code>rawHtml</code>、<code>srcdoc</code> 等 raw HTML option；執行期 <code>nodeOptions</code> 也會遞迴且不分大小寫地剔除同類鍵。</li>
+<li>禁止 <code>__proto__</code>、<code>prototype</code>、<code>constructor</code> 等 prototype-sensitive key。</li>
+<li>manifest entry 必須是資料夾內的安全相對 <code>.json</code> 路徑，不接受 absolute URL 或 <code>..</code> traversal。</li>
+<li>layout 只會映射到既定 CSS class，樣式使用 <code>var(--cl-*)</code> token。</li>
+</ul>
+</main>
+</body>
+</html>

@@ -1,0 +1,642 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>前後端 Definition JSON 設計</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>前後端 Definition JSON 設計</h1>
+<p>日期：2026-04-10<br>
+狀態：draft<br>
+來源：由 <code>templates/spa</code> 會員商務網站 proof 反推</p>
+<h2>1. 目標</h2>
+<p>本設計定義一組可機械化處理的 JSON contract，用來描述：</p>
+<ul>
+<li>前端 SPA 如何以既有元件庫與 generator/runtime 建立頁面</li>
+<li>後端如何以 <code>N1/N2/N3</code> 模板與白名單模組 materialize</li>
+<li>前後端如何在技術模型上解耦，但仍可作為單一整包交付</li>
+</ul>
+<p>本設計明確不追求：</p>
+<ul>
+<li>讓前端全站都自動由單一 page form/list/detail JSON 自然長出</li>
+<li>讓後端由自由文字 spec 直接產生</li>
+<li>讓 Markdown 擔任 canonical source</li>
+</ul>
+<p>canonical source 應為：</p>
+<ul>
+<li><code>architecture.json</code></li>
+<li><code>frontend-definition.json</code></li>
+<li><code>backend-definition.json</code></li>
+</ul>
+<p>人類可讀文件如 <code>ARCHITECTURE.md</code>、<code>IMPLEMENTATION_PLAN.md</code>、<code>DEPLOYMENT.md</code> 應由上述 JSON 與固定規則衍生，不反向作為真相來源。</p>
+<h2>2. 設計依據</h2>
+<p>此設計不是憑空發明，而是由目前已可運作的 proof 反推而來。</p>
+<p>已驗證的 proof 具備：</p>
+<ul>
+<li>會員註冊 / 登入</li>
+<li>商品列表</li>
+<li>內嵌下單表單</li>
+<li>訂單歷史</li>
+<li>管理員登入</li>
+<li>後台商品列表</li>
+<li>後台新增商品</li>
+<li>資料持久化</li>
+</ul>
+<p>對應現有檔案：</p>
+<ul>
+<li>前端頁面：</li>
+<li><code>templates/spa/frontend/pages/HomePage.js</code></li>
+<li><code>templates/spa/frontend/pages/LoginPage.js</code></li>
+<li><code>templates/spa/frontend/pages/RegisterPage.js</code></li>
+<li><code>templates/spa/frontend/pages/products/ProductListPage.js</code></li>
+<li><code>templates/spa/frontend/pages/orders/OrderListPage.js</code></li>
+<li><code>templates/spa/frontend/pages/admin/AdminProductPage.js</code></li>
+<li><code>templates/spa/frontend/pages/admin/AdminProductCreatePage.js</code></li>
+<li><code>templates/spa/frontend/pages/admin/AdminProductEditPage.js</code></li>
+<li>runtime 定義頁：</li>
+<li><code>templates/spa/frontend/runtime/DefinitionRuntimePage.js</code></li>
+<li><code>templates/spa/frontend/pages/admin/productFormDefinition.js</code></li>
+<li>後端：</li>
+<li><code>templates/spa/backend/Program.cs</code></li>
+<li><code>templates/spa/backend/Data/AppDbContext.cs</code></li>
+<li><code>templates/spa/backend/Data/DbInitializer.cs</code></li>
+</ul>
+<p>此 proof 已證明：</p>
+<ul>
+<li>前端不是全站都能只靠目前 <code>form/list/detail</code> page definition</li>
+<li>但後台表單類頁面已能由 definition runtime 支撐</li>
+<li>後端已能以簡單模板與 BaseOrm 完成 N2 類型的小型商務站</li>
+</ul>
+<p>因此 v1 JSON contract 必須同時容納：</p>
+<ul>
+<li>前端的 <code>route + surfaces</code> 模型</li>
+<li>後端的 <code>tier + template + modules</code> 模型</li>
+</ul>
+<h2>3. Canonical 文件集合</h2>
+<h3>3.1 <code>architecture.json</code></h3>
+<p>用途：</p>
+<ul>
+<li>定義專案交付的最外層邊界</li>
+<li>指出是否有前端 / 後端</li>
+<li>指出對應 definition 檔案</li>
+</ul>
+<p>最小格式：</p>
+<pre><code class="language-json">{
+  &quot;schema_version&quot;: 1,
+  &quot;project&quot;: {
+    &quot;id&quot;: &quot;commerce-proof&quot;,
+    &quot;name&quot;: &quot;Bricks Commerce&quot;,
+    &quot;mode&quot;: &quot;frontend_backend_bundle&quot;
+  },
+  &quot;frontend&quot;: {
+    &quot;enabled&quot;: true,
+    &quot;definition_file&quot;: &quot;frontend-definition.json&quot;
+  },
+  &quot;backend&quot;: {
+    &quot;enabled&quot;: true,
+    &quot;definition_file&quot;: &quot;backend-definition.json&quot;
+  },
+  &quot;docs&quot;: {
+    &quot;deployment&quot;: true,
+    &quot;implementation_plan&quot;: true
+  }
+}
+</code></pre>
+<p>固定規則：</p>
+<ul>
+<li><code>architecture.json</code> 不承載頁面、欄位、ORM、API 細節</li>
+<li>細節下沉到 frontend/backend definition</li>
+</ul>
+<h3>3.2 <code>frontend-definition.json</code></h3>
+<p>用途：</p>
+<ul>
+<li>定義前端 shell、navigation、routes、各頁 surfaces、shared enums/messages</li>
+</ul>
+<h3>3.3 <code>backend-definition.json</code></h3>
+<p>用途：</p>
+<ul>
+<li>定義後端是否存在、使用哪個 <code>N1/N2/N3</code> 模板、啟用哪些白名單模組、持久化與安全基線</li>
+</ul>
+<h2>4. 前端 Definition 模型</h2>
+<h3>4.1 核心原則</h3>
+<p>前端 definition 不應再侷限於單一 <code>form/list/detail/dashboard</code> page type。<br>
+從 proof 反推，真正需要的是：</p>
+<ul>
+<li><code>system_shell</code></li>
+<li><code>content_page</code></li>
+<li><code>auth_form_page</code></li>
+<li><code>resource_list_page</code></li>
+<li><code>resource_form_page</code></li>
+<li><code>embedded_action_form</code></li>
+</ul>
+<p>因此 v1 frontend definition 採：</p>
+<ul>
+<li><code>app</code></li>
+<li><code>auth</code></li>
+<li><code>navigation</code></li>
+<li><code>shared_resources</code></li>
+<li><code>routes[]</code></li>
+</ul>
+<h3>4.2 最外層格式</h3>
+<pre><code class="language-json">{
+  &quot;schema_version&quot;: 1,
+  &quot;app&quot;: {
+    &quot;title&quot;: &quot;Bricks Commerce&quot;,
+    &quot;subtitle&quot;: &quot;小型會員商務網站驗證&quot;,
+    &quot;shell&quot;: &quot;default_commerce_shell&quot;
+  },
+  &quot;auth&quot;: {
+    &quot;token_storage&quot;: &quot;local_storage&quot;,
+    &quot;login_route&quot;: &quot;/login&quot;,
+    &quot;logout_action&quot;: &quot;auth.logout&quot;,
+    &quot;roles&quot;: [&quot;guest&quot;, &quot;member&quot;, &quot;admin&quot;]
+  },
+  &quot;navigation&quot;: {
+    &quot;items&quot;: []
+  },
+  &quot;shared_resources&quot;: {
+    &quot;enums&quot;: {},
+    &quot;messages&quot;: {}
+  },
+  &quot;routes&quot;: []
+}
+</code></pre>
+<h3>4.3 <code>navigation.items[]</code></h3>
+<p>最小格式：</p>
+<pre><code class="language-json">{
+  &quot;label&quot;: &quot;商品商城&quot;,
+  &quot;route&quot;: &quot;/products&quot;,
+  &quot;visible_for&quot;: [&quot;guest&quot;, &quot;member&quot;, &quot;admin&quot;]
+}
+</code></pre>
+<p>固定規則：</p>
+<ul>
+<li><code>visible_for</code> 必須明確列出 role</li>
+<li>shell renderer 不自行猜測</li>
+</ul>
+<h3>4.4 <code>routes[]</code></h3>
+<p>每個 route 最小欄位：</p>
+<pre><code class="language-json">{
+  &quot;path&quot;: &quot;/products&quot;,
+  &quot;page_id&quot;: &quot;shop_products&quot;,
+  &quot;page_kind&quot;: &quot;resource_list_page&quot;,
+  &quot;title&quot;: &quot;商品商城&quot;,
+  &quot;access&quot;: {
+    &quot;roles&quot;: [&quot;guest&quot;, &quot;member&quot;, &quot;admin&quot;]
+  },
+  &quot;data_sources&quot;: {},
+  &quot;state&quot;: {},
+  &quot;surfaces&quot;: []
+}
+</code></pre>
+<h4><code>page_kind</code> 固定枚舉</h4>
+<ul>
+<li><code>content_page</code></li>
+<li><code>auth_form_page</code></li>
+<li><code>resource_list_page</code></li>
+<li><code>resource_form_page</code></li>
+<li><code>detail_page</code></li>
+</ul>
+<p><code>embedded_action_form</code> 不是獨立 route，而是 surface kind。</p>
+<h3>4.5 <code>surfaces[]</code></h3>
+<p><code>surfaces</code> 是本設計的核心。<br>
+因為像商品列表頁不是單一 widget，而是數個可獨立 materialize 的 UI 區塊。</p>
+<p><code>surface_kind</code> v1 固定枚舉：</p>
+<ul>
+<li><code>message_panel</code></li>
+<li><code>search_form</code></li>
+<li><code>data_table</code></li>
+<li><code>detail_panel</code></li>
+<li><code>embedded_action_form</code></li>
+<li><code>content_block</code></li>
+</ul>
+<h4>4.5.1 <code>message_panel</code></h4>
+<pre><code class="language-json">{
+  &quot;surface_id&quot;: &quot;feedback&quot;,
+  &quot;surface_kind&quot;: &quot;message_panel&quot;
+}
+</code></pre>
+<h4>4.5.2 <code>search_form</code></h4>
+<pre><code class="language-json">{
+  &quot;surface_id&quot;: &quot;search&quot;,
+  &quot;surface_kind&quot;: &quot;search_form&quot;,
+  &quot;fields&quot;: [
+    {
+      &quot;name&quot;: &quot;keyword&quot;,
+      &quot;field_type&quot;: &quot;text&quot;,
+      &quot;label&quot;: &quot;關鍵字&quot;
+    },
+    {
+      &quot;name&quot;: &quot;categoryId&quot;,
+      &quot;field_type&quot;: &quot;select&quot;,
+      &quot;label&quot;: &quot;分類&quot;,
+      &quot;options_ref&quot;: &quot;category_options&quot;
+    }
+  ]
+}
+</code></pre>
+<h4>4.5.3 <code>data_table</code></h4>
+<pre><code class="language-json">{
+  &quot;surface_id&quot;: &quot;product_table&quot;,
+  &quot;surface_kind&quot;: &quot;data_table&quot;,
+  &quot;source&quot;: &quot;primary_list&quot;,
+  &quot;columns&quot;: [
+    { &quot;key&quot;: &quot;id&quot;, &quot;hidden&quot;: true },
+    { &quot;key&quot;: &quot;name&quot;, &quot;label&quot;: &quot;商品名稱&quot; },
+    { &quot;key&quot;: &quot;categoryName&quot;, &quot;label&quot;: &quot;分類&quot; },
+    { &quot;key&quot;: &quot;price&quot;, &quot;label&quot;: &quot;價格&quot;, &quot;display&quot;: &quot;currency_twd&quot; }
+  ],
+  &quot;row_actions&quot;: [
+    {
+      &quot;action_id&quot;: &quot;buy&quot;,
+      &quot;label_template&quot;: &quot;購買 {name}&quot;,
+      &quot;action_type&quot;: &quot;set_selected_record&quot;
+    }
+  ]
+}
+</code></pre>
+<h4>4.5.4 <code>embedded_action_form</code></h4>
+<pre><code class="language-json">{
+  &quot;surface_id&quot;: &quot;order_form&quot;,
+  &quot;surface_kind&quot;: &quot;embedded_action_form&quot;,
+  &quot;visible_when&quot;: {
+    &quot;selected_item_key&quot;: &quot;selectedProductId&quot;
+  },
+  &quot;submit&quot;: {
+    &quot;method&quot;: &quot;POST&quot;,
+    &quot;endpoint&quot;: &quot;/shop/orders&quot;
+  },
+  &quot;fields&quot;: [
+    {
+      &quot;name&quot;: &quot;quantity&quot;,
+      &quot;field_type&quot;: &quot;number&quot;,
+      &quot;label&quot;: &quot;數量&quot;,
+      &quot;required&quot;: true
+    },
+    {
+      &quot;name&quot;: &quot;shippingAddress&quot;,
+      &quot;field_type&quot;: &quot;text&quot;,
+      &quot;label&quot;: &quot;收件地址&quot;,
+      &quot;required&quot;: true
+    }
+  ]
+}
+</code></pre>
+<h3>4.6 <code>shared_resources</code></h3>
+<p>用途：</p>
+<ul>
+<li>提供 options、enum label mapping、固定訊息等共用定義</li>
+</ul>
+<p>最小格式：</p>
+<pre><code class="language-json">{
+  &quot;enums&quot;: {
+    &quot;category_options&quot;: [
+      { &quot;label&quot;: &quot;Digital Goods&quot;, &quot;value&quot;: &quot;1&quot; },
+      { &quot;label&quot;: &quot;Member Services&quot;, &quot;value&quot;: &quot;2&quot; }
+    ],
+    &quot;status_options&quot;: [
+      { &quot;label&quot;: &quot;啟用&quot;, &quot;value&quot;: &quot;active&quot; },
+      { &quot;label&quot;: &quot;停用&quot;, &quot;value&quot;: &quot;inactive&quot; }
+    ]
+  },
+  &quot;messages&quot;: {
+    &quot;product_created&quot;: &quot;商品已建立&quot;
+  }
+}
+</code></pre>
+<h2>5. 後端 Definition 模型</h2>
+<h3>5.1 核心原則</h3>
+<p>後端不是 JSON runtime 渲染，而是：</p>
+<ul>
+<li>選 <code>N1/N2/N3</code></li>
+<li>選 template</li>
+<li>套白名單模組</li>
+<li>materialize 成專案骨架</li>
+</ul>
+<h3>5.2 tier taxonomy</h3>
+<h4><code>N1</code></h4>
+<ul>
+<li>無持久化</li>
+<li>單層</li>
+<li>固定帶最小公開安全基線：</li>
+<li>validation</li>
+<li>exception handling</li>
+<li>audit/logging</li>
+<li>rate limit</li>
+</ul>
+<h4><code>N2</code></h4>
+<ul>
+<li>有持久化</li>
+<li>微型兩層</li>
+<li><code>BO + DAO</code> 壓在一起</li>
+<li>固定帶完整高資安基線：</li>
+<li>controller/API</li>
+<li>service</li>
+<li>repository/dao</li>
+<li>model/schema</li>
+<li>config</li>
+<li>auth</li>
+<li>validation</li>
+<li>security middleware</li>
+</ul>
+<h4><code>N3</code></h4>
+<ul>
+<li>一般三層</li>
+<li>與 <code>N2</code> 相同安全基線，但分層更完整</li>
+</ul>
+<h3>5.3 最外層格式</h3>
+<pre><code class="language-json">{
+  &quot;schema_version&quot;: 1,
+  &quot;enabled&quot;: true,
+  &quot;tier&quot;: &quot;N2&quot;,
+  &quot;template&quot;: &quot;base_n2_commerce&quot;,
+  &quot;persistence&quot;: {
+    &quot;enabled&quot;: true,
+    &quot;orm&quot;: &quot;BaseOrm&quot;,
+    &quot;database&quot;: &quot;sqlite&quot;
+  },
+  &quot;security&quot;: {
+    &quot;auth_required&quot;: true,
+    &quot;auth_mode&quot;: &quot;local_jwt&quot;,
+    &quot;role_model&quot;: [&quot;member&quot;, &quot;admin&quot;]
+  },
+  &quot;entities&quot;: [],
+  &quot;modules&quot;: [],
+  &quot;seed&quot;: {}
+}
+</code></pre>
+<h3>5.4 <code>orm</code> 規則</h3>
+<p>固定規則：</p>
+<ul>
+<li>預設 ORM：<code>BaseOrm</code></li>
+<li>僅在業務邏輯足夠複雜且經明確判定時，才允許其他 ORM</li>
+<li>因此一般後端模組不應反覆審批 ORM 選型</li>
+</ul>
+<h3>5.5 <code>modules[]</code></h3>
+<p><code>modules</code> 為白名單集合，不接受自由字串語意發明。<br>
+此 proof 最小集合：</p>
+<ul>
+<li><code>auth</code></li>
+<li><code>shop_catalog</code></li>
+<li><code>shop_order</code></li>
+<li><code>admin_product</code></li>
+</ul>
+<h3>5.6 <code>entities[]</code></h3>
+<p>此 proof 的 N2 commerce 後端至少需要：</p>
+<ul>
+<li><code>User</code></li>
+<li><code>Category</code></li>
+<li><code>Product</code></li>
+<li><code>Order</code></li>
+<li><code>OrderItem</code></li>
+</ul>
+<h3>5.7 <code>seed</code></h3>
+<pre><code class="language-json">{
+  &quot;admin_account&quot;: true,
+  &quot;sample_products&quot;: true,
+  &quot;sample_categories&quot;: true
+}
+</code></pre>
+<h2>6. 會員商務網站實例</h2>
+<h3>6.1 <code>architecture.json</code></h3>
+<pre><code class="language-json">{
+  &quot;schema_version&quot;: 1,
+  &quot;project&quot;: {
+    &quot;id&quot;: &quot;commerce-proof&quot;,
+    &quot;name&quot;: &quot;Bricks Commerce&quot;,
+    &quot;mode&quot;: &quot;frontend_backend_bundle&quot;
+  },
+  &quot;frontend&quot;: {
+    &quot;enabled&quot;: true,
+    &quot;definition_file&quot;: &quot;frontend-definition.json&quot;
+  },
+  &quot;backend&quot;: {
+    &quot;enabled&quot;: true,
+    &quot;definition_file&quot;: &quot;backend-definition.json&quot;
+  },
+  &quot;docs&quot;: {
+    &quot;deployment&quot;: true,
+    &quot;implementation_plan&quot;: true
+  }
+}
+</code></pre>
+<h3>6.2 <code>frontend-definition.json</code></h3>
+<pre><code class="language-json">{
+  &quot;schema_version&quot;: 1,
+  &quot;app&quot;: {
+    &quot;title&quot;: &quot;Bricks Commerce&quot;,
+    &quot;subtitle&quot;: &quot;小型會員商務網站驗證&quot;,
+    &quot;shell&quot;: &quot;default_commerce_shell&quot;
+  },
+  &quot;auth&quot;: {
+    &quot;token_storage&quot;: &quot;local_storage&quot;,
+    &quot;login_route&quot;: &quot;/login&quot;,
+    &quot;logout_action&quot;: &quot;auth.logout&quot;,
+    &quot;roles&quot;: [&quot;guest&quot;, &quot;member&quot;, &quot;admin&quot;]
+  },
+  &quot;navigation&quot;: {
+    &quot;items&quot;: [
+      { &quot;label&quot;: &quot;首頁&quot;, &quot;route&quot;: &quot;/&quot;, &quot;visible_for&quot;: [&quot;guest&quot;, &quot;member&quot;, &quot;admin&quot;] },
+      { &quot;label&quot;: &quot;商品商城&quot;, &quot;route&quot;: &quot;/products&quot;, &quot;visible_for&quot;: [&quot;guest&quot;, &quot;member&quot;, &quot;admin&quot;] },
+      { &quot;label&quot;: &quot;我的訂單&quot;, &quot;route&quot;: &quot;/orders&quot;, &quot;visible_for&quot;: [&quot;member&quot;, &quot;admin&quot;] },
+      { &quot;label&quot;: &quot;後台商品&quot;, &quot;route&quot;: &quot;/admin/products&quot;, &quot;visible_for&quot;: [&quot;admin&quot;] },
+      { &quot;label&quot;: &quot;註冊&quot;, &quot;route&quot;: &quot;/register&quot;, &quot;visible_for&quot;: [&quot;guest&quot;] },
+      { &quot;label&quot;: &quot;登入&quot;, &quot;route&quot;: &quot;/login&quot;, &quot;visible_for&quot;: [&quot;guest&quot;] }
+    ]
+  },
+  &quot;shared_resources&quot;: {
+    &quot;enums&quot;: {
+      &quot;category_options&quot;: [
+        { &quot;label&quot;: &quot;Digital Goods&quot;, &quot;value&quot;: &quot;1&quot; },
+        { &quot;label&quot;: &quot;Member Services&quot;, &quot;value&quot;: &quot;2&quot; }
+      ],
+      &quot;status_options&quot;: [
+        { &quot;label&quot;: &quot;啟用&quot;, &quot;value&quot;: &quot;active&quot; },
+        { &quot;label&quot;: &quot;停用&quot;, &quot;value&quot;: &quot;inactive&quot; }
+      ]
+    },
+    &quot;messages&quot;: {
+      &quot;product_created&quot;: &quot;商品已建立&quot;,
+      &quot;order_created&quot;: &quot;訂單已建立&quot;
+    }
+  },
+  &quot;routes&quot;: [
+    {
+      &quot;path&quot;: &quot;/products&quot;,
+      &quot;page_id&quot;: &quot;shop_products&quot;,
+      &quot;page_kind&quot;: &quot;resource_list_page&quot;,
+      &quot;title&quot;: &quot;商品商城&quot;,
+      &quot;access&quot;: { &quot;roles&quot;: [&quot;guest&quot;, &quot;member&quot;, &quot;admin&quot;] },
+      &quot;data_sources&quot;: {
+        &quot;primary_list&quot;: {
+          &quot;method&quot;: &quot;GET&quot;,
+          &quot;endpoint&quot;: &quot;/shop/products&quot;
+        }
+      },
+      &quot;state&quot;: {
+        &quot;selected_item_key&quot;: &quot;selectedProductId&quot;,
+        &quot;flash_message_key&quot;: &quot;message&quot;,
+        &quot;error_message_key&quot;: &quot;error&quot;
+      },
+      &quot;surfaces&quot;: [
+        { &quot;surface_id&quot;: &quot;feedback&quot;, &quot;surface_kind&quot;: &quot;message_panel&quot; },
+        {
+          &quot;surface_id&quot;: &quot;search&quot;,
+          &quot;surface_kind&quot;: &quot;search_form&quot;,
+          &quot;fields&quot;: [
+            { &quot;name&quot;: &quot;keyword&quot;, &quot;field_type&quot;: &quot;text&quot;, &quot;label&quot;: &quot;關鍵字&quot; },
+            { &quot;name&quot;: &quot;categoryId&quot;, &quot;field_type&quot;: &quot;select&quot;, &quot;label&quot;: &quot;分類&quot;, &quot;options_ref&quot;: &quot;category_options&quot; },
+            { &quot;name&quot;: &quot;status&quot;, &quot;field_type&quot;: &quot;select&quot;, &quot;label&quot;: &quot;狀態&quot;, &quot;options_ref&quot;: &quot;status_options&quot; }
+          ]
+        },
+        {
+          &quot;surface_id&quot;: &quot;product_table&quot;,
+          &quot;surface_kind&quot;: &quot;data_table&quot;,
+          &quot;source&quot;: &quot;primary_list&quot;,
+          &quot;columns&quot;: [
+            { &quot;key&quot;: &quot;id&quot;, &quot;hidden&quot;: true },
+            { &quot;key&quot;: &quot;name&quot;, &quot;label&quot;: &quot;商品名稱&quot; },
+            { &quot;key&quot;: &quot;categoryName&quot;, &quot;label&quot;: &quot;分類&quot; },
+            { &quot;key&quot;: &quot;price&quot;, &quot;label&quot;: &quot;價格&quot;, &quot;display&quot;: &quot;currency_twd&quot; },
+            { &quot;key&quot;: &quot;stock&quot;, &quot;label&quot;: &quot;庫存&quot; },
+            { &quot;key&quot;: &quot;statusLabel&quot;, &quot;label&quot;: &quot;狀態&quot; }
+          ],
+          &quot;row_actions&quot;: [
+            { &quot;action_id&quot;: &quot;buy&quot;, &quot;label_template&quot;: &quot;購買 {name}&quot;, &quot;action_type&quot;: &quot;set_selected_record&quot; }
+          ]
+        },
+        {
+          &quot;surface_id&quot;: &quot;order_form&quot;,
+          &quot;surface_kind&quot;: &quot;embedded_action_form&quot;,
+          &quot;visible_when&quot;: { &quot;selected_item_key&quot;: &quot;selectedProductId&quot; },
+          &quot;submit&quot;: { &quot;method&quot;: &quot;POST&quot;, &quot;endpoint&quot;: &quot;/shop/orders&quot; },
+          &quot;fields&quot;: [
+            { &quot;name&quot;: &quot;quantity&quot;, &quot;field_type&quot;: &quot;number&quot;, &quot;label&quot;: &quot;數量&quot;, &quot;required&quot;: true },
+            { &quot;name&quot;: &quot;shippingAddress&quot;, &quot;field_type&quot;: &quot;text&quot;, &quot;label&quot;: &quot;收件地址&quot;, &quot;required&quot;: true },
+            { &quot;name&quot;: &quot;note&quot;, &quot;field_type&quot;: &quot;textarea&quot;, &quot;label&quot;: &quot;備註&quot; }
+          ]
+        }
+      ]
+    }
+  ]
+}
+</code></pre>
+<h3>6.3 <code>backend-definition.json</code></h3>
+<pre><code class="language-json">{
+  &quot;schema_version&quot;: 1,
+  &quot;enabled&quot;: true,
+  &quot;tier&quot;: &quot;N2&quot;,
+  &quot;template&quot;: &quot;base_n2_commerce&quot;,
+  &quot;persistence&quot;: {
+    &quot;enabled&quot;: true,
+    &quot;orm&quot;: &quot;BaseOrm&quot;,
+    &quot;database&quot;: &quot;sqlite&quot;
+  },
+  &quot;security&quot;: {
+    &quot;auth_required&quot;: true,
+    &quot;auth_mode&quot;: &quot;local_jwt&quot;,
+    &quot;role_model&quot;: [&quot;member&quot;, &quot;admin&quot;]
+  },
+  &quot;entities&quot;: [
+    &quot;User&quot;,
+    &quot;Category&quot;,
+    &quot;Product&quot;,
+    &quot;Order&quot;,
+    &quot;OrderItem&quot;
+  ],
+  &quot;modules&quot;: [
+    &quot;auth&quot;,
+    &quot;shop_catalog&quot;,
+    &quot;shop_order&quot;,
+    &quot;admin_product&quot;
+  ],
+  &quot;seed&quot;: {
+    &quot;admin_account&quot;: true,
+    &quot;sample_products&quot;: true,
+    &quot;sample_categories&quot;: true
+  }
+}
+</code></pre>
+<h2>7. 與現有 generator/runtime 的關係</h2>
+<h3>7.1 可直接沿用的部分</h3>
+<ul>
+<li><code>resource_form_page</code></li>
+<li>可映射到既有 <code>DefinitionRuntimePage</code></li>
+<li>現有元件庫的 field types</li>
+<li>metadata 正規化後的 component catalog</li>
+</ul>
+<h3>7.2 需要補強的部分</h3>
+<ul>
+<li><code>resource_list_page</code> 目前不是完整 JSON runtime page</li>
+<li>仍需要 <code>search_form + data_table + row_actions</code> 的 surface materializer</li>
+<li><code>embedded_action_form</code></li>
+<li>目前是手寫頁面邏輯，需要 JSON 化</li>
+<li><code>system_shell</code></li>
+<li>目前由 layout/page JS 寫死，需要抽成可描述的 shell contract</li>
+</ul>
+<h2>8. 不採用的方向</h2>
+<h3>8.1 不採單一 page JSON 包打天下</h3>
+<p>理由：</p>
+<ul>
+<li>proof 已顯示真實頁面是多 surface，而不是單一 form/list/detail</li>
+<li>若硬塞進單一 page type，只會把 schema 變得又亂又假</li>
+</ul>
+<h3>8.2 不採 Markdown 作 canonical source</h3>
+<p>理由：</p>
+<ul>
+<li>難以機械驗證</li>
+<li>容易漂移</li>
+<li>不適合 deterministic materialization</li>
+</ul>
+<h3>8.3 不讓 backend 走 JSON runtime render</h3>
+<p>理由：</p>
+<ul>
+<li>後端更適合 template + module composition</li>
+<li>與現有 <code>templates/spa/backend</code> 的真實能力一致</li>
+</ul>
+<h2>9. 下一步</h2>
+<p>下一步應分成三件事：</p>
+<ol>
+<li>凍結 <code>architecture.json</code> / <code>frontend-definition.json</code> / <code>backend-definition.json</code> schema</li>
+<li>寫 <code>resource_list_page</code> 與 <code>embedded_action_form</code> 的 deterministic materializer</li>
+<li>讓這次會員商務站 proof 可以直接改由這三份 JSON materialize 出來，而不是混合手寫頁面</li>
+</ol>
+<h2>10. 評價</h2>
+<p>這套 contract 的價值在於：</p>
+<ul>
+<li>它不是理想化 DSL</li>
+<li>它是從已能跑通的會員商務站 proof 反推</li>
+<li>它保留前後端非對稱模型</li>
+<li>它給未來代理一個真實可落地的結構化目標</li>
+</ul>
+<p>它目前的弱點也很清楚：</p>
+<ul>
+<li>前端 list/shell/action 還需要補 deterministic materializer</li>
+<li>現有 runtime 仍偏 form-oriented</li>
+</ul>
+<h2>Implementation Status</h2>
+<ul>
+<li><code>architecture.json</code> 已作為 proof app 的 bootstrap 入口，前端在啟動時會先載入 architecture 與 frontend definition。</li>
+<li><code>frontend-definition.json</code> 已接入 proof app 的 shell、導航、route bootstrap 與 shared resources。</li>
+<li><code>backend-definition.json</code> 已接入 backend startup，會被 materialize 後註冊進 DI，並參與 seed/bootstrap 基線。</li>
+<li>目前 proof 已驗證前後端定義檔可支撐小型會員商務網站，但 frontend <code>route + surfaces</code> 仍是 proof 導向的最小 materialization，尚未覆蓋完整通用頁型。</li>
+</ul>
+<p>但即使如此，這套 JSON contract 已比目前單純 <code>PageDefinition</code> 更接近真實網站開發需求。</p>
+</main>
+</body>
+</html>

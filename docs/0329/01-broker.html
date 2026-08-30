@@ -1,0 +1,1282 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Broker 模組分析 (03/29)</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Broker 模組分析 (03/29)</h1>
+<p>日期：2026-03-29
+類型：模組程式碼分析</p>
+<hr>
+<h2>1. 模組概述</h2>
+<p>Broker 是 Bricks4Agent 的 <strong>ASP.NET Core 8 Minimal API 主機</strong>，扮演整個平台的 <strong>控制平面（Control Plane）</strong> 角色。它不自主執行任何業務邏輯，而是作為 Policy Enforcement Point（PEP），接收來自 Agent、LINE Worker 及管理介面的請求，經過加密解密、身份驗證、策略裁決後，將已批准的請求分派至執行層。</p>
+<p>核心設計原則：</p>
+<ul>
+<li><strong>全 POST、E2E 加密</strong>：除健康檢查外，所有 API 走 ECDH + AES-256-GCM 信封加密</li>
+<li><strong>Broker 不是自主規劃者</strong>：高階模型提議，Broker 驗證並記錄</li>
+<li><strong>宣告式執行</strong>：執行層消費結構化意圖（<code>ApprovedRequest</code>），非原始對話</li>
+</ul>
+<p>專案描述（csproj）：<code>中介核心 — ASP.NET Core 8 Minimal API Host（全 POST、E2E 加密）</code></p>
+<hr>
+<h2>2. 專案結構</h2>
+<pre><code>packages/csharp/broker/
+├── Program.cs                          # 進入點（~995 行）
+├── Broker.csproj                       # 專案檔
+├── Endpoints/                          # Minimal API 端點定義（18 個檔案）
+│   ├── TaskEndpoints.cs
+│   ├── SessionEndpoints.cs
+│   ├── ExecutionEndpoints.cs
+│   ├── CapabilityEndpoints.cs
+│   ├── AdminEndpoints.cs
+│   ├── AuditEndpoints.cs
+│   ├── ContextEndpoints.cs
+│   ├── PlanEndpoints.cs
+│   ├── RuntimeEndpoints.cs
+│   ├── HighLevelEndpoints.cs
+│   ├── WorkerEndpoints.cs
+│   ├── ToolSpecEndpoints.cs
+│   ├── BrowserBindingEndpoints.cs
+│   ├── DeploymentAdminEndpoints.cs
+│   ├── GoogleDriveOAuthEndpoints.cs
+│   ├── LocalAdminEndpoints.cs
+│   ├── AgentEndpoints.cs
+│   └── ArtifactDownloadEndpoints.cs
+├── Middleware/                          # 中間件管線（4 個）
+│   ├── BodySizeLimitMiddleware.cs
+│   ├── EncryptionMiddleware.cs
+│   ├── BrokerAuthMiddleware.cs
+│   └── AuditMiddleware.cs
+├── Helpers/                            # 工具類別
+│   ├── ApiResponseHelper.cs
+│   ├── RequestBodyHelper.cs
+│   ├── Fts5Utility.cs
+│   ├── PayloadHelper.cs
+│   └── WebSearchHelper.cs
+├── Services/                           # Broker 層服務（~40+ 個檔案）
+│   ├── LineChatGateway.cs
+│   ├── HighLevelCoordinator (系列)
+│   ├── BrowserBinding / Execution 系列
+│   ├── AzureIisDeployment 系列
+│   ├── GoogleDrive 系列
+│   ├── ProjectInterview 系列
+│   ├── BrokerArtifactDownloadService.cs
+│   ├── SidecarPublicUrlResolver.cs
+│   ├── BrokerArtifactDownloadOptions.cs
+│   ├── ProjectInterviewStateMachine.cs
+│   ├── ProjectInterviewStateService.cs
+│   ├── ProjectInterviewRestatementService.cs
+│   ├── ProjectInterviewTemplateCatalogService.cs
+│   ├── ProjectInterviewProjectDefinitionCompiler.cs
+│   ├── ProjectInterviewWorkflowDesignService.cs
+│   ├── ProjectInterviewPdfRenderService.cs
+│   ├── ToolSpecRegistry.cs
+│   ├── LocalAdminAuthService.cs
+│   └── ... 等
+├── Handlers/                           # 路由處理器（IRouteHandler 實作）
+│   ├── Agent/
+│   ├── Browser/
+│   ├── ConvLog/
+│   ├── Delivery/
+│   ├── Deploy/
+│   ├── File/
+│   ├── Memory/
+│   ├── Rag/
+│   ├── Travel/
+│   └── Web/
+├── Adapters/
+│   └── InProcessDispatcher.cs          # 預設執行分派器
+├── Scripts/                            # RAG 種子腳本
+│   ├── SeedConsumerProtectionLaw.cs
+│   ├── RagIngestService.cs
+│   └── seed-consumer-protection-rag.cs
+├── wwwroot/                            # 靜態資源
+│   ├── index.html
+│   └── line-admin.html
+├── tool-specs/                         # 工具規格定義檔
+└── verify/                             # 驗證子專案（已排除主編譯）
+</code></pre>
+<hr>
+<h2>3. 進入點與啟動流程</h2>
+<p>進入點為 <code>Program.cs</code>（約 995 行），使用 ASP.NET Core 的 top-level statement 風格。啟動流程依序為：</p>
+<h3>3.1 資料庫初始化（Step 1）</h3>
+<pre><code class="language-csharp">var dbPath = builder.Configuration.GetValue&lt;string&gt;(&quot;Database:Path&quot;) ?? &quot;broker.db&quot;;
+var connectionString = $&quot;Data Source={dbPath}&quot;;
+builder.Services.AddSingleton(sp =&gt; BrokerDb.UseSqlite(connectionString));
+</code></pre>
+<p>使用 <code>BrokerDbInitializer</code> 建立 <strong>27+ 張表</strong>（含 FTS5 虛擬表）並植入種子資料（角色、能力、開發用 Principal/Task）。支援 <code>DevelopmentSeed</code> 和 <code>DashboardSeed</code> 兩組種子配置。</p>
+<h3>3.2 加密基礎建設（Step 2）</h3>
+<ul>
+<li><strong>ECDH P-256 金鑰對</strong>：可從 <code>Broker:Encryption:EcdhPrivateKeyBase64</code> 配置讀取，否則自動生成（開發模式）。類別為 <code>EnvelopeCrypto</code>（實作 <code>IEnvelopeCrypto</code>）</li>
+<li><strong>Session 金鑰存儲</strong>：<code>DbSessionKeyStore</code>（主金鑰加密），可選 <code>CacheSessionKeyStore</code>（分散式快取裝飾器）</li>
+<li><strong>分散式快取</strong>：條件式啟用 <code>CacheClient</code>，支援多節點連線池、<code>FallbackDecorator</code> 降級</li>
+</ul>
+<h3>3.3 Token / Session / Epoch（Step 3）</h3>
+<ul>
+<li><code>ScopedTokenService</code>：獨立 JWT 實作（secret、issuer、audience、expiration 可配置）</li>
+<li><code>SessionService</code>：Session 生命週期管理</li>
+<li><code>RevocationService</code> / <code>CacheRevocationService</code>：撤權服務（Epoch 機制，DB 或 Cache 後端）</li>
+</ul>
+<h3>3.4 稽核 / 能力 / 策略（Step 4-5）</h3>
+<ul>
+<li><code>AuditService</code>：稽核記錄</li>
+<li><code>CapabilityCatalog</code> / <code>CacheCapabilityCatalog</code>：能力白名單查詢（支援 Cache 裝飾）</li>
+<li><code>PolicyEngine</code>：確定性策略裁決（7 條規則），配置由 <code>PolicyEngineOptions</code> 提供</li>
+<li><code>TaskRouter</code>：任務類型 → 風險等級 / 推薦角色映射</li>
+<li><code>SchemaValidator</code>：JSON Schema 驗證</li>
+</ul>
+<h3>3.5 LLM / RAG / 嵌入服務</h3>
+<ul>
+<li><code>LlmProxyService</code>：LLM 代理（支援 Ollama / OpenAI 格式），由 <code>LlmProxyOptions</code> 配置</li>
+<li><code>EmbeddingService</code>：Ollama <code>/api/embed</code> 向量嵌入，由 <code>EmbeddingOptions</code> 配置</li>
+<li><code>RagPipelineService</code>：查詢改寫 + 重排序 + 嵌入快取</li>
+<li><code>LineChatGateway</code>：LINE 使用者對話 ↔ LLM 閘道</li>
+<li><code>HighLevelCoordinator</code>：高階協調器（LINE 訊息處理核心入口），由 <code>HighLevelCoordinatorOptions</code> 配置；現已包含 <code>/proj</code> project interview path、review version regeneration 與 user-facing bilingual prompts</li>
+<li><code>HighLevelQueryToolMediator</code>：高階查詢工具仲裁器</li>
+<li><code>HighLevelRelationQueryService</code>：關聯查詢服務</li>
+<li><code>HighLevelExecutionModelPlanner</code>：執行模型規劃器</li>
+</ul>
+<h3>3.6 執行分派器（Step 6-7）</h3>
+<p>根據 <code>FunctionPool:Enabled</code> 和 <code>FunctionPool:StrictMode</code> 配置決定分派策略：</p>
+<table>
+<thead>
+<tr>
+<th>模式</th>
+<th>類別</th>
+<th>行為</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>FunctionPool 開啟 + StrictMode</td>
+<td><code>StrictPoolDispatcher</code></td>
+<td>無 Worker 直接 fail，絕不降級</td>
+</tr>
+<tr>
+<td>FunctionPool 開啟 + 非 Strict</td>
+<td><code>FallbackDispatcher</code></td>
+<td>Pool + InProcess 降級</td>
+</tr>
+<tr>
+<td>FunctionPool 關閉</td>
+<td><code>InProcessDispatcher</code></td>
+<td>純行內處理</td>
+</tr>
+</tbody>
+</table>
+<p><code>InProcessDispatcher</code> 注入的依賴包括 <code>IProcessRunner</code>、<code>AgentSpawnService</code>、<code>BrokerDb</code>、<code>EmbeddingService</code>、<code>RagPipelineService</code>、<code>BrowserExecutionRuntimeService</code>、<code>AzureIisDeploymentExecutionService</code>、<code>GoogleDriveShareService</code>、<code>TdxApiService</code>。</p>
+<p>容器管理器（<code>IContainerManager</code>）在啟用時為 <code>ContainerManager</code>（Docker/Podman），否則為 <code>NoOpContainerManager</code>。</p>
+<h3>3.7 中間件管線（順序關鍵）</h3>
+<pre><code class="language-csharp">app.UseStaticFiles();                     // Dashboard UI（在加密之前）
+app.UseBodySizeLimit(maxBodyBytes);       // [0] 防 DoS（預設 1MB）
+app.UseEnvelopeEncryption();              // [1] ECDH+AES-GCM 信封解密/加密
+app.UseBrokerAuth();                      // [2] Scoped Token 驗證 + Epoch 閘道
+app.UseBrokerAudit();                     // [3] 稽核記錄
+</code></pre>
+<p>注意：
+- <code>UseStaticFiles()</code> 必須在加密/認證中間件之前，確保靜態資源可直接存取。
+- <code>GET /api/v1/artifacts/download/{artifactId}</code> 也會刻意繞過 broker auth 與 envelope encryption，改由 query string 的 <code>exp</code>/<code>sig</code> 簽名驗證授權。</p>
+<h3>3.8 RAG 種子 &amp; FTS5 回補</h3>
+<p>啟動後自動：
+1. 植入消費者保護法 RAG 資料（首次，<code>SeedConsumerProtectionLaw.SeedAsync()</code>）
+2. 回補缺失的向量嵌入（Embedding model 上線後，逐筆回填）
+3. 重建 FTS5 索引（CJK 分詞修正：偵測連續 CJK 字元無空格分隔時重建）</p>
+<hr>
+<h2>4. API 端點</h2>
+<p>所有業務端點均掛載於 <code>/api/v1</code> 路由群組下（<code>var api = app.MapGroup("/api/v1")</code>）。端點註冊由各 <code>*Endpoints.Map(api)</code> 靜態方法完成。</p>
+<h3>4.1 核心控制平面端點</h3>
+<h4>Health（健康檢查）</h4>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>路徑</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GET/POST</td>
+<td><code>/api/v1/health</code></td>
+<td>系統健康 + broker 公鑰</td>
+</tr>
+</tbody>
+</table>
+<h4>TaskEndpoints (<code>/api/v1/tasks/</code>)</h4>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>路徑</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>POST</td>
+<td><code>/tasks/create</code></td>
+<td>建立任務（<code>IBrokerService.CreateTask()</code>，含風險評估 + 稽核）</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/tasks/query</code></td>
+<td>查詢任務（<code>IBrokerService.GetTask()</code>）</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/tasks/cancel</code></td>
+<td>取消任務（<code>IBrokerService.CancelTask()</code>，級聯撤權）</td>
+</tr>
+</tbody>
+</table>
+<h4>SessionEndpoints (<code>/api/v1/sessions/</code>)</h4>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>路徑</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>POST</td>
+<td><code>/sessions/register</code></td>
+<td>註冊 Session（ECDH 交握 + Token 發行 + Grant 計畫 + 金鑰派生）</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/sessions/heartbeat</code></td>
+<td>Session 心跳</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/sessions/close</code></td>
+<td>關閉 Session（清除 session key）</td>
+</tr>
+</tbody>
+</table>
+<p><code>/sessions/register</code> 是整個系統的關鍵交握端點，執行完整的 Principal 驗證 → Task 狀態檢查 → 角色解析 → Session 建立 → 金鑰派生 → Grant 計畫生成 → Token 發行流程。</p>
+<h4>ExecutionEndpoints (<code>/api/v1/execution-requests/</code>)</h4>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>路徑</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>POST</td>
+<td><code>/execution-requests/submit</code></td>
+<td>提交執行請求（核心 PEP 16 步流程，<code>IBrokerService.SubmitExecutionRequestAsync()</code>）</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/execution-requests/query</code></td>
+<td>查詢執行結果</td>
+</tr>
+</tbody>
+</table>
+<h4>CapabilityEndpoints (<code>/api/v1/capabilities/</code> &amp; <code>/api/v1/grants/</code>)</h4>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>路徑</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>POST</td>
+<td><code>/capabilities/list</code></td>
+<td>列出能力白名單（支援篩選）</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/grants/list</code></td>
+<td>列出當前 principal/task/session 的所有有效授予</td>
+</tr>
+</tbody>
+</table>
+<h3>4.2 管理端點</h3>
+<h4>AdminEndpoints (<code>/api/v1/admin/</code>)</h4>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>路徑</th>
+<th>說明</th>
+<th>權限</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>POST</td>
+<td><code>/admin/kill-switch</code></td>
+<td>Epoch 遞增（所有舊 Token 即時失效）</td>
+<td>role_admin</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/admin/revoke</code></td>
+<td>撤權（Session/Grant/Token，三種 <code>RevocationTargetType</code>）</td>
+<td>role_admin</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/admin/principals/create</code></td>
+<td>註冊主體（<code>ActorType</code>: Human/AI/System）</td>
+<td>role_admin</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/admin/roles/create</code></td>
+<td>定義角色</td>
+<td>role_admin</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/admin/epoch/query</code></td>
+<td>查詢當前 Epoch</td>
+<td>任何已認證角色</td>
+</tr>
+</tbody>
+</table>
+<h4>LocalAdminEndpoints (<code>/api/v1/local-admin/</code>)</h4>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>路徑</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GET</td>
+<td><code>/local-admin/status</code></td>
+<td>管理系統狀態</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/local-admin/login</code></td>
+<td>本地密碼登入（支援首次登入改密）</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/local-admin/change-password</code></td>
+<td>修改密碼</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/local-admin/logout</code></td>
+<td>登出</td>
+</tr>
+</tbody>
+</table>
+<p>此端點群組走 <strong>plain JSON</strong>（不走加密中間件），由 <code>IsPlainJsonTrustedPath()</code> 排除。</p>
+<h4>ArtifactDownloadEndpoints (<code>/api/v1/artifacts/</code>)</h4>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>路徑</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GET</td>
+<td><code>/artifacts/download/{artifactId}?exp=...&amp;sig=...</code></td>
+<td>Public signed download endpoint，驗證 HMAC 簽名與過期時間後直接串流 artifact 檔案</td>
+</tr>
+</tbody>
+</table>
+<p>此端點群組的設計重點：
+- 不要求登入，也不走 Broker auth / E2E encryption；授權完全由 <code>BrokerArtifactDownloadService</code> 驗證 <code>artifactId + exp + sig</code>
+- 成功時回傳 <code>application/octet-stream</code>，並以安全檔名設定 <code>Content-Disposition</code>
+- 失敗時僅回 generic status code：<code>403</code>（簽名無效）、<code>410</code>（過期）、<code>404</code>（artifact 或檔案不可用）
+- 對外永遠不暴露本機 <code>DocumentsRoot</code>、<code>FilePath</code> 或其他內部實體路徑</p>
+<h3>4.3 因果工作流端點</h3>
+<h4>ContextEndpoints (<code>/api/v1/context/</code>)</h4>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>路徑</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>POST</td>
+<td><code>/context/write</code></td>
+<td>寫入 SharedContext（版本化 + ACL + content_type 限制）</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/context/read</code></td>
+<td>按 document_id 讀取最新版本</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/context/read-by-key</code></td>
+<td>按 key + taskId 讀取（node output 查詢）</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/context/list</code></td>
+<td>列出 task 下所有條目</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/context/history</code></td>
+<td>版本歷史列表</td>
+</tr>
+</tbody>
+</table>
+<h4>PlanEndpoints (<code>/api/v1/plans/</code>)</h4>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>路徑</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>POST</td>
+<td><code>/plans/create</code></td>
+<td>建立計畫（綁定 BrokerTask）</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/plans/get</code></td>
+<td>查詢計畫</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/plans/add-node</code></td>
+<td>新增 DAG 節點（含 capability_id、intent、output_context_key）</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/plans/add-edge</code></td>
+<td>新增 DAG 邊（DataFlow / ControlFlow / ApprovalGate）</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/plans/validate</code></td>
+<td>DAG 驗證（環偵測 + 拓撲排序）</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/plans/submit</code></td>
+<td>提交並執行計畫（<code>IPlanEngine.SubmitAndExecuteAsync()</code>）</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/plans/status</code></td>
+<td>完整執行狀態（plan + nodes + edges + checkpoints + summary）</td>
+</tr>
+</tbody>
+</table>
+<h3>4.4 LLM / Runtime 端點</h3>
+<h4>RuntimeEndpoints (<code>/api/v1/runtime/</code> &amp; <code>/api/v1/llm/</code>)</h4>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>路徑</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>POST</td>
+<td><code>/runtime/spec</code></td>
+<td>取得 Agent 運行時規格（provider、model、capability_ids、llm_routes）</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/llm/health</code></td>
+<td>LLM 可用性檢查</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/llm/models</code></td>
+<td>模型列表</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/llm/chat</code></td>
+<td>LLM 對話（轉發至 Ollama / OpenAI）</td>
+</tr>
+</tbody>
+</table>
+<h3>4.5 高階協調器端點</h3>
+<h4>HighLevelEndpoints (<code>/api/v1/high-level/line/</code>)</h4>
+<p>此端點群組走 <strong>plain JSON</strong>（不走加密中間件和認證中間件），用於 LINE Worker 和管理介面直接呼叫。</p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>路徑</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>POST</td>
+<td><code>/high-level/line/process</code></td>
+<td>LINE 訊息處理核心入口（<code>HighLevelCoordinator.ProcessLineMessageAsync()</code>）</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/high-level/line/profile</code></td>
+<td>查詢使用者檔案</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/high-level/line/draft</code></td>
+<td>查詢草稿</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/high-level/line/users</code></td>
+<td>列出所有 LINE 使用者</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/high-level/line/users/permissions</code></td>
+<td>設定使用者權限（query/transport/production/browser/deployment）</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/high-level/line/registration-policy</code></td>
+<td>查詢匿名註冊策略</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/high-level/line/registration-policy</code></td>
+<td>設定註冊策略</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/high-level/line/users/registration/review</code></td>
+<td>審核使用者註冊</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/high-level/line/notifications/pending</code></td>
+<td>待處理通知列表</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/high-level/line/notifications/complete</code></td>
+<td>完成通知</td>
+</tr>
+</tbody>
+</table>
+<h3>4.6 瀏覽器代理管理端點</h3>
+<h4>BrowserBindingEndpoints (<code>/api/v1/browser-admin/</code>)</h4>
+<p>全部需要 <code>role_admin</code> 授權。管理瀏覽器站點綁定（<code>BrowserSiteBinding</code>）、使用者授權（<code>BrowserUserGrant</code>）、系統綁定（<code>BrowserSystemBinding</code>）、Session 租約（<code>BrowserSessionLease</code>）。</p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>路徑</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>POST</td>
+<td><code>/browser-admin/site-bindings/list\|get\|upsert</code></td>
+<td>站點綁定 CRUD</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/browser-admin/user-grants/list\|get\|upsert</code></td>
+<td>使用者授權 CRUD</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/browser-admin/system-bindings/list\|get\|upsert</code></td>
+<td>系統綁定 CRUD</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/browser-admin/leases/list\|get\|issue\|revoke</code></td>
+<td>租約管理</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/browser-admin/requests/build</code></td>
+<td>建構瀏覽器執行請求（<code>IBrowserExecutionRequestBuilder.TryBuild()</code>）</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/browser-admin/requests/preview-fetch</code></td>
+<td>預覽匿名抓取（<code>BrowserExecutionPreviewService.ExecuteAnonymousReadAsync()</code>）</td>
+</tr>
+</tbody>
+</table>
+<h3>4.7 部署管理端點</h3>
+<h4>DeploymentAdminEndpoints (<code>/api/v1/deployment-admin/</code>)</h4>
+<p>全部需要 <code>role_admin</code> 授權。管理 Azure VM IIS 部署目標。</p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>路徑</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>POST</td>
+<td><code>/deployment-admin/targets/list\|get\|upsert</code></td>
+<td>部署目標 CRUD</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/deployment-admin/requests/build</code></td>
+<td>建構部署請求（<code>IAzureIisDeploymentRequestBuilder.TryBuild()</code>）</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/deployment-admin/requests/preview</code></td>
+<td>部署預覽</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/deployment-admin/requests/execute</code></td>
+<td>執行部署（支援 dry_run）</td>
+</tr>
+</tbody>
+</table>
+<h3>4.8 其他端點</h3>
+<h4>ToolSpecEndpoints (<code>/api/v1/tool-specs/</code>)</h4>
+<p>走 plain JSON，用於查詢工具規格定義。</p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>路徑</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>POST</td>
+<td><code>/tool-specs/list</code></td>
+<td>工具規格列表（支援篩選）</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/tool-specs/get</code></td>
+<td>取得特定工具規格</td>
+</tr>
+</tbody>
+</table>
+<h4>AgentEndpoints (<code>/api/v1/agents/</code>)</h4>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>路徑</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>POST</td>
+<td><code>/agents/capabilities</code></td>
+<td>可用能力清單（含風險等級、分類）</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/agents/capabilities/defaults</code></td>
+<td>預設低風險能力集合</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/agents/create</code></td>
+<td>建立 Agent（Principal + Task + Grants，最低權限策略）</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/agents/spawn</code></td>
+<td>生成 Agent 容器（Docker/Podman）</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/agents/list</code></td>
+<td>列出 Agent</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/agents/stop</code></td>
+<td>停止 Agent（停用 DB 紀錄 + 停止容器）</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/agents/rag/seed-consumer-law</code></td>
+<td>消費者保護法 RAG 種子</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/agents/rag/import-json</code></td>
+<td>RAG JSON 匯入</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/agents/rag/import-csv</code></td>
+<td>RAG CSV 匯入</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/agents/rag/import-web</code></td>
+<td>RAG 網路搜尋匯入</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/agents/rag/test</code></td>
+<td>RAG 測試查詢（BM25 + 向量 + RRF）</td>
+</tr>
+</tbody>
+</table>
+<h4>GoogleDriveOAuthEndpoints (<code>/api/v1/google-drive/oauth/</code>)</h4>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>路徑</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GET</td>
+<td><code>/google-drive/oauth/callback</code></td>
+<td>OAuth 回呼（僅 loopback IP 可存取）</td>
+</tr>
+</tbody>
+</table>
+<h4>WorkerEndpoints (<code>/api/v1/workers/</code> — 條件式啟用)</h4>
+<p>僅在 <code>FunctionPool:Enabled=true</code> 時註冊。</p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>路徑</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GET</td>
+<td><code>/workers/</code></td>
+<td>列出已註冊 Worker（含狀態、能力、負載）</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/workers/spawn</code></td>
+<td>生成 Worker 容器</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/workers/stop</code></td>
+<td>停止 Worker 容器</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/workers/containers</code></td>
+<td>列出受管容器</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/workers/logs</code></td>
+<td>取得容器日誌</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/workers/health</code></td>
+<td>池健康摘要</td>
+</tr>
+</tbody>
+</table>
+<h3>4.9 開發端點 (<code>/dev/</code>)</h3>
+<p>不走加密/認證中間件，由 <code>EncryptionMiddleware</code> 和 <code>BrokerAuthMiddleware</code> 的排除邏輯（<code>path.StartsWith("/dev/")</code>）放行。</p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>路徑</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>POST</td>
+<td><code>/dev/line-chat</code></td>
+<td>LINE 對話測試</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/dev/conversations</code></td>
+<td>對話列表</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/dev/conversations/{userId}</code></td>
+<td>使用者對話歷史</td>
+</tr>
+<tr>
+<td>DELETE</td>
+<td><code>/dev/conversations/{userId}</code></td>
+<td>清除對話</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/dev/system/status</code></td>
+<td>系統狀態（LLM/Embedding/RAG/DB 統計）</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/dev/rag-test</code></td>
+<td>RAG 查詢測試</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/dev/rag-import-json</code></td>
+<td>RAG JSON 匯入</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/dev/rag-import-csv</code></td>
+<td>RAG CSV 匯入</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/dev/rag-import-web</code></td>
+<td>RAG 網路匯入</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>5. 中間件詳解</h2>
+<h3>5.1 BodySizeLimitMiddleware</h3>
+<ul>
+<li>檔案：<code>Middleware/BodySizeLimitMiddleware.cs</code></li>
+<li>管線位置：最外層</li>
+<li>預設限制：1 MB（<code>Broker:MaxRequestBodyBytes</code>）</li>
+<li>機制：先檢查 <code>Content-Length</code> header（快速拒絕），再設定 Kestrel <code>IHttpMaxRequestBodySizeFeature.MaxRequestBodySize</code></li>
+<li>擴展方法：<code>app.UseBodySizeLimit(maxBodyBytes)</code></li>
+</ul>
+<h3>5.2 EncryptionMiddleware</h3>
+<ul>
+<li>檔案：<code>Middleware/EncryptionMiddleware.cs</code></li>
+<li>管線位置：加密層</li>
+<li>雙模式：</li>
+<li><strong>初始交握</strong>：<code>client_ephemeral_pub</code> + 無 <code>session_id</code> → <code>IEnvelopeCrypto.DecryptHandshake()</code> → 解密</li>
+<li><strong>已建立 Session</strong>：<code>session_id</code> + <code>seq</code> → <code>ISessionKeyStore.Retrieve()</code> → <code>TryAdvanceSeq()</code> replay 防護 → <code>IEnvelopeCrypto.Decrypt()</code> AES-GCM 解密</li>
+<li>AAD 格式：<code>req:{session_id}{seq}{path}</code>（H-1 修復：方向標記防混淆）</li>
+<li>回應加密：攔截 response body → 同 session_key 加密回寫（AAD = <code>resp:{session_id}{seq}{path}</code>）</li>
+<li>初始交握回應額外包含明文 <code>session_id</code>（供客戶端先讀取再派生金鑰解密）</li>
+<li>排除路徑：<code>/api/v1/health</code>、<code>/dev/*</code>、<code>/api/v1/high-level/line/*</code>、<code>/api/v1/tool-specs/*</code>、<code>/api/v1/local-admin/*</code></li>
+<li>縱深防禦：額外檢查 encrypted body 不超 2MB（即使上游已有 BodySizeLimitMiddleware）</li>
+<li>擴展方法：<code>app.UseEnvelopeEncryption()</code></li>
+</ul>
+<h3>5.3 BrokerAuthMiddleware</h3>
+<ul>
+<li>檔案：<code>Middleware/BrokerAuthMiddleware.cs</code></li>
+<li>管線位置：認證層（在 Encryption 之後）</li>
+<li>驗證流程：
+  1. 從解密 body 的 <code>scoped_token</code> 欄位或 <code>Authorization: Bearer</code> header 取得 Token
+  2. <code>IScopedTokenService.ValidateToken()</code> 驗證簽章 + 時效
+  3. Epoch 閘道：<code>token.epoch &lt; current_epoch</code> → 401
+  4. 撤銷檢查：<code>IRevocationService.IsRevoked(jti)</code> + <code>IsRevoked(sessionId)</code>
+  5. 注入 claims 至 <code>HttpContext.Items</code>（鍵名：<code>broker_claims</code>、<code>broker_principal_id</code>、<code>broker_task_id</code>、<code>broker_session_id</code>、<code>broker_role_id</code>、<code>broker_epoch</code>）</li>
+<li>排除路徑：<code>/api/v1/health</code>、<code>/api/v1/sessions/register</code>、<code>/api/v1/high-level/line/*</code>、<code>/api/v1/tool-specs/*</code>、<code>/api/v1/local-admin/*</code>、<code>/dev/*</code>、非 POST 請求</li>
+<li>擴展方法：<code>app.UseBrokerAuth()</code></li>
+</ul>
+<h3>5.4 AuditMiddleware</h3>
+<ul>
+<li>檔案：<code>Middleware/AuditMiddleware.cs</code></li>
+<li>管線位置：最內層（在 Auth 之後）</li>
+<li>每次 API 呼叫記錄兩筆 <code>AuditEvent</code>：<code>API_REQUEST</code>（含 method、path、content_length）和 <code>API_RESPONSE</code>（含 status_code、path）</li>
+<li>trace_id 串聯整個請求生命週期（<code>Activity.Current?.Id</code> 或自動生成 GUID）</li>
+<li>稽核失敗不阻斷業務流程（catch + LogError）</li>
+<li>擴展方法：<code>app.UseBrokerAudit()</code></li>
+</ul>
+<hr>
+<h2>6. 靜態資源</h2>
+<p><code>wwwroot/</code> 目錄透過 <code>app.UseStaticFiles()</code> 提供，位於加密中間件之前（無需加密）：</p>
+<ul>
+<li><code>index.html</code>：Dashboard 首頁</li>
+<li><code>line-admin.html</code>：LINE 管理介面（單一 HTML 檔案，vanilla JS，呼叫 <code>/api/v1/local-admin/*</code> 端點，走 plain JSON — 由 <code>EncryptionMiddleware</code> 和 <code>BrokerAuthMiddleware</code> 明確排除，不經加密/認證中間件）</li>
+</ul>
+<p>已硬編碼封鎖（直接回傳 404）的路徑：
+- <code>/dev/admin</code>
+- <code>/dev/line-users</code></p>
+<hr>
+<h2>7. 設定與組態</h2>
+<p>Broker 透過 ASP.NET Core 的 <code>IConfiguration</code> 讀取配置（支援 appsettings.json / 環境變數等），主要配置區段：</p>
+<table>
+<thead>
+<tr>
+<th>區段</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Database:Path</code></td>
+<td>SQLite 路徑（預設 <code>broker.db</code>）</td>
+</tr>
+<tr>
+<td><code>Broker:Encryption:EcdhPrivateKeyBase64</code></td>
+<td>ECDH 私鑰（production 必設）</td>
+</tr>
+<tr>
+<td><code>Broker:Encryption:MasterKeyBase64</code></td>
+<td>Session 金鑰主加密金鑰</td>
+</tr>
+<tr>
+<td><code>Broker:ScopedToken:Secret\|Issuer\|Audience\|ExpirationMinutes</code></td>
+<td>Token 簽署配置</td>
+</tr>
+<tr>
+<td><code>Broker:MaxRequestBodyBytes</code></td>
+<td>最大請求 body（預設 1,048,576 = 1MB）</td>
+</tr>
+<tr>
+<td><code>CacheCluster:Enabled\|Nodes\|PoolSize\|ConnectTimeoutSeconds\|OperationTimeoutSeconds</code></td>
+<td>分散式快取</td>
+</tr>
+<tr>
+<td><code>PolicyEngine:*</code></td>
+<td>策略引擎選項（黑名單、禁止路徑前綴等）</td>
+</tr>
+<tr>
+<td><code>LlmProxy:Enabled\|BaseUrl\|Provider\|DefaultModel\|ApiKey\|ApiFormat\|TimeoutSeconds</code></td>
+<td>LLM 代理</td>
+</tr>
+<tr>
+<td><code>HighLevelLlm:BaseUrl\|Provider\|DefaultModel\|ApiKey\|TimeoutSeconds</code></td>
+<td>高階 LLM 配置</td>
+</tr>
+<tr>
+<td><code>HighLevelCoordinator:DraftTtlMinutes\|MaxDraftSummaryLength</code></td>
+<td>高階協調器</td>
+</tr>
+<tr>
+<td><code>HighLevelExecutionModelPolicy:*</code></td>
+<td>高階執行模型策略</td>
+</tr>
+<tr>
+<td><code>LineChatGateway:Enabled\|RagEnabled</code></td>
+<td>LINE 閘道</td>
+</tr>
+<tr>
+<td><code>Embedding:Enabled\|Model\|BaseUrl\|Dimension\|TimeoutSeconds</code></td>
+<td>嵌入服務</td>
+</tr>
+<tr>
+<td><code>RagPipeline:QueryRewriteEnabled\|RerankEnabled\|CacheEnabled\|OllamaBaseUrl</code></td>
+<td>RAG 管線</td>
+</tr>
+<tr>
+<td><code>FunctionPool:Enabled\|StrictMode\|ListenPort\|BindAddress\|DispatchTimeoutSeconds\|MaxRetries\|MaxWorkers</code></td>
+<td>功能池</td>
+</tr>
+<tr>
+<td><code>FunctionPool:ContainerManager:Enabled\|Runtime\|NetworkName\|WorkerImages</code></td>
+<td>容器管理</td>
+</tr>
+<tr>
+<td><code>ToolSpecRegistry:Root</code></td>
+<td>工具規格根路徑</td>
+</tr>
+<tr>
+<td><code>DeploymentSecrets:*</code></td>
+<td>部署密鑰解析</td>
+</tr>
+<tr>
+<td><code>GoogleDriveDelivery:*</code></td>
+<td>Google Drive 交付配置</td>
+</tr>
+<tr>
+<td><code>ArtifactDownload:SigningSecret\|LinkTtlMinutes\|AllowRepeatedDownloads\|SidecarLastTunnelUrlPath</code></td>
+<td>Broker 簽名下載連結配置</td>
+</tr>
+<tr>
+<td><code>Tdx:*</code></td>
+<td>TDX 交通資料配置（API key 等）</td>
+</tr>
+<tr>
+<td><code>DevelopmentSeed:*</code></td>
+<td>開發種子資料</td>
+</tr>
+<tr>
+<td><code>DashboardSeed:*</code></td>
+<td>Dashboard 種子資料</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>8. 相依性</h2>
+<h3>專案參考</h3>
+<table>
+<thead>
+<tr>
+<th>專案</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>broker-core</code> (<code>BrokerCore.csproj</code>)</td>
+<td>核心領域邏輯（純領域層，無 HTTP 依賴）</td>
+</tr>
+<tr>
+<td><code>function-pool</code> (<code>FunctionPool.csproj</code>)</td>
+<td>功能池（Worker 註冊/分派/容器管理）</td>
+</tr>
+<tr>
+<td><code>security/RateLimiting</code> (<code>RateLimiting.csproj</code>)</td>
+<td>限流模組</td>
+</tr>
+<tr>
+<td><code>logging/BaseLogger</code> (<code>BaseLogger.csproj</code>)</td>
+<td>日誌模組</td>
+</tr>
+</tbody>
+</table>
+<h3>NuGet 套件</h3>
+<table>
+<thead>
+<tr>
+<th>套件</th>
+<th>版本</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Microsoft.AspNetCore.Authentication.JwtBearer</code></td>
+<td>8.0.0</td>
+</tr>
+</tbody>
+</table>
+<h3>內部可見性</h3>
+<p><code>InternalsVisibleTo</code> 開放給 <code>Broker.Tests</code>（測試專案）。</p>
+<hr>
+<h2>9. Handlers（路由處理器）</h2>
+<p>Broker 的 <code>Handlers/</code> 目錄實作了 <code>IRouteHandler</code> 介面（定義於 broker-core），每個處理器負責處理一個特定的 route，由 <code>InProcessDispatcher</code> 的 handler registry 查找並呼叫。</p>
+<table>
+<thead>
+<tr>
+<th>分類</th>
+<th>處理器</th>
+<th>路由</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>File</strong></td>
+<td><code>ReadFileHandler</code></td>
+<td><code>read_file</code></td>
+</tr>
+<tr>
+<td></td>
+<td><code>ListDirectoryHandler</code></td>
+<td><code>list_directory</code></td>
+</tr>
+<tr>
+<td></td>
+<td><code>SearchFilesHandler</code></td>
+<td><code>search_files</code></td>
+</tr>
+<tr>
+<td></td>
+<td><code>SearchContentHandler</code></td>
+<td><code>search_content</code></td>
+</tr>
+<tr>
+<td><strong>Memory</strong></td>
+<td><code>MemoryStoreHandler</code></td>
+<td><code>memory_store</code></td>
+</tr>
+<tr>
+<td></td>
+<td><code>MemoryRetrieveHandler</code></td>
+<td><code>memory_retrieve</code></td>
+</tr>
+<tr>
+<td></td>
+<td><code>MemoryDeleteHandler</code></td>
+<td><code>memory_delete</code></td>
+</tr>
+<tr>
+<td></td>
+<td><code>MemoryFulltextSearchHandler</code></td>
+<td><code>memory_fulltext_search</code></td>
+</tr>
+<tr>
+<td></td>
+<td><code>MemorySemanticSearchHandler</code></td>
+<td><code>memory_semantic_search</code></td>
+</tr>
+<tr>
+<td><strong>RAG</strong></td>
+<td><code>RagRetrieveHandler</code></td>
+<td><code>rag_retrieve</code></td>
+</tr>
+<tr>
+<td></td>
+<td><code>RagImportHandler</code></td>
+<td><code>rag_import</code></td>
+</tr>
+<tr>
+<td></td>
+<td><code>RagImportWebHandler</code></td>
+<td><code>rag_import_web</code></td>
+</tr>
+<tr>
+<td><strong>Web</strong></td>
+<td><code>WebSearchHandler</code></td>
+<td><code>web_search</code></td>
+</tr>
+<tr>
+<td></td>
+<td><code>WebSearchGoogleHandler</code></td>
+<td><code>web_search_google</code></td>
+</tr>
+<tr>
+<td></td>
+<td><code>WebSearchDuckDuckGoHandler</code></td>
+<td><code>web_search_duckduckgo</code></td>
+</tr>
+<tr>
+<td></td>
+<td><code>WikipediaSearchHandler</code></td>
+<td><code>wikipedia_search</code></td>
+</tr>
+<tr>
+<td></td>
+<td><code>WebFetchHandler</code></td>
+<td><code>web_fetch</code></td>
+</tr>
+<tr>
+<td><strong>ConvLog</strong></td>
+<td><code>ConvLogAppendHandler</code></td>
+<td><code>conv_log_append</code></td>
+</tr>
+<tr>
+<td></td>
+<td><code>ConvLogReadHandler</code></td>
+<td><code>conv_log_read</code></td>
+</tr>
+<tr>
+<td><strong>Agent</strong></td>
+<td><code>CreateAgentHandler</code></td>
+<td><code>create_agent</code></td>
+</tr>
+<tr>
+<td></td>
+<td><code>ListAgentsHandler</code></td>
+<td><code>list_agents</code></td>
+</tr>
+<tr>
+<td></td>
+<td><code>StopAgentHandler</code></td>
+<td><code>stop_agent</code></td>
+</tr>
+<tr>
+<td><strong>Browser</strong></td>
+<td><code>BrowserReadHandler</code></td>
+<td>瀏覽器讀取操作</td>
+</tr>
+<tr>
+<td><strong>Deploy</strong></td>
+<td><code>DeployAzureIisHandler</code></td>
+<td>Azure IIS 部署</td>
+</tr>
+<tr>
+<td><strong>Delivery</strong></td>
+<td><code>DeliveryGoogleDriveShareHandler</code></td>
+<td>Google Drive 分享</td>
+</tr>
+<tr>
+<td><strong>Travel</strong></td>
+<td><code>TravelRailSearchHandler</code></td>
+<td>台鐵查詢</td>
+</tr>
+<tr>
+<td></td>
+<td><code>TravelHsrSearchHandler</code></td>
+<td>高鐵查詢</td>
+</tr>
+<tr>
+<td></td>
+<td><code>TravelBusSearchHandler</code></td>
+<td>公車查詢</td>
+</tr>
+<tr>
+<td></td>
+<td><code>TravelFlightSearchHandler</code></td>
+<td>航班查詢</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>10. 目前狀態與成熟度</h2>
+<h3>已完成功能</h3>
+<ul>
+<li><strong>核心 PEP 管線</strong>：完整的 16 步裁決流程，含冪等性（<code>idempotency_key</code> + unique index）、Epoch 閘道、配額管理、稽核追蹤</li>
+<li><strong>E2E 加密</strong>：ECDH P-256 + AES-256-GCM 信封加密，含 replay 防護（序列號遞增）、方向標記 AAD</li>
+<li><strong>因果工作流</strong>：Plan/Node/Edge DAG 排程引擎，含 DataFlow/ControlFlow/ApprovalGate 邊類型</li>
+<li><strong>RAG 管線</strong>：BM25（SQLite FTS5）+ 向量語意搜尋（Ollama embed）+ RRF 融合 + LLM 查詢改寫 + 重排序</li>
+<li><strong>多通道整合</strong>：LINE 高階協調器、瀏覽器代理、Azure IIS 部署、Google Drive 交付、TDX 交通查詢</li>
+<li><strong>管理介面</strong>：本地認證（<code>LocalAdminAuthService</code>）+ Dashboard HTML 管理頁面 + LINE 使用者管理</li>
+<li><strong>Agent 生命週期</strong>：建立 → 選擇能力 → 生成容器 → 停止，含最低權限策略</li>
+<li><strong>分散式快取</strong>：條件式 CacheClient 裝飾器（Session key、Revocation、Capability）</li>
+</ul>
+<h3>待完成項目（TODO / Phase 5）</h3>
+<ul>
+<li><code>ExceptionMiddleware</code>：全域例外中間件（Program.cs 第 507 行標記 <code>TODO: Phase 5</code>）</li>
+<li><code>IpRateLimiter</code>：IP 限流中間件（Program.cs 第 508 行標記 <code>TODO: Phase 5</code>）</li>
+<li>Plan DAG 同級並行執行（目前 Phase 4 為循序）</li>
+<li>PEP bypass 消除：<code>HighLevelQueryToolMediator</code> 的 <code>EXC-HLQM-BYPASS</code>（<code>PipelineExceptions</code> 登記，待 Phase 2 消除）</li>
+</ul>
+<h3>程式碼品質標記</h3>
+<p>程式碼中有系統化的修復標記，反映逐步改善的過程：</p>
+<ul>
+<li><strong>M 系列（功能修復）</strong>：<code>M-1</code>（必填欄位驗證）、<code>M-2</code>（PolicyEngine 黑名單配置化）、<code>M-3</code>（金鑰不記錄至 log）、<code>M-5</code>（StreamReader dispose）、<code>M-7</code>（消除冗餘 LoggerFactory）、<code>M-8</code>（RequestAborted 取消令牌）、<code>M-10</code>（統一回應格式）</li>
+<li><strong>H 系列（安全/效能修復）</strong>：<code>H-1</code>（AAD 方向標記）、<code>H-3</code>（消除 sync-over-async）、<code>H-6</code>（版本 race condition 修復）、<code>H-10</code>（Body 大小限制防 DoS）</li>
+<li><strong>L 系列（生命週期修復）</strong>：<code>L-1</code>（ID 格式統一）、<code>L-5</code>（縱深防禦）、<code>L-7</code>（健康檢查 GET 支援）、<code>L-8</code>（shutdown 超時保護）</li>
+</ul>
+</main>
+</body>
+</html>

@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SimpleDialog</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>SimpleDialog</h1>
+<p>輕量級通用對話框，提供非阻塞的 alert / confirm / prompt 功能，取代原生 <code>window.alert</code> 等。</p>
+<h2>API</h2>
+<p>SimpleDialog 僅提供靜態方法，無需實例化。</p>
+<h3>靜態方法</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>回傳</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>SimpleDialog.alert(message, container?)</code></td>
+<td><code>Promise&lt;true&gt;</code></td>
+<td>提示訊息對話框</td>
+</tr>
+<tr>
+<td><code>SimpleDialog.confirm(message, container?)</code></td>
+<td><code>Promise&lt;boolean&gt;</code></td>
+<td>確認對話框，確定回傳 <code>true</code>，取消回傳 <code>false</code></td>
+</tr>
+<tr>
+<td><code>SimpleDialog.prompt(message, defaultValue?, container?)</code></td>
+<td><code>Promise&lt;string|null&gt;</code></td>
+<td>輸入對話框，確定回傳輸入值，取消回傳 <code>null</code></td>
+</tr>
+</tbody>
+</table>
+<h3>參數說明</h3>
+<table>
+<thead>
+<tr>
+<th>參數</th>
+<th>型別</th>
+<th>預設值</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>message</code></td>
+<td><code>string</code></td>
+<td>—</td>
+<td>訊息/提示文字</td>
+</tr>
+<tr>
+<td><code>defaultValue</code></td>
+<td><code>string</code></td>
+<td><code>''</code></td>
+<td>prompt 預設值</td>
+</tr>
+<tr>
+<td><code>container</code></td>
+<td><code>HTMLElement</code></td>
+<td><code>document.body</code></td>
+<td>掛載容器（對話框使用 fixed 定位，此參數保留）</td>
+</tr>
+</tbody>
+</table>
+<h3>特性</h3>
+<ul>
+<li>所有方法回傳 <code>Promise</code>，支援 <code>await</code></li>
+<li>內建進場/退場動畫</li>
+<li>prompt 支援 Enter 確認、Escape 取消</li>
+<li>自動 focus 輸入框</li>
+</ul>
+<h2>使用範例</h2>
+<pre><code class="language-js">import { SimpleDialog } from './SimpleDialog.js';
+
+// Alert
+await SimpleDialog.alert('操作完成！');
+
+// Confirm
+const ok = await SimpleDialog.confirm('確定要刪除嗎？');
+if (ok) { /* 執行刪除 */ }
+
+// Prompt
+const name = await SimpleDialog.prompt('請輸入名稱', '預設值');
+if (name !== null) { /* 使用 name */ }
+</code></pre>
+<h2>Demo</h2>
+<p>開啟 <code>demo.html</code> 直接在瀏覽器測試。</p>
+</main>
+</body>
+</html>

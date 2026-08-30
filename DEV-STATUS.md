@@ -84,13 +84,21 @@ node tools/scripts/form-application-studio-smoke.mjs --require-browser # 17 項(
 ## 2. 必須內化的架構事實
 
 - **catalog 116 元件**,權威來源=`ui_components/metadata/component-catalog.json`;元件契約 `new X(options)` → `.mount(el)` → `.destroy()`(個別元件用 `render`,harness 已示範相容處理)。
+
 - **CSP 守門員** `tools/scripts/audit-csp.mjs`:七類全部硬零(A `<style>` 注入/B setAttribute('style')/C innerHTML 模板 `style=`/D 模板 `on*=`/E eval/F `javascript:`/G SVG)。`tools/scripts/svg-baseline.json` 已為空物件,只保留盤點快照語意,**不能豁免 G 類命中**;`test-audit-csp-hard-zero.mjs` 會把單一命中寫進 baseline 再確認 audit 仍 exit 1 並於 finally 還原/清理。**合規宣稱只認機器判定。**
+
 - **樣式作法**:CSSOM(`cssText`/`setProperty`)為主;hover/focus 用事件;偽元素/@media/大量子孫選擇器 → 同目錄 `.css` + 同源 `<link>` 注入(注意 inline CSSOM 蓋樣式表,@media 覆蓋需 `!important`)。
+
 - **Canvas 體系**:`CanvasChart` 提供 DPR 背景儲存/ResizeObserver/ThemeBus 重繪/hit-region(rect/circle/Path2D,`isPointInPath` 要乘 dpr)/DOM tooltip(textContent)/`exportPNG(scale)`/`niceTicks/fmt/ellipsis/wrapText` 排版輔助。子類契約=實作 `draw(ctx,w,h)` + `addRegion()` + 選配 `getTooltip(data)`。**點擊回拋走 `options.onPointClick`——基底不會自動呼叫你的 `_handleClick`,要嘛建構子裡預設接線、要嘛自己 addEventListener(波 2 曾因此出過死代碼 bug)。**
+
 - **`ModalPanel.alert()` 只認 `message` 字串**;要放 DOM 內容:取回傳的 modal,把 message `<p>` `replaceWith(node)`(TimelineChart/FlameChart 有現成範例)。
+
 - **色彩**:單一來源=`editor/richtext-palette.js` 的 MATERIAL(16 色相;**這份 palette 無 deep-purple/light-blue,有 blue-grey/grey**——注意 theme.css 另有歷史語意 token 如 `--cl-deep-purple`,兩者是不同層,別混為一談)→ `ui_components/editor/gen-palette-css.mjs` 產 palette.css → theme.css 引用。程式取色用 `utils/color-scale.js`(sequential/diverging/categorical/hierarchical)。Canvas 內色回退一律 `FALLBACK_PAINT`(theme-bus 匯出),**元件內禁散裝 hex**;亮度對比遮罩四常數(`#00000099/#ffffffcc/#000000aa/#ffffffdd`)已在稽核 allow 名單。
+
 - **vendor/ 豁免一切庫規範**(CSP/風格/裸 import 掃描都跳過):Leaflet 1.9.4 + html2canvas,本地優先、缺檔才退 CDN。
+
 - **聚合**:`utils/aggregation-engine.js` 白名單 fail-closed;**時間聚合先按日期排序再分組**(民國標籤字典序不可靠)。
+
 - **新元件流程**:三件套(`<Name>.js`+`index.js`+`<Name>.manifest.json`)→ 類別 barrel export → 需要的話進 ComponentFactory → `node ui_components/metadata/build-metadata.mjs`。**新「分類」要動兩處白名單**:`metadata/introspection.js` SEARCH_CATEGORIES + `metadata/manifest-schema.js` 分類枚舉。
 
 ---
@@ -133,27 +141,41 @@ node tools/scripts/form-application-studio-smoke.mjs --require-browser # 17 項(
 ### 4.1 最新追加：JSON 客製元件系統
 
 - 權威契約：[CUSTOM-COMPONENTS.md](CUSTOM-COMPONENTS.md)；定義放 `packages/javascript/browser/custom_components/definitions/*.json`。
+
 - `build-registry.mjs` 會驗證 path/symlink/名稱碰撞/引用/cycle/kind，產生 deterministic `registry.json`；瀏覽器不直接列舉資料夾。
+
 - `CustomComponentRegistry` 採整批原子註冊與全圖重驗證，具 ownership-aware `dispose()`，預設可接 ComponentFactory；`CustomComponentRenderer` 負責 group/leaf/custom 遞迴、值 round-trip、runtime unsafe option 過濾與反序 destroy。
+
 - `DynamicPageRenderer` 可用 `customComponents: { definitions, folder }` 在 async init 先全數取得、再單次註冊並接 FieldResolver；自建 registry 不污染全域 factory。SPA `DefinitionRuntimePage` 僅從可信 class/constructor options 取得來源，不信任頁面 JSON；目前自動接線為 dynamic form，靜態產碼不會自動打包 JSON folder。
+
 - Studio 主入口：`tools/theme-studio/index.html`；「樣式客製」與「元件組合」共用 `tools/theme-studio/studio.page.json`、同一個 `DynamicToolRenderer` 與同一份 DOM。兩側均有 JSON-native 頁內說明與正式 `Link` 往返；組合頁另列三層規則、definitions 路徑與驗收指令。`tools/custom-component-studio/index.html` 僅為導向第二頁籤的相容 URL。
+
 - 新增驗收：definition/runtime 14/14；Adapter/FieldResolver/SPA targeted integration 30/30；真實 Edge E2E 13/13（含下載 JSON、拒絕錯誤副檔名/破損/危險/超限匯入、匯入 template、factory lifecycle、值 round-trip、dynamic form、CSP/SVG=0）。
 
 ### 4.2 Studio JSON 自舉
 
 - 新增 `ToolPageDefinition`：純 JSON 僅允許 `group/component/tabs/slot`、safe state path 與 allowlisted event；函式/getter/raw HTML/prototype key/未知 command/component 全部 fail closed。
+
 - 新增 `DynamicToolRenderer`，並接進 `DynamicPageRenderer` tool mode 與 `PageGenerator.generate(type:'tool')` 靜態 wrapper。狀態更新只觸及重疊 bindings；setter 缺失只替換單一 component；內部控制重畫後 provenance 同步更新。
+
 - Studio chrome 全由正式 ComponentFactory 元件建立。`List`/`TreeList` 補 action/active/data API，`UploadButton` 補 stable input id，`NumberInput.setValue()` 預設不回觸 onChange，作為自舉所需的正式元件能力。
+
 - Theme 匯入會先把 token、catalog component、單一 class 與 CSS value 完整驗證到暫存快照，全部通過才一次套用；拒絕 selector/declaration/URL 注入且失敗不留下部分狀態。`customCss()` 匯出前再做防禦性驗證。
+
 - 機器證據：Tool/page-generator Vitest 7 files 63/63；Studio static/fresh-Edge self-host 19/19；Theme 18/18；頁內說明、正式 Link 同頁導覽、跨頁籤、雙 JSON round-trip、匯入原子性與防禦性匯出 16/16；Custom runtime/browser 13/13；全部維持 CSP/SVG hard-zero。
 
 ### 4.3 Form Application Studio
 
 - 核心契約位於 `packages/javascript/browser/form-application/`：嚴格驗證 schema、provider、欄位與 CRUD allowlist，生成 normalized definition、design JSON、PageDefinition、provider SQL/rollback、.NET 10 Model/Service/Endpoints/bootstrap 與整合說明。
+
 - 正式 `layout/FormDesigner` 提供 schema 欄位清單、改欄位/顯示名、切換輸入元件、增刪欄位，以及 12 欄畫布的滑鼠/鍵盤拖拉與縮放；已註冊 `ComponentFactory` 並納入 catalog。
+
 - 工具入口 `tools/form-application-studio/index.html`；唯一頁面定義為 `studio.page.json`，由 `DynamicPageRenderer(tool)` 產生，沒有另刻一套工具 UI。
+
 - 連線政策：空白或缺少連線字串一律落到本地 SQLite `data/<application_id>.db`；外部 provider 必須明確指定且提供非空連線字串。secret 只存 controller 記憶體，預設不進 definition/design/bundle；只有使用者明確勾選才進 `backend/appsettings.Development.json`。
+
 - Studio/CLI 只預覽與生成，絕不連線或套用 SQL。實際資料庫變更仍須先確認資料表、目標欄位、來源、寫入規則、例外處理與 rollback/驗證計畫。
+
 - 驗證證據（2026-07-23，平台遷移前）：核心 11/11、自舉 8/8、真實 Edge 17/17；提交前獨立 CLI 稽核曾抓到外部 provider 的 definition JSON 被二次正規化為 SQLite，修正後已新增單元與 Edge 產物一致性斷言。CLI help/未知參數、首次生成/byte-identical 再生成、PostgreSQL provider 保留與 secret 0 命中均通過，CLI 產出的 Web 專案 build 0 warning/0 error。全量回歸另含 page-generator、四套純函式、客製元件 14/14、UI static+9 demos、CSP A-J/G 正負向、Theme/Custom Studio 19/19+18/18+16/16+13/13、Canvas/Wave2/Data/Icon/Wave3 8/8+29/29+8/8+13/13+24/24、ClusterGraph 8/8（BH 7.15ms、draw 2.46ms）及 SPA backend build 0 warning/0 error；`.test-output/` 已清理。
 
 ---
@@ -185,8 +207,11 @@ GitHub Actions：`.github/workflows/ci.yml` 在 PR→`main` 與 push→`main`
 ## 6. 多代理波工作法(若你派子代理)
 
 1. 檔案互斥——絕不兩代理碰同檔。
+
 2. 提示詞內建機器驗收命令與通過標準,要求代理自跑並貼輸出。
+
 3. 上限 6 代理/波;機械遷移用 sonnet,設計判斷自己做。
+
 4. 波收束=本人逐檔驗收(§5),然後才 commit。
 
 ---
@@ -194,11 +219,17 @@ GitHub Actions：`.github/workflows/ci.yml` 在 PR→`main` 與 push→`main`
 ## 7. 環境坑(照做,都踩過)
 
 - **工具腳本不得假設執行環境有 ripgrep 或任何外部搜尋工具**(有的機器有、有的沒有——`audit-ui-style-rules.mjs` 曾因 spawn rg 在無 rg 機器上從沒真跑過):一律純 Node `fs`+regex,禁 spawn 外部工具。
+
 - **PowerShell 5.1**:`.ps1` 只寫英文註解(UTF-8 無 BOM 中文=parse 炸);**改檔一律用編輯工具,禁 shell 重導向寫檔**(UTF-16 BOM 毀損坑)。機制腳本已全 Node 化。
+
 - `node --check` 不吃瀏覽器 ESM `.js`——先複製成 `.mjs` 再驗。
+
 - 瀏覽器測試用 Edge(`channel:'msedge'`),playwright-core 從 `../tim-web/poc/node_modules` 借;**不要**在本 repo npm install 任何東西。
+
 - 含 junction 的專案刪除前必先解除連結(`scripts/dev-link.mjs` unlink),遞迴刪除會追進腳手架本體。
+
 - 測試產物(`.test-output/`、`out/`)用完即刪,見 CLAUDE.md 附表。
+
 - `test-audit-csp-hard-zero.mjs` 會在 runtime root 與 baseline 暫放負向 fixture,只能與正式 audit **串行**執行;腳本 finally 會還原,跑完仍要確認 fixture 不存在且 baseline=`{}`。
 
 ---
@@ -206,10 +237,15 @@ GitHub Actions：`.github/workflows/ci.yml` 在 PR→`main` 與 push→`main`
 ## 8. 波 3 之後的待辦(順序供參,發動前先跟使用者確認)
 
 1. **Form Application 後續**：若要真正套用 SQL／連接既有資料庫，先依高影響資料規則確認寫入計畫。多表關聯、migration diff、既有 API 反向匯入目前不在 v1。
+
 2. **DataExplorer 擴充**:`'cluster'` 圖型接 ClusterGraph(spec 加 hierarchy 通道);ChartSpecBuilder 抽獨立元件;後端聚合模式(spec 直傳 Graph action,等 B 軌)。
+
 3. **前端軌量產**(使用者發動):按 `tim-web\docs\task-board.json`——P0-1 頁面聚類 → 每群 `_base` 模板 → 生成器測試先行 → 量產頁 extends 只寫差異。
+
 4. **後端軌**(使用者發動):B0-0 威脅建模 → B0-1 舊碼盤點 → B0-2 路由→10 動作對照表;契約釘 commit hash。
+
 5. 掛帳:SKILL 包裝(已評估未實作)、機制 MCP 化(僅選項)。
+
 6. 客製元件後續可選：static `PageGenerator.generate()` 自動物化 runtime/definitions；現況已支援直接 runtime 與 dynamic form，靜態產物須由啟動程式自行 `loadFolder()`。
 
 ---
@@ -217,6 +253,9 @@ GitHub Actions：`.github/workflows/ci.yml` 在 PR→`main` 與 push→`main`
 ## 9. 與使用者協作的慣例
 
 - 溝通用**繁體中文**;直接、不奉承;壞消息直說(測試紅就說紅)。
+
 - 使用者重視**驗證文化**:宣稱完成要附機器證據;被抓到「說清了但沒清」會嚴重損害信任(發生過,教訓=全類別盤點+機器守門)。
+
 - 已定案決策(§0)別重開;真正的新決策(如動 tim-web、開新波、改公開 API)先問。
+
 - commit 訊息:繁中、首行「波次/主題:摘要」、正文條列;不動 main,推 `main_0707`(或使用者指定的新日期分支)。

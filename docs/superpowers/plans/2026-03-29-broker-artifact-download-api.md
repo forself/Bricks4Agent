@@ -15,33 +15,52 @@
 ### Create
 
 - `packages/csharp/broker/Services/BrokerArtifactDownloadOptions.cs`
-  - Dedicated configuration object for download signing secret, TTL, and optional sidecar public URL source settings.
+
+- Dedicated configuration object for download signing secret, TTL, and optional sidecar public URL source settings.
+
 - `packages/csharp/broker/Services/SidecarPublicUrlResolver.cs`
-  - Focused resolver that reads the current sidecar/ngrok public URL from known sidecar state and returns a safe broker base URL.
+
+- Focused resolver that reads the current sidecar/ngrok public URL from known sidecar state and returns a safe broker base URL.
+
 - `packages/csharp/broker/Services/BrokerArtifactDownloadService.cs`
-  - Generates signed URLs, validates signatures/expiry, sanitizes file names, resolves artifact files, and exposes a small download lookup model for the endpoint.
+
+- Generates signed URLs, validates signatures/expiry, sanitizes file names, resolves artifact files, and exposes a small download lookup model for the endpoint.
+
 - `packages/csharp/broker/Endpoints/ArtifactDownloadEndpoints.cs`
-  - Public anonymous GET download endpoint using the service above.
+
+- Public anonymous GET download endpoint using the service above.
 
 ### Modify
 
 - `packages/csharp/broker/Program.cs`
-  - Register the new options/services and map the new endpoint.
+
+- Register the new options/services and map the new endpoint.
+
 - `packages/csharp/broker/appsettings.json`
-  - Add default `ArtifactDownload` section with non-secret placeholders and safe defaults.
+
+- Add default `ArtifactDownload` section with non-secret placeholders and safe defaults.
+
 - `packages/csharp/broker/appsettings.Development.example.json`
-  - Add development example values for the new settings.
+
+- Add development example values for the new settings.
+
 - `packages/csharp/broker/Services/LineArtifactDeliveryService.cs`
-  - Inject the new broker download service and replace the current Drive-failure notification fallback with a broker download link when available, without exposing internal paths.
+
+- Inject the new broker download service and replace the current Drive-failure notification fallback with a broker download link when available, without exposing internal paths.
+
 - `packages/csharp/broker/verify/Program.cs`
-  - Add TDD coverage for signed URL generation, download validation, expiry/signature/file-not-found cases, and notification path-leak prevention.
+
+- Add TDD coverage for signed URL generation, download validation, expiry/signature/file-not-found cases, and notification path-leak prevention.
 
 ### Reuse Without Structural Change
 
 - `packages/csharp/broker/Services/HighLevelLineWorkspaceService.cs`
-  - Reuse `ReadArtifactById` and existing artifact records as the source of truth.
+
+- Reuse `ReadArtifactById` and existing artifact records as the source of truth.
+
 - `packages/csharp/broker/Services/HighLevelLineArtifactRecord.cs`
-  - Reuse current persisted fields; do not add a new artifact table for v1.
+
+- Reuse current persisted fields; do not add a new artifact table for v1.
 
 ---
 
@@ -197,6 +216,7 @@ dotnet run --project packages/csharp/broker/verify/Broker.Verify.csproj
 Expected:
 
 - PASS for the new option default and public URL resolver assertions
+
 - overall suite still fails later because the signed download service and endpoint do not exist yet
 
 - [ ] **Step 8: Commit**
@@ -398,6 +418,7 @@ dotnet run --project packages/csharp/broker/verify/Broker.Verify.csproj
 Expected:
 
 - PASS for URL generation and validation assertions
+
 - overall suite still fails later because the public endpoint and notification fallback are not wired yet
 
 - [ ] **Step 7: Commit**
@@ -506,6 +527,7 @@ dotnet run --project packages/csharp/broker/verify/Broker.Verify.csproj
 Expected:
 
 - PASS for valid download, invalid signature, expired link, and missing artifact endpoint assertions
+
 - suite may still fail on notification fallback until Task 4 is complete
 
 - [ ] **Step 6: Commit**
@@ -731,6 +753,7 @@ dotnet run --project packages/csharp/broker/verify/Broker.Verify.csproj
 Expected:
 
 - build succeeds with `0` errors
+
 - broker verify passes, including the new signed download and path-leak checks
 
 - [ ] **Step 3: Check git state before claiming completion**
@@ -745,6 +768,7 @@ git log --oneline -n 5
 Expected:
 
 - only intended implementation/doc files are modified or committed
+
 - no accidental staging of unrelated untracked files
 
 - [ ] **Step 4: Commit**
@@ -759,22 +783,31 @@ git commit -m "docs: document broker artifact download fallback"
 ### Spec coverage
 
 - Signed anonymous URL: covered in Task 2 and Task 3
+
 - One-hour expiry and repeat downloads: covered in Task 1 and Task 2
+
 - ngrok-based public base URL: covered in Task 1
+
 - Only use broker link when Drive fails: covered in Task 4
+
 - Never expose internal paths: covered in Task 4 and Task 5
 
 ### Placeholder scan
 
 - No `TBD`
+
 - No `TODO`
+
 - No implicit “write tests later” steps
+
 - Every code-touching step includes concrete file paths and example code
 
 ### Type consistency
 
 - `BrokerArtifactDownloadOptions`, `SidecarPublicUrlResolver`, `BrokerArtifactDownloadService`, and `BrokerArtifactDownloadResolution` are defined before later tasks reference them
+
 - Endpoint uses `ValidateAndResolve` from the download service
+
 - Notification fallback calls the updated `BuildNotificationBody(..., brokerDownloadUrl)`
 
 ## Execution Handoff

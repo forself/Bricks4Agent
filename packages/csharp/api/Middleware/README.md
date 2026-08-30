@@ -5,11 +5,17 @@ Global exception handling middleware for ASP.NET Core applications.
 ## Features
 
 - Centralized exception handling
+
 - Custom exception types (ValidationException, NotFoundException, etc.)
+
 - Automatic error logging
+
 - Consistent error response format
+
 - Environment-aware error details (development vs production)
+
 - Automatic status code mapping
+
 - Trace ID tracking
 
 ## Setup
@@ -166,7 +172,7 @@ In development environment (DEBUG mode), additional details are included:
 ## Exception Status Code Mapping
 
 | Exception Type | HTTP Status Code | Include Details |
-|----------------|------------------|-----------------|
+|---|---|---|
 | ValidationException | 400 Bad Request | Yes |
 | NotFoundException | 404 Not Found | Yes |
 | UnauthorizedException | 401 Unauthorized | No |
@@ -219,17 +225,27 @@ private (HttpStatusCode statusCode, string message, bool includeDetails) GetErro
 ## Dependencies
 
 - Microsoft.AspNetCore.Http
+
 - Microsoft.Extensions.Logging
+
 - System.Text.Json
+
 - ApiResponse component
+
 - .NET 6.0 or higher
 
 ## Benefits
 
 1. **Centralized Handling** - All exceptions handled in one place
+
 2. **Consistent Responses** - Uniform error format across the application
+
 3. **Automatic Logging** - All errors logged automatically
+
 4. **Type Safety** - Custom exception types for different scenarios
+
 5. **Development-Friendly** - Detailed error info in development mode
+
 6. **Production-Safe** - Minimal error exposure in production
+
 7. **Request Tracking** - Trace ID for debugging

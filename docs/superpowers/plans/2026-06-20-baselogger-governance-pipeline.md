@@ -15,11 +15,17 @@
 This plan implements the first production-grade BaseLogger slice:
 
 - New non-conflicting public API names under `BaseLogger`.
+
 - Standard `Microsoft.Extensions.Logging` provider integration.
+
 - Redaction and correlation.
+
 - Console, rolling-file, memory, and library-level database sinks.
+
 - Broker correlation middleware and minimal security rejection audit recorder.
+
 - Host setup for broker, rag-service, and worker programs.
+
 - Tests and documentation updates.
 
 This plan does not implement OTLP/SIEM exporters or audit HMAC/external anchoring.
@@ -29,73 +35,104 @@ This plan does not implement OTLP/SIEM exporters or audit HMAC/external anchorin
 Create focused BaseLogger files instead of expanding the existing monolithic `BaseLogger.cs`:
 
 - `packages/csharp/logging/BaseLogger/BaseLoggerSeverity.cs`
-  Severity enum with no name collision with `Microsoft.Extensions.Logging.LogLevel`.
+ Severity enum with no name collision with `Microsoft.Extensions.Logging.LogLevel`.
+
 - `packages/csharp/logging/BaseLogger/BaseLoggerEvent.cs`
-  Redacted operational event schema.
+ Redacted operational event schema.
+
 - `packages/csharp/logging/BaseLogger/BaseLoggerOptions.cs`
-  Configuration model for provider and sinks.
+ Configuration model for provider and sinks.
+
 - `packages/csharp/logging/BaseLogger/Correlation/BaseLoggerCorrelationContext.cs`
-  Correlation value object.
+ Correlation value object.
+
 - `packages/csharp/logging/BaseLogger/Correlation/IBaseLoggerCorrelationAccessor.cs`
-  Current correlation accessor contract.
+ Current correlation accessor contract.
+
 - `packages/csharp/logging/BaseLogger/Correlation/AsyncLocalBaseLoggerCorrelationAccessor.cs`
-  AsyncLocal-backed default accessor.
+ AsyncLocal-backed default accessor.
+
 - `packages/csharp/logging/BaseLogger/Formatting/IBaseLoggerFormatter.cs`
-  Formatter contract.
+ Formatter contract.
+
 - `packages/csharp/logging/BaseLogger/Formatting/BaseLoggerJsonFormatter.cs`
-  JSONL formatter.
+ JSONL formatter.
+
 - `packages/csharp/logging/BaseLogger/Formatting/BaseLoggerTextFormatter.cs`
-  Human-readable formatter.
+ Human-readable formatter.
+
 - `packages/csharp/logging/BaseLogger/Redaction/IBaseLoggerRedactor.cs`
-  Redaction contract.
+ Redaction contract.
+
 - `packages/csharp/logging/BaseLogger/Redaction/DefaultBaseLoggerRedactor.cs`
-  Default secret and identifier redactor.
+ Default secret and identifier redactor.
+
 - `packages/csharp/logging/BaseLogger/Sinks/IBaseLoggerSink.cs`
-  Sink contract.
+ Sink contract.
+
 - `packages/csharp/logging/BaseLogger/Sinks/BaseLoggerMemorySink.cs`
-  Ring buffer sink.
+ Ring buffer sink.
+
 - `packages/csharp/logging/BaseLogger/Sinks/BaseLoggerConsoleSink.cs`
-  Console sink.
+ Console sink.
+
 - `packages/csharp/logging/BaseLogger/Sinks/BaseLoggerRollingFileSink.cs`
-  Size/retention rolling file sink.
+ Size/retention rolling file sink.
+
 - `packages/csharp/logging/BaseLogger/Sinks/BaseLoggerDatabaseSink.cs`
-  BaseOrm-compatible database sink.
+ BaseOrm-compatible database sink.
+
 - `packages/csharp/logging/BaseLogger/BaseLoggerPipeline.cs`
-  Pipeline that applies redaction, formats, dispatches, and isolates sink failures.
+ Pipeline that applies redaction, formats, dispatches, and isolates sink failures.
+
 - `packages/csharp/logging/BaseLogger/MicrosoftExtensions/BaseLoggerProvider.cs`
-  `ILoggerProvider` implementation.
+ `ILoggerProvider` implementation.
+
 - `packages/csharp/logging/BaseLogger/MicrosoftExtensions/BaseLoggerMicrosoftLogger.cs`
-  Internal standard-logger adapter.
+ Internal standard-logger adapter.
+
 - `packages/csharp/logging/BaseLogger/MicrosoftExtensions/BaseLoggerLoggingBuilderExtensions.cs`
-  `builder.Logging.AddBaseLogger(...)` integration.
+ `builder.Logging.AddBaseLogger(...)` integration.
 
 Modify existing files:
 
 - `packages/csharp/logging/BaseLogger/BaseLogger.csproj`
-  Add package references.
+ Add package references.
+
 - `packages/csharp/logging/BaseLogger/BaseLogger.cs`
-  Mark old `ILogger`, `Logger`, `LogLevel`, `LogEntry`, `ILogTarget`, and `Log` APIs obsolete after wrappers are wired to the new pipeline.
+ Mark old `ILogger`, `Logger`, `LogLevel`, `LogEntry`, `ILogTarget`, and `Log` APIs obsolete after wrappers are wired to the new pipeline.
+
 - `packages/csharp/broker/Program.cs`
-  Add BaseLogger provider and correlation/audit services.
+ Add BaseLogger provider and correlation/audit services.
+
 - `packages/csharp/rag-service/Program.cs`
-  Add BaseLogger provider.
+ Add BaseLogger provider.
+
 - `packages/csharp/workers/*/Program.cs`
-  Add BaseLogger provider to workers that currently use console logging.
+ Add BaseLogger provider to workers that currently use console logging.
+
 - `packages/csharp/workers/line-worker/start-sidecar-stack.ps1`
-  Stop deleting previous log evidence and use retention-friendly run folders or rolling output path.
+ Stop deleting previous log evidence and use retention-friendly run folders or rolling output path.
+
 - `docs/manuals/current-technical-manual.zh-TW.md`
-  Document BaseLogger runtime log vs audit boundaries.
+ Document BaseLogger runtime log vs audit boundaries.
+
 - `docs/manuals/current-user-manual.zh-TW.md`
-  Document where operators inspect logs.
+ Document where operators inspect logs.
+
 - `docs/reports/follow-up-planning.zh-TW.md`
-  Mark BaseLogger governance design as planned/ready for implementation.
+ Mark BaseLogger governance design as planned/ready for implementation.
 
 Tests:
 
 - Create `packages/csharp/tests/unit/BaseLogger/BaseLoggerRedactorTests.cs`
+
 - Create `packages/csharp/tests/unit/BaseLogger/BaseLoggerPipelineTests.cs`
+
 - Create `packages/csharp/tests/unit/BaseLogger/BaseLoggerSinkTests.cs`
+
 - Create `packages/csharp/tests/unit/BaseLogger/BaseLoggerProviderTests.cs`
+
 - Create `packages/csharp/tests/unit/Core/BrokerCorrelationAndAuditTests.cs`
 
 ---
@@ -1867,9 +1904,13 @@ For each worker csproj, add:
 Worker csproj files:
 
 - `packages/csharp/workers/line-worker/LineWorker.csproj`
+
 - `packages/csharp/workers/file-worker/FileWorker.csproj`
+
 - `packages/csharp/workers/browser-worker/BrowserWorker.csproj`
+
 - `packages/csharp/workers/execution-adapter-worker/ExecutionAdapterWorker.csproj`
+
 - `packages/csharp/workers/transport-tdx-worker/TransportTdxWorker.csproj`
 
 For each `Program.cs` listed in this task, add:
@@ -1953,7 +1994,7 @@ public static class Log
 
 Update `packages/csharp/logging/BaseLogger/README.md` with a new first section:
 
-```markdown
+````markdown
 ## Current API Direction
 
 `BaseLogger` is the package and namespace name. New code should not use the old `ILogger`, `Logger`, `LogLevel`, `LogEntry`, `ILogTarget`, or static `Log` types directly.
@@ -1964,11 +2005,11 @@ Hosts integrate BaseLogger with:
 ```csharp
 builder.Logging.ClearProviders();
 builder.Logging.AddBaseLogger(builder.Configuration);
-```
+````
 
 BaseLogger-specific extension points use explicit names such as `BaseLoggerPipeline`, `BaseLoggerEvent`, `BaseLoggerSeverity`, `IBaseLoggerSink`, `IBaseLoggerRedactor`, and `BaseLoggerProvider`.
-```
 
+````
 Update manuals:
 
 - `docs/manuals/current-technical-manual.zh-TW.md`: add a "BaseLogger / Audit / Observability" section that explains runtime log vs audit vs raw interaction log vs observation.
@@ -1981,7 +2022,7 @@ Run:
 
 ```powershell
 dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter "FullyQualifiedName~Unit.Tests.BaseLogger|FullyQualifiedName~Unit.Tests.Core.BrokerCorrelationAndAuditTests"
-```
+````
 
 Expected: BaseLogger and broker correlation tests pass.
 
@@ -2085,10 +2126,17 @@ Expected: only intended BaseLogger/logging changes remain uncommitted before fin
 ## Spec Coverage Self-Review
 
 - Naming rule covered by Tasks 1 and 6.
+
 - Provider integration covered by Task 4 and Task 6.
+
 - Redaction covered by Task 2.
+
 - Sinks and retention covered by Task 3 and Task 6.
+
 - Correlation model covered by Task 5.
+
 - Security rejection audit covered by Task 5.
+
 - Runtime log vs audit boundaries covered by Task 6 documentation.
+
 - Compatibility wrapper covered by Task 6.

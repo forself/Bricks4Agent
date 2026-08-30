@@ -191,6 +191,7 @@
       "component_roles": [
         "command_input",
         "container",
+        "data_view",
         "display",
         "editor",
         "input",
@@ -209,6 +210,7 @@
       "component_roles": [
         "command_input",
         "container",
+        "data_view",
         "editor",
         "feedback",
         "input",

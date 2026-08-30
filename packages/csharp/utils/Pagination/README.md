@@ -5,11 +5,17 @@ Comprehensive pagination utilities for handling paged results in API responses a
 ## Features
 
 - Offset-based pagination (traditional page numbers)
+
 - Cursor-based pagination (for large datasets)
+
 - PagedResult wrapper with metadata
+
 - IQueryable extension methods
+
 - Pagination parameter validation
+
 - Automatic total pages calculation
+
 - DTO mapping support
 
 ## Usage
@@ -338,6 +344,7 @@ public class PaginationParams
 ```
 
 Usage:
+
 ```csharp
 // Client sends: GET /api/products?page=2&pageSize=20&sortBy=price&sortDirection=desc
 [HttpGet]
@@ -353,39 +360,61 @@ public IActionResult Get([FromQuery] PaginationParams pagination)
 ## Best Practices
 
 1. **Always Validate Parameters** - Use PaginationParams or ValidatePaginationParams
+
 2. **Set Maximum Page Size** - Prevent abuse (default: 100)
+
 3. **Use Cursor Pagination for Large Datasets** - Better performance than offset
+
 4. **Index Sort Columns** - Ensure database indexes on sorted fields
+
 5. **Count Only When Needed** - For very large tables, consider approximations
+
 6. **Cache Total Counts** - For frequently accessed, slow-changing data
+
 7. **Provide Metadata** - Help clients build pagination UI
 
 ## Offset vs Cursor Pagination
 
 ### Offset (Page Number) - Best for:
+
 - Small to medium datasets
+
 - Random page access needed
+
 - UI shows page numbers
+
 - Total count is useful
 
 ### Cursor - Best for:
+
 - Very large datasets (millions of rows)
+
 - Infinite scroll UI
+
 - Real-time data (items being added/removed)
+
 - Better performance with indexes
 
 ## Dependencies
 
 - System.Linq
+
 - .NET 6.0 or higher
+
 - No external NuGet packages required
 
 ## Benefits
 
 1. **Consistent API Responses** - Uniform pagination format
+
 2. **Performance** - Efficient database queries with Skip/Take
+
 3. **Metadata** - Complete pagination information for clients
+
 4. **Validation** - Built-in parameter validation
+
 5. **Flexibility** - Works with IQueryable, IEnumerable, and lists
+
 6. **Type Safety** - Strongly-typed paged results
+
 7. **DTO Mapping** - Easy transformation to DTOs

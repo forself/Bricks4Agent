@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Google Drive Delivery</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Google Drive Delivery</h1>
+<h2>Purpose</h2>
+<p>Provide a broker-governed delivery path that uploads a generated artifact to Google Drive and returns a share link that can be sent back to the requesting user.</p>
+<h2>First implementation</h2>
+<ul>
+<li>identity modes:</li>
+<li><code>shared_delegated</code></li>
+<li><code>user_delegated</code></li>
+<li><code>system_account</code></li>
+<li>credential sources:</li>
+<li>a single broker-owned delegated OAuth credential for one Google account</li>
+<li>per-user delegated OAuth credentials</li>
+<li>Google service account JSON</li>
+<li>delivery pattern:
+  1. generate file under the user's managed workspace
+  2. upload file to a broker-configured Drive folder
+  3. create a share link
+  4. send the share link back through LINE or another broker-mediated channel</li>
+</ul>
+<h2>Current preferred live mode</h2>
+<p>For the current local LINE sidecar, the preferred default is:</p>
+<ul>
+<li><code>shared_delegated</code></li>
+</ul>
+<p>That means:</p>
+<ul>
+<li>broker stores one delegated OAuth credential for the operator's Google account</li>
+<li>all LINE users can have their generated artifacts uploaded into that one Google Drive</li>
+<li>broker metadata still records which LINE user owns the artifact</li>
+<li>Google Drive itself does not need to know each LINE user identity</li>
+</ul>
+<p>This is the correct mode when all generated files should go into one Google Drive account.</p>
+<p>Use <code>user_delegated</code> only when each end user should upload into their own Drive.</p>
+<h2>Important operational constraint</h2>
+<p>Google service accounts do not have personal Drive storage quota for ordinary My Drive uploads.</p>
+<p>This means the first implementation should use one of these:</p>
+<ul>
+<li>a Shared Drive folder, with the service account granted access</li>
+<li>OAuth-delegated user Drive access</li>
+</ul>
+<p>If a normal My Drive folder is used, Google may return:</p>
+<ul>
+<li><code>storageQuotaExceeded</code></li>
+</ul>
+<p>even when authentication is otherwise valid.</p>
+<h2>Current broker surface</h2>
+<ul>
+<li>tool spec: <code>delivery.google-drive.share</code></li>
+<li>local admin status:</li>
+<li><code>GET /api/v1/local-admin/delivery/google-drive/status</code></li>
+<li>local admin share:</li>
+<li><code>POST /api/v1/local-admin/delivery/google-drive/share</code></li>
+</ul>
+<h2>Required configuration</h2>
+<ul>
+<li><code>GoogleDriveDelivery:ServiceAccountJsonPath</code></li>
+<li><code>GoogleDriveDelivery:DefaultFolderId</code></li>
+<li>optional:</li>
+<li><code>GoogleDriveDelivery:DefaultShareMode</code></li>
+<li><code>GoogleDriveDelivery:DefaultPermissionRole</code></li>
+<li><code>GoogleDriveDelivery:DefaultIdentityMode</code></li>
+<li><code>GoogleDriveDelivery:SharedDelegatedChannel</code></li>
+<li><code>GoogleDriveDelivery:SharedDelegatedUserId</code></li>
+</ul>
+<h2>Current operator reality</h2>
+<p>There is currently no end-user frontend for artifact browsing or downloading.</p>
+<p>What exists today:</p>
+<ul>
+<li>local admin console</li>
+<li>LINE notification links</li>
+<li>broker-managed artifact records</li>
+</ul>
+<p>What should exist later as a frontend feature:</p>
+<ul>
+<li>an authenticated public-facing artifact download API</li>
+<li>user-facing artifact history and download page</li>
+<li>broker-governed access checks before file delivery</li>
+</ul>
+<p>This is intentionally recorded here as a missing frontend capability, not as a completed feature.</p>
+<h2>Next steps</h2>
+<ul>
+<li>add shared-drive-oriented target metadata to the admin console</li>
+<li>add artifact registry integration so generated files can be tracked and re-delivered</li>
+<li>support broker-governed notification back to the user after upload</li>
+<li>add authenticated frontend download API for direct external service scenarios</li>
+</ul>
+</main>
+</body>
+</html>

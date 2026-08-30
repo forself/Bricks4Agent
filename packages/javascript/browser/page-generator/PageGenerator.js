@@ -397,6 +397,12 @@ export const FieldRenderers = {
             <div id="${field.name}-picker"></div>
         </div>`,
 
+    [FieldTypes.ROCDATE]: (field) => `
+        <div class="form-group">
+            <label for="${field.name}">${field.label || field.name}${field.required ? ' *' : ''}</label>
+            <div id="${field.name}-picker"></div>
+        </div>`,
+
     [FieldTypes.TIME]: (field) => `
         <div class="form-group">
             <label for="${field.name}">${escHtml(field.label || field.name)}${field.required ? ' *' : ''}</label>

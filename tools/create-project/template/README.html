@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{PROJECTNAME}}</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>{{PROJECT_NAME}}</h1>
+<p>以 <strong>Bricks4Agent</strong> 元件庫 + 頁面生成器建置(零第三方 runtime)。腳手架引用機制=「junction 開發 + 發佈快照」,詳見 <a href="docs/dev-and-publish.html">docs/dev-and-publish.md</a>。</p>
+<h2>結構</h2>
+<pre><code>{{PROJECT_NAME}}\
+├── lib\                 腳手架掛載點(gitignored):開發=junction、發佈=快照
+│   ├── ui_components\   元件庫(權威清單 metadata\component-catalog.json)
+│   └── page-generator\  PageDefinition 靜態產碼 + 動態渲染
+├── src\frontend\        應用(index.html / app.js / styles\)
+├── scripts\             dev-link(junction)/ dev / sync-lib(複本後備)/ publish(快照+封閉驗證)
+├── docs\                機制文件
+└── dist\                發佈產物(gitignored;publish.mjs 產生)
+</code></pre>
+<h2>快速開始</h2>
+<pre><code class="language-powershell">node scripts/dev-link.mjs     # 一次性:lib 轉 junction(建立專案時已自動執行)
+node scripts/dev.mjs          # http://127.0.0.1:8123/src/frontend/index.html
+node scripts/publish.mjs      # 發佈:dist\(快照 + SNAPSHOT.json 憑證 + 封閉性驗證)
+</code></pre>
+<h2>規則</h2>
+<ol>
+<li>只用 <code>lib\ui_components</code>,import 一律<strong>相對路徑</strong>(層數=檔案到專案根的深度;禁根絕對 <code>/lib/</code>、禁 <code>../Bricks4Agent/</code>——publish 驗證器會擋)。</li>
+<li>缺元件 → 加到 Bricks4Agent repo(照其 AGENT-UI-GUIDE.md),junction 模式即時生效。</li>
+<li>樣式只用 <code>var(--cl-*)</code> token;動態字串一律 escapeHtml;無 inline script/style(CSP)。</li>
+<li>元件調用入口=Bricks4Agent 的 <code>AGENT-UI-GUIDE.md</code>;主題客製=Theme Studio(<code>tools/theme-studio/</code>),產出 <code>theme.custom.css</code> 放本專案並最後載入。</li>
+</ol>
+</main>
+</body>
+</html>

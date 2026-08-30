@@ -10,10 +10,10 @@
 new OrganizationInput(options?)
 ```
 
-繼承 `ChainedInput` 所有選項（`onChange`、`layout`、`gap`），`fields` 已預設為：
+繼承 `ChainedInput` 所有選項（`onChange`、`layout`、`gap`），`fields` 已預設為；另需提供 `loadUnits` 資料載入函式 `async (parentId) => [{value|id, label|name}]`（未提供時載入單位會擲出錯誤）：
 
 | 欄位 name | type | 說明 |
-|-----------|------|------|
+|---|---|---|
 | `level1` | `select` | 一級單位，非同步載入 |
 | `level2` | `select` | 二級單位，依上級連動，無子單位時自動隱藏 |
 | `level3` | `select` | 三級單位，同上 |
@@ -24,7 +24,7 @@ new OrganizationInput(options?)
 繼承 `ChainedInput` 所有方法，額外提供：
 
 | 方法 | 說明 |
-|------|------|
+|---|---|
 | `getSelectedUnit()` | 回傳最底層已選單位 `{level, id}`，無選擇時回傳 `null` |
 
 ## 使用範例
@@ -33,6 +33,7 @@ new OrganizationInput(options?)
 import { OrganizationInput } from './input/OrganizationInput/index.js';
 
 const org = new OrganizationInput({
+    loadUnits: async (parentId) => fetchUnits(parentId),
     onChange: (values) => console.log(values)
 });
 org.mount('#container');

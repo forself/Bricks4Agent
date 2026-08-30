@@ -1,0 +1,404 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Site Template Framework Implementation Plan</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Site Template Framework Implementation Plan</h1>
+<blockquote>
+<p><strong>For agentic workers:</strong> REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (<code>- [ ]</code>) syntax for tracking.</p>
+</blockquote>
+<p><strong>Goal:</strong> Add a reusable site template framework so website rebuilds are compiled from visual intent into manifest-declared components only.</p>
+<p><strong>Architecture:</strong> <code>SiteGeneratorConverter</code> will delegate high-level page structure to <code>SiteIntentExtractor -&gt; TemplateMatcher -&gt; TemplateCompiler</code>. The compiler emits <code>GeneratorSiteDocument</code> using only <code>bricks4agent.default</code> components, recording <code>ComponentRequest</code> gaps instead of creating site-specific generated components.</p>
+<p><strong>Tech Stack:</strong> .NET 8, xUnit, FluentAssertions, System.Text.Json, existing <code>site-crawler-worker</code> contracts, static runtime JavaScript.</p>
+<hr>
+<h2>File Structure</h2>
+<p>Create:</p>
+<ul>
+<li><code>packages/csharp/workers/site-crawler-worker/Models/TemplateFrameworkContracts.cs</code></li>
+<li><code>packages/csharp/workers/site-crawler-worker/Services/TemplateFrameworkLoader.cs</code></li>
+<li><code>packages/csharp/workers/site-crawler-worker/Services/SiteIntentExtractor.cs</code></li>
+<li><code>packages/csharp/workers/site-crawler-worker/Services/TemplateMatcher.cs</code></li>
+<li><code>packages/csharp/workers/site-crawler-worker/Services/TemplateCompiler.cs</code></li>
+<li><code>packages/csharp/workers/site-crawler-worker/template-framework/institutional_site.json</code></li>
+<li><code>packages/csharp/tests/unit/Workers/SiteCrawler/TemplateFrameworkLoaderTests.cs</code></li>
+<li><code>packages/csharp/tests/unit/Workers/SiteCrawler/SiteIntentExtractorTests.cs</code></li>
+<li><code>packages/csharp/tests/unit/Workers/SiteCrawler/TemplateMatcherTests.cs</code></li>
+<li><code>packages/csharp/tests/unit/Workers/SiteCrawler/TemplateCompilerTests.cs</code></li>
+</ul>
+<p>Modify:</p>
+<ul>
+<li><code>packages/csharp/workers/site-crawler-worker/SiteCrawlerWorker.csproj</code></li>
+<li><code>packages/csharp/workers/site-crawler-worker/component-libraries/bricks4agent.default/manifest.json</code></li>
+<li><code>packages/csharp/workers/site-crawler-worker/Services/SiteGeneratorConverter.cs</code></li>
+<li><code>packages/csharp/workers/site-crawler-worker/Services/StaticSitePackageGenerator.cs</code></li>
+<li><code>packages/csharp/tests/unit/Workers/SiteCrawler/SiteGeneratorConverterTests.cs</code></li>
+<li><code>packages/csharp/tests/unit/Workers/SiteCrawler/StaticSitePackageGeneratorTests.cs</code></li>
+</ul>
+<hr>
+<h3>Task 1: Template Framework Contracts And Loader</h3>
+<p><strong>Files:</strong>
+- Create: <code>packages/csharp/workers/site-crawler-worker/Models/TemplateFrameworkContracts.cs</code>
+- Create: <code>packages/csharp/workers/site-crawler-worker/Services/TemplateFrameworkLoader.cs</code>
+- Create: <code>packages/csharp/workers/site-crawler-worker/template-framework/institutional_site.json</code>
+- Modify: <code>packages/csharp/workers/site-crawler-worker/SiteCrawlerWorker.csproj</code>
+- Test: <code>packages/csharp/tests/unit/Workers/SiteCrawler/TemplateFrameworkLoaderTests.cs</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Write failing loader tests</strong></li>
+</ul>
+<p>Add tests that call <code>new TemplateFrameworkLoader().LoadDefault()</code> and assert:</p>
+<pre><code class="language-csharp">templates.Templates.Should().ContainSingle(template =&gt; template.TemplateId == &quot;institutional_site&quot;);
+templates.Templates[0].PageTypes.Should().ContainKey(&quot;home&quot;);
+templates.Templates[0].PageTypes[&quot;home&quot;].Slots.Should().Contain(slot =&gt; slot.Name == &quot;hero&quot; &amp;&amp; slot.Accepts.Contains(&quot;HeroCarousel&quot;));
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 2: Run focused test and verify failure</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter TemplateFrameworkLoaderTests
+</code></pre>
+<p>Expected: compile failure because template contracts and loader do not exist.</p>
+<ul>
+<li>[ ] <strong>Step 3: Add contracts</strong></li>
+</ul>
+<p>Define JSON-backed records/classes:</p>
+<pre><code class="language-csharp">public sealed class TemplateFrameworkManifest { public List&lt;TemplateDefinition&gt; Templates { get; set; } = new(); }
+public sealed class TemplateDefinition { public string TemplateId { get; set; } = string.Empty; public List&lt;string&gt; SupportedSiteKinds { get; set; } = new(); public Dictionary&lt;string, TemplatePageTypeDefinition&gt; PageTypes { get; set; } = new(); }
+public sealed class TemplatePageTypeDefinition { public List&lt;TemplateSlotDefinition&gt; Slots { get; set; } = new(); }
+public sealed class TemplateSlotDefinition { public string Name { get; set; } = string.Empty; public bool Required { get; set; } public List&lt;string&gt; Accepts { get; set; } = new(); public string Fallback { get; set; } = &quot;AtomicSection&quot;; }
+</code></pre>
+<p>Also define intent/plan types used by later tasks:</p>
+<pre><code class="language-csharp">public sealed class SiteIntentModel { public string SiteKind { get; set; } = &quot;unknown&quot;; public List&lt;SiteIntentPage&gt; Pages { get; set; } = new(); public ExtractedHeader GlobalHeader { get; set; } = new(); public ExtractedFooter GlobalFooter { get; set; } = new(); }
+public sealed class SiteIntentPage { public string PageUrl { get; set; } = string.Empty; public string PageType { get; set; } = &quot;unknown&quot;; public int Depth { get; set; } public string Title { get; set; } = string.Empty; public List&lt;SiteIntentBlock&gt; Blocks { get; set; } = new(); }
+public sealed class SiteIntentBlock { public string Id { get; set; } = string.Empty; public string Kind { get; set; } = &quot;unknown&quot;; public string Slot { get; set; } = string.Empty; public ExtractedSection Section { get; set; } = new(); public double Confidence { get; set; } public List&lt;string&gt; Reasons { get; set; } = new(); }
+public sealed class TemplatePlan { public string TemplateId { get; set; } = string.Empty; public List&lt;TemplatePagePlan&gt; Pages { get; set; } = new(); public List&lt;ComponentRequest&gt; ComponentRequests { get; set; } = new(); }
+public sealed class TemplatePagePlan { public string PageUrl { get; set; } = string.Empty; public string PageType { get; set; } = &quot;unknown&quot;; public List&lt;TemplateSlotPlan&gt; Slots { get; set; } = new(); }
+public sealed class TemplateSlotPlan { public string SlotName { get; set; } = string.Empty; public string ComponentType { get; set; } = string.Empty; public string FallbackComponentType { get; set; } = string.Empty; public SiteIntentBlock? Block { get; set; } public double Confidence { get; set; } public List&lt;string&gt; Reasons { get; set; } = new(); }
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 4: Add loader</strong></li>
+</ul>
+<p>Implement <code>TemplateFrameworkLoader</code> with the same candidate-path strategy as <code>ComponentLibraryLoader</code>:</p>
+<pre><code class="language-csharp">yield return Path.Combine(AppContext.BaseDirectory, &quot;template-framework/institutional_site.json&quot;);
+yield return Path.Combine(Directory.GetCurrentDirectory(), &quot;template-framework/institutional_site.json&quot;);
+yield return Path.Combine(Directory.GetCurrentDirectory(), &quot;packages/csharp/workers/site-crawler-worker/template-framework/institutional_site.json&quot;);
+</code></pre>
+<p>Validate non-empty <code>template_id</code>, at least one supported kind, each page type has slots, and each slot has at least one accepted component.</p>
+<ul>
+<li>[ ] <strong>Step 5: Add institutional template JSON</strong></li>
+</ul>
+<p>Define <code>home</code>, <code>listing</code>, and <code>article</code> page types with these first-class slots:</p>
+<pre><code class="language-json">[&quot;header&quot;, &quot;hero&quot;, &quot;quick_links&quot;, &quot;news&quot;, &quot;features&quot;, &quot;content&quot;, &quot;footer&quot;]
+</code></pre>
+<p>Accepted components must include the high-level reusable types from the spec, with existing low-level fallbacks such as <code>SiteHeader</code>, <code>AtomicSection</code>, <code>CardGrid</code>, <code>ContentSection</code>, and <code>SiteFooter</code>.</p>
+<ul>
+<li>[ ] <strong>Step 6: Copy template assets in project file</strong></li>
+</ul>
+<p>Add:</p>
+<pre><code class="language-xml">&lt;Content Include=&quot;template-framework\**\*&quot; CopyToOutputDirectory=&quot;PreserveNewest&quot; /&gt;
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 7: Run focused tests and commit</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter TemplateFrameworkLoaderTests
+</code></pre>
+<p>Expected: pass.</p>
+<p>Commit:</p>
+<pre><code class="language-powershell">git add packages/csharp/workers/site-crawler-worker/Models/TemplateFrameworkContracts.cs packages/csharp/workers/site-crawler-worker/Services/TemplateFrameworkLoader.cs packages/csharp/workers/site-crawler-worker/template-framework/institutional_site.json packages/csharp/workers/site-crawler-worker/SiteCrawlerWorker.csproj packages/csharp/tests/unit/Workers/SiteCrawler/TemplateFrameworkLoaderTests.cs
+git commit -m &quot;feat: add site template framework loader&quot;
+</code></pre>
+<hr>
+<h3>Task 2: Deterministic Site Intent Extraction</h3>
+<p><strong>Files:</strong>
+- Create: <code>packages/csharp/workers/site-crawler-worker/Services/SiteIntentExtractor.cs</code>
+- Test: <code>packages/csharp/tests/unit/Workers/SiteCrawler/SiteIntentExtractorTests.cs</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Write failing tests</strong></li>
+</ul>
+<p>Create a crawl with a university home page, rendered header/hero/carousel/footer regions, and static fallback sections. Assert:</p>
+<pre><code class="language-csharp">intent.SiteKind.Should().Be(&quot;university&quot;);
+intent.Pages.Single(page =&gt; page.Depth == 0).PageType.Should().Be(&quot;home&quot;);
+intent.Pages[0].Blocks.Select(block =&gt; block.Kind).Should().Contain([&quot;header&quot;, &quot;hero_carousel&quot;, &quot;news_carousel&quot;, &quot;footer&quot;]);
+intent.Pages[0].Blocks.Should().NotContain(block =&gt; block.Section.Headline == &quot;Static Source Hero&quot;);
+</code></pre>
+<p>Also test a depth-1 page with repeated items becomes <code>listing</code>, and a long text page becomes <code>article</code>.</p>
+<ul>
+<li>[ ] <strong>Step 2: Run focused tests and verify failure</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter SiteIntentExtractorTests
+</code></pre>
+<p>Expected: compile failure because <code>SiteIntentExtractor</code> does not exist.</p>
+<ul>
+<li>[ ] <strong>Step 3: Implement extractor</strong></li>
+</ul>
+<p>Rules:</p>
+<ul>
+<li>Prefer <code>VisualPageSnapshot.Regions</code> over static <code>ExtractedPageModel.Sections</code>.</li>
+<li>Preserve visual order by region bounds <code>y</code>.</li>
+<li>Classify site kind as <code>university</code> when title/text/url contains <code>university</code>, <code>college</code>, <code>school</code>, <code>大學</code>, <code>學院</code>, or <code>學校</code>; otherwise <code>institutional</code>.</li>
+<li><code>Depth == 0</code> is <code>home</code>.</li>
+<li>Repeated items or many links/dates become <code>listing</code>.</li>
+<li>Long body text with low item count becomes <code>article</code>.</li>
+<li>Region roles map to intent kinds:</li>
+</ul>
+<pre><code class="language-csharp">&quot;header&quot; or &quot;nav&quot; -&gt; &quot;header&quot;;
+&quot;carousel&quot; with first large media block on home -&gt; &quot;hero_carousel&quot;;
+&quot;hero&quot; with multiple media/items -&gt; &quot;hero_carousel&quot;;
+&quot;hero&quot; -&gt; &quot;hero_banner&quot;;
+&quot;card_grid&quot; or &quot;visual_grid&quot; with short labels -&gt; &quot;quick_links&quot;;
+&quot;news&quot; or carousel/list with date-like text -&gt; &quot;news_carousel&quot;;
+&quot;gallery&quot; or image-rich grid -&gt; &quot;media_feature_grid&quot;;
+&quot;footer&quot; -&gt; &quot;footer&quot;;
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 4: Run focused tests and commit</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter SiteIntentExtractorTests
+</code></pre>
+<p>Expected: pass.</p>
+<p>Commit:</p>
+<pre><code class="language-powershell">git add packages/csharp/workers/site-crawler-worker/Services/SiteIntentExtractor.cs packages/csharp/tests/unit/Workers/SiteCrawler/SiteIntentExtractorTests.cs
+git commit -m &quot;feat: extract deterministic site intent&quot;
+</code></pre>
+<hr>
+<h3>Task 3: Template Matcher</h3>
+<p><strong>Files:</strong>
+- Create: <code>packages/csharp/workers/site-crawler-worker/Services/TemplateMatcher.cs</code>
+- Test: <code>packages/csharp/tests/unit/Workers/SiteCrawler/TemplateMatcherTests.cs</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Write failing tests</strong></li>
+</ul>
+<p>Assert that a university home intent produces:</p>
+<pre><code class="language-csharp">plan.TemplateId.Should().Be(&quot;institutional_site&quot;);
+home.Slots.Select(slot =&gt; slot.SlotName).Should().Contain([&quot;header&quot;, &quot;hero&quot;, &quot;quick_links&quot;, &quot;news&quot;, &quot;footer&quot;]);
+home.Slots.Single(slot =&gt; slot.SlotName == &quot;hero&quot;).ComponentType.Should().Be(&quot;HeroCarousel&quot;);
+home.Slots.Single(slot =&gt; slot.SlotName == &quot;news&quot;).ComponentType.Should().Be(&quot;NewsCardCarousel&quot;);
+</code></pre>
+<p>Add a fallback test using a manifest without <code>HeroCarousel</code>; expected component type is <code>HeroBanner</code> or <code>AtomicSection</code>, and <code>ComponentRequests</code> records the missing preferred type.</p>
+<ul>
+<li>[ ] <strong>Step 2: Run focused tests and verify failure</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter TemplateMatcherTests
+</code></pre>
+<p>Expected: compile failure because <code>TemplateMatcher</code> does not exist.</p>
+<ul>
+<li>[ ] <strong>Step 3: Implement matcher</strong></li>
+</ul>
+<p>Use deterministic slot mapping:</p>
+<pre><code class="language-csharp">header -&gt; header
+hero_carousel or hero_banner -&gt; hero
+quick_links -&gt; quick_links
+news_grid or news_carousel or article_list -&gt; news/content
+media_feature_grid -&gt; features
+content_article -&gt; content
+footer -&gt; footer
+</code></pre>
+<p>Choose the first accepted component present in the loaded component manifest. If the preferred accepted type is absent but a fallback accepted type exists, use the fallback and add <code>ComponentRequest</code> with reason <code>preferred_component_missing</code>. If no accepted type exists, use the slot fallback and record <code>component_gap</code>.</p>
+<ul>
+<li>[ ] <strong>Step 4: Run focused tests and commit</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter TemplateMatcherTests
+</code></pre>
+<p>Expected: pass.</p>
+<p>Commit:</p>
+<pre><code class="language-powershell">git add packages/csharp/workers/site-crawler-worker/Services/TemplateMatcher.cs packages/csharp/tests/unit/Workers/SiteCrawler/TemplateMatcherTests.cs
+git commit -m &quot;feat: match site intent to reusable templates&quot;
+</code></pre>
+<hr>
+<h3>Task 4: Template Compiler And Converter Wiring</h3>
+<p><strong>Files:</strong>
+- Create: <code>packages/csharp/workers/site-crawler-worker/Services/TemplateCompiler.cs</code>
+- Modify: <code>packages/csharp/workers/site-crawler-worker/Services/SiteGeneratorConverter.cs</code>
+- Test: <code>packages/csharp/tests/unit/Workers/SiteCrawler/TemplateCompilerTests.cs</code>
+- Test: <code>packages/csharp/tests/unit/Workers/SiteCrawler/SiteGeneratorConverterTests.cs</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Write failing compiler tests</strong></li>
+</ul>
+<p>Assert:</p>
+<pre><code class="language-csharp">document.Routes.Should().HaveCount(crawl.Pages.Count);
+Flatten(document.Routes[0].Root).Select(node =&gt; node.Type).Should().Contain([&quot;MegaHeader&quot;, &quot;HeroCarousel&quot;, &quot;QuickLinkRibbon&quot;, &quot;NewsCardCarousel&quot;, &quot;InstitutionFooter&quot;]);
+document.ComponentLibrary.Components.Should().NotContain(component =&gt; component.Generated);
+document.ComponentRequests.Should().BeEmpty();
+allInternalLinks.Should().OnlyContain(link =&gt; link.StartsWith(&quot;/&quot;) &amp;&amp; !link.Contains(&quot;.aspx&quot;));
+</code></pre>
+<p>Add a fallback test where manifest lacks <code>HeroCarousel</code> and assert <code>ComponentRequests</code> is non-empty while output still validates.</p>
+<ul>
+<li>[ ] <strong>Step 2: Run focused tests and verify failure</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter &quot;TemplateCompilerTests|SiteGeneratorConverterTests&quot;
+</code></pre>
+<p>Expected: compile/test failure because compiler does not exist and converter still emits low-level high structure.</p>
+<ul>
+<li>[ ] <strong>Step 3: Implement compiler</strong></li>
+</ul>
+<p>The compiler builds:</p>
+<ul>
+<li><code>PageShell</code> root per route.</li>
+<li><code>MegaHeader</code> or <code>SiteHeader</code> from shared header intent.</li>
+<li>Slot component nodes in template order.</li>
+<li><code>InstitutionFooter</code> or <code>SiteFooter</code> from shared footer intent.</li>
+<li><code>FormBlock</code> for extracted forms.</li>
+</ul>
+<p>Component props:</p>
+<pre><code class="language-csharp">MegaHeader: title, logo_url, logo_alt, utility_links, primary_links, search_enabled
+HeroCarousel: title, body, slides
+HeroBanner: title, body, media_url, media_alt
+QuickLinkRibbon: title, links
+NewsCardCarousel: title, items
+NewsGrid: title, items
+MediaFeatureGrid: title, items
+ArticleList: title, items
+ContentArticle: title, body, media
+InstitutionFooter: source_url, logo_url, logo_alt, contact_text, links
+</code></pre>
+<p>Link normalization must remove <code>.aspx</code>, <code>.html</code>, and <code>.htm</code>, route same-origin crawled URLs to generated paths, and avoid rendering raw page URL names as standalone visual navigation.</p>
+<ul>
+<li>[ ] <strong>Step 4: Wire converter</strong></li>
+</ul>
+<p>In <code>SiteGeneratorConverter.Convert</code>:</p>
+<pre><code class="language-csharp">var intent = new SiteIntentExtractor().Extract(crawl);
+var templates = new TemplateFrameworkLoader().LoadDefault();
+var plan = new TemplateMatcher(templates, manifest).Match(intent);
+return new TemplateCompiler(manifest).Compile(crawl, intent, plan);
+</code></pre>
+<p>Retain old direct helpers only as private fallback if template loading fails; do not call <code>EnsureGeneratedComponent</code> in the normal rebuild path.</p>
+<ul>
+<li>[ ] <strong>Step 5: Run focused tests and commit</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter &quot;TemplateCompilerTests|SiteGeneratorConverterTests&quot;
+</code></pre>
+<p>Expected: pass.</p>
+<p>Commit:</p>
+<pre><code class="language-powershell">git add packages/csharp/workers/site-crawler-worker/Services/TemplateCompiler.cs packages/csharp/workers/site-crawler-worker/Services/SiteGeneratorConverter.cs packages/csharp/tests/unit/Workers/SiteCrawler/TemplateCompilerTests.cs packages/csharp/tests/unit/Workers/SiteCrawler/SiteGeneratorConverterTests.cs
+git commit -m &quot;feat: compile rebuilds through template plans&quot;
+</code></pre>
+<hr>
+<h3>Task 5: High-Level Component Library And Runtime Renderers</h3>
+<p><strong>Files:</strong>
+- Modify: <code>packages/csharp/workers/site-crawler-worker/component-libraries/bricks4agent.default/manifest.json</code>
+- Modify: <code>packages/csharp/workers/site-crawler-worker/Services/StaticSitePackageGenerator.cs</code>
+- Test: <code>packages/csharp/tests/unit/Workers/SiteCrawler/StaticSitePackageGeneratorTests.cs</code>
+- Test: <code>packages/csharp/tests/unit/Workers/SiteCrawler/ComponentLibraryLoaderTests.cs</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Write failing runtime tests</strong></li>
+</ul>
+<p>Assert generated runtime contains renderers for:</p>
+<pre><code class="language-csharp">renderMegaHeader
+renderHeroCarousel
+renderQuickLinkRibbon
+renderNewsCardCarousel
+renderInstitutionFooter
+</code></pre>
+<p>Assert <code>DefaultComponentLibrary.Create()</code> includes all high-level component types and no generated components.</p>
+<ul>
+<li>[ ] <strong>Step 2: Run focused tests and verify failure</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter &quot;StaticSitePackageGeneratorTests|ComponentLibraryLoaderTests&quot;
+</code></pre>
+<p>Expected: fail because high-level components and renderers are not registered.</p>
+<ul>
+<li>[ ] <strong>Step 3: Extend manifest</strong></li>
+</ul>
+<p>Add reusable component definitions for:</p>
+<pre><code class="language-text">MegaHeader, HeroCarousel, HeroBanner, QuickLinkRibbon, NewsCardCarousel,
+NewsGrid, MediaFeatureGrid, InstitutionFooter, ArticleList, ContentArticle
+</code></pre>
+<p>Each props schema must declare exactly the props emitted by <code>TemplateCompiler</code>.</p>
+<ul>
+<li>[ ] <strong>Step 4: Extend runtime</strong></li>
+</ul>
+<p>Register renderers in <code>componentRenderers</code>, style the new classes, and render high-level nodes by composing existing runtime primitives. Internal links must still pass through <code>configureLink</code>.</p>
+<ul>
+<li>[ ] <strong>Step 5: Run focused tests and commit</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter &quot;StaticSitePackageGeneratorTests|ComponentLibraryLoaderTests|ComponentSchemaValidatorTests&quot;
+</code></pre>
+<p>Expected: pass.</p>
+<p>Commit:</p>
+<pre><code class="language-powershell">git add packages/csharp/workers/site-crawler-worker/component-libraries/bricks4agent.default/manifest.json packages/csharp/workers/site-crawler-worker/Services/StaticSitePackageGenerator.cs packages/csharp/tests/unit/Workers/SiteCrawler/StaticSitePackageGeneratorTests.cs
+git commit -m &quot;feat: add reusable site template components&quot;
+</code></pre>
+<hr>
+<h3>Task 6: Full Verification And Live Smoke</h3>
+<p><strong>Files:</strong>
+- No planned production changes.</p>
+<ul>
+<li>[ ] <strong>Step 1: Run focused site crawler tests</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter SiteCrawler
+</code></pre>
+<p>Expected: all site crawler tests pass.</p>
+<ul>
+<li>[ ] <strong>Step 2: Run full unit suite</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --no-restore
+</code></pre>
+<p>Expected: all unit tests pass.</p>
+<ul>
+<li>[ ] <strong>Step 3: Build worker</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-powershell">dotnet build packages/csharp/workers/site-crawler-worker/SiteCrawlerWorker.csproj
+</code></pre>
+<p>Expected: build succeeds.</p>
+<ul>
+<li>[ ] <strong>Step 4: Live SHU depth-3 rebuild smoke</strong></li>
+</ul>
+<p>Run the existing local broker/flow harness for <code>https://www.shu.edu.tw/</code> with depth <code>3</code>. Verify:</p>
+<pre><code class="language-text">route count equals crawl page count
+unknown component types = 0
+generated component count = 0
+home page includes MegaHeader, HeroCarousel or HeroBanner, NewsCardCarousel or NewsGrid, InstitutionFooter
+same-origin .aspx/.html/.htm links are rewritten to extensionless local routes
+package contains index.html, runtime.js, styles.css, site.json, components/manifest.json
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 5: Browser package smoke</strong></li>
+</ul>
+<p>Open generated <code>index.html</code> through a local static server and verify the page renders header/main/footer without console errors.</p>
+<ul>
+<li>[ ] <strong>Step 6: Commit final fixes</strong></li>
+</ul>
+<p>If verification requires small fixes, commit them with:</p>
+<pre><code class="language-powershell">git add &lt;changed-files&gt;
+git commit -m &quot;test: verify site template framework&quot;
+</code></pre>
+<hr>
+<h2>Self-Review</h2>
+<ul>
+<li>Spec coverage: contracts, deterministic intent extraction, matcher, compiler, manifest-only output, component requests, runtime rendering, link rewriting, route preservation, and live SHU smoke are covered by Tasks 1-6.</li>
+<li>Placeholder scan: no task uses open-ended TODO/TBD language; each task has concrete files, assertions, commands, and expected results.</li>
+<li>Type consistency: contracts use <code>TemplateFrameworkManifest</code>, <code>SiteIntentModel</code>, <code>TemplatePlan</code>, and <code>GeneratorSiteDocument</code> consistently across loader, extractor, matcher, compiler, and converter wiring.</li>
+</ul>
+<h2>Execution Choice</h2>
+<p>The user has already asked to proceed. Because subagents were not explicitly requested in this turn, execute this plan inline with <code>superpowers:executing-plans</code> and use commits at the task checkpoints when practical.</p>
+</main>
+</body>
+</html>

@@ -13,7 +13,7 @@ new PhoneListInput(options?)
 繼承 `ListInput` 所有選項，預設值：
 
 | 參數 | 預設值 | 說明 |
-|------|--------|------|
+|---|---|---|
 | `title` | `'電話列表'` | 標題 |
 | `minItems` | `1` | 最少項目數 |
 | `maxItems` | `5` | 最多項目數 |
@@ -22,7 +22,7 @@ new PhoneListInput(options?)
 每筆項目欄位：
 
 | 欄位 name | type | 說明 |
-|-----------|------|------|
+|---|---|---|
 | `type` | `select` | 電話類型（手機/市話/公司/傳真） |
 | `number` | `tel` | 電話號碼 |
 

@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Visual Pattern Template Expansion Design</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Visual Pattern Template Expansion Design</h1>
+<h2>Purpose</h2>
+<p>Expand the site rebuild pipeline with four reusable page-pattern families:</p>
+<ul>
+<li>Search/discovery pages.</li>
+<li>Report/dashboard pages.</li>
+<li>Input/form-flow pages.</li>
+<li>Commercial showcase pages.</li>
+</ul>
+<p>These are visual and functional page structures, not website categories. Template and component selection must continue to ignore <code>SiteKind</code> and use extracted visual/function blocks only.</p>
+<h2>References</h2>
+<ul>
+<li>Google Cloud's faceted search documentation is used as a reference for search result filtering patterns: https://cloud.google.com/spanner/docs/full-text-search/facets</li>
+<li>CDC COVE dashboard pages are used as public examples of dashboard/report surfaces with chart/table modules: https://www.cdc.gov/cove/dashboards/index.html</li>
+<li>MDN's <code>&lt;input&gt;</code> reference and client-side validation guide are used as form/input pattern references: https://developer.mozilla.org/docs/Web/HTML/Reference/Elements/input and https://developer.mozilla.org/en-US/docs/Learn_web_development/Extensions/Forms/Form_validation</li>
+</ul>
+<h2>Architecture</h2>
+<p>The existing pipeline remains unchanged:</p>
+<p><code>SiteIntentExtractor -&gt; TemplateMatcher -&gt; TemplateCompiler -&gt; StaticSitePackageGenerator</code></p>
+<p>The expansion adds reusable blocks and templates to the existing library contract:</p>
+<ul>
+<li><code>SiteIntentExtractor</code> recognizes new visual/function block kinds from rendered regions and static sections.</li>
+<li><code>visual_patterns.json</code> declares four new template IDs and their slots.</li>
+<li><code>TemplateMatcher</code> scores templates by slots such as <code>search_box</code>, <code>filter_panel</code>, <code>metric_summary</code>, <code>form_fields</code>, and <code>showcase_hero</code>.</li>
+<li><code>TemplateCompiler</code> maps slot plans to component-library nodes.</li>
+<li><code>StaticSitePackageGenerator</code> renders only component types declared by <code>bricks4agent.default/manifest.json</code>.</li>
+</ul>
+<h2>Pattern Families</h2>
+<h3><code>search_results_portal</code></h3>
+<p>Primary signals:</p>
+<ul>
+<li>Keyword search input or search panel.</li>
+<li>Facet/filter sidebar or filter chips.</li>
+<li>Result list, summaries, snippets, and pagination.</li>
+</ul>
+<p>Slots:</p>
+<ul>
+<li><code>header</code></li>
+<li><code>search_box</code></li>
+<li><code>filter_panel</code></li>
+<li><code>result_list</code></li>
+<li><code>pagination</code></li>
+<li><code>footer</code></li>
+</ul>
+<p>Components:</p>
+<ul>
+<li><code>SearchBoxPanel</code></li>
+<li><code>FacetFilterPanel</code></li>
+<li><code>ResultList</code></li>
+<li><code>PaginationNav</code></li>
+</ul>
+<h3><code>report_dashboard</code></h3>
+<p>Primary signals:</p>
+<ul>
+<li>Filter/date/export toolbar.</li>
+<li>KPI or metric cards.</li>
+<li>Chart-like panels.</li>
+<li>Data table preview.</li>
+</ul>
+<p>Slots:</p>
+<ul>
+<li><code>header</code></li>
+<li><code>filter_bar</code></li>
+<li><code>metric_summary</code></li>
+<li><code>chart_panel</code></li>
+<li><code>data_table</code></li>
+<li><code>footer</code></li>
+</ul>
+<p>Components:</p>
+<ul>
+<li><code>DashboardFilterBar</code></li>
+<li><code>MetricSummaryGrid</code></li>
+<li><code>ChartPanel</code></li>
+<li><code>DataTablePreview</code></li>
+</ul>
+<h3><code>input_flow</code></h3>
+<p>Primary signals:</p>
+<ul>
+<li>Step or progress indicator.</li>
+<li>Structured input fields or form controls.</li>
+<li>Required/validation hints.</li>
+<li>Submit/continue/cancel action bar.</li>
+</ul>
+<p>Slots:</p>
+<ul>
+<li><code>header</code></li>
+<li><code>step_indicator</code></li>
+<li><code>form_fields</code></li>
+<li><code>validation_summary</code></li>
+<li><code>action_bar</code></li>
+<li><code>footer</code></li>
+</ul>
+<p>Components:</p>
+<ul>
+<li><code>StepIndicator</code></li>
+<li><code>StructuredFormPanel</code></li>
+<li><code>ValidationSummary</code></li>
+<li><code>FormActionBar</code></li>
+</ul>
+<h3><code>commercial_showcase</code></h3>
+<p>Primary signals:</p>
+<ul>
+<li>Product or offer hero with primary CTA.</li>
+<li>Product cards or feature cards.</li>
+<li>Proof/trust/logo/stat strip.</li>
+<li>Pricing or package panel.</li>
+<li>Final CTA band.</li>
+</ul>
+<p>Slots:</p>
+<ul>
+<li><code>header</code></li>
+<li><code>showcase_hero</code></li>
+<li><code>product_cards</code></li>
+<li><code>feature_grid</code></li>
+<li><code>proof_strip</code></li>
+<li><code>pricing_panel</code></li>
+<li><code>cta_band</code></li>
+<li><code>footer</code></li>
+</ul>
+<p>Components:</p>
+<ul>
+<li><code>ShowcaseHero</code></li>
+<li><code>ProductCardGrid</code></li>
+<li><code>ProofStrip</code></li>
+<li><code>PricingPanel</code></li>
+<li><code>CtaBand</code></li>
+</ul>
+<h2>Data Rules</h2>
+<ul>
+<li>Links are normalized through existing local-route logic so same-origin crawled pages become local generated routes.</li>
+<li>Components can only use props declared in the manifest.</li>
+<li>If a preferred component is missing, <code>TemplateMatcher</code> records a <code>ComponentRequest</code> and falls back to an accepted component.</li>
+<li>The compiler must not create source-specific generated components for these supported patterns.</li>
+</ul>
+<h2>Testing</h2>
+<p>The implementation must add focused tests for:</p>
+<ul>
+<li>Manifest and README coverage for every new component.</li>
+<li>Template loader coverage for every new template.</li>
+<li>Intent extraction for the four new visual/function patterns.</li>
+<li>Template matching that proves contradictory <code>SiteKind</code> does not affect selection.</li>
+<li>Compiler output that uses only manifest-declared components.</li>
+<li>Runtime and CSS support for all new components.</li>
+</ul>
+<p>Verification commands:</p>
+<ul>
+<li><code>dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --no-restore --filter "ComponentLibraryLoaderTests|TemplateFrameworkLoaderTests|SiteIntentExtractorTests|TemplateMatcherTests|TemplateCompilerTests|StaticSitePackageGeneratorTests"</code></li>
+<li><code>dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --no-restore</code></li>
+<li><code>dotnet build packages/csharp/ControlPlane.slnx --no-restore</code></li>
+</ul>
+</main>
+</body>
+</html>

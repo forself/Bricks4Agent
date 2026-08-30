@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NumberInput 數字輸入框</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>NumberInput 數字輸入框</h1>
+<p>數字輸入元件，支援加減按鈕、鍵盤方向鍵、範圍限制、精度控制。</p>
+<h2>API</h2>
+<h3>Constructor</h3>
+<pre><code class="language-javascript">import { NumberInput } from './NumberInput.js';
+
+const input = new NumberInput({
+    label: '數量',           // 標籤文字
+    value: null,             // 初始值（null=空）
+    min: 0,                  // 最小值
+    max: 100,                // 最大值
+    step: 1,                 // 每次增減量
+    precision: 0,            // 小數位數
+    disabled: false,         // 停用
+    showButtons: true,       // 顯示 +/- 按鈕
+    placeholder: '',         // 提示文字
+    width: '100%',           // 寬度
+    size: 'medium',          // 'small' | 'medium' | 'large'
+    onChange: (value) =&gt; {},  // 變更回調
+    className: ''            // 自訂 CSS 類別
+});
+</code></pre>
+<h3>方法</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>mount(container)</code></td>
+<td>掛載至容器</td>
+</tr>
+<tr>
+<td><code>destroy()</code></td>
+<td>銷毀元件</td>
+</tr>
+<tr>
+<td><code>getValue()</code></td>
+<td>取得目前數值（number 或 null）</td>
+</tr>
+<tr>
+<td><code>setValue(value, { emit }?)</code></td>
+<td>設定數值（預設不觸發 onChange，傳 <code>{ emit: true }</code> 才觸發）</td>
+</tr>
+<tr>
+<td><code>clear()</code></td>
+<td>清空為 null</td>
+</tr>
+</tbody>
+</table>
+<h3>屬性</h3>
+<ul>
+<li><code>element</code> — 根 DOM 元素</li>
+<li><code>value</code> — 目前數值</li>
+</ul>
+<h2>使用範例</h2>
+<pre><code class="language-javascript">import { NumberInput } from './NumberInput.js';
+
+const qty = new NumberInput({
+    label: '訂購數量',
+    min: 1,
+    max: 999,
+    step: 1,
+    value: 1,
+    onChange: (v) =&gt; console.log('數量:', v)
+});
+qty.mount('#qty-container');
+</code></pre>
+<h2>Demo</h2>
+<p><code>demo.html</code>（同目錄）</p>
+</main>
+</body>
+</html>

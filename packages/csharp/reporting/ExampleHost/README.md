@@ -6,7 +6,9 @@ reporting abstraction and adapter boundary.
 It demonstrates:
 
 - generated-style use case code depending on `Bricks4Agent.Reporting.Abstractions`
+
 - host-level registration of `ClosedXmlExcelReportService`
+
 - an HTTP endpoint returning an Excel file without exposing `ClosedXML` to the generated layer
 
 ## Run
@@ -24,5 +26,7 @@ curl.exe -OJ http://127.0.0.1:5087/reports/employees/HR
 Available sample departments:
 
 - `HR`
+
 - `IT`
+
 - `FIN`

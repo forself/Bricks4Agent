@@ -15,7 +15,7 @@ const avatar = new Avatar(options);
 **options 參數：**
 
 | 參數 | 型別 | 預設值 | 說明 |
-|------|------|--------|------|
+|---|---|---|---|
 | `src` | `string` | `''` | 圖片 URL |
 | `alt` | `string` | `''` | 替代文字（也用於產生回退首字） |
 | `size` | `string` | `'md'` | 尺寸：`'xs'`(24px) / `'sm'`(32px) / `'md'`(48px) / `'lg'`(72px) / `'xl'`(96px) |
@@ -25,12 +25,13 @@ const avatar = new Avatar(options);
 ### 靜態屬性
 
 - `Avatar.SIZES` — 尺寸對應 px 映射表
+
 - `Avatar.COLORS` — 回退色彩池（依名稱 hash 選色）
 
 ### 方法
 
 | 方法 | 回傳 | 說明 |
-|------|------|------|
+|---|---|---|
 | `toHTML()` | `string` | 產生 HTML 字串，可直接嵌入 template |
 | `mount(container)` | `void` | 掛載到容器（接受 `HTMLElement` 或 CSS 選擇器字串） |
 | `update(options)` | `void` | 更新配置並重新渲染 |

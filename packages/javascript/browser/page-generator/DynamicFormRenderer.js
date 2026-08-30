@@ -248,6 +248,13 @@ export class DynamicFormRenderer {
                     return;
                 }
             }
+            const maxLength = Number(def.validation?.maxLength ?? def.maxLength);
+            if (!isEmpty && Number.isInteger(maxLength) && maxLength >= 0
+                && String(value).length > maxLength) {
+                formField.setError(def.maxLengthMessage || `${def.label}不可超過${maxLength}字`);
+                valid = false;
+                return;
+            }
             formField.clearError();
         });
 

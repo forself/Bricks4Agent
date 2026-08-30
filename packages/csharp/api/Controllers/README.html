@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BaseController - API Controller Base Class</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>BaseController - API Controller Base Class</h1>
+<p>Base controller class that provides common functionality for all API controllers.</p>
+<h2>Features</h2>
+<ul>
+<li>Unified response format using ApiResponse</li>
+<li>Built-in user authentication helpers</li>
+<li>Common HTTP response methods (200, 201, 400, 401, 403, 404, 409, 500)</li>
+<li>ModelState validation helpers</li>
+<li>Action execution wrappers with error handling</li>
+<li>Automatic trace ID assignment</li>
+</ul>
+<h2>Usage</h2>
+<h3>Basic Controller Implementation</h3>
+<pre><code class="language-csharp">[Route(&quot;api/[controller]&quot;)]
+public class UsersController : BaseController
+{
+    private readonly IUserService _userService;
+
+    public UsersController(IUserService userService)
+    {
+        _userService = userService;
+    }
+
+    [HttpGet(&quot;{id}&quot;)]
+    public async Task&lt;IActionResult&gt; GetUser(int id)
+    {
+        var user = await _userService.GetByIdAsync(id);
+
+        if (user == null)
+            return NotFound(&quot;User not found&quot;);
+
+        return Success(user, &quot;User retrieved successfully&quot;);
+    }
+
+    [HttpPost]
+    public async Task&lt;IActionResult&gt; CreateUser([FromBody] CreateUserDto dto)
+    {
+        if (!ModelState.IsValid)
+            return BadRequestWithModelState();
+
+        var user = await _userService.CreateAsync(dto);
+        return Created(user, &quot;User created successfully&quot;);
+    }
+
+    [HttpPut(&quot;{id}&quot;)]
+    public async Task&lt;IActionResult&gt; UpdateUser(int id, [FromBody] UpdateUserDto dto)
+    {
+        var user = await _userService.UpdateAsync(id, dto);
+
+        if (user == null)
+            return NotFound(&quot;User not found&quot;);
+
+        return Success(user, &quot;User updated successfully&quot;);
+    }
+
+    [HttpDelete(&quot;{id}&quot;)]
+    public async Task&lt;IActionResult&gt; DeleteUser(int id)
+    {
+        var success = await _userService.DeleteAsync(id);
+
+        if (!success)
+            return NotFound(&quot;User not found&quot;);
+
+        return Success(&quot;User deleted successfully&quot;);
+    }
+}
+</code></pre>
+<h3>Using Current User Information</h3>
+<pre><code class="language-csharp">[HttpGet(&quot;profile&quot;)]
+[Authorize]
+public async Task&lt;IActionResult&gt; GetCurrentUserProfile()
+{
+    // Access current user information
+    var userId = CurrentUserId;
+    var username = CurrentUsername;
+    var email = CurrentUserEmail;
+    var roles = CurrentUserRoles;
+
+    if (!userId.HasValue)
+        return Unauthorized();
+
+    var profile = await _userService.GetProfileAsync(userId.Value);
+    return Success(profile);
+}
+
+[HttpPost(&quot;admin-only&quot;)]
+[Authorize]
+public IActionResult AdminOnlyAction()
+{
+    if (!HasRole(&quot;Admin&quot;))
+        return Forbidden(&quot;Admin access required&quot;);
+
+    // Admin-only logic here
+    return Success(&quot;Action completed&quot;);
+}
+</code></pre>
+<h3>Using Execute Helpers</h3>
+<pre><code class="language-csharp">// Execute without return value
+[HttpPost(&quot;send-email&quot;)]
+public async Task&lt;IActionResult&gt; SendEmail([FromBody] EmailDto dto)
+{
+    return await ExecuteActionAsync(
+        async () =&gt; await _emailService.SendAsync(dto),
+        &quot;Email sent successfully&quot;
+    );
+}
+
+// Execute with return value
+[HttpGet(&quot;{id}&quot;)]
+public async Task&lt;IActionResult&gt; GetUser(int id)
+{
+    return await ExecuteFunctionAsync(
+        async () =&gt; await _userService.GetByIdAsync(id),
+        &quot;User retrieved successfully&quot;
+    );
+}
+</code></pre>
+<h3>Custom Error Responses</h3>
+<pre><code class="language-csharp">[HttpPost(&quot;register&quot;)]
+public async Task&lt;IActionResult&gt; Register([FromBody] RegisterDto dto)
+{
+    if (await _userService.UsernameExistsAsync(dto.Username))
+        return Conflict(&quot;Username already exists&quot;);
+
+    if (await _userService.EmailExistsAsync(dto.Email))
+        return Conflict(&quot;Email already registered&quot;);
+
+    var user = await _userService.RegisterAsync(dto);
+    return Created(user, &quot;Registration successful&quot;);
+}
+</code></pre>
+<h3>Validation Errors</h3>
+<pre><code class="language-csharp">[HttpPost(&quot;validate&quot;)]
+public IActionResult ValidateData([FromBody] DataDto dto)
+{
+    var errors = new List&lt;string&gt;();
+
+    if (string.IsNullOrEmpty(dto.Name))
+        errors.Add(&quot;Name is required&quot;);
+
+    if (dto.Age &lt; 18)
+        errors.Add(&quot;Age must be at least 18&quot;);
+
+    if (errors.Any())
+        return BadRequest(errors, &quot;Validation failed&quot;);
+
+    return Success(&quot;Validation passed&quot;);
+}
+
+// Or use ModelState
+[HttpPost(&quot;validate-model&quot;)]
+public IActionResult ValidateModel([FromBody] DataDto dto)
+{
+    if (!ModelState.IsValid)
+        return BadRequestWithModelState();
+
+    return Success(&quot;Validation passed&quot;);
+}
+</code></pre>
+<h2>Available Response Methods</h2>
+<h3>Success Responses</h3>
+<ul>
+<li><code>Success&lt;T&gt;(T data, string message)</code> - 200 OK with data</li>
+<li><code>Success(string message)</code> - 200 OK without data</li>
+<li><code>Created&lt;T&gt;(T data, string message)</code> - 201 Created with data</li>
+<li><code>NoContent()</code> - 204 No Content</li>
+</ul>
+<h3>Error Responses</h3>
+<ul>
+<li><code>BadRequest(string message)</code> - 400 Bad Request</li>
+<li><code>BadRequest(List&lt;string&gt; errors, string message)</code> - 400 with validation errors</li>
+<li><code>Unauthorized(string message)</code> - 401 Unauthorized</li>
+<li><code>Forbidden(string message)</code> - 403 Forbidden</li>
+<li><code>NotFound(string message)</code> - 404 Not Found</li>
+<li><code>Conflict(string message)</code> - 409 Conflict</li>
+<li><code>InternalServerError(string message)</code> - 500 Internal Server Error</li>
+<li><code>InternalServerError(Exception ex)</code> - 500 with exception details</li>
+</ul>
+<h2>Available Properties</h2>
+<ul>
+<li><code>CurrentUserId</code> - Get current user ID from JWT claims</li>
+<li><code>CurrentUsername</code> - Get current username from JWT claims</li>
+<li><code>CurrentUserEmail</code> - Get current user email from JWT claims</li>
+<li><code>CurrentUserRoles</code> - Get current user roles from JWT claims</li>
+<li><code>TraceId</code> - Get request trace ID for logging</li>
+</ul>
+<h2>Available Helper Methods</h2>
+<ul>
+<li><code>HasRole(string role)</code> - Check if current user has specific role</li>
+<li><code>GetModelStateErrors()</code> - Get all ModelState validation errors</li>
+<li><code>BadRequestWithModelState()</code> - Return 400 with ModelState errors</li>
+<li><code>ExecuteAction(Action action, string successMessage)</code> - Execute action with error handling</li>
+<li><code>ExecuteActionAsync(Func&lt;Task&gt; action, string successMessage)</code> - Execute async action with error handling</li>
+<li><code>ExecuteFunction&lt;T&gt;(Func&lt;T&gt; func, string successMessage)</code> - Execute function with error handling</li>
+<li><code>ExecuteFunctionAsync&lt;T&gt;(Func&lt;Task&lt;T&gt;&gt; func, string successMessage)</code> - Execute async function with error handling</li>
+</ul>
+<h2>Dependencies</h2>
+<ul>
+<li>Microsoft.AspNetCore.Mvc (ASP.NET Core)</li>
+<li>ApiResponse component</li>
+<li>.NET 6.0 or higher</li>
+</ul>
+<h2>Benefits</h2>
+<ol>
+<li><strong>DRY Principle</strong> - Eliminate repetitive response code</li>
+<li><strong>Consistency</strong> - All controllers return uniform responses</li>
+<li><strong>Error Handling</strong> - Built-in exception handling</li>
+<li><strong>User Context</strong> - Easy access to authenticated user information</li>
+<li><strong>Trace ID</strong> - Automatic request tracking for debugging</li>
+<li><strong>Type Safety</strong> - Strongly-typed responses</li>
+</ol>
+</main>
+</body>
+</html>

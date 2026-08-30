@@ -11,14 +11,14 @@ new FormRow(options?)
 ```
 
 | 參數 | 型別 | 預設值 | 說明 |
-|------|------|--------|------|
+|---|---|---|---|
 | `options.fields` | `Array` | `[]` | FormField 實例陣列 |
 | `options.gap` | `string` | `'16px'` | 欄間距 |
 
 ### 方法
 
 | 方法 | 回傳 | 說明 |
-|------|------|------|
+|---|---|---|
 | `addField(formField)` | `this` | 新增 FormField |
 | `getField(fieldName)` | `FormField\|null` | 依 fieldName 取得 FormField |
 | `getFields()` | `FormField[]` | 取得所有 FormField |
@@ -28,7 +28,7 @@ new FormRow(options?)
 ### 屬性
 
 | 屬性 | 說明 |
-|------|------|
+|---|---|
 | `element` | 根 DOM 元素（`div.form-row`） |
 
 ## 使用範例

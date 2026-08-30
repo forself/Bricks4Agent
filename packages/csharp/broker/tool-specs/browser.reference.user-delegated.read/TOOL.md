@@ -13,7 +13,9 @@ Identity mode:
 Rules:
 
 - credentials or session grants belong to the user
+
 - the broker mediates access and binds the session to that user
+
 - audit and consent requirements are the strictest of the three initial browser identity classes
 
 This is a reference spec.

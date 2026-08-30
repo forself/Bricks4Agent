@@ -17,7 +17,7 @@ import { ButtonGroup } from '../../common/ButtonGroup/index.js';
 import { ColorPicker } from '../../common/ColorPicker/index.js';
 import { UploadButton } from '../../common/UploadButton/index.js';
 import { SimpleDialog } from '../../common/Dialog/index.js';
-import { escapeHtml, sanitizeHTML, sanitizeUrl } from '../../utils/security.js';
+import { escapeHtml, escapeAttr, sanitizeHTML, sanitizeUrl, isSafeId } from '../../utils/security.js';
 import { WebPainter } from '../../viz/WebPainter/index.js';
 import { NumberInput } from '../../form/NumberInput/index.js';
 import { nearestColorClass, nearestSizeClass, alignClass, nearestLhClass, RT_GROUPS } from '../richtext-palette.js';
@@ -2727,8 +2727,12 @@ export class WebTextEditor {
             const level = parseInt(heading.tagName.charAt(1));
             const text = heading.textContent.trim();
 
-            // 為標題加上 ID 以便跳轉
-            if (!heading.id) {
+            // 為標題加上 ID 以便跳轉。
+            // 主修:既有 id 若非安全字元集(內容作者可控,可能夾帶引號/角括號),
+            // 一律以生成的安全 id 覆蓋 heading.id——連 DOM 節點一起修正,使
+            // 錨點 href="#id" 仍能對應到標題。合法既有 id 予以保留。
+            // 此為 XSS 防線的來源端;下游 TOC 內插另有 escapeAttr 作縱深防禦。
+            if (!isSafeId(heading.id)) {
                 heading.id = `wte-heading-${this.instanceId}-${index}`;
             }
 
@@ -2779,7 +2783,7 @@ export class WebTextEditor {
         toc.forEach(item => {
             const indent = (item.level - 1) * 20;
             tocHtml += `
-                <div class="toc-item" data-id="${item.id}" data-indent="${indent}">
+                <div class="toc-item" data-id="${escapeAttr(item.id)}" data-indent="${indent}">
                     <span class="toc-level">H${item.level}</span>
                     ${escapeHtml(item.text)}
                 </div>
@@ -2873,8 +2877,8 @@ export class WebTextEditor {
             const indent = (item.level - 1) * 20;
             tocHtml += `
                 <div class="wte-toc-item" data-indent="${indent}">
-                    <a href="#${item.id}"
-                       data-toc-target="${item.id}">
+                    <a href="#${escapeAttr(item.id)}"
+                       data-toc-target="${escapeAttr(item.id)}">
                         ${escapeHtml(item.text)}
                     </a>
                 </div>

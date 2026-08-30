@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>網站模板框架</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>網站模板框架</h1>
+<p>模板框架位於元件庫之上，負責把視覺意圖轉成頁面骨架與 slot 合約。模板不建立元件，只能引用已載入元件庫 manifest 中宣告的元件型別。</p>
+<p>模板依視覺與功能版型選擇，不依網站類別選擇。內建模板使用 <code>pattern_tags</code>；<code>supported_site_kinds</code> 只保留為舊 manifest 的相容欄位，不參與模板評分。</p>
+<h2>模板</h2>
+<h3><code>hero_news_portal</code></h3>
+<p>適用於首頁由頁首、大型 hero 或輪播、快速連結、新聞或卡片輪播、內容/特色區與頁尾構成的版型。</p>
+<p>首頁 slots:</p>
+<ul>
+<li><code>header</code>: <code>MegaHeader</code> 或 <code>SiteHeader</code></li>
+<li><code>hero</code>: <code>HeroCarousel</code>, <code>HeroBanner</code>, 或 <code>AtomicSection</code></li>
+<li><code>quick_links</code>: <code>QuickLinkRibbon</code>, <code>CardGrid</code>, 或 <code>AtomicSection</code></li>
+<li><code>news</code>: <code>NewsCardCarousel</code>, <code>NewsGrid</code>, 或 <code>CardGrid</code></li>
+<li><code>features</code>: <code>MediaFeatureGrid</code>, <code>CardGrid</code>, 或 <code>AtomicSection</code></li>
+<li><code>content</code>: <code>ContentArticle</code>, <code>ContentSection</code>, 或 <code>AtomicSection</code></li>
+<li><code>footer</code>: <code>InstitutionFooter</code> 或 <code>SiteFooter</code></li>
+</ul>
+<h3><code>search_service_portal</code></h3>
+<p>適用於有可選 hero、明顯搜尋區、服務/分類卡片、行動捷徑、分頁公告、新聞/卡片區與頁尾的版型。</p>
+<p>首頁 slots:</p>
+<ul>
+<li><code>header</code>: <code>MegaHeader</code> 或 <code>SiteHeader</code></li>
+<li><code>hero</code>: <code>HeroCarousel</code>, <code>HeroBanner</code>, 或 <code>AtomicSection</code></li>
+<li><code>search</code>: <code>ServiceSearchHero</code>, <code>HeroBanner</code>, 或 <code>AtomicSection</code></li>
+<li><code>news</code>: <code>NewsCardCarousel</code>, <code>NewsGrid</code>, 或 <code>CardGrid</code></li>
+<li><code>tabbed_news</code>: <code>TabbedNewsBoard</code>, <code>NewsGrid</code>, <code>ArticleList</code>, 或 <code>CardGrid</code></li>
+<li><code>service_categories</code>: <code>ServiceCategoryGrid</code>, <code>CardGrid</code>, 或 <code>AtomicSection</code></li>
+<li><code>service_actions</code>: <code>ServiceActionGrid</code>, <code>QuickLinkRibbon</code>, <code>CardGrid</code>, 或 <code>AtomicSection</code></li>
+<li><code>features</code>: <code>MediaFeatureGrid</code>, <code>ServiceCategoryGrid</code>, <code>CardGrid</code>, 或 <code>AtomicSection</code></li>
+<li><code>footer</code>: <code>InstitutionFooter</code> 或 <code>SiteFooter</code></li>
+</ul>
+<h3><code>service_action_portal</code></h3>
+<p>適用於 hero 加強行動捷徑，後續接分頁公告/新聞、服務分類、特色卡片與頁尾的版型。</p>
+<p>首頁 slots:</p>
+<ul>
+<li><code>header</code>: <code>MegaHeader</code> 或 <code>SiteHeader</code></li>
+<li><code>hero</code>: <code>HeroCarousel</code>, <code>HeroBanner</code>, 或 <code>AtomicSection</code></li>
+<li><code>service_actions</code>: <code>ServiceActionGrid</code>, <code>QuickLinkRibbon</code>, <code>CardGrid</code>, 或 <code>AtomicSection</code></li>
+<li><code>news</code>: <code>NewsCardCarousel</code>, <code>NewsGrid</code>, 或 <code>CardGrid</code></li>
+<li><code>tabbed_news</code>: <code>TabbedNewsBoard</code>, <code>NewsGrid</code>, <code>ArticleList</code>, 或 <code>CardGrid</code></li>
+<li><code>features</code>: <code>MediaFeatureGrid</code>, <code>CardGrid</code>, 或 <code>AtomicSection</code></li>
+<li><code>service_categories</code>: <code>ServiceCategoryGrid</code>, <code>CardGrid</code>, 或 <code>AtomicSection</code></li>
+<li><code>footer</code>: <code>InstitutionFooter</code> 或 <code>SiteFooter</code></li>
+</ul>
+<h3><code>search_results_portal</code></h3>
+<p>適用於關鍵字搜尋、篩選器、搜尋結果列/卡片、分頁或結果導覽構成的版型。</p>
+<p>首頁 slots:</p>
+<ul>
+<li><code>header</code>: <code>MegaHeader</code> 或 <code>SiteHeader</code></li>
+<li><code>search_box</code>: <code>SearchBoxPanel</code>, <code>ServiceSearchHero</code>, 或 <code>AtomicSection</code></li>
+<li><code>filter_panel</code>: <code>FacetFilterPanel</code> 或 <code>AtomicSection</code></li>
+<li><code>result_list</code>: <code>ResultList</code>, <code>ArticleList</code>, <code>CardGrid</code>, 或 <code>AtomicSection</code></li>
+<li><code>pagination</code>: <code>PaginationNav</code>, <code>QuickLinkRibbon</code>, 或 <code>AtomicSection</code></li>
+<li><code>footer</code>: <code>InstitutionFooter</code> 或 <code>SiteFooter</code></li>
+</ul>
+<h3><code>report_dashboard</code></h3>
+<p>適用於篩選列、KPI 指標、圖表面板、資料表預覽與報表操作構成的版型。</p>
+<p>首頁 slots:</p>
+<ul>
+<li><code>header</code>: <code>MegaHeader</code> 或 <code>SiteHeader</code></li>
+<li><code>filter_bar</code>: <code>DashboardFilterBar</code>, <code>FacetFilterPanel</code>, 或 <code>AtomicSection</code></li>
+<li><code>metric_summary</code>: <code>MetricSummaryGrid</code> 或 <code>AtomicSection</code></li>
+<li><code>chart_panel</code>: <code>ChartPanel</code>, <code>MediaFeatureGrid</code>, 或 <code>AtomicSection</code></li>
+<li><code>data_table</code>: <code>DataTablePreview</code>, <code>ArticleList</code>, 或 <code>AtomicSection</code></li>
+<li><code>footer</code>: <code>InstitutionFooter</code> 或 <code>SiteFooter</code></li>
+</ul>
+<h3><code>input_flow</code></h3>
+<p>適用於步驟/進度指示、表單欄位、驗證提示與流程操作構成的版型。</p>
+<p>首頁 slots:</p>
+<ul>
+<li><code>header</code>: <code>MegaHeader</code> 或 <code>SiteHeader</code></li>
+<li><code>step_indicator</code>: <code>StepIndicator</code> 或 <code>AtomicSection</code></li>
+<li><code>form_fields</code>: <code>StructuredFormPanel</code>, <code>FormBlock</code>, 或 <code>AtomicSection</code></li>
+<li><code>validation_summary</code>: <code>ValidationSummary</code>, <code>ContentSection</code>, 或 <code>AtomicSection</code></li>
+<li><code>action_bar</code>: <code>FormActionBar</code>, <code>QuickLinkRibbon</code>, 或 <code>AtomicSection</code></li>
+<li><code>footer</code>: <code>InstitutionFooter</code> 或 <code>SiteFooter</code></li>
+</ul>
+<h3><code>commercial_showcase</code></h3>
+<p>適用於產品/方案 hero、產品卡片、特色格狀區、信任背書、價格方案與 CTA 區構成的版型。</p>
+<p>首頁 slots:</p>
+<ul>
+<li><code>header</code>: <code>MegaHeader</code> 或 <code>SiteHeader</code></li>
+<li><code>showcase_hero</code>: <code>ShowcaseHero</code>, <code>HeroBanner</code>, 或 <code>AtomicSection</code></li>
+<li><code>product_cards</code>: <code>ProductCardGrid</code>, <code>MediaFeatureGrid</code>, <code>CardGrid</code>, 或 <code>AtomicSection</code></li>
+<li><code>feature_grid</code>: <code>MediaFeatureGrid</code>, <code>CardGrid</code>, 或 <code>AtomicSection</code></li>
+<li><code>proof_strip</code>: <code>ProofStrip</code>, <code>MetricSummaryGrid</code>, 或 <code>AtomicSection</code></li>
+<li><code>pricing_panel</code>: <code>PricingPanel</code>, <code>ProductCardGrid</code>, <code>CardGrid</code>, 或 <code>AtomicSection</code></li>
+<li><code>cta_band</code>: <code>CtaBand</code>, <code>QuickLinkRibbon</code>, 或 <code>AtomicSection</code></li>
+<li><code>footer</code>: <code>InstitutionFooter</code> 或 <code>SiteFooter</code></li>
+</ul>
+<h2>選擇規則</h2>
+<ul>
+<li><code>SiteIntentExtractor</code> 會抽取 <code>hero</code>, <code>search</code>, <code>service_categories</code>, <code>service_actions</code>, <code>tabbed_news</code>, <code>quick_links</code>, <code>news</code> 等視覺/功能區塊。</li>
+<li><code>TemplateMatcher</code> 只依這些區塊與頁面 intent 可填入的 slots 評分。</li>
+<li>slot 只能選擇 <code>bricks4agent.default/manifest.json</code> 或明確載入的 manifest 中宣告的元件。</li>
+<li>若偏好的元件不存在，會回報 <code>ComponentRequest</code>；compiler 會退回到可接受的元件庫元件，不會為這些模板產生網站專屬元件程式碼。</li>
+</ul>
+</main>
+</body>
+</html>

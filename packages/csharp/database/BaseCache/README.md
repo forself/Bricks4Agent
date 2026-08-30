@@ -5,11 +5,17 @@
 ## 特點
 
 - **零依賴** - 不需要安裝任何 NuGet 套件
+
 - **執行緒安全** - 使用 `ConcurrentDictionary` 實作
+
 - **多種資料結構** - Key-Value、Queue、Stack、List、Hash、Set
+
 - **TTL 支援** - 自動過期機制
+
 - **Pub/Sub** - 發布訂閱模式
+
 - **持久化** - 可儲存/載入 JSON 檔案
+
 - **統計資訊** - 命中率、讀寫次數等
 
 ## 安裝
@@ -279,8 +285,11 @@ cache.Publish($"user:{userId}:notifications", new {
 ## 注意事項
 
 1. **記憶體限制** - 這是純記憶體實作，重啟後資料會遺失 (除非使用持久化)
+
 2. **單機使用** - 不支援分散式，如需分散式請使用 Redis
+
 3. **大型物件** - 避免儲存過大的物件，建議單一項目 < 1MB
+
 4. **序列化** - 持久化功能使用 System.Text.Json，複雜物件需確保可序列化
 
 ## License

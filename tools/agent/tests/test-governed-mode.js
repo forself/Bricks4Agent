@@ -253,7 +253,7 @@ async function main() {
     assert(denied.includes('capability denied'));
     assert.strictEqual(fakeClient.getSubmitCalls(), 0);
 
-    const allowed = await agent.governedExecutor.executeTool('read_file', { path: './README.md' }, {
+    const allowed = await agent.governedExecutor.executeTool('read_file', { path: './README.html' }, {
         projectRoot: ROOT,
         noConfirm: true,
         verbose: false,

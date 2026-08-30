@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Deploy to Azure VM IIS</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Deploy to Azure VM IIS</h1>
+<p>Status: <code>beta</code></p>
+<p>Purpose:</p>
+<ul>
+<li>publish a .NET project</li>
+<li>package the publish output</li>
+<li>deploy the package to a broker-registered Azure VM IIS target</li>
+</ul>
+<p>Rules:</p>
+<ul>
+<li>the target must be registered in broker admin</li>
+<li>the project path must be absolute and resolve to exactly one <code>.csproj</code></li>
+<li>transport is currently <code>winrm_powershell</code></li>
+<li>credentials are referenced by <code>secret_ref</code> and resolved by broker-side deployment configuration</li>
+<li>target deployment modes:</li>
+<li><code>site_root</code>: deploy directly to the IIS site physical path</li>
+<li><code>iis_application</code>: deploy under a parent IIS site as a child application</li>
+<li>when the target uses <code>iis_application</code>, broker target registration must define:</li>
+<li><code>application_path</code> such as <code>/apps/project-a</code></li>
+<li>optional <code>health_check_path</code></li>
+</ul>
+<p>This tool is broker-governed and intended for controlled deployment flows.</p>
+</main>
+</body>
+</html>

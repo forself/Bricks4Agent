@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>File Handling Module</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>File Handling Module</h1>
+<p>A comprehensive file upload system with configurable path templates, upload rules, and batch upload support.</p>
+<h2>Features</h2>
+<ul>
+<li><strong>Single and Batch Upload</strong>: Support for uploading single files or multiple files at once</li>
+<li><strong>Configurable Path Templates</strong>: Dynamic path generation using template variables</li>
+<li><strong>Upload Rules</strong>: Customizable rules for file validation (extensions, size limits)</li>
+<li><strong>File Tracking</strong>: Database records for all uploaded files with metadata</li>
+<li><strong>Soft Delete</strong>: Safe deletion with option to preserve or remove physical files</li>
+<li><strong>Security</strong>: Built-in validation against path traversal and dangerous file types</li>
+</ul>
+<h2>Directory Structure</h2>
+<pre><code>FileHandling/
+├── Controllers/
+│   ├── FileUploadController.cs    # File upload API endpoints
+│   └── UploadRuleController.cs    # Rule management endpoints
+├── Services/
+│   ├── IFileUploadService.cs      # Service interface
+│   ├── FileUploadService.cs       # Service implementation
+│   └── PathTemplateParser.cs      # Path template parsing
+├── Models/
+│   ├── FileUploadRequest.cs       # Single upload request
+│   ├── BatchUploadRequest.cs      # Batch upload request
+│   ├── FileUploadResult.cs        # Upload result DTOs
+│   ├── FileRecord.cs              # File record entity
+│   └── UploadPathRule.cs          # Upload rule entity
+└── README.md
+</code></pre>
+<h2>Setup</h2>
+<h3>1. Register Services</h3>
+<p>Add the following to your <code>Startup.cs</code> or <code>Program.cs</code>:</p>
+<pre><code class="language-csharp">// Register services
+services.AddScoped&lt;IPathTemplateParser, PathTemplateParser&gt;();
+services.AddScoped&lt;IFileUploadService, FileUploadService&gt;();
+services.AddScoped&lt;IGenericRepository&lt;FileRecord&gt;, GenericRepository&lt;FileRecord&gt;&gt;();
+services.AddScoped&lt;IGenericRepository&lt;UploadPathRule&gt;, GenericRepository&lt;UploadPathRule&gt;&gt;();
+</code></pre>
+<h3>2. Configuration</h3>
+<p>Add to <code>appsettings.json</code>:</p>
+<pre><code class="language-json">{
+  &quot;FileUpload&quot;: {
+    &quot;PathRoot&quot;: &quot;uploads&quot;
+  }
+}
+</code></pre>
+<h3>3. Database Migration</h3>
+<p>Create entity configurations for <code>FileRecord</code> and <code>UploadPathRule</code>:</p>
+<pre><code class="language-csharp">public class FileRecordConfiguration : IEntityTypeConfiguration&lt;FileRecord&gt;
+{
+    public void Configure(EntityTypeBuilder&lt;FileRecord&gt; builder)
+    {
+        builder.ToTable(&quot;FileRecords&quot;);
+        builder.HasKey(x =&gt; x.Id);
+        builder.Property(x =&gt; x.OriginalName).IsRequired().HasMaxLength(255);
+        builder.Property(x =&gt; x.StoredPath).IsRequired().HasMaxLength(500);
+        builder.HasIndex(x =&gt; new { x.TableName, x.TablePk });
+        builder.HasIndex(x =&gt; x.Identify);
+    }
+}
+
+public class UploadPathRuleConfiguration : IEntityTypeConfiguration&lt;UploadPathRule&gt;
+{
+    public void Configure(EntityTypeBuilder&lt;UploadPathRule&gt; builder)
+    {
+        builder.ToTable(&quot;UploadPathRules&quot;);
+        builder.HasKey(x =&gt; x.Id);
+        builder.Property(x =&gt; x.RuleName).IsRequired().HasMaxLength(100);
+        builder.Property(x =&gt; x.PathTemplate).IsRequired().HasMaxLength(500);
+        builder.HasIndex(x =&gt; x.RuleName).IsUnique();
+    }
+}
+</code></pre>
+<h2>API Endpoints</h2>
+<h3>File Upload</h3>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Endpoint</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>POST</td>
+<td><code>/api/files/upload</code></td>
+<td>Upload a single file</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/files/upload-batch</code></td>
+<td>Upload multiple files</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/files</code></td>
+<td>Query file records</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/files/{id}</code></td>
+<td>Get file by ID</td>
+</tr>
+<tr>
+<td>DELETE</td>
+<td><code>/api/files/{id}</code></td>
+<td>Delete a file</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/files/my-files</code></td>
+<td>Get current user's files</td>
+</tr>
+</tbody>
+</table>
+<h3>Upload Rules (Admin)</h3>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Endpoint</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GET</td>
+<td><code>/api/upload-rules</code></td>
+<td>List all rules</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/upload-rules/{id}</code></td>
+<td>Get rule by ID</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/upload-rules</code></td>
+<td>Create new rule</td>
+</tr>
+<tr>
+<td>PUT</td>
+<td><code>/api/upload-rules/{id}</code></td>
+<td>Update rule</td>
+</tr>
+<tr>
+<td>DELETE</td>
+<td><code>/api/upload-rules/{id}</code></td>
+<td>Delete rule</td>
+</tr>
+<tr>
+<td>PATCH</td>
+<td><code>/api/upload-rules/{id}/toggle-active</code></td>
+<td>Toggle rule status</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/upload-rules/validate-template</code></td>
+<td>Validate path template</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/upload-rules/template-variables</code></td>
+<td>List template variables</td>
+</tr>
+</tbody>
+</table>
+<h2>Path Template Variables</h2>
+<p>The path template system supports the following variables:</p>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Description</th>
+<th>Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>{PathRoot}</code></td>
+<td>Root directory from config</td>
+<td><code>uploads</code></td>
+</tr>
+<tr>
+<td><code>{TableName}</code></td>
+<td>Associated table name</td>
+<td><code>Products</code></td>
+</tr>
+<tr>
+<td><code>{TablePk}</code></td>
+<td>Table primary key</td>
+<td><code>123</code></td>
+</tr>
+<tr>
+<td><code>{Identify}</code></td>
+<td>Custom identifier</td>
+<td><code>documents</code></td>
+</tr>
+<tr>
+<td><code>{FileName}</code></td>
+<td>Original file name</td>
+<td><code>image.jpg</code></td>
+</tr>
+<tr>
+<td><code>{FileNameWithoutExt}</code></td>
+<td>File name without extension</td>
+<td><code>image</code></td>
+</tr>
+<tr>
+<td><code>{FileExt}</code></td>
+<td>File extension with dot</td>
+<td><code>.jpg</code></td>
+</tr>
+<tr>
+<td><code>{UserId}</code></td>
+<td>Current user ID</td>
+<td><code>42</code></td>
+</tr>
+<tr>
+<td><code>{Date:format}</code></td>
+<td>Date with format</td>
+<td><code>{Date:yyyy/MM/dd}</code> -&gt; <code>2024/01/15</code></td>
+</tr>
+<tr>
+<td><code>{GUID}</code></td>
+<td>Unique identifier</td>
+<td><code>a1b2c3d4e5f6...</code></td>
+</tr>
+</tbody>
+</table>
+<h3>Example Templates</h3>
+<pre><code># Basic template
+{PathRoot}/{Date:yyyy/MM/dd}/{GUID}_{FileName}
+-&gt; uploads/2024/01/15/abc123_photo.jpg
+
+# Organized by table
+{PathRoot}/{TableName}/{TablePk}/{Date:yyyyMMdd}_{FileName}
+-&gt; uploads/Products/42/20240115_product-image.jpg
+
+# User-specific
+{PathRoot}/users/{UserId}/documents/{Identify}/{GUID}{FileExt}
+-&gt; uploads/users/5/documents/invoices/xyz789.pdf
+</code></pre>
+<h2>Usage Examples</h2>
+<h3>Upload a Single File</h3>
+<pre><code class="language-http">POST /api/files/upload
+Content-Type: multipart/form-data
+Authorization: Bearer &lt;token&gt;
+
+file: (binary)
+ruleId: 1
+tableName: Products
+tablePk: 42
+</code></pre>
+<p><strong>Response:</strong></p>
+<pre><code class="language-json">{
+  &quot;success&quot;: true,
+  &quot;statusCode&quot;: 201,
+  &quot;message&quot;: &quot;File uploaded successfully&quot;,
+  &quot;data&quot;: {
+    &quot;success&quot;: true,
+    &quot;fileId&quot;: 123,
+    &quot;originalName&quot;: &quot;product-image.jpg&quot;,
+    &quot;storedPath&quot;: &quot;uploads/Products/42/20240115_abc123_product-image.jpg&quot;,
+    &quot;fileSize&quot;: 245678,
+    &quot;contentType&quot;: &quot;image/jpeg&quot;,
+    &quot;uploadedAt&quot;: &quot;2024-01-15T10:30:00Z&quot;
+  }
+}
+</code></pre>
+<h3>Batch Upload</h3>
+<pre><code class="language-http">POST /api/files/upload-batch
+Content-Type: multipart/form-data
+Authorization: Bearer &lt;token&gt;
+
+files: (binary)
+files: (binary)
+files: (binary)
+ruleId: 1
+tableName: Products
+tablePk: 42
+</code></pre>
+<p><strong>Response:</strong></p>
+<pre><code class="language-json">{
+  &quot;success&quot;: true,
+  &quot;message&quot;: &quot;3/3 files uploaded successfully&quot;,
+  &quot;data&quot;: {
+    &quot;totalFiles&quot;: 3,
+    &quot;successCount&quot;: 3,
+    &quot;failedCount&quot;: 0,
+    &quot;allSuccessful&quot;: true,
+    &quot;results&quot;: [
+      { &quot;success&quot;: true, &quot;fileId&quot;: 124, &quot;originalName&quot;: &quot;image1.jpg&quot;, ... },
+      { &quot;success&quot;: true, &quot;fileId&quot;: 125, &quot;originalName&quot;: &quot;image2.jpg&quot;, ... },
+      { &quot;success&quot;: true, &quot;fileId&quot;: 126, &quot;originalName&quot;: &quot;image3.jpg&quot;, ... }
+    ]
+  }
+}
+</code></pre>
+<h3>Create Upload Rule</h3>
+<pre><code class="language-http">POST /api/upload-rules
+Content-Type: application/json
+Authorization: Bearer &lt;admin-token&gt;
+
+{
+  &quot;ruleName&quot;: &quot;Product Images&quot;,
+  &quot;pathTemplate&quot;: &quot;{PathRoot}/products/{TablePk}/images/{Date:yyyyMMdd}_{GUID}{FileExt}&quot;,
+  &quot;description&quot;: &quot;Upload rule for product images&quot;,
+  &quot;allowedExtensions&quot;: &quot;.jpg,.jpeg,.png,.webp&quot;,
+  &quot;maxFileSize&quot;: 5242880,
+  &quot;isActive&quot;: true
+}
+</code></pre>
+<h3>Query Files</h3>
+<pre><code class="language-http">GET /api/files?tableName=Products&amp;tablePk=42
+Authorization: Bearer &lt;token&gt;
+</code></pre>
+<p><strong>Response:</strong></p>
+<pre><code class="language-json">{
+  &quot;success&quot;: true,
+  &quot;data&quot;: [
+    {
+      &quot;id&quot;: 123,
+      &quot;originalName&quot;: &quot;product-image.jpg&quot;,
+      &quot;storedPath&quot;: &quot;uploads/Products/42/...&quot;,
+      &quot;fileSize&quot;: 245678,
+      &quot;contentType&quot;: &quot;image/jpeg&quot;,
+      &quot;tableName&quot;: &quot;Products&quot;,
+      &quot;tablePk&quot;: &quot;42&quot;,
+      &quot;uploadedBy&quot;: 5,
+      &quot;uploadedAt&quot;: &quot;2024-01-15T10:30:00Z&quot;
+    }
+  ]
+}
+</code></pre>
+<h2>Security Considerations</h2>
+<ol>
+<li><strong>File Extension Validation</strong>: Configure allowed extensions per rule</li>
+<li><strong>File Size Limits</strong>: Set maximum file size per rule (default: 10MB)</li>
+<li><strong>Dangerous Files</strong>: Automatic blocking of executable files (.exe, .dll, .bat, etc.)</li>
+<li><strong>Path Traversal</strong>: Prevention of <code>..</code> patterns in paths</li>
+<li><strong>Authentication</strong>: All endpoints require authentication</li>
+<li><strong>Authorization</strong>: Rule management requires Admin role</li>
+</ol>
+<h2>Frontend Integration</h2>
+<p>Use with the <code>BatchUploader</code> JavaScript component:</p>
+<pre><code class="language-javascript">import { BatchUploader } from './ui_components/form/BatchUploader';
+
+const uploader = new BatchUploader({
+    container: '#upload-container',
+    apiEndpoint: '/api/files/upload',
+    ruleId: 1,
+    tableName: 'Products',
+    tablePk: '42',
+    maxFiles: 10,
+    headers: {
+        'Authorization': 'Bearer ' + token
+    },
+    onComplete: (result) =&gt; {
+        console.log('Upload complete:', result);
+    }
+});
+</code></pre>
+<p>See the frontend component documentation for more details.</p>
+</main>
+</body>
+</html>

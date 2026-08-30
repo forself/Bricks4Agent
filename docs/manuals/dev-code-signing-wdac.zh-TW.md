@@ -5,15 +5,19 @@
 ## 重要界線
 
 - Smart App Control 沒有單一 app allow-list。若目前封鎖來自 Smart App Control 內建策略，簽章可改善信任訊號，但不保證能被單機 allow-list 放行。
+
 - WDAC supplemental policy 只能補到一個允許 supplemental 的 base policy。產生 policy 時必須提供 `BasePolicyId`。
+
 - 腳本預設不部署 WDAC policy。`Install-BricksWdacPolicy.ps1` 預設是 dry-run，只印出 `CiTool --update-policy` 命令。
+
 - 不要提交私鑰、PFX、憑證密碼或 `.run/` 產物。`.gitignore` 已忽略 `.run/`、`*.pfx`、`*.p12`。
+
 - Signed WDAC base policy 風險很高；本流程只產生 supplemental policy，不建立 signed base policy。
 
 ## 腳本
 
 | Script | Purpose |
-| --- | --- |
+|---|---|
 | `tools/windows-signing/New-BricksDevCodeSigningCert.ps1` | 建立或重用 CurrentUser code-signing cert，輸出 `.run/code-signing/Bricks4AgentDevCodeSigning.cer` |
 | `tools/windows-signing/Sign-BricksAssemblies.ps1` | 只簽 repo 自家 `.csproj` 對應的 `bin/**/*.dll` / `bin/**/*.exe` |
 | `tools/windows-signing/New-BricksWdacSupplementalPolicy.ps1` | 用已簽章 assemblies 產生 WDAC supplemental policy XML / CIP |
@@ -99,9 +103,9 @@ npm run test:integration:signed
 若需要手動執行某個 verify project，順序必須維持：
 
 ```powershell
-dotnet build packages/csharp/database/BaseOrm/net8/verify/BaseOrm.Verify.csproj
+dotnet build packages/csharp/database/BaseOrm/net10/verify/BaseOrm.Verify.csproj
 npm run signing:assemblies
-dotnet run --no-build --project packages/csharp/database/BaseOrm/net8/verify/BaseOrm.Verify.csproj
+dotnet run --no-build --project packages/csharp/database/BaseOrm/net10/verify/BaseOrm.Verify.csproj
 ```
 
 ## 查詢 BasePolicyId
@@ -173,8 +177,11 @@ npm run signing:wdac-repair -- -Deploy
 這個流程會：
 
 - 補簽 `.run\line-sidecar` 內自家 `.dll` / `.exe`。
+
 - 針對整個 `.run\line-sidecar` 產生 Publisher + Hash fallback WDAC supplemental policy。
+
 - 呼叫 `CiTool --update-policy`。
+
 - 檢查 `{policy-id}.cip` 是否出現在 `C:\Windows\System32\CodeIntegrity\CiPolicies\Active`。
 
 只有部署後 active policy 檢查通過，才代表 WDAC 真正信任目前 runtime。若 policy active 後仍被擋，再查最新 Code Integrity event，確認被擋的是哪個新路徑或新檔案版本。
@@ -194,8 +201,11 @@ npm run signing:wdac-repair-tests
 輸出會列出四個 policy：
 
 - `.run\wdac\main-broker-debug\{policy-id}.cip`
+
 - `.run\wdac\main-broker-tests\{policy-id}.cip`
+
 - `.run\wdac\main-unit-tests\{policy-id}.cip`
+
 - `.run\wdac\main-integration-tests\{policy-id}.cip`
 
 若要直接部署，必須使用系統管理員 PowerShell：
@@ -235,7 +245,7 @@ npm run test:broker:trusted
 
 ```powershell
 npm run signing:wdac-repair -- `
-  -RuntimeRoot "D:\Bricks4Agent\.worktrees\baselogger-governance\packages\csharp\tests\broker-tests\bin\Debug\net8.0" `
+  -RuntimeRoot "D:\Bricks4Agent\.worktrees\baselogger-governance\packages\csharp\tests\broker-tests\bin\Debug\net10.0" `
   -OutputDir ".run\wdac\baselogger-worktree-broker-tests" `
   -PolicyLevel Hash
 ```
@@ -244,7 +254,7 @@ npm run signing:wdac-repair -- `
 
 ```powershell
 npm run signing:wdac-repair -- `
-  -RuntimeRoot "D:\Bricks4Agent\.worktrees\baselogger-governance\packages\csharp\tests\broker-tests\bin\Debug\net8.0" `
+  -RuntimeRoot "D:\Bricks4Agent\.worktrees\baselogger-governance\packages\csharp\tests\broker-tests\bin\Debug\net10.0" `
   -OutputDir ".run\wdac\baselogger-worktree-broker-tests" `
   -PolicyLevel Hash `
   -Deploy

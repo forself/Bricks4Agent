@@ -15,19 +15,19 @@ const card = new StatCard(options);
 **options 參數：**
 
 | 參數 | 型別 | 預設值 | 說明 |
-|------|------|--------|------|
+|---|---|---|---|
 | `icon` | `string` | `''` | 圖示（emoji 或文字） |
 | `label` | `string` | `''` | 標籤文字 |
 | `value` | `number\|string` | `0` | 數值 |
 | `trend` | `string\|null` | `null` | 趨勢方向：`'up'` / `'down'` / `null` |
 | `trendValue` | `string` | `''` | 趨勢文字（如 `'+5'`、`'-3%'`） |
-| `color` | `string` | `'#4A90D9'` | 主題色（用於圖示背景和文字色） |
+| `color` | `string` | `'var(--cl-primary)'` | 主題色（用於圖示背景和文字色） |
 | `onClick` | `Function\|null` | `null` | 點擊回調 |
 
 ### 方法
 
 | 方法 | 回傳 | 說明 |
-|------|------|------|
+|---|---|---|
 | `toHTML()` | `string` | 產生 HTML 字串 |
 | `mount(container)` | `void` | 掛載到容器 |
 | `update(options)` | `void` | 更新配置並重新渲染 |

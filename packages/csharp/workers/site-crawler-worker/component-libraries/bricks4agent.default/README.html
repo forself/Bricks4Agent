@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>bricks4agent.default Component Library</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>bricks4agent.default Component Library</h1>
+<p>This library is the only component source the site rebuild generator may use by default. A generated package can include only component types declared in <code>manifest.json</code>; unsupported visual patterns must become <code>ComponentRequest</code> entries unless the library itself is expanded.</p>
+<p>Composite components are reusable family-level structures assembled from the same atomic ideas used by the base library. They must not be named after, or shaped exclusively for, a single source website.</p>
+<h2>Component Index</h2>
+<ul>
+<li><code>PageShell</code>: Top-level route container.</li>
+<li><code>SiteHeader</code>: Basic site title, logo, utility links, and primary links.</li>
+<li><code>ContentSection</code>: General text content section.</li>
+<li><code>LinkList</code>: General related-link list.</li>
+<li><code>FormBlock</code>: Non-submitting form representation.</li>
+<li><code>SiteFooter</code>: Basic footer with attribution, contact text, logo, and links.</li>
+<li><code>AtomicSection</code>: Generic section container for atom-based fallback assembly.</li>
+<li><code>TextBlock</code>: Heading and body text atom.</li>
+<li><code>ImageBlock</code>: Image/media atom.</li>
+<li><code>ButtonLink</code>: Link action atom.</li>
+<li><code>CardGrid</code>: Generic grid or carousel-like card container.</li>
+<li><code>FeatureCard</code>: Card atom for news, features, programs, and media.</li>
+<li><code>MegaHeader</code>: Multi-tier header with logo, utility links, primary navigation, and search affordance.</li>
+<li><code>HeroCarousel</code>: Large visual carousel for image-led home pages.</li>
+<li><code>HeroBanner</code>: Single-image or text-led hero band.</li>
+<li><code>QuickLinkRibbon</code>: Compact link ribbon for common actions.</li>
+<li><code>NewsCardCarousel</code>: Horizontal news card carousel.</li>
+<li><code>NewsGrid</code>: Grid of news or announcement cards.</li>
+<li><code>MediaFeatureGrid</code>: Media-rich feature grid.</li>
+<li><code>ServiceSearchHero</code>: Search-led hero for portal-like home pages.</li>
+<li><code>ServiceCategoryGrid</code>: Grid of audience, topic, or task categories with nested links.</li>
+<li><code>ServiceActionGrid</code>: High-priority action grid for registration, lookup, contact, portal, or service tasks.</li>
+<li><code>TabbedNewsBoard</code>: Multi-category news and announcement board.</li>
+<li><code>SearchBoxPanel</code>: Search input panel with suggestions.</li>
+<li><code>FacetFilterPanel</code>: Filter/facet panel for narrowing results.</li>
+<li><code>ResultList</code>: Search or discovery result list.</li>
+<li><code>PaginationNav</code>: Pagination or result navigation strip.</li>
+<li><code>DashboardFilterBar</code>: Report/dashboard filter and action toolbar.</li>
+<li><code>MetricSummaryGrid</code>: KPI and metric card grid.</li>
+<li><code>ChartPanel</code>: Chart-like visual panel represented from extracted values.</li>
+<li><code>DataTablePreview</code>: Table preview for report and listing data.</li>
+<li><code>StepIndicator</code>: Step/progress indicator for form flows.</li>
+<li><code>StructuredFormPanel</code>: Non-submitting structured form panel.</li>
+<li><code>ValidationSummary</code>: Validation and required-field summary.</li>
+<li><code>FormActionBar</code>: Form-flow action bar.</li>
+<li><code>ShowcaseHero</code>: Commercial-style hero with media and calls to action.</li>
+<li><code>ProductCardGrid</code>: Product or offer card grid.</li>
+<li><code>ProofStrip</code>: Trust, logo, or statistic proof strip.</li>
+<li><code>PricingPanel</code>: Pricing/package option panel.</li>
+<li><code>CtaBand</code>: Call-to-action band.</li>
+<li><code>InstitutionFooter</code>: Footer with contact text and curated links.</li>
+<li><code>ArticleList</code>: Listing/index page for news or articles.</li>
+<li><code>ContentArticle</code>: Article body with optional media.</li>
+</ul>
+<h2>Composite Component Contracts</h2>
+<h3><code>MegaHeader</code></h3>
+<p>Roles: <code>navigation</code>, <code>header</code>, <code>mega_nav</code>.</p>
+<p>Required props: <code>title</code>, <code>utility_links</code>, <code>primary_links</code>, <code>search_enabled</code>.</p>
+<p>Use when the visual source shows a logo plus multiple navigation tiers, utility links, and grouped primary navigation.</p>
+<h3><code>ServiceSearchHero</code></h3>
+<p>Roles: <code>search</code>, <code>hero</code>, <code>service_portal</code>.</p>
+<p>Required props: <code>title</code>, <code>body</code>, <code>query_placeholder</code>, <code>hot_keywords</code>, <code>actions</code>.</p>
+<p>Use for portal home pages where search is the primary first-screen function. <code>hot_keywords</code> and <code>actions</code> use the standard link object shape: <code>label</code>, <code>url</code>, <code>source_url</code>, <code>scope</code>.</p>
+<h3><code>ServiceCategoryGrid</code></h3>
+<p>Roles: <code>service_categories</code>, <code>category_grid</code>, <code>portal</code>.</p>
+<p>Required props: <code>title</code>, <code>categories</code>.</p>
+<p>Each category has <code>title</code>, <code>body</code>, and <code>links</code>. Use for category directories, audience menus, and large service blocks.</p>
+<h3><code>ServiceActionGrid</code></h3>
+<p>Roles: <code>service_actions</code>, <code>quick_actions</code>, <code>portal</code>.</p>
+<p>Required props: <code>title</code>, <code>actions</code>.</p>
+<p>Each action has <code>label</code>, <code>url</code>, <code>source_url</code>, <code>scope</code>, and <code>kind</code>. Use for high-priority tasks such as appointment registration, online services, contact, complaints, portal entry, or service lookup.</p>
+<h3><code>TabbedNewsBoard</code></h3>
+<p>Roles: <code>news</code>, <code>announcements</code>, <code>tabs</code>.</p>
+<p>Required props: <code>title</code>, <code>tabs</code>.</p>
+<p>Each tab has <code>label</code> and <code>items</code>. Each item uses the standard card item shape: <code>title</code>, <code>body</code>, <code>url</code>, <code>source_url</code>, <code>scope</code>, <code>media_url</code>, <code>media_alt</code>.</p>
+<h3><code>SearchBoxPanel</code></h3>
+<p>Roles: <code>search_box</code>, <code>search</code>, <code>discovery</code>.</p>
+<p>Required props: <code>title</code>, <code>body</code>, <code>query_placeholder</code>, <code>suggestions</code>.</p>
+<p>Use for search-led pages where the extracted visual pattern shows a keyword field and optional suggested searches.</p>
+<h3><code>FacetFilterPanel</code></h3>
+<p>Roles: <code>filter_panel</code>, <code>facets</code>, <code>filters</code>.</p>
+<p>Required props: <code>title</code>, <code>filters</code>.</p>
+<p>Use for sidebar, topbar, or chip-based filters. Each filter has <code>label</code>, <code>value</code>, and <code>count</code>.</p>
+<h3><code>ResultList</code></h3>
+<p>Roles: <code>result_list</code>, <code>results</code>, <code>listing</code>.</p>
+<p>Required props: <code>title</code>, <code>summary</code>, <code>items</code>.</p>
+<p>Use for search result rows or cards. Items use the standard card item shape.</p>
+<h3><code>PaginationNav</code></h3>
+<p>Roles: <code>pagination</code>, <code>pager</code>.</p>
+<p>Required props: <code>links</code>.</p>
+<p>Use for page-number, next/previous, or result navigation strips.</p>
+<h3><code>DashboardFilterBar</code></h3>
+<p>Roles: <code>filter_bar</code>, <code>dashboard_filters</code>, <code>toolbar</code>.</p>
+<p>Required props: <code>title</code>, <code>filters</code>, <code>actions</code>.</p>
+<p>Use for report filters, date ranges, export controls, and other dashboard-level toolbar actions.</p>
+<h3><code>MetricSummaryGrid</code></h3>
+<p>Roles: <code>metric_summary</code>, <code>kpi</code>, <code>stats</code>.</p>
+<p>Required props: <code>title</code>, <code>metrics</code>.</p>
+<p>Use for KPI cards. Each metric has <code>label</code>, <code>value</code>, and <code>detail</code>.</p>
+<h3><code>ChartPanel</code></h3>
+<p>Roles: <code>chart_panel</code>, <code>chart</code>, <code>visualization</code>.</p>
+<p>Required props: <code>title</code>, <code>body</code>, <code>series</code>.</p>
+<p>Use for chart-like areas when the rebuild can preserve visual hierarchy and approximate values without reimplementing the original charting library.</p>
+<h3><code>DataTablePreview</code></h3>
+<p>Roles: <code>data_table</code>, <code>table</code>.</p>
+<p>Required props: <code>title</code>, <code>columns</code>, <code>rows</code>.</p>
+<p>Use for report or listing tables. Rows contain a <code>cells</code> string array.</p>
+<h3><code>StepIndicator</code></h3>
+<p>Roles: <code>step_indicator</code>, <code>steps</code>, <code>progress</code>.</p>
+<p>Required props: <code>steps</code>.</p>
+<p>Use for wizard or multi-step input flows. Each step has <code>label</code> and <code>status</code>.</p>
+<h3><code>StructuredFormPanel</code></h3>
+<p>Roles: <code>form_fields</code>, <code>form</code>, <code>input</code>.</p>
+<p>Required props: <code>title</code>, <code>fields</code>.</p>
+<p>Use for non-submitting reconstructed input areas. Each field has <code>name</code>, <code>id</code>, <code>label</code>, <code>type</code>, and <code>required</code>.</p>
+<h3><code>ValidationSummary</code></h3>
+<p>Roles: <code>validation_summary</code>, <code>validation</code>, <code>notice</code>.</p>
+<p>Required props: <code>title</code>, <code>messages</code>.</p>
+<p>Use for required-field notices, validation hints, and form instructions.</p>
+<h3><code>FormActionBar</code></h3>
+<p>Roles: <code>action_bar</code>, <code>form_actions</code>, <code>actions</code>.</p>
+<p>Required props: <code>actions</code>.</p>
+<p>Use for submit, continue, back, cancel, and reset controls represented as disabled or local-safe actions.</p>
+<h3><code>ShowcaseHero</code></h3>
+<p>Roles: <code>showcase_hero</code>, <code>product_hero</code>, <code>hero</code>.</p>
+<p>Required props: <code>title</code>, <code>body</code>, <code>media_url</code>, <code>media_alt</code>, <code>actions</code>.</p>
+<p>Use for product, offer, or campaign hero sections with prominent calls to action.</p>
+<h3><code>ProductCardGrid</code></h3>
+<p>Roles: <code>product_cards</code>, <code>products</code>, <code>offers</code>.</p>
+<p>Required props: <code>title</code>, <code>items</code>.</p>
+<p>Use for products, offers, packages, and visual feature cards. Items use the standard card item shape.</p>
+<h3><code>ProofStrip</code></h3>
+<p>Roles: <code>proof_strip</code>, <code>proof</code>, <code>trust</code>.</p>
+<p>Required props: <code>title</code>, <code>items</code>.</p>
+<p>Use for trust signals, partner logos expressed as labels, statistics, or short proof points. Each item has <code>label</code>, <code>value</code>, and <code>detail</code>.</p>
+<h3><code>PricingPanel</code></h3>
+<p>Roles: <code>pricing_panel</code>, <code>pricing</code>, <code>plans</code>.</p>
+<p>Required props: <code>title</code>, <code>plans</code>.</p>
+<p>Use for pricing or package option areas. Each plan has <code>title</code>, <code>price</code>, <code>body</code>, <code>features</code>, and <code>action</code>.</p>
+<h3><code>CtaBand</code></h3>
+<p>Roles: <code>cta_band</code>, <code>cta</code>, <code>conversion</code>.</p>
+<p>Required props: <code>title</code>, <code>body</code>, <code>actions</code>.</p>
+<p>Use for final or mid-page calls to action.</p>
+<h2>Library Rules</h2>
+<ul>
+<li>New templates can reference only component types declared in <code>manifest.json</code>.</li>
+<li>New components must be documented here in the component index and, for composite components, in the contracts section.</li>
+<li>Component props emitted by <code>TemplateCompiler</code> must be declared in the manifest schema.</li>
+<li>Generated packages must keep custom generated components out of <code>components/generated/</code> for supported visual-pattern templates.</li>
+</ul>
+</main>
+</body>
+</html>

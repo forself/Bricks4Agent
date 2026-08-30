@@ -25,7 +25,7 @@ const picker = new TimePicker({
 ### 方法
 
 | 方法 | 說明 |
-|------|------|
+|---|---|
 | `mount(container)` | 掛載至容器 |
 | `destroy()` | 銷毀元件 |
 | `getValue()` | 取得時間字串（HH:MM）或空字串 |
@@ -36,6 +36,7 @@ const picker = new TimePicker({
 ### 屬性
 
 - `element` — 根 DOM 元素
+
 - `hour` / `minute` — 目前選中的小時/分鐘（number 或 null）
 
 ## 使用範例

@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SPA Template</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>SPA Template</h1>
+<p>This directory contains the scaffold template used by the SPA generation flow.</p>
+<p>It is a template artifact: it describes the shape of a generated SPA, which the
+generator copies and fills in.</p>
+<h2>What this template currently represents</h2>
+<ul>
+<li>frontend: Vanilla JS SPA</li>
+<li>backend: ASP.NET Core 10 minimal API</li>
+<li>persistence: SQLite + <code>BaseOrm</code></li>
+<li>auth: JWT bearer auth</li>
+<li>local static serving options for the frontend</li>
+</ul>
+<h2>Current Layout</h2>
+<pre><code class="language-text">templates/spa/
+├── frontend/
+│   ├── index.html
+│   ├── core/
+│   │   ├── App.js
+│   │   ├── Router.js
+│   │   ├── Store.js
+│   │   ├── ApiService.js
+│   │   ├── Layout.js
+│   │   ├── BasePage.js
+│   │   └── NestedPage.js
+│   ├── pages/
+│   ├── components/
+│   └── styles/
+└── backend/
+    ├── Program.cs
+    ├── SpaApi.csproj
+    ├── appsettings.json
+    ├── Data/
+    │   └── AppDbContext.cs   # BaseOrm-backed AppDb
+    ├── Models/
+    └── Services/
+</code></pre>
+<h2>Local Start</h2>
+<h3>Frontend</h3>
+<p>Any static server works, but the built-in helper is the simplest repo-local option:</p>
+<pre><code class="language-bash">cd templates/spa/frontend
+dotnet run --project ../../tools/static-server -- . 3000
+</code></pre>
+<p>Then open:</p>
+<ul>
+<li><code>http://localhost:3000</code></li>
+</ul>
+<h3>Backend</h3>
+<pre><code class="language-bash">cd templates/spa/backend
+dotnet restore
+dotnet run
+</code></pre>
+<p>Default backend URL:</p>
+<ul>
+<li><code>http://localhost:5000</code></li>
+</ul>
+<h2>Current Backend Notes</h2>
+<p>The backend is currently <strong>not</strong> an EF Core sample.</p>
+<p>From the current code:</p>
+<ul>
+<li><code>Data/AppDbContext.cs</code> defines <code>AppDb : BaseDb</code></li>
+<li>table bootstrap happens through <code>EnsureCreated()</code></li>
+<li><code>DbInitializer</code> seeds the initial admin account</li>
+</ul>
+<p>Password hashes retain the existing <code>iterations.salt.hash</code> PBKDF2-SHA256 storage
+format. The .NET 10 implementation uses the static PBKDF2 API, and
+<code>backend.Tests/PasswordHashCompatibilityTests.cs</code> verifies both an existing fixed
+hash and newly generated hashes.</p>
+<h2>Seed Admin Behavior</h2>
+<p>Default seed admin email in the template:</p>
+<ul>
+<li><code>admin@example.com</code></li>
+</ul>
+<p>If <code>SeedData:AdminPassword</code> is not configured:</p>
+<ul>
+<li>the backend generates a development password</li>
+<li>the password is printed to the backend console at startup</li>
+</ul>
+<p>So the template does <strong>not</strong> currently guarantee a fixed checked-in password.</p>
+<h2>Frontend Architecture</h2>
+<p>The scaffold includes:</p>
+<ul>
+<li>hash-based routing</li>
+<li>page classes via <code>BasePage</code> and <code>NestedPage</code></li>
+<li>a small client store</li>
+<li>an <code>ApiService</code> wrapper</li>
+<li>generated page modules under <code>pages/</code></li>
+</ul>
+<h2>Backend Architecture</h2>
+<p>The scaffold currently uses:</p>
+<ul>
+<li>ASP.NET Core 10 minimal API</li>
+<li>SQLite</li>
+<li><code>BaseOrm</code></li>
+<li>JWT bearer authentication</li>
+<li>rate limiting</li>
+<li>CORS</li>
+<li>security headers</li>
+</ul>
+<p>Representative endpoints include:</p>
+<ul>
+<li><code>/health</code></li>
+<li><code>/api/auth/login</code></li>
+<li><code>/api/auth/register</code></li>
+<li><code>/api/users</code></li>
+<li><code>/api/dashboard</code></li>
+</ul>
+<h2>Extension Notes</h2>
+<p>When you extend a generated project, you still need to wire both the frontend and backend intentionally.</p>
+<p>Typical follow-up work still includes:</p>
+<ol>
+<li>update backend schema / <code>EnsureCreated()</code></li>
+<li>add backend service and endpoint wiring</li>
+<li>update frontend routes</li>
+<li>connect generated pages to real backend behavior</li>
+</ol>
+<p>This template is useful, but it is still a scaffold. It is not the same thing as a finished product path.</p>
+<h2>Verification</h2>
+<p>From the repository root:</p>
+<pre><code class="language-bash">dotnet test templates/spa/backend.Tests/SpaApi.Template.Tests.csproj
+npm run test:dotnet10
+</code></pre>
+<p>The repository-wide command enforces <code>net10.0</code> and fails on any build warning.</p>
+</main>
+</body>
+</html>

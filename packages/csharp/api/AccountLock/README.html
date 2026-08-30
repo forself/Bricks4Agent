@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AccountLock</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>AccountLock</h1>
+<p>帳號鎖定管理 API 控制器 — 提供使用者帳號與 IP 位址的鎖定/解鎖管理端點。</p>
+<h2>初始化方式</h2>
+<pre><code class="language-csharp">builder.Services.AddScoped&lt;IAccountLockService, AccountLockService&gt;();
+// Controller 由 DI 自動注入
+</code></pre>
+<h2>API 列表</h2>
+<h3>當前使用者端點</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>路由</th>
+<th>說明</th>
+<th>權限</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/account-locks/my/status</code></td>
+<td>取得自己的鎖定狀態</td>
+<td><code>[Authorize]</code></td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/account-locks/my/history?limit=20</code></td>
+<td>取得自己的鎖定歷史</td>
+<td><code>[Authorize]</code></td>
+</tr>
+</tbody>
+</table>
+<h3>管理員 — 帳號鎖定</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>路由</th>
+<th>說明</th>
+<th>權限</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/account-locks/users/{userId}/check</code></td>
+<td>檢查使用者是否被鎖定</td>
+<td><code>Admin,SecurityAdmin</code></td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/account-locks/users/{userId}/status</code></td>
+<td>取得使用者鎖定狀態</td>
+<td><code>Admin,SecurityAdmin</code></td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/account-locks/users/{userId}/history?limit=50</code></td>
+<td>取得使用者鎖定歷史</td>
+<td><code>Admin,SecurityAdmin</code></td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/account-locks/users/{userId}/lock</code></td>
+<td>鎖定使用者帳號</td>
+<td><code>Admin,SecurityAdmin</code></td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/account-locks/users/{userId}/unlock</code></td>
+<td>解鎖使用者帳號</td>
+<td><code>Admin,SecurityAdmin</code></td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/account-locks/active?page=1&amp;pageSize=50</code></td>
+<td>取得所有生效中的鎖定</td>
+<td><code>Admin,SecurityAdmin</code></td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/account-locks/{lockId}</code></td>
+<td>依 ID 取得鎖定詳情</td>
+<td><code>Admin,SecurityAdmin</code></td>
+</tr>
+<tr>
+<td><code>DELETE</code></td>
+<td><code>/api/account-locks/{lockId}</code></td>
+<td>依 ID 解除鎖定</td>
+<td><code>Admin,SecurityAdmin</code></td>
+</tr>
+</tbody>
+</table>
+<h3>管理員 — IP 鎖定</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>路由</th>
+<th>說明</th>
+<th>權限</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/account-locks/ips/check?ipAddress=...</code></td>
+<td>檢查 IP 是否被鎖定</td>
+<td><code>Admin,SecurityAdmin</code></td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/account-locks/ips/lock</code></td>
+<td>鎖定 IP 位址</td>
+<td><code>Admin,SecurityAdmin</code></td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/account-locks/ips/unlock</code></td>
+<td>解鎖 IP 位址</td>
+<td><code>Admin,SecurityAdmin</code></td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/account-locks/ips/active?page=1&amp;pageSize=50</code></td>
+<td>取得所有生效中的 IP 鎖定</td>
+<td><code>Admin,SecurityAdmin</code></td>
+</tr>
+<tr>
+<td><code>DELETE</code></td>
+<td><code>/api/account-locks/ips/{lockId}</code></td>
+<td>依 ID 解除 IP 鎖定</td>
+<td><code>Admin,SecurityAdmin</code></td>
+</tr>
+</tbody>
+</table>
+<h3>統計</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>路由</th>
+<th>說明</th>
+<th>權限</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/account-locks/statistics?days=7</code></td>
+<td>取得鎖定統計（1-90 天）</td>
+<td><code>Admin,SecurityAdmin</code></td>
+</tr>
+</tbody>
+</table>
+<h2>使用範例</h2>
+<h3>鎖定使用者帳號</h3>
+<pre><code class="language-http">POST /api/account-locks/users/42/lock
+Content-Type: application/json
+
+{
+    &quot;lockType&quot;: &quot;Manual&quot;,
+    &quot;scope&quot;: &quot;Account&quot;,
+    &quot;reason&quot;: &quot;多次登入失敗&quot;,
+    &quot;durationMinutes&quot;: 30,
+    &quot;invalidateSessions&quot;: true,
+    &quot;notifyUser&quot;: true
+}
+</code></pre>
+<h3>解鎖使用者帳號</h3>
+<pre><code class="language-http">POST /api/account-locks/users/42/unlock
+Content-Type: application/json
+
+{
+    &quot;reason&quot;: &quot;確認非惡意行為&quot;
+}
+</code></pre>
+<h3>鎖定 IP</h3>
+<pre><code class="language-http">POST /api/account-locks/ips/lock
+Content-Type: application/json
+
+{
+    &quot;ipAddress&quot;: &quot;192.168.1.100&quot;,
+    &quot;lockType&quot;: &quot;Manual&quot;,
+    &quot;reason&quot;: &quot;可疑活動&quot;,
+    &quot;durationMinutes&quot;: 60
+}
+</code></pre>
+<h2>依賴清單</h2>
+<table>
+<thead>
+<tr>
+<th>依賴</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>IAccountLockService</code></td>
+<td>帳號鎖定服務介面（需自行實作）</td>
+</tr>
+<tr>
+<td><code>ILogger&lt;AccountLockController&gt;</code></td>
+<td>ASP.NET Core 日誌服務</td>
+</tr>
+<tr>
+<td><code>Microsoft.AspNetCore.Authorization</code></td>
+<td>授權屬性</td>
+</tr>
+<tr>
+<td><code>Microsoft.AspNetCore.Mvc</code></td>
+<td>MVC 控制器基底</td>
+</tr>
+</tbody>
+</table>
+<h2>相關 DTO</h2>
+<ul>
+<li><code>LockUserRequest</code> — 鎖定使用者請求（LockType, Scope, Reason, DurationMinutes 等）</li>
+<li><code>UnlockUserRequest</code> — 解鎖使用者請求（LockId, Scope, Reason）</li>
+<li><code>LockIpApiRequest</code> — 鎖定 IP 請求（IpAddress, LockType, Reason, DurationMinutes）</li>
+<li><code>UnlockIpRequest</code> — 解鎖 IP 請求（IpAddress）</li>
+<li><code>UnlockResponse</code> — 解鎖回應（UnlockedCount）</li>
+</ul>
+</main>
+</body>
+</html>

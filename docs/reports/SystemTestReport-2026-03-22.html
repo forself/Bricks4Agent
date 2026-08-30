@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>System Test Report 2026-03-22</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>System Test Report 2026-03-22</h1>
+<h2>Scope</h2>
+<p>This report records the repository-wide validation run performed on 2026-03-22 in the local Windows development environment.</p>
+<h2>Environment</h2>
+<ul>
+<li>OS: Windows</li>
+<li>Node.js: <code>v22.17.1</code></li>
+<li>npm: <code>11.5.1</code></li>
+<li>.NET SDK: <code>10.0.104</code></li>
+<li>Podman: <code>5.5.2</code></li>
+</ul>
+<h2>Commands Executed</h2>
+<h3>Build</h3>
+<ul>
+<li><code>dotnet build Bricks4Agent.sln -c Release --disable-build-servers -nodeReuse:false</code></li>
+<li><code>dotnet build packages/csharp/workers/line-worker/LineWorker.csproj -c Release --disable-build-servers -nodeReuse:false</code></li>
+</ul>
+<h3>JavaScript / UI</h3>
+<ul>
+<li><code>npm test</code></li>
+<li><code>npm run validate:ui-library</code></li>
+<li><code>npm run validate:ui-library:browser</code></li>
+<li><code>npm run validate:ui-state</code></li>
+<li><code>npm run validate:backend-governance</code></li>
+</ul>
+<h3>Broker / Agent / BaseOrm</h3>
+<ul>
+<li><code>npm run validate:agent-governed</code></li>
+<li><code>npm run validate:broker-scope</code></li>
+<li><code>npm run validate:broker-llm-proxy</code></li>
+<li><code>npm run validate:baseorm-sync</code></li>
+<li><code>npm run validate:baseorm</code></li>
+<li><code>dotnet run --project packages/csharp/database/BaseOrm/net8/verify/BaseOrm.Verify.csproj</code>
+  with <code>BASEORM_SQLSERVER_CONNECTION_STRING=Server=localhost\SQL2022;Database=master;User ID=TIMUser;Password=TIMUser;TrustServerCertificate=True</code></li>
+</ul>
+<h3>Podman Integration</h3>
+<ul>
+<li><code>npm run validate:podman-governed-stack</code></li>
+<li><code>npm run validate:podman-openai-compatible-stack</code></li>
+<li><code>npm run validate:podman-ollama-host-stack</code></li>
+</ul>
+<h3>Live LINE / High-Level Flow</h3>
+<ul>
+<li><code>status-sidecar-stack.ps1</code></li>
+<li><code>verify-high-level-process.ps1</code></li>
+<li><code>verify-live-webhook.ps1</code></li>
+</ul>
+<h2>Results</h2>
+<h3>Passed</h3>
+<ul>
+<li>Solution build completed with <code>0 errors</code>.</li>
+<li><code>LineWorker</code> release build completed with <code>0 errors / 0 warnings</code>.</li>
+<li>Page generator examples passed.</li>
+<li>UI library validation passed.</li>
+<li>UI browser smoke passed for <code>8</code> demos.</li>
+<li>UI state contract validation passed with <code>13/13</code>.</li>
+<li>.NET dependency and API governance validation passed.</li>
+<li>Governed agent validation passed.</li>
+<li>Broker route/path scope validation passed.</li>
+<li>Broker LLM proxy integration passed.</li>
+<li>BaseOrm sync validation passed.</li>
+<li>BaseOrm verification passed.</li>
+<li>BaseOrm live SQL Server verification passed.</li>
+<li>Podman governed stack passed.</li>
+<li>Podman OpenAI-compatible stack passed.</li>
+<li>Podman Ollama-host stack passed.</li>
+<li>LINE sidecar status check passed.</li>
+<li>Live signed webhook check returned <code>200</code>.</li>
+<li>High-level broker processing accepted UTF-8 Chinese production input and created a pending production draft.</li>
+</ul>
+<h3>Passed With Existing Warnings / Gaps</h3>
+<ul>
+<li><code>dotnet build Bricks4Agent.sln</code> reported <code>207</code> warnings and <code>0</code> errors.</li>
+<li>Warnings remain concentrated in:</li>
+<li><code>packages/csharp/security/Mfa</code></li>
+<li><code>packages/csharp/security/AuditLog</code></li>
+<li><code>packages/csharp/security/AccountLock</code></li>
+<li>BaseOrm live MySQL and PostgreSQL direct integration were skipped because connection strings were not configured in the shell during this run.
+  Podman-based integration coverage for governed stacks still passed.</li>
+</ul>
+<h3>Verified Runtime Behavior</h3>
+<ul>
+<li>Canonical LINE ingress path is working:
+  <code>LINE webhook -&gt; ngrok -&gt; line-worker -&gt; broker /api/v1/high-level/line/process</code></li>
+<li>Current canonical sidecar ports:</li>
+<li>broker: <code>5361</code></li>
+<li>LINE webhook ingress: <code>5357</code></li>
+<li>High-level production requests in Chinese correctly route to <code>production</code>, require project naming, and stay UTF-8 safe end-to-end.</li>
+<li>Managed workspace roots in sidecar mode were observed under:
+  <code>D:\Bricks4Agent\.run\line-sidecar\broker\managed-workspaces</code></li>
+</ul>
+<h2>Current Limitations Confirmed By Test</h2>
+<ol>
+<li>
+<p>Query routing works, but only explicit broker-mediated query tooling is currently available.
+   The live controlled search path is <code>?search &lt;keywords&gt;</code>, which now executes <code>web.search.duckduckgo</code> under broker mediation.
+   Plain <code>?query</code> traffic still follows the high-level dialogue path rather than auto-selecting a real-time search tool.</p>
+</li>
+<li>
+<p>High-level production flow is operational up to draft creation and confirmation handoff, but this report does not claim full downstream artifact generation from LINE.</p>
+</li>
+<li>
+<p>The solution is buildable on .NET 10 SDK, but the nullable-warning backlog is still large enough that manuals should not describe the backend as warning-clean.</p>
+</li>
+</ol>
+<h2>Overall Assessment</h2>
+<p>The repository is currently in a testable and operational state for:</p>
+<ul>
+<li>UI library validation</li>
+<li>page generation</li>
+<li>governed broker/agent execution</li>
+<li>BaseOrm verification</li>
+<li>governed Podman stacks</li>
+<li>high-level LINE ingress and production draft routing</li>
+</ul>
+<p>The main remaining functional gap exposed by the test run is that broker-mediated real-time query tooling is explicit rather than generally auto-selected for arbitrary query text.</p>
+</main>
+</body>
+</html>

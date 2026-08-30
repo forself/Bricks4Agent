@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Site Template Framework Design</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Site Template Framework Design</h1>
+<p>Date: 2026-05-02</p>
+<p>Status: proposed</p>
+<blockquote>
+<p><strong>2026-06-16 後續</strong>:本文件提出的產生器組件詞表(<code>HeroSection</code> 等)後來被認定為語料取樣的「罐頭」,已<strong>錨定到 canonical <code>ui_components</code>(B)</strong> 並退役死行話 —— 每個產生器型別綁定 B 閉集(<code>b_component</code>)、fail-closed、<code>HeroSection</code> 已刪。現況以 <a href="../../designs/ComponentLibraryConsolidation-2026-06-15.html">ComponentLibraryConsolidation-2026-06-15.md</a> 為準。</p>
+</blockquote>
+<h2>Purpose</h2>
+<p>Site rebuild currently satisfies the "component library only" constraint, but the visual result is limited because the generator maps visual regions directly into low-level components such as <code>AtomicSection</code>, <code>TextBlock</code>, <code>ImageBlock</code>, and <code>CardGrid</code>. The missing layer is a reusable template framework above the component library and below <code>site.json</code> generation.</p>
+<p>The template framework must let the system reconstruct a website through reusable page skeletons and typed slots, while still enforcing that final output uses only declared component-library components. It must not generate a one-off component set per source website.</p>
+<h2>Non-Goals</h2>
+<ul>
+<li>Do not create site-specific React components or JavaScript modules during rebuild.</li>
+<li>Do not clone original DOM, CSS, labels, or behavior equivalently.</li>
+<li>Do not reduce crawl depth, route coverage, or internal-link rewriting to improve layout quality.</li>
+<li>Do not let an LLM freely emit renderable UI. Any LLM involvement must be advisory and converted into validated template intent.</li>
+</ul>
+<h2>Pipeline</h2>
+<p>The intended pipeline becomes:</p>
+<pre><code class="language-text">Rendered Visual Snapshot + Auxiliary Source Extraction
+  -&gt; SiteIntentModel
+  -&gt; TemplateMatcher
+  -&gt; TemplatePlan
+  -&gt; TemplateCompiler
+  -&gt; GeneratorSiteDocument
+  -&gt; StaticSitePackageGenerator
+</code></pre>
+<p><code>SiteGeneratorConverter</code> should stop acting as a direct visual-region-to-component mapper for high-level page structure. It should delegate page skeleton and slot decisions to the template framework, then compile selected slots into component nodes.</p>
+<h2>Template Framework Concepts</h2>
+<h3>Template Definition</h3>
+<p>A template definition describes a reusable website family, such as <code>institutional_site</code>, <code>corporate_site</code>, or <code>news_site</code>. The first implementation should ship only <code>institutional_site</code> because the current failing example is a university WebForms website and this template class also covers many public-sector and school sites.</p>
+<p>Each template definition contains:</p>
+<ul>
+<li><code>template_id</code></li>
+<li><code>supported_site_kinds</code></li>
+<li>page type rules</li>
+<li>global layout policy</li>
+<li>shared slot policy</li>
+<li>allowed component types per slot</li>
+<li>fallback component types per slot</li>
+</ul>
+<p>Example shape:</p>
+<pre><code class="language-json">{
+  &quot;template_id&quot;: &quot;institutional_site&quot;,
+  &quot;supported_site_kinds&quot;: [&quot;university&quot;, &quot;school&quot;, &quot;public_agency&quot;],
+  &quot;page_types&quot;: {
+    &quot;home&quot;: {
+      &quot;slots&quot;: [
+        { &quot;name&quot;: &quot;header&quot;, &quot;required&quot;: true, &quot;accepts&quot;: [&quot;MegaHeader&quot;, &quot;SiteHeader&quot;] },
+        { &quot;name&quot;: &quot;hero&quot;, &quot;required&quot;: false, &quot;accepts&quot;: [&quot;HeroCarousel&quot;, &quot;HeroBanner&quot;, &quot;AtomicSection&quot;] },
+        { &quot;name&quot;: &quot;quick_links&quot;, &quot;required&quot;: false, &quot;accepts&quot;: [&quot;QuickLinkRibbon&quot;, &quot;CardGrid&quot;] },
+        { &quot;name&quot;: &quot;news&quot;, &quot;required&quot;: false, &quot;accepts&quot;: [&quot;NewsCardCarousel&quot;, &quot;NewsGrid&quot;, &quot;CardGrid&quot;] },
+        { &quot;name&quot;: &quot;features&quot;, &quot;required&quot;: false, &quot;accepts&quot;: [&quot;MediaFeatureGrid&quot;, &quot;AtomicSection&quot;] },
+        { &quot;name&quot;: &quot;footer&quot;, &quot;required&quot;: true, &quot;accepts&quot;: [&quot;InstitutionFooter&quot;, &quot;SiteFooter&quot;] }
+      ]
+    },
+    &quot;listing&quot;: {
+      &quot;slots&quot;: [
+        { &quot;name&quot;: &quot;header&quot;, &quot;required&quot;: true, &quot;accepts&quot;: [&quot;MegaHeader&quot;, &quot;SiteHeader&quot;] },
+        { &quot;name&quot;: &quot;content&quot;, &quot;required&quot;: true, &quot;accepts&quot;: [&quot;ArticleList&quot;, &quot;CardGrid&quot;, &quot;AtomicSection&quot;] },
+        { &quot;name&quot;: &quot;footer&quot;, &quot;required&quot;: true, &quot;accepts&quot;: [&quot;InstitutionFooter&quot;, &quot;SiteFooter&quot;] }
+      ]
+    },
+    &quot;article&quot;: {
+      &quot;slots&quot;: [
+        { &quot;name&quot;: &quot;header&quot;, &quot;required&quot;: true, &quot;accepts&quot;: [&quot;MegaHeader&quot;, &quot;SiteHeader&quot;] },
+        { &quot;name&quot;: &quot;content&quot;, &quot;required&quot;: true, &quot;accepts&quot;: [&quot;ContentArticle&quot;, &quot;ContentSection&quot;, &quot;AtomicSection&quot;] },
+        { &quot;name&quot;: &quot;footer&quot;, &quot;required&quot;: true, &quot;accepts&quot;: [&quot;InstitutionFooter&quot;, &quot;SiteFooter&quot;] }
+      ]
+    }
+  }
+}
+</code></pre>
+<p>The compiler may only choose a component type if it exists in the loaded component manifest. If a preferred component is not present, it must fall back to another accepted type that exists. If no accepted type exists, it must emit a <code>ComponentRequest</code> and fall back to the lowest safe generic type already in the manifest.</p>
+<h3>Site Intent Model</h3>
+<p><code>SiteIntentModel</code> is a deterministic intermediate model created from rendered visual snapshots and auxiliary static extraction. It describes intent, not render components.</p>
+<p>Initial fields:</p>
+<ul>
+<li><code>SiteKind</code>: <code>institutional</code>, <code>corporate</code>, <code>news</code>, <code>unknown</code></li>
+<li><code>Pages</code>: per-page intent records</li>
+<li><code>GlobalNavigation</code>: normalized shared navigation candidates</li>
+<li><code>GlobalHeader</code>: shared logo/navigation/search/social candidates</li>
+<li><code>GlobalFooter</code>: shared contact/link candidates</li>
+<li><code>ThemeHints</code>: color and typography tokens</li>
+</ul>
+<p>Per-page intent records:</p>
+<ul>
+<li><code>PageUrl</code></li>
+<li><code>PageType</code>: <code>home</code>, <code>listing</code>, <code>article</code>, <code>department</code>, <code>contact</code>, <code>unknown</code></li>
+<li><code>Blocks</code>: ordered visual intent blocks</li>
+</ul>
+<p>Visual intent block kinds:</p>
+<ul>
+<li><code>header</code></li>
+<li><code>mega_nav</code></li>
+<li><code>hero_carousel</code></li>
+<li><code>hero_banner</code></li>
+<li><code>quick_links</code></li>
+<li><code>news_grid</code></li>
+<li><code>news_carousel</code></li>
+<li><code>media_feature_grid</code></li>
+<li><code>article_list</code></li>
+<li><code>content_article</code></li>
+<li><code>form</code></li>
+<li><code>footer</code></li>
+<li><code>unknown</code></li>
+</ul>
+<p>The first implementation can build this model from existing <code>VisualPageSnapshot</code>, <code>ExtractedPageModel</code>, route depth, URL patterns, link density, media counts, and text density. It does not require LLM output.</p>
+<h3>Template Matcher</h3>
+<p><code>TemplateMatcher</code> chooses:</p>
+<ul>
+<li>site template</li>
+<li>page type per route</li>
+<li>slot assignment per page</li>
+<li>component candidate per slot</li>
+</ul>
+<p>Matcher rules must be deterministic and testable. Examples:</p>
+<ul>
+<li>Depth 0 page is usually <code>home</code>.</li>
+<li>Page with repeated date/news links and many cards is <code>listing</code>.</li>
+<li>Page with one dominant heading and long text body is <code>article</code>.</li>
+<li>Top viewport block with logo and high link density maps to <code>header</code> / <code>mega_nav</code>.</li>
+<li>First large media-rich block on home maps to <code>hero_carousel</code> or <code>hero_banner</code>.</li>
+<li>Repeated cards with dates/images map to <code>news_grid</code> or <code>news_carousel</code>.</li>
+<li>Footer-like bottom block with address/contact links maps to <code>footer</code>.</li>
+</ul>
+<p>The matcher should produce confidence scores and reasons for audit, but low confidence must not block generation. Low confidence slots fall back to generic manifest components.</p>
+<h3>Template Compiler</h3>
+<p><code>TemplateCompiler</code> converts a <code>TemplatePlan</code> into <code>GeneratorSiteDocument</code>.</p>
+<p>Responsibilities:</p>
+<ul>
+<li>Build one <code>PageShell</code> per route.</li>
+<li>Apply shared header/footer strategy consistently across pages.</li>
+<li>Fill template slots in declared order.</li>
+<li>Choose only manifest-declared component types.</li>
+<li>Normalize internal links through the existing route map.</li>
+<li>Preserve route count from crawl result.</li>
+<li>Record component gaps as <code>ComponentRequest</code> without adding generated components to output.</li>
+</ul>
+<p>It must not:</p>
+<ul>
+<li>infer new component types not declared in the manifest;</li>
+<li>mutate the component library manifest with site-specific generated components;</li>
+<li>place raw crawl links as visual navigation unless they are assigned to a header/footer/slot.</li>
+</ul>
+<h2>Component Library Evolution</h2>
+<p>The template framework requires richer reusable components, but they must be added as first-class component-library entries, not generated per site.</p>
+<p>First target components:</p>
+<ul>
+<li><code>MegaHeader</code></li>
+<li><code>HeroCarousel</code></li>
+<li><code>HeroBanner</code></li>
+<li><code>QuickLinkRibbon</code></li>
+<li><code>NewsCardCarousel</code></li>
+<li><code>NewsGrid</code></li>
+<li><code>MediaFeatureGrid</code></li>
+<li><code>InstitutionFooter</code></li>
+<li><code>ArticleList</code></li>
+<li><code>ContentArticle</code></li>
+</ul>
+<p>The initial implementation may define these in the default manifest and render them in <code>runtime.js</code> using existing atomic substructure. This still satisfies "component library only" because these are reusable library components declared before generation.</p>
+<h2>File-Level Design</h2>
+<p>Planned production files:</p>
+<ul>
+<li><code>packages/csharp/workers/site-crawler-worker/Models/TemplateFrameworkContracts.cs</code></li>
+<li><code>packages/csharp/workers/site-crawler-worker/Services/TemplateFrameworkLoader.cs</code></li>
+<li><code>packages/csharp/workers/site-crawler-worker/Services/SiteIntentExtractor.cs</code></li>
+<li><code>packages/csharp/workers/site-crawler-worker/Services/TemplateMatcher.cs</code></li>
+<li><code>packages/csharp/workers/site-crawler-worker/Services/TemplateCompiler.cs</code></li>
+<li><code>packages/csharp/workers/site-crawler-worker/template-framework/institutional_site.json</code></li>
+</ul>
+<p>Planned updates:</p>
+<ul>
+<li><code>SiteGeneratorConverter</code> delegates high-level page construction to the template framework.</li>
+<li><code>DefaultComponentLibrary</code> / default component manifest gain reusable high-level components.</li>
+<li><code>StaticSitePackageGenerator</code> runtime gains renderers for the new reusable components.</li>
+<li>Tool docs clarify that rebuild is template-slot based, not direct DOM-to-component mapping.</li>
+</ul>
+<h2>Validation Rules</h2>
+<p>Every generated package must satisfy:</p>
+<ul>
+<li><code>UnknownNodeTypes = 0</code></li>
+<li><code>GeneratedComponentCount = 0</code> for site rebuild output</li>
+<li>all component node types are declared in <code>components/manifest.json</code></li>
+<li>all internal same-origin links route to generated local paths</li>
+<li>internal routes do not keep <code>.aspx</code>, <code>.html</code>, or <code>.htm</code> extensions</li>
+<li>home page has header, main content, and footer</li>
+<li>if visual intent has carousel, output uses <code>HeroCarousel</code>, <code>NewsCardCarousel</code>, or a declared carousel-capable fallback</li>
+<li>route count remains equal to crawl page count unless crawl itself is truncated</li>
+</ul>
+<h2>Testing Plan</h2>
+<p>Unit tests:</p>
+<ul>
+<li>load and validate <code>institutional_site</code> template definition;</li>
+<li>classify a university home page intent as <code>institutional_site/home</code>;</li>
+<li>assign header, hero carousel, news, quick links, and footer slots;</li>
+<li>compile a template plan using only manifest-declared component types;</li>
+<li>fall back when preferred high-level components are absent;</li>
+<li>record component requests for missing reusable components without adding generated component definitions;</li>
+<li>preserve route count and internal link rewriting.</li>
+</ul>
+<p>Integration / smoke:</p>
+<ul>
+<li>run site rebuild against the existing fake broker path;</li>
+<li>run a live-host smoke against <code>https://www.shu.edu.tw/</code> depth 3;</li>
+<li>verify generated package has local <code>index.html</code>, <code>site.json</code>, <code>runtime.js</code>, <code>components/manifest.json</code>;</li>
+<li>verify browser runtime renders header/main/footer, images/cards/carousel, and local navigation without console errors.</li>
+</ul>
+<h2>Risks</h2>
+<ul>
+<li>Overfitting <code>institutional_site</code> to one university website would recreate the original problem at a higher layer. Mitigation: template definitions must describe site families and slot contracts, not source-specific labels or URLs.</li>
+<li>Too many high-level components at once can destabilize runtime rendering. Mitigation: ship the template framework with a small first component set and generic fallbacks.</li>
+<li>Static pages beyond the rendered visual snapshot cap may have weaker layout intent. Mitigation: page type and shared template strategy come from representative rendered pages, while static extraction fills page-specific content.</li>
+</ul>
+<h2>Acceptance Criteria</h2>
+<p>The work is complete when:</p>
+<ul>
+<li>site rebuild uses <code>SiteIntentModel -&gt; TemplatePlan -&gt; TemplateCompiler</code> for page skeleton construction;</li>
+<li>the default rebuild path for the SHU depth-3 example finishes in roughly the current optimized range, not the earlier 10-minute range;</li>
+<li>generated output uses only <code>bricks4agent.default</code> component-library components;</li>
+<li>generated output includes high-level template components where available;</li>
+<li>no site-specific generated components are added for SHU;</li>
+<li>all listed validation checks pass in automated tests and the live smoke.</li>
+</ul>
+</main>
+</body>
+</html>

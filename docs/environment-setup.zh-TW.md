@@ -1,6 +1,7 @@
 # Bricks4Agent 環境需求與設置教學
 
-Date: 2026-06-12  
+Date: 2026-06-12
+
 Scope: repository-wide developer setup, local Windows sidecar operation, Node/SPA tooling, worker runtime, and validation commands.
 
 ## 1. 這份文件涵蓋什麼
@@ -10,11 +11,17 @@ Scope: repository-wide developer setup, local Windows sidecar operation, Node/SP
 Bricks4Agent 目前不是單一前端、單一 CLI 或單一 .NET API。主體是：
 
 - broker-centered governed AI operations control plane
-- .NET 8 broker / broker-core / worker-sdk / function-pool
+
+- .NET 10 broker / broker-core / worker-sdk / function-pool
+
 - C# capability workers: `line-worker`, `file-worker`, `browser-worker`, `transport-tdx-worker`, `site-crawler-worker`
+
 - Node.js governed agent runtime and generator tools
+
 - vanilla JS UI component library, page generator, definition-json package
+
 - SPA template and SPA generator workbench
+
 - Podman compose smoke stacks for governed agent execution
 
 Canonical live path remains:
@@ -30,14 +37,14 @@ LINE webhook -> public tunnel -> line-worker -> broker /api/v1/high-level/line/p
 主要目錄：
 
 | Path | Purpose |
-| --- | --- |
+|---|---|
 | `packages/csharp/ControlPlane.slnx` | Canonical control-plane build solution |
-| `packages/csharp/broker` | ASP.NET Core 8 broker, local admin UI, high-level coordinator, tool specs |
+| `packages/csharp/broker` | ASP.NET Core 10 broker, local admin UI, high-level coordinator, tool specs |
 | `packages/csharp/broker-core` | Broker domain services, policy/session/token/auth abstractions |
 | `packages/csharp/function-pool` | TCP worker registration and dispatch |
 | `packages/csharp/worker-sdk` | Worker host framework used by capability workers |
 | `packages/csharp/workers/*` | LINE, file, browser, TDX transport, and site crawler workers |
-| `packages/csharp/database/BaseOrm/net8` | Canonical lightweight ORM used by broker/template apps |
+| `packages/csharp/database/BaseOrm/net10` | Canonical lightweight ORM used by broker/template apps |
 | `packages/javascript/browser` | UI library, page generator, definition-json, browser-side tests |
 | `tools/agent` | Node governed/local agent runtime |
 | `tools/agent/container` | Podman compose stacks and mock providers |
@@ -51,10 +58,15 @@ LINE webhook -> public tunnel -> line-worker -> broker /api/v1/high-level/line/p
 Approximate tracked source/doc mix, excluding `bin`, `obj`, `node_modules`, and test output:
 
 - C#: 423 files
+
 - JavaScript: 374 files
+
 - Markdown: 146 files
+
 - JSON: 140 files
+
 - HTML: 83 files
+
 - C# project files: 34 files
 
 ## 3. Required tools
@@ -62,11 +74,11 @@ Approximate tracked source/doc mix, excluding `bin`, `obj`, `node_modules`, and 
 ### 3.1 Minimum practical requirements
 
 | Tool | Required for | Notes |
-| --- | --- | --- |
+|---|---|---|
 | Git | all development | Standard clone/status/diff workflow |
 | Windows 10/11 | canonical local LINE sidecar | Sidecar scripts are PowerShell and Windows-oriented |
 | Windows PowerShell 5.1+ | sidecar scripts | Scripts use `#Requires -Version 5.1` |
-| .NET SDK 8.0+ | C# build/test/runtime | All active control-plane projects target `net8.0` |
+| .NET SDK 10.0+ | C# build/test/runtime | All active control-plane projects target `net10.0` |
 | Node.js 18+ | JS tools and agent | `tools/agent/README.md` states Node 18+ |
 | npm | Node dependency install and scripts | Root package uses npm scripts |
 | Playwright browsers | browser tests and browser worker | Install Chromium for JS e2e and .NET browser-worker |
@@ -74,19 +86,25 @@ Approximate tracked source/doc mix, excluding `bin`, `obj`, `node_modules`, and 
 Verified in this workspace on 2026-06-12:
 
 - .NET SDK `10.0.300`
+
 - .NET SDK `8.0.421`
+
 - .NET runtime `8.0.27`
+
 - Node.js `v24.16.0`
+
 - npm `11.13.0`
+
 - Playwright CLI `1.58.2`
+
 - `dotnet build packages/csharp/ControlPlane.slnx` passed with `0` warnings and `0` errors
 
-There is no `global.json`, so the installed SDK is selected by normal .NET SDK resolution. The repo targets .NET 8; installing .NET 8 SDK is the safest baseline even if a newer SDK is also present.
+The checked-in `global.json` pins SDK `10.0.100` with `rollForward: latestFeature`, so any installed .NET 10 feature band is accepted. The repo targets .NET 10; installing the .NET 10 SDK is the required baseline.
 
 ### 3.2 Optional but important tools
 
 | Tool | Needed when |
-| --- | --- |
+|---|---|
 | ngrok | You run the LINE sidecar with an ngrok public webhook |
 | cloudflared or localhost.run | Alternative public tunnel paths supported by the sidecar stack |
 | Podman 5+ with compose support | You run governed agent container validations |
@@ -119,7 +137,7 @@ If you will run `browser-worker`, build it once and install the .NET Playwright 
 
 ```powershell
 dotnet build packages/csharp/workers/browser-worker/BrowserWorker.csproj
-powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\browser-worker\bin\Debug\net8.0\playwright.ps1 install chromium
+powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\browser-worker\bin\Debug\net10.0\playwright.ps1 install chromium
 ```
 
 If you will work inside `packages/javascript/browser` directly, install its package-local dev dependencies too:
@@ -133,6 +151,7 @@ cd ..\..\..
 Why two npm installs can matter:
 
 - root `package.json` drives repo-level validation and e2e tools
+
 - `packages/javascript/browser/package.json` has its own Vitest/jsdom dev dependencies for the browser package tests
 
 ## 5. Local-only secrets and config
@@ -156,7 +175,7 @@ $env:BRICKS4AGENT_SECRETS_DIR = 'D:\secure\Bricks4Agent'
 Common files:
 
 | File | Used by |
-| --- | --- |
+|---|---|
 | `Api.txt` | OpenAI-compatible fallback key when `ANTHROPIC_API_KEY` is not set |
 | `client_secret_*.json` | Google Drive delegated OAuth setup |
 | `worker-auth.json` | Generated/persisted worker identity credentials |
@@ -177,8 +196,11 @@ Copy-Item .\packages\csharp\workers\line-worker\appsettings.sidecar.example.json
 Fill in at least:
 
 - `Line.ChannelAccessToken`
+
 - `Line.ChannelSecret`
+
 - `Line.DefaultRecipientId`
+
 - `Line.AllowedUserIds`
 
 The sidecar startup provisions worker auth in `worker-auth.json` and injects the matching line-worker credential into runtime config. Manual `Worker.Auth.*` values are still supported, but the sidecar-managed credential store is the canonical local path.
@@ -200,19 +222,33 @@ packages/csharp/broker/appsettings.Development.example.json
 Common sections to override:
 
 - `Broker:ScopedToken:Secret`
+
 - `Broker:Encryption:MasterKeyBase64`
+
 - `Broker:Encryption:EcdhPrivateKeyBase64`
+
 - `FunctionPool:Enabled`
+
 - `HighLevelLlm:ApiKey`
+
 - `HighLevelLlm:Provider`
+
 - `HighLevelLlm:BaseUrl`
+
 - `HighLevelLlm:ApiFormat`
+
 - `HighLevelLlm:DefaultModel`
+
 - `HighLevelLlm:MaxOutputTokens`
+
 - `Tdx:ClientId`
+
 - `Tdx:ClientSecret`
+
 - `GoogleDriveDelivery:*`
+
 - `DeploymentSecrets:Mappings`
+
 - `ArtifactDownload:SigningSecret`
 
 ## 6. Environment variables used by the repo
@@ -220,7 +256,7 @@ Common sections to override:
 ### 6.1 ASP.NET Core and broker
 
 | Variable | Meaning |
-| --- | --- |
+|---|---|
 | `ASPNETCORE_URLS` | Broker/template API listen URL, for example `http://127.0.0.1:5361` |
 | `ASPNETCORE_ENVIRONMENT` | Use `Development` for `appsettings.Development.json` |
 | `B4A_NODE_PATH` | Broker artifact generation can use this Node executable before falling back to bundled/user PATH Node |
@@ -262,12 +298,19 @@ $env:WORKER_Worker__Auth__SharedSecret = '<shared-secret>'
 LINE worker also reads:
 
 - `WORKER_Line__ChannelAccessToken`
+
 - `WORKER_Line__ChannelSecret`
+
 - `WORKER_Line__DefaultRecipientId`
+
 - `WORKER_Line__AllowedUserIds`
+
 - `WORKER_Line__OutboundRateLimit__PermitLimit`
+
 - `WORKER_Line__OutboundRateLimit__WindowSeconds`
+
 - `WORKER_Line__OutboundRateLimit__MaxTrackedKeys`
+
 - `WORKER_Broker__ApiUrl`
 
 `Line:OutboundRateLimit` is worker-local and keyed by recipient + capability. It currently covers `line.message.send` and `line.audio.send`; distributed quota coordination and `line.notification.send` coverage are separate hardening work.
@@ -275,7 +318,7 @@ LINE worker also reads:
 ### 6.3 Agent and provider variables
 
 | Variable | Used by |
-| --- | --- |
+|---|---|
 | `BROKER_URL` | governed agent broker URL |
 | `BROKER_PUB_KEY` | governed agent broker public key |
 | `BROKER_PRINCIPAL_ID` | governed agent principal |
@@ -292,7 +335,7 @@ LINE worker also reads:
 ### 6.4 Optional validation variables
 
 | Variable | Enables |
-| --- | --- |
+|---|---|
 | `TDX_CLIENT_ID` | live TDX verification in broker verify |
 | `TDX_CLIENT_SECRET` | live TDX verification in broker verify |
 | `BASEORM_SQLSERVER_CONNECTION_STRING` | live SQL Server BaseOrm integration |
@@ -302,7 +345,7 @@ LINE worker also reads:
 ## 7. Default ports and URLs
 
 | Port / URL | Owner | Notes |
-| --- | --- | --- |
+|---|---|---|
 | `http://127.0.0.1:5361` | canonical sidecar broker | User portal at `/portal/index.html`; admin UI at `/line-admin.html` |
 | `http://127.0.0.1:5357` | canonical sidecar line-worker webhook | Public tunnel forwards here |
 | `7000` | function-pool TCP worker port | Workers register here |
@@ -359,13 +402,21 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\l
 Sidecar behavior:
 
 - publishes broker and line-worker into `.run/line-sidecar`
+
 - signs Bricks4Agent-owned sidecar runtime `.dll` / `.exe` files when the dev code-signing certificate exists
+
 - stores runtime DB at `.run/line-sidecar/data/broker.db`
+
 - writes logs under `.run/line-sidecar/logs`
+
 - provisions `worker-auth.json` under the secure secrets directory
+
 - injects `WorkerAuth.Enforce = true` into the sidecar broker runtime config
+
 - updates LINE webhook URL unless `-SkipWebhookUpdate` is used
+
 - user portal is available at `http://127.0.0.1:5361/portal/index.html`
+
 - admin console is available at `http://127.0.0.1:5361/line-admin.html`
 
 On Windows machines with Smart App Control / WDAC enforcement, sidecar startup can fail with `0x800711C7` or Code Integrity messages such as `did not meet the Enterprise signing level requirements`. If this happens, do not keep re-running `up`; repair the runtime trust policy from an elevated PowerShell:
@@ -445,7 +496,9 @@ http://127.0.0.1:5361/portal/index.html
 Direct broker defaults differ from sidecar defaults:
 
 - repo `appsettings.json` has `WorkerAuth.Enforce = false`
+
 - sidecar runtime enables worker auth enforcement and injects generated credentials
+
 - repo `appsettings.json` points embeddings/RAG/LLM proxy at local Ollama by default
 
 If you do not have Ollama running and are not testing RAG/local LLM paths, disable those sections for focused broker work:
@@ -593,7 +646,7 @@ dotnet test packages/csharp/tests/integration/Integration.Tests.csproj
 BaseOrm verification:
 
 ```powershell
-dotnet run --project packages/csharp/database/BaseOrm/net8/verify/BaseOrm.Verify.csproj
+dotnet run --project packages/csharp/database/BaseOrm/net10/verify/BaseOrm.Verify.csproj
 npm run validate:baseorm
 ```
 
@@ -650,7 +703,9 @@ podman compose -f tools/agent/container/compose.yml down -v
 Important port note:
 
 - `compose.yml` broker default host port: `5000`
+
 - `compose.openai-compatible.yml` broker default host port: `5361`
+
 - `compose.ollama-host.yml` broker default host port: `5002`
 
 Override when needed:
@@ -667,8 +722,11 @@ podman compose -f tools/agent/container/compose.openai-compatible.yml up --build
 Used by:
 
 - `tools/agent` default local provider mode
+
 - broker `Embedding`
+
 - broker `RagPipeline`
+
 - broker `LlmProxy` default config
 
 Typical local setup:
@@ -693,9 +751,13 @@ Used by the LINE sidecar high-level responder and broker `LlmProxy` when `ANTHRO
 The sidecar runtime override uses:
 
 - `Provider=anthropic`
+
 - `BaseUrl=https://api.anthropic.com`
+
 - `ApiFormat=messages`
+
 - `DefaultModel=claude-sonnet-4-6`
+
 - `MaxOutputTokens=4096`
 
 Restart the sidecar after changing the key.
@@ -713,12 +775,15 @@ If `ANTHROPIC_API_KEY` is absent, this check exits successfully as skipped. If p
 Required only for live transport data:
 
 - `Tdx:ClientId`
+
 - `Tdx:ClientSecret`
+
 - optional `TDX_CLIENT_ID` / `TDX_CLIENT_SECRET` for verify tools
 
 TDX defaults:
 
 - auth URL: `https://tdx.transportdata.tw/auth/realms/TDXConnect/protocol/openid-connect/token`
+
 - API base URL: `https://tdx.transportdata.tw/api/basic`
 
 ### 15.4 Google Drive delivery
@@ -726,8 +791,11 @@ TDX defaults:
 Required only for Drive artifact delivery:
 
 - OAuth client JSON: `client_secret_*.json`
+
 - optional service account JSON
+
 - `GoogleDriveDelivery:DefaultFolderId`
+
 - delegated redirect URI: `http://127.0.0.1:5361/api/v1/google-drive/oauth/callback`
 
 Signed broker artifact download is a fallback delivery leg and does not require Drive.
@@ -737,9 +805,13 @@ Signed broker artifact download is a fallback delivery leg and does not require 
 Required only for `deploy.azure-vm-iis`:
 
 - target VM has IIS installed
+
 - PowerShell remoting / WinRM enabled
+
 - `WebAdministration` module available on the VM
+
 - deployment target registered through broker admin endpoints or local admin UI
+
 - credentials configured through `DeploymentSecrets:Mappings` or `BRICKS4AGENT_DEPLOY_SECRET__...` environment variables
 
 ## 16. Test artifacts and cleanup
@@ -747,7 +819,7 @@ Required only for `deploy.azure-vm-iis`:
 Known generated artifacts:
 
 | Artifact | Source | Cleanup |
-| --- | --- | --- |
+|---|---|---|
 | `packages/csharp/broker/broker.db` | direct broker startup | delete after tests if not needed |
 | `packages/csharp/broker/broker.db-shm` | SQLite shared memory | delete with DB |
 | `packages/csharp/broker/broker.db-wal` | SQLite WAL | delete with DB |
@@ -781,7 +853,7 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\l
 
 ### 17.1 `dotnet` not found
 
-Install .NET SDK 8.0+. The sidecar script also checks:
+Install .NET SDK 10.0+. The sidecar script also checks:
 
 ```text
 %USERPROFILE%\.dotnet\dotnet.exe
@@ -820,7 +892,7 @@ Run:
 
 ```powershell
 dotnet build packages/csharp/workers/browser-worker/BrowserWorker.csproj
-powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\browser-worker\bin\Debug\net8.0\playwright.ps1 install chromium
+powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\browser-worker\bin\Debug\net10.0\playwright.ps1 install chromium
 ```
 
 ### 17.5 E2E tests fail because port `5000` or `5361` is occupied
@@ -896,12 +968,21 @@ npm run validate:podman-governed-stack
 ## 19. Source documents worth reading next
 
 - `README.md`
+
 - `AGENTS.md`
-- `docs/reports/CurrentArchitectureAndProgress-2026-06-11.md`
+
+- `docs/reports/CurrentArchitectureAndProgress-2026-06-13.md`
+
 - `docs/manuals/line-sidecar-runbook.md`
+
 - `packages/csharp/workers/line-worker/README.md`
+
 - `tools/agent/README.md`
+
 - `tools/agent/container/README.md`
+
 - `tools/spa-generator/README.md`
+
 - `templates/spa/README.md`
+
 - `packages/csharp/database/BaseOrm/README.md`

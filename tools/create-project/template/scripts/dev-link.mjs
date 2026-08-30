@@ -7,9 +7,10 @@ import { existsSync, lstatSync, symlinkSync, mkdirSync, rmdirSync, unlinkSync, r
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveB4a } from './resolve-b4a.mjs';
+import { parseB4aLock } from './b4a-lock.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const LIBS = ['ui_components', 'page-generator'];
+const LIBS = ['ui_components', 'page-generator', 'custom_components'];
 const unlinkMode = process.argv.includes('--unlink');
 
 // 拆連結只拆連結本身(目標不動);真實複本(可再生)整批移除。
@@ -38,10 +39,16 @@ if (existsSync(lockPath)) {
     try {
         const { readFileSync } = await import('node:fs');
         const { spawnSync } = await import('node:child_process');
-        const lock = JSON.parse(readFileSync(lockPath, 'utf8'));
+        const lock = parseB4aLock(JSON.parse(readFileSync(lockPath, 'utf8')));
         const head = (spawnSync('git', ['-C', b4aRoot, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).stdout || '').trim();
-        if (head && lock.commit && head !== lock.commit) {
-            console.warn(`提示:腳手架 HEAD(${head.slice(0, 12)})≠ b4a.lock.json(${lock.commit.slice(0, 12)})——連結模式看的是工作區;publish 會強制對齊。`);
+        const embeddedRoot = path.resolve(root, '..', 'packages', 'Bricks4Agent');
+        const isEmbedded = path.resolve(b4aRoot).toLowerCase() === embeddedRoot.toLowerCase();
+        const expression = isEmbedded ? 'HEAD:packages/Bricks4Agent' : 'HEAD^{tree}';
+        const tree = (spawnSync('git', ['-C', b4aRoot, 'rev-parse', expression], { encoding: 'utf8' }).stdout || '').trim();
+        if (lock.kind === 'tree' && tree && tree !== lock.tree) {
+            console.warn(`提示：腳手架 tree(${tree.slice(0, 12)})≠ b4a.lock.json(${lock.tree.slice(0, 12)})；publish 會拒絕。`);
+        } else if (lock.kind === 'legacy-commit' && !isEmbedded && head && head !== lock.commit) {
+            console.warn(`提示：腳手架 HEAD(${head.slice(0, 12)})≠ 舊 lock(${lock.commit.slice(0, 12)})；請用 sync-lib.mjs --pin 遷移。`);
         }
     } catch { /* 提示性質,失敗不擋 */ }
 }

@@ -140,7 +140,10 @@ export class SideMenu {
                     if (item.children && item.children.length > 0) {
                         e.preventDefault();
                         this._toggleExpand(item.id);
-                    } else if (!item.href) {
+                    } else if (!item.href || this.options.onSelect) {
+                        // When a consumer supplies onSelect, it owns navigation.  In
+                        // history-mode SPAs allowing the hash href to run as well can
+                        // immediately undo the route selected by the callback.
                         e.preventDefault();
                     }
 

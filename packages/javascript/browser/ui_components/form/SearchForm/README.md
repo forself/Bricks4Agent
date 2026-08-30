@@ -38,7 +38,7 @@ const form = new SearchForm({
 ### 方法
 
 | 方法 | 說明 |
-|------|------|
+|---|---|
 | `mount(container)` | 掛載至容器 |
 | `destroy()` | 銷毀元件（含子元件） |
 | `getValues()` | 取得所有值物件 |

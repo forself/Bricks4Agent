@@ -13,7 +13,7 @@ new AddressListInput(options?)
 繼承 `ListInput` 所有選項，預設值：
 
 | 參數 | 預設值 | 說明 |
-|------|--------|------|
+|---|---|---|
 | `title` | `'地址列表'` | 標題 |
 | `minItems` | `1` | 最少項目數 |
 | `maxItems` | `3` | 最多項目數 |

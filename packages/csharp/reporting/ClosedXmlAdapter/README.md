@@ -6,13 +6,17 @@ This package is the adapter-layer implementation for
 Allowed responsibility:
 
 - map `ExcelReportRequest` into a workbook
+
 - apply worksheet structure and formatting
+
 - serialize the workbook into `ReportFile`
 
 Forbidden responsibility:
 
 - querying business data
+
 - deciding report use-case logic
+
 - defining generated-layer controller or use-case policy
 
 ## Registration
@@ -23,8 +27,9 @@ builder.Services.AddScoped<IExcelReportService, ClosedXmlExcelReportService>();
 
 For a concrete host example, see:
 
-- [Program.cs](/d:/Bricks4Agent/packages/csharp/reporting/ExampleHost/Program.cs)
-- [ReportingExampleHost.csproj](/d:/Bricks4Agent/packages/csharp/reporting/ExampleHost/ReportingExampleHost.csproj)
+- [Program.cs](../ExampleHost/Program.cs)
+
+- [ReportingExampleHost.csproj](../ExampleHost/ReportingExampleHost.csproj)
 
 ## Dependency boundary
 

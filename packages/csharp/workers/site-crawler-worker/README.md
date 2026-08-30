@@ -24,7 +24,7 @@ dotnet run --project packages/csharp/workers/site-crawler-worker -- \
 ```
 
 | Flag | Default | Meaning |
-|------|---------|---------|
+|---|---|---|
 | `--url` | (required) | Start URL to crawl |
 | `--out` | `%TEMP%/bricks4agent-generated-sites` | Output directory |
 | `--package-name` | `generated-site` | Package folder / archive name |

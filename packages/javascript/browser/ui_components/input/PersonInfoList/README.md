@@ -13,7 +13,7 @@ new PersonInfoList(options?)
 繼承 `ListInput` 所有選項，預設值：
 
 | 參數 | 預設值 | 說明 |
-|------|--------|------|
+|---|---|---|
 | `title` | `'個人基本資料'` | 標題 |
 | `minItems` | `1` | 最少項目數 |
 | `maxItems` | `5` | 最多項目數 |
@@ -22,7 +22,7 @@ new PersonInfoList(options?)
 每筆項目欄位：
 
 | 欄位 name | type | 說明 |
-|-----------|------|------|
+|---|---|---|
 | `name` | `text` | 姓名 |
 | `gender` | `select` | 性別（男/女/其他） |
 | `age` | `number` | 年齡（0-150） |

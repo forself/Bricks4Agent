@@ -1,0 +1,1965 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bricks4Agent 目前版本技術手冊</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Bricks4Agent 目前版本技術手冊</h1>
+<p>Date: 2026-06-18<br>
+Status: current technical manual<br>
+Audience: platform engineers, maintainers, integration engineers</p>
+<h2>1. 系統定位</h2>
+<p>Bricks4Agent 是 broker-centered governed AI operations platform。它的核心不是讓模型直接操作工具，而是把自然語言意圖轉成可驗證、可審批、可稽核、可派發的結構化工作。</p>
+<p>目前 canonical LINE 路徑：</p>
+<pre><code class="language-text">LINE webhook -&gt; public tunnel -&gt; line-worker -&gt; broker /api/v1/high-level/line/process
+</code></pre>
+<p>目前 governed agent 路徑：</p>
+<pre><code class="language-text">agent container -&gt; broker sessions/runtime/llm/execution APIs -&gt; broker policy -&gt; dispatcher/worker
+</code></pre>
+<p>設計不變式：</p>
+<ul>
+<li>Broker 是控制平面，不是 autonomous planner。</li>
+<li>高階模型提出/整理意圖，broker 驗證與記錄。</li>
+<li>Execution layer 消費 structured intent，不消費 raw conversation。</li>
+<li>Agent container 不直接持有工具、repo、資料源或 provider key。</li>
+<li>所有重要動作應有 session、capability、scope、policy、audit。</li>
+</ul>
+<h2>2. Repo 主要結構</h2>
+<table>
+<thead>
+<tr>
+<th>Path</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>packages/csharp/ControlPlane.slnx</code></td>
+<td>canonical .NET build solution</td>
+</tr>
+<tr>
+<td><code>packages/csharp/broker</code></td>
+<td>ASP.NET Core broker、admin UI、endpoint、tool specs</td>
+</tr>
+<tr>
+<td><code>packages/csharp/broker-core</code></td>
+<td>domain models、policy、session、token、audit、catalog、broker service</td>
+</tr>
+<tr>
+<td><code>packages/csharp/function-pool</code></td>
+<td>TCP worker registry、dispatch、health</td>
+</tr>
+<tr>
+<td><code>packages/csharp/worker-sdk</code></td>
+<td>capability worker host framework</td>
+</tr>
+<tr>
+<td><code>packages/csharp/workers/file-worker</code></td>
+<td>file capability worker</td>
+</tr>
+<tr>
+<td><code>packages/csharp/workers/browser-worker</code></td>
+<td>browser read/action worker</td>
+</tr>
+<tr>
+<td><code>packages/csharp/workers/transport-tdx-worker</code></td>
+<td>TDX transport worker</td>
+</tr>
+<tr>
+<td><code>packages/csharp/workers/site-crawler-worker</code></td>
+<td>site crawl/reconstruct/generate worker</td>
+</tr>
+<tr>
+<td><code>packages/csharp/workers/execution-adapter-worker</code></td>
+<td><code>repo.patch.apply</code>、<code>build.test.run</code> trusted adapter</td>
+</tr>
+<tr>
+<td><code>packages/csharp/workers/line-worker</code></td>
+<td>LINE webhook ingress bridge</td>
+</tr>
+<tr>
+<td><code>packages/csharp/database/BaseOrm/net10</code></td>
+<td>canonical lightweight ORM</td>
+</tr>
+<tr>
+<td><code>packages/javascript/browser</code></td>
+<td>UI component library、user portal、page generator、browser package tests</td>
+</tr>
+<tr>
+<td><code>packages/javascript/browser/user-portal</code></td>
+<td>broker-served user frontend for login, commands, results and artifacts</td>
+</tr>
+<tr>
+<td><code>tools/agent</code></td>
+<td>local/generation/governed agent runtime</td>
+</tr>
+<tr>
+<td><code>tools/agent/container</code></td>
+<td>Podman governed agent stacks</td>
+</tr>
+<tr>
+<td><code>tools/scripts</code></td>
+<td>repository validation scripts</td>
+</tr>
+<tr>
+<td><code>tools/spa-generator</code></td>
+<td>SPA generator workbench</td>
+</tr>
+<tr>
+<td><code>templates/spa</code></td>
+<td>generated SPA template</td>
+</tr>
+<tr>
+<td><code>docs/designs</code></td>
+<td>architecture/design records</td>
+</tr>
+<tr>
+<td><code>docs/manuals</code></td>
+<td>runbooks and manuals</td>
+</tr>
+</tbody>
+</table>
+<h2>3. Runtime 拓樸</h2>
+<h3>3.1 Windows LINE Sidecar</h3>
+<p>Sidecar 是目前最重要的本機操作拓樸。</p>
+<pre><code class="language-text">PowerShell line-sidecar.ps1
+  -&gt; publish broker
+  -&gt; publish line-worker
+  -&gt; provision worker-auth.json
+  -&gt; start broker on 127.0.0.1:5361
+  -&gt; start line-worker webhook on 127.0.0.1:5357
+  -&gt; start/reuse ngrok
+  -&gt; update LINE webhook
+</code></pre>
+<p>Runtime output：</p>
+<pre><code class="language-text">.run/line-sidecar/
+  broker/
+  line-worker/
+  data/broker.db
+  logs/
+</code></pre>
+<p>Sidecar 與直接 <code>dotnet run</code> 的差異：</p>
+<ul>
+<li>Sidecar 會注入 production-style override。</li>
+<li>Sidecar 會啟用 worker auth enforcement。</li>
+<li>Sidecar DB 位於 <code>.run/line-sidecar/data/broker.db</code>。</li>
+<li>Direct broker 預設 DB 是 <code>packages/csharp/broker/broker.db</code>。</li>
+</ul>
+<h3>3.2 Direct Broker Development</h3>
+<p>用於工程開發：</p>
+<pre><code class="language-powershell">$env:ASPNETCORE_ENVIRONMENT='Development'
+$env:ASPNETCORE_URLS='http://127.0.0.1:5361'
+dotnet run --project packages/csharp/broker/Broker.csproj -- --FunctionPool:Enabled=true
+</code></pre>
+<p>若沒有 Ollama 且不測 RAG/local LLM：</p>
+<pre><code class="language-powershell">$env:Embedding__Enabled='false'
+$env:LineChatGateway__RagEnabled='false'
+</code></pre>
+<h3>3.3 FunctionPool Worker Topology</h3>
+<p>當 <code>FunctionPool:Enabled=true</code>：</p>
+<pre><code class="language-text">broker PoolListener :7000
+  &lt;- worker-sdk worker register
+  -&gt; PoolDispatcher dispatch route
+  -&gt; fallback in-process dispatcher if StrictMode=false
+</code></pre>
+<p>主要設定：</p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>FunctionPool:Enabled</code></td>
+<td><code>false</code></td>
+<td>是否啟用 worker TCP pool</td>
+</tr>
+<tr>
+<td><code>FunctionPool:StrictMode</code></td>
+<td><code>false</code></td>
+<td>true 時不 fallback 到 in-process</td>
+</tr>
+<tr>
+<td><code>FunctionPool:ListenPort</code></td>
+<td><code>7000</code></td>
+<td>worker registration/dispatch port</td>
+</tr>
+<tr>
+<td><code>FunctionPool:DispatchTimeoutSeconds</code></td>
+<td><code>30</code></td>
+<td>dispatch timeout</td>
+</tr>
+<tr>
+<td><code>FunctionPool:MaxRetries</code></td>
+<td><code>2</code></td>
+<td>dispatch retry</td>
+</tr>
+<tr>
+<td><code>FunctionPool:HeartbeatTimeoutSeconds</code></td>
+<td><code>30</code></td>
+<td>worker heartbeat timeout</td>
+</tr>
+<tr>
+<td><code>FunctionPool:MaxWorkers</code></td>
+<td><code>100</code></td>
+<td>worker 數上限</td>
+</tr>
+</tbody>
+</table>
+<p>Worker helper：</p>
+<pre><code class="language-powershell">powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\run-worker.ps1 -Worker file
+powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\run-worker.ps1 -Worker browser
+powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\run-worker.ps1 -Worker transport-tdx
+powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\run-worker.ps1 -Worker site-crawler
+</code></pre>
+<h3>3.4 Governed Agent Container Stack</h3>
+<p>Podman stack 用於驗證 controlled agent core。</p>
+<p>主要 stack：</p>
+<table>
+<thead>
+<tr>
+<th>Compose</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>tools/agent/container/compose.yml</code></td>
+<td>mock Ollama protocol + broker + agent + workers</td>
+</tr>
+<tr>
+<td><code>compose.openai-compatible.yml</code></td>
+<td>OpenAI-compatible mock or real provider path</td>
+</tr>
+<tr>
+<td><code>compose.ollama-host.yml</code></td>
+<td>host Ollama path</td>
+</tr>
+</tbody>
+</table>
+<p>Agent container 被設計為：</p>
+<ul>
+<li>只知道 broker URL、公鑰、principal、task、role。</li>
+<li>不直接持有 provider key。</li>
+<li>不直接接觸工具。</li>
+<li>透過 broker <code>/api/v1/runtime/spec</code> 取得 runtime defaults。</li>
+<li>透過 broker <code>/api/v1/llm/*</code> 取得 model health/list/chat。</li>
+<li>透過 broker <code>/api/v1/execution-requests/submit</code> 送工具需求。</li>
+</ul>
+<h2>4. Broker 啟動與服務組成</h2>
+<p>Broker startup 的主要組成：</p>
+<ol>
+<li><code>BrokerDb.UseSqlite(connectionString)</code> 建立 SQLite-backed store。</li>
+<li><code>BrokerDbInitializer</code> 初始化 schema、development seed、dashboard seed。</li>
+<li><code>EnvelopeCrypto</code> 管理 ECDH envelope crypto。</li>
+<li><code>ScopedTokenService</code> 發行 scoped delegation token。</li>
+<li><code>SessionService</code> 管理 container/agent session。</li>
+<li><code>RevocationService</code> / <code>CacheRevocationService</code> 管理 token/session revocation。</li>
+<li><code>AuditService</code> 記錄 audit event。</li>
+<li><code>CapabilityCatalog</code> / <code>CacheCapabilityCatalog</code> 管理 capability。</li>
+<li><code>PolicyEngine</code> 做 PDP decision。</li>
+<li><code>LlmProxyService</code> / <code>MeteredLlmProxyService</code> 作 broker-side inference gateway。</li>
+<li><code>BrokerService</code> 執行 task、execution request、approval lifecycle。</li>
+<li><code>ToolSpecRegistry</code> 讀取 <code>broker/tool-specs</code> 並同步 capability。</li>
+<li><code>LineChatGateway</code> 與 <code>HighLevelCoordinator</code> 管理 LINE/portal 共用高階流程。</li>
+<li><code>PortalAuthService</code>、<code>PortalEndpoints</code> 與 broker-served <code>user-portal</code> 提供使用者登入、指令、結果與 artifact 前台。</li>
+<li>Optional FunctionPool、container manager、worker health monitor。</li>
+<li>Optional Drive、Azure IIS、browser runtime、RAG/embedding services。</li>
+</ol>
+<h2>5. Core Data Models</h2>
+<p>核心模型位於 <code>packages/csharp/broker-core/Models</code>。</p>
+<table>
+<thead>
+<tr>
+<th>Model</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Principal</code></td>
+<td>使用者、agent、worker、admin 等主體</td>
+</tr>
+<tr>
+<td><code>Role</code></td>
+<td>角色定義</td>
+</tr>
+<tr>
+<td><code>RoleBinding</code></td>
+<td>principal 和 role 的綁定</td>
+</tr>
+<tr>
+<td><code>BrokerTask</code></td>
+<td>broker task</td>
+</tr>
+<tr>
+<td><code>Capability</code></td>
+<td>capability 定義、route、risk、policy</td>
+</tr>
+<tr>
+<td><code>CapabilityGrant</code></td>
+<td>task/principal/role 的能力授權與 scope</td>
+</tr>
+<tr>
+<td><code>ContainerSession</code></td>
+<td>agent/container session</td>
+</tr>
+<tr>
+<td><code>ExecutionRequest</code></td>
+<td>受控執行請求與裁決結果</td>
+</tr>
+<tr>
+<td><code>ApprovalRequest</code></td>
+<td>approval lifecycle</td>
+</tr>
+<tr>
+<td><code>AuditEvent</code></td>
+<td>audit trail</td>
+</tr>
+<tr>
+<td><code>SharedContextEntry</code></td>
+<td>document-oriented shared context</td>
+</tr>
+<tr>
+<td><code>VectorEntry</code></td>
+<td>embedding/vector search entries</td>
+</tr>
+<tr>
+<td><code>Plan</code> / <code>PlanNode</code> / <code>PlanEdge</code></td>
+<td>DAG plan</td>
+</tr>
+<tr>
+<td><code>Revocation</code></td>
+<td>token/session/capability revocation</td>
+</tr>
+<tr>
+<td><code>SystemEpoch</code></td>
+<td>epoch-based invalidation</td>
+</tr>
+<tr>
+<td><code>BrowserSiteBinding</code></td>
+<td>browser site identity binding</td>
+</tr>
+<tr>
+<td><code>BrowserUserGrant</code></td>
+<td>user delegated browser grant</td>
+</tr>
+<tr>
+<td><code>BrowserSystemBinding</code></td>
+<td>system account browser binding</td>
+</tr>
+<tr>
+<td><code>BrowserSessionLease</code></td>
+<td>browser lease</td>
+</tr>
+<tr>
+<td><code>GoogleDriveDelegatedCredential</code></td>
+<td>delegated OAuth token store</td>
+</tr>
+<tr>
+<td><code>GoogleDriveOAuthState</code></td>
+<td>OAuth state</td>
+</tr>
+<tr>
+<td><code>AzureIisDeploymentTarget</code></td>
+<td>deployment target</td>
+</tr>
+<tr>
+<td><code>LocalAdminCredential</code> / <code>LocalAdminSession</code></td>
+<td>localhost admin auth</td>
+</tr>
+<tr>
+<td><code>PortalUserCredential</code> / <code>PortalUserSession</code></td>
+<td>user portal password credential, LINE binding metadata, one-time verification hash, and HttpOnly cookie session</td>
+</tr>
+<tr>
+<td><code>ObservationEvent</code> / <code>HealthScoreSnapshot</code></td>
+<td>monitoring/health</td>
+</tr>
+</tbody>
+</table>
+<h2>6. API Surface</h2>
+<p>Broker 使用 <code>/api/v1</code> 作主要 API group。</p>
+<h3>6.1 Public / bootstrap / exempt routes</h3>
+<table>
+<thead>
+<tr>
+<th>Route</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GET/POST /api/v1/health</code></td>
+<td>basic health</td>
+</tr>
+<tr>
+<td><code>POST /api/v1/sessions/register</code></td>
+<td>session bootstrap</td>
+</tr>
+<tr>
+<td><code>/api/v1/tool-specs/*</code></td>
+<td>tool spec list/get</td>
+</tr>
+<tr>
+<td><code>/api/v1/local-admin/*</code></td>
+<td>localhost admin auth surface</td>
+</tr>
+<tr>
+<td><code>/api/v1/portal/*</code></td>
+<td>user portal auth, command, result and artifact surface</td>
+</tr>
+<tr>
+<td><code>/api/v1/high-level/line/*</code></td>
+<td>line-worker signed request path</td>
+</tr>
+<tr>
+<td><code>/api/v1/user/approvals/*</code></td>
+<td>signed-link user approval path</td>
+</tr>
+</tbody>
+</table>
+<h3>6.2 Session, task, execution</h3>
+<table>
+<thead>
+<tr>
+<th>Route group</th>
+<th>主要用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>POST /api/v1/sessions/register</code></td>
+<td>register session</td>
+</tr>
+<tr>
+<td><code>POST /api/v1/sessions/heartbeat</code></td>
+<td>heartbeat</td>
+</tr>
+<tr>
+<td><code>POST /api/v1/sessions/close</code></td>
+<td>close and cleanup</td>
+</tr>
+<tr>
+<td><code>POST /api/v1/tasks/create</code></td>
+<td>create task</td>
+</tr>
+<tr>
+<td><code>POST /api/v1/tasks/query</code></td>
+<td>query tasks</td>
+</tr>
+<tr>
+<td><code>POST /api/v1/tasks/cancel</code></td>
+<td>cancel task</td>
+</tr>
+<tr>
+<td><code>POST /api/v1/execution-requests/submit</code></td>
+<td>submit governed execution request</td>
+</tr>
+<tr>
+<td><code>POST /api/v1/execution-requests/query</code></td>
+<td>query execution requests</td>
+</tr>
+</tbody>
+</table>
+<h3>6.3 Capability, grants, context, audit</h3>
+<table>
+<thead>
+<tr>
+<th>Route group</th>
+<th>主要用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>POST /api/v1/capabilities/list</code></td>
+<td>list capabilities visible to caller</td>
+</tr>
+<tr>
+<td><code>POST /api/v1/grants/list</code></td>
+<td>list grants</td>
+</tr>
+<tr>
+<td><code>POST /api/v1/context/write</code></td>
+<td>write shared context</td>
+</tr>
+<tr>
+<td><code>POST /api/v1/context/read</code></td>
+<td>read shared context</td>
+</tr>
+<tr>
+<td><code>POST /api/v1/context/read-by-key</code></td>
+<td>read by key</td>
+</tr>
+<tr>
+<td><code>POST /api/v1/context/list</code></td>
+<td>list context</td>
+</tr>
+<tr>
+<td><code>POST /api/v1/context/history</code></td>
+<td>context history</td>
+</tr>
+<tr>
+<td><code>POST /api/v1/audit/query</code></td>
+<td>audit query</td>
+</tr>
+<tr>
+<td><code>POST /api/v1/audit/trace</code></td>
+<td>trace by correlation</td>
+</tr>
+<tr>
+<td><code>POST /api/v1/audit/verify</code></td>
+<td>audit verification</td>
+</tr>
+</tbody>
+</table>
+<h3>6.4 Runtime and LLM proxy</h3>
+<table>
+<thead>
+<tr>
+<th>Route</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>POST /api/v1/runtime/spec</code></td>
+<td>runtime defaults for governed agent</td>
+</tr>
+<tr>
+<td><code>POST /api/v1/llm/health</code></td>
+<td>broker-mediated provider health</td>
+</tr>
+<tr>
+<td><code>POST /api/v1/llm/models</code></td>
+<td>model listing</td>
+</tr>
+<tr>
+<td><code>POST /api/v1/llm/chat</code></td>
+<td>chat/completion via broker</td>
+</tr>
+</tbody>
+</table>
+<p><code>LlmProxy</code> supports:</p>
+<ul>
+<li>Ollama style API。</li>
+<li>OpenAI chat completions。</li>
+<li>OpenAI responses API。</li>
+<li>Anthropic Claude Messages API (<code>/v1/messages</code>)。</li>
+</ul>
+<h3>6.5 High-level LINE</h3>
+<table>
+<thead>
+<tr>
+<th>Route</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>POST /api/v1/high-level/line/process</code></td>
+<td>canonical line-worker -&gt; broker process</td>
+</tr>
+<tr>
+<td><code>POST /api/v1/high-level/line/profile</code></td>
+<td>profile</td>
+</tr>
+<tr>
+<td><code>POST /api/v1/high-level/line/draft</code></td>
+<td>draft</td>
+</tr>
+<tr>
+<td><code>GET /api/v1/high-level/line/users</code></td>
+<td>users</td>
+</tr>
+<tr>
+<td><code>POST /api/v1/high-level/line/users/permissions</code></td>
+<td>user permissions</td>
+</tr>
+<tr>
+<td><code>GET/POST /api/v1/high-level/line/registration-policy</code></td>
+<td>registration policy</td>
+</tr>
+<tr>
+<td><code>POST /api/v1/high-level/line/users/registration/review</code></td>
+<td>registration review</td>
+</tr>
+<tr>
+<td><code>GET /api/v1/high-level/line/notifications/pending</code></td>
+<td>line-worker pulls notifications</td>
+</tr>
+<tr>
+<td><code>POST /api/v1/high-level/line/notifications/complete</code></td>
+<td>mark notification complete</td>
+</tr>
+</tbody>
+</table>
+<h3>6.6 Local admin</h3>
+<p><code>/api/v1/local-admin/*</code> powers <code>line-admin.html</code>。Local admin 是本機人類 operator 邊界，與 broker scoped-token <code>Principal</code> / <code>Role</code> 分離。登入後 session 會保存 operator id、username、role 與 permission snapshot；後端 endpoint filter 依 route permission gate 執行授權。</p>
+<p>Major route categories:</p>
+<ul>
+<li>auth: status/login/change-password/logout。</li>
+<li>operators: <code>/operators/*</code>，建立、列出、調整角色、停用、重設密碼、撤銷 sessions。</li>
+<li>system: <code>/system/status</code>。</li>
+<li>LINE users/conversations/workflow。</li>
+<li>browser site-bindings/user-grants/system-bindings/leases/execute/executions。</li>
+<li>deployment targets/preview/execute/executions。</li>
+<li>delivery Google Drive status/OAuth/share。</li>
+<li>artifacts and notification retry。</li>
+<li>tool specs。</li>
+<li>approvals。</li>
+<li>alerts。</li>
+</ul>
+<p>Local admin roles:</p>
+<table>
+<thead>
+<tr>
+<th>Role</th>
+<th>Permissions</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>super_admin</code></td>
+<td>all local admin permissions</td>
+</tr>
+<tr>
+<td><code>system_admin</code></td>
+<td><code>system.*</code>、<code>tool_spec.read</code>、<code>audit.read</code></td>
+</tr>
+<tr>
+<td><code>permission_admin</code></td>
+<td><code>permission.*</code>、<code>approval.admin.manage</code>、<code>tool_spec.read</code>、<code>audit.read</code></td>
+</tr>
+<tr>
+<td><code>auditor</code></td>
+<td><code>system.status.read</code>、<code>system.monitor.read</code>、<code>tool_spec.read</code>、<code>audit.read</code>、<code>audit.verify</code></td>
+</tr>
+</tbody>
+</table>
+<p>Representative endpoint gates:</p>
+<table>
+<thead>
+<tr>
+<th>Endpoint group</th>
+<th>Permission</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/system/status</code></td>
+<td><code>system.status.read</code></td>
+</tr>
+<tr>
+<td><code>/operators/*</code></td>
+<td><code>permission.operator.manage</code></td>
+</tr>
+<tr>
+<td><code>/line/users/permissions</code>, registration review</td>
+<td><code>permission.user.manage</code></td>
+</tr>
+<tr>
+<td><code>/line/registration-policy</code> POST</td>
+<td><code>permission.registration.manage</code></td>
+</tr>
+<tr>
+<td><code>/browser/user-grants/*</code></td>
+<td><code>permission.browser_grant.manage</code></td>
+</tr>
+<tr>
+<td><code>/browser/site-bindings/*</code>, <code>/browser/system-bindings/*</code>, <code>/browser/leases/*</code>, <code>/browser/execute</code></td>
+<td><code>system.browser.manage</code></td>
+</tr>
+<tr>
+<td><code>/deployment/*</code></td>
+<td><code>system.deployment.manage</code></td>
+</tr>
+<tr>
+<td><code>/delivery/*</code>, artifact delivery retry</td>
+<td><code>system.delivery.manage</code></td>
+</tr>
+<tr>
+<td><code>/tool-specs*</code></td>
+<td><code>tool_spec.read</code></td>
+</tr>
+<tr>
+<td><code>/approvals/*</code> approve/reject</td>
+<td><code>approval.admin.manage</code></td>
+</tr>
+</tbody>
+</table>
+<h3>6.7 User portal</h3>
+<p><code>/api/v1/portal/*</code> powers <code>packages/javascript/browser/user-portal</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Route</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GET /api/v1/portal/auth/status</code></td>
+<td>read current portal cookie session and self-registration status</td>
+</tr>
+<tr>
+<td><code>POST /api/v1/portal/auth/register</code></td>
+<td>create portal credential, issue session cookie, ensure high-level user profile, return one-time <code>line_verification</code></td>
+</tr>
+<tr>
+<td><code>POST /api/v1/portal/auth/login</code></td>
+<td>verify password and issue HttpOnly session cookie</td>
+</tr>
+<tr>
+<td><code>POST /api/v1/portal/auth/logout</code></td>
+<td>revoke session and clear cookie</td>
+</tr>
+<tr>
+<td><code>POST /api/v1/portal/auth/line-verification</code></td>
+<td>issue a new short-lived LINE verification code for the authenticated Portal user</td>
+</tr>
+<tr>
+<td><code>GET /api/v1/portal/me</code></td>
+<td>read profile, LINE verification status, and current draft for the authenticated user</td>
+</tr>
+<tr>
+<td><code>POST /api/v1/portal/commands</code></td>
+<td>submit a user command to <code>HighLevelCoordinator.ProcessLineMessageAsync</code></td>
+</tr>
+<tr>
+<td><code>GET /api/v1/portal/results</code></td>
+<td>read latest high-level interaction records for the authenticated user</td>
+</tr>
+<tr>
+<td><code>GET /api/v1/portal/artifacts</code></td>
+<td>list authenticated user's artifact metadata and download URLs</td>
+</tr>
+<tr>
+<td><code>GET /api/v1/portal/artifacts/{documentId}</code></td>
+<td>read one authenticated-user artifact by document id</td>
+</tr>
+</tbody>
+</table>
+<p>Security boundary:</p>
+<ul>
+<li>Portal uses its own <code>PortalUserCredential</code> and <code>PortalUserSession</code> records; it does not reuse local-admin sessions.</li>
+<li>The session cookie is HttpOnly, SameSite Strict, path <code>/</code>, and Secure when the request is HTTPS.</li>
+<li>LINE onboarding is Portal-first: registration/reissue returns a 6-digit <code>line_verification.code</code>, but only the SHA-256 hash is persisted on <code>PortalUserCredential</code>.</li>
+<li>Raw LINE user ids matching <code>U[a-fA-F0-9]{32}</code> are rejected until <code>/verify &lt;user_id&gt; &lt;code&gt;</code> or <code>/驗證 &lt;user_id&gt; &lt;code&gt;</code> binds that LINE id to a Portal account.</li>
+<li>After binding, <code>HighLevelCoordinator</code> resolves the raw LINE id to the Portal <code>user_id</code>; high-level API responses include <code>effective_user_id</code> for that mapped identity.</li>
+<li>Portal endpoints are plain JSON trusted paths in the encryption/auth middleware, but user resources still require the portal cookie.</li>
+<li>Artifact DTOs hide internal <code>FilePath</code> / workspace paths and return Google Drive or signed broker download links only.</li>
+</ul>
+<h3>6.8 Browser, deployment, Drive, artifacts</h3>
+<table>
+<thead>
+<tr>
+<th>Group</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/api/v1/browser-admin/*</code></td>
+<td>browser binding and request preview</td>
+</tr>
+<tr>
+<td><code>/api/v1/deployment-admin/*</code></td>
+<td>Azure IIS target/request/preview/execute</td>
+</tr>
+<tr>
+<td><code>/api/v1/google-drive/oauth/callback</code></td>
+<td>OAuth callback</td>
+</tr>
+<tr>
+<td><code>/api/v1/artifacts/download/{artifactId}</code></td>
+<td>signed artifact download</td>
+</tr>
+<tr>
+<td><code>/api/v1/user/approvals/*</code></td>
+<td>user signed-link approval</td>
+</tr>
+</tbody>
+</table>
+<h3>6.9 Worker health and container management</h3>
+<p>Available only when <code>FunctionPool:Enabled=true</code>：</p>
+<table>
+<thead>
+<tr>
+<th>Route</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GET /api/v1/workers/</code></td>
+<td>list registered workers</td>
+</tr>
+<tr>
+<td><code>POST /api/v1/workers/spawn</code></td>
+<td>spawn container worker</td>
+</tr>
+<tr>
+<td><code>POST /api/v1/workers/stop</code></td>
+<td>stop worker container</td>
+</tr>
+<tr>
+<td><code>GET /api/v1/workers/containers</code></td>
+<td>list containers</td>
+</tr>
+<tr>
+<td><code>POST /api/v1/workers/logs</code></td>
+<td>fetch container logs</td>
+</tr>
+<tr>
+<td><code>GET /api/v1/workers/health</code></td>
+<td>pool health</td>
+</tr>
+<tr>
+<td><code>GET /api/v1/health/workers</code></td>
+<td>worker health summary</td>
+</tr>
+<tr>
+<td><code>GET /api/v1/health/score</code></td>
+<td>worker health score</td>
+</tr>
+<tr>
+<td><code>GET /api/v1/health/score/history</code></td>
+<td>score history</td>
+</tr>
+</tbody>
+</table>
+<h2>7. Tool Spec / Capability Catalog</h2>
+<p>Tool specs live under:</p>
+<pre><code class="language-text">packages/csharp/broker/tool-specs
+</code></pre>
+<p>Current spec directories:</p>
+<table>
+<thead>
+<tr>
+<th>Tool spec</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>browser.reference.anonymous.navigate</code></td>
+</tr>
+<tr>
+<td><code>browser.reference.anonymous.read</code></td>
+</tr>
+<tr>
+<td><code>browser.reference.system-account.read</code></td>
+</tr>
+<tr>
+<td><code>browser.reference.user-delegated.read</code></td>
+</tr>
+<tr>
+<td><code>commerce.price.search</code></td>
+</tr>
+<tr>
+<td><code>delivery.google-drive.share</code></td>
+</tr>
+<tr>
+<td><code>deploy.azure-vm-iis</code></td>
+</tr>
+<tr>
+<td><code>knowledge.wikipedia.search</code></td>
+</tr>
+<tr>
+<td><code>site.crawl.source</code></td>
+</tr>
+<tr>
+<td><code>site.generate.package</code></td>
+</tr>
+<tr>
+<td><code>site.reconstruct.package</code></td>
+</tr>
+<tr>
+<td><code>transport.query</code></td>
+</tr>
+<tr>
+<td><code>travel.bus.search</code></td>
+</tr>
+<tr>
+<td><code>travel.flight.search</code></td>
+</tr>
+<tr>
+<td><code>travel.hsr.search</code></td>
+</tr>
+<tr>
+<td><code>travel.rail.search</code></td>
+</tr>
+<tr>
+<td><code>web.search.duckduckgo</code></td>
+</tr>
+<tr>
+<td><code>web.search.google</code></td>
+</tr>
+</tbody>
+</table>
+<p>Execution adapter capabilities are seeded/tested in broker/agent paths:</p>
+<table>
+<thead>
+<tr>
+<th>Capability</th>
+<th>Agent tool route</th>
+<th>Worker</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>repo.patch.apply</code></td>
+<td><code>apply_patch</code></td>
+<td><code>execution-adapter-worker</code></td>
+</tr>
+<tr>
+<td><code>build.test.run</code></td>
+<td><code>run_build_test</code></td>
+<td><code>execution-adapter-worker</code></td>
+</tr>
+</tbody>
+</table>
+<p>Tool spec capability sync runs as hosted service and keeps the broker catalog aligned with specs.</p>
+<h2>8. Policy, Risk, Approval</h2>
+<h3>8.1 Risk levels</h3>
+<p><code>RiskLevel</code> has four tiers：</p>
+<table>
+<thead>
+<tr>
+<th>Tier</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Low</td>
+<td>read-only, internal, no side effect</td>
+</tr>
+<tr>
+<td>Medium</td>
+<td>reversible write within task/user scope</td>
+</tr>
+<tr>
+<td>High</td>
+<td>irreversible, external, scope escape, agent control</td>
+</tr>
+<tr>
+<td>Critical</td>
+<td>privilege escalation, secrets, production deploy, destructive/bulk, free shell</td>
+</tr>
+</tbody>
+</table>
+<h3>8.2 Approval policy</h3>
+<table>
+<thead>
+<tr>
+<th>Policy</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>auto</code></td>
+<td>allow directly</td>
+</tr>
+<tr>
+<td><code>auto_if_task_scope_match</code></td>
+<td>allow in scope, escalate if scope escapes</td>
+</tr>
+<tr>
+<td><code>require_approval</code></td>
+<td>create approval request; High remains a one-approval gate</td>
+</tr>
+<tr>
+<td><code>require_dual_approval</code></td>
+<td>create approval request requiring two distinct approver ids; Critical uses this gate</td>
+</tr>
+<tr>
+<td><code>deny</code></td>
+<td>reject</td>
+</tr>
+</tbody>
+</table>
+<h3>8.3 Decision flow</h3>
+<p>Broker policy flow:</p>
+<pre><code class="language-text">ExecutionRequest
+  -&gt; validate session/token
+  -&gt; resolve capability
+  -&gt; resolve grants
+  -&gt; validate route and payload schema
+  -&gt; compare scope.paths/scope.routes
+  -&gt; evaluate risk/policy
+  -&gt; Allow | RequireApproval | Deny
+</code></pre>
+<p>High/Critical and scope escape should become <code>RequireApproval</code> when approval-eligible, not silent allow. Free shell remains denied.</p>
+<h3>8.4 Approval tiers</h3>
+<table>
+<thead>
+<tr>
+<th>Tier</th>
+<th>Approver</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>User</td>
+<td>owning user, signed link, own User-tier approvals only</td>
+</tr>
+<tr>
+<td>Admin</td>
+<td>local admin, global approvals</td>
+</tr>
+</tbody>
+</table>
+<p>High / <code>require_approval</code> remains single-approver. Critical / <code>require_dual_approval</code> is broker-enforced with <code>ApprovalRequest.required_approval_count</code> and persisted <code>approval_decisions</code>, one decision per approver id, so the same approver cannot satisfy the threshold twice. Local-admin approval identity is now based on the named operator id from the local admin session, and approve/reject routes require <code>approval.admin.manage</code>.</p>
+<h2>9. High-Level Coordinator</h2>
+<h3>9.1 Input grammar</h3>
+<p>Parser rules are implemented in <code>HighLevelCommandParser</code>。</p>
+<table>
+<thead>
+<tr>
+<th>Kind</th>
+<th>Prefix/token</th>
+<th>Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Help</td>
+<td><code>?help</code>, <code>?h</code></td>
+<td><code>?help</code></td>
+</tr>
+<tr>
+<td>Query</td>
+<td><code>?</code></td>
+<td><code>?search keyword</code></td>
+</tr>
+<tr>
+<td>Production/config</td>
+<td><code>/</code></td>
+<td><code>/name 小布</code></td>
+</tr>
+<tr>
+<td>Project name</td>
+<td><code>#</code>, <code>＃</code></td>
+<td><code>#MySite</code></td>
+</tr>
+<tr>
+<td>Confirm</td>
+<td><code>確認</code>, <code>confirm</code>, <code>yes</code>, <code>y</code>, <code>ok</code>, <code>okay</code></td>
+<td><code>confirm</code></td>
+</tr>
+<tr>
+<td>Cancel</td>
+<td><code>取消</code>, <code>cancel</code>, <code>no</code>, <code>n</code></td>
+<td><code>cancel</code></td>
+</tr>
+<tr>
+<td>Conversation</td>
+<td>no prefix</td>
+<td><code>請幫我想一個方案</code></td>
+</tr>
+</tbody>
+</table>
+<p>Query subcommands:</p>
+<ul>
+<li><code>search</code>, <code>s</code>, <code>搜尋</code></li>
+<li><code>rail</code>, <code>r</code>, <code>train</code>, <code>tra</code>, <code>火車</code>, <code>台鐵</code></li>
+<li><code>hsr</code>, <code>thsr</code>, <code>高鐵</code></li>
+<li><code>bus</code>, <code>b</code>, <code>公車</code>, <code>客運</code></li>
+<li><code>flight</code>, <code>f</code>, <code>flights</code>, <code>航班</code>, <code>機票</code></li>
+<li><code>profile</code>, <code>p</code>, <code>me</code>, <code>whoami</code></li>
+</ul>
+<p>Production/config subcommands:</p>
+<ul>
+<li><code>name</code>, <code>n</code>, <code>display-name</code>, <code>displayname</code>, <code>稱呼</code></li>
+<li><code>id</code>, <code>i</code>, <code>user-id</code>, <code>userid</code>, <code>code</code></li>
+</ul>
+<p>Project interview commands:</p>
+<ul>
+<li><code>/proj</code></li>
+<li><code>/ok</code></li>
+<li><code>/revise</code></li>
+<li><code>/cancel</code></li>
+</ul>
+<h3>9.2 Workflow states</h3>
+<p>High-level workflow separates：</p>
+<ul>
+<li>conversation。</li>
+<li>explicit query。</li>
+<li>production draft。</li>
+<li>project name requirement。</li>
+<li>awaiting confirmation。</li>
+<li>confirmed promotion。</li>
+<li>cancellation。</li>
+</ul>
+<p>Promotion gate prevents raw chat from becoming execution without confirmed project name and explicit confirmation.</p>
+<h3>9.3 Workspaces and artifacts</h3>
+<p>Workspace service uses:</p>
+<pre><code class="language-text">{AccessRoot}/{channel}/{userId}/conversations
+{AccessRoot}/{channel}/{userId}/documents
+{AccessRoot}/{channel}/{userId}/projects
+</code></pre>
+<p>Document/code/site artifacts are written to managed workspace and represented in shared context / DB records for admin listing and delivery.</p>
+<h2>10. Agent Runtime</h2>
+<p><code>tools/agent</code> supports three modes:</p>
+<table>
+<thead>
+<tr>
+<th>Mode</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>local provider mode</td>
+<td>direct Ollama/OpenAI-compatible provider</td>
+</tr>
+<tr>
+<td>generation/pipeline mode</td>
+<td><code>project.json</code> and CRUD generation</td>
+</tr>
+<tr>
+<td>governed mode</td>
+<td>all model/tool traffic broker-mediated</td>
+</tr>
+</tbody>
+</table>
+<p>Provider aliases:</p>
+<ul>
+<li><code>ollama</code></li>
+<li><code>openai</code></li>
+<li><code>gemini</code></li>
+<li><code>deepseek</code></li>
+<li><code>groq</code></li>
+<li><code>mistral</code></li>
+</ul>
+<p>Governed mode contract endpoints:</p>
+<ul>
+<li><code>POST /api/v1/sessions/register</code></li>
+<li><code>POST /api/v1/runtime/spec</code></li>
+<li><code>POST /api/v1/llm/health</code></li>
+<li><code>POST /api/v1/llm/models</code></li>
+<li><code>POST /api/v1/llm/chat</code></li>
+<li><code>POST /api/v1/capabilities/list</code></li>
+<li><code>POST /api/v1/grants/list</code></li>
+<li><code>POST /api/v1/execution-requests/submit</code></li>
+<li><code>POST /api/v1/sessions/heartbeat</code></li>
+<li><code>POST /api/v1/sessions/close</code></li>
+</ul>
+<p>Governed mode ignores direct provider flags as formal execution path:</p>
+<ul>
+<li><code>--provider</code></li>
+<li><code>--api-key</code></li>
+<li><code>--host</code></li>
+</ul>
+<h2>11. Agent Container Hardening</h2>
+<p>Agent compose stacks apply:</p>
+<table>
+<thead>
+<tr>
+<th>Control</th>
+<th>Intent</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>internal-only agent network</td>
+<td>agent egress sealed, broker is only path</td>
+</tr>
+<tr>
+<td>read-only rootfs</td>
+<td>prevent root filesystem mutation</td>
+</tr>
+<tr>
+<td>tmpfs <code>/tmp</code></td>
+<td>temporary writable space</td>
+</tr>
+<tr>
+<td><code>cap_drop: ALL</code></td>
+<td>no Linux capabilities</td>
+</tr>
+<tr>
+<td><code>no-new-privileges:true</code></td>
+<td>prevent privilege escalation</td>
+</tr>
+<tr>
+<td>non-root UID</td>
+<td>least privilege</td>
+</tr>
+<tr>
+<td><code>pids_limit</code></td>
+<td>fork-bomb containment</td>
+</tr>
+</tbody>
+</table>
+<p>Current honest state:</p>
+<ul>
+<li>Network egress sealing and OS sandbox are applied and verified in stack tests.</li>
+<li>Runtime default seccomp profile applies.</li>
+<li>Custom seccomp profile is not yet implemented.</li>
+</ul>
+<h2>12. Execution Adapter Worker</h2>
+<p>The execution adapter is a trusted execution node, not an agent bypass. Agent requests still pass through broker grants, policy and dispatch.</p>
+<h3>12.1 <code>repo.patch.apply</code></h3>
+<p>Responsibilities:</p>
+<ul>
+<li>Validate <code>base_commit == HEAD</code>。</li>
+<li>Enforce <code>scope.allowed_paths</code>。</li>
+<li>Reject out-of-scope patch。</li>
+<li>Run <code>git apply --check</code> before applying。</li>
+<li>Apply patch through <code>git apply</code>。</li>
+<li>Produce diff/evidence。</li>
+<li>Support idempotency。</li>
+<li>Avoid free-form shell。</li>
+</ul>
+<h3>12.2 <code>build.test.run</code></h3>
+<p>Responsibilities:</p>
+<ul>
+<li>Accept only whitelist commands。</li>
+<li>Avoid shell expansion。</li>
+<li>Return structured stdout/stderr/exit code。</li>
+<li>Truncate/record evidence。</li>
+</ul>
+<p>Typical validated commands include repo-approved forms such as:</p>
+<ul>
+<li><code>npm test</code></li>
+<li><code>npm run build</code></li>
+<li><code>dotnet test</code></li>
+<li><code>dotnet build</code></li>
+<li><code>pytest</code></li>
+</ul>
+<p>Actual whitelist is controlled by worker configuration/code, not by natural-language prompt.</p>
+<h2>13. Worker Auth</h2>
+<p>Worker HTTP routes and TCP registration use identity credentials.</p>
+<p>Sidecar provisions:</p>
+<pre><code class="language-text">C:\secure\Bricks4Agent\worker-auth.json
+</code></pre>
+<p>Worker env prefix:</p>
+<pre><code class="language-text">WORKER_
+</code></pre>
+<p>Examples:</p>
+<pre><code class="language-powershell">$env:WORKER_Worker__BrokerHost='localhost'
+$env:WORKER_Worker__BrokerPort='7000'
+$env:WORKER_Worker__Auth__WorkerType='site-crawler-worker'
+$env:WORKER_Worker__Auth__KeyId='&lt;key-id&gt;'
+$env:WORKER_Worker__Auth__SharedSecret='&lt;shared-secret&gt;'
+</code></pre>
+<p>For canonical sidecar, prefer <code>run-worker.ps1</code> so credentials are loaded from the secure store.</p>
+<h2>14. Storage and BaseOrm</h2>
+<p>BaseOrm is the project’s lightweight ORM:</p>
+<ul>
+<li>explicit SQL。</li>
+<li>row mapping。</li>
+<li>attribute-driven CRUD helpers。</li>
+<li>simple table bootstrap。</li>
+<li>no LINQ provider。</li>
+<li>no change tracking。</li>
+<li>no migrations。</li>
+</ul>
+<p>Supported providers:</p>
+<ul>
+<li>SQLite。</li>
+<li>SQL Server。</li>
+<li>MySQL。</li>
+<li>PostgreSQL。</li>
+</ul>
+<p>Important current behavior:</p>
+<ul>
+<li>SQLite file-backed connections enable WAL, foreign keys, busy timeout。</li>
+<li>Transaction state is execution-local, preventing concurrent request leakage on a shared <code>BaseDb</code>/<code>BrokerDb</code> instance。</li>
+<li><code>BaseOrm.cs</code> is mirrored into SPA generator and template locations; run sync validation after changing it。</li>
+</ul>
+<p>Validation：</p>
+<pre><code class="language-powershell">npm run validate:baseorm
+npm run validate:baseorm-sync
+</code></pre>
+<p>Live SQL Server/MySQL/PostgreSQL checks require:</p>
+<ul>
+<li><code>BASEORM_SQLSERVER_CONNECTION_STRING</code></li>
+<li><code>BASEORM_MYSQL_CONNECTION_STRING</code></li>
+<li><code>BASEORM_POSTGRESQL_CONNECTION_STRING</code></li>
+</ul>
+<h2>15. UI Library and Generators</h2>
+<h3>15.1 UI Components</h3>
+<p>Canonical browser component library：</p>
+<pre><code class="language-text">packages/javascript/browser/ui_components
+</code></pre>
+<p>Metadata catalog：</p>
+<pre><code class="language-text">packages/javascript/browser/ui_components/metadata/component-catalog.json
+</code></pre>
+<p>Current catalog summary:</p>
+<ul>
+<li>116 components。</li>
+<li>Categories: <code>common</code>, <code>form</code>, <code>input</code>, <code>layout</code>, <code>sections</code>, <code>social</code>, <code>viz</code>, <code>editor</code>, <code>data</code>, <code>analytics</code>。</li>
+<li>Kinds: <code>atomic</code>, <code>composite</code>, <code>container</code>, <code>visualizer</code>。</li>
+<li>Usage modes: <code>manual_only</code>, <code>definition_explicit</code>, <code>field_direct</code>, <code>runtime_only</code>。</li>
+<li><code>CommandComposer</code> is a reusable <code>form</code> composite used by the user portal command surface.</li>
+</ul>
+<p>Validation:</p>
+<pre><code class="language-powershell">cd packages/javascript/browser
+npm run metadata:check
+npm test
+cd ..\..\..
+</code></pre>
+<p>Repo-level validation:</p>
+<pre><code class="language-powershell">npm run validate:ui-state
+npm run audit:ui-styles
+npm run validate:ui-library
+npm run validate:ui-library:browser
+npm run validate:user-portal
+</code></pre>
+<p>Determinism boundary:</p>
+<ul>
+<li>site-gen static output and selected instance IDs are deterministic-clean。</li>
+<li>static package is anchored to B components with <code>b_component</code> and <code>b-binding.json</code>。</li>
+<li>Do not claim all runtime viz/map/social/download components are byte-deterministic; runtime timestamp/file naming behavior can be intentional。</li>
+</ul>
+<h3>15.2 User Portal Frontend</h3>
+<p>User-facing portal frontend:</p>
+<pre><code class="language-text">packages/javascript/browser/user-portal
+</code></pre>
+<p>Runtime path:</p>
+<pre><code class="language-text">http://127.0.0.1:5361/portal/index.html
+</code></pre>
+<p>Architecture:</p>
+<ul>
+<li>static ES modules served by broker; no separate frontend build step。</li>
+<li>imports the custom component library from <code>ui_components/index.js</code>。</li>
+<li><code>PortalApiClient</code> calls <code>/api/v1/portal/*</code> with <code>credentials: include</code>。</li>
+<li><code>CommandComposer</code> is the shared command-input component; future reusable frontend controls should be added to <code>ui_components</code> before product-specific use。</li>
+<li>Broker project output includes <code>user-portal</code> and <code>ui_components</code> under <code>wwwroot</code> for publish scenarios; direct development uses <code>PhysicalFileProvider</code> against <code>packages/javascript/browser</code>。</li>
+</ul>
+<p>Smoke validation:</p>
+<pre><code class="language-powershell">npm run validate:user-portal
+</code></pre>
+<h3>15.3 Page Generator</h3>
+<p>Page generator entry:</p>
+<pre><code class="language-text">packages/javascript/browser/page-generator
+tools/page-gen.js
+</code></pre>
+<p>Commands:</p>
+<pre><code class="language-powershell">node tools/page-gen.js --validate --def employee.json
+node tools/page-gen.js --def employee.json --mode static --output .\output
+node tools/page-gen.js --list-types
+</code></pre>
+<h3>15.4 SPA Generator</h3>
+<p>Workbench：</p>
+<pre><code class="language-text">tools/spa-generator
+</code></pre>
+<p>It uses:</p>
+<ul>
+<li>ASP.NET Core 8 minimal API。</li>
+<li>SQLite。</li>
+<li>BaseOrm。</li>
+<li>JWT auth。</li>
+<li>Vanilla JS frontend。</li>
+</ul>
+<p>It is not the canonical broker/LINE runtime.</p>
+<h3>15.5 SPA Template</h3>
+<p>Template：</p>
+<pre><code class="language-text">templates/spa
+</code></pre>
+<p>Current policy:</p>
+<ul>
+<li>BaseOrm, not EF Core。</li>
+<li>Validation includes EF Core removal guard。</li>
+</ul>
+<pre><code class="language-powershell">node tools/agent/tests/validate-efcore-removal.js
+</code></pre>
+<h2>16. Site Crawler / Static Site Generation</h2>
+<p><code>site-crawler-worker</code> supports:</p>
+<ul>
+<li>crawling source site。</li>
+<li>deterministic extraction。</li>
+<li>template matching。</li>
+<li>static package generation。</li>
+<li>reconstruct package path。</li>
+<li>B component binding manifest。</li>
+</ul>
+<p>Important current architecture:</p>
+<ul>
+<li>Generator vocabulary is anchored to canonical <code>ui_components</code> closed set。</li>
+<li>Manifest loading fail-closes if <code>b_component</code> is absent or not in <code>BComponentRegistry</code>。</li>
+<li>Arbitrary <code>.First()</code> template fallback was removed; neutral fallback records a gap rather than fabricating a component。</li>
+<li>Static renderer remains as a byte-stable static export projection of B vocabulary.</li>
+</ul>
+<p>Tool specs:</p>
+<ul>
+<li><code>site.crawl.source</code></li>
+<li><code>site.generate.package</code></li>
+<li><code>site.reconstruct.package</code></li>
+</ul>
+<h2>17. RAG / Legal Knowledge Core</h2>
+<p>RAG is treated as a state-externalization and confidence core, not only as an optional LLM helper. The current implementation has a reusable retrieval core in <code>packages/csharp/broker-core/Services/RagRetrievalService.cs</code>.</p>
+<p>Verified deterministic scope:</p>
+<ul>
+<li><code>rag_import</code> writes legal snippets into SQLite <code>SharedContextEntry</code>.</li>
+<li><code>memory_fts</code> indexes CJK legal content through <code>Fts5TextNormalizer</code>.</li>
+<li><code>rag_retrieve</code> returns Consumer Protection Act fixture content through fulltext search.</li>
+<li>vector retrieval is verified with a deterministic fake embedding provider; no live Ollama call is required for this proof.</li>
+<li>tag filtering excludes unrelated non-law entries.</li>
+<li><code>LineChatGateway</code>, <code>/dev/rag-test</code>, <code>/agents/rag/test</code>, <code>RagRetrieveHandler</code>, and <code>InProcessDispatcher</code> now use the shared retrieval core instead of separate retrieval implementations.</li>
+<li><code>LineChatGateway</code> uses a compact deterministic FTS-first retrieval query for high-level LINE/Portal answers, with rewrite/rerank disabled on that path so answers do not depend on extra model calls before evidence is retrieved.</li>
+<li><code>packages/csharp/rag-service</code> is a standalone minimal API host over the same <code>RagRetrievalService</code>; it has no broker, LINE, approval, or agent-dispatch dependency.</li>
+</ul>
+<p>Operational/legal POC scope:</p>
+<ul>
+<li>The earlier legal POC still exists in <code>SeedConsumerProtectionLaw.cs</code>.</li>
+<li>It targets the Taiwan Consumer Protection Act family from <code>law.moj.gov.tw</code>.</li>
+<li>Live seed/backfill is controlled by <code>RagSeed:Enabled</code>; live vector embedding requires <code>Embedding:Enabled=true</code> and an embedding provider such as Ollama.</li>
+<li>Broker default embedding is <code>bge-m3</code> for multilingual / Chinese semantic retrieval; <code>nomic-embed-text</code> remains a lighter fallback.</li>
+<li><code>vector_entries</code> now treats <code>embedding_model</code> as part of vector identity. The same <code>content_hash + task_id</code> may have multiple vectors for different embedding models.</li>
+<li>Retrieval filters vectors by the active embedding model and vector dimension, so old <code>nomic-embed-text</code> vectors are not mixed into <code>bge-m3</code> similarity scoring.</li>
+<li><code>/dev/rag-test</code> reports both <code>vectors_current_model</code> and <code>vectors_all_models</code> to make model migrations visible.</li>
+<li>This is not a complete legal database and is not legal advice. It is an evidence-retrieval substrate for broker-governed answers.</li>
+</ul>
+<p>Important files:</p>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>broker-core/Services/RagRetrievalService.cs</code></td>
+<td>reusable retrieval core: FTS5, vector, RRF, tag filter, optional rewrite/rerank</td>
+</tr>
+<tr>
+<td><code>broker-core/Services/Fts5TextNormalizer.cs</code></td>
+<td>CJK FTS5 query/content normalization</td>
+</tr>
+<tr>
+<td><code>broker/Scripts/RagIngestService.cs</code></td>
+<td>JSON/CSV/web ingestion into <code>SharedContextEntry</code>, <code>memory_fts</code>, <code>vector_entries</code></td>
+</tr>
+<tr>
+<td><code>broker/Scripts/SeedConsumerProtectionLaw.cs</code></td>
+<td>live legal seed POC for Taiwan consumer-protection law family</td>
+</tr>
+<tr>
+<td><code>rag-service/</code></td>
+<td>standalone retrieval service host: <code>/healthz</code>, <code>/rag/retrieve</code></td>
+</tr>
+<tr>
+<td><code>broker/verify/Program.cs</code></td>
+<td>offline deterministic legal RAG verification</td>
+</tr>
+</tbody>
+</table>
+<p>Standalone retrieval host:</p>
+<pre><code class="language-powershell">$env:RAG_DB_PATH='D:\path\to\rag.db'
+dotnet run --project packages/csharp/rag-service/RagService.csproj -- --urls http://127.0.0.1:5599
+</code></pre>
+<p>The default host initializes schema and can run without Ollama because embedding, query rewrite, and rerank are disabled by default in <code>rag-service/appsettings.json</code>. To enable semantic retrieval, configure <code>Embedding:Enabled=true</code> and point <code>Embedding:BaseUrl</code> at the embedding provider.</p>
+<p>Use signed validation on SAC/WDAC hosts:</p>
+<pre><code class="language-powershell">npm run validate:broker-scope:signed
+npm run validate:db:signed
+npm run test:unit:signed
+npm run test:integration:signed
+npm run test:broker:signed
+npm run test:dotnet:signed
+npm run test:broker:trusted
+</code></pre>
+<h2>18. Optional Integrations</h2>
+<h3>18.1 Ollama</h3>
+<p>Used by:</p>
+<ul>
+<li>local agent provider mode。</li>
+<li>broker embedding。</li>
+<li>RAG pipeline。</li>
+<li>broker <code>LlmProxy</code> default config。</li>
+<li>host Ollama Podman stack。</li>
+</ul>
+<p>Common setup:</p>
+<pre><code class="language-powershell">ollama serve
+ollama pull bge-m3
+ollama pull nomic-embed-text
+ollama pull qwen3.6:latest
+</code></pre>
+<p>If not using RAG/local LLM:</p>
+<pre><code class="language-powershell">$env:Embedding__Enabled='false'
+$env:LineChatGateway__RagEnabled='false'
+</code></pre>
+<h3>18.2 Broker high-level model paths</h3>
+<p>High-level LINE path uses <code>HighLevelLlm</code>。</p>
+<p>Agent-facing broker proxy uses <code>LlmProxy</code>。</p>
+<p>The checked-in local broker defaults use host Ollama for both paths:</p>
+<ul>
+<li><code>HighLevelLlm.Provider</code>: <code>ollama</code></li>
+<li><code>HighLevelLlm.BaseUrl</code>: <code>http://localhost:11434</code></li>
+<li><code>HighLevelLlm.ApiFormat</code>: <code>chat</code></li>
+<li><code>HighLevelLlm.DefaultModel</code>: <code>qwen3.6:latest</code></li>
+<li><code>HighLevelLlm.MaxOutputTokens</code>: <code>256</code></li>
+<li><code>LlmProxy.DefaultModel</code>: <code>qwen3.6:latest</code></li>
+</ul>
+<p><code>HighLevelLlm.ApiKey</code> should stay empty for this local default. Set a key only when deliberately overriding the high-level path to Anthropic or an OpenAI-compatible provider.</p>
+<p>When <code>ANTHROPIC_API_KEY</code> is available to <code>start-sidecar-stack.ps1</code>, sidecar writes runtime overrides for:</p>
+<ul>
+<li><code>Provider</code>: <code>anthropic</code></li>
+<li><code>BaseUrl</code>: <code>https://api.anthropic.com</code></li>
+<li><code>ApiFormat</code>: <code>messages</code></li>
+<li><code>DefaultModel</code>: <code>claude-sonnet-4-6</code></li>
+<li><code>MaxOutputTokens</code>: <code>4096</code></li>
+</ul>
+<p>This is the preferred current sidecar path for Claude. The key stays in the user environment and is not committed to the repo.</p>
+<p>Typical OpenAI responses config:</p>
+<pre><code class="language-powershell">$env:OPENAI_BASE_URL='https://api.openai.com'
+$env:OPENAI_API_KEY='&lt;key&gt;'
+$env:OPENAI_API_FORMAT='responses'
+$env:STACK_MODEL='gpt-5.4-mini'
+</code></pre>
+<p>Do not put provider keys inside the agent container as the formal path.</p>
+<h3>18.3 TDX</h3>
+<p>Used by transport query / travel handlers.</p>
+<p>Required:</p>
+<ul>
+<li><code>Tdx:ClientId</code></li>
+<li><code>Tdx:ClientSecret</code></li>
+</ul>
+<p>Validation env:</p>
+<ul>
+<li><code>TDX_CLIENT_ID</code></li>
+<li><code>TDX_CLIENT_SECRET</code></li>
+</ul>
+<p>Without credentials, live TDX validation is skipped.</p>
+<h3>18.4 Google Drive</h3>
+<p>Modes:</p>
+<ul>
+<li><code>shared_delegated</code></li>
+<li><code>user_delegated</code></li>
+<li><code>system_account</code></li>
+</ul>
+<p>Important routes:</p>
+<ul>
+<li><code>GET /api/v1/google-drive/oauth/callback</code></li>
+<li>local-admin Drive OAuth/status/share endpoints。</li>
+</ul>
+<p>Required for delegated OAuth:</p>
+<ul>
+<li><code>client_secret_*.json</code></li>
+<li>redirect URI: <code>http://127.0.0.1:5361/api/v1/google-drive/oauth/callback</code></li>
+</ul>
+<h3>18.5 Azure VM IIS Deployment</h3>
+<p>Tool spec:</p>
+<pre><code class="language-text">deploy.azure-vm-iis
+</code></pre>
+<p>Requires:</p>
+<ul>
+<li>target VM with IIS。</li>
+<li>WinRM/PowerShell remoting。</li>
+<li><code>WebAdministration</code> module。</li>
+<li>deployment target record。</li>
+<li>credentials via <code>DeploymentSecrets:Mappings</code> or env vars。</li>
+</ul>
+<p>This is Critical risk and must go through approval.</p>
+<h3>18.6 Browser Governance</h3>
+<p>Current browser subsystem has:</p>
+<ul>
+<li>site binding。</li>
+<li>user grant。</li>
+<li>system binding。</li>
+<li>lease。</li>
+<li>request build。</li>
+<li>preview/fetch。</li>
+<li>execution records。</li>
+</ul>
+<p>Honest boundary:</p>
+<ul>
+<li>action-level governance groundwork exists。</li>
+<li>authenticated browser automation is not a full production browser automation platform yet。</li>
+</ul>
+<h2>19. Configuration Reference</h2>
+<h3>19.1 Broker config sections</h3>
+<table>
+<thead>
+<tr>
+<th>Section</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Database</code></td>
+<td>DB path</td>
+</tr>
+<tr>
+<td><code>Broker:MaxRequestBodyBytes</code></td>
+<td>broker request body cap, default 1 MiB</td>
+</tr>
+<tr>
+<td><code>Broker:IpRateLimit</code></td>
+<td>single-node POST API IP fixed-window limiter</td>
+</tr>
+<tr>
+<td><code>Broker:ScopedToken</code></td>
+<td>token secret/issuer/audience/ttl</td>
+</tr>
+<tr>
+<td><code>Broker:Encryption</code></td>
+<td>session/envelope crypto</td>
+</tr>
+<tr>
+<td><code>FunctionPool</code></td>
+<td>worker pool</td>
+</tr>
+<tr>
+<td><code>Embedding</code></td>
+<td>embedding provider</td>
+</tr>
+<tr>
+<td><code>RagPipeline</code></td>
+<td>query rewrite/rerank/cache</td>
+</tr>
+<tr>
+<td><code>LineChatGateway</code></td>
+<td>conversation/RAG behavior</td>
+</tr>
+<tr>
+<td><code>HighLevelLlm</code></td>
+<td>LINE high-level model</td>
+</tr>
+<tr>
+<td><code>HighLevelExecutionModelPolicy</code></td>
+<td>execution model aliases</td>
+</tr>
+<tr>
+<td><code>HighLevelCoordinator</code></td>
+<td>workspace/root/keywords/draft TTL</td>
+</tr>
+<tr>
+<td><code>ProjectInterview</code></td>
+<td>template catalog/session timeout</td>
+</tr>
+<tr>
+<td><code>ArtifactDownload</code></td>
+<td>signed download secret/TTL</td>
+</tr>
+<tr>
+<td><code>PortalAuth</code></td>
+<td>user portal self-registration, password length, session TTL, and LINE verification code TTL</td>
+</tr>
+<tr>
+<td><code>WorkerAuth</code></td>
+<td>worker identity enforcement/routes</td>
+</tr>
+<tr>
+<td><code>Tdx</code></td>
+<td>TDX credentials and URLs</td>
+</tr>
+<tr>
+<td><code>ToolSpecRegistry</code></td>
+<td>tool spec root</td>
+</tr>
+<tr>
+<td><code>LlmProxy</code></td>
+<td>agent-facing broker LLM proxy</td>
+</tr>
+<tr>
+<td><code>GoogleDriveDelivery</code></td>
+<td>Drive delivery config</td>
+</tr>
+<tr>
+<td><code>DeploymentSecrets</code></td>
+<td>deployment credential mapping</td>
+</tr>
+</tbody>
+</table>
+<h3>19.2 Common environment variables</h3>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ASPNETCORE_URLS</code></td>
+<td>broker listen URL</td>
+</tr>
+<tr>
+<td><code>ASPNETCORE_ENVIRONMENT</code></td>
+<td>development/runtime config</td>
+</tr>
+<tr>
+<td><code>BRICKS4AGENT_SECRETS_DIR</code></td>
+<td>secure local secrets directory</td>
+</tr>
+<tr>
+<td><code>B4A_NODE_PATH</code></td>
+<td>broker artifact generation Node path</td>
+</tr>
+<tr>
+<td><code>BROKER_URL</code></td>
+<td>governed agent broker URL</td>
+</tr>
+<tr>
+<td><code>BROKER_PUB_KEY</code></td>
+<td>governed agent broker public key</td>
+</tr>
+<tr>
+<td><code>BROKER_PRINCIPAL_ID</code></td>
+<td>governed agent principal</td>
+</tr>
+<tr>
+<td><code>BROKER_TASK_ID</code></td>
+<td>governed agent task</td>
+</tr>
+<tr>
+<td><code>BROKER_ROLE_ID</code></td>
+<td>governed agent role</td>
+</tr>
+<tr>
+<td><code>OPENAI_API_KEY</code></td>
+<td>OpenAI-compatible provider key</td>
+</tr>
+<tr>
+<td><code>ANTHROPIC_API_KEY</code></td>
+<td>Anthropic Claude provider key; sidecar prefers this over <code>Api.txt</code> when present</td>
+</tr>
+<tr>
+<td><code>OPENAI_BASE_URL</code></td>
+<td>provider base URL in stack scripts</td>
+</tr>
+<tr>
+<td><code>OPENAI_API_FORMAT</code></td>
+<td><code>chat</code> or <code>responses</code></td>
+</tr>
+<tr>
+<td><code>STACK_MODEL</code></td>
+<td>Podman stack model override</td>
+</tr>
+<tr>
+<td><code>OLLAMA_BASE_URL</code></td>
+<td>host Ollama URL</td>
+</tr>
+<tr>
+<td><code>Broker__IpRateLimit__PermitLimit</code></td>
+<td>broker POST API per-IP requests per window</td>
+</tr>
+<tr>
+<td><code>Broker__IpRateLimit__WindowSeconds</code></td>
+<td>broker POST API limiter window</td>
+</tr>
+<tr>
+<td><code>WORKER_Line__OutboundRateLimit__PermitLimit</code></td>
+<td>LINE worker outbound sends per recipient/capability/window</td>
+</tr>
+<tr>
+<td><code>WORKER_Line__OutboundRateLimit__WindowSeconds</code></td>
+<td>LINE worker outbound limiter window</td>
+</tr>
+<tr>
+<td><code>TDX_CLIENT_ID</code></td>
+<td>TDX validation/runtime</td>
+</tr>
+<tr>
+<td><code>TDX_CLIENT_SECRET</code></td>
+<td>TDX validation/runtime</td>
+</tr>
+</tbody>
+</table>
+<p>ASP.NET nested config uses <code>__</code>:</p>
+<pre><code class="language-powershell">$env:FunctionPool__Enabled='true'
+$env:LlmProxy__BaseUrl='http://localhost:11434'
+$env:Embedding__Enabled='false'
+$env:Broker__IpRateLimit__PermitLimit='120'
+$env:WORKER_Line__OutboundRateLimit__PermitLimit='20'
+</code></pre>
+<h3>19.3 Rate-limit guardrails</h3>
+<p>Broker POST APIs use <code>Broker:IpRateLimit</code> as an in-process, fixed-window, per-IP guardrail. It returns JSON <code>429</code> responses with <code>Retry-After</code>. Health, local-admin, artifact download, OAuth callback, and <code>/dev</code> paths are excluded from this generic limiter and should keep their own route-specific controls.</p>
+<p>LINE worker outbound sending uses <code>Line:OutboundRateLimit</code> / <code>WORKER_Line__OutboundRateLimit__*</code>. The current limiter is in-memory and keyed by recipient + capability. It is implemented for <code>line.message.send</code> and <code>line.audio.send</code>; distributed quota coordination and <code>line.notification.send</code> coverage remain future hardening items.</p>
+<h2>20. Build, Test, Validation</h2>
+<h3>20.1 Canonical build</h3>
+<pre><code class="language-powershell">dotnet build packages/csharp/ControlPlane.slnx
+</code></pre>
+<h3>20.2 Broker tests</h3>
+<pre><code class="language-powershell">dotnet run --project packages/csharp/tests/broker-tests/Broker.Tests.csproj
+</code></pre>
+<p>Integration with running broker:</p>
+<pre><code class="language-powershell">dotnet run --project packages/csharp/tests/broker-tests/Broker.Tests.csproj -- --integration http://localhost:5361
+</code></pre>
+<h3>20.3 xUnit</h3>
+<pre><code class="language-powershell">dotnet test packages/csharp/tests/unit/Unit.Tests.csproj
+dotnet test packages/csharp/tests/integration/Integration.Tests.csproj
+dotnet test packages/csharp/tests/integration/Integration.Tests.csproj --filter PortalEndpointTests
+</code></pre>
+<h3>20.4 BaseOrm and broker verify</h3>
+<pre><code class="language-powershell">npm run validate:baseorm
+npm run validate:baseorm-sync
+npm run validate:broker-scope
+</code></pre>
+<p><code>validate:broker-scope</code> skips live TDX when credentials are missing.</p>
+<p><code>validate:broker-scope</code> also includes the offline legal RAG gate: import a small Consumer Protection Act fixture, verify <code>SharedContextEntry</code> state externalization, verify CJK FTS5 retrieval, verify deterministic vector retrieval, and verify tag filtering. It does not require live <code>law.moj.gov.tw</code> or live Ollama.</p>
+<p>On Windows hosts with Smart App Control / WDAC enforcement, <code>validate:baseorm</code>, <code>validate:broker-scope</code>, xUnit tests, and broker console tests can fail before assertions if unsigned or untrusted local build outputs are blocked. Use <a href="dev-code-signing-wdac.zh-TW.html">dev-code-signing-wdac.zh-TW.md</a> to create the Bricks4Agent dev signer, sign self assemblies, and generate a WDAC supplemental policy. For DB verification on those hosts, prefer <code>npm run validate:db:signed</code>; it builds, signs, then runs verify projects with <code>dotnet run --no-build</code> so <code>dotnet run</code> does not overwrite signatures. For xUnit and broker tests, prefer <code>npm run test:unit:signed</code>, <code>npm run test:integration:signed</code>, <code>npm run test:broker:signed</code>, or <code>npm run test:dotnet:signed</code>. If WDAC still blocks the test runtime, run <code>npm run signing:wdac-repair-tests -- -Deploy</code> from an elevated PowerShell; it covers broker, broker-tests, unit-tests, and integration-tests with Publisher-level supplemental policies plus fallback trust where needed.</p>
+<h3>20.5 Backend governance</h3>
+<pre><code class="language-powershell">npm run validate:dotnet-deps
+npm run validate:dotnet-api-usage
+npm run validate:backend-governance
+npm run validate:line-admin
+</code></pre>
+<h3>20.6 JS/UI/generator</h3>
+<pre><code class="language-powershell">npm test
+npm run test:generator
+npm run validate:ui-state
+npm run audit:ui-styles
+npm run validate:ui-library
+npm run validate:ui-library:browser
+npm run validate:user-portal
+</code></pre>
+<p>Browser package:</p>
+<pre><code class="language-powershell">cd packages/javascript/browser
+npm run metadata:check
+npm test
+cd ..\..\..
+</code></pre>
+<h3>20.7 Agent and stacks</h3>
+<pre><code class="language-powershell">npm run validate:agent-governed
+npm run validate:agent-container-config
+npm run validate:broker-llm-proxy
+npm run validate:anthropic-provider-smoke
+npm run validate:podman-governed-stack
+npm run validate:podman-openai-compatible-stack
+npm run validate:podman-ollama-host-stack
+node tools/agent/tests/test-execution-adapter-config.js
+node tools/agent/tests/test-podman-execution-adapter-stack.js
+node tools/agent/tests/test-convergence.js
+node tools/agent/tests/validate-efcore-removal.js
+</code></pre>
+<h2>21. Security Invariants</h2>
+<p>Maintain these invariants:</p>
+<ul>
+<li>No secrets committed to repo。</li>
+<li>Worker auth credentials are local/secure and not hard-coded。</li>
+<li>Agent container does not receive provider API key as formal path。</li>
+<li>Broker mediates model calls for governed agent。</li>
+<li>Broker mediates tool calls for governed agent。</li>
+<li>Scope escape escalates to approval or deny。</li>
+<li>Free-form shell is denied。</li>
+<li>Execution adapter validates patch base commit and path scope。</li>
+<li>Deployment is Critical and requires approval。</li>
+<li>Artifact links are signed and time-limited。</li>
+<li>Portal user sessions use HttpOnly cookies and never expose internal artifact file paths to the browser。</li>
+<li>Local admin is localhost-only。</li>
+<li>Audit records are generated for security-relevant state changes。</li>
+</ul>
+<h2>22. Known Limits</h2>
+<p>Do not overstate the current system:</p>
+<ul>
+<li>Custom seccomp profile is pending。</li>
+<li>Enterprise operator console is not complete: SSO, MFA, centralized IAM, and cross-machine operator synchronization are not implemented。</li>
+<li>Critical dual approval is active at the broker persistence/threshold layer, and local-admin approval uses named operator identity; enterprise IAM-backed operator identity is still future work。</li>
+<li><code>line.message.send</code> and <code>line.audio.send</code> have worker-local outbound rate limiting; distributed quota coordination and <code>line.notification.send</code> coverage are not complete。</li>
+<li>Browser authenticated automation is not production-complete。</li>
+<li>User portal currently uses lightweight local username/password sessions; SSO, MFA, password reset and named enterprise identity lifecycle are not implemented。</li>
+<li>Broader HTTP integration coverage for adapter/approval routes is still an improvement area。</li>
+<li>Live external SQL Server/MySQL/PostgreSQL BaseOrm tests require configured DBs。</li>
+<li>TDX live validation requires configured credentials。</li>
+<li>Full <code>ui_components</code> runtime byte determinism is not claimed。</li>
+</ul>
+<h2>23. Test Artifacts and Cleanup</h2>
+<p>Known artifacts:</p>
+<table>
+<thead>
+<tr>
+<th>Artifact</th>
+<th>Source</th>
+<th>Cleanup</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>packages/csharp/broker/broker.db</code></td>
+<td>direct broker startup</td>
+<td>delete after testing</td>
+</tr>
+<tr>
+<td><code>packages/csharp/broker/broker.db-shm</code></td>
+<td>SQLite WAL/shared memory</td>
+<td>delete with DB</td>
+</tr>
+<tr>
+<td><code>packages/csharp/broker/broker.db-wal</code></td>
+<td>SQLite WAL</td>
+<td>delete with DB</td>
+</tr>
+<tr>
+<td><code>.test-output/</code></td>
+<td>stack/tests</td>
+<td>delete after testing</td>
+</tr>
+<tr>
+<td><code>test-results/</code></td>
+<td>Playwright</td>
+<td>delete after testing</td>
+</tr>
+<tr>
+<td><code>.run/line-sidecar/</code></td>
+<td>sidecar runtime</td>
+<td>keep unless intentionally resetting sidecar</td>
+</tr>
+<tr>
+<td><code>bin/</code>, <code>obj/</code></td>
+<td>.NET build</td>
+<td>clean when no process uses them</td>
+</tr>
+<tr>
+<td><code>node_modules/</code></td>
+<td>npm install</td>
+<td>reinstallable</td>
+</tr>
+</tbody>
+</table>
+<p>Cleanup direct broker/test output:</p>
+<pre><code class="language-powershell">Remove-Item -Force `
+  .\packages\csharp\broker\broker.db, `
+  .\packages\csharp\broker\broker.db-shm, `
+  .\packages\csharp\broker\broker.db-wal `
+  -ErrorAction SilentlyContinue
+
+Remove-Item -Recurse -Force .\.test-output -ErrorAction SilentlyContinue
+</code></pre>
+<p>Stop sidecar cleanly:</p>
+<pre><code class="language-powershell">powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\line-sidecar.ps1 down
+</code></pre>
+<p>Stop Podman stack:</p>
+<pre><code class="language-powershell">podman compose -f tools/agent/container/compose.yml down -v
+</code></pre>
+<h2>24. Recommended Reading Order</h2>
+<ol>
+<li><code>docs/manuals/current-user-manual.zh-TW.md</code></li>
+<li><code>docs/reports/CurrentArchitectureAndProgress-2026-06-13.md</code></li>
+<li><code>docs/designs/ControlledAutonomousAISystemTechnicalDesign.md</code></li>
+<li><code>docs/designs/RiskClassificationAndApproval-2026-06-13.md</code></li>
+<li><code>docs/designs/ApprovalWebInterface-2026-06-13.md</code></li>
+<li><code>docs/designs/ComponentLibraryConsolidation-2026-06-15.md</code></li>
+<li><code>tools/agent/README.md</code></li>
+<li><code>tools/agent/container/README.md</code></li>
+<li><code>packages/csharp/database/BaseOrm/README.md</code></li>
+<li><code>docs/manuals/dev-code-signing-wdac.zh-TW.md</code></li>
+</ol>
+</main>
+</body>
+</html>

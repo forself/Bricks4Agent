@@ -75,7 +75,7 @@ public class StaticSitePackageGeneratorTests : IDisposable
         File.ReadAllText(bindingPath).Should().Be(
             File.ReadAllText(Path.Combine(second.OutputDirectory, "components", "b-binding.json")));
 
-        File.ReadAllText(Path.Combine(first.OutputDirectory, "README.md"))
+        File.ReadAllText(Path.Combine(first.OutputDirectory, "README.html"))
             .Should().Contain("ui_components").And.Contain("b-binding.json");
     }
 

@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ListInput</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>ListInput</h1>
+<p>列表輸入基底元件，管理可新增、刪除、拖曳排序的項目列表，支援 fields schema 自動產生欄位或自訂 renderItem。</p>
+<h2>API</h2>
+<h3>Constructor</h3>
+<pre><code class="language-js">new ListInput(options?)
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>參數</th>
+<th>型別</th>
+<th>預設值</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>options.title</code></td>
+<td><code>string</code></td>
+<td><code>''</code></td>
+<td>標題</td>
+</tr>
+<tr>
+<td><code>options.minItems</code></td>
+<td><code>number</code></td>
+<td><code>0</code></td>
+<td>最小項目數</td>
+</tr>
+<tr>
+<td><code>options.maxItems</code></td>
+<td><code>number</code></td>
+<td><code>10</code></td>
+<td>最大項目數</td>
+</tr>
+<tr>
+<td><code>options.addButtonText</code></td>
+<td><code>string</code></td>
+<td><code>'新增項目'</code></td>
+<td>新增按鈕文字</td>
+</tr>
+<tr>
+<td><code>options.fields</code></td>
+<td><code>Array</code></td>
+<td><code>null</code></td>
+<td>欄位 schema <code>[{name, type, label, placeholder, flex, width, options, required, min, max, maxLength, accept}]</code>，支援 type: <code>text</code>、<code>select</code>、<code>number</code>、<code>checkbox</code>、<code>email</code>、<code>tel</code>、<code>date</code>、<code>image</code>、<code>file</code></td>
+</tr>
+<tr>
+<td><code>options.renderItem</code></td>
+<td><code>Function</code></td>
+<td><code>null</code></td>
+<td>自訂渲染回調 <code>(container, index, value, onChange)</code>，優先於 fields</td>
+</tr>
+<tr>
+<td><code>options.onItemChange</code></td>
+<td><code>Function</code></td>
+<td><code>null</code></td>
+<td>單項變更回調 <code>(index, value)</code></td>
+</tr>
+<tr>
+<td><code>options.onChange</code></td>
+<td><code>Function</code></td>
+<td><code>null</code></td>
+<td>列表變更回調 <code>(items)</code></td>
+</tr>
+</tbody>
+</table>
+<h3>方法</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>mount(container)</code></td>
+<td>掛載至 DOM 容器，回傳 <code>this</code></td>
+</tr>
+<tr>
+<td><code>getValues()</code></td>
+<td>回傳項目陣列</td>
+</tr>
+<tr>
+<td><code>setValues(items)</code></td>
+<td>設定項目陣列，重新渲染</td>
+</tr>
+</tbody>
+</table>
+<h3>內建功能</h3>
+<ul>
+<li>拖曳排序（drag &amp; drop）</li>
+<li>上移/下移按鈕</li>
+<li>項目計數器（<code>n / maxItems</code>）</li>
+<li>CSV 範本下載（使用 fields schema 時自動提供）</li>
+</ul>
+<h2>使用範例</h2>
+<pre><code class="language-js">import { ListInput } from './input/ListInput/index.js';
+
+// 方式一：使用 fields schema
+const list = new ListInput({
+    title: '聯絡人',
+    minItems: 1,
+    maxItems: 5,
+    fields: [
+        { name: 'name', type: 'text', label: '姓名', flex: 1 },
+        { name: 'email', type: 'email', label: 'Email', flex: 1 },
+        { name: 'role', type: 'select', label: '角色', options: ['主管', '員工'] }
+    ],
+    onChange: (items) =&gt; console.log(items)
+});
+list.mount('#container');
+
+// 方式二：自訂 renderItem
+const custom = new ListInput({
+    renderItem: (container, index, value, onChange) =&gt; {
+        const input = document.createElement('input');
+        input.value = value || '';
+        input.addEventListener('input', () =&gt; onChange(input.value));
+        container.appendChild(input);
+    }
+});
+custom.mount('#container');
+</code></pre>
+<h2>Demo</h2>
+<p><code>packages/javascript/browser/ui_components/input/demo.html</code></p>
+</main>
+</body>
+</html>

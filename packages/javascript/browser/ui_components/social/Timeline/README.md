@@ -15,7 +15,7 @@ const timeline = new Timeline(options);
 **options 參數：**
 
 | 參數 | 型別 | 預設值 | 說明 |
-|------|------|--------|------|
+|---|---|---|---|
 | `items` | `Object[]` | `[]` | 時間軸項目（見下方） |
 | `grouped` | `boolean` | `true` | 是否按月份分組 |
 | `emptyText` | `string` | `'暫無活動紀錄'` | 無資料時顯示文字 |
@@ -23,7 +23,7 @@ const timeline = new Timeline(options);
 **items[] 項目結構：**
 
 | 欄位 | 型別 | 說明 |
-|------|------|------|
+|---|---|---|
 | `timestamp` | `string` | 時間（ISO 字串或可解析日期） |
 | `type` | `string` | 類型標籤 |
 | `icon` | `string` | 圖示 emoji（可選） |
@@ -39,7 +39,7 @@ const timeline = new Timeline(options);
 ### 方法
 
 | 方法 | 回傳 | 說明 |
-|------|------|------|
+|---|---|---|
 | `toHTML()` | `string` | 產生 HTML 字串（自動按時間降序排列） |
 | `mount(container)` | `void` | 掛載到容器（自動綁定點擊事件委派） |
 | `update(options)` | `void` | 更新配置並重新渲染 |

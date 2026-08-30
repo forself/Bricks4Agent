@@ -6,7 +6,9 @@ and scaffolding CRUD projects.
 It is a self-contained generator area with:
 
 - a Vanilla JS frontend at `frontend/`
+
 - a .NET 10 backend at `backend/`
+
 - helper launchers such as `server.js`, `start.bat`, and `start.sh`
 
 ## Scope
@@ -14,7 +16,9 @@ It is a self-contained generator area with:
 Use this directory when you want to:
 
 - explore the SPA generator UI
+
 - test the scaffolded frontend/backend pattern
+
 - generate or inspect template-style CRUD project structure
 
 Related: [../../AGENT.md](../../AGENT.md) (generator manual) · [../../AGENT-UI-GUIDE.md](../../AGENT-UI-GUIDE.md) (component calling convention) · [../page-gen.README.md](../page-gen.README.md) (standalone CLI).
@@ -67,6 +71,7 @@ If `SeedData:AdminPassword` is not set, the backend generates a development pass
 That means:
 
 - the password is **not** a fixed checked-in secret
+
 - the first usable password depends on current configuration or generated startup output
 
 ## Current Backend Stack
@@ -74,8 +79,11 @@ That means:
 The backend in this directory currently uses:
 
 - ASP.NET Core 10 minimal API
+
 - SQLite
+
 - `BaseOrm`
+
 - JWT bearer auth
 
 It is not an EF Core sample.
@@ -95,8 +103,11 @@ tools/spa-generator/
 ## Notes
 
 - `server.js` is the preferred frontend launcher because it handles API routing and `/packages/` path behavior more completely than a bare static server.
+
 - The generator frontend and backend use ports `3080` / `5002`.
+
 - `npm run test:dotnet10` builds this backend as part of the 35-project .NET 10
-  matrix and treats every warning as an error.
+ matrix and treats every warning as an error.
+
 - Password hashing keeps the existing PBKDF2-SHA256 storage format while using
-  the current static PBKDF2 API.
+ the current static PBKDF2 API.

@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bricks4Agent — Claude Code Rules</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Bricks4Agent — Claude Code Rules</h1>
+<h2>Project Identity</h2>
+<p>A zero-runtime-dependency Vanilla JS <strong>UI component library</strong> plus a <strong>page/SPA generator</strong>
+that turns a JSON <code>PageDefinition</code> into working pages (static code generation or dynamic runtime rendering).</p>
+<ul>
+<li>Authoritative component list: <a href="packages/javascript/browser/ui_components/metadata/component-catalog.json">component-catalog.json</a> (116 components)</li>
+<li>Component calling convention (read this before building): <a href="AGENT-UI-GUIDE.html">AGENT-UI-GUIDE.md</a></li>
+</ul>
+<h2>Build &amp; Test</h2>
+<ul>
+<li>Page-generator tests: <code>npm test</code></li>
+<li>UI library checks: <code>npm run validate:ui-library</code> (add <code>:browser</code> for a real browser)</li>
+<li>Style-token audit: <code>npm run audit:ui-styles</code></li>
+<li>All SDK-style .NET 10 projects, with every warning treated as an error: <code>npm run test:dotnet10</code></li>
+<li>.NET tests: <code>dotnet test packages/csharp/tests/unit/Unit.Tests.csproj</code>, <code>dotnet test packages/csharp/tests/integration/Integration.Tests.csproj</code>, <code>dotnet test templates/spa/backend.Tests/SpaApi.Template.Tests.csproj</code></li>
+<li>CSP + SVG hard-zero gate (must pass before any commit touching ui_components): <code>node tools/scripts/audit-csp.mjs</code></li>
+<li>Browser smoke harnesses (need <code>python -m http.server 8124</code> at repo root; Edge via tim-web/poc playwright-core):
+  <code>node tools/theme-studio/run.mjs</code>, <code>node tools/scripts/canvas-chart-smoke.mjs</code>,
+  <code>node tools/scripts/wave2-stage-sweep.mjs</code>, <code>node tools/scripts/data-explorer-smoke.mjs</code>,
+  <code>node tools/scripts/cluster-graph-perf.mjs</code></li>
+<li>Generated .NET 10 backend (SPA template): <code>dotnet build templates/spa/backend/SpaApi.csproj</code></li>
+<li>Rebuild component metadata after adding/changing a component:
+  <code>node packages/javascript/browser/ui_components/metadata/build-metadata.mjs</code> (<code>--check</code> to validate only)</li>
+</ul>
+<h2>Test Artifacts and Cleanup</h2>
+<p><strong>Rule: all test-generated files must be tracked and cleaned up.</strong></p>
+<table>
+<thead>
+<tr>
+<th>Artifact</th>
+<th>Source</th>
+<th>Cleanup</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>.test-output/</code></td>
+<td>test output directory</td>
+<td>delete after testing</td>
+</tr>
+<tr>
+<td>generated pages/projects under <code>out/</code> (or your <code>--output</code>)</td>
+<td><code>spa-cli.js</code> / <code>page-gen.js</code></td>
+<td>delete after testing</td>
+</tr>
+</tbody>
+</table>
+<p>When adding tests that produce files: add the pattern to this table, ensure it is in <code>.gitignore</code>, and clean it up in the test.</p>
+<h2>Code Conventions</h2>
+<ul>
+<li>Frontend: JavaScript, ES modules, vanilla — <strong>no third-party runtime UI dependency</strong> (the only exceptions are vendored copies under <code>ui_components/vendor/</code>: Leaflet 1.9.4 and html2canvas, loaded locally first with CDN fallback only when the local file is missing).</li>
+<li>Styling: theme tokens only (<code>var(--cl-*)</code>); no hard-coded colors. Dark mode via <code>[data-theme="dark"]</code>, not per-component media queries. See <a href="packages/javascript/browser/ui_components/STYLE_CONVENTION.html">STYLE_CONVENTION.md</a>.</li>
+<li>Strict CSP (machine-enforced by <code>tools/scripts/audit-csp.mjs</code>): no <code>&lt;style&gt;</code> injection, no <code>style=</code>/<code>on*=</code> inside innerHTML templates, no eval / <code>javascript:</code> URLs. Style via CSSOM (<code>cssText</code>/<code>setProperty</code>) or a co-located <code>.css</code> + same-origin <code>&lt;link&gt;</code>.</li>
+<li><strong>SVG is banned — Canvas only</strong>. <code>audit-csp.mjs</code> enforces hard zero; <code>tools/scripts/svg-baseline.json</code> is an empty inventory snapshot and cannot waive findings. Chart base = <code>viz/CanvasChart.js</code> (DPR, hit-regions, tooltip, exportPNG); theme reactivity via <code>utils/theme-bus.js</code>; <code>Path2D</code> accepts SVG path strings directly. Canvas color fallbacks must use <code>FALLBACK_PAINT</code> from theme-bus — no loose hex in components.</li>
+<li>Security: escape all dynamic HTML with <code>escapeHtml()</code>; opt into raw HTML explicitly with <code>raw()</code> (see <a href="packages/javascript/browser/ui_components/utils/security.js">utils/security.js</a>).</li>
+<li>i18n: user-facing strings go through <code>Locale.t()</code> (see <a href="packages/javascript/browser/ui_components/i18n/index.js">i18n/index.js</a>).</li>
+<li>Component contract: <code>new X(options)</code> → <code>.mount(container)</code> → <code>.destroy()</code>; value components expose <code>getValue/setValue/setDisabled/clear</code> (form ones also <code>setError/clearError</code>).</li>
+<li>Generated backend: .NET 10 Minimal API, BaseOrm (lightweight, no EF Core).</li>
+<li>Password hashing: use the static <code>Rfc2898DeriveBytes.Pbkdf2</code> API without changing the existing iteration/salt/hash sizes or stored formats; compatibility vectors live in the unit and SPA template test projects.</li>
+</ul>
+<h2>Adding a Component</h2>
+<ol>
+<li>Create <code>ui_components/&lt;category&gt;/&lt;Name&gt;/</code> with <code>&lt;Name&gt;.js</code>, <code>index.js</code>, and <code>&lt;Name&gt;.manifest.json</code> (schema: <a href="packages/javascript/browser/ui_components/metadata/manifest-schema.js">manifest-schema.js</a>).</li>
+<li>Export it from the category <code>index.js</code>.</li>
+<li>Register it in <a href="packages/javascript/browser/ui_components/binding/ComponentFactory.js">ComponentFactory.js</a> if it should be usable by name/generator.</li>
+<li>Rebuild metadata: <code>node packages/javascript/browser/ui_components/metadata/build-metadata.mjs --check</code>.</li>
+</ol>
+<p>Full details: <a href="AGENT-UI-GUIDE.html">AGENT-UI-GUIDE.md</a> §8.</p>
+<h2>Documentation</h2>
+<ul>
+<li>Component calling convention + React-rewrite playbook: <a href="AGENT-UI-GUIDE.html">AGENT-UI-GUIDE.md</a></li>
+<li>SPA generator manual: <a href="AGENT.html">AGENT.md</a></li>
+<li>Page generator: <a href="packages/javascript/browser/page-generator/README.html">page-generator/README.md</a></li>
+</ul>
+</main>
+</body>
+</html>

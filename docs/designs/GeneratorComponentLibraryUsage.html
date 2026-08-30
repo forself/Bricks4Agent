@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Generator Component Library Usage</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Generator Component Library Usage</h1>
+<h2>Status</h2>
+<p>Draft repository design note.</p>
+<blockquote>
+<p><strong>2026-06-15 規劃</strong>:見 <a href="ComponentLibraryConsolidation-2026-06-15.html">ComponentLibraryConsolidation-2026-06-15.md</a>。</p>
+<p><strong>2026-06-16 落地(實況,含具名偏離)</strong>:整併 Stage 0–3 已進 main。對 <strong>C# site-crawler 產生器</strong>:
+- <code>SiteGeneratorConverter.EnsureGeneratedComponent</code> 的「現捏組件」死碼整串移除(Stage 0)。
+- 詞彙錨定 B:每個產生器型別宣告 <code>b_component</code> 綁定到 <code>ui_components</code> 閉集(<code>BComponentRegistry</code>),manifest 載入時 fail-closed 驗證;刪除死行話 <code>HeroSection</code>;<code>TemplateMatcher</code> 移除任意 <code>.First()</code> 退路、改退指定中性容器並一律記錄缺口(Stage 1)。
+- 靜態包顯式錨定 B:<code>components/manifest.json</code> 帶 <code>b_component</code>、新增 <code>components/b-binding.json</code>(<code>type→b_component</code> 機讀索引)、README 宣告 B canonical(Stage 2)。
+- <strong>具名偏離</strong>:<code>StaticSitePackageGenerator</code> 的內嵌 JS renderer <strong>未退役</strong>,刻意保留為「B 詞彙的位元組決定性靜態匯出投影」(把 B 的即時 FSM 組件硬塞進位元組穩定的靜態匯出是退步;理由見整併文件 §9)。
+- e2e 驗證:本地 <code>reconstruct</code> CLI(<code>site-crawler-worker</code> 免 broker 子命令)對台北科大實跑,並抓出 <code>TemplateCompiler.CloneManifest</code> 漏帶 <code>b_component</code> 的 bug(已修 + 回歸測試,見整併文件 §10)。</p>
+<p>注意:<strong>本文件描述的是 JS <code>page-generator</code> 對實作檔路徑的耦合</strong>(繞過 <code>index.js</code>),與上述 C# site-crawler 是不同的產生器。該 JS 耦合的 <code>index.js</code> 公開面正規化(整併規劃 Stage 3 的一部分)<strong>尚未</strong>進行,本文件以下描述仍成立。</p>
+</blockquote>
+<p>This document describes how the current generator stack actually consumes the
+component library.</p>
+<p>It is descriptive first. It is not a rule for all applications.</p>
+<h2>Scope</h2>
+<p>This document is limited to the current generator-related code paths:</p>
+<ul>
+<li><code>packages/javascript/browser/page-generator/PageGenerator.js</code></li>
+<li><code>packages/javascript/browser/page-generator/FieldResolver.js</code></li>
+<li><code>packages/javascript/browser/page-generator/DynamicFormRenderer.js</code></li>
+<li><code>packages/javascript/browser/page-generator/DynamicListRenderer.js</code></li>
+<li>related generated examples under
+  <code>packages/javascript/browser/page-generator/examples/generated</code></li>
+</ul>
+<h2>Key Observation</h2>
+<p>The component library already exposes <code>index.js</code> entrypoints at root, category,
+and many leaf folders.</p>
+<p>However, the current generator stack does not primarily consume those
+entrypoints.</p>
+<p>Instead, the generator stack is currently coupled to leaf implementation file
+paths.</p>
+<h2>Current Generator Consumption Patterns</h2>
+<h3>1. Code generation path</h3>
+<p><code>PageGenerator.js</code> emits imports through <code>ComponentPaths</code>.</p>
+<p>Current emitted style:</p>
+<ul>
+<li><code>@component-library/ui_components/form/DatePicker/DatePicker.js</code></li>
+<li><code>@component-library/ui_components/common/ColorPicker/ColorPicker.js</code></li>
+<li><code>@component-library/ui_components/layout/Panel/ToastPanel.js</code></li>
+<li><code>@component-library/ui_components/input/AddressInput/AddressInput.js</code></li>
+</ul>
+<p>This means:</p>
+<ul>
+<li>generated source code imports implementation files directly</li>
+<li>generated source code does not currently target component <code>index.js</code></li>
+<li>generated source code does not currently target category <code>index.js</code></li>
+</ul>
+<h3>2. Runtime dynamic resolution path</h3>
+<p><code>FieldResolver.js</code> dynamically imports relative implementation file paths such
+as:</p>
+<ul>
+<li><code>../ui_components/form/TextInput/TextInput.js</code></li>
+<li><code>../ui_components/form/Dropdown/Dropdown.js</code></li>
+<li><code>../ui_components/common/ColorPicker/ColorPicker.js</code></li>
+<li><code>../ui_components/input/DateTimeInput/DateTimeInput.js</code></li>
+<li><code>../ui_components/viz/DrawingBoard/DrawingBoard.js</code></li>
+<li><code>../ui_components/utils/GeolocationService.js</code></li>
+</ul>
+<p>This path has the same shape as the code generation path:</p>
+<ul>
+<li>it also targets implementation files</li>
+<li>it also bypasses existing <code>index.js</code> entrypoints</li>
+</ul>
+<h3>3. Renderer support modules</h3>
+<p>Other generator runtime modules also bind directly to implementation files:</p>
+<ul>
+<li><code>DynamicFormRenderer.js</code> imports
+  <code>../ui_components/layout/FormRow/FormRow.js</code></li>
+<li><code>DynamicListRenderer.js</code> imports
+  <code>../ui_components/form/SearchForm/SearchForm.js</code></li>
+<li><code>DynamicListRenderer.js</code> imports
+  <code>../ui_components/layout/DataTable/DataTable.js</code></li>
+<li><code>DynamicListRenderer.js</code> imports
+  <code>../ui_components/common/Pagination/Pagination.js</code></li>
+</ul>
+<h2>Current Dependency Reality</h2>
+<p>From the generator side, the current effective dependency contract is:</p>
+<ul>
+<li>host page base from app/runtime code such as <code>BasePage</code></li>
+<li>component library implementation files</li>
+<li>utility/service files under <code>ui_components/utils</code></li>
+<li>app/runtime helpers outside the component library</li>
+</ul>
+<p>This is narrower than "all possible consumer imports", but it is also more
+coupled than the component library's existing <code>index.js</code> surfaces.</p>
+<h2>Mismatch With Library-Owned Surface</h2>
+<p>The generator and the library are not currently aligned at the same abstraction
+level.</p>
+<p>Current state:</p>
+<ul>
+<li>the library already exposes public entrypoints through <code>index.js</code></li>
+<li>the generator mostly bypasses those entrypoints</li>
+<li>the generator therefore depends on file layout details more than necessary</li>
+</ul>
+<p>This is not automatically wrong, but it is an explicit coupling choice.</p>
+<h2>What This Document Is For</h2>
+<p>This document exists to keep three ideas separate:</p>
+<ul>
+<li>what the library itself exposes</li>
+<li>what the generator currently consumes</li>
+<li>what an application may or may not choose to do</li>
+</ul>
+<p>Those three are related, but they are not the same thing.</p>
+<h2>Current Practical Reading</h2>
+<p>The current generator stack can truthfully say:</p>
+<ul>
+<li>it uses a specific, real subset of the component library</li>
+<li>it currently imports that subset mostly by implementation file path</li>
+<li>this is a statement about the generator's own coupling, not a rule for all
+  consumers</li>
+</ul>
+<p>If the repository later chooses to reduce generator coupling, the proper target
+would be to move generator imports toward library-owned entrypoints rather than
+to impose import restrictions on applications in general.</p>
+</main>
+</body>
+</html>

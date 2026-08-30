@@ -17,19 +17,29 @@
 本計劃要完成：
 
 - `control-plane.html` 基礎 shell
+
 - web 使用者註冊 / 登入 / 登出 / me
+
 - pending-review 註冊審核
+
 - role-based console gating（`admin` / `operator` / `reviewer` / `user`）
+
 - dashboard summary
+
 - users / conversations operator 視圖
+
 - project interview list/detail/version DAG 的 read-only operator 視圖
 
 本計劃暫不完成：
 
 - LINE identity linking 完整流
+
 - `user` workspace 全功能
+
 - memory write/delete 控制
+
 - artifact / browser / deployment 的全面改版
+
 - end-user 專屬 artifact portal
 
 ---
@@ -54,75 +64,136 @@ flowchart LR
 ### Create
 
 - `packages/csharp/broker-core/Models/WebConsoleUser.cs`
-  - Web 使用者帳號、狀態、角色
+
+- Web 使用者帳號、狀態、角色
+
 - `packages/csharp/broker-core/Models/WebConsoleSession.cs`
-  - web session cookie 對應的 session 記錄
+
+- web session cookie 對應的 session 記錄
+
 - `packages/csharp/broker-core/Models/UserIdentityLink.cs`
-  - 預留 web / line 綁定關係
+
+- 預留 web / line 綁定關係
+
 - `packages/csharp/broker/Services/WebConsoleAuthService.cs`
-  - web 註冊、登入、登出、session 驗證
+
+- web 註冊、登入、登出、session 驗證
+
 - `packages/csharp/broker/Services/ControlPlaneAuthorizationService.cs`
-  - 角色檢查與 endpoint gate
+
+- 角色檢查與 endpoint gate
+
 - `packages/csharp/broker/Services/ControlPlaneDashboardService.cs`
-  - dashboard summary 與 queue/failure projection
+
+- dashboard summary 與 queue/failure projection
+
 - `packages/csharp/broker/Services/ControlPlaneProjectInterviewService.cs`
-  - project interview list/detail/version DAG read model
+
+- project interview list/detail/version DAG read model
+
 - `packages/csharp/broker/Endpoints/WebAuthEndpoints.cs`
-  - `/api/v1/web-auth/*`
+
+- `/api/v1/web-auth/*`
+
 - `packages/csharp/broker/Endpoints/ControlPlaneEndpoints.cs`
-  - `/api/v1/control-plane/*`
+
+- `/api/v1/control-plane/*`
+
 - `packages/csharp/tests/integration/Api/WebAuthEndpointsTests.cs`
-  - register/login/me/review/role gate 整合測試
+
+- register/login/me/review/role gate 整合測試
+
 - `packages/csharp/tests/integration/Api/ControlPlaneDashboardTests.cs`
-  - dashboard、users、conversations、project interviews 讀取整合測試
+
+- dashboard、users、conversations、project interviews 讀取整合測試
+
 - `packages/csharp/tests/unit/Services/WebConsoleAuthServiceTests.cs`
-  - 帳號狀態與 session 驗證單元測試
+
+- 帳號狀態與 session 驗證單元測試
+
 - `packages/csharp/tests/unit/Services/ControlPlaneProjectInterviewServiceTests.cs`
-  - project interview projection 單元測試
+
+- project interview projection 單元測試
+
 - `packages/csharp/broker/wwwroot/control-plane.html`
-  - 新 console 入口頁
+
+- 新 console 入口頁
+
 - `packages/csharp/broker/wwwroot/control-plane/styles.css`
-  - shell 與 workspace 樣式
+
+- shell 與 workspace 樣式
+
 - `packages/csharp/broker/wwwroot/control-plane/app.js`
-  - 入口、tab/router、boot sequence
+
+- 入口、tab/router、boot sequence
+
 - `packages/csharp/broker/wwwroot/control-plane/api.js`
-  - request helper
+
+- request helper
+
 - `packages/csharp/broker/wwwroot/control-plane/state.js`
-  - 前端 state store
+
+- 前端 state store
+
 - `packages/csharp/broker/wwwroot/control-plane/auth.js`
-  - login/register/me/logout UI
+
+- login/register/me/logout UI
+
 - `packages/csharp/broker/wwwroot/control-plane/dashboard.js`
-  - dashboard render
+
+- dashboard render
+
 - `packages/csharp/broker/wwwroot/control-plane/users.js`
-  - users / review queue / conversations render
+
+- users / review queue / conversations render
+
 - `packages/csharp/broker/wwwroot/control-plane/project-interviews.js`
-  - project interview list/detail/version render
+
+- project interview list/detail/version render
+
 - `packages/javascript/browser/__tests__/control-plane/DashboardShell.test.js`
-  - dashboard / auth shell 渲染 smoke
+
+- dashboard / auth shell 渲染 smoke
 
 ### Modify
 
 - `packages/csharp/broker-core/Data/BrokerDbInitializer.cs`
-  - 建立新資料表
+
+- 建立新資料表
+
 - `packages/csharp/broker/Program.cs`
-  - 註冊新 services / endpoints
+
+- 註冊新 services / endpoints
+
 - `packages/csharp/broker/Endpoints/LocalAdminEndpoints.cs`
-  - 補 localhost bootstrap to approve/review web users 或 alias
+
+- 補 localhost bootstrap to approve/review web users 或 alias
+
 - `packages/csharp/broker/wwwroot/line-admin.html`
-  - 加入導向新 console 的入口提示或 alias
+
+- 加入導向新 console 的入口提示或 alias
+
 - `packages/csharp/tests/integration/Fixtures/BrokerFixture.cs`
-  - 補 web-auth / control-plane helper
+
+- 補 web-auth / control-plane helper
 
 ### Reuse Without Structural Change
 
 - `packages/csharp/broker/Services/LocalAdminAuthService.cs`
-  - 保留 localhost bootstrap admin
+
+- 保留 localhost bootstrap admin
+
 - `packages/csharp/broker/Services/HighLevelCoordinator.cs`
-  - 重用 line users / permissions / project interview 狀態來源
+
+- 重用 line users / permissions / project interview 狀態來源
+
 - `packages/csharp/broker/Services/ProjectInterviewStateService.cs`
-  - project interview 真相來源
+
+- project interview 真相來源
+
 - `packages/csharp/broker/wwwroot/line-admin.html`
-  - 作為 visual/layout 參考與 API 行為來源
+
+- 作為 visual/layout 參考與 API 行為來源
 
 ---
 
@@ -163,6 +234,7 @@ dotnet test packages/csharp/tests/unit/Unit.Tests.csproj -v minimal --filter Web
 Expected:
 
 - FAIL
+
 - `WebConsoleUser` type not found
 
 - [ ] **Step 3: 建立 `WebConsoleUser.cs`**
@@ -314,6 +386,7 @@ dotnet test packages/csharp/tests/integration/Integration.Tests.csproj -v minima
 Expected:
 
 - FAIL
+
 - 404 或 endpoint missing
 
 - [ ] **Step 3: 建立 `WebConsoleAuthService.cs`**
@@ -632,6 +705,7 @@ npm.cmd --prefix packages/javascript/browser run test -- --run DashboardShell.te
 Expected:
 
 - FAIL
+
 - module not found
 
 - [ ] **Step 3: 建 `control-plane.html`**
@@ -904,8 +978,11 @@ npm.cmd --prefix packages/javascript/browser run test
 Expected:
 
 - broker verify PASS
+
 - unit PASS
+
 - integration PASS
+
 - browser tests PASS
 
 - [ ] **Step 3: Commit**
@@ -922,6 +999,7 @@ git commit -m "docs: document control plane console phase 1"
 ### 1. 先不要把 `local-admin` 拔掉
 
 `local-admin` 仍然是 localhost bootstrap 與高權限 fallback。  
+
 在 `web-auth` 穩定前，不要直接移除它。
 
 ### 2. 第 1 版先做 role gate，不做細粒度 ACL
@@ -931,7 +1009,9 @@ git commit -m "docs: document control plane console phase 1"
 不要在這一版就擴成：
 
 - resource-level ACL
+
 - field-level masking
+
 - tenant isolation
 
 ### 3. project interview 先做 read-only operator 視圖
@@ -939,8 +1019,11 @@ git commit -m "docs: document control plane console phase 1"
 先把：
 
 - session
+
 - assertions
+
 - versions
+
 - DAG
 
 看得見。
@@ -954,18 +1037,27 @@ git commit -m "docs: document control plane console phase 1"
 本計劃已覆蓋 spec 的第一批落地需求：
 
 - web 註冊/登入
+
 - 角色分層
+
 - control plane shell
+
 - dashboard
+
 - users / conversations
+
 - project interview 管理視圖
 
 尚未納入此計劃、留給後續子計劃：
 
 - LINE identity linking 完整流
+
 - user workspace 全功能
+
 - artifact / browser / deployment 的統一新版工作台
+
 - memory 的 write/delete 控制
+
 - 更完整的 reviewer flow
 
 這些應在本計劃完成後，依成熟度拆成第二批與第三批子計劃。

@@ -5,10 +5,15 @@
 ## 功能特點
 
 - **自動鎖定**：登入失敗、MFA 失敗自動觸發鎖定
+
 - **漸進式鎖定**：重複違規者鎖定時間遞增
+
 - **多範圍鎖定**：帳戶、登入、MFA、敏感操作獨立鎖定
+
 - **IP 封鎖**：可疑 IP 自動或手動封鎖
+
 - **自動解鎖**：到期自動解除鎖定
+
 - **完整歷史**：鎖定/解鎖歷史記錄
 
 ## 安裝
@@ -120,7 +125,7 @@ public class AuthService
 ## 鎖定類型
 
 | 類型 | 說明 | 預設持續時間 |
-|------|------|-------------|
+|---|---|---|
 | `Manual` | 管理員手動鎖定 | 永久（直到解鎖） |
 | `FailedLogin` | 登入失敗過多 | 15 分鐘 |
 | `FailedMfa` | MFA 驗證失敗過多 | 30 分鐘 |
@@ -135,7 +140,7 @@ public class AuthService
 ## 鎖定範圍
 
 | 範圍 | 說明 |
-|------|------|
+|---|---|
 | `Account` | 鎖定整個帳戶（最嚴格） |
 | `Login` | 只鎖定登入，現有會話可用 |
 | `IpAddress` | 鎖定特定 IP 對此帳戶的存取 |
@@ -147,8 +152,8 @@ public class AuthService
 
 重複違規者的鎖定時間會遞增：
 
-| 違規次數 | 乘數 | 實際鎖定時間（基準 15 分鐘）|
-|---------|------|---------------------------|
+| 違規次數 | 乘數 | 實際鎖定時間（基準 15 分鐘） |
+|---|---|---|
 | 第 1 次 | 1x | 15 分鐘 |
 | 第 2 次 | 2x | 30 分鐘 |
 | 第 3 次 | 4x | 1 小時 |
@@ -170,7 +175,7 @@ var config = new AccountLockConfig
 ### 用戶端點
 
 | 方法 | 路徑 | 說明 |
-|------|------|------|
+|---|---|---|
 | GET | `/api/account-locks/my/status` | 取得自己的鎖定狀態 |
 | GET | `/api/account-locks/my/history` | 取得自己的鎖定歷史 |
 
@@ -179,7 +184,7 @@ var config = new AccountLockConfig
 #### 帳戶鎖定管理
 
 | 方法 | 路徑 | 說明 |
-|------|------|------|
+|---|---|---|
 | GET | `/api/account-locks/users/{userId}/check` | 檢查用戶是否被鎖定 |
 | GET | `/api/account-locks/users/{userId}/status` | 取得用戶鎖定狀態 |
 | GET | `/api/account-locks/users/{userId}/history` | 取得用戶鎖定歷史 |
@@ -191,7 +196,7 @@ var config = new AccountLockConfig
 #### IP 鎖定管理
 
 | 方法 | 路徑 | 說明 |
-|------|------|------|
+|---|---|---|
 | GET | `/api/account-locks/ips/check?ipAddress=x` | 檢查 IP 是否被鎖定 |
 | POST | `/api/account-locks/ips/lock` | 鎖定 IP |
 | POST | `/api/account-locks/ips/unlock` | 解鎖 IP |
@@ -201,7 +206,7 @@ var config = new AccountLockConfig
 #### 統計
 
 | 方法 | 路徑 | 說明 |
-|------|------|------|
+|---|---|---|
 | GET | `/api/account-locks/statistics` | 取得鎖定統計 |
 
 ## 使用範例
@@ -390,9 +395,13 @@ lockService.OnAccountLocked += (lock) =>
 ## 生產環境建議
 
 1. **使用資料庫儲存**：替換 InMemory 實作
+
 2. **分散式鎖定**：使用 Redis 實現跨實例同步
+
 3. **通知整合**：鎖定時發送 Email/SMS 通知
+
 4. **監控告警**：大量鎖定時觸發告警
+
 5. **定期清理**：清理過期的鎖定記錄
 
 ## 相依套件

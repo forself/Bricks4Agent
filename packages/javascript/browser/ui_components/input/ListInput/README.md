@@ -11,7 +11,7 @@ new ListInput(options?)
 ```
 
 | 參數 | 型別 | 預設值 | 說明 |
-|------|------|--------|------|
+|---|---|---|---|
 | `options.title` | `string` | `''` | 標題 |
 | `options.minItems` | `number` | `0` | 最小項目數 |
 | `options.maxItems` | `number` | `10` | 最大項目數 |
@@ -24,7 +24,7 @@ new ListInput(options?)
 ### 方法
 
 | 方法 | 說明 |
-|------|------|
+|---|---|
 | `mount(container)` | 掛載至 DOM 容器，回傳 `this` |
 | `getValues()` | 回傳項目陣列 |
 | `setValues(items)` | 設定項目陣列，重新渲染 |
@@ -32,8 +32,11 @@ new ListInput(options?)
 ### 內建功能
 
 - 拖曳排序（drag & drop）
+
 - 上移/下移按鈕
+
 - 項目計數器（`n / maxItems`）
+
 - CSV 範本下載（使用 fields schema 時自動提供）
 
 ## 使用範例

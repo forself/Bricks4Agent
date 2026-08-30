@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ApiResponse - Unified API Response Format</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>ApiResponse - Unified API Response Format</h1>
+<p>A generic response wrapper for consistent API responses across your application.</p>
+<h2>Features</h2>
+<ul>
+<li>Generic and non-generic versions</li>
+<li>Built-in factory methods for common response types</li>
+<li>Automatic timestamp tracking</li>
+<li>Support for multiple error messages</li>
+<li>Trace ID support for debugging</li>
+<li>Standard HTTP status codes</li>
+</ul>
+<h2>Usage</h2>
+<h3>Basic Success Response</h3>
+<pre><code class="language-csharp">// With data
+var response = ApiResponse&lt;UserDto&gt;.SuccessResponse(
+    data: userDto,
+    message: &quot;User retrieved successfully&quot;
+);
+
+// Without data
+var response = ApiResponse.SuccessResponse(&quot;Operation completed&quot;);
+</code></pre>
+<h3>Error Response</h3>
+<pre><code class="language-csharp">// Single error
+var response = ApiResponse&lt;UserDto&gt;.ErrorResponse(
+    message: &quot;Invalid user ID&quot;,
+    statusCode: 400
+);
+
+// Multiple errors (e.g., validation errors)
+var errors = new List&lt;string&gt;
+{
+    &quot;Email is required&quot;,
+    &quot;Password must be at least 8 characters&quot;
+};
+var response = ApiResponse&lt;UserDto&gt;.ErrorResponse(
+    errors: errors,
+    message: &quot;Validation failed&quot;,
+    statusCode: 400
+);
+</code></pre>
+<h3>Common HTTP Response Types</h3>
+<pre><code class="language-csharp">// 404 Not Found
+var response = ApiResponse&lt;UserDto&gt;.NotFoundResponse(&quot;User not found&quot;);
+
+// 401 Unauthorized
+var response = ApiResponse&lt;UserDto&gt;.UnauthorizedResponse();
+
+// 403 Forbidden
+var response = ApiResponse&lt;UserDto&gt;.ForbiddenResponse(&quot;Insufficient permissions&quot;);
+</code></pre>
+<h3>In Controller Actions</h3>
+<pre><code class="language-csharp">[HttpGet(&quot;{id}&quot;)]
+public async Task&lt;IActionResult&gt; GetUser(int id)
+{
+    try
+    {
+        var user = await _userService.GetByIdAsync(id);
+
+        if (user == null)
+        {
+            var notFoundResponse = ApiResponse&lt;UserDto&gt;.NotFoundResponse(&quot;User not found&quot;);
+            return NotFound(notFoundResponse);
+        }
+
+        var response = ApiResponse&lt;UserDto&gt;.SuccessResponse(user);
+        return Ok(response);
+    }
+    catch (Exception ex)
+    {
+        var errorResponse = ApiResponse&lt;UserDto&gt;.ErrorResponse(
+            message: ex.Message,
+            statusCode: 500
+        );
+        return StatusCode(500, errorResponse);
+    }
+}
+</code></pre>
+<h3>Adding Trace ID</h3>
+<pre><code class="language-csharp">var response = ApiResponse&lt;UserDto&gt;.SuccessResponse(userDto);
+response.TraceId = HttpContext.TraceIdentifier;
+return Ok(response);
+</code></pre>
+<h2>Response Format</h2>
+<pre><code class="language-json">{
+  &quot;success&quot;: true,
+  &quot;statusCode&quot;: 200,
+  &quot;message&quot;: &quot;Success&quot;,
+  &quot;data&quot;: { ... },
+  &quot;errors&quot;: [],
+  &quot;timestamp&quot;: &quot;2026-01-23T10:30:00Z&quot;,
+  &quot;traceId&quot;: &quot;0HMVFE42N8GJ7:00000001&quot;
+}
+</code></pre>
+<h2>Benefits</h2>
+<ol>
+<li><strong>Consistency</strong> - All API responses follow the same format</li>
+<li><strong>Error Handling</strong> - Standardized error response structure</li>
+<li><strong>Debugging</strong> - Built-in timestamp and trace ID</li>
+<li><strong>Client-Friendly</strong> - Easy to parse and handle on client side</li>
+<li><strong>Type Safety</strong> - Generic type support for strongly-typed data</li>
+</ol>
+<h2>Dependencies</h2>
+<ul>
+<li>.NET 6.0 or higher</li>
+<li>No external NuGet packages required</li>
+</ul>
+</main>
+</body>
+</html>

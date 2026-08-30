@@ -9,19 +9,32 @@ import { PanelManager } from './PanelManager.js';
 import Locale from '../../i18n/index.js';
 export class ModalPanel extends BasePanel {
     constructor(options = {}) {
+        const autoClose = options.autoClose !== false;
         super({
             modal: true,
             closable: true,
-            autoClose: true,
+            // ModalPanel owns outside-click handling through its backdrop.  Do
+            // not also install BasePanel's document listener: a control such
+            // as Dropdown may rerender/remove the clicked option before the
+            // click bubbles to document, at which point element.contains()
+            // becomes false and the modal is closed even though the click
+            // originated inside it.
+            autoClose: false,
             showHeader: true,
             // 預設 false，直接 new 的呼叫端仍可 close() 後再 open() 重複使用
             destroyOnClose: false,
             visibility: BasePanel.VISIBILITY.NONE,
-            ...options
+            ...options,
+            autoClose: false
         });
 
         this._modalEntered = false;
         this._reopenWarned = false;
+
+        // Preserve the public ModalPanel option for the precise backdrop
+        // listener below without enabling BasePanel's duplicate listener.
+        this.options.autoClose = autoClose;
+
         this._wrapWithBackdrop();
     }
 
@@ -99,13 +112,27 @@ export class ModalPanel extends BasePanel {
 
         this.backdrop.appendChild(this.element);
 
-        // 點擊遮罩關閉
+        // 在 pointerdown 階段先處理真正的遮罩點擊。瀏覽器中的 click
+        // 可能因焦點切換、DOM 更新或後續事件攔截而不送達遮罩；click
+        // 仍保留作為鍵盤/合成事件的後備。兩者都只接受 exact backdrop，
+        // 因此 panel、content 與其內部 Dropdown 不會誤關閉。
         if (this.options.autoClose) {
-            this.backdrop.addEventListener('click', (e) => {
-                if (e.target === this.backdrop) {
-                    this.close();
-                }
-            });
+            this._handleBackdropPointerDown = (e) => {
+                if (e.target === this.backdrop) this.close();
+            };
+            this._handleBackdropMouseDown = (e) => {
+                if (e.target === this.backdrop) this.close();
+            };
+            this._handleBackdropClick = (e) => {
+                if (e.target === this.backdrop) this.close();
+            };
+            // Capture phase is intentional.  A child control or browser focus
+            // handler may stop the bubbling event even when hit-testing says
+            // the backdrop itself was clicked.  Exact-target checking keeps
+            // panel/content interactions unaffected.
+            this.backdrop.addEventListener('pointerdown', this._handleBackdropPointerDown, true);
+            this.backdrop.addEventListener('mousedown', this._handleBackdropMouseDown, true);
+            this.backdrop.addEventListener('click', this._handleBackdropClick, true);
         }
 
         // ESC 關閉
@@ -178,6 +205,12 @@ export class ModalPanel extends BasePanel {
      * 關閉 Modal
      */
     close() {
+        // pointerdown 與 click 後備可能屬於同一次使用者操作；只允許
+        // 第一次關閉觸發 onClose，避免重複銷毀或重複 render。
+        if (this._destroyed || this.options.visibility !== BasePanel.VISIBILITY.VISIBLE) {
+            return this;
+        }
+
         // 先離開 Modal 狀態
         PanelManager.exitModal(this);
         this._modalEntered = false;
@@ -218,6 +251,26 @@ export class ModalPanel extends BasePanel {
 
         document.removeEventListener('keydown', this._handleKeydown);
 
+        if (this.backdrop && this._handleBackdropPointerDown) {
+            this.backdrop.removeEventListener('pointerdown', this._handleBackdropPointerDown, true);
+        }
+        if (this.backdrop && this._handleBackdropMouseDown) {
+            this.backdrop.removeEventListener('mousedown', this._handleBackdropMouseDown, true);
+        }
+        if (this.backdrop && this._handleBackdropClick) {
+            this.backdrop.removeEventListener('click', this._handleBackdropClick, true);
+        }
+        this._handleBackdropPointerDown = null;
+        this._handleBackdropMouseDown = null;
+        this._handleBackdropClick = null;
+
+        // BasePanel owns the delayed document-level outside-click listener.
+        // Skipping its destroy routine leaves an invisible modal's listener
+        // alive.  That stale listener can later interpret clicks inside a new
+        // modal as outside clicks and invoke the old onClose callback, which in
+        // turn destroys the new modal (for example, selecting a Dropdown row in
+        // a reopened nested editor).  Unwind modal state and let the base class
+        // remove every listener/child/manager registration first.
         // close() 已退出過就不重複退出
         if (this._modalEntered) {
             PanelManager.exitModal(this);

@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Visual Pattern Template Expansion Implementation Plan</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Visual Pattern Template Expansion Implementation Plan</h1>
+<blockquote>
+<p><strong>For agentic workers:</strong> REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (<code>- [ ]</code>) syntax for tracking.</p>
+</blockquote>
+<p><strong>Goal:</strong> Add first-pass reusable templates and components for search/discovery, report/dashboard, input/form-flow, and commercial showcase page patterns.</p>
+<p><strong>Architecture:</strong> Keep the existing crawler-to-generator pipeline. Add new visual/function block kinds in <code>SiteIntentExtractor</code>, score templates by slots in <code>TemplateMatcher</code>, compile to manifest-declared components in <code>TemplateCompiler</code>, and render the new component types in the static runtime. Do not select templates by website category or <code>SiteKind</code>.</p>
+<p><strong>Tech Stack:</strong> .NET 8, xUnit/FluentAssertions, JSON component/template manifests, vanilla JS/CSS static package runtime.</p>
+<hr>
+<h2>Files</h2>
+<ul>
+<li>Modify: <code>packages/csharp/workers/site-crawler-worker/component-libraries/bricks4agent.default/manifest.json</code></li>
+<li>Modify: <code>packages/csharp/workers/site-crawler-worker/component-libraries/bricks4agent.default/README.md</code></li>
+<li>Modify: <code>packages/csharp/workers/site-crawler-worker/template-framework/visual_patterns.json</code></li>
+<li>Modify: <code>packages/csharp/workers/site-crawler-worker/template-framework/README.md</code></li>
+<li>Modify: <code>packages/csharp/workers/site-crawler-worker/Services/SiteIntentExtractor.cs</code></li>
+<li>Modify: <code>packages/csharp/workers/site-crawler-worker/Services/TemplateMatcher.cs</code></li>
+<li>Modify: <code>packages/csharp/workers/site-crawler-worker/Services/TemplateCompiler.cs</code></li>
+<li>Modify: <code>packages/csharp/workers/site-crawler-worker/Services/StaticSitePackageGenerator.cs</code></li>
+<li>Modify: <code>packages/csharp/tests/unit/Workers/SiteCrawler/ComponentLibraryLoaderTests.cs</code></li>
+<li>Modify: <code>packages/csharp/tests/unit/Workers/SiteCrawler/TemplateFrameworkLoaderTests.cs</code></li>
+<li>Modify: <code>packages/csharp/tests/unit/Workers/SiteCrawler/SiteIntentExtractorTests.cs</code></li>
+<li>Modify: <code>packages/csharp/tests/unit/Workers/SiteCrawler/TemplateMatcherTests.cs</code></li>
+<li>Modify: <code>packages/csharp/tests/unit/Workers/SiteCrawler/TemplateCompilerTests.cs</code></li>
+<li>Modify: <code>packages/csharp/tests/unit/Workers/SiteCrawler/StaticSitePackageGeneratorTests.cs</code></li>
+</ul>
+<h2>Tasks</h2>
+<h3>Task 1: Component and Template Contract Tests</h3>
+<ul>
+<li>[ ] Add failing component loader assertions for <code>SearchBoxPanel</code>, <code>FacetFilterPanel</code>, <code>ResultList</code>, <code>PaginationNav</code>, <code>DashboardFilterBar</code>, <code>MetricSummaryGrid</code>, <code>ChartPanel</code>, <code>DataTablePreview</code>, <code>StepIndicator</code>, <code>StructuredFormPanel</code>, <code>ValidationSummary</code>, <code>FormActionBar</code>, <code>ShowcaseHero</code>, <code>ProductCardGrid</code>, <code>ProofStrip</code>, <code>PricingPanel</code>, and <code>CtaBand</code>.</li>
+<li>[ ] Add failing template loader assertions for <code>search_results_portal</code>, <code>report_dashboard</code>, <code>input_flow</code>, and <code>commercial_showcase</code>.</li>
+<li>[ ] Run <code>dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --no-restore --filter "ComponentLibraryLoaderTests|TemplateFrameworkLoaderTests"</code> and verify the new assertions fail.</li>
+<li>[ ] Add manifest entries, README sections, template slots, and template README coverage.</li>
+<li>[ ] Re-run the same focused tests and verify they pass.</li>
+</ul>
+<h3>Task 2: Intent and Matcher Tests</h3>
+<ul>
+<li>[ ] Add failing visual snapshot tests for search results, report dashboard, input flow, and commercial showcase block extraction.</li>
+<li>[ ] Add failing matcher tests proving each new slot set picks its visual pattern template with <code>SiteKind = "unknown"</code> or a contradictory metadata value.</li>
+<li>[ ] Run <code>dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --no-restore --filter "SiteIntentExtractorTests|TemplateMatcherTests"</code> and verify failure.</li>
+<li>[ ] Implement visual/static role classification, slot mapping, template scoring, and preferred component mapping.</li>
+<li>[ ] Re-run the same focused tests and verify they pass.</li>
+</ul>
+<h3>Task 3: Compiler and Runtime Tests</h3>
+<ul>
+<li>[ ] Add failing compiler tests that each new pattern compiles to only declared manifest components and records no generated components.</li>
+<li>[ ] Add failing runtime package assertions for renderer names and CSS selectors for every new component.</li>
+<li>[ ] Run <code>dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --no-restore --filter "TemplateCompilerTests|StaticSitePackageGeneratorTests"</code> and verify failure.</li>
+<li>[ ] Implement compiler prop builders and static runtime renderers/CSS.</li>
+<li>[ ] Re-run the same focused tests and verify they pass.</li>
+</ul>
+<h3>Task 4: Full Verification</h3>
+<ul>
+<li>[ ] Run <code>dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --no-restore --filter "ComponentLibraryLoaderTests|TemplateFrameworkLoaderTests|SiteIntentExtractorTests|TemplateMatcherTests|TemplateCompilerTests|StaticSitePackageGeneratorTests"</code>.</li>
+<li>[ ] Run <code>dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --no-restore</code>.</li>
+<li>[ ] Run <code>dotnet build packages/csharp/ControlPlane.slnx --no-restore</code>.</li>
+<li>[ ] Inspect <code>git status --short</code> and summarize the changed files.</li>
+</ul>
+</main>
+</body>
+</html>

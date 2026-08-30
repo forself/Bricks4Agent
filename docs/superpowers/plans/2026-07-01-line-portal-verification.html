@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LINE Portal Verification Implementation Plan</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>LINE Portal Verification Implementation Plan</h1>
+<blockquote>
+<p><strong>For agentic workers:</strong> REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (<code>- [ ]</code>) syntax for tracking.</p>
+</blockquote>
+<p><strong>Goal:</strong> Require new LINE users to bind a Portal account with a one-time verification code before using LINE interactions.</p>
+<p><strong>Architecture:</strong> Store LINE binding and a hashed verification code on <code>PortalUserCredential</code>. Portal registration returns the clear one-time code once. <code>HighLevelCoordinator</code> gates raw LINE ids until <code>/verify &lt;user_id&gt; &lt;code&gt;</code> succeeds, then uses the Portal user id for profile, history, permissions, and artifacts.</p>
+<p><strong>Tech Stack:</strong> C# .NET 8, BaseOrm, SQLite, xUnit/FluentAssertions, vanilla JavaScript user Portal.</p>
+<hr>
+<h2>File Structure</h2>
+<ul>
+<li>Modify <code>packages/csharp/broker-core/Models/PortalUserCredential.cs</code>: add LINE binding and verification code fields.</li>
+<li>Modify <code>packages/csharp/broker-core/Data/BrokerDbInitializer.cs</code>: add migration columns and indexes.</li>
+<li>Modify <code>packages/csharp/broker/Services/PortalAuthService.cs</code>: generate and verify LINE codes.</li>
+<li>Modify <code>packages/csharp/broker/Services/HighLevelCoordinator.cs</code>: reject unverified raw LINE users, handle <code>/verify</code>.</li>
+<li>Modify <code>packages/csharp/broker/Endpoints/PortalEndpoints.cs</code>: expose verification info in registration/status/me responses.</li>
+<li>Modify <code>packages/javascript/browser/user-portal/src/PortalApp.js</code>: show verification code after registration and in profile panel.</li>
+<li>Modify <code>tools/scripts/validate-user-portal.mjs</code>: assert the Portal mentions LINE verification.</li>
+<li>Create <code>packages/csharp/tests/unit/Portal/PortalLineVerificationTests.cs</code>: service and coordinator behavior tests.</li>
+<li>Modify <code>packages/csharp/tests/integration/Api/PortalEndpointTests.cs</code>: endpoint flow tests.</li>
+<li>Modify docs in <code>docs/manuals/current-user-manual.zh-TW.md</code> and <code>docs/manuals/current-technical-manual.zh-TW.md</code>.</li>
+</ul>
+<h2>Task 1: Data Model and Portal Service Tests</h2>
+<ul>
+<li>[ ] Add service-level unit tests for Portal registration code generation and verification.</li>
+<li>[ ] Run the filtered unit tests and confirm they fail because fields/methods are missing.</li>
+<li>[x] Add model columns and initializer migrations.</li>
+<li>[x] Add verification code generation, hashing, expiration, and binding methods via <code>PortalLineVerificationService</code>.</li>
+<li>[ ] Run the filtered unit tests and confirm they pass.</li>
+</ul>
+<p>Current coverage note: this implementation is verified by API integration tests in <code>PortalEndpointTests</code> and frontend smoke validation. Service-level unit tests remain useful hardening work but were not added in this pass.</p>
+<h2>Task 2: LINE Gate and Verify Command</h2>
+<ul>
+<li>[ ] Add failing unit tests for unverified LINE rejection, wrong-code rejection, and correct-code success.</li>
+<li>[ ] Run the filtered unit tests and confirm they fail.</li>
+<li>[x] Implement <code>/verify</code> and <code>/驗證</code> handling in <code>HighLevelCoordinator</code>.</li>
+<li>[x] Resolve verified raw LINE ids to Portal user ids before normal processing.</li>
+<li>[ ] Run the filtered unit tests and confirm they pass.</li>
+</ul>
+<h2>Task 3: API and Portal UI</h2>
+<ul>
+<li>[x] Add failing integration test for register -&gt; code -&gt; LINE verify -&gt; normal LINE message.</li>
+<li>[x] Run the filtered integration test and confirm it fails.</li>
+<li>[x] Return <code>line_verification</code> from Portal registration/status/me.</li>
+<li>[x] Display the verification code and <code>/verify</code> command in the Portal UI.</li>
+<li>[x] Update <code>validate-user-portal.mjs</code> for the new UI flow.</li>
+<li>[x] Run integration and portal validation.</li>
+</ul>
+<h2>Task 4: Documentation and Full Verification</h2>
+<ul>
+<li>[x] Update current user and technical manuals.</li>
+<li>[x] Run <code>dotnet build packages/csharp/ControlPlane.slnx</code>.</li>
+<li>[ ] Run signed unit, integration, broker, db validation, and user portal validation.</li>
+<li>[ ] Clean test artifacts.</li>
+<li>[ ] Commit the completed change.</li>
+</ul>
+</main>
+</body>
+</html>

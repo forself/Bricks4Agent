@@ -7,8 +7,9 @@ This engine adopts the **Array of JSON Objects** as the standard input format fo
 
 ### 解決了什麼問題？ (Problem Solved)
 
-*   **無需 Mapping**: 欄位名稱直接寫在 JSON Key 中 (如 `id`, `label`)，通常情況下如果不需轉名，連 `mapping` 設定都可省略。
-*   **保持扁平 (Flat)**: 後端不需組裝複雜的樹狀結構 (`children: []`)，只需回傳扁平的列表 (`List`)。
+- **無需 Mapping**: 欄位名稱直接寫在 JSON Key 中 (如 `id`, `label`)，通常情況下如果不需轉名，連 `mapping` 設定都可省略。
+
+- **保持扁平 (Flat)**: 後端不需組裝複雜的樹狀結構 (`children: []`)，只需回傳扁平的列表 (`List`)。
 
 ---
 
@@ -102,8 +103,9 @@ viz.render({
 
 引擎內建了強大的轉換邏輯：
 
-1.  **Flat-to-Tree**: 對於 `org`, `hierarchy`, `flame` 等圖表，引擎會自動掃描數據中的 `parentId` 欄位，將扁平列表重組為樹狀結構。
-2.  **別名系統 (Aliasing)**: 透過 `mapping` 參數，您可以輕鬆對接任何後端既有的欄位命名，而無需修改後端 API。
+1. **Flat-to-Tree**: 對於 `org`, `hierarchy`, `flame` 等圖表，引擎會自動掃描數據中的 `parentId` 欄位，將扁平列表重組為樹狀結構。
+
+2. **別名系統 (Aliasing)**: 透過 `mapping` 參數，您可以輕鬆對接任何後端既有的欄位命名，而無需修改後端 API。
 
 ---
 
@@ -149,6 +151,6 @@ viz.fetch('/api/v1/employees')
 
 ### 4.2 XSS 防護 (XSS Prevention)
 
-*   **自動過濾**: 引擎內部所有 Detail Card 與 Tooltip 渲染皆已強制實作 `escapeHtml()`。
-*   **數據內容**: 即便後端回傳含有 `<script>` 的惡意字串，在前端也會被轉義為純文字顯示 (`&lt;script&gt;`)，確保不會執行惡意代碼。
+- **自動過濾**: 引擎內部所有 Detail Card 與 Tooltip 渲染皆已強制實作 `escapeHtml()`。
 
+- **數據內容**: 即便後端回傳含有 `<script>` 的惡意字串，在前端也會被轉義為純文字顯示 (`&lt;script&gt;`)，確保不會執行惡意代碼。

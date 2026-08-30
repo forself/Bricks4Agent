@@ -26,6 +26,9 @@ node scripts/publish.mjs      # 發佈:dist\(快照 + SNAPSHOT.json 憑證 + 封
 ## 規則
 
 1. 只用 `lib\ui_components`,import 一律**相對路徑**(層數=檔案到專案根的深度;禁根絕對 `/lib/`、禁 `../Bricks4Agent/`——publish 驗證器會擋)。
+
 2. 缺元件 → 加到 Bricks4Agent repo(照其 AGENT-UI-GUIDE.md),junction 模式即時生效。
+
 3. 樣式只用 `var(--cl-*)` token;動態字串一律 escapeHtml;無 inline script/style(CSP)。
+
 4. 元件調用入口=Bricks4Agent 的 `AGENT-UI-GUIDE.md`;主題客製=Theme Studio(`tools/theme-studio/`),產出 `theme.custom.css` 放本專案並最後載入。

@@ -44,6 +44,19 @@ export function escapeAttr(str) {
 const RAW_HTML_BRAND = Symbol.for('bricks4agent.rawHtml');
 
 /**
+ * DOM id / 錨點識別碼安全字元驗證。
+ * 僅允許 [A-Za-z0-9_-];清洗器與 TOC/錨點產生器共用此單一事實來源。
+ * 內容可控且含引號、角括號的 id 會破壞屬性脈絡,於下游把 id 內插進
+ * data-id="…" / href="#…" 等屬性時造成屬性跳脫 XSS,故一律以此收斂。
+ * @param {any} value - 待驗證的識別碼
+ * @returns {boolean} 是否為安全的 id 字元集
+ */
+const ID_SAFE_RE = /^[A-Za-z0-9_-]+$/;
+export function isSafeId(value) {
+    return typeof value === 'string' && ID_SAFE_RE.test(value);
+}
+
+/**
  * 標記字串為已知安全的 HTML（明確 opt-in）
  * 使用此函數表示「我知道這段 HTML 是安全的」。
  * @param {string} html - 已知安全的 HTML 字串
@@ -138,7 +151,9 @@ export function sanitizeUrl(url) {
     // 白名單：允許的協議
     const safeProtocols = ['http:', 'https:', 'mailto:', 'tel:'];
     // 允許相對路徑和錨點
-    if (cleaned.startsWith('//')) return '';
+    // 阻擋協定相對 URL:除 //host 外,也擋反斜線變體(/\、\/、\\);
+    // 瀏覽器會把 \ 正規化為 /,只擋 // 會漏掉 /\evil.com 造成開放重定向。
+    if (/^[\\/]{2}/.test(cleaned)) return '';
     if (cleaned.startsWith('/') || cleaned.startsWith('#') || cleaned.startsWith('?')) {
         return cleaned;
     }
@@ -229,11 +244,21 @@ export function sanitizeHTML(html) {
                     return;
                 }
 
+                // id:值必須為安全字元([A-Za-z0-9_-]);否則移除。
+                // 白名單放行 id 是為了保留 TOC/錨點跳轉,但含引號、角括號的 id 會在
+                // WebTextEditor TOC 產生器(data-id="…"、href="#…")造成屬性跳脫 XSS。
+                // 對齊 html-sanitizer.js RICH_TEXT_POLICY 對 id 的收斂策略。
+                if (name === 'id') {
+                    if (!isSafeId(attr.value)) node.removeAttribute(attr.name);
+                    return;
+                }
+
                 // href/src:協定白名單;img src 另允許 data:image
                 if (name === 'href' || name === 'src') {
                     const cleanValue = attr.value.replace(/[\x00-\x1f]/g, '').trim();
                     const lower = cleanValue.toLowerCase();
-                    if (cleanValue.startsWith('//')) {
+                    // 阻擋協定相對 URL(含反斜線變體 /\、\/、\\);只擋 // 會漏開放重定向
+                    if (/^[\\/]{2}/.test(cleanValue)) {
                         node.removeAttribute(attr.name);
                         return;
                     }

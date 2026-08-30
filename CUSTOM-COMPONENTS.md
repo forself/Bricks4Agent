@@ -7,7 +7,9 @@
 層級由結構自動推導，匯出檔中的 `kind` 必須與推導結果一致：
 
 - `atomic`：根節點是單一內建元件，或引用另一個 atomic 客製元件。
+
 - `composite`：由 group 組合元件，有效組合深度不超過 3，且未同時組合兩個以上 composite 客製元件。
+
 - `template`：有效組合深度超過 3、引用 template，或整棵組合圖含兩個以上 composite 客製元件。
 
 分類器會拒絕未知元件、循環引用、重複 node id、宣告層級不符、prototype pollution key、raw HTML key 與非 JSON 值。
@@ -60,8 +62,11 @@ npm run test:custom-components
 組合節點使用 `type: "group"`；引用另一個客製元件使用 `type: "custom"`。group 的 layout 僅接受下列 allowlist：
 
 - `mode`: `stack | row | grid`
+
 - `gap`: `none | xs | sm | md | lg | xl`
+
 - `columns`: `1..12`
+
 - `align`: `start | center | end | stretch`
 
 ## Runtime 使用
@@ -161,7 +166,11 @@ Studio 提供 catalog 搜尋、結構 outline、group layout、options JSON、�
 ## 安全邊界
 
 - JSON 只允許純資料，事件 callback 必須由執行期 `nodeOptions` 注入，不得寫入 JSON。
+
 - 禁止 `innerHTML`、`rawHtml`、`srcdoc` 等 raw HTML option；執行期 `nodeOptions` 也會遞迴且不分大小寫地剔除同類鍵。
+
 - 禁止 `__proto__`、`prototype`、`constructor` 等 prototype-sensitive key。
+
 - manifest entry 必須是資料夾內的安全相對 `.json` 路徑，不接受 absolute URL 或 `..` traversal。
+
 - layout 只會映射到既定 CSS class，樣式使用 `var(--cl-*)` token。

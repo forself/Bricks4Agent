@@ -7,48 +7,89 @@ Composite components are reusable family-level structures assembled from the sam
 ## Component Index
 
 - `PageShell`: Top-level route container.
+
 - `SiteHeader`: Basic site title, logo, utility links, and primary links.
-- `HeroSection`: Text-led introduction section.
+
 - `ContentSection`: General text content section.
+
 - `LinkList`: General related-link list.
+
 - `FormBlock`: Non-submitting form representation.
+
 - `SiteFooter`: Basic footer with attribution, contact text, logo, and links.
+
 - `AtomicSection`: Generic section container for atom-based fallback assembly.
+
 - `TextBlock`: Heading and body text atom.
+
 - `ImageBlock`: Image/media atom.
+
 - `ButtonLink`: Link action atom.
+
 - `CardGrid`: Generic grid or carousel-like card container.
+
 - `FeatureCard`: Card atom for news, features, programs, and media.
+
 - `MegaHeader`: Multi-tier header with logo, utility links, primary navigation, and search affordance.
+
 - `HeroCarousel`: Large visual carousel for image-led home pages.
+
 - `HeroBanner`: Single-image or text-led hero band.
+
 - `QuickLinkRibbon`: Compact link ribbon for common actions.
+
 - `NewsCardCarousel`: Horizontal news card carousel.
+
 - `NewsGrid`: Grid of news or announcement cards.
+
 - `MediaFeatureGrid`: Media-rich feature grid.
+
 - `ServiceSearchHero`: Search-led hero for portal-like home pages.
+
 - `ServiceCategoryGrid`: Grid of audience, topic, or task categories with nested links.
+
 - `ServiceActionGrid`: High-priority action grid for registration, lookup, contact, portal, or service tasks.
+
 - `TabbedNewsBoard`: Multi-category news and announcement board.
+
 - `SearchBoxPanel`: Search input panel with suggestions.
+
 - `FacetFilterPanel`: Filter/facet panel for narrowing results.
+
 - `ResultList`: Search or discovery result list.
+
 - `PaginationNav`: Pagination or result navigation strip.
+
 - `DashboardFilterBar`: Report/dashboard filter and action toolbar.
+
 - `MetricSummaryGrid`: KPI and metric card grid.
+
 - `ChartPanel`: Chart-like visual panel represented from extracted values.
+
 - `DataTablePreview`: Table preview for report and listing data.
+
 - `StepIndicator`: Step/progress indicator for form flows.
+
 - `StructuredFormPanel`: Non-submitting structured form panel.
+
 - `ValidationSummary`: Validation and required-field summary.
+
 - `FormActionBar`: Form-flow action bar.
+
 - `ShowcaseHero`: Commercial-style hero with media and calls to action.
+
 - `ProductCardGrid`: Product or offer card grid.
+
 - `ProofStrip`: Trust, logo, or statistic proof strip.
+
 - `PricingPanel`: Pricing/package option panel.
+
 - `CtaBand`: Call-to-action band.
+
 - `InstitutionFooter`: Footer with contact text and curated links.
+
 - `ArticleList`: Listing/index page for news or articles.
+
 - `ContentArticle`: Article body with optional media.
 
 ## Composite Component Contracts
@@ -232,6 +273,9 @@ Use for final or mid-page calls to action.
 ## Library Rules
 
 - New templates can reference only component types declared in `manifest.json`.
+
 - New components must be documented here in the component index and, for composite components, in the contracts section.
+
 - Component props emitted by `TemplateCompiler` must be declared in the manifest schema.
+
 - Generated packages must keep custom generated components out of `components/generated/` for supported visual-pattern templates.

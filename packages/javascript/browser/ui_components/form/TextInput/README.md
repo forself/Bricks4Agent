@@ -32,7 +32,7 @@ const input = new TextInput({
 ### 方法
 
 | 方法 | 說明 |
-|------|------|
+|---|---|
 | `mount(container)` | 掛載至容器 |
 | `destroy()` | 銷毀元件 |
 | `getValue()` | 取得目前值 |
@@ -45,6 +45,7 @@ const input = new TextInput({
 ### 屬性
 
 - `element` — 根 DOM 元素
+
 - `input` — 內部 `<input>` 元素
 
 ## 使用範例

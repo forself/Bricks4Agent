@@ -3,6 +3,7 @@
 這是同一個頁面內的元件客製工作台；「客製」是操作，不是另一套元件家族。
 
 - 「樣式客製」：調整全域 theme tokens、元件 scoped tokens 與 class，匯入／匯出 `theme.tokens.json`、匯出 `theme.custom.css`。
+
 - 「元件組合」：從內建 catalog 與客製 registry 組合元件，依規則自動分類為 `atomic`、`composite`、`template`，匯入／匯出客製元件 JSON。
 
 兩個頁籤都內建可見說明與互相導覽的正式 `Link` 元件。「樣式客製」說明 catalog 展示與 scoped token 操作；「元件組合」說明 Palette → Outline → Inspector → 驗證／匯出流程、三層分類規則、definitions 路徑與驗收指令，並連到本 repo 的完整指南。
@@ -16,7 +17,9 @@ JSON 只保存資料與可信 command ID，不包含函式、HTML 或任意 CSS�
 這個結構同時驗證：
 
 1. PageDefinition JSON 能產生實際工具頁。
+
 2. Studio 缺少的互動能力必須回補到正式元件與 renderer，而不是在頁面手刻控制。
+
 3. 樣式與元件組合在同一個 renderer、同一份文件、不同頁籤中運作；切頁與 state 更新不得重建整個工作台。
 
 ## 開啟
@@ -44,9 +47,13 @@ npm run test:custom-components:browser # 客製元件安全/runtime 13/13
 主要測試鉤子：
 
 - `window.__studio`：definition、SHA-256、pageRenderer、renderer 與兩個 controller。
+
 - `window.__toolPageRenderer`：實際 `DynamicToolRenderer`。
+
 - `window.__studioControls.records`：互動控制到正式元件實例的 provenance map。
+
 - `window.__ts`：Theme controller 相容 API。
+
 - `window.__customComponentStudio`：元件組合 controller 相容 API。
 
 ## 檔案
@@ -61,4 +68,4 @@ npm run test:custom-components:browser # 客製元件安全/runtime 13/13
 | `gen-custom-css.mjs` | 將 theme token JSON 轉為覆蓋 CSS |
 | `run.mjs` | Theme Studio fresh-Edge 回歸 |
 
-Theme token 的載入順序與產物用法見 [`THEME-USAGE.md`](../../packages/javascript/browser/ui_components/THEME-USAGE.md)；客製元件契約見 [`CUSTOM-COMPONENTS.md`](../../CUSTOM-COMPONENTS.md)。
+Theme token 的載入順序與產物用法見 [`THEME-USAGE.md`](../../packages/javascript/browser/ui_components/THEME-USAGE.html)；客製元件契約見 [`CUSTOM-COMPONENTS.md`](../../CUSTOM-COMPONENTS.md)。

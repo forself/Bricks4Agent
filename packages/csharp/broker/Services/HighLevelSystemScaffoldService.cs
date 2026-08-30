@@ -465,7 +465,7 @@ public sealed class HighLevelSystemScaffoldService
         var testsRoot = Path.Combine(draft.ManagedPaths.ProjectRoot, "tests");
         Directory.CreateDirectory(testsRoot);
 
-        File.WriteAllText(Path.Combine(draft.ManagedPaths.ProjectRoot, "README.md"), BuildProjectReadme(spec), new UTF8Encoding(false));
+        File.WriteAllText(Path.Combine(draft.ManagedPaths.ProjectRoot, "README.html"), BuildProjectReadme(spec), new UTF8Encoding(false));
         File.WriteAllText(Path.Combine(frontendRoot, "index.html"), BuildIndexHtml(spec), new UTF8Encoding(false));
         File.WriteAllText(Path.Combine(frontendRoot, "app.js"), BuildAppJs(spec), new UTF8Encoding(false));
         File.WriteAllText(Path.Combine(frontendRoot, "styles.css"), BuildStylesCss(spec), new UTF8Encoding(false));
@@ -475,7 +475,7 @@ public sealed class HighLevelSystemScaffoldService
         {
             var backendRoot = Path.Combine(draft.ManagedPaths.ProjectRoot, "backend");
             Directory.CreateDirectory(backendRoot);
-            File.WriteAllText(Path.Combine(backendRoot, "README.md"), BuildBackendReadme(spec), new UTF8Encoding(false));
+            File.WriteAllText(Path.Combine(backendRoot, "README.html"), BuildBackendReadme(spec), new UTF8Encoding(false));
             File.WriteAllText(Path.Combine(backendRoot, "openapi.json"), BuildOpenApiSkeleton(spec), new UTF8Encoding(false));
         }
     }
@@ -506,7 +506,7 @@ public sealed class HighLevelSystemScaffoldService
     {
         var requiredFiles = new List<string>
         {
-            Path.Combine(draft.ManagedPaths.ProjectRoot, "README.md"),
+            Path.Combine(draft.ManagedPaths.ProjectRoot, "README.html"),
             Path.Combine(draft.ManagedPaths.ProjectRoot, "docs", "requirements-analysis.md"),
             Path.Combine(draft.ManagedPaths.ProjectRoot, "docs", "design-plan.md"),
             Path.Combine(draft.ManagedPaths.ProjectRoot, "docs", "iteration-state.json"),
@@ -518,7 +518,7 @@ public sealed class HighLevelSystemScaffoldService
 
         if (!string.Equals(spec.BackendStack, "none", StringComparison.OrdinalIgnoreCase))
         {
-            requiredFiles.Add(Path.Combine(draft.ManagedPaths.ProjectRoot, "backend", "README.md"));
+            requiredFiles.Add(Path.Combine(draft.ManagedPaths.ProjectRoot, "backend", "README.html"));
             requiredFiles.Add(Path.Combine(draft.ManagedPaths.ProjectRoot, "backend", "openapi.json"));
         }
 

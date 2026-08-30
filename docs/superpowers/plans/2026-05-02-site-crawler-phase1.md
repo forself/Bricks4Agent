@@ -15,26 +15,43 @@
 Create:
 
 - `packages/csharp/workers/site-crawler-worker/SiteCrawlerWorker.csproj`
+
 - `packages/csharp/workers/site-crawler-worker/Program.cs`
+
 - `packages/csharp/workers/site-crawler-worker/appsettings.json`
+
 - `packages/csharp/workers/site-crawler-worker/Models/SiteCrawlContracts.cs`
+
 - `packages/csharp/workers/site-crawler-worker/Services/SafeUrlPolicy.cs`
+
 - `packages/csharp/workers/site-crawler-worker/Services/PathDepthScope.cs`
+
 - `packages/csharp/workers/site-crawler-worker/Services/SiteCrawlerService.cs`
+
 - `packages/csharp/workers/site-crawler-worker/Services/DeterministicSiteExtractor.cs`
+
 - `packages/csharp/workers/site-crawler-worker/Services/HttpPageFetcher.cs`
+
 - `packages/csharp/workers/site-crawler-worker/Handlers/SiteCrawlSourceHandler.cs`
+
 - `packages/csharp/broker/tool-specs/site.crawl.source/tool.json`
+
 - `packages/csharp/broker/tool-specs/site.crawl.source/TOOL.md`
+
 - `packages/csharp/tests/unit/Workers/SiteCrawler/SafeUrlPolicyTests.cs`
+
 - `packages/csharp/tests/unit/Workers/SiteCrawler/PathDepthScopeTests.cs`
+
 - `packages/csharp/tests/unit/Workers/SiteCrawler/DeterministicSiteExtractorTests.cs`
+
 - `packages/csharp/tests/unit/Workers/SiteCrawler/SiteCrawlerServiceTests.cs`
+
 - `packages/csharp/tests/unit/Workers/SiteCrawler/SiteCrawlSourceHandlerTests.cs`
 
 Modify:
 
 - `packages/csharp/ControlPlane.slnx`
+
 - `packages/csharp/tests/unit/Unit.Tests.csproj`
 
 ---
@@ -1933,7 +1950,11 @@ Expected: only unrelated pre-existing dirty files remain. No uncommitted site cr
 This Phase 1 plan stops after safe crawl and deterministic extraction. The next implementation plan should cover:
 
 - Dynamic generator component registry.
+
 - Component resolver.
+
 - Generated component synthesizer.
+
 - `site.convert_to_generator_json` worker.
+
 - LINE `/clone` high-level intake and path-depth clarification.

@@ -31,7 +31,7 @@ node tools/page-gen.js --list-types
 ## Options
 
 | Option | Description | Default |
-| --- | --- | --- |
+|---|---|---|
 | `--def <path>` | Input definition file | - |
 | `--mode <mode>` | `static`, `dynamic`, or `both` | `static` |
 | `--output <dir>` | Output directory | - |
@@ -42,7 +42,7 @@ node tools/page-gen.js --list-types
 ## Modes
 
 | Mode | Output |
-| --- | --- |
+|---|---|
 | `static` | `<Entity>Page.js` |
 | `dynamic` | `<entity>-definition.json` |
 | `both` | Both outputs |
@@ -68,11 +68,15 @@ node packages/javascript/browser/page-generator/examples/test-generator.js
 可參考：
 
 - `packages/javascript/browser/page-generator/examples/EmployeeDefinition.js`
+
 - `packages/javascript/browser/page-generator/examples/DiaryEditorDefinition.js`
+
 - `packages/javascript/browser/page-generator/examples/ContactFormDefinition.js`
 
 ## Related Files
 
 - `packages/javascript/browser/page-generator/README.md`
+
 - `packages/javascript/browser/page-generator/PageDefinitionAdapter.js`
+
 - `packages/javascript/browser/page-generator/examples/`

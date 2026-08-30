@@ -13,7 +13,9 @@ Identity mode:
 Rules:
 
 - credentials come from broker-managed secret storage
+
 - credentials are never exposed to users or models
+
 - audit must record the site binding and system-account context
 
 This is a reference spec.

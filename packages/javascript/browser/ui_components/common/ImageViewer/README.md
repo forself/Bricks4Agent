@@ -9,7 +9,7 @@ ImageViewer 使用靜態方法開啟，全域同時只有一個實例。
 ### 靜態方法
 
 | 方法 | 說明 |
-|------|------|
+|---|---|
 | `ImageViewer.open(src, options?)` | 開啟圖片展示器 |
 | `ImageViewer.close()` | 關閉圖片展示器 |
 
@@ -20,7 +20,7 @@ new ImageViewer(src, options?)
 ```
 
 | 參數 | 型別 | 預設值 | 說明 |
-|------|------|--------|------|
+|---|---|---|---|
 | `src` | `string` | — | 圖片來源 URL |
 | `options.minZoom` | `number` | `0.1` | 最小縮放比例 |
 | `options.maxZoom` | `number` | `3` | 最大縮放比例 |
@@ -31,7 +31,7 @@ new ImageViewer(src, options?)
 ### 實例方法
 
 | 方法 | 說明 |
-|------|------|
+|---|---|
 | `setSrc(src)` | 切換圖片來源 |
 | `setOptions(options)` | 更新選項 |
 | `destroy()` | 關閉並銷毀 |
@@ -39,10 +39,15 @@ new ImageViewer(src, options?)
 ### 操作方式
 
 - 滾輪：縮放
+
 - 拖曳：平移（放大後）
+
 - 點擊遮罩：關閉
+
 - Escape 鍵：關閉
+
 - 左右箭頭鍵：切換圖片（需提供 onPrev/onNext）
+
 - 工具列：縮小、放大、重設、關閉
 
 ## 使用範例

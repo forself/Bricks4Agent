@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Static Server (C#)</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Static Server (C#)</h1>
+<p>Minimal static file server implemented with plain .NET <code>HttpListener</code>.</p>
+<h2>What it is for</h2>
+<p>Use this helper when you need a lightweight local server for:</p>
+<ul>
+<li>SPA frontend files</li>
+<li>static demo pages</li>
+<li>generated frontend smoke testing</li>
+</ul>
+<p>It is a small local utility, not a production web host.</p>
+<h2>Current behavior</h2>
+<p>Based on <a href="StaticServer.cs">StaticServer.cs</a>, the server currently:</p>
+<ul>
+<li>listens on <code>http://localhost:&lt;port&gt;/</code></li>
+<li>also listens on <code>http://127.0.0.1:&lt;port&gt;/</code></li>
+<li>serves static files from a local root directory</li>
+<li>falls back to <code>index.html</code> for SPA-style routes</li>
+<li>adds permissive development CORS headers</li>
+<li>adds <code>X-Content-Type-Options</code> and <code>X-Frame-Options</code></li>
+<li>rejects non-<code>GET</code> / non-<code>HEAD</code> methods except <code>OPTIONS</code></li>
+</ul>
+<h2>Quick Start</h2>
+<h3>Run directly</h3>
+<pre><code class="language-bash">cd tools/static-server
+dotnet run ../spa-generator/frontend 3000
+</code></pre>
+<h3>Publish</h3>
+<pre><code class="language-bash">dotnet publish -c Release -o ./dist
+</code></pre>
+<p>Run the published executable:</p>
+<pre><code class="language-bash">./dist/serve ./frontend 3000
+</code></pre>
+<h3>Self-contained publish</h3>
+<pre><code class="language-bash"># Windows
+dotnet publish -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -o ./dist
+
+# Linux
+dotnet publish -c Release -r linux-x64 --self-contained -p:PublishSingleFile=true -o ./dist
+
+# macOS
+dotnet publish -c Release -r osx-x64 --self-contained -p:PublishSingleFile=true -o ./dist
+</code></pre>
+<h2>Arguments</h2>
+<pre><code class="language-text">serve [directory] [port]
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Argument</th>
+<th>Default</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>directory</td>
+<td><code>.</code></td>
+<td>Static root</td>
+</tr>
+<tr>
+<td>port</td>
+<td><code>3000</code></td>
+<td>HTTP port</td>
+</tr>
+</tbody>
+</table>
+<h2>Examples</h2>
+<pre><code class="language-bash"># current directory on port 3000
+serve
+
+# custom directory
+serve ./public
+
+# custom directory and port
+serve ./frontend 8080
+</code></pre>
+<h2>Limits</h2>
+<ul>
+<li>no hot reload</li>
+<li>no TLS termination</li>
+<li>no auth</li>
+<li>no compression pipeline</li>
+<li>no production-grade caching policy</li>
+</ul>
+<p>If you need a local static helper, this is enough. If you need a real edge or production serving layer, use something else.</p>
+</main>
+</body>
+</html>

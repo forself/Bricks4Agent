@@ -23,7 +23,7 @@ const radio = new Radio({
 ### 單一 Radio 方法
 
 | 方法 | 說明 |
-|------|------|
+|---|---|
 | `mount(container)` | 掛載至容器 |
 | `destroy()` | 銷毀元件 |
 | `isChecked()` | 回傳是否選中 |
@@ -49,11 +49,12 @@ const group = Radio.createGroup({
 ### Group 方法
 
 | 方法 | 說明 |
-|------|------|
+|---|---|
 | `group.mount(container)` | 掛載群組至容器 |
 | `group.getValue()` | 取得選中值 |
 | `group.setValue(value)` | 設定選中值 |
-| `group.clear()` | 清除選取（重置為 null） |
+| `group.setValue(null)` | 清除選取（所有 Radio 取消選中） |
+| `group.destroy()` | 銷毀群組（含所有 Radio） |
 
 ## 使用範例
 

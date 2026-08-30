@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bricks4Agent Studio</title>
+  <link rel="stylesheet" href="../../packages/javascript/browser/ui_components/palette.css">
+  <link rel="stylesheet" href="../../packages/javascript/browser/ui_components/theme.css">
+  <link rel="stylesheet" href="README.css">
+</head>
+<body>
+<main>
+<h1>Bricks4Agent Studio</h1>
+<p>這是同一個頁面內的元件客製工作台；「客製」是操作，不是另一套元件家族。</p>
+<ul>
+<li>「樣式客製」：調整全域 theme tokens、元件 scoped tokens 與 class，匯入／匯出 <code>theme.tokens.json</code>、匯出 <code>theme.custom.css</code>。</li>
+<li>「元件組合」：從內建 catalog 與客製 registry 組合元件，依規則自動分類為 <code>atomic</code>、<code>composite</code>、<code>template</code>，匯入／匯出客製元件 JSON。</li>
+</ul>
+<p>兩個頁籤都內建可見說明與互相導覽的正式 <code>Link</code> 元件。「樣式客製」說明 catalog 展示與 scoped token 操作；「元件組合」說明 Palette → Outline → Inspector → 驗證／匯出流程、三層分類規則、definitions 路徑與驗收指令，並連到本 repo 的完整指南。</p>
+<h2>自舉架構</h2>
+<p>Studio 的唯一頁面定義是 <a href="studio.page.json"><code>studio.page.json</code></a>。啟動程式讀取這份 JSON，交給 <code>DynamicPageRenderer</code> 的 <code>tool</code> mode；所有工具列、頁籤、輸入、清單、樹狀結構與按鈕都由 <code>ComponentFactory</code> 建立的 Bricks4Agent 元件產生。</p>
+<p>JSON 只保存資料與可信 command ID，不包含函式、HTML 或任意 CSS。<code>controller.js</code> 與 <code>../custom-component-studio/controller.js</code> 提供 command registry、狀態與預覽資料。<code>slot</code> 只承載由 catalog/runtime 建立的動態預覽，不另建一套工具控制。</p>
+<p>這個結構同時驗證：</p>
+<ol>
+<li>PageDefinition JSON 能產生實際工具頁。</li>
+<li>Studio 缺少的互動能力必須回補到正式元件與 renderer，而不是在頁面手刻控制。</li>
+<li>樣式與元件組合在同一個 renderer、同一份文件、不同頁籤中運作；切頁與 state 更新不得重建整個工作台。</li>
+</ol>
+<h2>開啟</h2>
+<p>以 repository root 啟動任一靜態 HTTP server，再開啟：</p>
+<pre><code class="language-text">/tools/theme-studio/index.html
+/tools/theme-studio/index.html?tab=components
+</code></pre>
+<p>舊的 <code>/tools/custom-component-studio/index.html</code> 會導向第二個頁籤，保留書籤相容性。</p>
+<h2>驗收</h2>
+<p>下列腳本都會自行啟動 random-port、no-store server 與 fresh Microsoft Edge，不依賴既有 8124 server：</p>
+<pre><code class="language-powershell">npm run test:theme-studio:browser   # Theme、catalog 與頁內說明 18/18
+npm run test:studio:self-host       # 單一 JSON、Link provenance、相容入口 19/19
+npm run test:studio:browser         # 說明連結、DOM identity、雙 JSON round-trip、CSS 注入拒絕 16/16
+npm run test:custom-components:browser # 客製元件安全/runtime 13/13
+</code></pre>
+<p>主要測試鉤子：</p>
+<ul>
+<li><code>window.__studio</code>：definition、SHA-256、pageRenderer、renderer 與兩個 controller。</li>
+<li><code>window.__toolPageRenderer</code>：實際 <code>DynamicToolRenderer</code>。</li>
+<li><code>window.__studioControls.records</code>：互動控制到正式元件實例的 provenance map。</li>
+<li><code>window.__ts</code>：Theme controller 相容 API。</li>
+<li><code>window.__customComponentStudio</code>：元件組合 controller 相容 API。</li>
+</ul>
+<h2>檔案</h2>
+<table>
+<thead>
+<tr>
+<th>檔案</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>studio.page.json</code></td>
+<td>唯一、權威 Tool PageDefinition</td>
+</tr>
+<tr>
+<td><code>studio.js</code></td>
+<td>讀 JSON、合併 controllers、啟動 renderer 與公開測試鉤子</td>
+</tr>
+<tr>
+<td><code>controller.js</code></td>
+<td>Theme 狀態、可信 commands、匯入匯出與 catalog 預覽</td>
+</tr>
+<tr>
+<td><code>studio.css</code></td>
+<td>JSON node class 的外部樣式；只用 <code>--cl-*</code> tokens</td>
+</tr>
+<tr>
+<td><code>sample-data.js</code></td>
+<td>catalog 預覽用 options；不是工具 UI</td>
+</tr>
+<tr>
+<td><code>gen-custom-css.mjs</code></td>
+<td>將 theme token JSON 轉為覆蓋 CSS</td>
+</tr>
+<tr>
+<td><code>run.mjs</code></td>
+<td>Theme Studio fresh-Edge 回歸</td>
+</tr>
+</tbody>
+</table>
+<p>Theme token 的載入順序與產物用法見 <a href="../../packages/javascript/browser/ui_components/THEME-USAGE.html"><code>THEME-USAGE.md</code></a>；客製元件契約見 <a href="../../CUSTOM-COMPONENTS.html"><code>CUSTOM-COMPONENTS.md</code></a>。</p>
+</main>
+</body>
+</html>

@@ -7,7 +7,7 @@ const port = Number(process.env.PORT || '11434');
 const model = process.env.MOCK_MODEL || 'stack-test-model';
 const responseText = process.env.MOCK_RESPONSE_TEXT || 'STACK_OK';
 const toolCall = process.env.MOCK_TOOL_CALL || '';
-const toolPath = process.env.MOCK_TOOL_PATH || 'README.md';
+const toolPath = process.env.MOCK_TOOL_PATH || 'README.html';
 // Generic tool args (JSON). Falls back to {path: toolPath} for read_file back-compat.
 let toolArgs = {};
 try { toolArgs = process.env.MOCK_TOOL_ARGS_JSON ? JSON.parse(process.env.MOCK_TOOL_ARGS_JSON) : {}; }

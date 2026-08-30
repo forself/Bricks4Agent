@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>JwtHelper - JWT Token Management</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>JwtHelper - JWT Token Management</h1>
+<p>Helper class for generating and validating JWT (JSON Web Tokens) for authentication and authorization.</p>
+<h2>Features</h2>
+<ul>
+<li>JWT access token generation</li>
+<li>Refresh token generation</li>
+<li>Token validation</li>
+<li>Claims extraction (user ID, username, email, roles)</li>
+<li>Token expiration checking</li>
+<li>Custom claims support</li>
+<li>Configurable via appsettings.json</li>
+</ul>
+<h2>Setup</h2>
+<h3>1. Install Required NuGet Packages</h3>
+<pre><code class="language-bash">dotnet add package System.IdentityModel.Tokens.Jwt
+dotnet add package Microsoft.AspNetCore.Authentication.JwtBearer
+</code></pre>
+<h3>2. Configure appsettings.json</h3>
+<pre><code class="language-json">{
+  &quot;Jwt&quot;: {
+    &quot;SecretKey&quot;: &quot;your-super-secret-key-that-is-at-least-32-characters-long&quot;,
+    &quot;Issuer&quot;: &quot;YourAppName&quot;,
+    &quot;Audience&quot;: &quot;YourAppUsers&quot;,
+    &quot;ExpirationMinutes&quot;: 60
+  }
+}
+</code></pre>
+<h3>3. Register JWT Authentication in Program.cs</h3>
+<pre><code class="language-csharp">using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
+using System.Text;
+
+var builder = WebApplication.CreateBuilder(args);
+
+// Register JwtHelper
+builder.Services.AddSingleton&lt;JwtHelper&gt;();
+
+// Configure JWT Authentication
+var jwtSettings = builder.Configuration.GetSection(&quot;Jwt&quot;);
+var secretKey = jwtSettings[&quot;SecretKey&quot;];
+
+builder.Services.AddAuthentication(options =&gt;
+{
+    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+})
+.AddJwtBearer(options =&gt;
+{
+    options.TokenValidationParameters = new TokenValidationParameters
+    {
+        ValidateIssuer = true,
+        ValidateAudience = true,
+        ValidateLifetime = true,
+        ValidateIssuerSigningKey = true,
+        ValidIssuer = jwtSettings[&quot;Issuer&quot;],
+        ValidAudience = jwtSettings[&quot;Audience&quot;],
+        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secretKey)),
+        ClockSkew = TimeSpan.Zero
+    };
+});
+
+var app = builder.Build();
+
+app.UseAuthentication();
+app.UseAuthorization();
+app.MapControllers();
+
+app.Run();
+</code></pre>
+<h2>Usage</h2>
+<h3>Generate Access Token</h3>
+<pre><code class="language-csharp">public class AuthService
+{
+    private readonly JwtHelper _jwtHelper;
+
+    public AuthService(JwtHelper jwtHelper)
+    {
+        _jwtHelper = jwtHelper;
+    }
+
+    public string Login(User user)
+    {
+        // Generate token with user information
+        var token = _jwtHelper.GenerateToken(
+            userId: user.Id,
+            username: user.Username,
+            email: user.Email,
+            roles: new[] { &quot;User&quot;, &quot;Admin&quot; }
+        );
+
+        return token;
+    }
+}
+</code></pre>
+<h3>Generate Token with Custom Claims</h3>
+<pre><code class="language-csharp">var additionalClaims = new Dictionary&lt;string, string&gt;
+{
+    { &quot;department&quot;, &quot;Engineering&quot; },
+    { &quot;employeeId&quot;, &quot;EMP-12345&quot; },
+    { &quot;tenantId&quot;, &quot;TENANT-001&quot; }
+};
+
+var token = _jwtHelper.GenerateToken(
+    userId: user.Id,
+    username: user.Username,
+    email: user.Email,
+    roles: new[] { &quot;User&quot; },
+    additionalClaims: additionalClaims
+);
+</code></pre>
+<h3>Generate Refresh Token</h3>
+<pre><code class="language-csharp">public (string accessToken, string refreshToken) Login(User user)
+{
+    var accessToken = _jwtHelper.GenerateToken(
+        userId: user.Id,
+        username: user.Username,
+        email: user.Email,
+        roles: user.Roles
+    );
+
+    var refreshToken = _jwtHelper.GenerateRefreshToken();
+
+    // Store refresh token in database
+    await _userRepository.SaveRefreshToken(user.Id, refreshToken);
+
+    return (accessToken, refreshToken);
+}
+</code></pre>
+<h3>Validate Token</h3>
+<pre><code class="language-csharp">[HttpGet(&quot;validate&quot;)]
+public IActionResult ValidateToken([FromHeader] string authorization)
+{
+    var token = authorization?.Replace(&quot;Bearer &quot;, &quot;&quot;);
+
+    var principal = _jwtHelper.ValidateToken(token);
+
+    if (principal == null)
+        return Unauthorized(&quot;Invalid token&quot;);
+
+    return Ok(&quot;Token is valid&quot;);
+}
+</code></pre>
+<h3>Extract Claims from Token</h3>
+<pre><code class="language-csharp">// Get user ID
+var userId = _jwtHelper.GetUserIdFromToken(token);
+
+// Get username
+var username = _jwtHelper.GetUsernameFromToken(token);
+
+// Get email
+var email = _jwtHelper.GetEmailFromToken(token);
+
+// Get roles
+var roles = _jwtHelper.GetRolesFromToken(token);
+
+// Get custom claim
+var department = _jwtHelper.GetClaimFromToken(token, &quot;department&quot;);
+
+// Get all claims
+var allClaims = _jwtHelper.GetAllClaims(token);
+</code></pre>
+<h3>Check Token Expiration</h3>
+<pre><code class="language-csharp">if (_jwtHelper.IsTokenExpired(token))
+{
+    return Unauthorized(&quot;Token has expired&quot;);
+}
+
+var expiration = _jwtHelper.GetTokenExpiration(token);
+var timeRemaining = expiration - DateTime.UtcNow;
+</code></pre>
+<h3>Complete Login Controller Example</h3>
+<pre><code class="language-csharp">[ApiController]
+[Route(&quot;api/[controller]&quot;)]
+public class AuthController : ControllerBase
+{
+    private readonly JwtHelper _jwtHelper;
+    private readonly IUserService _userService;
+    private readonly PasswordHasher _passwordHasher;
+
+    public AuthController(JwtHelper jwtHelper, IUserService userService, PasswordHasher passwordHasher)
+    {
+        _jwtHelper = jwtHelper;
+        _userService = userService;
+        _passwordHasher = passwordHasher;
+    }
+
+    [HttpPost(&quot;login&quot;)]
+    public async Task&lt;IActionResult&gt; Login([FromBody] LoginDto dto)
+    {
+        // Find user
+        var user = await _userService.GetByUsernameAsync(dto.Username);
+        if (user == null)
+            return Unauthorized(&quot;Invalid credentials&quot;);
+
+        // Verify password
+        if (!_passwordHasher.VerifyPassword(dto.Password, user.PasswordHash))
+            return Unauthorized(&quot;Invalid credentials&quot;);
+
+        // Generate tokens
+        var accessToken = _jwtHelper.GenerateToken(
+            userId: user.Id,
+            username: user.Username,
+            email: user.Email,
+            roles: user.Roles
+        );
+
+        var refreshToken = _jwtHelper.GenerateRefreshToken();
+
+        // Save refresh token
+        await _userService.SaveRefreshTokenAsync(user.Id, refreshToken);
+
+        return Ok(new
+        {
+            AccessToken = accessToken,
+            RefreshToken = refreshToken,
+            ExpiresIn = 3600 // seconds
+        });
+    }
+
+    [HttpPost(&quot;refresh&quot;)]
+    public async Task&lt;IActionResult&gt; RefreshToken([FromBody] RefreshTokenDto dto)
+    {
+        // Validate refresh token
+        var user = await _userService.GetByRefreshTokenAsync(dto.RefreshToken);
+        if (user == null)
+            return Unauthorized(&quot;Invalid refresh token&quot;);
+
+        // Generate new access token
+        var accessToken = _jwtHelper.GenerateToken(
+            userId: user.Id,
+            username: user.Username,
+            email: user.Email,
+            roles: user.Roles
+        );
+
+        return Ok(new { AccessToken = accessToken });
+    }
+
+    [HttpPost(&quot;logout&quot;)]
+    [Authorize]
+    public async Task&lt;IActionResult&gt; Logout()
+    {
+        var userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier).Value);
+        await _userService.RevokeRefreshTokenAsync(userId);
+
+        return Ok(&quot;Logged out successfully&quot;);
+    }
+}
+</code></pre>
+<h3>Protecting Endpoints with JWT</h3>
+<pre><code class="language-csharp">[ApiController]
+[Route(&quot;api/[controller]&quot;)]
+public class UsersController : ControllerBase
+{
+    // Require authentication
+    [HttpGet]
+    [Authorize]
+    public IActionResult GetAll()
+    {
+        return Ok(&quot;Protected endpoint&quot;);
+    }
+
+    // Require specific role
+    [HttpDelete(&quot;{id}&quot;)]
+    [Authorize(Roles = &quot;Admin&quot;)]
+    public IActionResult Delete(int id)
+    {
+        return Ok(&quot;Admin only endpoint&quot;);
+    }
+
+    // Require multiple roles
+    [HttpPost(&quot;important&quot;)]
+    [Authorize(Roles = &quot;Admin,SuperUser&quot;)]
+    public IActionResult ImportantAction()
+    {
+        return Ok(&quot;Admin or SuperUser endpoint&quot;);
+    }
+}
+</code></pre>
+<h2>Token Structure</h2>
+<p>Generated token includes these claims:
+- <code>NameIdentifier</code> - User ID
+- <code>Name</code> - Username
+- <code>Email</code> - User email
+- <code>Role</code> - User roles (can be multiple)
+- <code>sub</code> - Subject (User ID)
+- <code>jti</code> - JWT ID (unique identifier)
+- <code>iat</code> - Issued at timestamp
+- Custom claims (if provided)</p>
+<h2>Security Best Practices</h2>
+<ol>
+<li><strong>Secret Key</strong>: Use a strong, randomly generated secret key (at least 32 characters)</li>
+<li><strong>HTTPS Only</strong>: Always use HTTPS in production</li>
+<li><strong>Token Expiration</strong>: Set reasonable expiration times (15-60 minutes for access tokens)</li>
+<li><strong>Refresh Tokens</strong>: Use refresh tokens for long-lived sessions</li>
+<li><strong>Token Storage</strong>: Store tokens securely on client (HttpOnly cookies recommended)</li>
+<li><strong>Token Revocation</strong>: Implement blacklist or database check for revoked tokens</li>
+<li><strong>Environment Variables</strong>: Store secret key in environment variables, not appsettings.json</li>
+</ol>
+<h2>Dependencies</h2>
+<ul>
+<li>System.IdentityModel.Tokens.Jwt</li>
+<li>Microsoft.IdentityModel.Tokens</li>
+<li>Microsoft.AspNetCore.Authentication.JwtBearer</li>
+<li>.NET 6.0 or higher</li>
+</ul>
+<h2>Benefits</h2>
+<ol>
+<li><strong>Stateless Authentication</strong> - No server-side session storage needed</li>
+<li><strong>Scalability</strong> - Works well with distributed systems</li>
+<li><strong>Cross-Domain</strong> - Can be used across different domains</li>
+<li><strong>Mobile-Friendly</strong> - Easy to implement in mobile apps</li>
+<li><strong>Type Safety</strong> - Strongly-typed claim extraction</li>
+<li><strong>Flexible</strong> - Support for custom claims</li>
+<li><strong>Secure</strong> - Industry-standard token format</li>
+</ol>
+</main>
+</body>
+</html>

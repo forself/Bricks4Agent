@@ -23,7 +23,7 @@ const field = new FormField({
 ### 方法
 
 | 方法 | 說明 |
-|------|------|
+|---|---|
 | `mount(container)` | 掛載至容器（selector 或 DOM） |
 | `destroy()` | 銷毀元件（含內部 component） |
 | `setError(msg)` | 設定錯誤訊息，空字串清除 |

@@ -13,7 +13,7 @@ new StudentInput(options?)
 繼承 `ChainedInput` 所有選項（`onChange`、`layout`、`gap`），`fields` 已預設為：
 
 | 欄位 name | type | 說明 |
-|-----------|------|------|
+|---|---|---|
 | `isStudent` | `checkbox` | 是否為在學學生 |
 | `schoolName` | `text` | 學校名稱，僅勾選時顯示（`hideWhenDisabled: true`） |
 

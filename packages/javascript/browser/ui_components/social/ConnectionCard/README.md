@@ -15,7 +15,7 @@ const card = new ConnectionCard(options);
 **options 參數：**
 
 | 參數 | 型別 | 預設值 | 說明 |
-|------|------|--------|------|
+|---|---|---|---|
 | `avatar` | `string` | `''` | 頭像 URL |
 | `name` | `string` | `''` | 名稱 |
 | `subtitle` | `string` | `''` | 副標題（如所屬組織、職務） |
@@ -25,13 +25,13 @@ const card = new ConnectionCard(options);
 ### 靜態方法
 
 | 方法 | 回傳 | 說明 |
-|------|------|------|
+|---|---|---|
 | `ConnectionCard.gridHTML(items)` | `string` | 批次產生多張卡片的 HTML（Flex Grid 佈局） |
 
 ### 實例方法
 
 | 方法 | 回傳 | 說明 |
-|------|------|------|
+|---|---|---|
 | `toHTML()` | `string` | 產生 HTML 字串 |
 | `mount(container)` | `void` | 掛載到容器 |
 | `update(options)` | `void` | 更新配置並重新渲染 |

@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tool Spec Registry</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Tool Spec Registry</h1>
+<h2>Goal</h2>
+<p>Make broker-registered tools document-driven.</p>
+<p>The source of truth for a tool must not be adapter code alone.
+Instead, each tool should have:</p>
+<ul>
+<li>machine-readable definition data</li>
+<li>human/model-readable explanation</li>
+<li>broker registration metadata</li>
+<li>capability bindings</li>
+</ul>
+<h2>Current Scope</h2>
+<p>The current registry is a broker-owned file registry rooted at:</p>
+<ul>
+<li><code>packages/csharp/broker/tool-specs</code></li>
+</ul>
+<p>Each tool lives in its own directory:</p>
+<ul>
+<li><code>tool.json</code></li>
+<li><code>TOOL.md</code></li>
+</ul>
+<h2>Current Broker Behavior</h2>
+<p>The broker now:</p>
+<ul>
+<li>loads tool specs from the configured root</li>
+<li>registers them into an in-memory <code>IToolSpecRegistry</code></li>
+<li>exposes list/get endpoints</li>
+<li>validates whether bound capability ids already exist in the capability catalog</li>
+<li>synchronizes active tool specs into broker capabilities at startup</li>
+</ul>
+<p>This is intentionally a registry-first layer.
+Execution adapters still remain separate from the specs, but active specs may already be mapped to broker-owned execution routes.</p>
+<h2>Status Handling</h2>
+<p>Tool specs may exist before they are executable.</p>
+<ul>
+<li><code>planned</code>: documented only, not synchronized into runtime capabilities</li>
+<li><code>active</code></li>
+<li><code>ready</code></li>
+<li><code>beta</code></li>
+</ul>
+<p>Only <code>active</code>, <code>ready</code>, and <code>beta</code> specs are synchronized into broker capability records.</p>
+<h2>Tool Directory Contract</h2>
+<p>Each tool directory is expected to contain:</p>
+<h3><code>tool.json</code></h3>
+<p>Machine-readable definition, including:</p>
+<ul>
+<li><code>tool_id</code></li>
+<li><code>display_name</code></li>
+<li><code>summary</code></li>
+<li><code>kind</code></li>
+<li><code>status</code></li>
+<li><code>version</code></li>
+<li><code>tags</code></li>
+<li><code>capability_bindings</code></li>
+<li><code>input_schema</code></li>
+<li><code>output_schema</code></li>
+<li><code>source_policy</code></li>
+<li><code>execution_rules</code></li>
+<li><code>response_contract</code></li>
+<li><code>browser_profile</code> (optional, for broker-governed browser tools)</li>
+<li><code>browser_session_policy</code> (optional, for browser session and credential governance)</li>
+<li><code>browser_site_policy</code> (optional, for site/origin governance)</li>
+<li><code>browser_action_policy</code> (optional, for browser action and approval governance)</li>
+</ul>
+<h3><code>TOOL.md</code></h3>
+<p>Human/model-readable explanation, including:</p>
+<ul>
+<li>intended use</li>
+<li>status</li>
+<li>source constraints</li>
+<li>response rules</li>
+<li>cautions</li>
+</ul>
+<h2>Design Principle</h2>
+<p>The registry defines:</p>
+<ul>
+<li>what a tool is</li>
+<li>how it should be requested</li>
+<li>what sources it may use</li>
+<li>how it should respond</li>
+</ul>
+<p>The adapter defines only:</p>
+<ul>
+<li>how the tool is executed</li>
+</ul>
+<p>So the broker should evolve from:</p>
+<ul>
+<li>code/seed-driven capabilities</li>
+</ul>
+<p>toward:</p>
+<ul>
+<li>spec-driven tool registration</li>
+<li>capability generation or reconciliation from specs</li>
+<li>prompt exposure derived from specs</li>
+<li>execution adapters selected under broker control</li>
+</ul>
+<p>For browser tools, the registry can now also carry first-level identity metadata through <code>browser_profile</code>, including:</p>
+<ul>
+<li><code>identity_mode</code></li>
+<li><code>anonymous</code></li>
+<li><code>system_account</code></li>
+<li><code>user_delegated</code></li>
+<li><code>credential_source</code></li>
+<li><code>session_owner</code></li>
+<li><code>allowed_actions</code></li>
+<li><code>confirmation_policy</code></li>
+</ul>
+<p>This allows browser-tool governance to start from identity and trust boundaries before runtime implementation is complete.</p>
+<p>The registry can also carry browser session policy through <code>browser_session_policy</code>, including:</p>
+<ul>
+<li><code>binding_mode</code></li>
+<li><code>credential_binding</code></li>
+<li><code>reuse_scope</code></li>
+<li><code>lease_minutes</code></li>
+<li><code>requires_consent_record</code></li>
+<li><code>requires_interactive_login</code></li>
+</ul>
+<p>This makes session and credential handling registry-visible instead of hiding it in runtime code.</p>
+<p>The registry can also carry browser site policy through <code>browser_site_policy</code>, including:</p>
+<ul>
+<li><code>site_binding_mode</code></li>
+<li><code>allowed_site_classes</code></li>
+<li><code>requires_registered_site_binding</code></li>
+<li><code>requires_exact_origin_match</code></li>
+<li><code>allows_cross_origin_navigation</code></li>
+</ul>
+<p>This makes site/origin constraints visible before browser workers and site-binding catalogs are implemented.</p>
+<p>The registry can also carry browser action policy through <code>browser_action_policy</code>, including:</p>
+<ul>
+<li><code>max_action_level</code></li>
+<li><code>requires_human_confirmation_on</code></li>
+<li><code>allows_form_fill</code></li>
+<li><code>allows_submit</code></li>
+<li><code>allows_download</code></li>
+<li><code>allows_file_upload</code></li>
+</ul>
+<p>This makes the intended action ceiling explicit before runtime browser workers exist.</p>
+<h2>First Registered Specs</h2>
+<p>The initial spec set is:</p>
+<ul>
+<li><code>web.search.google</code></li>
+<li><code>web.search.duckduckgo</code></li>
+<li><code>travel.flight.search</code></li>
+<li><code>travel.rail.search</code></li>
+<li><code>commerce.price.search</code></li>
+</ul>
+<p>At this stage, the registry contains both:</p>
+<ul>
+<li>documented-only planned tools</li>
+<li>active tools that already have a broker-owned execution adapter</li>
+</ul>
+<p>Right now:</p>
+<ul>
+<li><code>web.search.google</code> is planned</li>
+<li><code>web.search.duckduckgo</code> is active</li>
+<li><code>travel.flight.search</code> is planned</li>
+<li><code>travel.rail.search</code> is planned</li>
+<li><code>commerce.price.search</code> is planned</li>
+</ul>
+<p>Current execution reality:</p>
+<ul>
+<li><code>web.search.duckduckgo</code> is executable through broker mediation</li>
+<li><code>web.search.google</code> remains documented but not activated, because the currently observed public Google entrypoint does not produce a stable broker-owned parser path</li>
+</ul>
+<p>Current high-level usage:</p>
+<ul>
+<li><code>web.search.duckduckgo</code> is now wired into the high-level command grammar through the explicit <code>?search &lt;keywords&gt;</code> path</li>
+<li>the high-level model does not receive unrestricted web access; it must go through this broker-mediated tool path</li>
+<li>plain <code>?query</code> dialogue does not automatically become a search tool call</li>
+</ul>
+<p>Current browser identity references:</p>
+<ul>
+<li><code>browser.reference.anonymous.read</code></li>
+<li><code>browser.reference.system-account.read</code></li>
+<li><code>browser.reference.user-delegated.read</code></li>
+</ul>
+<p>These are <code>planned</code> reference specs.
+They are present so the registry and capability model can carry the browser identity split before browser-worker execution is implemented.</p>
+<h2>Browser Spec Validation</h2>
+<p>Browser tool specs are no longer treated as free-form optional metadata.</p>
+<p>For <code>kind = browser</code>, the registry now requires all of the following:</p>
+<ul>
+<li><code>browser_profile</code></li>
+<li><code>browser_session_policy</code></li>
+<li><code>browser_site_policy</code></li>
+<li><code>browser_action_policy</code></li>
+</ul>
+<p>The registry also enforces basic cross-field consistency:</p>
+<ul>
+<li><code>anonymous</code></li>
+<li><code>credential_source = none</code></li>
+<li><code>session_owner = none</code></li>
+<li><code>credential_binding = none</code></li>
+<li><code>site_binding_mode = public_open</code></li>
+<li><code>system_account</code></li>
+<li><code>credential_source = system_vault</code></li>
+<li><code>session_owner = system</code></li>
+<li><code>credential_binding = system_vault</code></li>
+<li><code>site_binding_mode = registered_site</code></li>
+<li><code>user_delegated</code></li>
+<li><code>credential_source = user_grant</code></li>
+<li><code>session_owner = user</code></li>
+<li><code>credential_binding = user_grant</code></li>
+<li><code>site_binding_mode = user_authorized_site</code></li>
+</ul>
+<p>Invalid browser specs are skipped at registry load time instead of being silently accepted.</p>
+</main>
+</body>
+</html>

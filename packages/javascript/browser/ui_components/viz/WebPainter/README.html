@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WebPainter</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>WebPainter</h1>
+<p>一個高度可配置的網頁繪圖板元件，基於 HTML5 Canvas，支援圖層、物件選取、編輯歷史等功能。</p>
+<blockquote>
+<p><strong>注意</strong>：如果只需要簡單的手繪功能（畫筆、橡皮擦、直線），建議使用輕量的 <a href="../DrawingBoard/README.html">DrawingBoard</a> 元件。</p>
+</blockquote>
+<h2>Features</h2>
+<ul>
+<li><strong>多圖層管理</strong>：新增、刪除、隱藏、切換圖層。</li>
+<li><strong>豐富的繪圖工具</strong>：文字、畫筆（自由繪製）、矩形、圓形、線條、箭頭、打點標記。</li>
+<li><strong>物件編輯</strong>：選取移動、刪除、修改屬性（顏色、字型、線寬）。</li>
+<li><strong>歷史記錄</strong>：支援 Undo/Redo (Ctrl+Z / Ctrl+Y)。</li>
+<li><strong>剪貼簿</strong>：支援複製與貼上 (Ctrl+C / Ctrl+V)。</li>
+<li><strong>縮放功能</strong>：支援畫布縮放，並保持標註點位準確。</li>
+<li><strong>高度客製化</strong>：可透過參數決定要顯示哪些功能按鈕與面板。</li>
+</ul>
+<h2>Usage</h2>
+<pre><code class="language-javascript">import { WebPainter } from &quot;./components/viz/WebPainter/WebPainter.js&quot;;
+
+// 初始化
+const painter = new WebPainter({
+  container: &quot;#editor-container&quot;,
+  width: 1000,
+  height: 800,
+  features: {
+    // UI 區塊開關
+    header: true, // 上方工具列
+    settings: true, // 設定面板
+
+    // 功能按鈕細項
+    upload: true, // 上傳底圖按鈕
+    tools: true, // 繪圖工具箱
+    delete: true, // 刪除按鈕
+    clear: true, // 清空按鈕
+    export: true, // 匯出/存檔按鈕
+    zoom: true, // 縮放控制按鈕
+    layers: true, // 圖層管理面板及其開關
+  },
+});
+</code></pre>
+<h3>簡易模式 (例如：僅供瀏覽與簡單標記)</h3>
+<pre><code class="language-javascript">const viewer = new WebPainter({
+  container: &quot;#viewer&quot;,
+  features: {
+    header: true,
+    settings: false, // 隱藏設定面板
+    layers: false, // 隱藏圖層功能
+    upload: false,
+    delete: false,
+    clear: false,
+    export: false,
+  },
+});
+</code></pre>
+<h2>Shortcuts</h2>
+<ul>
+<li><strong>Del</strong>: 刪除選中物件</li>
+<li><strong>Ctrl + Z</strong>: 復原 (Undo)</li>
+<li><strong>Ctrl + Y</strong> (or Ctrl + Shift + Z): 重做 (Redo)</li>
+<li><strong>Ctrl + C</strong>: 複製 (Copy)</li>
+<li><strong>Ctrl + V</strong>: 貼上 (Paste)</li>
+</ul>
+</main>
+</body>
+</html>

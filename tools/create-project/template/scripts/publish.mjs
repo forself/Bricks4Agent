@@ -2,24 +2,28 @@
 //   dist/
 //     index.html          (轉導 src/frontend/)
 //     lib/                (腳手架真快照;cpSync dereference 穿透連結取實體檔)
-//     lib/SNAPSHOT.json   (來源憑證:commit/dirty/時間/檔數)
+//     lib/SNAPSHOT.json   (來源憑證:tree/dirty/時間/檔數)
 //     src/frontend/       (應用,與 repo 同幾何 → import 原樣可用)
 // 引用紀律:原始碼永遠以相對路徑 import 'lib/…';開發經連結、發佈帶此複本。
 // verify-sealed.mjs 強制產物封閉(違規=發佈失敗)。機制見 docs/dev-and-publish.md。
-//   用法: node scripts/publish.mjs [--allow-drift]
-// 釘版強制:專案根有 b4a.lock.json 時——連結模式要求腳手架 HEAD==lock 且乾淨;
-// 複本模式要求 lib/.sync-state.json 的釘版 commit==lock。違者發佈失敗(--allow-drift 可硬闖,附大字警告)。
+//   用法: node scripts/publish.mjs
+// 釘版強制：v2 lock 直接驗 Git tree（branch 自含、不依賴 tag/split commit）；
+// 連結模式另要求 B4A 工作區乾淨，複本模式要求 sync-state tree 與 lock 相同。
 import { existsSync, rmSync, mkdirSync, cpSync, writeFileSync, readFileSync, readdirSync, statSync, lstatSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { resolveB4a } from './resolve-b4a.mjs';
+import { isFullGitObjectId, parseB4aLock } from './b4a-lock.mjs';
 
 const scriptsDir = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(scriptsDir, '..');
 const dist = path.join(root, 'dist');
 const projectName = path.basename(root);
-const allowDrift = process.argv.includes('--allow-drift');
+if (process.argv.includes('--allow-drift')) {
+    console.error('--allow-drift 已停用：正式產物不得略過 B4A tree lock 與工作區完整性檢查。');
+    process.exit(2);
+}
 const { b4aRoot } = resolveB4a(root);
 
 if (!existsSync(path.join(root, 'lib', 'ui_components', 'theme.css'))) {
@@ -33,28 +37,53 @@ function gitB4a(...a) {
     return r.status === 0 ? r.stdout.trim() : '';
 }
 const lockPath = path.join(root, 'b4a.lock.json');
-const lock = existsSync(lockPath) ? JSON.parse(readFileSync(lockPath, 'utf8')) : null;
+let lock = null;
+if (existsSync(lockPath)) {
+    try {
+        lock = parseB4aLock(JSON.parse(readFileSync(lockPath, 'utf8')));
+    } catch (error) {
+        console.error('釘版強制失敗：' + error.message);
+        process.exit(1);
+    }
+}
+const embeddedB4aRoot = path.resolve(root, '..', 'packages', 'Bricks4Agent');
+const b4aIsEmbedded = path.resolve(b4aRoot).toLowerCase() === embeddedB4aRoot.toLowerCase();
+const b4aCurrentTree = () => gitB4a('rev-parse', b4aIsEmbedded ? 'HEAD:packages/Bricks4Agent' : 'HEAD^{tree}');
+const b4aWorkingTreeStatus = () => gitB4a('status', '--porcelain', '--', '.');
 const libIsLink = (() => { try { return lstatSync(path.join(root, 'lib', 'ui_components')).isSymbolicLink(); } catch { return false; } })();
 const syncStatePath = path.join(root, 'lib', '.sync-state.json');
 const syncState = (!libIsLink && existsSync(syncStatePath)) ? JSON.parse(readFileSync(syncStatePath, 'utf8')) : null;
 let enforcement = 'none';
+let enforcedTree = '';
 if (lock) {
     let problem = '';
-    if (libIsLink) {
-        const head = gitB4a('rev-parse', 'HEAD');
-        if (head !== lock.commit) problem = `連結模式:腳手架 HEAD(${head.slice(0, 12)})≠ lock(${lock.commit.slice(0, 12)})`;
-        else if (gitB4a('status', '--porcelain')) problem = '連結模式:腳手架工作區 DIRTY(lock 強制要求乾淨)';
-    } else {
-        if (!syncState || !syncState.pinned) problem = '複本模式:lib 非釘版同步(跑 node scripts/sync-lib.mjs 以 lock 重建)';
-        else if (syncState.commit !== lock.commit) problem = `複本模式:lib 同步自 ${String(syncState.commit).slice(0, 12)} ≠ lock(${lock.commit.slice(0, 12)})`;
+    const lockedTree = lock.kind === 'tree'
+        ? lock.tree
+        : gitB4a('rev-parse', `${lock.commit}^{tree}`);
+    if (!isFullGitObjectId(lockedTree)) {
+        problem = lock.kind === 'legacy-commit'
+            ? `舊 lock commit ${lock.commit} 不存在；請執行 sync-lib.mjs --pin 遷移為 v2 tree lock`
+            : 'lock tree 無法解析';
     }
-    if (problem && !allowDrift) {
+    if (libIsLink) {
+        const currentTree = b4aCurrentTree();
+        if (!problem && (!isFullGitObjectId(currentTree) || currentTree !== lockedTree)) {
+            problem = `連結模式：B4A tree(${currentTree.slice(0, 12)})≠ lock tree(${lockedTree.slice(0, 12)})`;
+        } else if (!problem && b4aWorkingTreeStatus()) {
+            problem = '連結模式：腳手架工作區 DIRTY（lock 強制要求乾淨）';
+        }
+    } else {
+        if (!problem && (!syncState || !syncState.pinned)) problem = '複本模式：lib 非釘版同步（跑 node scripts/sync-lib.mjs 以 lock 重建）';
+        else if (!problem && syncState.tree !== lockedTree) problem = `複本模式：lib tree(${String(syncState.tree).slice(0, 12)})≠ lock tree(${lockedTree.slice(0, 12)})`;
+        else if (!problem && lock.kind === 'tree' && syncState.source !== lock.source) problem = `複本模式：lib source(${syncState.source})≠ lock source(${lock.source})`;
+    }
+    if (problem) {
         console.error('釘版強制失敗:' + problem);
-        console.error('修正:sync-lib.mjs(依 lock 重建)/ sync-lib.mjs --pin(改釘現版)/ --allow-drift(硬闖,不建議)。');
+        console.error('修正：sync-lib.mjs（依 lock 重建），或經審查後使用 sync-lib.mjs --pin 更新 tree lock。');
         process.exit(1);
     }
-    enforcement = problem ? 'BYPASSED(--allow-drift)' : 'enforced';
-    if (problem) console.warn('⚠⚠ 釘版檢查被 --allow-drift 硬闖:' + problem + ' ——產物不可重現!');
+    enforcedTree = lockedTree;
+    enforcement = 'enforced';
 }
 
 // 1. 清 dist
@@ -71,6 +100,10 @@ cpSync(path.join(root, 'lib', 'page-generator'), path.join(dist, 'lib', 'page-ge
     recursive: true, dereference: true,
     filter: (src) => notNodeModules(src) && path.basename(src) !== 'examples'
 });
+cpSync(path.join(root, 'lib', 'custom_components'), path.join(dist, 'lib', 'custom_components'), {
+    recursive: true, dereference: true,
+    filter: (src) => notNodeModules(src) && !src.endsWith('.test.mjs')
+});
 
 // 3. 應用(同幾何:src/frontend)
 cpSync(path.join(root, 'src', 'frontend'), path.join(dist, 'src', 'frontend'), { recursive: true, dereference: true });
@@ -86,8 +119,8 @@ function git(cwd, ...args) {
     const r = spawnSync('git', ['-C', cwd, ...args], { encoding: 'utf8' });
     return r.status === 0 ? r.stdout.trim() : '';
 }
-const hex40 = (s) => /^[0-9a-f]{40}$/.test(s);
-const b4aCommit = git(b4aRoot, 'rev-parse', 'HEAD');
+const b4aRepositoryCommit = git(b4aRoot, 'rev-parse', 'HEAD');
+const b4aTree = enforcedTree || (libIsLink ? b4aCurrentTree() : syncState?.tree) || b4aCurrentTree();
 const appCommit = git(root, 'rev-parse', 'HEAD');
 let fileCount = 0, totalBytes = 0;
 (function walk(dir) {
@@ -103,9 +136,17 @@ const snapshot = {
     source: path.join(b4aRoot, 'packages', 'javascript', 'browser') + (libIsLink ? ' (via lib link)' : ' (via lib copy)'),
     mechanismVersion: mechanism.mechanismVersion,
     libMode: libIsLink ? 'link' : 'copy',
-    lock: lock ? { commit: lock.commit, enforcement } : null,
-    bricks4agent: { commit: hex40(b4aCommit) ? b4aCommit : '(no commit)', dirty: !!git(b4aRoot, 'status', '--porcelain') },
-    project: { name: projectName, commit: hex40(appCommit) ? appCommit : '(no commit)' },
+    lock: lock ? {
+        version: lock.version,
+        ...(lock.kind === 'tree' ? { source: lock.source, tree: lock.tree } : { legacyCommit: lock.commit }),
+        enforcement
+    } : null,
+    bricks4agent: {
+        tree: isFullGitObjectId(b4aTree) ? b4aTree : '(no tree)',
+        repositoryCommit: isFullGitObjectId(b4aRepositoryCommit) ? b4aRepositoryCommit : '(no commit)',
+        dirty: libIsLink ? !!b4aWorkingTreeStatus() : !!syncState?.dirtySource
+    },
+    project: { name: projectName, commit: isFullGitObjectId(appCommit) ? appCommit : '(no commit)' },
     snapshotTimeUtc: new Date().toISOString(),
     fileCount, totalBytes
 };
@@ -119,6 +160,6 @@ if (v.status !== 0) {
 }
 
 console.log('');
-console.log(`dist/ 就緒:lib ${fileCount} 檔(${(totalBytes / 1048576).toFixed(1)} MB),腳手架 commit ` +
-    `${snapshot.bricks4agent.commit.slice(0, 8)}${snapshot.bricks4agent.dirty ? '(工作區 DIRTY!)' : ''}`);
+console.log(`dist/ 就緒：lib ${fileCount} 檔(${(totalBytes / 1048576).toFixed(1)} MB)，腳手架 tree ` +
+    `${snapshot.bricks4agent.tree.slice(0, 8)}${snapshot.bricks4agent.dirty ? '（工作區 DIRTY!）' : ''}`);
 console.log('任何靜態伺服器指向 dist/ 即可;進入點 /src/frontend/index.html(根 index.html 會轉導)。');

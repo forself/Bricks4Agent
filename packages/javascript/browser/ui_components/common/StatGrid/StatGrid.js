@@ -1,4 +1,5 @@
 import { createComponentState } from '../../utils/component-state.js';
+// 跨元件組合一律走公開入口(不帶 query 版本號),以符合 validate:ui-library 的組合面規則
 import { StatCard } from '../../social/StatCard/index.js';
 
 /**
@@ -29,11 +30,17 @@ export class StatGrid {
         this.element.style.cssText = `
             display: grid;
             gap: 12px;
-            grid-template-columns: repeat(${cols}, 1fr);
+            grid-template-columns: repeat(${cols}, minmax(0, 1fr));
         `;
         (Array.isArray(this.options.stats) ? this.options.stats : []).forEach((stat) => {
-            const card = new StatCard({ label: stat.label ?? '', value: stat.value ?? 0, ...(stat.detail ? { detail: stat.detail } : {}) });
-            (card.mount ? card.mount(this.element) : card.render?.(this.element));
+            // 每張卡片各自掛在獨立 host:StatCard.mount() 會覆寫容器 innerHTML,
+            // 共用同一個容器會讓後一張卡片洗掉前一張。
+            const host = document.createElement('div');
+            host.className = 'cl-statgrid__item';
+            this.element.appendChild(host);
+            // 展開 stat 以保留 icon/color/trend/detail 等所有欄位
+            const card = new StatCard({ ...stat, label: stat.label ?? '', value: stat.value ?? 0 });
+            (card.mount ? card.mount(host) : card.render?.(host));
             this._children.push(card);
         });
     }

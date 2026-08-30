@@ -5,7 +5,7 @@
 ## 服務列表
 
 | 服務 | 說明 | 依賴 |
-|------|------|------|
+|---|---|---|
 | `GeolocationService` | 地理位置服務 | Nominatim API |
 | `WeatherService` | 天氣資訊服務 | Open-Meteo API |
 | `security.js` | 安全工具函數 | 無 |
@@ -20,9 +20,13 @@
 ### Features
 
 - **取得當前位置**：使用 Browser Geolocation API
+
 - **反向地理編碼**：座標轉地址 (使用 Nominatim OpenStreetMap)
+
 - **位置監聽**：監聽位置變化
+
 - **距離計算**：計算兩點距離 (Haversine 公式)
+
 - **多語言支援**：支援繁體中文、英文
 
 ### Usage
@@ -75,7 +79,7 @@ console.log(GeolocationService.formatDistance(distance));  // "162.3 公里"
 ### 錯誤代碼
 
 | Code | 說明 |
-|------|------|
+|---|---|
 | `NOT_SUPPORTED` | 瀏覽器不支援 Geolocation |
 | `PERMISSION_DENIED` | 位置權限被拒絕 |
 | `POSITION_UNAVAILABLE` | 無法取得位置 |
@@ -90,10 +94,15 @@ console.log(GeolocationService.formatDistance(distance));  // "162.3 公里"
 ### Features
 
 - **當前天氣**：溫度、體感溫度、濕度、風速
+
 - **天氣預報**：每日預報 (最多 16 天)
+
 - **每小時預報**：每小時預報 (最多 384 小時)
+
 - **WMO 代碼解析**：天氣代碼轉描述文字與圖示
+
 - **多語言支援**：繁體中文、英文
+
 - **免費無 API Key**：使用 Open-Meteo 公開 API
 
 ### Usage
@@ -144,7 +153,7 @@ const temp = WeatherService.formatTemperature(25, 'celsius');  // "25°C"
 ### WMO 天氣代碼
 
 | 代碼 | 描述 (中文) | 描述 (英文) | 圖示 |
-|------|-------------|-------------|------|
+|---|---|---|---|
 | 0 | 晴朗 | Clear sky | ☀️ |
 | 1 | 大致晴朗 | Mainly clear | ☀️ |
 | 2 | 局部多雲 | Partly cloudy | ☁️ |
@@ -194,12 +203,15 @@ getLocationWeather();
 ## 瀏覽器支援
 
 - Chrome/Edge 90+
+
 - Firefox 88+
+
 - Safari 14+
 
 ## API 參考
 
 - [Nominatim OpenStreetMap](https://nominatim.org/release-docs/latest/api/Reverse/)
+
 - [Open-Meteo](https://open-meteo.com/en/docs)
 
 ---

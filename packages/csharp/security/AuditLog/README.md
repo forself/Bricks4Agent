@@ -5,11 +5,17 @@
 ## 功能特點
 
 - **安全事件記錄**：完整的安全事件類型與嚴重等級分類
+
 - **登入歷史追蹤**：詳細的登入紀錄，包含裝置、位置、MFA 狀態
+
 - **新裝置偵測**：自動識別用戶首次使用的裝置
+
 - **可疑活動標記**：自動偵測並標記異常登入行為
+
 - **統計分析**：豐富的統計報表與趨勢分析
+
 - **警示系統**：可配置的安全警示規則
+
 - **GDPR 合規**：支援用戶資料刪除
 
 ## 安裝
@@ -116,7 +122,7 @@ var activity = _logService.GetUserActivity(userId, since: DateTime.UtcNow.AddDay
 ### 認證事件 (1xx)
 
 | 類型 | 代碼 | 說明 |
-|------|------|------|
+|---|---|---|
 | `LoginSuccess` | 100 | 登入成功 |
 | `LoginFailed` | 101 | 登入失敗 |
 | `LogoutSuccess` | 102 | 登出成功 |
@@ -126,7 +132,7 @@ var activity = _logService.GetUserActivity(userId, since: DateTime.UtcNow.AddDay
 ### MFA 事件 (2xx)
 
 | 類型 | 代碼 | 說明 |
-|------|------|------|
+|---|---|---|
 | `MfaEnabled` | 200 | MFA 已啟用 |
 | `MfaDisabled` | 201 | MFA 已停用 |
 | `MfaVerifySuccess` | 202 | MFA 驗證成功 |
@@ -137,7 +143,7 @@ var activity = _logService.GetUserActivity(userId, since: DateTime.UtcNow.AddDay
 ### 帳戶事件 (3xx)
 
 | 類型 | 代碼 | 說明 |
-|------|------|------|
+|---|---|---|
 | `AccountCreated` | 300 | 帳戶建立 |
 | `AccountUpdated` | 301 | 帳戶更新 |
 | `AccountDeleted` | 302 | 帳戶刪除 |
@@ -152,7 +158,7 @@ var activity = _logService.GetUserActivity(userId, since: DateTime.UtcNow.AddDay
 ### 安全事件 (4xx)
 
 | 類型 | 代碼 | 說明 |
-|------|------|------|
+|---|---|---|
 | `RateLimitExceeded` | 400 | 超過頻率限制 |
 | `SuspiciousActivity` | 401 | 可疑活動 |
 | `IpBlocked` | 402 | IP 被封鎖 |
@@ -165,7 +171,7 @@ var activity = _logService.GetUserActivity(userId, since: DateTime.UtcNow.AddDay
 ### 管理事件 (5xx)
 
 | 類型 | 代碼 | 說明 |
-|------|------|------|
+|---|---|---|
 | `AdminLogin` | 500 | 管理員登入 |
 | `AdminAction` | 501 | 管理員操作 |
 | `PermissionChanged` | 502 | 權限變更 |
@@ -176,7 +182,7 @@ var activity = _logService.GetUserActivity(userId, since: DateTime.UtcNow.AddDay
 ## 嚴重等級
 
 | 等級 | 說明 |
-|------|------|
+|---|---|
 | `Info` | 一般資訊，正常操作 |
 | `Low` | 低風險安全事件 |
 | `Medium` | 中等風險，需要注意 |
@@ -188,7 +194,7 @@ var activity = _logService.GetUserActivity(userId, since: DateTime.UtcNow.AddDay
 ### 用戶端點（已登入用戶）
 
 | 方法 | 路徑 | 說明 |
-|------|------|------|
+|---|---|---|
 | GET | `/api/security-logs/my/login-history` | 取得自己的登入歷史 |
 | GET | `/api/security-logs/my/activity` | 取得自己的活動摘要 |
 | GET | `/api/security-logs/my/failed-logins` | 取得自己的登入失敗記錄 |
@@ -196,7 +202,7 @@ var activity = _logService.GetUserActivity(userId, since: DateTime.UtcNow.AddDay
 ### 管理端點（需要 Admin/SecurityAdmin 角色）
 
 | 方法 | 路徑 | 說明 |
-|------|------|------|
+|---|---|---|
 | POST | `/api/security-logs/query` | 查詢安全日誌 |
 | GET | `/api/security-logs/{id}` | 取得單筆日誌 |
 | GET | `/api/security-logs/users/{userId}/login-history` | 取得指定用戶登入歷史 |
@@ -323,7 +329,9 @@ if (!rateLimitResult.IsAllowed)
 系統會自動清理過期的日誌記錄：
 
 - 預設保留 90 天
+
 - 每小時執行一次清理
+
 - 可透過 `DeleteOlderThan()` 手動清理
 
 ```csharp
@@ -335,9 +343,13 @@ var deletedCount = _logRepository.DeleteOlderThan(cutoff);
 ## 生產環境建議
 
 1. **使用資料庫儲存**：替換 InMemory 實作為 SQL Server/PostgreSQL 實作
+
 2. **索引優化**：在 Timestamp、UserId、IpAddressHash 建立索引
+
 3. **分區表**：考慮按月分區以提升查詢效能
+
 4. **非同步寫入**：使用訊息佇列非同步寫入日誌
+
 5. **備份策略**：定期備份安全日誌
 
 ## 相依套件

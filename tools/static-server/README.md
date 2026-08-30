@@ -7,7 +7,9 @@ Minimal static file server implemented with plain .NET `HttpListener`.
 Use this helper when you need a lightweight local server for:
 
 - SPA frontend files
+
 - static demo pages
+
 - generated frontend smoke testing
 
 It is a small local utility, not a production web host.
@@ -17,11 +19,17 @@ It is a small local utility, not a production web host.
 Based on [StaticServer.cs](StaticServer.cs), the server currently:
 
 - listens on `http://localhost:<port>/`
+
 - also listens on `http://127.0.0.1:<port>/`
+
 - serves static files from a local root directory
+
 - falls back to `index.html` for SPA-style routes
+
 - adds permissive development CORS headers
+
 - adds `X-Content-Type-Options` and `X-Frame-Options`
+
 - rejects non-`GET` / non-`HEAD` methods except `OPTIONS`
 
 ## Quick Start
@@ -65,7 +73,7 @@ serve [directory] [port]
 ```
 
 | Argument | Default | Meaning |
-| --- | --- | --- |
+|---|---|---|
 | directory | `.` | Static root |
 | port | `3000` | HTTP port |
 
@@ -85,9 +93,13 @@ serve ./frontend 8080
 ## Limits
 
 - no hot reload
+
 - no TLS termination
+
 - no auth
+
 - no compression pipeline
+
 - no production-grade caching policy
 
 If you need a local static helper, this is enough. If you need a real edge or production serving layer, use something else.

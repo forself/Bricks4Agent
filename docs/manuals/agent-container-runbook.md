@@ -13,11 +13,16 @@ Date: 2026-06-13
 ## 2. 前置需求
 
 - **podman**(Windows 用 podman machine / WSL backend)。首次需 `podman machine start`(若 `LAST UP: Never`)。
+
 - **node**(跑 stack 啟動腳本)。
+
 - LLM 後端三選一:
-  - mock(內建,無需外部)
-  - 本機 **ollama**(`localhost:11434`,需先 `ollama pull <model>`)
-  - **商用 API**(OpenAI-compatible 或 Anthropic Claude,需 API key)
+
+- mock(內建,無需外部)
+
+- 本機 **ollama**(`localhost:11434`,需先 `ollama pull <model>`)
+
+- **商用 API**(OpenAI-compatible 或 Anthropic Claude,需 API key)
 
 ## 3. 三條 LLM 路徑(都已實測通過 2026-06-13)
 
@@ -62,7 +67,9 @@ node tools/agent/tests/test-podman-openai-compatible-stack.js
 ## 4. 用真實商用 API 時的注意
 
 - `OPENAI_API_FORMAT`:responses API 的原始回應把文字放在 `output[].content[].output_text`(頂層 `output_text` 是 SDK 便利欄位,真實 API 不一定有);broker parser 兩者皆支援。gpt-5 系列的 `output[]` 會夾帶 reasoning item,parser 會略過。
+
 - Claude Messages API 需要 `max_tokens`;目前預設 `MaxOutputTokens=4096`。
+
 - key 不應放進 repo;Anthropic 使用 `ANTHROPIC_API_KEY`,OpenAI-compatible fallback 使用 `C:\secure\Bricks4Agent\Api.txt` 或環境變數。
 
 ## 5. FunctionPool 與健康端點
@@ -72,7 +79,7 @@ node tools/agent/tests/test-podman-openai-compatible-stack.js
 ## 6. 疑難排解(2026-06-13 通電時實際遇到並修掉的)
 
 | 症狀 | 根因 | 已修 |
-|------|------|------|
+|---|---|---|
 | broker 容器 build `NETSDK1152` | broker 引用 site-crawler-worker,worker appsettings 流入 publish | broker.csproj publish target 移除重複 |
 | broker `FunctionPool=false` 啟動即崩 | HealthScoreService 無條件依賴 IWorkerRegistry | 監控只在 FunctionPool 啟用時註冊 |
 | register 回 500 `No data exists` | Linux Sqlite `IsDBNull` edge case | BaseOrm 改用 `GetValue` |
@@ -104,7 +111,7 @@ mock stack 已實測:agent 在 `agent-net` 仍能註冊 session、經 broker 裁
 三條 compose stack 的 **agent 服務**(受控主體,不受信任)都套上 OS 層沙箱:
 
 | 設定 | 作用 |
-|------|------|
+|---|---|
 | `read_only: true` | rootfs 唯讀;`/workspace` bind mount 仍可寫(唯讀不影響掛載卷) |
 | `tmpfs: [/tmp]` | 唯一可寫的 rootfs 路徑放 tmpfs(`os.tmpdir()` 用) |
 | `cap_drop: [ALL]` | 丟掉所有 Linux capability(agent 以非 root uid 10001 跑,無需任何 cap) |
@@ -129,6 +136,7 @@ mock stack 已實測:套上述 hardening 後 agent 仍能完成 governed `read_f
 `execution-adapter-worker` 讓受控 agent 能真的做事(不再只讀):agent 產生結構化請求 → broker 裁決(grant/quota/scope/policy)→ adapter worker 執行並附證據。agent 永遠碰不到 adapter,只有 broker 會 dispatch。
 
 兩個能力:
+
 | 能力 / route | 行為 |
 |------|------|
 | `repo.patch.apply` / `execution.repo.apply_patch` | 驗 patch(非自由 shell)、驗 base_commit==HEAD、限 `scope.allowed_paths`、`git apply --check` 後套用、存 diff 證據、支援 idempotency_key(重放回前次結果不重套) |
@@ -137,6 +145,7 @@ mock stack 已實測:套上述 hardening 後 agent 仍能完成 governed `read_f
 adapter 是**受信任執行節點**:套 §13.2 OS 加固(非 root uid 10004、read-only rootfs、cap-drop ALL、no-new-privileges、無 docker socket),但與 agent 不同 —— 可寫 workspace(它就是經控制平面中介的寫入路徑)、有出口(build/test restore)。
 
 驗證:
+
 ```bash
 # broker 單元測試(含 38 條執行配接器斷言,對真實 git 操作)
 dotnet run --project packages/csharp/tests/broker-tests/Broker.Tests.csproj

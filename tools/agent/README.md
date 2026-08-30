@@ -5,7 +5,9 @@
 It currently supports three distinct modes:
 
 - local provider mode: the agent talks directly to an upstream LLM provider
+
 - generation / pipeline mode: the agent drives CRUD and `project.json` generation helpers
+
 - governed mode: the agent talks to a broker over JSON contracts and does not directly own execution authority
 
 This README describes the CLI itself. It does not describe the canonical LINE ingress path. The production-style LINE route is now:
@@ -17,14 +19,17 @@ This README describes the CLI itself. It does not describe the canonical LINE in
 ## Requirements
 
 - Node.js 18+
+
 - Ollama if you want fully local provider mode
+
 - an API key for OpenAI-compatible mode
+
 - a broker if you want governed mode
 
 ## Provider Aliases
 
 | Provider | Notes |
-| --- | --- |
+|---|---|
 | `ollama` | Local Ollama, default host `http://localhost:11434` |
 | `openai` | OpenAI / OpenAI-compatible Responses API |
 | `gemini` | Gemini OpenAI-compatible endpoint |
@@ -86,8 +91,11 @@ Governed mode means more than "tools go through the broker".
 In governed mode:
 
 - tool requests go through the broker
+
 - LLM health / model listing / chat also go through the broker
+
 - the agent should not treat direct provider API keys as the canonical execution path
+
 - the broker decides whether a request is allowed by session, role, grant, capability, scope, and policy
 
 ### Important note about broker ports
@@ -144,27 +152,41 @@ node tools/agent/agent.js --governed
 Governed agent requests are broker-mediated JSON POST calls such as:
 
 - `POST /api/v1/sessions/register`
+
 - `POST /api/v1/execution-requests/submit`
+
 - `POST /api/v1/sessions/heartbeat`
+
 - `POST /api/v1/sessions/close`
+
 - `POST /api/v1/capabilities/list`
+
 - `POST /api/v1/grants/list`
+
 - `POST /api/v1/runtime/spec`
+
 - `POST /api/v1/llm/health`
+
 - `POST /api/v1/llm/models`
+
 - `POST /api/v1/llm/chat`
 
 Governed prompt context includes:
 
 - current session information
+
 - granted capabilities
+
 - `scope.paths` / `scope.routes`
+
 - broker URL and POST route contracts
+
 - runtime spec such as default model, override policy, and tool-calling allowance
 
 ### Capability layer and scope layer
 
 - capability layer: `capability_id`
+
 - scope layer: `scope.routes`, `scope.paths`
 
 This means the question is not only "may this agent read a file", but "may this capability act on these routes and paths".
@@ -172,8 +194,11 @@ This means the question is not only "may this agent read a file", but "may this 
 ### Governed-mode behavior
 
 - `--provider`, `--api-key`, and `--host` are ignored in governed mode
+
 - `--list-models` goes through broker `/api/v1/llm/models`
+
 - `AgentLoop` uses the governed executor as its effective provider
+
 - LLM traffic is broker-mediated rather than agent-direct
 
 ## Legacy Direct LINE Listener
@@ -182,7 +207,7 @@ This means the question is not only "may this agent read a file", but "may this 
 
 Use it only for development experiments where you explicitly want the agent process to poll LINE directly. The repo's current production-style ingress path is the worker-side bridge under:
 
-- [packages/csharp/workers/line-worker/README.md](/d:/Bricks4Agent/packages/csharp/workers/line-worker/README.md)
+- [packages/csharp/workers/line-worker/README.md](../../packages/csharp/workers/line-worker/README.md)
 
 ## Podman Container
 
@@ -214,14 +239,18 @@ podman run --rm -it \
 The container entrypoint accepts only the governed path:
 
 - `BROKER_URL`, `BROKER_PUB_KEY`, `BROKER_PRINCIPAL_ID`, and `BROKER_TASK_ID` are required
+
 - direct provider API keys are not the intended formal execution path
+
 - `/workspace` is the default mounted workspace
+
 - the entrypoint adds `--governed` and broker/session parameters automatically
+
 - `AGENT_RUN` executes one task; otherwise the container enters REPL
 
 See also:
 
-- [tools/agent/container/README.md](/d:/Bricks4Agent/tools/agent/container/README.md)
+- [tools/agent/container/README.md](container/README.md)
 
 ## Verification
 
@@ -234,17 +263,23 @@ npm run validate:broker-llm-proxy
 These checks cover:
 
 - governed prompt route and JSON-contract injection
+
 - governed initialization avoiding direct provider use
+
 - broker-mediated `health/models/chat`
+
 - live broker + fake upstream LLM session flow
+
 - grant-filtered tool visibility
+
 - local rejection of unauthorized capability usage
+
 - broker validation of both capability and `scope.paths/scope.routes`
 
 ## Main Parameters
 
 | Parameter | Short | Meaning |
-| --- | --- | --- |
+|---|---|---|
 | `--run "<prompt>"` | `-r` | One-shot run |
 | `--model <name>` | `-m` | Model name |
 | `--provider <type>` | `-P` | Local-provider mode provider |
@@ -272,7 +307,7 @@ These checks cover:
 ## REPL Commands
 
 | Command | Meaning |
-| --- | --- |
+|---|---|
 | `/help` | Show help |
 | `/model <name>` | Switch model |
 | `/models` | List models |

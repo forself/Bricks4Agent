@@ -4,6 +4,9 @@ import { queryLegacyTgosAddress } from './TgosAddressService.js';
 
 // Exact URL used by the legacy frontend.  This external contract is prescribed and is not a
 // deployment setting: changing it would also change the TGOS application identity.
+// TGOS MAP API Lite publishes this browser key for public integration. The
+// endpoint is deliberately immutable at runtime: changing a meta tag must not
+// turn the dynamic script loader into an arbitrary-script primitive.
 export const TGOS_LITE_URL = 'https://api.tgos.tw/TGOS_API/tgos?ver=2&AppID=x+JLVSx85Lk=&APIKey=in8W74q0ogpcfW/STwicK8D5QwCdddJf05/7nb+OtDh8R99YN3T0LurV4xato3TpL/fOfylvJ9Wv/khZEsXEWxsBmg+GEj4AuokiNXCh14Rei21U5GtJpIkO++Mq3AguFK/ISDEWn4hMzqgrkxNe1Q==';
 
 let tgosLoadPromise = null;
@@ -16,6 +19,29 @@ const escapeHtml = value => String(value ?? '')
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;');
+
+function configuredScriptUrl() {
+    const url = new URL(TGOS_LITE_URL);
+    if (url.protocol !== 'https:' || url.hostname !== 'api.tgos.tw' || url.pathname !== '/TGOS_API/tgos') {
+        throw new Error('TGOS API URL is outside the approved endpoint.');
+    }
+    return url.href;
+}
+
+function safeLinkHref(value, windowRef = globalThis.window) {
+    const href = String(value || '').trim();
+    if (!href || /[\u0000-\u001f\u007f]/.test(href) || href.includes('\\')) return '';
+    if (href.startsWith('#/')) return href;
+    try {
+        const base = windowRef?.location?.href || 'https://invalid.local/';
+        const resolved = new URL(href, base);
+        const origin = windowRef?.location?.origin;
+        if (!origin || resolved.origin !== origin || !['http:', 'https:'].includes(resolved.protocol)) return '';
+        return resolved.href;
+    } catch {
+        return '';
+    }
+}
 
 export function loadTgosApi({ windowRef = globalThis.window, documentRef = globalThis.document, timeoutMs = 15000 } = {}) {
     if (windowRef?.TGOS?.TGOnlineMap) return Promise.resolve(windowRef.TGOS);
@@ -58,7 +84,7 @@ export function loadTgosApi({ windowRef = globalThis.window, documentRef = globa
             script.async = true;
             script.charset = 'utf-8';
             script.dataset.b4aTgosApi = 'true';
-            script.src = TGOS_LITE_URL;
+            script.src = configuredScriptUrl();
             documentRef.head.appendChild(script);
         } else if (!ready()) {
             poll = windowRef.setInterval(ready, 50);
@@ -213,7 +239,13 @@ export class TgosMap {
             const visible = await this._waitUntilVisible();
             if (!visible || this.destroyed) return false;
             const coord = TGOS.TGCoordSys?.[this.options.coordinateSystem] || TGOS.TGCoordSys?.EPSG3857;
-            this.map = new TGOS.TGOnlineMap(this.mapHost, coord, { disableDefaultUI: this.options.disableDefaultUI });
+            // Be explicit about the base layer.  TGOS 2.x can otherwise retain an
+            // uninitialised/previous map type when its script is shared by pages.
+            // TGOSMAP is the official generic electronic map in both EPSG3826 and
+            // EPSG3857 contexts; keep the fallback for API revisions without it.
+            const mapOptions = { disableDefaultUI: this.options.disableDefaultUI };
+            if (TGOS.TGMapTypeId?.TGOSMAP) mapOptions.mapTypeId = TGOS.TGMapTypeId.TGOSMAP;
+            this.map = new TGOS.TGOnlineMap(this.mapHost, coord, mapOptions);
             this.infoWindow = new TGOS.TGInfoWindow();
             if (this.options.geocodeMissingAddresses && TGOS.TGLocateService) {
                 this.locator = new TGOS.TGLocateService();
@@ -395,7 +427,7 @@ export class TgosMap {
     }
 
     _infoHtml(row) {
-        const href = this.options.linkBuilder?.(row);
+        const href = safeLinkHref(this.options.linkBuilder?.(row));
         const name = row?.Name || row?.CarNo || row?.Key || '檢視';
         const title = href
             ? `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(name)}</a>`

@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>String</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>String</h1>
+<p>字串擴充方法工具類別 — 提供空值檢查、大小寫轉換、截斷、遮罩、驗證、擷取、比較、雜湊、編碼等常用字串操作。</p>
+<h2>初始化方式</h2>
+<pre><code class="language-csharp">using YourNamespace.Utils.String;
+// 靜態類別，直接以擴充方法呼叫
+</code></pre>
+<h2>API 列表</h2>
+<h3>空值檢查</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>回傳</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>.IsNullOrEmpty()</code></td>
+<td><code>bool</code></td>
+<td>是否為 null 或空字串</td>
+</tr>
+<tr>
+<td><code>.IsNullOrWhiteSpace()</code></td>
+<td><code>bool</code></td>
+<td>是否為 null、空或僅空白</td>
+</tr>
+<tr>
+<td><code>.HasValue()</code></td>
+<td><code>bool</code></td>
+<td>是否有值（非空白）</td>
+</tr>
+<tr>
+<td><code>.OrDefault(defaultValue)</code></td>
+<td><code>string</code></td>
+<td>若為空則回傳預設值</td>
+</tr>
+</tbody>
+</table>
+<h3>大小寫轉換</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>範例輸入</th>
+<th>範例輸出</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>.ToTitleCase()</code></td>
+<td><code>"hello world"</code></td>
+<td><code>"Hello World"</code></td>
+</tr>
+<tr>
+<td><code>.ToCamelCase()</code></td>
+<td><code>"HelloWorld"</code></td>
+<td><code>"helloWorld"</code></td>
+</tr>
+<tr>
+<td><code>.ToPascalCase()</code></td>
+<td><code>"helloWorld"</code></td>
+<td><code>"HelloWorld"</code></td>
+</tr>
+<tr>
+<td><code>.ToSnakeCase()</code></td>
+<td><code>"HelloWorld"</code></td>
+<td><code>"hello_world"</code></td>
+</tr>
+<tr>
+<td><code>.ToKebabCase()</code></td>
+<td><code>"HelloWorld"</code></td>
+<td><code>"hello-world"</code></td>
+</tr>
+</tbody>
+</table>
+<h3>裁剪與截斷</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>參數</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>.TrimAndReduce()</code></td>
+<td>-</td>
+<td>去頭尾空白並將連續空白合併為一個</td>
+</tr>
+<tr>
+<td><code>.RemoveWhitespace()</code></td>
+<td>-</td>
+<td>移除所有空白字元</td>
+</tr>
+<tr>
+<td><code>.Truncate(maxLength, suffix)</code></td>
+<td><code>int, string="..."</code></td>
+<td>截斷至指定長度</td>
+</tr>
+<tr>
+<td><code>.TruncateAtWord(maxLength, suffix)</code></td>
+<td><code>int, string="..."</code></td>
+<td>在單字邊界截斷</td>
+</tr>
+</tbody>
+</table>
+<h3>遮罩</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>參數</th>
+<th>範例</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>.Mask(visibleChars, maskChar)</code></td>
+<td><code>int=4, char='*'</code></td>
+<td><code>"1234567890"</code> → <code>"******7890"</code></td>
+</tr>
+<tr>
+<td><code>.MaskEmail()</code></td>
+<td>-</td>
+<td><code>"user@example.com"</code> → <code>"u**r@example.com"</code></td>
+</tr>
+</tbody>
+</table>
+<h3>驗證</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>回傳</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>.IsValidEmail()</code></td>
+<td><code>bool</code></td>
+<td>是否為有效 Email（長度 &lt;= 254）</td>
+</tr>
+<tr>
+<td><code>.IsValidUrl()</code></td>
+<td><code>bool</code></td>
+<td>是否為有效 URL（http/https）</td>
+</tr>
+<tr>
+<td><code>.IsNumeric()</code></td>
+<td><code>bool</code></td>
+<td>是否僅含數字</td>
+</tr>
+<tr>
+<td><code>.IsAlphabetic()</code></td>
+<td><code>bool</code></td>
+<td>是否僅含字母</td>
+</tr>
+<tr>
+<td><code>.IsAlphanumeric()</code></td>
+<td><code>bool</code></td>
+<td>是否僅含字母與數字</td>
+</tr>
+</tbody>
+</table>
+<h3>擷取</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>參數</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>.ExtractNumbers()</code></td>
+<td>-</td>
+<td>擷取所有數字字元</td>
+</tr>
+<tr>
+<td><code>.ExtractLetters()</code></td>
+<td>-</td>
+<td>擷取所有字母字元</td>
+</tr>
+<tr>
+<td><code>.Left(length)</code></td>
+<td><code>int</code></td>
+<td>取前 N 個字元</td>
+</tr>
+<tr>
+<td><code>.Right(length)</code></td>
+<td><code>int</code></td>
+<td>取後 N 個字元</td>
+</tr>
+</tbody>
+</table>
+<h3>比較（不區分大小寫）</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>參數</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>.EqualsIgnoreCase(other)</code></td>
+<td><code>string</code></td>
+<td>忽略大小寫比較</td>
+</tr>
+<tr>
+<td><code>.ContainsIgnoreCase(value)</code></td>
+<td><code>string</code></td>
+<td>忽略大小寫包含</td>
+</tr>
+<tr>
+<td><code>.StartsWithIgnoreCase(value)</code></td>
+<td><code>string</code></td>
+<td>忽略大小寫開頭比對</td>
+</tr>
+<tr>
+<td><code>.EndsWithIgnoreCase(value)</code></td>
+<td><code>string</code></td>
+<td>忽略大小寫結尾比對</td>
+</tr>
+</tbody>
+</table>
+<h3>雜湊</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>回傳</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>.ToMD5()</code></td>
+<td><code>string</code></td>
+<td>MD5 雜湊（已標記 <code>[Obsolete]</code>，僅相容用途）</td>
+</tr>
+<tr>
+<td><code>.ToSHA256()</code></td>
+<td><code>string</code></td>
+<td>SHA256 雜湊（推薦）</td>
+</tr>
+</tbody>
+</table>
+<h3>編碼</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>.ToBase64()</code></td>
+<td>UTF-8 轉 Base64</td>
+</tr>
+<tr>
+<td><code>.FromBase64()</code></td>
+<td>Base64 轉 UTF-8（失敗時回傳原字串）</td>
+</tr>
+</tbody>
+</table>
+<h3>其他</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>參數</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>.Pluralize(count)</code></td>
+<td><code>int</code></td>
+<td>簡易英文複數化</td>
+</tr>
+<tr>
+<td><code>.Reverse()</code></td>
+<td>-</td>
+<td>反轉字串</td>
+</tr>
+<tr>
+<td><code>.Repeat(count)</code></td>
+<td><code>int</code></td>
+<td>重複字串 N 次</td>
+</tr>
+<tr>
+<td><code>.WordCount()</code></td>
+<td>-</td>
+<td>計算單字數</td>
+</tr>
+</tbody>
+</table>
+<h2>使用範例</h2>
+<pre><code class="language-csharp">using YourNamespace.Utils.String;
+
+// 空值安全
+string name = null;
+string display = name.OrDefault(&quot;未知&quot;);  // &quot;未知&quot;
+
+// 大小寫轉換
+&quot;UserName&quot;.ToSnakeCase();   // &quot;user_name&quot;
+&quot;UserName&quot;.ToKebabCase();   // &quot;user-name&quot;
+&quot;hello&quot;.ToPascalCase();     // &quot;Hello&quot;
+
+// 截斷
+&quot;這是一段很長的文字描述&quot;.Truncate(6);  // &quot;這是一段很長...&quot;
+
+// 遮罩敏感資料
+&quot;A123456789&quot;.Mask();                // &quot;******6789&quot;
+&quot;user@example.com&quot;.MaskEmail();     // &quot;u**r@example.com&quot;
+
+// 驗證
+&quot;test@example.com&quot;.IsValidEmail();  // true
+&quot;https://google.com&quot;.IsValidUrl();  // true
+&quot;12345&quot;.IsNumeric();                // true
+
+// 雜湊
+&quot;password&quot;.ToSHA256();  // &quot;5e884898da28047151d0e56f...&quot;
+
+// 編碼
+&quot;Hello&quot;.ToBase64();     // &quot;SGVsbG8=&quot;
+&quot;SGVsbG8=&quot;.FromBase64();  // &quot;Hello&quot;
+</code></pre>
+<h2>依賴清單</h2>
+<table>
+<thead>
+<tr>
+<th>依賴</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>System</code></td>
+<td>.NET 基礎命名空間</td>
+</tr>
+<tr>
+<td><code>System.Globalization</code></td>
+<td>TitleCase 轉換</td>
+</tr>
+<tr>
+<td><code>System.Linq</code></td>
+<td>字元篩選</td>
+</tr>
+<tr>
+<td><code>System.Security.Cryptography</code></td>
+<td>MD5 / SHA256 雜湊</td>
+</tr>
+<tr>
+<td><code>System.Text</code></td>
+<td>StringBuilder / Encoding</td>
+</tr>
+<tr>
+<td><code>System.Text.RegularExpressions</code></td>
+<td>Regex（含 100ms 超時防 ReDoS）</td>
+</tr>
+</tbody>
+</table>
+<p>無第三方依賴。</p>
+</main>
+</body>
+</html>

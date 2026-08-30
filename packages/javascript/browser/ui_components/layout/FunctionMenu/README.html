@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FunctionMenu - 功能選單容器組件</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>FunctionMenu - 功能選單容器組件</h1>
+<p>功能完整的功能選單容器組件，支援多種布局、尺寸、顏色主題，適用於工具欄、快捷功能、操作選單。</p>
+<h2>特性</h2>
+<ul>
+<li>✅ <strong>多種布局</strong>: Horizontal（水平）、Vertical（垂直）、Grid（網格）</li>
+<li>✅ <strong>三種尺寸</strong>: Small、Medium、Large</li>
+<li>✅ <strong>顏色主題</strong>: 支援 5 種預設主題顏色</li>
+<li>✅ <strong>徽章顯示</strong>: 顯示通知數量徽章</li>
+<li>✅ <strong>圖示支援</strong>: 支援 Font Awesome 等圖示庫</li>
+<li>✅ <strong>禁用狀態</strong>: 支援單個項目的啟用/禁用</li>
+<li>✅ <strong>工具提示</strong>: 支援 tooltip 提示文字</li>
+<li>✅ <strong>響應式設計</strong>: 自動適配不同螢幕尺寸</li>
+<li>✅ <strong>深色模式</strong>: 支援深色模式</li>
+</ul>
+<h2>使用方法</h2>
+<h3>基本使用</h3>
+<pre><code class="language-html">&lt;!DOCTYPE html&gt;
+&lt;html&gt;
+&lt;head&gt;
+    &lt;link rel=&quot;stylesheet&quot; href=&quot;FunctionMenu.css&quot;&gt;
+&lt;/head&gt;
+&lt;body&gt;
+    &lt;div id=&quot;my-menu&quot;&gt;&lt;/div&gt;
+
+    &lt;script src=&quot;FunctionMenu.js&quot;&gt;&lt;/script&gt;
+    &lt;script&gt;
+        const menu = new FunctionMenu({
+            containerId: 'my-menu',
+            layout: 'horizontal',
+            items: [
+                {
+                    id: 'new',
+                    label: '新增',
+                    icon: 'fas fa-plus',
+                    onClick: () =&gt; alert('新增')
+                },
+                {
+                    id: 'edit',
+                    label: '編輯',
+                    icon: 'fas fa-edit',
+                    badge: 5,
+                    onClick: () =&gt; alert('編輯')
+                }
+            ]
+        });
+    &lt;/script&gt;
+&lt;/body&gt;
+&lt;/html&gt;
+</code></pre>
+<h3>配置選項</h3>
+<pre><code class="language-javascript">const menu = new FunctionMenu({
+    // 容器元素 ID（必填）
+    containerId: 'my-menu',
+
+    // 布局方式: 'horizontal', 'vertical', 'grid'（預設: 'horizontal'）
+    layout: 'horizontal',
+
+    // 欄位數量（grid 模式，預設: 4）
+    columns: 4,
+
+    // 按鈕尺寸: 'small', 'medium', 'large'（預設: 'medium'）
+    size: 'medium',
+
+    // 是否顯示標籤（預設: true）
+    showLabels: true,
+
+    // 是否顯示徽章（預設: true）
+    showBadges: true,
+
+    // 初始選單項目
+    items: [
+        {
+            id: 'item1',            // 項目唯一 ID（必填）
+            label: '項目標籤',       // 標籤文字（選填）
+            icon: 'fas fa-home',    // 圖示類名（選填）
+            color: 'primary',       // 顏色主題（選填）
+            badge: 5,               // 徽章數字（選填）
+            disabled: false,        // 是否禁用（選填）
+            tooltip: '提示文字',    // 工具提示（選填）
+            onClick: () =&gt; {}       // 點擊回調（選填）
+        }
+    ],
+
+    // 項目點擊回調（全域）
+    onItemClick: (event) =&gt; {
+        console.log('點擊項目:', event.itemId);
+    }
+});
+</code></pre>
+<h2>API 方法</h2>
+<h3>addItem(item)</h3>
+<p>添加新選單項目</p>
+<pre><code class="language-javascript">menu.addItem({
+    id: 'new-item',
+    label: '新項目',
+    icon: 'fas fa-star',
+    onClick: () =&gt; alert('點擊新項目')
+});
+</code></pre>
+<h3>removeItem(itemId)</h3>
+<p>移除選單項目</p>
+<pre><code class="language-javascript">menu.removeItem('item1');
+</code></pre>
+<h3>updateBadge(itemId, badge)</h3>
+<p>更新項目徽章</p>
+<pre><code class="language-javascript">// 設定徽章數字
+menu.updateBadge('item1', 10);
+
+// 移除徽章
+menu.updateBadge('item1', 0);
+</code></pre>
+<h3>enableItem(itemId)</h3>
+<p>啟用項目</p>
+<pre><code class="language-javascript">menu.enableItem('item1');
+</code></pre>
+<h3>disableItem(itemId)</h3>
+<p>禁用項目</p>
+<pre><code class="language-javascript">menu.disableItem('item1');
+</code></pre>
+<h3>updateLabel(itemId, label)</h3>
+<p>更新項目標籤</p>
+<pre><code class="language-javascript">menu.updateLabel('item1', '新標籤');
+</code></pre>
+<h3>setLayout(layout, columns)</h3>
+<p>改變布局</p>
+<pre><code class="language-javascript">// 切換為 Grid 布局
+menu.setLayout('grid', 4);
+
+// 切換為 Vertical 布局
+menu.setLayout('vertical');
+</code></pre>
+<h3>setSize(size)</h3>
+<p>改變尺寸</p>
+<pre><code class="language-javascript">menu.setSize('large');
+</code></pre>
+<h3>getItemCount()</h3>
+<p>取得項目數量</p>
+<pre><code class="language-javascript">const count = menu.getItemCount();
+</code></pre>
+<h3>clearAllItems()</h3>
+<p>清空所有項目</p>
+<pre><code class="language-javascript">menu.clearAllItems();
+</code></pre>
+<h3>destroy()</h3>
+<p>銷毀容器</p>
+<pre><code class="language-javascript">menu.destroy();
+</code></pre>
+<h2>顏色主題</h2>
+<p>支援以下預設主題顏色：</p>
+<pre><code class="language-javascript">{ color: 'primary' }   // 紫色漸變
+{ color: 'success' }   // 綠色漸變
+{ color: 'warning' }   // 粉紅色漸變
+{ color: 'danger' }    // 紅色漸變
+{ color: 'info' }      // 藍色漸變
+</code></pre>
+<h2>使用範例</h2>
+<h3>範例 1: 工具欄</h3>
+<pre><code class="language-javascript">const toolbar = new FunctionMenu({
+    containerId: 'toolbar',
+    layout: 'horizontal',
+    size: 'medium',
+    items: [
+        {
+            id: 'new',
+            label: '新增',
+            icon: 'fas fa-plus',
+            onClick: () =&gt; createNew()
+        },
+        {
+            id: 'save',
+            label: '儲存',
+            icon: 'fas fa-save',
+            onClick: () =&gt; save()
+        },
+        {
+            id: 'delete',
+            label: '刪除',
+            icon: 'fas fa-trash',
+            color: 'danger',
+            onClick: () =&gt; confirmDelete()
+        }
+    ]
+});
+</code></pre>
+<h3>範例 2: 側邊欄導航</h3>
+<pre><code class="language-javascript">const sidebar = new FunctionMenu({
+    containerId: 'sidebar',
+    layout: 'vertical',
+    size: 'large',
+    items: [
+        {
+            id: 'dashboard',
+            label: '儀表板',
+            icon: 'fas fa-tachometer-alt',
+            onClick: () =&gt; navigate('/dashboard')
+        },
+        {
+            id: 'users',
+            label: '用戶管理',
+            icon: 'fas fa-users',
+            badge: 12,
+            onClick: () =&gt; navigate('/users')
+        },
+        {
+            id: 'settings',
+            label: '設定',
+            icon: 'fas fa-cog',
+            onClick: () =&gt; navigate('/settings')
+        }
+    ]
+});
+</code></pre>
+<h3>範例 3: 網格功能選單</h3>
+<pre><code class="language-javascript">const functions = new FunctionMenu({
+    containerId: 'functions',
+    layout: 'grid',
+    columns: 4,
+    items: [
+        {
+            id: 'reports',
+            label: '報表',
+            icon: 'fas fa-chart-bar',
+            color: 'primary'
+        },
+        {
+            id: 'export',
+            label: '匯出',
+            icon: 'fas fa-download',
+            color: 'success'
+        },
+        {
+            id: 'import',
+            label: '匯入',
+            icon: 'fas fa-upload',
+            color: 'info'
+        },
+        {
+            id: 'delete',
+            label: '刪除',
+            icon: 'fas fa-trash',
+            color: 'danger'
+        }
+    ]
+});
+</code></pre>
+<h3>範例 4: 動態更新</h3>
+<pre><code class="language-javascript">// 定時更新徽章
+setInterval(() =&gt; {
+    const count = getNotificationCount();
+    menu.updateBadge('notifications', count);
+}, 30000);
+
+// 根據權限啟用/禁用
+if (!hasPermission('delete')) {
+    menu.disableItem('delete');
+}
+</code></pre>
+<h2>樣式自訂</h2>
+<h3>自訂顏色</h3>
+<pre><code class="language-css">/* 自訂按鈕背景 */
+.menu-item-button {
+    background: #f0f0f0;
+}
+
+/* 自訂懸停效果 */
+.menu-item-button:hover {
+    background: #e0e0e0;
+}
+
+/* 自訂圖示顏色 */
+.menu-item-icon i {
+    color: #ff6b6b;
+}
+</code></pre>
+<h3>自訂尺寸</h3>
+<pre><code class="language-css">/* 調整間距 */
+.function-menu {
+    gap: 20px;
+}
+
+/* 調整按鈕內邊距 */
+.menu-item-button {
+    padding: 20px 24px;
+}
+</code></pre>
+<h2>注意事項</h2>
+<ol>
+<li><strong>項目 ID 必須唯一</strong>: 每個選單項目的 <code>id</code> 必須是唯一的</li>
+<li><strong>圖示依賴</strong>: 使用圖示需引入 Font Awesome</li>
+<li><strong>響應式</strong>: 在小螢幕上自動調整布局</li>
+<li><strong>點擊事件</strong>: 支援單個項目回調和全域回調</li>
+</ol>
+<h2>瀏覽器支援</h2>
+<ul>
+<li>Chrome 90+</li>
+<li>Firefox 88+</li>
+<li>Safari 14+</li>
+<li>Edge 90+</li>
+</ul>
+<h2>依賴</h2>
+<ul>
+<li>無外部依賴（純 JavaScript 實作）</li>
+<li>可選：Font Awesome（用於圖示）</li>
+</ul>
+<h2>授權</h2>
+<p>MIT License</p>
+</main>
+</body>
+</html>

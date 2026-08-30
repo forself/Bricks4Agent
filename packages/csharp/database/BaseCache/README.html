@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BaseCache</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>BaseCache</h1>
+<p>輕量級記憶體快取，類似 Redis 的精簡版。零外部依賴，純 .NET 實作。</p>
+<h2>特點</h2>
+<ul>
+<li><strong>零依賴</strong> - 不需要安裝任何 NuGet 套件</li>
+<li><strong>執行緒安全</strong> - 使用 <code>ConcurrentDictionary</code> 實作</li>
+<li><strong>多種資料結構</strong> - Key-Value、Queue、Stack、List、Hash、Set</li>
+<li><strong>TTL 支援</strong> - 自動過期機制</li>
+<li><strong>Pub/Sub</strong> - 發布訂閱模式</li>
+<li><strong>持久化</strong> - 可儲存/載入 JSON 檔案</li>
+<li><strong>統計資訊</strong> - 命中率、讀寫次數等</li>
+</ul>
+<h2>安裝</h2>
+<p>直接引用專案或複製 <code>BaseCache.cs</code> 到你的專案中。</p>
+<h2>快速開始</h2>
+<pre><code class="language-csharp">using BaseCache;
+
+var cache = new BaseCache();
+
+// 基本 Key-Value
+cache.Set(&quot;user:1&quot;, new User { Name = &quot;John&quot; }, TimeSpan.FromMinutes(30));
+var user = cache.Get&lt;User&gt;(&quot;user:1&quot;);
+
+// 取得或設定
+var data = cache.GetOrSet(&quot;expensive:query&quot;, () =&gt; {
+    return LoadFromDatabase();
+}, TimeSpan.FromHours(1));
+</code></pre>
+<h2>API 參考</h2>
+<h3>Key-Value 操作</h3>
+<pre><code class="language-csharp">// 設定 (可選 TTL)
+cache.Set(&quot;key&quot;, value);
+cache.Set(&quot;key&quot;, value, TimeSpan.FromMinutes(30));
+
+// 取得
+var value = cache.Get&lt;T&gt;(&quot;key&quot;);
+
+// 嘗試取得
+if (cache.TryGet&lt;T&gt;(&quot;key&quot;, out var value)) { }
+
+// 取得或設定
+var value = cache.GetOrSet(&quot;key&quot;, () =&gt; factory(), ttl);
+
+// 刪除
+cache.Delete(&quot;key&quot;);
+
+// 檢查存在
+bool exists = cache.Exists(&quot;key&quot;);
+
+// 設定過期時間
+cache.Expire(&quot;key&quot;, TimeSpan.FromMinutes(10));
+
+// 取得剩餘時間
+var ttl = cache.TTL(&quot;key&quot;);
+
+// 搜尋 keys (支援 * 和 ? 萬用字元)
+var keys = cache.Keys(&quot;user:*&quot;);
+
+// 數值操作
+cache.Increment(&quot;counter&quot;);
+cache.Increment(&quot;counter&quot;, 5);
+cache.Decrement(&quot;counter&quot;);
+</code></pre>
+<h3>Queue 佇列 (FIFO)</h3>
+<pre><code class="language-csharp">cache.Enqueue(&quot;jobs&quot;, new Job { Id = 1 });
+cache.Enqueue(&quot;jobs&quot;, new Job { Id = 2 });
+
+var job = cache.Dequeue&lt;Job&gt;(&quot;jobs&quot;);  // Job { Id = 1 }
+var peek = cache.QueuePeek&lt;Job&gt;(&quot;jobs&quot;);  // 查看但不移除
+var length = cache.QueueLength(&quot;jobs&quot;);
+</code></pre>
+<h3>Stack 堆疊 (LIFO)</h3>
+<pre><code class="language-csharp">cache.Push(&quot;history&quot;, &quot;page1&quot;);
+cache.Push(&quot;history&quot;, &quot;page2&quot;);
+
+var page = cache.Pop&lt;string&gt;(&quot;history&quot;);  // &quot;page2&quot;
+var peek = cache.StackPeek&lt;string&gt;(&quot;history&quot;);
+var length = cache.StackLength(&quot;history&quot;);
+</code></pre>
+<h3>List 列表</h3>
+<pre><code class="language-csharp">cache.RPush(&quot;list&quot;, &quot;a&quot;);  // 右側加入
+cache.RPush(&quot;list&quot;, &quot;b&quot;);
+cache.LPush(&quot;list&quot;, &quot;z&quot;);  // 左側加入
+
+var items = cache.LRange&lt;string&gt;(&quot;list&quot;, 0, -1);  // [&quot;z&quot;, &quot;a&quot;, &quot;b&quot;]
+var first = cache.LPop&lt;string&gt;(&quot;list&quot;);  // &quot;z&quot;
+var last = cache.RPop&lt;string&gt;(&quot;list&quot;);   // &quot;b&quot;
+var item = cache.LIndex&lt;string&gt;(&quot;list&quot;, 0);  // 依索引取得
+var length = cache.LLen(&quot;list&quot;);
+</code></pre>
+<h3>Hash 雜湊表</h3>
+<pre><code class="language-csharp">cache.HSet(&quot;user:1&quot;, &quot;name&quot;, &quot;John&quot;);
+cache.HSet(&quot;user:1&quot;, &quot;email&quot;, &quot;john@example.com&quot;);
+
+var name = cache.HGet&lt;string&gt;(&quot;user:1&quot;, &quot;name&quot;);
+var all = cache.HGetAll&lt;string&gt;(&quot;user:1&quot;);  // Dictionary
+var keys = cache.HKeys(&quot;user:1&quot;);  // [&quot;name&quot;, &quot;email&quot;]
+var exists = cache.HExists(&quot;user:1&quot;, &quot;name&quot;);
+var length = cache.HLen(&quot;user:1&quot;);
+
+cache.HDel(&quot;user:1&quot;, &quot;email&quot;);
+cache.HIncr(&quot;user:1&quot;, &quot;visits&quot;);  // 數值遞增
+</code></pre>
+<h3>Set 集合</h3>
+<pre><code class="language-csharp">cache.SAdd(&quot;tags&quot;, &quot;csharp&quot;);
+cache.SAdd(&quot;tags&quot;, &quot;dotnet&quot;);
+
+var members = cache.SMembers(&quot;tags&quot;);  // HashSet
+var isMember = cache.SIsMember(&quot;tags&quot;, &quot;csharp&quot;);  // true
+var count = cache.SCard(&quot;tags&quot;);  // 2
+
+cache.SRemove(&quot;tags&quot;, &quot;dotnet&quot;);
+
+// 集合運算
+var intersection = cache.SIntersect(&quot;set1&quot;, &quot;set2&quot;);
+var union = cache.SUnion(&quot;set1&quot;, &quot;set2&quot;);
+</code></pre>
+<h3>Pub/Sub 發布訂閱</h3>
+<pre><code class="language-csharp">// 訂閱
+cache.Subscribe(&quot;notifications&quot;, (channel, message) =&gt; {
+    Console.WriteLine($&quot;[{channel}] {message}&quot;);
+});
+
+// 發布
+int subscribers = cache.Publish(&quot;notifications&quot;, &quot;New order received!&quot;);
+
+// 取消訂閱
+cache.Unsubscribe(&quot;notifications&quot;);
+</code></pre>
+<h3>持久化</h3>
+<pre><code class="language-csharp">// 儲存到檔案
+cache.SaveToFile(&quot;cache_backup.json&quot;);
+
+// 從檔案載入
+cache.LoadFromFile(&quot;cache_backup.json&quot;);
+</code></pre>
+<h3>批次操作</h3>
+<pre><code class="language-csharp">// 批次設定
+cache.SetMany(new Dictionary&lt;string, User&gt; {
+    [&quot;user:1&quot;] = user1,
+    [&quot;user:2&quot;] = user2
+}, TimeSpan.FromHours(1));
+
+// 批次取得
+var users = cache.GetMany&lt;User&gt;(new[] { &quot;user:1&quot;, &quot;user:2&quot; });
+
+// 批次刪除
+cache.DeleteMany(new[] { &quot;key1&quot;, &quot;key2&quot; });
+
+// 依模式刪除
+cache.DeleteByPattern(&quot;user:*&quot;);
+</code></pre>
+<h3>統計資訊</h3>
+<pre><code class="language-csharp">Console.WriteLine(cache.Stats);
+// Hits: 150, Misses: 10, HitRate: 93.75%, Reads: 160, Writes: 50, Evictions: 5
+
+Console.WriteLine($&quot;命中率: {cache.Stats.HitRate:F2}%&quot;);
+</code></pre>
+<h3>配置選項</h3>
+<pre><code class="language-csharp">var cache = new BaseCache(new CachOptions
+{
+    CleanupInterval = TimeSpan.FromMinutes(5),  // 清理間隔
+    MaxItems = 10000,  // 最大項目數 (0 = 無限制)
+    EvictionCount = 100  // 達上限時移除的項目數
+});
+</code></pre>
+<h2>使用場景</h2>
+<h3>1. API 響應快取</h3>
+<pre><code class="language-csharp">public async Task&lt;UserDto&gt; GetUserAsync(int id)
+{
+    return cache.GetOrSet($&quot;user:{id}&quot;, async () =&gt; {
+        return await _repository.GetUserAsync(id);
+    }, TimeSpan.FromMinutes(10));
+}
+</code></pre>
+<h3>2. 速率限制</h3>
+<pre><code class="language-csharp">public bool IsRateLimited(string clientIp)
+{
+    var key = $&quot;rate:{clientIp}&quot;;
+    var count = cache.Increment(key);
+
+    if (count == 1)
+        cache.Expire(key, TimeSpan.FromMinutes(1));
+
+    return count &gt; 100;  // 每分鐘 100 次
+}
+</code></pre>
+<h3>3. Session 儲存</h3>
+<pre><code class="language-csharp">public void SetSession(string sessionId, SessionData data)
+{
+    cache.HSet($&quot;session:{sessionId}&quot;, &quot;user_id&quot;, data.UserId);
+    cache.HSet($&quot;session:{sessionId}&quot;, &quot;created_at&quot;, DateTime.UtcNow);
+    cache.Expire($&quot;session:{sessionId}&quot;, TimeSpan.FromHours(24));
+}
+</code></pre>
+<h3>4. 任務佇列</h3>
+<pre><code class="language-csharp">// 生產者
+cache.Enqueue(&quot;email:queue&quot;, new EmailJob { To = &quot;user@example.com&quot; });
+
+// 消費者
+while (true)
+{
+    var job = cache.Dequeue&lt;EmailJob&gt;(&quot;email:queue&quot;);
+    if (job != null)
+        await SendEmailAsync(job);
+    else
+        await Task.Delay(1000);
+}
+</code></pre>
+<h3>5. 即時通知</h3>
+<pre><code class="language-csharp">// 訂閱用戶通知
+cache.Subscribe($&quot;user:{userId}:notifications&quot;, (_, msg) =&gt; {
+    SendWebSocket(userId, msg);
+});
+
+// 發送通知
+cache.Publish($&quot;user:{userId}:notifications&quot;, new {
+    type = &quot;message&quot;,
+    content = &quot;You have a new message&quot;
+});
+</code></pre>
+<h2>注意事項</h2>
+<ol>
+<li><strong>記憶體限制</strong> - 這是純記憶體實作，重啟後資料會遺失 (除非使用持久化)</li>
+<li><strong>單機使用</strong> - 不支援分散式，如需分散式請使用 Redis</li>
+<li><strong>大型物件</strong> - 避免儲存過大的物件，建議單一項目 &lt; 1MB</li>
+<li><strong>序列化</strong> - 持久化功能使用 System.Text.Json，複雜物件需確保可序列化</li>
+</ol>
+<h2>License</h2>
+<p>MIT</p>
+</main>
+</body>
+</html>

@@ -213,6 +213,10 @@ export class DataTable {
                     };
                 }
                 if (col.html) {
+                    // ⚠️ 安全提醒:col.html:true 讓此欄的儲存格值以 raw() 標記,
+                    // 繞過預設的 escapeHtml 直接寫入 innerHTML(見下方 _renderCell 的 isRawHtml 分支)。
+                    // 僅可對「可信/已清洗」的欄位啟用;若值可能來自使用者或 API,
+                    // 請改用 col.render 回傳 escapeHtml() 後的字串,或先經 sanitizeHTML。
                     if (!opts.customBodyRender) {
                         opts.customBodyRender = (value) => raw(value == null ? '' : String(value));
                     }

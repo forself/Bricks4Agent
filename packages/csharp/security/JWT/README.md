@@ -5,11 +5,17 @@ Helper class for generating and validating JWT (JSON Web Tokens) for authenticat
 ## Features
 
 - JWT access token generation
+
 - Refresh token generation
+
 - Token validation
+
 - Claims extraction (user ID, username, email, roles)
+
 - Token expiration checking
+
 - Custom claims support
+
 - Configurable via appsettings.json
 
 ## Setup
@@ -329,26 +335,41 @@ Generated token includes these claims:
 ## Security Best Practices
 
 1. **Secret Key**: Use a strong, randomly generated secret key (at least 32 characters)
+
 2. **HTTPS Only**: Always use HTTPS in production
+
 3. **Token Expiration**: Set reasonable expiration times (15-60 minutes for access tokens)
+
 4. **Refresh Tokens**: Use refresh tokens for long-lived sessions
+
 5. **Token Storage**: Store tokens securely on client (HttpOnly cookies recommended)
+
 6. **Token Revocation**: Implement blacklist or database check for revoked tokens
+
 7. **Environment Variables**: Store secret key in environment variables, not appsettings.json
 
 ## Dependencies
 
 - System.IdentityModel.Tokens.Jwt
+
 - Microsoft.IdentityModel.Tokens
+
 - Microsoft.AspNetCore.Authentication.JwtBearer
+
 - .NET 6.0 or higher
 
 ## Benefits
 
 1. **Stateless Authentication** - No server-side session storage needed
+
 2. **Scalability** - Works well with distributed systems
+
 3. **Cross-Domain** - Can be used across different domains
+
 4. **Mobile-Friendly** - Easy to implement in mobile apps
+
 5. **Type Safety** - Strongly-typed claim extraction
+
 6. **Flexible** - Support for custom claims
+
 7. **Secure** - Industry-standard token format

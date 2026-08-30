@@ -86,6 +86,16 @@ export class TextInput {
             : { status: 'idle', message: '' };
     }
 
+    _limitInputValue(value) {
+        const text = String(value ?? '');
+        const configured = this.options.maxLength;
+        if (configured === null || configured === undefined || configured === '') return text;
+        const limit = Number(configured);
+        return Number.isInteger(limit) && limit >= 0 && text.length > limit
+            ? text.slice(0, limit)
+            : text;
+    }
+
     _create() {
         const {
             label,
@@ -178,14 +188,17 @@ export class TextInput {
         });
 
         input.addEventListener('input', () => {
+            const limitedValue = this._limitInputValue(input.value);
+            if (limitedValue !== input.value) input.value = limitedValue;
+
             if (this.snapshot().validation.status === 'error') {
                 this.send('CLEAR_ERROR');
             }
 
-            this.send('SET_VALUE', { value: input.value });
+            this.send('SET_VALUE', { value: limitedValue });
 
             if (this.options.onChange) {
-                this.options.onChange(input.value);
+                this.options.onChange(limitedValue);
             }
         });
 

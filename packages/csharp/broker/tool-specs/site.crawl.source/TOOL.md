@@ -5,9 +5,13 @@ Safely crawls a public HTTP/HTTPS website within a confirmed link-depth scope an
 ## Capability
 
 - Tool ID: `site.crawl.source`
+
 - Capability ID: `site.crawl_source`
+
 - Route: `site_crawl_source`
+
 - Status: `beta`
+
 - Risk: medium
 
 ## Required Pre-Execution Confirmation
@@ -15,7 +19,9 @@ Safely crawls a public HTTP/HTTPS website within a confirmed link-depth scope an
 Before execution, the user must confirm the crawl depth as one of:
 
 - entry page links: `max_depth = 1`
+
 - within two link hops: `max_depth = 2`
+
 - N link hops: `max_depth = N`
 
 Root/current page only, `max_depth = 0`, is supported only as an explicit manual/safety mode when requested.
@@ -27,8 +33,11 @@ For institutional or multi-subdomain sites, callers may include public same-site
 ## Safety Rules
 
 - Public HTTP/HTTPS URLs only.
+
 - No authenticated access, delegated credentials, cookies, private sessions, localhost, loopback, link-local, or private-network targets.
+
 - Do not widen from the confirmed same-origin or allowed same-site host-suffix scope during execution.
+
 - Budgets are safety limits, not substitutes for user-confirmed path depth.
 
 ## Output Contract

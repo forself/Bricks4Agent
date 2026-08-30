@@ -13,16 +13,27 @@
 ## File Structure
 
 - Modify `packages/csharp/broker-core/Models/LocalAdminCredential.cs`: add operator identity, role, status and login metadata columns.
+
 - Modify `packages/csharp/broker-core/Models/LocalAdminSession.cs`: add operator identity, role and permission snapshot columns.
+
 - Modify `packages/csharp/broker-core/Data/BrokerDbInitializer.cs`: add migration columns, indexes and legacy bootstrap normalization.
+
 - Create `packages/csharp/broker/Services/LocalAdminPermissions.cs`: canonical permission names, role mapping and permission evaluation.
+
 - Modify `packages/csharp/broker/Services/LocalAdminAuthService.cs`: named operator login, permission checks, operator management and session revocation.
+
 - Modify `packages/csharp/broker/Endpoints/LocalAdminEndpoints.cs`: gate each route by permission and add operator management endpoints.
+
 - Modify `packages/csharp/broker/wwwroot/line-admin.html`: role-aware navigation, system monitoring tab and permission management tab.
+
 - Create `packages/csharp/tests/unit/Admin/LocalAdminPermissionTests.cs`: role/permission unit tests.
+
 - Create `packages/csharp/tests/integration/Api/LocalAdminPermissionEndpointTests.cs`: backend authorization integration tests.
+
 - Create `tools/scripts/validate-line-admin.mjs`: static/admin UI permission-gating smoke validation.
+
 - Modify `package.json`: add `validate:line-admin`.
+
 - Modify `docs/manuals/current-user-manual.zh-TW.md`, `docs/manuals/current-technical-manual.zh-TW.md`, `docs/environment-setup.zh-TW.md`: document the operator roles and entry points.
 
 ## Task 1: Local Admin Permission Catalog
@@ -532,12 +543,19 @@ Expected: FAIL because the login signature and operator APIs are not implemented
 Modify `LocalAdminAuthService`:
 
 - Keep the existing `Login(HttpContext, string password, string? newPassword)` overload as a compatibility wrapper calling `Login(context, "admin", password, newPassword)`.
+
 - Add `Login(HttpContext context, string username, string password, string? newPassword)`.
+
 - Lookup credentials by normalized username.
+
 - Create bootstrap credential `credential_id = "local_admin"`, `operator_id = "local_admin"`, `username = "admin"`, `role = "super_admin"` on first login.
+
 - Issue sessions with `operator_id`, `username`, `role`, `permissions_snapshot`.
+
 - Return `OperatorId`, `Username`, `Role`, `Permissions` from `LocalAdminStatus` and `LocalAdminLoginResult`.
+
 - Add `TryRequirePermission(...)`.
+
 - Add `CreateOperator`, `ListOperators`, `UpdateOperatorRole`, `DisableOperator`, `ResetOperatorPassword`, `RevokeOperatorSessions`.
 
 The denial body for missing permission must be:
@@ -755,7 +773,9 @@ Expected: FAIL because monitoring/permissions tabs and permission-gating JS are 
 Modify `line-admin.html`:
 
 - Add nav buttons `data-tab="monitoring"` and `data-tab="permissions"`.
+
 - Add `const PERMISSIONS = { ... }` with the backend permission names.
+
 - Add:
 
 ```javascript
@@ -771,7 +791,9 @@ function requireVisible(selector, permission) {
 ```
 
 - In `renderAuthState()`, hide or show nav/actions using `hasPermission`.
+
 - Build the monitoring tab from existing `state.system`, alerts, and health API responses.
+
 - Build the permissions tab with operator list, create operator form, role update and disable buttons.
 
 - [x] **Step 4: Run validation to verify it passes**
@@ -796,9 +818,13 @@ Expected: PASS.
 Document:
 
 - Admin UI entry point remains `http://127.0.0.1:5361/line-admin.html`.
+
 - First login uses username `admin` and initial password `admin`, then requires a new password.
+
 - Local operator roles are `super_admin`, `system_admin`, `permission_admin`, `auditor`.
+
 - System monitoring and permission management are separate tabs.
+
 - Backend enforces role permissions; UI hiding is not the security boundary.
 
 - [x] **Step 2: Run targeted backend tests**
@@ -841,5 +867,7 @@ Expected: commit succeeds with only related files staged.
 ## Self-Review
 
 - Spec coverage: data model, role split, API gates, UI tabs, migration, docs and tests are covered by Tasks 1-6.
+
 - Placeholder scan: no deferred implementation markers are present.
+
 - Type consistency: role constants, permission constants, endpoint names and test expectations use the same names across tasks.

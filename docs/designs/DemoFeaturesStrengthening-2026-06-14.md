@@ -7,7 +7,9 @@ Status: **三項皆已實作 + 驗證(#3 ✅ → #1 ✅ → #2 ✅)**
 ## 0. 三個展示功能
 
 1. **交通查詢** —— 日期/時間範圍、出發地、目的地、方式(rail/HSR/bus/flight)。
+
 2. **web 取指定資料 → 產生報表/報告**。
+
 3. **依某網站 → 產生「基於組件庫的複製品」或「雛形」**;**不同次、不同台電腦的執行結果必須穩定(決定性)**。
 
 三者程式都在 main(`.worktrees/*` 為平行副本;關鍵檔均在 main)。
@@ -27,6 +29,7 @@ Status: **三項皆已實作 + 驗證(#3 ✅ → #1 ✅ → #2 ✅)**
 > **2026-06-16 補充(組件庫整併 + e2e)**:#3 的「組件庫複製」詞彙已從產生器自有的取樣罐頭(`HeroSection` 等)**錨定到 canonical `ui_components`(B)** —— 每個產生器型別綁定 B 閉集(`b_component`)、fail-closed、`HeroSection` 已刪、靜態包新增 `components/b-binding.json`(機讀 `type→b_component`)。詳見 [ComponentLibraryConsolidation-2026-06-15.md](ComponentLibraryConsolidation-2026-06-15.md)。位元組決定性維持。**e2e**:新增免-broker `reconstruct` CLI,對台北科大(`www.ntut.edu.tw`)實跑 6 頁、**0 缺口**、archive 位元組相同,並抓出 `TemplateCompiler.CloneManifest` 漏帶綁定的 bug(已修 + 回歸測試)。當前測試:Unit.Tests **382** / Broker **192** / Vitest **168** 全綠(本段落內舊述的「345」為當時數)。
 
 **不穩定來源(會讓輸出隨爬取順序/機器而變,須修)**:
+
 | 嚴重度 | 來源 | 位置 | 落在輸出 |
 |--------|------|------|---------|
 | 🔴 高 | 主題 token `Dictionary<string,string>`(colors/typography)序列化依插入(爬取)順序 | `Models/SiteCrawlContracts.cs`、`Models/GeneratorSiteContracts.cs`;合併於 `SiteCrawlerService.MergeThemeTokens` | `site.json` |
@@ -92,7 +95,9 @@ Status: **三項皆已實作 + 驗證(#3 ✅ → #1 ✅ → #2 ✅)**
 ## 4. 實作順序與理由
 
 1. **#3 決定性** —— 最具體、有硬性可驗收標準(位元組穩定)、程式+測試都在 main。先做最扎實。
+
 2. **#1 交通** —— 多為界線清楚的補強,單元可測。
+
 3. **#2 web→報表** —— 串接 + LLM 綜合,較整合性。
 
 每步測試先行、各自 commit、跑完整驗證(per CLAUDE.md)再進下一個。

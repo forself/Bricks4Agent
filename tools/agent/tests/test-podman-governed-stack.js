@@ -76,7 +76,7 @@ async function main() {
         AGENT_RUN: 'Read README.md through the available tool, then reply with the exact text STACK_OK.',
         STACK_RESPONSE_TEXT: 'STACK_OK',
         STACK_TOOL_CALL: 'read_file',
-        STACK_TOOL_PATH: 'README.md',
+        STACK_TOOL_PATH: 'README.html',
         BROKER_ROLE_ID: process.env.BROKER_ROLE_ID || 'role_reader',
         BROKER_TASK_TYPE: process.env.BROKER_TASK_TYPE || 'analysis',
         LINE_CHANNEL_ACCESS_TOKEN: process.env.LINE_CHANNEL_ACCESS_TOKEN || 'stack-test-token',

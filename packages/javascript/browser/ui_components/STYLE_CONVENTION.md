@@ -3,7 +3,9 @@
 ## 核心原則
 
 1. **所有元件必須使用 `theme.css` 定義的 CSS 變數**（`--cl-*` 前綴），禁止硬編碼色碼
+
 2. **深色主題由 `[data-theme="dark"]` 統一處理**，元件禁止自行實作 `@media (prefers-color-scheme: dark)`
+
 3. **非色碼 Token（圓角、陰影、字型大小、過渡）也必須引用 CSS 變數**
 
 ---
@@ -13,7 +15,7 @@
 ### 語意色 / 品牌色
 
 | 硬編碼 | CSS 變數 |
-|--------|----------|
+|---|---|
 | `#2196F3` | `var(--cl-primary)` |
 | `#1976D2` | `var(--cl-primary-dark)` |
 | `#e3f2fd` | `var(--cl-primary-light)` |
@@ -31,7 +33,7 @@
 ### Material 擴充色
 
 | 硬編碼 | CSS 變數 |
-|--------|----------|
+|---|---|
 | `#9C27B0` | `var(--cl-purple)` |
 | `#7B1FA2` | `var(--cl-purple-dark)` |
 | `#CE93D8` | `var(--cl-purple-light)` |
@@ -59,7 +61,7 @@
 ### 文字色
 
 | 硬編碼 | CSS 變數 |
-|--------|----------|
+|---|---|
 | `#333`, `#333333` | `var(--cl-text)` |
 | `#444` | `var(--cl-text)` |
 | `#555`, `#555555` | `var(--cl-text-secondary)` |
@@ -77,7 +79,7 @@
 ### 背景色
 
 | 硬編碼 | CSS 變數 |
-|--------|----------|
+|---|---|
 | `white`, `#fff`, `#ffffff` (背景) | `var(--cl-bg)` |
 | `#f5f5f5` | `var(--cl-bg-secondary)` |
 | `#f9f9f9` | `var(--cl-bg-secondary)` |
@@ -101,7 +103,7 @@
 ### 邊框色
 
 | 硬編碼 | CSS 變數 |
-|--------|----------|
+|---|---|
 | `#ddd`, `#dddddd` | `var(--cl-border)` |
 | `#e0e0e0` | `var(--cl-border)` |
 | `#eee`, `#eeeeee` | `var(--cl-border-light)` |
@@ -117,7 +119,7 @@
 ### 圓角
 
 | 硬編碼 | CSS 變數 |
-|--------|----------|
+|---|---|
 | `border-radius: 2px` | `var(--cl-radius-xs)` |
 | `border-radius: 3px` | `var(--cl-radius-xs)` |
 | `border-radius: 4px` | `var(--cl-radius-sm)` |
@@ -132,7 +134,7 @@
 ### 陰影
 
 | 硬編碼 | CSS 變數 |
-|--------|----------|
+|---|---|
 | `0 1px 3px rgba(0,0,0,0.1)` | `var(--cl-shadow-sm)` |
 | `0 2px 4px rgba(0,0,0,0.05)` | `var(--cl-shadow-sm)` |
 | `0 4px 12px rgba(0,0,0,0.15)` | `var(--cl-shadow-md)` |
@@ -142,7 +144,7 @@
 ### 字型大小
 
 | 硬編碼 | CSS 變數 |
-|--------|----------|
+|---|---|
 | `font-size: 10px` | `var(--cl-font-size-2xs)` |
 | `font-size: 11px` | `var(--cl-font-size-xs)` |
 | `font-size: 12px` | `var(--cl-font-size-sm)` |
@@ -157,7 +159,7 @@
 ### 過渡
 
 | 硬編碼 | CSS 變數 |
-|--------|----------|
+|---|---|
 | `0.1s ...` | `var(--cl-transition-fast)` |
 | `0.15s ease` | `var(--cl-transition-fast)` |
 | `0.2s ease` | `var(--cl-transition)` |
@@ -169,7 +171,7 @@
 ### 字型
 
 | 硬編碼 | CSS 變數 |
-|--------|----------|
+|---|---|
 | `-apple-system, BlinkMacSystemFont, ...` | `var(--cl-font-family)` |
 | `font-family: inherit` | 保留 |
 
@@ -178,11 +180,17 @@
 ## 保留不替換的值
 
 - `transparent` — 保留
+
 - `currentColor` — 保留
+
 - `inherit` — 保留
+
 - `rgba(0,0,0,0.08)` 等低透明度 hover 效果 — 保留（無對應變數）
+
 - `rgba(255,255,255,0.15)` 等反色 hover 效果 — 保留
+
 - `border-bottom-color: #fff` 用於 tab active 技巧 — 改為 `var(--cl-bg)`
+
 - `linear-gradient(...)` 中的色碼 — 也應換成 CSS 變數
 
 ---
@@ -190,8 +198,11 @@
 ## 深色主題規則
 
 1. `theme.css` 已在 `[data-theme="dark"]` 中覆寫所有 `--cl-*` 變數
+
 2. 元件使用 CSS 變數後，切換主題自動生效
+
 3. **移除**所有元件中的 `@media (prefers-color-scheme: dark) { ... }` 區塊
+
 4. **移除**元件中用硬編碼色碼實作的深色模式邏輯
 
 ---
@@ -203,31 +214,35 @@
 元件按複雜度分為三層：
 
 1. **原子（Atoms）** — 最小可重用單位，不依賴其他元件
-   - 按鈕類：BasicButton, ActionButton, EditorButton, AuthButton, SortButton, UploadButton, DownloadButton
-   - 輸入類：TextInput, NumberInput, Checkbox, Radio, ToggleSwitch, ColorPicker, Dropdown
-   - 展示類：Badge, Tag, Tooltip, Progress, Divider, LoadingSpinner, Avatar
-   - 回饋類：Notification
+ - 按鈕類：BasicButton, ActionButton, EditorButton, AuthButton, SortButton, UploadButton, DownloadButton
+ - 輸入類：TextInput, NumberInput, Checkbox, Radio, ToggleSwitch, ColorPicker, Dropdown
+ - 展示類：Badge, Tag, Tooltip, Progress, Divider, LoadingSpinner, Avatar
+ - 回饋類：Notification
 
 2. **分子（Molecules）** — 由原子組合而成
-   - FormField（Label + 任意輸入原子）
-   - SearchForm（TextInput + BasicButton）
-   - DatePicker / TimePicker / DateTimeInput
-   - Breadcrumb, Pagination, ButtonGroup
+ - FormField（Label + 任意輸入原子）
+ - SearchForm（TextInput + BasicButton）
+ - DatePicker / TimePicker / DateTimeInput
+ - Breadcrumb, Pagination, ButtonGroup
 
 3. **有機體（Organisms）** — 由分子/原子組合的複雜元件
-   - DataTable, TabContainer, FunctionMenu, SideMenu
-   - Panel 系統（PanelManager + 多種 Panel 變體）
-   - InfoPanel, WorkflowPanel, DocumentWall, PhotoWall
+ - DataTable, TabContainer, FunctionMenu, SideMenu
+ - Panel 系統（PanelManager + 多種 Panel 變體）
+ - InfoPanel, WorkflowPanel, DocumentWall, PhotoWall
 
 ### 新元件開發規範
 
 1. **每個元件一個資料夾**：`{category}/{ComponentName}/`
+
 2. **必要檔案**：
-   - `ComponentName.js` — 主元件類別
-   - `index.js` — 重新匯出（`export { X } from './X.js';`）
-   - `demo.html` — 完整展示頁面（含深色主題切換）
+ - `ComponentName.js` — 主元件類別
+ - `index.js` — 重新匯出（`export { X } from './X.js';`）
+ - `demo.html` — 完整展示頁面（含深色主題切換）
+
 3. **註冊流程**：
-   - 加入 `{category}/index.js` 匯出
-   - 加入 `binding/ComponentFactory.js` 工廠註冊
+ - 加入 `{category}/index.js` 匯出
+ - 加入 `binding/ComponentFactory.js` 工廠註冊
+
 4. **樣式方式**：使用 `_injectStyles()` 動態注入 CSS，或獨立 `.css` 檔案
+
 5. **所有樣式值必須使用 `--cl-*` CSS 變數**，零硬編碼

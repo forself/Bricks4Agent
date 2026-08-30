@@ -11,10 +11,10 @@ new LoadingSpinner(options?)
 ```
 
 | 參數 | 型別 | 預設值 | 說明 |
-|------|------|--------|------|
+|---|---|---|---|
 | `options.variant` | `string` | `'spinner'` | 樣式：`'spinner'`/`'dots'`/`'pulse'`/`'bar'` |
 | `options.size` | `string` | `'medium'` | 尺寸：`'small'`/`'medium'`/`'large'` |
-| `options.color` | `string` | `'#2196F3'` | 主色彩 |
+| `options.color` | `string` | `'var(--cl-primary)'` | 主色彩 |
 | `options.text` | `string` | `''` | 載入文字 |
 | `options.overlay` | `boolean` | `false` | 是否顯示全螢幕遮罩 |
 | `options.visible` | `boolean` | `true` | 初始可見狀態 |
@@ -23,12 +23,13 @@ new LoadingSpinner(options?)
 ### 靜態常數
 
 - `LoadingSpinner.VARIANTS` — `{ SPINNER, DOTS, PULSE, BAR }`
+
 - `LoadingSpinner.SIZES` — `{ SMALL, MEDIUM, LARGE }`
 
 ### 方法
 
 | 方法 | 回傳 | 說明 |
-|------|------|------|
+|---|---|---|
 | `show()` | `this` | 顯示 |
 | `hide()` | `this` | 隱藏 |
 | `toggle()` | `this` | 切換顯示/隱藏 |
@@ -40,7 +41,7 @@ new LoadingSpinner(options?)
 ### 靜態方法
 
 | 方法 | 回傳 | 說明 |
-|------|------|------|
+|---|---|---|
 | `LoadingSpinner.showOverlay(text?, options?)` | `LoadingSpinner` | 快速顯示全螢幕載入遮罩 |
 
 ## 使用範例

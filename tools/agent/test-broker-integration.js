@@ -170,7 +170,7 @@ async function runTests() {
                 'file.read',
                 {
                     route: 'read_file',
-                    args: { path: './README.md' },
+                    args: { path: './README.html' },
                     project_root: '.'
                 },
                 `idem-read-${Date.now()}`,

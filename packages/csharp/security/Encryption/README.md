@@ -5,11 +5,17 @@ Secure password hashing utility using BCrypt algorithm with built-in password st
 ## Features
 
 - BCrypt password hashing (industry-standard)
+
 - Password verification
+
 - Automatic salt generation
+
 - Password strength validation
+
 - Password strength scoring
+
 - Random password generation
+
 - Rehash detection for security upgrades
 
 ## Setup
@@ -296,28 +302,43 @@ Higher work factor = more secure but slower hashing:
 ## Security Best Practices
 
 1. **Never Store Plain Passwords** - Always hash before storing
+
 2. **Use BCrypt** - Industry-standard, designed for password hashing
+
 3. **Automatic Salting** - BCrypt includes unique salt for each hash
+
 4. **Work Factor** - Adjust based on security requirements
+
 5. **Rehashing** - Update old hashes when work factor increases
+
 6. **Password Policy** - Enforce minimum strength requirements
+
 7. **Rate Limiting** - Prevent brute-force attacks on login
+
 8. **Secure Transport** - Always use HTTPS
+
 9. **No Password Hints** - Don't store or display password hints
 
 ## Benefits
 
 1. **BCrypt Algorithm** - Designed specifically for password hashing
+
 2. **Automatic Salting** - Unique salt generated for each password
+
 3. **Slow by Design** - Resistant to brute-force attacks
+
 4. **Future-Proof** - Work factor can be increased as hardware improves
+
 5. **Strength Validation** - Built-in password policy enforcement
+
 6. **Random Generation** - Generate secure temporary passwords
+
 7. **Rehash Detection** - Automatically upgrade old hashes
 
 ## Dependencies
 
 - BCrypt.Net-Next (NuGet package)
+
 - .NET 6.0 or higher
 
 ## Example DTOs

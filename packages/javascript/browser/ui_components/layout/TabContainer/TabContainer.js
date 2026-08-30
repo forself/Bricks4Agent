@@ -6,6 +6,8 @@
  * @version 1.0.0
  */
 
+import { sanitizeHTML, isRawHtml } from '../../utils/security.js';
+
 export class TabContainer {
     /**
      * 建立頁籤容器
@@ -154,8 +156,12 @@ export class TabContainer {
         panel.dataset.tabId = tab.id;
         panel.style.display = 'none';
 
-        if (typeof tab.content === 'string') {
-            panel.innerHTML = tab.content;
+        // 字串內容經 sanitizeHTML 清洗;已知安全的 HTML 須以 raw() 明示 opt-in,
+        // 避免把 API/使用者字串當作可執行標記直接注入 innerHTML。
+        if (isRawHtml(tab.content)) {
+            panel.innerHTML = tab.content.__html;
+        } else if (typeof tab.content === 'string') {
+            panel.innerHTML = sanitizeHTML(tab.content);
         } else if (tab.content instanceof HTMLElement) {
             panel.appendChild(tab.content);
         }

@@ -5,9 +5,13 @@ IP 限流與連線資訊模組，提供滑動視窗演算法的 IP 限流、連�
 ## 功能特點
 
 - **IP 限流**：滑動視窗演算法，精確控制請求頻率
+
 - **連線資訊**：自動擷取客戶端 IP、User-Agent、裝置指紋
+
 - **會話管理**：追蹤用戶登入會話與裝置
+
 - **可疑 IP 偵測**：自動標記異常行為的 IP
+
 - **登入歷史**：記錄登入嘗試供安全分析
 
 ## 安裝
@@ -73,7 +77,7 @@ var connectionInfo = _connectionInfo.GetConnectionInfo(HttpContext);
 
 Console.WriteLine($"IP: {connectionInfo.IpAddress}");
 Console.WriteLine($"Browser: {connectionInfo.UserAgentInfo?.Browser}");
-Console.WriteLine($"OS: {connectionInfo.UserAgentInfo?.OperatingSystem}");
+Console.WriteLine($"OS: {connectionInfo.UserAgentInfo?.OS}");
 Console.WriteLine($"Device: {connectionInfo.UserAgentInfo?.DeviceType}");
 Console.WriteLine($"Fingerprint: {connectionInfo.Fingerprint}");
 ```
@@ -100,12 +104,11 @@ _sessionService.InvalidateOtherSessions(userId, currentSessionId);
 ### 預設規則
 
 | 規則名稱 | 限制 | 視窗 | 鎖定時間 |
-|---------|------|------|---------|
+|---|---|---|---|
 | `login` | 5 次 | 1 分鐘 | 15 分鐘 |
 | `register` | 3 次 | 10 分鐘 | 1 小時 |
-| `api` | 100 次 | 1 分鐘 | 5 分鐘 |
-| `password_reset` | 3 次 | 15 分鐘 | 30 分鐘 |
-| `mfa_verify` | 5 次 | 5 分鐘 | 15 分鐘 |
+| `api` | 100 次 | 1 分鐘 | —（無鎖定） |
+| `password_reset` | 3 次 | 1 小時 | 24 小時 |
 
 ### 自訂規則
 
@@ -113,11 +116,12 @@ _sessionService.InvalidateOtherSessions(userId, currentSessionId);
 var rateLimiter = new IpRateLimiter();
 
 // 新增自訂規則
-rateLimiter.AddRule("custom_api", new RateLimitRule
+rateLimiter.AddRule(new RateLimitRule
 {
-    MaxRequests = 50,
-    WindowSeconds = 60,
-    LockoutSeconds = 300
+    Name = "custom_api",
+    Limit = 50,
+    Window = TimeSpan.FromSeconds(60),
+    LockoutDuration = TimeSpan.FromSeconds(300)
 });
 
 // 使用自訂規則
@@ -131,7 +135,9 @@ var result = rateLimiter.CheckAndIncrement(clientIp, "custom_api");
 系統會在以下情況自動標記可疑 IP：
 
 - 連續多次登入失敗（預設 15 次）
+
 - 短時間內大量請求
+
 - 嘗試攻擊行為
 
 ### 手動管理
@@ -162,7 +168,7 @@ var stats = _rateLimiter.GetStatistics("192.168.1.100");
 控制器會自動設定以下回應標頭：
 
 | 標頭 | 說明 |
-|------|------|
+|---|---|
 | `X-RateLimit-Limit` | 視窗內允許的最大請求數 |
 | `X-RateLimit-Remaining` | 剩餘請求數 |
 | `X-RateLimit-Reset` | 重設時間（Unix timestamp） |
@@ -175,7 +181,7 @@ var stats = _rateLimiter.GetStatistics("192.168.1.100");
 ### 認證
 
 | 方法 | 路徑 | 說明 |
-|------|------|------|
+|---|---|---|
 | POST | `/api/auth/register` | 註冊（含限流） |
 | POST | `/api/auth/login` | 登入（含限流） |
 | POST | `/api/auth/login/mfa` | MFA 驗證 |
@@ -185,14 +191,13 @@ var stats = _rateLimiter.GetStatistics("192.168.1.100");
 ### 會話管理
 
 | 方法 | 路徑 | 說明 |
-|------|------|------|
+|---|---|---|
 | GET | `/api/auth/sessions` | 取得所有登入裝置 |
-| DELETE | `/api/auth/sessions/{id}` | 登出指定裝置 |
 
 ### 資訊查詢
 
 | 方法 | 路徑 | 說明 |
-|------|------|------|
+|---|---|---|
 | GET | `/api/auth/connection-info` | 取得連線資訊 |
 | GET | `/api/auth/login-history` | 登入歷史 |
 
@@ -220,7 +225,7 @@ public class UserAgentInfo
 {
     public string Browser { get; set; }         // 瀏覽器名稱
     public string BrowserVersion { get; set; }  // 瀏覽器版本
-    public string OperatingSystem { get; set; } // 作業系統
+    public string OS { get; set; }              // 作業系統
     public string DeviceType { get; set; }      // 裝置類型
     public bool IsBot { get; set; }             // 是否為機器人
     public bool IsMobile { get; set; }          // 是否為行動裝置
@@ -234,8 +239,11 @@ public class UserAgentInfo
 支援反向代理環境，IP 擷取優先順序：
 
 1. `CF-Connecting-IP` (Cloudflare)
+
 2. `X-Real-IP`
+
 3. `X-Forwarded-For` (第一個 IP)
+
 4. `RemoteIpAddress`
 
 ### 裝置指紋生成
@@ -243,15 +251,21 @@ public class UserAgentInfo
 指紋基於以下資訊生成 SHA256 雜湊：
 
 - IP 地址
+
 - User-Agent
+
 - Accept-Language
+
 - Accept-Encoding
 
 ## 安全建議
 
 1. **生產環境**：使用 Redis 或分散式快取取代記憶體儲存
+
 2. **代理設定**：確保正確設定 `ForwardedHeaders` 取得真實 IP
+
 3. **日誌脫敏**：IP 地址在日誌中應部分遮蔽
+
 4. **定期清理**：設定合理的過期時間避免記憶體洩漏
 
 ## 與 MFA 模組整合

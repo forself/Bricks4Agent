@@ -36,7 +36,7 @@ const uploader = new BatchUploader({
 ### 方法
 
 | 方法 | 說明 |
-|------|------|
+|---|---|
 | `upload()` | 開始上傳所有待傳檔案（async） |
 | `removeFile(fileId)` | 移除指定檔案 |
 | `clear()` | 清除所有檔案 |
@@ -66,7 +66,9 @@ const uploader = new BatchUploader({
 ### 屬性
 
 - `element` — 根 DOM 元素
+
 - `files` — 檔案陣列
+
 - `isUploading` — 是否上傳中
 
 ## 使用範例

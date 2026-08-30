@@ -1,0 +1,38 @@
+/* 文件頁樣式：色彩一律取自函式庫 token（--cl-*），由 README.html 載入 palette.css + theme.css。 */
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--cl-bg-secondary);
+  color: var(--cl-text);
+  font: 16px/1.7 system-ui, -apple-system, "Segoe UI", "Noto Sans TC", sans-serif;
+}
+main {
+  width: min(1080px, calc(100% - 32px));
+  margin: 40px auto;
+  padding: 48px;
+  background: var(--cl-bg);
+  border: 1px solid var(--cl-border);
+  border-radius: var(--cl-radius-lg);
+  box-shadow: var(--cl-shadow-md);
+}
+h1 { margin-top: 0; font-size: 2.25rem; line-height: 1.2; }
+h2 { margin-top: 2.2rem; padding-bottom: .35rem; border-bottom: 1px solid var(--cl-border); }
+p, li { color: var(--cl-text-secondary); }
+a { color: var(--cl-primary); }
+code { padding: .15em .35em; background: var(--cl-bg-tertiary); border-radius: 5px; color: var(--cl-text); }
+pre {
+  overflow: auto;
+  padding: 16px 18px;
+  background: var(--cl-bg-tertiary);
+  border: 1px solid var(--cl-border);
+  border-radius: 10px;
+}
+pre code { padding: 0; background: none; }
+table { display: block; overflow: auto; width: max-content; max-width: 100%; border-collapse: collapse; }
+th, td { padding: 8px 12px; border: 1px solid var(--cl-border); text-align: left; }
+img { max-width: 100%; height: auto; }
+blockquote { margin-left: 0; padding-left: 1rem; border-left: 4px solid var(--cl-border); }
+@media (max-width: 640px) {
+  main { margin: 0; width: 100%; padding: 24px 18px; border: 0; border-radius: 0; }
+  h1 { font-size: 1.8rem; }
+}

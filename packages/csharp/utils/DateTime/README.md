@@ -14,7 +14,7 @@ using YourNamespace.Utils.DateTime;
 ### Unix Timestamp
 
 | 方法 | 參數 | 回傳 | 說明 |
-|------|------|------|------|
+|---|---|---|---|
 | `.ToUnixTimestamp()` | - | `long` | 轉為 Unix 秒數 |
 | `.ToUnixTimestampMs()` | - | `long` | 轉為 Unix 毫秒數 |
 | `FromUnixTimestamp(timestamp)` | `long` | `DateTime` | Unix 秒數轉 DateTime |
@@ -23,7 +23,7 @@ using YourNamespace.Utils.DateTime;
 ### ISO 8601
 
 | 方法 | 參數 | 回傳 | 說明 |
-|------|------|------|------|
+|---|---|---|---|
 | `.ToIso8601()` | - | `string` | 轉為 ISO 8601 字串 |
 | `FromIso8601(iso8601)` | `string` | `DateTime` | ISO 8601 字串轉 DateTime |
 | `TryParseIso8601(iso8601, out result)` | `string` | `bool` | 嘗試解析 ISO 8601 |
@@ -31,7 +31,7 @@ using YourNamespace.Utils.DateTime;
 ### 格式化
 
 | 方法 | 回傳 | 範例輸出 |
-|------|------|----------|
+|---|---|---|
 | `.ToShortDate()` | `string` | `2026-01-23` |
 | `.ToLongDate()` | `string` | `2026-01-23 15:30:45` |
 | `.ToReadableDate()` | `string` | `January 23, 2026` |
@@ -40,14 +40,14 @@ using YourNamespace.Utils.DateTime;
 ### 相對時間
 
 | 方法 | 參數 | 回傳 | 說明 |
-|------|------|------|------|
+|---|---|---|---|
 | `.ToRelativeTime()` | - | `string` | 相對於現在（如 `2 hours ago`） |
 | `.ToRelativeTime(referenceTime)` | `DateTime` | `string` | 相對於指定時間 |
 
 ### 期間起迄
 
 | 方法 | 說明 |
-|------|------|
+|---|---|
 | `.StartOfDay()` | 當天 00:00:00 |
 | `.EndOfDay()` | 當天 23:59:59.999 |
 | `.StartOfWeek(firstDay)` | 本週起始（預設週一） |
@@ -63,14 +63,14 @@ using YourNamespace.Utils.DateTime;
 ### 年齡計算
 
 | 方法 | 參數 | 回傳 | 說明 |
-|------|------|------|------|
+|---|---|---|---|
 | `.GetAge()` | - | `int` | 計算至今日的年齡 |
 | `.GetAge(atDate)` | `DateTime` | `int` | 計算至指定日期的年齡 |
 
 ### 工作日
 
 | 方法 | 參數 | 回傳 | 說明 |
-|------|------|------|------|
+|---|---|---|---|
 | `.IsWeekend()` | - | `bool` | 是否為週末 |
 | `.IsWeekday()` | - | `bool` | 是否為工作日 |
 | `.AddBusinessDays(days)` | `int` | `DateTime` | 加減工作日（跳過週末） |
@@ -79,7 +79,7 @@ using YourNamespace.Utils.DateTime;
 ### 比較
 
 | 方法 | 回傳 | 說明 |
-|------|------|------|
+|---|---|---|
 | `.IsToday()` | `bool` | 是否為今天 |
 | `.IsYesterday()` | `bool` | 是否為昨天 |
 | `.IsTomorrow()` | `bool` | 是否為明天 |
@@ -92,7 +92,7 @@ using YourNamespace.Utils.DateTime;
 ### 截斷
 
 | 方法 | 說明 |
-|------|------|
+|---|---|
 | `.TruncateToSeconds()` | 移除毫秒 |
 | `.TruncateToMinutes()` | 移除秒與毫秒 |
 | `.TruncateToHours()` | 移除分、秒與毫秒 |
@@ -100,7 +100,7 @@ using YourNamespace.Utils.DateTime;
 ### 時區
 
 | 方法 | 參數 | 說明 |
-|------|------|------|
+|---|---|---|
 | `.ToTimeZone(timeZoneId)` | `string` | 轉換至指定時區 |
 | `.ToUtc()` | - | 轉換至 UTC |
 
@@ -135,7 +135,7 @@ int age = birthday.GetAge();  // 35
 ## 依賴清單
 
 | 依賴 | 說明 |
-|------|------|
+|---|---|
 | `System` | .NET 基礎命名空間 |
 | `System.Globalization` | ISO 8601 解析支援 |
 

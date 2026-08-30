@@ -8,8 +8,11 @@
 **page/SPA generator** that turns a JSON `PageDefinition` into working pages.
 
 - **UI component library** — 116 components (form, layout, common, input, viz, social, editor, sections, data, analytics), pure vanilla JS, theme-token styling, built-in XSS protection and i18n.
+
 - **Page generator** — a `PageDefinition` (JSON) becomes a page in one of two ways: **static code generation** (emits `.js` page files) or **dynamic rendering** (renders at runtime from the JSON).
+
 - **SPA tooling** — a CLI and a Web UI that scaffold full-stack CRUD (frontend pages + optional .NET 10 backend).
+
 - **Form application studio** — imports a table schema, visually arranges fields, and generates a form `PageDefinition`, .NET 10 Minimal API/BaseOrm code, and database SQL. A blank connection string targets local SQLite.
 
 > Building on top of this library? Read [AGENT-UI-GUIDE.md](AGENT-UI-GUIDE.md) first — it is the calling-convention entry point for both humans and AI agents.
@@ -17,21 +20,33 @@
 ## Main areas
 
 ### UI component library
+
 - [ui_components](packages/javascript/browser/ui_components) — the components
+
 - [ui_components/index.js](packages/javascript/browser/ui_components/index.js) — single import barrel
+
 - [metadata/component-catalog.json](packages/javascript/browser/ui_components/metadata/component-catalog.json) — the authoritative component list
+
 - [STYLE_CONVENTION.md](packages/javascript/browser/ui_components/STYLE_CONVENTION.md) — theming / token rules
 
 ### Page generator
+
 - [page-generator](packages/javascript/browser/page-generator) — engine (static + dynamic)
+
 - [page-generator/README.md](packages/javascript/browser/page-generator/README.md)
 
 ### SPA scaffolding
+
 - [templates/spa](templates/spa) — SPA project template (frontend core + .NET 10 backend)
+
 - [templates/spa/scripts](templates/spa/scripts) — `spa-cli.js`, `generate-page.js`, `generate-api.js`
+
 - [tools/spa-generator](tools/spa-generator) — generator Web UI (port 3080)
+
 - [tools/page-gen.js](tools/page-gen.js) — standalone PageDefinition CLI ([docs](tools/page-gen.README.md))
+
 - [tools/static-server](tools/static-server) — static file server for previewing
+
 - [tools/form-application-studio](tools/form-application-studio) — JSON-self-hosted form/API/database designer
 
 ## Quick start
@@ -100,9 +115,15 @@ verifiable while new builds use the current static PBKDF2 API.
 ## Documentation
 
 - [AGENT-UI-GUIDE.md](AGENT-UI-GUIDE.md) — component calling convention + React-rewrite playbook (for AI agents)
+
 - [CUSTOM-COMPONENTS.md](CUSTOM-COMPONENTS.md) — JSON-generated self-host Studio, three-tier custom components and folder loading
+
 - [tools/form-application-studio/README.md](tools/form-application-studio/README.md) — schema-to-form/API/database designer and connection policy
+
 - [AGENT.md](AGENT.md) — SPA generator operation manual (for AI agents)
+
 - [CLAUDE.md](CLAUDE.md) — Claude Code rules for this repo
+
 - [page-generator/README.md](packages/javascript/browser/page-generator/README.md) — page generator details
+
 - [templates/spa/README.md](templates/spa/README.md) — SPA template

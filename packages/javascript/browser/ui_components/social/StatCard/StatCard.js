@@ -20,6 +20,7 @@
  */
 
 import { escapeHtml } from '../../utils/security.js';
+import { Icon } from '../../common/Icon/index.js';
 
 export class StatCard {
     /**
@@ -45,6 +46,7 @@ export class StatCard {
         };
 
         this.element = null;
+        this._iconComponent = null;
     }
 
     /**
@@ -69,17 +71,21 @@ export class StatCard {
             el.style.boxShadow = 'var(--cl-shadow-sm)';
         });
 
+        const resolvedColor = this._resolveColor(this.options.color);
         const icon = el.querySelector('.social-stat-card__icon');
         if (icon) {
             icon.style.cssText =
                 'width: 48px; height: 48px; border-radius: var(--cl-radius-xl); display: flex;' +
                 ' align-items: center; justify-content: center; font-size: var(--cl-font-size-3xl); flex-shrink: 0;' +
-                ` background: ${this._getIconBackground(this.options.color)}; color: ${this.options.color};`;
+                ` background: ${this._getIconBackground(resolvedColor)}; color: ${resolvedColor};`;
         }
         const content = el.querySelector('.social-stat-card__content');
         if (content) content.style.cssText = 'flex: 1; min-width: 0;';
         const value = el.querySelector('.social-stat-card__value');
-        if (value) value.style.cssText = 'font-size: var(--cl-font-size-3xl); font-weight: 700; color: var(--cl-text); line-height: 1.2;';
+        if (value) {
+            const compact = String(this.options.value ?? '').length > 12;
+            value.style.cssText = `font-size: ${compact ? 'var(--cl-font-size-lg)' : 'var(--cl-font-size-3xl)'}; font-weight: 700; color: var(--cl-text); line-height: 1.25; overflow-wrap:anywhere;`;
+        }
         const label = el.querySelector('.social-stat-card__label');
         if (label) label.style.cssText = 'font-size: var(--cl-font-size-md); color: var(--cl-text-secondary); margin-top: 2px;';
         const trend = el.querySelector('.social-stat-card__trend');
@@ -134,9 +140,22 @@ export class StatCard {
             : container;
         if (!target) return;
 
+        this._iconComponent?.destroy?.();
+        this._iconComponent = null;
         target.innerHTML = this.toHTML();
         this.element = target.querySelector('.social-stat-card');
         this._applyStyles();
+
+        const iconHost = this.element?.querySelector('.social-stat-card__icon');
+        if (iconHost && Icon.has(this.options.icon)) {
+            iconHost.replaceChildren();
+            this._iconComponent = new Icon({
+                name: this.options.icon,
+                size: 24,
+                color: this._resolveColor(this.options.color),
+            });
+            this._iconComponent.mount(iconHost);
+        }
 
         if (this.options.onClick && this.element) {
             this.element.addEventListener('click', this.options.onClick);
@@ -158,7 +177,20 @@ export class StatCard {
         return `color-mix(in srgb, ${color} 12%, transparent)`;
     }
 
+    _resolveColor(color) {
+        const semantic = {
+            primary: 'var(--cl-primary)',
+            success: 'var(--cl-success)',
+            warning: 'var(--cl-warning)',
+            danger: 'var(--cl-danger)',
+            info: 'var(--cl-info)',
+        };
+        return semantic[color] || color || 'var(--cl-primary)';
+    }
+
     destroy() {
+        this._iconComponent?.destroy?.();
+        this._iconComponent = null;
         if (this.element) {
             this.element.remove();
             this.element = null;

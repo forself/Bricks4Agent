@@ -43,29 +43,32 @@ node scripts/publish.mjs           # 發佈:dist\(快照+憑證+封閉驗證,違
 
 換機器 clone 後:符合同層佈局即直接可用;否則設 `B4A_ROOT` 或寫 `.b4a-root` 一行。
 
-## 發佈產物(dist\)
+## 發佈產物(dist)
 
 ```
 dist\
   index.html            # 轉導 src/frontend/
   lib\                  # 腳手架真快照(排除 node_modules、*.test.mjs、page-generator/examples)
-  lib\SNAPSHOT.json     # 來源憑證:Bricks4Agent commit(含 dirty 旗標)、專案 commit、UTC 時間、檔數/位元組
+  lib\SNAPSHOT.json     # 來源憑證:Bricks4Agent tree/dirty、repository commit、專案 commit、UTC 時間、檔數/位元組
   src\frontend\         # 應用(與 repo 同幾何 → import 原樣可用)
 ```
 
-部署=任何靜態伺服器指向 dist\(或作為後端的 wwwroot);進入點 `/src/frontend/index.html`。
+部署=任何靜態伺服器指向 dist(或作為後端的 wwwroot);進入點 `/src/frontend/index.html`。
 
 ## 釘版與強制(團隊/CI 模式)
 
 | 檔案 | 性質 | 作用 |
 |---|---|---|
-| `b4a.lock.json`(專案根) | **入版控** | 全隊統一的腳手架 commit(`node scripts/sync-lib.mjs --pin` 產生/更新) |
-| `lib/.sync-state.json` | gitignored(隨 lib) | 記錄 lib 實際同步自哪個 commit、是否釘版 |
+| `b4a.lock.json`(專案根) | **入版控** | 全隊統一、由目前 branch 可達的腳手架 Git tree（`node scripts/sync-lib.mjs --pin` 產生/更新） |
+| `lib/.sync-state.json` | gitignored(隨 lib) | 記錄 lib 實際同步自哪個 tree/source、是否釘版 |
 | `scripts/mechanism.json` | 入版控 | 機制版本 + `customized` 清單(升級工具跳過自訂檔) |
 
-- **複本模式 + lock**:`sync-lib.mjs` 用 `git worktree` 從**釘住的 commit** 展開複製(可重現;不含腳手架未 commit 改動)。
-- **publish 強制**:lock 存在時——連結模式要求腳手架 HEAD==lock 且乾淨;複本模式要求 sync-state==lock。違者 fail;`--allow-drift` 可硬闖(大字警告,SNAPSHOT 記 `BYPASSED` 供稽核)。無 lock=警告模式(個人開發便利)。
+- **複本模式 + lock**：v2 lock 直接釘 Git tree object；只接受乾淨、已 commit 且可由目前 branch 到達的 B4A tree。淺層或 `--no-tags` clone 不需額外 tag/split commit。
+
+- **publish 強制**：lock 存在時，連結模式要求目前 tree==lock 且乾淨；複本模式要求 sync-state tree/source==lock。違者 fail；`--allow-drift` 已停用。
+
 - **建案分流**:`create-project.mjs` 預設連結(腳手架維護者);`--no-junction` 走複本並**自動釘版**(團隊成員/CI)。
+
 - **機制升級**:`node <B4A>/tools/create-project/upgrade-project.mjs --dest <專案> [--dry-run]`——只更新機制腳本、跳過 customized、印變更清單,git diff 審閱後 commit。
 
 ## 封閉性驗證(scripts\verify-sealed.mjs)
@@ -74,6 +77,8 @@ publish 內建、可單獨跑:`node scripts\verify-sealed.mjs dist`。逐檔靜�
 
 ## 陷阱備忘
 
-- `lib/`、`dist/` 不入版控;可重現性靠 SNAPSHOT.json 釘 commit。
+- `lib/`、`dist/` 不入版控；可重現性靠 v2 tree lock 與 SNAPSHOT.json。
+
 - PS 5.1 腳本一律英文註解(無 BOM UTF-8 中文會 parse 失敗);PS 內呼叫 git 走 `cmd /c … 2>nul`(原生 stderr 轉錄陷阱)。
+
 - 別手改 `lib\` 內容(junction 模式下那就是腳手架本體!改元件回 Bricks4Agent repo 走正規流程)。

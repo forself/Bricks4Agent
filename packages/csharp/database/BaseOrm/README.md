@@ -5,15 +5,19 @@
 It is closer to `Dapper + a small convention layer` than to a full ORM like EF Core:
 
 - You write SQL explicitly.
+
 - It maps rows to objects.
+
 - It provides attribute-driven CRUD helpers.
+
 - It can create simple tables from model metadata.
+
 - It does not provide LINQ, change tracking, or migrations.
 
 ## Layout
 
 | Path | Target | Notes |
-| --- | --- | --- |
+|---|---|---|
 | `net10/` | .NET 10+ | Canonical implementation, async API, shared source used by the repo |
 | `netfx48/` | .NET Framework 4.8 | Legacy variant kept for older systems |
 
@@ -26,8 +30,11 @@ Use this when you reference `packages/csharp/database/BaseOrm/net10/BaseOrm.cspr
 In this mode the package already references the default ADO.NET providers for:
 
 - `Microsoft.Data.Sqlite`
+
 - `Microsoft.Data.SqlClient`
+
 - `MySqlConnector`
+
 - `Npgsql`
 
 That means `BaseDb.UseSqlServer(...)`, `BaseDb.UseMySql(...)`, and `BaseDb.UsePostgreSql(...)` work without adding extra provider references in the consuming project.
@@ -41,7 +48,7 @@ In this mode you still need to add the provider packages yourself for the databa
 ## Supported Databases
 
 | Database | Factory entry point | Default provider in `net10` project mode |
-| --- | --- | --- |
+|---|---|---|
 | SQLite | `new BaseDb(connStr)` or `BaseDb.UseSqlite(connStr)` | Yes |
 | SQL Server | `BaseDb.UseSqlServer(connStr)` | Yes |
 | MySQL | `BaseDb.UseMySql(connStr)` | Yes |
@@ -58,7 +65,9 @@ dotnet run --project packages/csharp/database/BaseOrm/net10/verify/BaseOrm.Verif
 If these environment variables are set, the verifier also runs live CRUD integrations against temporary databases:
 
 - `BASEORM_SQLSERVER_CONNECTION_STRING`
+
 - `BASEORM_MYSQL_CONNECTION_STRING`
+
 - `BASEORM_POSTGRESQL_CONNECTION_STRING`
 
 From the repo root you can also run:
@@ -177,7 +186,7 @@ await db.InTransactionAsync(async () =>
 ## Attributes
 
 | Attribute | Purpose |
-| --- | --- |
+|---|---|
 | `[Table("Users")]` | Override table name |
 | `[Key]` | Mark primary key |
 | `[Key(AutoIncrement = false)]` | Mark non-identity key |
@@ -189,8 +198,11 @@ await db.InTransactionAsync(async () =>
 ## Database Notes
 
 - Parameter names are written as `@Name` in user SQL. `BaseOrm` rewrites them for MySQL when needed.
+
 - Identifier quoting is dialect-specific and guarded by an allowlist, so only letters, digits, and `_` are accepted.
+
 - SQLite connections enable `busy_timeout`, `foreign_keys`, and WAL mode for file-backed databases.
+
 - `EnsureTable` / `EnsureTableAsync` are for simple bootstrap tables, not migration workflows.
 
 ## Limitations
@@ -198,9 +210,13 @@ await db.InTransactionAsync(async () =>
 `BaseOrm` is intentionally small. It does not attempt to replace EF Core.
 
 - No LINQ provider
+
 - No change tracking
+
 - No migrations
+
 - No relation graph loading
+
 - No expression-based query builder
 
 If you need deterministic SQL with lightweight mapping, this package fits. If you need full ORM behavior, use EF Core instead.

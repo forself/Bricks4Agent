@@ -2,12 +2,13 @@
 
 > 本手冊專為 AI Agent 設計（適用於任何語言模型：GPT、Claude、Llama、Qwen、DeepSeek、Gemini 等，含離線地端模型）。
 > 內容是**頁面／SPA 生成器**的指令格式、欄位對應表與操作流程。
->
+
 > **要在元件庫上手刻頁面（呼叫元件、缺件補庫）請優先讀 [AGENT-UI-GUIDE.md](AGENT-UI-GUIDE.md)；本文件講的是用生成器批次產頁。**
 
 ### AI Agent 框架入口
 
 - 通用 / 其他框架：`.agentrc`（指向本手冊）
+
 - Claude Code：[CLAUDE.md](CLAUDE.md)
 
 ---
@@ -19,8 +20,11 @@ Bricks4Agent 是一套**零 runtime 依賴的 Vanilla JS UI 元件庫**，加上
 組成：
 
 - **前端 UI 元件庫**（Vanilla JS，零外部 runtime dependency，116 個元件）
+
 - **頁面生成引擎**（PageGenerator，支援 30 種欄位類型；靜態產碼 + 動態渲染）
+
 - **SPA 生成器**（CLI + Web UI，一鍵產生全端 CRUD）
+
 - **C# 後端範本**（.NET 10 Minimal API，供生成器產出後端；ORM 為輕量 BaseOrm）
 
 AI agent 動手前的優先閱讀：手刻頁面／補元件看 [AGENT-UI-GUIDE.md](AGENT-UI-GUIDE.md)；用生成器批次產頁看本文件；規則看 [CLAUDE.md](CLAUDE.md)。
@@ -28,11 +32,17 @@ AI agent 動手前的優先閱讀：手刻頁面／補元件看 [AGENT-UI-GUIDE.
 ### 1.1 核心子系統位置
 
 - UI 元件庫：`packages/javascript/browser/ui_components`（權威清單：`metadata/component-catalog.json`）
+
 - 頁面生成引擎：`packages/javascript/browser/page-generator`
+
 - SPA 範本：`templates/spa`（前端核心 `frontend/core` + 後端 `backend/SpaApi.csproj`）
+
 - 生成器 CLI：`templates/spa/scripts`、`tools/page-gen.js`
+
 - 生成器 Web UI：`tools/spa-generator`（port 3080）
+
 - Schema→表單/API/資料表工作台：`tools/form-application-studio`（未給連線字串時生成本地 SQLite；只產碼、不連線）
+
 - 表單應用定義與生成器：`packages/javascript/browser/form-application`
 
 ### 1.2 Build 與 test 入口
@@ -74,11 +84,13 @@ node templates/spa/scripts/spa-cli.js feature <名稱> --fields "<欄位定義>"
 - `--fields`：欄位定義字串，格式為 `"欄位名:類型,欄位名:類型,..."`
 
 **範例：**
+
 ```bash
 node templates/spa/scripts/spa-cli.js feature Diary --fields "Title:string,Content:text,Date:date,Mood:string,IsPublic:bool"
 ```
 
 **產出：**
+
 ```
 backend/Models/Diary.cs              ← C# Model + DTO
 backend/Services/DiaryService.cs     ← CRUD Service
@@ -104,6 +116,7 @@ node templates/spa/scripts/generate-page.js <路徑/名稱> --detail
 ```
 
 **範例：**
+
 ```bash
 # 元件庫表單頁
 node scripts/generate-page.js orders/OrderList --fields "Name:string,Price:decimal" --api-path "/api/orders"
@@ -180,7 +193,7 @@ node templates/spa/scripts/spa-cli.js new --name my-app --output ./projects
 `templates/spa/frontend/components/` 中的元件會隨 `spa new` 一起複製到新專案。PageGenerator 生成的頁面會自動 import 這些元件：
 
 | 元件 | 路徑 | 用途 |
-|------|------|------|
+|---|---|---|
 | TextInput | `components/TextInput/TextInput.js` | 文字輸入（含 XSS 防護） |
 | NumberInput | `components/NumberInput/NumberInput.js` | 數字輸入（含 +/- 按鈕） |
 | Dropdown | `components/Dropdown/Dropdown.js` | 下拉選單（含搜尋） |
@@ -198,9 +211,13 @@ node templates/spa/scripts/spa-cli.js new --name my-app --output ./projects
 使用 `--fields` 生成頁面時，`routes.js` 會自動更新：
 
 1. 在最後一個 `import` 後插入新的 import 語句
+
 2. 在 `];` 前插入新的路由條目
+
 3. 自動處理逗號分隔
+
 4. 重複檢查：若 className 已存在則跳過
+
 5. 保持原始換行符號（CRLF/LF）
 
 **不使用 `--fields`**（原始模板）時，需手動更新 routes.js，終端會輸出所需的程式碼。
@@ -214,14 +231,16 @@ Bricks4Agent/
 ├── AGENT.md                              ← 本手冊
 ├── packages/
 │   ├── javascript/browser/
-│   │   ├── ui_components/                ← 75 個 UI 元件（完整版）
-│   │   │   ├── form/                     ← 表單 (12)
-│   │   │   ├── common/                   ← 通用 (18)
-│   │   │   ├── layout/                   ← 佈局 (10)
+│   │   ├── ui_components/                ← 116 個 UI 元件（完整版）
+│   │   │   ├── form/                     ← 表單 (18)
+│   │   │   ├── common/                   ← 通用 (40)
+│   │   │   ├── layout/                   ← 佈局 (13)
 │   │   │   ├── input/                    ← 進階輸入 (10)
-│   │   │   ├── viz/                      ← 視覺化 (18)
+│   │   │   ├── viz/                      ← 視覺化 (23)
 │   │   │   ├── social/                   ← 社群 (5)
+│   │   │   ├── sections/                 ← 區塊 (4)
 │   │   │   ├── editor/                   ← 編輯器 (1)
+│   │   │   ├── analytics/                ← 分析 (1)
 │   │   │   └── data/                     ← 資料展示 (1)
 │   │   └── page-generator/              ← PageGenerator 引擎
 │   │       ├── PageGenerator.js          ← 靜態產碼：PageDefinition → 頁面程式碼
@@ -289,7 +308,7 @@ const result = generator.generate(definition);
 ### 7.1 完整 30 種欄位類型
 
 | 類型 | 元件 | 類型 | 元件 |
-|------|------|------|------|
+|---|---|---|---|
 | text | TextInput | number | NumberInput |
 | textarea | WebTextEditor | toggle | ToggleSwitch |
 | date | DatePicker | datetime | DateTimeInput |
@@ -326,7 +345,9 @@ node scripts/generate-page.js orders/OrderList --api-path "/api/orders"
 ### 8.3 CJS 與 ESM
 
 - `generate-page.js`、`spa-cli.js`：CommonJS（使用 `require`）
+
 - `PageGenerator.js`、所有元件：ESM（使用 `import/export`）
+
 - 橋接方式：`const { pathToFileURL } = require('url')` + `await import(path)`
 
 ### 8.4 import 路徑深度
@@ -368,8 +389,13 @@ dotnet run              # 後端
 ## 10. 延伸閱讀
 
 - 手刻頁面／呼叫元件／缺件補庫：[AGENT-UI-GUIDE.md](AGENT-UI-GUIDE.md)
+
 - JSON 客製元件、三層分類、資料夾載入與 DynamicPageRenderer 接線：[CUSTOM-COMPONENTS.md](CUSTOM-COMPONENTS.md)
+
 - JSON 產生的工具頁、可信 commands、state bindings 與 self-host Studio：[page-generator/README.md](packages/javascript/browser/page-generator/README.md#tool-pagedefinition-與自舉工具頁)
+
 - 頁面生成器細節：[page-generator/README.md](packages/javascript/browser/page-generator/README.md)
+
 - 獨立 PageDefinition CLI：[tools/page-gen.README.md](tools/page-gen.README.md)
+
 - SPA 範本：[templates/spa/README.md](templates/spa/README.md)

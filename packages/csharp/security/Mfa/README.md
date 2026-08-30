@@ -5,10 +5,15 @@
 ## 特點
 
 - **TOTP 支援** - 相容 Google Authenticator、Microsoft Authenticator、Authy 等
+
 - **Email OTP** - 透過電子郵件發送一次性驗證碼
+
 - **復原碼** - 10 組一次性備用碼，用於緊急存取
+
 - **安全設計** - 常數時間比較、帳號鎖定、速率限制
+
 - **兩步驟登入** - 先驗證密碼，再驗證 MFA
+
 - **彈性整合** - 可自訂儲存庫與郵件服務
 
 ## 快速開始
@@ -71,6 +76,7 @@ Content-Type: application/json
 ```
 
 回應 (啟用 MFA 時):
+
 ```json
 {
   "success": true,
@@ -97,6 +103,7 @@ Content-Type: application/json
 ```
 
 回應 (需要 MFA):
+
 ```json
 {
   "success": true,
@@ -120,6 +127,7 @@ Content-Type: application/json
 ```
 
 回應:
+
 ```json
 {
   "success": true,
@@ -161,6 +169,7 @@ Content-Type: application/json
 ```
 
 回應:
+
 ```json
 {
   "success": true,
@@ -184,6 +193,7 @@ Content-Type: application/json
 ```
 
 回應 (包含復原碼):
+
 ```json
 {
   "success": true,
@@ -257,8 +267,11 @@ QRCode.toDataURL(qrCodeUri, (err, url) => {
 如果使用者無法掃描 QR Code，可以手動輸入:
 
 - **帳號**: 使用者 Email
+
 - **金鑰**: `totpSecret` (Base32 編碼)
+
 - **時間基礎**: 30 秒
+
 - **演算法**: SHA1
 
 ## 安全機制
@@ -266,6 +279,7 @@ QRCode.toDataURL(qrCodeUri, (err, url) => {
 ### 帳號鎖定
 
 - 連續失敗 5 次後鎖定 15 分鐘
+
 - 成功驗證後重置計數器
 
 ### 常數時間比較
@@ -300,8 +314,11 @@ MFA Token 是短期 JWT (5 分鐘)，只能用於完成 MFA 驗證:
 ### 復原碼
 
 - 10 組一次性復原碼
+
 - 格式: `XXXX-XXXX-XXXX` (12 個英數字)
+
 - 使用後立即失效
+
 - 儲存時使用 SHA256 雜湊
 
 ## 自訂實作

@@ -1,7 +1,9 @@
 # Bricks4Agent 目前版本使用手冊
 
-Date: 2026-06-18  
-Status: current operator and user manual  
+Date: 2026-06-18
+
+Status: current operator and user manual
+
 Audience: LINE 使用者、系統管理者、在本機操作 sidecar 的工程/營運人員
 
 ## 1. 這套系統是什麼
@@ -21,14 +23,17 @@ LINE webhook -> public tunnel -> line-worker -> broker /api/v1/high-level/line/p
 重要界線：
 
 - `line-worker -> broker high-level coordinator` 是目前 canonical LINE 路徑。
+
 - `agent --line-listen` 只保留為 legacy/development-only，不是正式操作路徑。
+
 - Podman governed agent stack 用於驗證受控 agent/container 路徑，不等於整個 LINE/Drive/部署系統。
+
 - 高階對話模型與受控 agent 執行模型是分開設定的。
 
 ## 2. 角色與常見任務
 
 | 角色 | 會做的事 | 主要入口 |
-| --- | --- | --- |
+|---|---|---|
 | LINE 使用者 | 對話、查詢、建立需求草稿、確認/取消任務、查看審批連結 | LINE |
 | 本機管理員 | 啟動 sidecar、查看狀態、登入後台、處理審批、重送通知/交付 | PowerShell、`line-admin.html` |
 | 工程人員 | 建置、測試、執行 worker、驗證 governed stack、維護設定 | repo root、CLI、Podman |
@@ -41,9 +46,13 @@ LINE webhook -> public tunnel -> line-worker -> broker /api/v1/high-level/line/p
 Broker 是控制平面。它負責：
 
 - 接收 LINE / agent / admin / worker request。
+
 - 維護 principal、role、task、session、capability、grant、approval、audit。
+
 - 判斷使用者或 agent 是否能執行某個 capability。
+
 - 將允許的執行請求派發給 in-process handler 或 FunctionPool worker。
+
 - 管理 artifact、Google Drive delivery、browser/deployment/admin surface。
 
 ### 3.2 High-Level Coordinator
@@ -51,9 +60,13 @@ Broker 是控制平面。它負責：
 High-Level Coordinator 是 LINE 高階互動層。它負責：
 
 - 一般對話。
+
 - 顯式查詢命令，例如 `?search`、`?rail`。
+
 - 生產型需求的草稿、確認、取消、promotion gate。
+
 - 專案訪談流程。
+
 - 使用者 profile 與 managed workspace。
 
 ### 3.3 Managed Workspace
@@ -75,6 +88,7 @@ High-Level Coordinator 是 LINE 高階互動層。它負責：
 高風險、scope 逸出、跨使用者或外部發佈/部署類動作不應由 agent 自行決定。Broker 會建立 approval request，並由：
 
 - admin 在 `line-admin.html` 審批。
+
 - 使用者透過 LINE 收到的短效簽章連結進入 `user-approvals.html` 審批。
 
 目前 High / `require_approval` 需要 1 次核准；Critical / `require_dual_approval` 需要 2 個不同 approver id 才能放行。Broker 會持久化 `ApprovalRequest.required_approval_count` 與每位 approver 一筆的 `approval_decisions`，避免同一 approver 重複核准。Local admin 現在使用 named operator session，approver id 會綁到 operator，並由後端 RBAC 判斷是否具備 admin approval 權限。
@@ -84,10 +98,10 @@ High-Level Coordinator 是 LINE 高階互動層。它負責：
 建議最低環境：
 
 | 工具 | 用途 |
-| --- | --- |
+|---|---|
 | Windows 10/11 | canonical local LINE sidecar |
 | Windows PowerShell 5.1+ | sidecar 腳本 |
-| .NET SDK 8.0+ | broker / worker 建置與測試 |
+| .NET SDK 10.0+ | broker / worker 建置與測試 |
 | Node.js 18+ 與 npm | agent、JS tools、UI tests |
 | Git | repo 操作 |
 | ngrok | LINE webhook public tunnel |
@@ -98,9 +112,13 @@ High-Level Coordinator 是 LINE 高階互動層。它負責：
 外部整合所需額外憑證：
 
 - LINE Channel Access Token / Channel Secret。
+
 - Anthropic Claude API key (`ANTHROPIC_API_KEY`)；若未設定，仍可使用 OpenAI-compatible API key。
+
 - Google OAuth client JSON 或 service account。
+
 - TDX Client ID / Client Secret。
+
 - Azure VM IIS + WinRM 憑證。
 
 ## 5. 第一次本機設定
@@ -146,7 +164,7 @@ $env:BRICKS4AGENT_SECRETS_DIR = 'D:\secure\Bricks4Agent'
 常見檔案：
 
 | 檔案 | 用途 |
-| --- | --- |
+|---|---|
 | `Api.txt` | OpenAI-compatible fallback key；只有在 sidecar/container 明確切到 OpenAI-compatible provider 時才需要 |
 | `client_secret_*.json` | Google delegated OAuth |
 | `worker-auth.json` | sidecar 產生/維護 worker identity credentials |
@@ -165,8 +183,11 @@ Copy-Item .\packages\csharp\workers\line-worker\appsettings.sidecar.example.json
 至少填入：
 
 - `Line.ChannelAccessToken`
+
 - `Line.ChannelSecret`
+
 - `Line.DefaultRecipientId`
+
 - `Line.AllowedUserIds`
 
 ## 7. 啟動 LINE Sidecar
@@ -180,13 +201,21 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\l
 Sidecar 會：
 
 1. 建立 `.run/line-sidecar` runtime workspace。
+
 2. publish broker 與 line-worker。
+
 3. 若存在 `Bricks4Agent Dev Code Signing` 開發簽章憑證，補簽 sidecar runtime 內自家 `.dll` / `.exe`。
+
 4. 載入 high-level API key、Google OAuth、worker auth 等 runtime override。
+
 5. 啟動 broker：`127.0.0.1:5361`。
+
 6. 啟動 line-worker webhook：`127.0.0.1:5357`。
+
 7. 啟動或沿用 ngrok tunnel。
+
 8. 更新 LINE webhook URL，除非使用 `-SkipWebhookUpdate`。
+
 9. 檢查 broker、line-worker、tunnel ready。
 
 若 Windows Smart App Control / WDAC 在啟動時封鎖 `Broker.dll`、`BrokerCore.dll`、`BaseOrm.dll` 或其他 runtime DLL，請用系統管理員 PowerShell 修復 sidecar runtime trust：
@@ -207,9 +236,13 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\l
 應確認：
 
 - broker PID 存在。
+
 - line-worker PID 存在。
+
 - ngrok public URL 存在。
+
 - LINE webhook endpoint active。
+
 - admin console 可開啟。
 
 ### 7.3 驗證
@@ -248,10 +281,15 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\l
 新使用者不能只靠 LINE 訊息自動開通。正式流程是先在 Web Portal 註冊，再把 Portal 帳號綁定到 LINE：
 
 1. 開啟 `http://127.0.0.1:5361/portal/index.html`。
+
 2. 在 Portal 註冊 `user_id`、密碼與顯示名稱。
+
 3. 註冊成功後，Portal 會顯示 6 位數 LINE 驗證碼與完整指令，例如 `/verify alice 123456`。
+
 4. 在 LINE 傳送 `/verify <user_id> <code>`。也可使用 `/驗證 <user_id> <code>`。
+
 5. 帳號或驗證碼不符合、過期、已使用，broker 會拒絕 LINE 操作。
+
 6. 驗證成功後，同一個 LINE 使用者才會被映射到 Portal `user_id`，後續對話、結果紀錄與 artifact 都使用同一個使用者工作區。
 
 若驗證碼過期，可登入 Portal，在個人資料區重新產生 LINE 驗證碼。
@@ -263,11 +301,11 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\l
 ### 8.2 查詢命令
 
 | 指令 | 快捷 | 用途 | 範例 |
-| --- | --- | --- | --- |
+|---|---|---|---|
 | `?help` | `?h` | 查看規則 | `?help` |
 | `?search` | `?s` | 受控網路搜尋 | `?search 台灣 AI 法規趨勢` |
 | `?rail` | `?r` | 台鐵/火車查詢 | `?rail 台北 台中 今天 18:00` |
-| `?hsr` | | 高鐵查詢 | `?hsr 台北 左營 明天上午` |
+| `?hsr` |  | 高鐵查詢 | `?hsr 台北 左營 明天上午` |
 | `?bus` | `?b` | 公車/客運查詢 | `?bus 台北 宜蘭 明天` |
 | `?flight` | `?f` | 航班查詢 | `?flight TPE KIX tomorrow` |
 | `?profile` | `?p` | 查看個人 profile | `?profile` |
@@ -277,7 +315,7 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\l
 ### 8.3 個人設定
 
 | 指令 | 快捷 | 用途 | 範例 |
-| --- | --- | --- | --- |
+|---|---|---|---|
 | `/name` | `/n` | 設定顯示稱呼 | `/name 小布` |
 | `/id` | `/i` | 設定英數字使用者 ID | `/id bricks001` |
 
@@ -290,11 +328,17 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\l
 典型流程：
 
 1. 使用者提出需求，例如 `/create a website prototype`。
+
 2. 系統要求專案名稱。
+
 3. 使用者用 `#ProjectName` 回覆。
+
 4. 系統整理 draft 和預計行動。
+
 5. 使用者回覆 `confirm`、`yes`、`y`、`ok` 或 `確認`。
+
 6. Broker 將合格 draft promotion 成 task / plan / handoff。
+
 7. 若使用者回覆 `cancel`、`no`、`n` 或 `取消`，draft 取消。
 
 專案名稱必須使用 `#` 或全形 `＃` 開頭：
@@ -308,7 +352,7 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\l
 專案訪談用於更結構化地收集需求並產生 artifact。
 
 | 指令 | 用途 |
-| --- | --- |
+|---|---|
 | `/proj` | 開始專案訪談 |
 | `#ProjectName` | 指定專案名稱 |
 | `/ok` | 確認目前訪談/設計 |
@@ -318,9 +362,13 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\l
 典型流程：
 
 1. 傳 `/proj`。
+
 2. 用 `#ProjectName` 指定專案名。
+
 3. 回答系統提出的需求問題。
+
 4. 查看系統產出的摘要、設計、PDF/JSON review artifact。
+
 5. 用 `/ok`、`/revise` 或 `/cancel` 決定下一步。
 
 ### 8.6 使用者 Portal 前台
@@ -336,9 +384,13 @@ http://127.0.0.1:5361/portal/index.html
 目前 portal 使用 broker 內建輕量帳號密碼登入：
 
 1. 第一次使用可在 portal 註冊使用者 ID 與密碼；broker 會同步建立對應的 high-level profile，並顯示一次性 LINE 驗證碼。
+
 2. 若要使用 LINE，需把 Portal 顯示的 `/verify <user_id> <code>` 傳到 LINE 完成綁定。
+
 3. 登入後可以在「指令與回應」輸入需求。Portal 會呼叫同一個 `HighLevelCoordinator`，所以 `?profile`、查詢命令、draft、專案訪談等行為與 LINE 高階入口一致。
+
 4. 「結果檔案」會列出該使用者工作區中的 artifact。若 artifact 沒有 Google Drive 下載連結，portal 會使用 broker 的短效簽章下載連結。
+
 5. Portal 只顯示自己的 profile、結果紀錄與 artifact metadata；不回傳 broker 內部檔案路徑。
 
 Portal 是一般使用者操作入口；管理、審批、Drive OAuth、部署與系統監控仍使用 `line-admin.html`。
@@ -354,15 +406,19 @@ http://127.0.0.1:5361/line-admin.html
 安全特性：
 
 - local admin 僅供 localhost 操作。
+
 - 若 local DB 沒有 admin credential，初始帳號為 `admin`、初始密碼為 `admin`。
+
 - 第一次登入後會要求修改密碼，並建立 `super_admin` operator。
+
 - session 以 cookie 維持。
+
 - 後端會依 operator 角色檢查 API 權限；UI 隱藏頁籤只是操作提示，不是安全邊界。
 
 本機 operator 角色：
 
 | 角色 | 用途 |
-| --- | --- |
+|---|---|
 | `super_admin` | break-glass / 全權限，可建立與調整其他 operator |
 | `system_admin` | 系統狀態、監控、browser/deployment/delivery 等系統操作 |
 | `permission_admin` | operator、使用者權限、註冊政策、browser user grant、admin approval 管理 |
@@ -371,7 +427,7 @@ http://127.0.0.1:5361/line-admin.html
 常用區域：
 
 | 區域 | 功能 |
-| --- | --- |
+|---|---|
 | 系統狀態 | broker、LLM proxy、embedding、RAG、DB 狀態 |
 | 系統監控 | LLM、Embedding、RAG、DB 與 runtime monitoring 摘要 |
 | LINE 使用者 | 使用者列表、註冊政策、權限 |
@@ -392,17 +448,25 @@ http://127.0.0.1:5361/line-admin.html
 在 `line-admin.html` 的審批分頁：
 
 1. 查看 request 細節。
+
 2. 檢查 rendered content，例如 unified diff、payload、目標路徑、risk reason。
+
 3. 輸入 reason。
+
 4. 按 approve 或 reject。
 
 Admin 層適用於：
 
 - scope 逸出。
+
 - High / Critical 風險。
+
 - agent create/stop。
+
 - 部署。
+
 - 對外發佈。
+
 - 自由 shell 類，現階段通常拒絕。
 
 ### 10.2 使用者審批
@@ -420,15 +484,19 @@ http(s)://.../user-approvals.html#token=<signed>
 系統可以產出：
 
 - Markdown / JSON / PDF review artifact。
+
 - 靜態網站套件。
+
 - scaffold / project definition。
+
 - web report。
+
 - 其他由 high-level artifact service 產生的文件。
 
 交付方式：
 
 | 方式 | 說明 |
-| --- | --- |
+|---|---|
 | Broker signed download | 短效簽章下載連結，不依賴 Google Drive |
 | Google Drive shared delegated | 使用共用 delegated owner 上傳到 Drive |
 | Google Drive user delegated | 使用 LINE 使用者自己的 delegated OAuth |
@@ -444,18 +512,27 @@ Podman governed stack 用於驗證「agent 不能直接拿工具或模型，只�
 它適合驗證：
 
 - agent bootstrap。
+
 - broker-issued runtime descriptor。
+
 - capability / scope-gated execution。
+
 - broker LLM proxy。
+
 - worker container attachment。
+
 - execution adapter patch/build/test path。
 
 它不直接驗證：
 
 - LINE webhook。
+
 - admin console。
+
 - Google Drive delivery。
+
 - Azure IIS deployment。
+
 - browser-governed production readiness。
 
 ### 12.1 Mock governed stack
@@ -519,7 +596,7 @@ tools/agent/agent.js
 主要模式：
 
 | 模式 | 說明 |
-| --- | --- |
+|---|---|
 | local provider mode | agent 直接呼叫 Ollama/OpenAI-compatible provider |
 | generation/pipeline mode | 產生 `project.json` 或 CRUD pipeline |
 | governed mode | agent 只跟 broker 溝通，模型與工具都 broker-mediated |
@@ -586,23 +663,36 @@ node tools/page-gen.js --list-types
 
 ### 14.3 UI Component Library
 
-目前 component metadata catalog 包含 109 個 components，分類包含：
+目前 component metadata catalog 包含 116 個 components，分類包含：
 
 - `common`
+
 - `form`
+
 - `input`
+
 - `layout`
+
 - `sections`
+
 - `social`
+
 - `viz`
+
 - `editor`
+
 - `data`
+
+- `analytics`
 
 注意：
 
 - site generator 的 component vocabulary 已錨定到 canonical `ui_components` 閉集。
+
 - static site package 會輸出 `b_component` / `b-binding.json` 作為 B component anchor。
+
 - 不是整個 `ui_components` 都宣稱 byte-deterministic；site-gen 靜態輸出與特定 instance ID 已清 deterministic，viz/map/social/download 類仍可能有 runtime timestamp 或互動時 ID/檔名需求。
+
 - 使用者 Portal 的指令輸入使用元件庫中的 `CommandComposer`；後續前台需要的新前後端元件也應先補回共用元件庫或 broker reusable service，再由產品畫面引用。
 
 ## 15. 常用驗證命令
@@ -687,7 +777,7 @@ podman compose -f tools/agent/container/compose.yml down -v
 
 ### 17.1 `dotnet` 找不到
 
-安裝 .NET SDK 8.0+，再確認：
+安裝 .NET SDK 10.0+，再確認：
 
 ```powershell
 dotnet --info
@@ -699,7 +789,9 @@ dotnet --list-sdks
 檔案以 UTF-8 為主。PowerShell 5.1 可能顯示異常。建議：
 
 - 使用 PowerShell 7。
+
 - 驗證 LINE 訊息時用 `-MessageBase64Utf8`。
+
 - 讀檔時指定 UTF-8。
 
 ### 17.3 LINE webhook 無法收到
@@ -713,9 +805,13 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\l
 確認：
 
 - ngrok tunnel 有 public URL。
+
 - LINE webhook endpoint active。
+
 - `line-worker` PID 存在。
+
 - LINE credentials 正確。
+
 - `.run/line-sidecar/logs/line-worker.err.log` 沒有簽章或 token 錯誤。
 
 ### 17.4 Broker 回覆但 AI 不動
@@ -723,8 +819,11 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\l
 檢查：
 
 - 本機 Portal / broker 預設路徑：確認 Ollama 正在執行，且 `ollama list` 看得到 `qwen3.6:latest`。
+
 - 外部 provider 路徑：確認 `ANTHROPIC_API_KEY`，或 `C:\secure\Bricks4Agent\Api.txt` 的 OpenAI-compatible fallback key。
+
 - `HighLevelLlm` provider / model / API format 是否匹配。
+
 - `.run/line-sidecar/logs/broker.err.log` 是否有 upstream `401`、`400`、timeout。
 
 ### 17.5 Worker registration 失敗
@@ -738,7 +837,9 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\run-worker.ps
 若手動啟 worker，需要提供符合 broker 設定的：
 
 - `Worker:Auth:WorkerType`
+
 - `Worker:Auth:KeyId`
+
 - `Worker:Auth:SharedSecret`
 
 ### 17.6 Google Drive OAuth 失敗
@@ -746,6 +847,7 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\run-worker.ps
 檢查：
 
 - `client_secret_*.json` 是否在 secrets 目錄。
+
 - redirect URI 是否包含：
 
 ```text
@@ -753,6 +855,7 @@ http://127.0.0.1:5361/api/v1/google-drive/oauth/callback
 ```
 
 - sidecar public URL 是否最新。
+
 - callback log 是否出現 `invalid_state` 或 `state_expired`。
 
 ### 17.7 Podman stack port 衝突
@@ -760,7 +863,7 @@ http://127.0.0.1:5361/api/v1/google-drive/oauth/callback
 常見 broker port：
 
 | Stack | 預設 port |
-| --- | --- |
+|---|---|
 | `compose.yml` | `5000` |
 | `compose.openai-compatible.yml` | `5361` |
 | `compose.ollama-host.yml` | `5002` |
@@ -777,22 +880,35 @@ npm run validate:podman-openai-compatible-stack
 目前不要宣稱以下已完成：
 
 - 企業級 operator console，例如 SSO、MFA、集中式 IAM、跨機器 operator 同步。
+
 - 自訂 seccomp profile。
+
 - Critical dual approval 已具備 broker 層持久化與兩個不同 approver id 門檻；local admin 具備 named operator RBAC，但尚未接企業 IAM。
+
 - `line.message.send` / `line.audio.send` 已有 worker-local outbound rate limiting；分散式配額與 `line.notification.send` 覆蓋仍未完成。
+
 - browser authenticated automation production readiness。
+
 - 所有外部 provider 在每台機器都已實測。
+
 - 整個 `ui_components` 全庫 byte-deterministic。
 
 目前已可依文件操作與驗證的重點是：
 
 - LINE sidecar canonical path。
+
 - broker high-level conversation / query / draft / confirmation。
+
 - local admin console。
+
 - approval lifecycle、User/Admin 兩層介面，以及 Critical dual approval 的 broker 層門檻。
+
 - governed agent container path。
+
 - execution adapter stack。
+
 - UI/generator validation。
+
 - broker/core build and tests。
 
 ## 19. Legal RAG / 法律檢索輔助
@@ -802,17 +918,25 @@ npm run validate:podman-openai-compatible-stack
 目前範圍：
 
 - 法律 POC 來源是台灣消費者保護法相關資料。
+
 - broker 會把資料存成 `SharedContextEntry`，並建立 SQLite FTS5 全文索引。
+
 - 若啟用 embedding provider，會同步建立 `vector_entries` 做語意檢索；目前 broker 預設使用 `bge-m3`，`nomic-embed-text` 是較輕量的備用模型。
+
 - 同一份資料可同時保留不同 embedding model 的向量；檢索時只會使用目前設定模型的向量，不會把不同維度或不同模型混在同一輪語意比對。
+
 - LINE 對話、`rag_retrieve` tool、`/agents/rag/test` 與 `/dev/rag-test` 都走同一個 RAG retrieval core。
+
 - 需要獨立查詢服務時，可啟動 `packages/csharp/rag-service`；它只提供 `/healthz` 與 `/rag/retrieve`，可共用同一份 SQLite RAG DB，不依賴 LINE 或 broker 對話流程。
 
 使用限制：
 
 - 法律 RAG 只能作為檢索與佐證輔助，不應視為律師意見。
+
 - 若沒有啟用 Ollama / embedding，仍可用 FTS5 全文檢索；語意向量檢索需要 embedding provider。
+
 - live 法規 seed 需要網路；正式驗證使用離線 fixture，不依賴法務部網站或 live model。
+
 - `rag-service` 預設關閉 embedding、query rewrite、rerank，所以可以先作為純 FTS5 retrieval host；若要語意檢索，需另外設定 embedding provider。
 
 驗證：
