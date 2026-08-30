@@ -1,5 +1,6 @@
 'use strict';
 
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const { extractAppEntry } = require('./definition-template.js');
@@ -9,10 +10,13 @@ const TEMPLATE_FRONTEND_DIR = path.resolve(__dirname, '../../templates/spa/front
 const PAGE_GENERATOR_RUNTIME_DIR = path.resolve(__dirname, '../../packages/javascript/browser/page-generator');
 const UI_COMPONENTS_RUNTIME_DIR = path.resolve(__dirname, '../../packages/javascript/browser/ui_components');
 const SKIP_DIRECTORIES = new Set(['bin', 'obj']);
+const JWT_KEY_PLACEHOLDER = '"Key": ""';
 const SUPPORTED_SERVICE_PAIRS = new Map([
     ['SpaApi.Services.IUserService', 'SpaApi.Services.UserService'],
     ['SpaApi.Services.IAuthService', 'SpaApi.Services.AuthService']
 ]);
+// 與 PageGenerator 相同的 JS IdentifierName 規則（ID_Start／ID_Continue 加上 $ _ 與 ZWNJ／ZWJ）
+const JS_IDENTIFIER_PATTERN = /^[\p{ID_Start}$_][\p{ID_Continue}$\u200C\u200D]*$/u;
 
 function ensureArray(value) {
     return Array.isArray(value) ? value : [];
@@ -49,6 +53,46 @@ function toRouteSegment(value, fallback = 'module') {
     return normalized || fallback;
 }
 
+function assertEmittableIdentifier(value, what) {
+    if (typeof value !== 'string' || !JS_IDENTIFIER_PATTERN.test(value)) {
+        throw new Error(
+            `${what} is emitted as a JavaScript identifier and a file name, and must match ${JS_IDENTIFIER_PATTERN}, got ${JSON.stringify(value)}`
+        );
+    }
+
+    return value;
+}
+
+/**
+ * 組合出來的檔案路徑必須確認落點仍在預期目錄內：
+ * Windows 要一併涵蓋磁碟機代號、反斜線與大小寫不敏感的前綴比較。
+ */
+function resolveInsideDirectory(baseDir, relativePath, what) {
+    const base = path.resolve(baseDir);
+    const resolved = path.resolve(base, relativePath);
+    const prefix = base.endsWith(path.sep) ? base : `${base}${path.sep}`;
+    const normalize = value => (process.platform === 'win32' ? value.toLowerCase() : value);
+
+    if (!normalize(resolved).startsWith(normalize(prefix))) {
+        throw new Error(
+            `${what} must stay inside ${base}, got ${JSON.stringify(relativePath)} (resolved to ${resolved})`
+        );
+    }
+
+    return resolved;
+}
+
+function resolvePageClassName(pageEntry) {
+    const pageId = pageEntry?.id || '(missing-id)';
+    const declaredName = pageEntry?.definition?.name;
+    const className = declaredName || `${toPascalCase(pageId)}Page`;
+
+    return assertEmittableIdentifier(
+        className,
+        `page ${pageId}: ${declaredName ? 'definition.name' : 'derived page class name'}`
+    );
+}
+
 function deriveEntityKey(pageEntry) {
     const definition = pageEntry.definition || {};
     const api = definition.api || {};
@@ -71,7 +115,11 @@ function ensureLeadingSlash(value) {
 function escapeCSharpString(value) {
     return String(value)
         .replace(/\\/g, '\\\\')
-        .replace(/"/g, '\\"');
+        .replace(/"/g, '\\"')
+        .replace(/\r/g, '\\r')
+        .replace(/\n/g, '\\n')
+        .replace(/\u2028/g, '\\u2028')
+        .replace(/\u2029/g, '\\u2029');
 }
 
 function serializeStringArray(values) {
@@ -115,9 +163,33 @@ function copyDirectory(sourceDir, targetDir) {
             continue;
         }
 
-        fs.mkdirSync(path.dirname(targetPath), { recursive: true });
         fs.copyFileSync(sourcePath, targetPath);
     }
+}
+
+/**
+ * 與 templates/spa/scripts/create-project.js 相同的簽章金鑰置換：
+ * 產生的專案必須帶自己的 Jwt:Key，不能只靠後端的環境判斷把關。
+ */
+function injectBackendJwtKey(backendDir) {
+    const appSettingsPath = path.join(backendDir, 'appsettings.json');
+    if (!fs.existsSync(appSettingsPath)) {
+        return null;
+    }
+
+    const content = fs.readFileSync(appSettingsPath, 'utf8');
+    if (!content.includes(JWT_KEY_PLACEHOLDER)) {
+        return null;
+    }
+
+    const jwtKey = crypto.randomBytes(48).toString('base64');
+    fs.writeFileSync(
+        appSettingsPath,
+        content.replace(JWT_KEY_PLACEHOLDER, `"Key": ${JSON.stringify(jwtKey)}`),
+        'utf8'
+    );
+
+    return appSettingsPath;
 }
 
 function copyPageGeneratorRuntime(targetDir) {
@@ -366,7 +438,7 @@ function buildGeneratedCompositionSource(appEntry) {
 
 function buildGeneratedFrontendPageSource(pageEntry) {
     const pageDefinition = pageEntry.definition || {};
-    const className = pageDefinition.name || `${toPascalCase(pageEntry.id)}Page`;
+    const className = resolvePageClassName(pageEntry);
     const runtimeMode = isSupportedRuntimePageType(pageDefinition.type) ? pageDefinition.type : null;
 
     return `import { DefinitionRuntimePage } from '../../runtime/DefinitionRuntimePage.js';
@@ -388,7 +460,7 @@ export default ${className};
 function buildGeneratedRoutesSource(pageEntries) {
     const imports = [];
     const routeSpecs = pageEntries.map(pageEntry => {
-        const className = pageEntry.definition?.name || `${toPascalCase(pageEntry.id)}Page`;
+        const className = resolvePageClassName(pageEntry);
         return {
             pageEntry,
             className,
@@ -549,7 +621,11 @@ function materializeAppBackendProject(template, appId, outputRoot) {
         throw error;
     }
 
-    const projectRoot = path.resolve(outputRoot, appEntry.id);
+    const projectRoot = resolveInsideDirectory(
+        outputRoot,
+        appEntry.id,
+        `app ${appEntry.id}: generated project directory`
+    );
     const backendDir = path.join(projectRoot, 'backend');
 
     if (fs.existsSync(projectRoot)) {
@@ -557,6 +633,7 @@ function materializeAppBackendProject(template, appId, outputRoot) {
     }
 
     copyDirectory(TEMPLATE_BACKEND_DIR, backendDir);
+    injectBackendJwtKey(backendDir);
 
     const projectName = toPascalCase(appEntry.id || appEntry.app.identity?.name || 'GeneratedApp') || 'GeneratedApp';
     const oldCsprojPath = path.join(backendDir, 'SpaApi.csproj');
@@ -589,9 +666,12 @@ function materializeAppBackendProject(template, appId, outputRoot) {
 }
 
 function materializeAppProject(template, appId, outputRoot) {
-    const backendResult = materializeAppBackendProject(template, appId, outputRoot);
     const appEntry = extractAppEntry(template, appId);
     const pageRefs = ensureArray(appEntry.app.frontend?.pageRefs);
+    const selectedPages = getSelectedPageEntries(template, appEntry);
+    const pageClassNames = selectedPages.map(pageEntry => resolvePageClassName(pageEntry));
+
+    const backendResult = materializeAppBackendProject(template, appId, outputRoot);
 
     let frontendDir = null;
     let runtimeDir = null;
@@ -607,11 +687,13 @@ function materializeAppProject(template, appId, outputRoot) {
         const generatedPagesDir = path.join(frontendDir, 'pages', 'generated');
         fs.mkdirSync(generatedPagesDir, { recursive: true });
 
-        const selectedPages = getSelectedPageEntries(template, appEntry);
-
-        for (const pageEntry of selectedPages) {
-            const className = pageEntry.definition?.name || `${toPascalCase(pageEntry.id)}Page`;
-            const pageFilePath = path.join(generatedPagesDir, `${className}.js`);
+        for (const [index, pageEntry] of selectedPages.entries()) {
+            const className = pageClassNames[index];
+            const pageFilePath = resolveInsideDirectory(
+                generatedPagesDir,
+                `${className}.js`,
+                `page ${pageEntry.id}: generated page file`
+            );
             fs.writeFileSync(pageFilePath, buildGeneratedFrontendPageSource(pageEntry), 'utf8');
             generatedPagePaths.push(pageFilePath);
         }

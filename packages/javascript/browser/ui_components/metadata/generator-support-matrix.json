@@ -22,9 +22,9 @@
       "status": "supported"
     },
     "textarea": {
-      "default_component": null,
+      "default_component": "TextArea",
       "alternative_components": [],
-      "status": "wrapped"
+      "status": "supported"
     },
     "memo": {
       "default_component": "TextArea",

@@ -44,6 +44,7 @@ export class MultiSelectDropdown {
         this._expandBtn = null;
         this._arrow = null;
         this._menu = null;
+        this._modal = null;
 
         this.element = this._createElement();
         this._state = createComponentState(this._buildInitialState(), {
@@ -203,7 +204,7 @@ export class MultiSelectDropdown {
         this._boundHandleOutsideClick = (event) => {
             if (!this._container.contains(event.target)) this.close();
         };
-        document.addEventListener('click', this._boundHandleOutsideClick);
+        this._globalListenersAttached = false;
         this._expandBtn.addEventListener('click', (event) => {
             event.stopPropagation?.();
             if (this.snapshot().availability !== 'disabled') this._openModal();
@@ -214,6 +215,14 @@ export class MultiSelectDropdown {
         this._selector.addEventListener('mouseleave', () => {
             if (!this.snapshot().open) this._selector.style.borderColor = 'var(--cl-border)';
         });
+    }
+
+    // 全域 click 監聽只在選單展開期間掛載;開啟點擊 dispatch 中同步掛上(contains 守衛使其對本次點擊 no-op)
+    _syncGlobalListeners(open) {
+        if (open === this._globalListenersAttached) return;
+        this._globalListenersAttached = open;
+        if (open) document.addEventListener('click', this._boundHandleOutsideClick);
+        else document.removeEventListener('click', this._boundHandleOutsideClick);
     }
 
     _syncLegacyFields(state) {
@@ -311,6 +320,11 @@ export class MultiSelectDropdown {
     _applyState() {
         const state = this.snapshot();
         this._syncLegacyFields(state);
+        // destroy 後遲到的 send（如 fetch 回來才呼叫 setItems）不得再重繪或掛回全域監聽
+        if (state.lifecycle === 'destroyed') {
+            this._syncGlobalListeners(false);
+            return;
+        }
         this._container.style.display = state.visibility === 'hidden' ? 'none' : 'inline-block';
         this._selector.style.cursor = state.availability === 'disabled' ? 'not-allowed' : 'pointer';
         this._selector.style.opacity = state.availability === 'disabled' ? '0.6' : '1';
@@ -324,6 +338,7 @@ export class MultiSelectDropdown {
         this._expandBtn.style.opacity = state.availability === 'disabled' ? '0.5' : '1';
         this._arrow.style.transform = state.open ? 'rotate(180deg)' : 'rotate(0deg)';
         this._menu.style.display = state.open ? 'block' : 'none';
+        this._syncGlobalListeners(state.open);
         this._renderTags();
         this._renderMenuItems();
     }
@@ -386,10 +401,22 @@ export class MultiSelectDropdown {
         options[this.snapshot().highlightIndex]?.scrollIntoView?.({ block: 'nearest' });
     }
 
+    // 展開對話框只 close 不 destroy 會殘留 document 監聽、遮罩節點與 PanelManager 記錄;先 close 讓 modalStack 正確退場再 destroy
+    _destroyModal() {
+        if (!this._modal) return;
+        const modal = this._modal;
+        this._modal = null;
+        modal.close();
+        modal.destroy();
+    }
+
     _openModal() {
+        // 每次展開都重建內容,舊實例已無用途,先銷毀避免逐次累積
+        this._destroyModal();
         let modalValues = new Set(this.snapshot().selectedValues);
         let modalFilteredItems = cloneItems(this.options.items);
         const modal = new ModalPanel({ title: this.options.modalTitle, closable: true, autoClose: true });
+        this._modal = modal;
         const content = document.createElement('div');
         content.style.cssText = 'display:flex;flex-direction:column;width:480px;max-width:90vw;';
         const countLabel = document.createElement('span');
@@ -596,6 +623,7 @@ export class MultiSelectDropdown {
         this._arrowIcon = null;
         this._menuIcons?.forEach((icon) => icon.destroy());
         this._menuIcons = [];
+        this._destroyModal();
         document.removeEventListener('click', this._boundHandleOutsideClick);
         if (this.element?.parentNode) this.element.remove();
     }

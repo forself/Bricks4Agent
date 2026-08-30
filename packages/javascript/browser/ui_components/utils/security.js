@@ -39,6 +39,10 @@ export function escapeAttr(str) {
         .replace(/>/g, '&gt;');
 }
 
+// opt-in 品牌：JSON.parse 永遠產不出 symbol 鍵，故 API 回傳的純資料無法偽造成 raw() 標記。
+// 固定用 Symbol.for 讓不同 bundle/fork 的副本互相辨識；__html 僅為相容保留，不再是授權依據。
+const RAW_HTML_BRAND = Symbol.for('bricks4agent.rawHtml');
+
 /**
  * 標記字串為已知安全的 HTML（明確 opt-in）
  * 使用此函數表示「我知道這段 HTML 是安全的」。
@@ -46,7 +50,8 @@ export function escapeAttr(str) {
  * @returns {Readonly<{__html: string}>} raw HTML 標記物件
  */
 export function raw(html) {
-    return Object.freeze({ __html: String(html ?? '') });
+    const html_ = String(html ?? '');
+    return Object.freeze({ [RAW_HTML_BRAND]: html_, __html: html_ });
 }
 
 /**
@@ -55,7 +60,12 @@ export function raw(html) {
  * @returns {boolean} 是否為 raw() 產生的標記
  */
 export function isRawHtml(value) {
-    return value !== null && typeof value === 'object' && '__html' in value;
+    if (value === null || typeof value !== 'object') return false;
+    const hasOwn = Object.prototype.hasOwnProperty;
+    // 一律查自身屬性（不用 in）：in 會走原型鏈，原型污染即可讓任意物件冒充標記。
+    return hasOwn.call(value, RAW_HTML_BRAND)
+        && hasOwn.call(value, '__html')
+        && typeof value.__html === 'string';
 }
 
 /**

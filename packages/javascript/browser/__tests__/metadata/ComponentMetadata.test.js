@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 
 import {
     buildMetadataArtifacts,
@@ -16,9 +16,15 @@ function readJson(relativePath) {
     return JSON.parse(readFileSync(path.join(browserRoot, relativePath), 'utf8'));
 }
 
+// 三個測試共用同一份 artifacts，避免重複掃描整個元件庫
+let artifacts;
+
 describe('component metadata', () => {
+    beforeAll(() => {
+        artifacts = buildMetadataArtifacts(browserRoot);
+    });
+
     it('covers every ComponentFactory registry entry with a valid manifest', () => {
-        const artifacts = buildMetadataArtifacts(browserRoot);
         const validation = validateManifestMap(artifacts.manifestMap, artifacts.introspection, browserRoot);
 
         expect(artifacts.introspection.registryNames.length).toBeGreaterThan(0);
@@ -30,7 +36,6 @@ describe('component metadata', () => {
     });
 
     it('renders deterministic component catalog and generator support matrix', () => {
-        const artifacts = buildMetadataArtifacts(browserRoot);
         const checkedCatalog = readJson('ui_components/metadata/component-catalog.json');
         const checkedMatrix = readJson('ui_components/metadata/generator-support-matrix.json');
 
@@ -39,9 +44,13 @@ describe('component metadata', () => {
     });
 
     it('keeps generator metadata aligned with FieldResolver and TriggerEngine', () => {
-        const artifacts = buildMetadataArtifacts(browserRoot);
         const { componentCatalog, generatorSupportMatrix } = artifacts;
+        // by_registry_name 存索引，需經 components[] 還原 manifest
+        for (const [registryName, index] of Object.entries(componentCatalog.by_registry_name)) {
+            expect(componentCatalog.components[index].registry_name).toBe(registryName);
+        }
         const fieldDirectComponents = Object.values(componentCatalog.by_registry_name)
+            .map((index) => componentCatalog.components[index])
             .filter((entry) => entry.generator.usage_mode === 'field_direct')
             .map((entry) => entry.registry_name);
 

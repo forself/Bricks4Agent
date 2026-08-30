@@ -316,6 +316,9 @@ export class Dropdown {
             this.menu.style.display = state.open ? 'block' : 'none';
         }
 
+        // destroy 後不得再掛回全域監聽（reducer 不檢查 lifecycle，這裡把關）
+        this._syncGlobalListeners(state.open && state.lifecycle !== 'destroyed');
+
         this._renderItems();
     }
 
@@ -481,7 +484,7 @@ export class Dropdown {
                 this.close();
             }
         };
-        document.addEventListener('click', this._onDocumentClick);
+        this._globalListenersAttached = false;
 
         this.selector.addEventListener('mouseenter', () => {
             if (this.snapshot().availability !== 'disabled') {
@@ -494,6 +497,17 @@ export class Dropdown {
                 this.selector.style.borderColor = 'var(--cl-border)';
             }
         });
+    }
+
+    // 全域 click 監聽只在選單展開期間掛載;開啟點擊 dispatch 中同步掛上(contains 守衛使其對本次點擊 no-op)
+    _syncGlobalListeners(open) {
+        if (open === this._globalListenersAttached) return;
+        this._globalListenersAttached = open;
+        if (open) {
+            document.addEventListener('click', this._onDocumentClick);
+        } else {
+            document.removeEventListener('click', this._onDocumentClick);
+        }
     }
 
     _handleKeydown(event) {

@@ -14,6 +14,11 @@ import { nextUid } from '../utils/uid.js';
 
 export class MapEditorV2 {
     constructor(options = {}) {
+        this._childComponents = new Set();
+        this._destroyed = false;
+        this._layerInitTimer = null;
+        this._handleKeyDown = null;
+
         this.container = typeof options.container === 'string'
             ? document.querySelector(options.container)
             : options.container;
@@ -69,6 +74,11 @@ export class MapEditorV2 {
         this._setupEventListeners();
         this._render();
         this._saveHistory(); // 保存初始空狀態
+    }
+
+    _trackComponent(component) {
+        if (component) this._childComponents.add(component);
+        return component;
     }
 
     _createUI() {
@@ -158,7 +168,7 @@ export class MapEditorV2 {
         `;
         header.innerHTML = '<span>📜 圖層管理</span>';
 
-        const addLayerBtn = new BasicButton({
+        const addLayerBtn = this._trackComponent(new BasicButton({
             type: 'custom',
             customLabel: '➕',
             size: 'small',
@@ -173,7 +183,7 @@ export class MapEditorV2 {
                     this._updateLayerList();
                 }
             }
-        });
+        }));
         addLayerBtn.mount(header);
 
         this.layerListContainer = document.createElement('div');
@@ -187,7 +197,10 @@ export class MapEditorV2 {
         panel.appendChild(this.layerListContainer);
 
         // 初始更新列表
-        setTimeout(() => this._updateLayerList(), 0);
+        this._layerInitTimer = setTimeout(() => {
+            this._layerInitTimer = null;
+            if (!this._destroyed) this._updateLayerList();
+        }, 0);
 
         return panel;
     }
@@ -292,11 +305,11 @@ export class MapEditorV2 {
         `;
 
         // 上傳圖片按鈕
-        const uploadBtn = new UploadButton({
+        const uploadBtn = this._trackComponent(new UploadButton({
             type: UploadButton.TYPES.IMAGE,
             onSelect: (files) => this._handleImageUpload(files[0]),
             tooltip: Locale.t('webPainter.uploadBg')
-        });
+        }));
         uploadBtn.mount(toolbar);
 
         // 分隔線
@@ -316,7 +329,7 @@ export class MapEditorV2 {
 
         this.toolButtons = {};
         tools.forEach(({tool, icon, label}) => {
-            const btn = new BasicButton({
+            const btn = this._trackComponent(new BasicButton({
                 type: 'custom',
                 variant: 'plain',  // 無底色樣式
                 customLabel: `${icon} ${label}`,
@@ -326,7 +339,7 @@ export class MapEditorV2 {
                     this.currentTool = tool;
                     this._updateToolButtons();
                 }
-            });
+            }));
             btn.mount(toolbar);
             this.toolButtons[tool] = btn.element;
         });
@@ -334,7 +347,7 @@ export class MapEditorV2 {
         toolbar.appendChild(this._createSeparator());
 
         // 刪除按鈕
-        const deleteBtn = new BasicButton({
+        const deleteBtn = this._trackComponent(new BasicButton({
             type: 'no',
             customLabel: Locale.t('webPainter.deleteBtn'),
             size: 'small',
@@ -344,11 +357,11 @@ export class MapEditorV2 {
                     this._deleteElement(this.selectedElement);
                 }
             }
-        });
+        }));
         deleteBtn.mount(toolbar);
 
         // 清空按鈕
-        const clearBtn = new BasicButton({
+        const clearBtn = this._trackComponent(new BasicButton({
             type: 'clear',
             customLabel: Locale.t('webPainter.clearAllBtn'),
             size: 'small',
@@ -360,49 +373,49 @@ export class MapEditorV2 {
                     this._render();
                 }
             }
-        });
+        }));
         clearBtn.mount(toolbar);
 
         toolbar.appendChild(this._createSeparator());
 
         // 匯出按鈕
-        const exportBtn = new BasicButton({
+        const exportBtn = this._trackComponent(new BasicButton({
             type: 'save',
             customLabel: Locale.t('webPainter.exportPngBtn'),
             size: 'small',
             showIcon: false,
             variant: 'primary',
             onClick: () => this._exportImage()
-        });
+        }));
         exportBtn.mount(toolbar);
 
-        const saveJsonBtn = new BasicButton({
+        const saveJsonBtn = this._trackComponent(new BasicButton({
             type: 'save',
             customLabel: Locale.t('webPainter.saveJsonBtn'),
             size: 'small',
             showIcon: false,
             variant: 'secondary',
             onClick: () => this._exportJSON()
-        });
+        }));
         saveJsonBtn.mount(toolbar);
 
         toolbar.appendChild(this._createSeparator());
 
         // 圖層開關按鈕
-        const toggleLayerBtn = new BasicButton({
+        const toggleLayerBtn = this._trackComponent(new BasicButton({
             type: 'custom',
             customLabel: Locale.t('webPainter.layerBtn'),
             size: 'small',
             showIcon: false,
             variant: 'secondary',
             onClick: () => this._toggleLayerPanel()
-        });
+        }));
         toggleLayerBtn.mount(toolbar);
 
         toolbar.appendChild(this._createSeparator());
 
         // 縮放控制
-        const zoomOutBtn = new BasicButton({
+        const zoomOutBtn = this._trackComponent(new BasicButton({
             type: 'custom',
             customLabel: '➖',
             size: 'small',
@@ -413,7 +426,7 @@ export class MapEditorV2 {
                 this._render();
                 zoomText.textContent = `${Math.round(this.zoom * 100)}%`;
             }
-        });
+        }));
         zoomOutBtn.mount(toolbar);
 
         const zoomText = document.createElement('span');
@@ -421,7 +434,7 @@ export class MapEditorV2 {
         zoomText.style.cssText = 'font-size: var(--cl-font-size-sm); min-width: 40px; text-align: center; font-weight: bold;';
         toolbar.appendChild(zoomText);
 
-        const zoomInBtn = new BasicButton({
+        const zoomInBtn = this._trackComponent(new BasicButton({
             type: 'custom',
             customLabel: '➕',
             size: 'small',
@@ -432,10 +445,10 @@ export class MapEditorV2 {
                 this._render();
                 zoomText.textContent = `${Math.round(this.zoom * 100)}%`;
             }
-        });
+        }));
         zoomInBtn.mount(toolbar);
 
-        const zoomResetBtn = new BasicButton({
+        const zoomResetBtn = this._trackComponent(new BasicButton({
             type: 'custom',
             customLabel: '🔄 100%',
             size: 'small',
@@ -446,7 +459,7 @@ export class MapEditorV2 {
                 this._render();
                 zoomText.textContent = '100%';
             }
-        });
+        }));
         zoomResetBtn.mount(toolbar);
 
         this._updateToolButtons();
@@ -470,7 +483,7 @@ export class MapEditorV2 {
 
         // 字體大小
         panel.appendChild(this._createLabel(Locale.t('webPainter.fontSizeLabel')));
-        const fontSizeInput = new NumberInput({
+        const fontSizeInput = this._trackComponent(new NumberInput({
             value: this.settings.fontSize,
             min: 10,
             max: 72,
@@ -479,7 +492,7 @@ export class MapEditorV2 {
             onChange: (val) => {
                 this.settings.fontSize = val;
             }
-        });
+        }));
         fontSizeInput.mount(panel);
 
         // 字型選擇
@@ -524,38 +537,38 @@ export class MapEditorV2 {
         this.fontSelect = fontSelect; // 儲存參考以便更新
 
         // 文字顏色
-        const textColorPicker = new ColorPicker({
+        const textColorPicker = this._trackComponent(new ColorPicker({
             label: Locale.t('webPainter.textColorLabel'),
             value: this.settings.textColor,
             onChange: (val) => {
                 this.settings.textColor = val;
             }
-        });
+        }));
         textColorPicker.mount(panel);
 
         // 線條顏色
-        const strokeColorPicker = new ColorPicker({
+        const strokeColorPicker = this._trackComponent(new ColorPicker({
             label: Locale.t('webPainter.strokeColorLabel'),
             value: this.settings.strokeColor,
             onChange: (val) => {
                 this.settings.strokeColor = val;
             }
-        });
+        }));
         strokeColorPicker.mount(panel);
 
         // 填充顏色
-        const fillColorPicker = new ColorPicker({
+        const fillColorPicker = this._trackComponent(new ColorPicker({
             label: Locale.t('webPainter.fillColorLabel'),
             value: this.settings.fillColor,
             onChange: (val) => {
                 this.settings.fillColor = val;
             }
-        });
+        }));
         fillColorPicker.mount(panel);
 
         // 線條粗細
         panel.appendChild(this._createLabel(Locale.t('webPainter.strokeWidthLabel')));
-        const lineWidthInput = new NumberInput({
+        const lineWidthInput = this._trackComponent(new NumberInput({
             value: this.settings.lineWidth,
             min: 1,
             max: 20,
@@ -564,7 +577,7 @@ export class MapEditorV2 {
             onChange: (val) => {
                 this.settings.lineWidth = val;
             }
-        });
+        }));
         lineWidthInput.mount(panel);
 
         return panel;
@@ -625,7 +638,7 @@ export class MapEditorV2 {
         this.canvas.addEventListener('mouseup', (e) => this._handleMouseUp(e));
         this.canvas.addEventListener('dblclick', (e) => this._handleDoubleClick(e));
 
-        document.addEventListener('keydown', (e) => {
+        this._handleKeyDown = (e) => {
             // 忽略在輸入框中的按鍵事件
             if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
 
@@ -645,18 +658,19 @@ export class MapEditorV2 {
                 this._redo();
             }
 
-            // Copy: Ctrl+C
-            if (e.ctrlKey && e.key.toLowerCase() === 'c') {
+            // Copy: Ctrl+C（沒有選取元素時不攔截，讓瀏覽器原生複製照常運作）
+            if (e.ctrlKey && e.key.toLowerCase() === 'c' && this.selectedElement) {
                 e.preventDefault();
                 this._copy();
             }
 
-            // Paste: Ctrl+V
-            if (e.ctrlKey && e.key.toLowerCase() === 'v') {
+            // Paste: Ctrl+V（本編輯器沒有剪貼內容時不攔截）
+            if (e.ctrlKey && e.key.toLowerCase() === 'v' && this.clipboard) {
                 e.preventDefault();
                 this._paste();
             }
-        });
+        };
+        document.addEventListener('keydown', this._handleKeyDown);
     }
 
     _getMousePos(e) {
@@ -675,6 +689,7 @@ export class MapEditorV2 {
         reader.onload = (event) => {
             const img = new Image();
             img.onload = () => {
+                if (this._destroyed) return;
                 this.backgroundImage = img;
                 this._render();
             };
@@ -906,6 +921,9 @@ export class MapEditorV2 {
     }
 
     _render() {
+        // 圖片載入是非同步的，destroy() 之後仍可能回呼進來
+        if (this._destroyed) return;
+
         const ctx = this.ctx;
         ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
         
@@ -1105,14 +1123,14 @@ export class MapEditorV2 {
     }
 
     _saveHistory() {
-        // 如果歷史記錄過多，移除最早的
-        if (this.history.length > 50) {
-            this.history.shift();
-            this.historyIndex--;
-        }
-        
         this.history = this.history.slice(0, this.historyIndex + 1);
         this.history.push(structuredClone(this.elements));
+
+        // 必須推入後才裁上限：先移除最早一筆會丟掉 historyIndex 正指向的那筆
+        while (this.history.length > 50) {
+            this.history.shift();
+        }
+
         this.historyIndex = this.history.length - 1;
     }
 
@@ -1285,6 +1303,7 @@ export class MapEditorV2 {
         link.download = `${Locale.t('webPainter.configFilename')}${nextUid('map-config')}.json`;
         link.href = URL.createObjectURL(blob);
         link.click();
+        URL.revokeObjectURL(link.href);
     }
 
     loadJSON(jsonData) {
@@ -1305,6 +1324,7 @@ export class MapEditorV2 {
     setBackgroundImage(imageUrl) {
         const img = new Image();
         img.onload = () => {
+            if (this._destroyed) return;
             this.backgroundImage = img;
             this._render();
         };
@@ -1331,9 +1351,15 @@ export class MapEditorV2 {
                 
                 const img = new Image();
                 img.onload = () => {
-                    this.backgroundImage = img;
+                    // 先 revoke 再判斷，確保兩條路徑都會釋放 blob URL
                     URL.revokeObjectURL(imageUrl);
-                    
+                    if (this._destroyed) {
+                        resolve(null);
+                        return;
+                    }
+
+                    this.backgroundImage = img;
+
                     const metadata = this._extractPNGMetadata(uint8Array);
                     if (metadata) {
                         console.log(Locale.t('webPainter.loadPngSuccess'));
@@ -1400,8 +1426,40 @@ export class MapEditorV2 {
             
             offset += 12 + chunkLength;
         }
-        
+
         return null;
+    }
+
+    destroy() {
+        if (this._destroyed) return;
+        this._destroyed = true;
+        if (this._layerInitTimer) {
+            clearTimeout(this._layerInitTimer);
+            this._layerInitTimer = null;
+        }
+        if (this._handleKeyDown) {
+            document.removeEventListener('keydown', this._handleKeyDown);
+            this._handleKeyDown = null;
+        }
+        for (const component of this._childComponents) component?.destroy?.();
+        this._childComponents.clear();
+        this.toolButtons = {};
+        this.element?.remove();
+        this.element = null;
+        this.layerPanel = null;
+        this.layerListContainer = null;
+        this.fontSelect = null;
+        this.canvas = null;
+        this.ctx = null;
+        this.selectedElement = null;
+        this.hoveredElement = null;
+        this.tempShape = null;
+        this.clipboard = null;
+        this.backgroundImage = null;
+        this.elements = [];
+        this.history = [];
+        this.historyIndex = -1;
+        this._crcTable = null;
     }
 }
 

@@ -209,18 +209,21 @@ export function introspectBrowserMetadata(browserRoot) {
     const componentLocations = Object.fromEntries(
         allKnownComponents.map((componentName) => {
             const sourceEntry = resolveSourceEntry(sourceIndex, componentName);
+            if (!sourceEntry) {
+                return [componentName, null];
+            }
+
+            const sourceText = fs.readFileSync(sourceEntry.absolutePath, 'utf8');
             return [
                 componentName,
-                sourceEntry
-                    ? {
-                        category: sourceEntry.category,
-                        source_path: sourceEntry.relativePath,
-                        docs_path: resolveDocsPath(browserRoot, sourceEntry),
-                        source_text: fs.readFileSync(sourceEntry.absolutePath, 'utf8'),
-                        option_keys: extractOptionKeys(fs.readFileSync(sourceEntry.absolutePath, 'utf8')),
-                        listener_events: extractListenerEvents(fs.readFileSync(sourceEntry.absolutePath, 'utf8')),
-                    }
-                    : null,
+                {
+                    category: sourceEntry.category,
+                    source_path: sourceEntry.relativePath,
+                    docs_path: resolveDocsPath(browserRoot, sourceEntry),
+                    source_text: sourceText,
+                    option_keys: extractOptionKeys(sourceText),
+                    listener_events: extractListenerEvents(sourceText),
+                },
             ];
         }),
     );

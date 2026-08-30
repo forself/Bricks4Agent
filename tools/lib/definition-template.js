@@ -300,6 +300,38 @@ function extractPageEntry(template, pageId = null) {
     };
 }
 
+function extractPageEntries(template, pageIds = null) {
+    if (!isDefinitionTemplate(template)) {
+        throw new Error('輸入不是 DefinitionTemplate');
+    }
+
+    const pages = template.definitions?.pages;
+    if (!Array.isArray(pages) || pages.length === 0) {
+        throw new Error('DefinitionTemplate 缺少 definitions.pages');
+    }
+
+    const selectedList = Array.isArray(pageIds) && pageIds.length > 0
+        ? pageIds.map(pageId => {
+            const selected = pages.find(page => page.id === pageId) || null;
+            if (!selected) {
+                throw new Error(`找不到指定的 page id: ${pageId}`);
+            }
+            return selected;
+        })
+        : pages;
+
+    return selectedList.map(selected => {
+        if (!isObject(selected.definition)) {
+            throw new Error(`page ${selected.id} 缺少 definition 物件`);
+        }
+
+        return {
+            pageId: selected.id,
+            pageDefinition: selected.definition
+        };
+    });
+}
+
 function extractAppEntry(template, appId = null) {
     if (!isDefinitionTemplate(template)) {
         throw new Error('Invalid DefinitionTemplate');
@@ -336,5 +368,6 @@ module.exports = {
     assertValidDefinitionTemplate,
     resolveTemplateEnvelope,
     extractPageEntry,
+    extractPageEntries,
     extractAppEntry
 };

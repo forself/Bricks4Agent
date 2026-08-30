@@ -72,6 +72,10 @@ export class DataExplorer {
         this._fields = this.options.fields || null;
         this.__spec = this.options.spec || null;   // 初始 spec(_afterData 會白名單驗證)
         this._chart = null;
+        this._controlInputs = [];    // 控制列的 Dropdown/TextInput(Dropdown 掛 document 監聽,重建前必 destroy)
+        this._aggTable = null;
+        this._rawTable = null;
+        this._unitTimer = null;
         this._uid = 'dx-' + (++seq);
         this._view = 'chart';        // chart | agg | raw
         this._destroyed = false;
@@ -265,6 +269,8 @@ export class DataExplorer {
 
     _buildControls() {
         const host = this._controls;
+        for (const c of this._controlInputs) c.destroy();
+        this._controlInputs = [];
         host.textContent = '';
         const s = this._spec;
         if (!this._fields || !this._fields.length) {
@@ -289,6 +295,7 @@ export class DataExplorer {
             const box = document.createElement('div');
             const d = new Dropdown({ items, value, width, onChange });
             d.mount(box);
+            this._controlInputs.push(d);
             return box;
         };
         const fieldItems = (types, withNone) => {
@@ -333,10 +340,18 @@ export class DataExplorer {
                         patch(v => { this._spec.series = v === NONE ? null : { field: v }; })));
             }
         }
-        // 單位
+        // 單位(逐鍵觸發全管線太重:spec 即時更新,重繪 debounce 200ms)
         const unitBox = document.createElement('div');
-        const ti = new TextInput({ value: s.y.unit || '', placeholder: '如:件/萬', width: '84px', onChange: (v) => { this._spec.y.unit = v; this._renderAll(); } });
+        const ti = new TextInput({
+            value: s.y.unit || '', placeholder: '如:件/萬', width: '84px',
+            onChange: (v) => {
+                this._spec.y.unit = v;
+                if (this._unitTimer) clearTimeout(this._unitTimer);
+                this._unitTimer = setTimeout(() => { this._unitTimer = null; this._renderAll(); }, 200);
+            }
+        });
         ti.mount(unitBox);
+        this._controlInputs.push(ti);
         mk('單位', unitBox);
     }
 
@@ -362,7 +377,10 @@ export class DataExplorer {
         // 時間 x:先按時間排序(groupBy 首次出現序=時間序;民國標籤字典序不可靠)
         const xf = this._f(s.x.field);
         const rows = (xf && xf.type === 'time')
-            ? [...this._rows].sort((a, b) => new Date(a[s.x.field]) - new Date(b[s.x.field]))
+            ? this._rows
+                .map(r => [new Date(r[s.x.field]).getTime(), r])   // 每列只轉一次時間戳(sort 穩定,順序不變)
+                .sort((a, b) => a[0] - b[0])
+                .map(p => p[1])
             : this._rows;
         const yDef = { field: s.y.field, agg: s.y.agg || 'count' };
         switch (s.chartType) {
@@ -409,6 +427,8 @@ export class DataExplorer {
 
     _renderAll() {
         if (this._destroyed) return;
+        // 本次即為完整重繪，取消尚未觸發的 unit 輸入 debounce（避免 200ms 後多一次冗餘重繪）
+        if (this._unitTimer) { clearTimeout(this._unitTimer); this._unitTimer = null; }
         let agg;
         try { agg = this._compute(); }
         catch (e) {
@@ -489,9 +509,10 @@ export class DataExplorer {
     }
 
     _renderAggTable(agg) {
+        if (this._aggTable) { this._aggTable.destroy(); this._aggTable = null; }
         this._aggHost.textContent = '';
         const { cols, rows } = this._aggAsRows(agg);
-        new DataTable({
+        this._aggTable = new DataTable({
             container: this._aggHost,
             columns: cols.map(c => ({ name: c })),
             data: rows,
@@ -500,9 +521,10 @@ export class DataExplorer {
     }
 
     _renderRawTable() {
+        if (this._rawTable) { this._rawTable.destroy(); this._rawTable = null; }
         this._rawHost.textContent = '';
         if (!this._rows.length || !this._fields) return;
-        new DataTable({
+        this._rawTable = new DataTable({
             container: this._rawHost,
             columns: this._fields.map(f => ({ name: f.label || f.name })),
             data: this._rows.map(r => this._fields.map(f => r[f.name] ?? '')),
@@ -547,6 +569,11 @@ export class DataExplorer {
 
     destroy() {
         this._destroyed = true;
+        if (this._unitTimer) { clearTimeout(this._unitTimer); this._unitTimer = null; }
+        for (const c of this._controlInputs) c.destroy();
+        this._controlInputs = [];
+        if (this._aggTable) { this._aggTable.destroy(); this._aggTable = null; }
+        if (this._rawTable) { this._rawTable.destroy(); this._rawTable = null; }
         if (this._chart) this._chart.destroy();
         if (this.element && this.element.parentNode) this.element.parentNode.removeChild(this.element);
         this.element = null;

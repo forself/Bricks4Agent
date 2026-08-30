@@ -636,15 +636,23 @@ public sealed class StaticSitePackageGenerator
 
         async function loadGeneratedRenderers(manifest) {
           const renderers = new Map();
+          // Start all imports in parallel, then await in original order so registration order is preserved.
+          const jobs = [];
           for (const component of manifest.components || []) {
             if (!component.generated) continue;
+            const promise = import(`./components/generated/${component.type}.js`);
+            // Pre-attach a handler so an early failure never surfaces as an unhandled rejection.
+            promise.catch(() => {});
+            jobs.push({ component, promise });
+          }
+          for (const job of jobs) {
             try {
-              const module = await import(`./components/generated/${component.type}.js`);
+              const module = await job.promise;
               if (typeof module.render === 'function') {
-                renderers.set(component.type, module.render);
+                renderers.set(job.component.type, module.render);
               }
             } catch (error) {
-              console.warn(`Generated component renderer unavailable: ${component.type}`, error);
+              console.warn(`Generated component renderer unavailable: ${job.component.type}`, error);
             }
           }
           return renderers;

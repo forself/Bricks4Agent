@@ -43,6 +43,8 @@ export function normalizeQueryDefinition(definition) {
     };
 }
 
+// 每個呼叫端都拿到自己的欄位物件：正規化後的欄位有 ~24 個屬性、原始來源只有 ~4 個，
+// 逐次淺拷貝並不比重新正規化便宜（實測 init 反而慢 29%），因此不做定義層快取。
 export function getQuerySearchFields(definition) {
     const source = Array.isArray(definition?.searchFields)
         ? definition.searchFields
@@ -465,20 +467,39 @@ export function resolveFieldOptions(field, definition, values = {}) {
     return normalizeOptionItems(filtered, normalized.valueField, normalized.labelField);
 }
 
-export function resolveLookupLabel(column, value, definition) {
+/** resolveLookupLabel 的共同前置；shared/endpoint 僅 fixture 來源非 null，供呼叫端判斷索引是否過期 */
+export function resolveLookupSource(column, definition) {
     const normalized = normalizeQueryColumn(column);
     const source = normalized.lookup?.optionsSource || normalized.optionsSource || normalized.lookup;
+    const inline = Array.isArray(normalized.options) && normalized.options.length > 0;
+    const endpoint = inline ? null : lookupEndpoint(source);
+    const shared = endpoint ? resolveLookupItems(definition, endpoint) : null;
     let items = [];
-    if (Array.isArray(normalized.options) && normalized.options.length > 0) {
-        items = normalized.options;
-    } else if (source) {
-        items = resolveOptionsSourceItems(source, definition);
-    }
-    const valueField = normalized.lookup?.valueField || normalized.valueField || source?.valueField || 'value';
-    const labelField = normalized.lookup?.labelField || normalized.labelField || source?.labelField || 'label';
+    if (inline) items = normalized.options;
+    else if (endpoint) items = shared || [];
+    else if (source) items = resolveOptionsSourceItems(source, definition);
+    return {
+        items,
+        shared,
+        endpoint,
+        valueField: normalized.lookup?.valueField || normalized.valueField || source?.valueField || 'value',
+        labelField: normalized.lookup?.labelField || normalized.labelField || source?.labelField || 'label',
+        fallback: normalized.lookup?.fallback,
+    };
+}
+
+export function resolveLookupItems(definition, endpoint) {
+    const fixtureLookups = definition?.fixtures?.lookups || definition?.fixtures?.lookupData || {};
+    const fixtureOptions = definition?.fixtures?.options || {};
+    const items = fixtureLookups[endpoint] || fixtureOptions[endpoint] || null;
+    return Array.isArray(items) ? items : null;
+}
+
+export function resolveLookupLabel(column, value, definition) {
+    const { items, valueField, labelField, fallback } = resolveLookupSource(column, definition);
     const match = items.find((item) => item?.[valueField] === value);
-    if (!match) return normalized.lookup?.fallback ?? (value == null ? '' : String(value));
-    return match[labelField] ?? normalized.lookup?.fallback ?? String(value);
+    if (!match) return fallback ?? (value == null ? '' : String(value));
+    return match[labelField] ?? fallback ?? String(value);
 }
 
 export function resolveRouteTemplate(template, context = {}) {
@@ -541,14 +562,15 @@ function normalizeOptionsSource(source, options) {
     return null;
 }
 
+function lookupEndpoint(source) {
+    if (!source || typeof source !== 'object' || Array.isArray(source.items)) return null;
+    return source.endpoint || source.name || source.key || null;
+}
+
 function resolveOptionsSourceItems(source, definition) {
     if (!source || typeof source !== 'object') return [];
     if (Array.isArray(source.items)) return source.items;
-    const endpoint = source.endpoint || source.name || source.key;
-    const fixtureLookups = definition?.fixtures?.lookups || definition?.fixtures?.lookupData || {};
-    const fixtureOptions = definition?.fixtures?.options || {};
-    const items = fixtureLookups[endpoint] || fixtureOptions[endpoint] || [];
-    return Array.isArray(items) ? items : [];
+    return resolveLookupItems(definition, source.endpoint || source.name || source.key) || [];
 }
 
 function normalizeOptionItems(items, valueField = 'value', labelField = 'label') {
@@ -677,6 +699,8 @@ export default {
     formatRocDateTime,
     coerceDate,
     resolveFieldOptions,
+    resolveLookupItems,
     resolveLookupLabel,
+    resolveLookupSource,
     resolveRouteTemplate,
 };

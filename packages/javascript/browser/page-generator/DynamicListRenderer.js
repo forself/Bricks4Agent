@@ -22,7 +22,9 @@ import {
     normalizeQueryDefinition,
     normalizeTableTextLabels,
     resolveFieldOptions,
+    resolveLookupItems,
     resolveLookupLabel,
+    resolveLookupSource,
     resolveRouteTemplate,
 } from './QueryDefinitionAdapter.js';
 
@@ -71,6 +73,9 @@ export class DynamicListRenderer {
 
         /** @type {Map<string, Object>} 模組快取 */
         this._modules = new Map();
+
+        /** @type {Map<Object, Object>} lookup 欄位的標籤索引快取（依欄位定義物件） */
+        this._lookupLabelCache = new Map();
 
         this.element = null;
     }
@@ -493,9 +498,13 @@ export class DynamicListRenderer {
         this._renderedActionComponents.splice(0).forEach(component => component.destroy?.());
         if (!root) return;
 
+        // 同步渲染期間 definition 與表單值不會變動，整批 host 共用一次計算結果
+        const uiActions = getUiActions(this._definition);
+        const searchValues = this._searchForm?.getValues?.() || {};
+
         root.querySelectorAll('[data-dynamic-action-host]').forEach(host => {
             const actionId = host.dataset.dynamicActionHost || '';
-            const action = this._findUiAction(actionId);
+            const action = this._findUiAction(actionId, uiActions);
             if (!action) return;
             const label = action.label || host.dataset.actionLabel || actionId;
             const row = this._rowFromButton(host);
@@ -504,7 +513,7 @@ export class DynamicListRenderer {
                 const href = toRuntimeRoute(resolveRouteTemplate(action.route, {
                     row,
                     columns: this._queryColumns,
-                    searchValues: this._searchForm?.getValues?.() || {},
+                    searchValues,
                 }));
                 if (!isSafeRouteHref(href)) return;
                 const link = new Link({
@@ -570,7 +579,7 @@ export class DynamicListRenderer {
             const href = toRuntimeRoute(resolveRouteTemplate(field.link.to || field.link.route || '', {
                 row,
                 columns: this._queryColumns,
-                searchValues: this._searchForm?.getValues?.() || {},
+                searchValues,
             }));
             if (!isSafeRouteHref(href)) return;
             const link = new Link({
@@ -630,8 +639,7 @@ export class DynamicListRenderer {
         return request;
     }
 
-    _findUiAction(actionId) {
-        const actions = getUiActions(this._definition);
+    _findUiAction(actionId, actions = getUiActions(this._definition)) {
         // A page may intentionally expose multiple UI actions backed by one
         // API contract (for example publish vs transfer with distinct
         // payload flags). Prefer the exact UI id so label/title/visibility do
@@ -956,11 +964,24 @@ export class DynamicListRenderer {
 
     _resolveDisplayValue(def, value) {
         if (def.lookup || def.optionsSource || (Array.isArray(def.options) && def.options.length > 0)) {
-            const resolved = resolveLookupLabel(def, value, this._definition);
+            const resolved = this._resolveLookupDisplay(def, value);
             return resolved === '' ? (def.fallback ?? def.lookup?.fallback ?? '') : resolved;
         }
         if (value === null || value === undefined || value === '') return def.fallback ?? '';
         return String(value);
+    }
+
+    _resolveLookupDisplay(def, value) {
+        let index = this._lookupLabelCache.get(def);
+        if (!index || isLookupIndexStale(index, def, this._definition)) {
+            index = buildLookupLabelIndex(def, this._definition);
+            this._lookupLabelCache.set(def, index);
+        }
+        // value !== value（NaN）走 === 語義的原路徑；Map 以 SameValueZero 比對會多命中 NaN
+        if (!index.labels || value !== value) return resolveLookupLabel(def, value, this._definition);
+        if (index.labels.has(value)) return index.labels.get(value);
+        if (index.sparse && value === undefined) return resolveLookupLabel(def, value, this._definition);
+        return index.fallback ?? (value == null ? '' : String(value));
     }
 
     _renderActions(row) {
@@ -1063,6 +1084,8 @@ export class DynamicListRenderer {
      * @param {number} total - 總筆數
      */
     setData(rows, total) {
+        // 資料更新時重新推導 lookup 標籤，容忍外部在執行期就地修改欄定義的 options
+        this._lookupLabelCache.clear();
         this._rows = Array.isArray(rows) ? rows.map(row => this._normalizeRow(row)) : [];
         this._total = total ?? this._rows.length;
         if (this._isDeclarativeList && this._dataTable) {
@@ -1161,6 +1184,46 @@ function toRuntimeRoute(href) {
     if (typeof href !== 'string') return '';
     if (href.startsWith('/') && !href.startsWith('//')) return `#${href}`;
     return href;
+}
+
+/**
+ * 把 lookup 欄（含 endpoint/fixture 來源）的選項展開成 Map。為與 resolveLookupLabel 的
+ * find/!match 語義一致：非物件項目整欄退回原路徑（labels=null）、同一 value 只收第一筆、
+ * 有 undefined key 時標記 sparse。shared 記下當時的 fixture 陣列供過期判斷。
+ */
+function buildLookupLabelIndex(def, definition) {
+    const { items, shared, endpoint, valueField, labelField, fallback } = resolveLookupSource(def, definition);
+    let labels = new Map();
+    let sparse = false;
+    for (const item of items) {
+        if (item === null || item === undefined) continue;
+        if (typeof item !== 'object') {
+            labels = null;
+            break;
+        }
+        const key = item[valueField];
+        if (key === undefined) {
+            sparse = true;
+            continue;
+        }
+        if (labels.has(key)) continue;
+        labels.set(key, item[labelField] ?? fallback ?? String(key));
+    }
+    return {
+        labels, sparse, fallback, endpoint, shared, length: items.length,
+        options: def?.options,
+        optionsLength: Array.isArray(def?.options) ? def.options.length : -1,
+    };
+}
+
+function isLookupIndexStale(index, def, definition) {
+    // 內嵌／source.items 來源沒有 endpoint 可比對，改盯欄位自身 options 的 identity + 長度
+    const options = def?.options;
+    if (options !== index.options) return true;
+    if ((Array.isArray(options) ? options.length : -1) !== index.optionsLength) return true;
+    if (!index.endpoint) return false;
+    const current = resolveLookupItems(definition, index.endpoint);
+    return current !== index.shared || (current !== null && current.length !== index.length);
 }
 
 function matchesCondition(condition, row) {

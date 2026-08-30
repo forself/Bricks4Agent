@@ -106,6 +106,171 @@ export const ComponentPaths = {
 };
 
 // ============================================================
+// 生成期跳脫工具
+//
+// definition 的字串（含爬蟲抓來的第三方頁面標題）會被插進「生成檔」的
+// 四種語境，每種的跳脫規則都不同；未跳脫時可直接寫入程式碼位置。
+// ============================================================
+
+// 依 JS IdentifierName 語意（ID_Start/ID_Continue）而非 ASCII 子集：
+// 中文欄位名（this._data.form.姓名）本來就能生成可執行的程式碼，不能誤判為非法
+const JS_IDENTIFIER_PATTERN = /^[$_\p{ID_Start}][$\p{ID_Continue}\p{Join_Control}]*$/u;
+
+// 保留字只有在「繫結」位置（class 名稱、import 繫結）才是語法錯誤；
+// 欄位名／行為名只出現在成員存取與加前綴的方法名，保留字在那裡完全合法
+const RESERVED_BINDING_WORDS = new Set([
+    'arguments', 'await', 'break', 'case', 'catch', 'class', 'const', 'continue',
+    'debugger', 'default', 'delete', 'do', 'else', 'enum', 'eval', 'export',
+    'extends', 'false', 'finally', 'for', 'function', 'if', 'implements', 'import',
+    'in', 'instanceof', 'interface', 'let', 'new', 'null', 'package', 'private',
+    'protected', 'public', 'return', 'static', 'super', 'switch', 'this', 'throw',
+    'true', 'try', 'typeof', 'var', 'void', 'while', 'with', 'yield'
+]);
+
+/**
+ * 語境 A：生成檔 template literal 內的 HTML 文字／屬性值
+ * 除 HTML 實體外，還要中和反引號、反斜線與 ${，否則會跳出生成檔的 template literal
+ * @param {any} value
+ * @returns {string}
+ */
+function escHtml(value) {
+    if (value === null || value === undefined) return '';
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+        .replace(/`/g, '&#96;')
+        .replace(/\\/g, '&#92;')
+        // 左大括號一律用十六進位實體形式，避免十進位寫法被樣式稽核誤判為色碼
+        .replace(/\$\{/g, () => '$&#x7B;');
+}
+
+/**
+ * 語境 B：生成檔中的 JS 字串常值（回傳含外層單引號，維持既有輸出格式）
+ * @param {any} value
+ * @returns {string}
+ */
+function jsLiteral(value) {
+    const body = JSON.stringify(value === null || value === undefined ? '' : String(value))
+        .slice(1, -1)
+        .replace(/'/g, "\\'")
+        .replace(/</g, '\\u003c')
+        .replace(/\u2028/g, '\\u2028')
+        .replace(/\u2029/g, '\\u2029');
+    return `'${body}'`;
+}
+
+/**
+ * 語境 C：生成檔 template literal 內的純文字（API 端點）
+ * @param {any} value
+ * @returns {string}
+ */
+function templateText(value) {
+    if (value === null || value === undefined) return '';
+    return String(value)
+        .replace(/\\/g, '\\\\')
+        .replace(/`/g, '\\`')
+        .replace(/</g, '\\u003c')
+        .replace(/\$\{/g, () => '\\${')
+        .replace(/\u2028/g, '\\u2028')
+        .replace(/\u2029/g, '\\u2029');
+}
+
+/**
+ * 語境 D：生成檔的註解（區塊與行註解共用）
+ * @param {any} value
+ * @returns {string}
+ */
+function commentText(value) {
+    if (value === null || value === undefined) return '';
+    return String(value)
+        .replace(/\*\//g, '*\\/')
+        .replace(/[\r\n\u2028\u2029]+/g, ' ');
+}
+
+/**
+ * 語境 E：生成檔中的 regex 常值（validation.pattern）
+ * 逸出未跳脫的 `/` 與行結束字元，語意不變但無法提前關閉 regex 常值
+ * @param {string} pattern
+ * @returns {string}
+ */
+function regexLiteralBody(pattern) {
+    // regex 常值不接受行結束字元，改用等價的跳脫序列
+    const lineEscape = (ch) => (ch === '\n' ? 'n' : ch === '\r' ? 'r' : ch === '\u2028' ? 'u2028' : ch === '\u2029' ? 'u2029' : null);
+    const source = String(pattern);
+    let out = '';
+
+    for (let i = 0; i < source.length; i++) {
+        const ch = source[i];
+        if (ch === '\\') {
+            const next = source[i + 1];
+            if (next === undefined) {
+                throw new Error(`PageGenerator: validation.pattern ends with a dangling backslash: ${JSON.stringify(pattern)}`);
+            }
+            out += '\\' + (lineEscape(next) || next);
+            i++;
+            continue;
+        }
+        if (ch === '/') { out += '\\/'; continue; }
+        const escaped = lineEscape(ch);
+        out += escaped ? '\\' + escaped : ch;
+    }
+
+    try {
+        new RegExp(out);
+    } catch (error) {
+        throw new Error(`PageGenerator: validation.pattern is not a valid regular expression (${error.message}): ${JSON.stringify(pattern)}`);
+    }
+
+    return out;
+}
+
+/**
+ * 生成檔中的裸識別字（欄位名／行為名／類別名）無法跳脫，只能驗證後在生成期回報
+ * @param {any} value
+ * @param {string} what - 錯誤訊息中指出的來源
+ * @param {{ binding?: boolean }} [options] - binding 表示輸出到繫結位置（class 名稱／import 繫結）
+ * @returns {string|null} 錯誤訊息；通過時為 null
+ */
+function identifierError(value, what, options = {}) {
+    if (typeof value !== 'string' || !JS_IDENTIFIER_PATTERN.test(value)) {
+        return `${what} is emitted as a bare JavaScript identifier and must be a valid IdentifierName, got ${JSON.stringify(value)}`;
+    }
+    if (options.binding && RESERVED_BINDING_WORDS.has(value)) {
+        return `${what} is emitted as a JavaScript binding name and must not be a reserved word, got ${JSON.stringify(value)}`;
+    }
+    return null;
+}
+
+/**
+ * identifierError 的擲出版本，供「呼叫端已保證合法」的內部不變量使用
+ * @param {any} value
+ * @param {string} what
+ * @param {{ binding?: boolean }} [options]
+ * @returns {string}
+ */
+function assertIdentifier(value, what, options) {
+    const error = identifierError(value, what, options);
+    if (error) throw new Error(`PageGenerator: ${error}`);
+    return value;
+}
+
+/**
+ * JSON.stringify 的結果會直接嵌入生成檔，需另外處理 `<` 與行分隔字元
+ * @param {any} value
+ * @param {number} indent
+ * @returns {string}
+ */
+function jsonBlock(value, indent) {
+    return JSON.stringify(value, null, indent)
+        .replace(/</g, '\\u003c')
+        .replace(/\u2028/g, '\\u2028')
+        .replace(/\u2029/g, '\\u2029');
+}
+
+// ============================================================
 // 欄位渲染器
 // ============================================================
 
@@ -117,36 +282,36 @@ export const FieldRenderers = {
     // 基本類型
     [FieldTypes.TEXT]: (field) => `
         <div class="form-group">
-            <label for="${field.name}">${field.label || field.name}${field.required ? ' *' : ''}</label>
+            <label for="${field.name}">${escHtml(field.label || field.name)}${field.required ? ' *' : ''}</label>
             <input type="text" id="${field.name}" name="${field.name}"
                    value="\${this.escAttr(this._data.form.${field.name})}"
                    ${field.required ? 'required' : ''}
-                   ${field.validation?.maxLength ? `maxlength="${field.validation.maxLength}"` : ''}>
-            ${field.description ? `<small>${field.description}</small>` : ''}
+                   ${field.validation?.maxLength ? `maxlength="${escHtml(field.validation.maxLength)}"` : ''}>
+            ${field.description ? `<small>${escHtml(field.description)}</small>` : ''}
         </div>`,
 
     [FieldTypes.TEXTAREA]: (field) => `
         <div class="form-group full-width">
-            <label for="${field.name}">${field.label || field.name}${field.required ? ' *' : ''}</label>
+            <label for="${field.name}">${escHtml(field.label || field.name)}${field.required ? ' *' : ''}</label>
             <textarea id="${field.name}" name="${field.name}"
-                      rows="${field.config?.rows || 5}"
+                      rows="${escHtml(field.config?.rows || 5)}"
                       ${field.required ? 'required' : ''}>\${this.esc(this._data.form.${field.name})}</textarea>
-            ${field.description ? `<small>${field.description}</small>` : ''}
+            ${field.description ? `<small>${escHtml(field.description)}</small>` : ''}
         </div>`,
 
     [FieldTypes.NUMBER]: (field) => `
         <div class="form-group">
-            <label for="${field.name}">${field.label || field.name}${field.required ? ' *' : ''}</label>
+            <label for="${field.name}">${escHtml(field.label || field.name)}${field.required ? ' *' : ''}</label>
             <input type="number" id="${field.name}" name="${field.name}"
                    value="\${this.escAttr(this._data.form.${field.name})}"
-                   ${field.validation?.min !== undefined ? `min="${field.validation.min}"` : ''}
-                   ${field.validation?.max !== undefined ? `max="${field.validation.max}"` : ''}
+                   ${field.validation?.min !== undefined ? `min="${escHtml(field.validation.min)}"` : ''}
+                   ${field.validation?.max !== undefined ? `max="${escHtml(field.validation.max)}"` : ''}
                    ${field.required ? 'required' : ''}>
         </div>`,
 
     [FieldTypes.EMAIL]: (field) => `
         <div class="form-group">
-            <label for="${field.name}">${field.label || field.name}${field.required ? ' *' : ''}</label>
+            <label for="${field.name}">${escHtml(field.label || field.name)}${field.required ? ' *' : ''}</label>
             <input type="email" id="${field.name}" name="${field.name}"
                    value="\${this.escAttr(this._data.form.${field.name})}"
                    ${field.required ? 'required' : ''}>
@@ -154,14 +319,14 @@ export const FieldRenderers = {
 
     [FieldTypes.PASSWORD]: (field) => `
         <div class="form-group">
-            <label for="${field.name}">${field.label || field.name}${field.required ? ' *' : ''}</label>
+            <label for="${field.name}">${escHtml(field.label || field.name)}${field.required ? ' *' : ''}</label>
             <input type="password" id="${field.name}" name="${field.name}"
                    ${field.required ? 'required' : ''}>
         </div>`,
 
     [FieldTypes.TEL]: (field) => `
         <div class="form-group">
-            <label for="${field.name}">${field.label || field.name}${field.required ? ' *' : ''}</label>
+            <label for="${field.name}">${escHtml(field.label || field.name)}${field.required ? ' *' : ''}</label>
             <input type="tel" id="${field.name}" name="${field.name}"
                    value="\${this.escAttr(this._data.form.${field.name})}"
                    ${field.required ? 'required' : ''}>
@@ -169,7 +334,7 @@ export const FieldRenderers = {
 
     [FieldTypes.URL]: (field) => `
         <div class="form-group">
-            <label for="${field.name}">${field.label || field.name}${field.required ? ' *' : ''}</label>
+            <label for="${field.name}">${escHtml(field.label || field.name)}${field.required ? ' *' : ''}</label>
             <input type="url" id="${field.name}" name="${field.name}"
                    value="\${this.escAttr(this._data.form.${field.name})}"
                    ${field.required ? 'required' : ''}>
@@ -177,24 +342,24 @@ export const FieldRenderers = {
 
     [FieldTypes.SELECT]: (field) => `
         <div class="form-group">
-            <label for="${field.name}">${field.label || field.name}${field.required ? ' *' : ''}</label>
+            <label for="${field.name}">${escHtml(field.label || field.name)}${field.required ? ' *' : ''}</label>
             <select id="${field.name}" name="${field.name}" ${field.required ? 'required' : ''}>
                 <option value="">請選擇</option>
                 ${(field.options || []).map(opt => `
-                    <option value="${opt.value}" \${this._data.form.${field.name} === '${opt.value}' ? 'selected' : ''}>${opt.label}</option>
+                    <option value="${escHtml(opt.value)}" \${this._data.form.${field.name} === ${jsLiteral(opt.value)} ? 'selected' : ''}>${escHtml(opt.label)}</option>
                 `).join('')}
             </select>
         </div>`,
 
     [FieldTypes.RADIO]: (field) => `
         <div class="form-group">
-            <label>${field.label || field.name}${field.required ? ' *' : ''}</label>
+            <label>${escHtml(field.label || field.name)}${field.required ? ' *' : ''}</label>
             <div class="radio-group">
                 ${(field.options || []).map(opt => `
                     <label class="radio-label">
-                        <input type="radio" name="${field.name}" value="${opt.value}"
-                               \${this._data.form.${field.name} === '${opt.value}' ? 'checked' : ''}>
-                        ${opt.label}
+                        <input type="radio" name="${field.name}" value="${escHtml(opt.value)}"
+                               \${this._data.form.${field.name} === ${jsLiteral(opt.value)} ? 'checked' : ''}>
+                        ${escHtml(opt.label)}
                     </label>
                 `).join('')}
             </div>
@@ -205,14 +370,14 @@ export const FieldRenderers = {
             <label class="checkbox-label">
                 <input type="checkbox" id="${field.name}" name="${field.name}"
                        \${this._data.form.${field.name} ? 'checked' : ''}>
-                ${field.label || field.name}
+                ${escHtml(field.label || field.name)}
             </label>
         </div>`,
 
     [FieldTypes.TOGGLE]: (field) => `
         <div class="form-group">
             <label class="toggle-label">
-                <span>${field.label || field.name}</span>
+                <span>${escHtml(field.label || field.name)}</span>
                 <input type="checkbox" id="${field.name}" name="${field.name}"
                        class="toggle-input"
                        \${this._data.form.${field.name} ? 'checked' : ''}>
@@ -222,19 +387,19 @@ export const FieldRenderers = {
 
     [FieldTypes.DATE]: (field) => `
         <div class="form-group">
-            <label for="${field.name}">${field.label || field.name}${field.required ? ' *' : ''}</label>
+            <label for="${field.name}">${escHtml(field.label || field.name)}${field.required ? ' *' : ''}</label>
             <div id="${field.name}-picker"></div>
         </div>`,
 
     [FieldTypes.ROCDATE]: (field) => `
         <div class="form-group">
-            <label for="${field.name}">${field.label || field.name}${field.required ? ' *' : ''}</label>
+            <label for="${field.name}">${escHtml(field.label || field.name)}${field.required ? ' *' : ''}</label>
             <div id="${field.name}-picker"></div>
         </div>`,
 
     [FieldTypes.TIME]: (field) => `
         <div class="form-group">
-            <label for="${field.name}">${field.label || field.name}${field.required ? ' *' : ''}</label>
+            <label for="${field.name}">${escHtml(field.label || field.name)}${field.required ? ' *' : ''}</label>
             <input type="time" id="${field.name}" name="${field.name}"
                    value="\${this.escAttr(this._data.form.${field.name})}"
                    ${field.required ? 'required' : ''}>
@@ -242,7 +407,7 @@ export const FieldRenderers = {
 
     [FieldTypes.DATETIME]: (field) => `
         <div class="form-group">
-            <label for="${field.name}">${field.label || field.name}${field.required ? ' *' : ''}</label>
+            <label for="${field.name}">${escHtml(field.label || field.name)}${field.required ? ' *' : ''}</label>
             <input type="datetime-local" id="${field.name}" name="${field.name}"
                    value="\${this.escAttr(this._data.form.${field.name})}"
                    ${field.required ? 'required' : ''}>
@@ -250,19 +415,19 @@ export const FieldRenderers = {
 
     [FieldTypes.COLOR]: (field) => `
         <div class="form-group">
-            <label for="${field.name}">${field.label || field.name}</label>
+            <label for="${field.name}">${escHtml(field.label || field.name)}</label>
             <div id="${field.name}-picker"></div>
         </div>`,
 
     [FieldTypes.RICHTEXT]: (field) => `
         <div class="form-group full-width">
-            <label for="${field.name}">${field.label || field.name}${field.required ? ' *' : ''}</label>
+            <label for="${field.name}">${escHtml(field.label || field.name)}${field.required ? ' *' : ''}</label>
             <div id="${field.name}-editor"></div>
         </div>`,
 
     [FieldTypes.CANVAS]: (field) => `
         <div class="form-group full-width">
-            <label for="${field.name}">${field.label || field.name}</label>
+            <label for="${field.name}">${escHtml(field.label || field.name)}</label>
             <div id="${field.name}-canvas"></div>
         </div>`,
 
@@ -270,7 +435,7 @@ export const FieldRenderers = {
     // 改由生成頁 onMounted/onUpdated 以 CSSOM（style.cssText）隱藏
     [FieldTypes.IMAGE]: (field) => `
         <div class="form-group">
-            <label for="${field.name}">${field.label || field.name}</label>
+            <label for="${field.name}">${escHtml(field.label || field.name)}</label>
             <div id="${field.name}-viewer"></div>
             <input type="file" id="${field.name}" name="${field.name}"
                    accept="image/*">
@@ -281,15 +446,15 @@ export const FieldRenderers = {
 
     [FieldTypes.FILE]: (field) => `
         <div class="form-group">
-            <label for="${field.name}">${field.label || field.name}</label>
+            <label for="${field.name}">${escHtml(field.label || field.name)}</label>
             <input type="file" id="${field.name}" name="${field.name}"
-                   ${field.config?.accept ? `accept="${field.config.accept}"` : ''}
+                   ${field.config?.accept ? `accept="${escHtml(field.config.accept)}"` : ''}
                    ${field.config?.multiple ? 'multiple' : ''}>
         </div>`,
 
     [FieldTypes.GEOLOCATION]: (field) => `
         <div class="form-group full-width">
-            <label>${field.label || '位置資訊'}</label>
+            <label>${escHtml(field.label || '位置資訊')}</label>
             <div class="location-display">
                 <span id="${field.name}-display">\${this._data.${field.name}?.address?.shortName || '尚未定位'}</span>
                 <button type="button" class="btn btn-secondary btn-sm" data-action="get-location" data-field="${field.name}">
@@ -300,7 +465,7 @@ export const FieldRenderers = {
 
     [FieldTypes.WEATHER]: (field) => `
         <div class="form-group full-width">
-            <label>${field.label || '天氣資訊'}</label>
+            <label>${escHtml(field.label || '天氣資訊')}</label>
             <div class="weather-display" id="${field.name}-display">
                 \${this._data.${field.name} ? \`
                     <span class="weather-icon">\${this._data.${field.name}.icon}</span>
@@ -312,7 +477,7 @@ export const FieldRenderers = {
 
     [FieldTypes.RATING]: (field) => `
         <div class="form-group">
-            <label>${field.label || field.name}${field.required ? ' *' : ''}</label>
+            <label>${escHtml(field.label || field.name)}${field.required ? ' *' : ''}</label>
             <div class="rating-group" data-field="${field.name}">
                 ${[1,2,3,4,5].map(n => `
                     <label class="rating-star">
@@ -321,12 +486,12 @@ export const FieldRenderers = {
                         <span class="star">\${this._data.form.${field.name} >= ${n} ? '★' : '☆'}</span>
                     </label>`).join('')}
             </div>
-            ${field.description ? `<small>${field.description}</small>` : ''}
+            ${field.description ? `<small>${escHtml(field.description)}</small>` : ''}
         </div>`,
 
     [FieldTypes.TAGS]: (field) => `
         <div class="form-group">
-            <label for="${field.name}">${field.label || field.name}${field.required ? ' *' : ''}</label>
+            <label for="${field.name}">${escHtml(field.label || field.name)}${field.required ? ' *' : ''}</label>
             <div class="tags-input-container">
                 <div class="tags-list" id="${field.name}-tags">
                     \${(this._data.form.${field.name} || []).map(tag => \`
@@ -336,10 +501,10 @@ export const FieldRenderers = {
                         </span>
                     \`).join('')}
                 </div>
-                <input type="text" id="${field.name}" placeholder="${field.config?.placeholder || '輸入後按 Enter 新增'}"
+                <input type="text" id="${field.name}" placeholder="${escHtml(field.config?.placeholder || '輸入後按 Enter 新增')}"
                        data-action="tag-input" data-field="${field.name}">
             </div>
-            ${field.description ? `<small>${field.description}</small>` : ''}
+            ${field.description ? `<small>${escHtml(field.description)}</small>` : ''}
         </div>`,
 
     [FieldTypes.HIDDEN]: (field) => `
@@ -397,6 +562,14 @@ export class PageGenerator {
             return {
                 code: null,
                 errors: componentImportErrors
+            };
+        }
+
+        const identifierErrors = this._collectIdentifierErrors(definition);
+        if (identifierErrors.length > 0) {
+            return {
+                code: null,
+                errors: identifierErrors
             };
         }
 
@@ -494,6 +667,42 @@ export default ${className};
     }
 
     /**
+     * 收集所有會被輸出成裸識別字的名稱之錯誤
+     *
+     * 類別名／欄位名／行為名在生成檔中是識別字而非字串，無法跳脫；
+     * 宣告式列表定義（page.view）也不經過 name 的 PascalCase 檢查，
+     * 因此在生成期回報錯誤，而不是輸出可注入或無法剖析的程式碼。
+     *
+     * 只有 definition.name 是繫結位置（class 名稱）；欄位名／行為名分別輸出到
+     * 成員存取（this._data.form.X）與加前綴的方法名（_X），保留字在那裡合法。
+     * @returns {string[]}
+     * @private
+     */
+    _collectIdentifierErrors(definition) {
+        const errors = [];
+        const check = (value, what, options) => {
+            const error = identifierError(value, what, options);
+            if (error) errors.push(error);
+        };
+
+        check(definition.name, 'definition.name', { binding: true });
+
+        for (const field of definition.fields || []) {
+            check(field.name, `field.name "${field.name}"`);
+        }
+
+        const behaviors = definition.behaviors || {};
+        for (const key of ['onInit', 'onSave', 'onDelete']) {
+            if (behaviors[key]) check(behaviors[key], `behaviors.${key}`);
+        }
+        for (const [fieldName, trigger] of Object.entries(behaviors.fieldTriggers || {})) {
+            check(trigger, `behaviors.fieldTriggers["${fieldName}"]`);
+        }
+
+        return errors;
+    }
+
+    /**
      * 生成完整的頁面程式碼
      * @private
      */
@@ -503,9 +712,9 @@ export default ${className};
         const pageType = definition.type;
 
         let code = `/**
- * ${className} - ${definition.description || '自動生成的頁面'}
+ * ${className} - ${commentText(definition.description || '自動生成的頁面')}
  *
- * 頁面類型: ${pageType}
+ * 頁面類型: ${commentText(pageType)}
  * @generated by PageGenerator
  *
  * @module ${className}
@@ -557,16 +766,16 @@ export default ${className};
      * @private
      */
     _generateImports(components) {
-        const imports = [`import { BasePage } from '${this.baseImportPath}';`];
+        const imports = [`import { BasePage } from ${jsLiteral(this.baseImportPath)};`];
 
         for (const comp of components) {
             const importPath = ComponentPaths[comp]?.packages;
             if (!importPath) {
-                imports.push(`// TODO: missing custom component library path for ${comp}`);
+                imports.push(`// TODO: missing custom component library path for ${commentText(comp)}`);
                 continue;
             }
 
-            imports.push(`import { ${comp} } from '${importPath}';`);
+            imports.push(`import { ${assertIdentifier(comp, `component name "${comp}"`, { binding: true })} } from ${jsLiteral(importPath)};`);
         }
 
         return imports.join('\n');
@@ -601,7 +810,7 @@ export default ${className};
         let code = `
     async onInit() {
         this._data = {
-            form: ${JSON.stringify(formDefaults, null, 16).replace(/\n/g, '\n        ')},
+            form: ${jsonBlock(formDefaults, 16).replace(/\n/g, '\n        ')},
             loading: false,
             submitting: false,
             error: null
@@ -662,9 +871,9 @@ export default ${className};
         const { form, loading, submitting, error } = this._data;
 
         return \`
-            <div class="${this._toKebabCase(definition.name)}">
+            <div class="${escHtml(this._toKebabCase(definition.name))}">
                 <header class="page-header">
-                    <h1>${definition.description || definition.name.replace(/Page$/, '')}</h1>
+                    <h1>${escHtml(definition.description || definition.name.replace(/Page$/, ''))}</h1>
                 </header>
 
                 \${error ? \`
@@ -686,7 +895,7 @@ export default ${className};
             if (renderer) {
                 code += renderer(field).split('\n').map(line => '                    ' + line).join('\n') + '\n';
             } else {
-                code += `                    <!-- TODO: 未知欄位類型 ${field.type} -->\n`;
+                code += `                    <!-- TODO: 未知欄位類型 ${escHtml(field.type)} -->\n`;
             }
         }
 
@@ -741,7 +950,7 @@ export default ${className};
 
         return `
     events() {
-        return ${JSON.stringify(events, null, 12).replace(/\n/g, '\n        ')};
+        return ${jsonBlock(events, 12).replace(/\n/g, '\n        ')};
     }
 `;
     }
@@ -816,8 +1025,8 @@ export default ${className};
                     code += `
         // 初始化畫布: ${field.name}
         this._${field.name}Canvas = new DrawingBoard(this.$('#${field.name}-canvas'), {
-            width: ${field.config?.width || 600},
-            height: ${field.config?.height || 400},
+            width: ${Number(field.config?.width) || 600},
+            height: ${Number(field.config?.height) || 400},
             onChange: (data) => {
                 this._data.form.${field.name} = data;
             }
@@ -926,7 +1135,7 @@ ${definition.behaviors?.onSave ? `
             if (field.required) {
                 code += `
         if (!form.${field.name}) {
-            this._data.error = '請填寫${field.label || field.name}';
+            this._data.error = ${jsLiteral(`請填寫${field.label || field.name}`)};
             this._scheduleUpdate();
             return false;
         }
@@ -935,8 +1144,8 @@ ${definition.behaviors?.onSave ? `
 
             if (field.validation?.pattern) {
                 code += `
-        if (form.${field.name} && !/${field.validation.pattern}/.test(form.${field.name})) {
-            this._data.error = '${field.label || field.name}格式不正確';
+        if (form.${field.name} && !/${regexLiteralBody(field.validation.pattern)}/.test(form.${field.name})) {
+            this._data.error = ${jsLiteral(`${field.label || field.name}格式不正確`)};
             this._scheduleUpdate();
             return false;
         }
@@ -1047,7 +1256,7 @@ ${definition.behaviors?.onSave ? `
 
         // 判斷是新增還是更新
         const isNew = !this.params.id;
-        const endpoint = isNew ? '${api.create || '/api/items'}' : \`${api.update || '/api/items'}/\${this.params.id}\`;
+        const endpoint = isNew ? ${jsLiteral(api.create || '/api/items')} : \`${templateText(api.update || '/api/items')}/\${this.params.id}\`;
         const method = isNew ? 'post' : 'put';
 
         const response = await this.api[method](endpoint, data);
@@ -1072,7 +1281,7 @@ ${definition.behaviors?.onSave ? `
         this._scheduleUpdate();
 
         try {
-            const response = await this.api.get(\`${api.get}/\${this.params.id}\`);
+            const response = await this.api.get(\`${templateText(api.get)}/\${this.params.id}\`);
             this._data.form = response.data;
         } catch (error) {
             this._data.error = '載入資料失敗';
@@ -1097,7 +1306,7 @@ ${definition.behaviors?.onSave ? `
         if (!confirmed) return;
 
         try {
-            await this.api.delete(\`${api.delete}/\${this.params.id}\`);
+            await this.api.delete(\`${templateText(api.delete)}/\${this.params.id}\`);
             this.showMessage('刪除成功', 'success');
 ${definition.behaviors?.onDelete ? `
             // 執行刪除後行為
@@ -1172,7 +1381,7 @@ ${definition.behaviors?.onDelete ? `
         for (const method of methodsToStub) {
             code += `
     /**
-     * ${method.description}
+     * ${commentText(method.description)}
      * TODO: 實作此方法
      */
     ${method.isAsync ? 'async ' : ''}_${method.name}() {

@@ -63,6 +63,8 @@ export class BasePanel {
 
         this.expanded = this.options.defaultExpanded;
         this.isFocused = false;
+        this._destroyed = false;
+        this._outsideClickTimer = null;
 
         this.element = this._createElement();
         this._bindEvents();
@@ -228,7 +230,10 @@ export class BasePanel {
         // 點擊外部關閉 - 延遲綁定，避免同一次點擊觸發關閉
         if (this.options.autoClose) {
             // 使用 setTimeout 確保在下一個事件循環才綁定，避免當前點擊事件觸發關閉
-            setTimeout(() => {
+            this._outsideClickTimer = setTimeout(() => {
+                this._outsideClickTimer = null;
+                // 已銷毀就別補掛監聽，否則會留下永遠移不掉的 document listener
+                if (this._destroyed) return;
                 this._handleOutsideClick = (e) => {
                     if (!this.element.contains(e.target) &&
                         this.options.visibility === BasePanel.VISIBILITY.VISIBLE) {
@@ -440,9 +445,19 @@ export class BasePanel {
      * 銷毀
      */
     destroy() {
+        if (this._destroyed) return;
+        this._destroyed = true;
+
+        // 取消尚未觸發的延遲綁定
+        if (this._outsideClickTimer) {
+            clearTimeout(this._outsideClickTimer);
+            this._outsideClickTimer = null;
+        }
+
         // 移除事件
         if (this._handleOutsideClick) {
             document.removeEventListener('click', this._handleOutsideClick);
+            this._handleOutsideClick = null;
         }
 
         // 銷毀子容器

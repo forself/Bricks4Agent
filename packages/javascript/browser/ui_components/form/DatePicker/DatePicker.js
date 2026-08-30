@@ -529,9 +529,22 @@ export class DatePicker {
         this._onViewportChange = () => {
             if (this.snapshot().open) this._positionCalendar();
         };
-        document.addEventListener('click', this._onDocumentClick);
-        window.addEventListener('resize', this._onViewportChange);
-        window.addEventListener('scroll', this._onViewportChange, true);
+        this._globalListenersAttached = false;
+    }
+
+    // 全域監聽只在日曆展開期間掛載;開啟點擊 dispatch 中同步掛上(contains 守衛使其對本次點擊 no-op)
+    _syncGlobalListeners(open) {
+        if (open === this._globalListenersAttached) return;
+        this._globalListenersAttached = open;
+        if (open) {
+            document.addEventListener('click', this._onDocumentClick);
+            window.addEventListener('resize', this._onViewportChange);
+            window.addEventListener('scroll', this._onViewportChange, true);
+        } else {
+            document.removeEventListener('click', this._onDocumentClick);
+            window.removeEventListener('resize', this._onViewportChange);
+            window.removeEventListener('scroll', this._onViewportChange, true);
+        }
     }
 
     _getCalendarVerticalBounds() {
@@ -611,6 +624,9 @@ export class DatePicker {
         if (this.calendar) {
             this.calendar.style.display = state.open ? 'block' : 'none';
         }
+
+        // destroy 後不得再掛回全域監聽（reducer 不檢查 lifecycle，這裡把關）
+        this._syncGlobalListeners(state.open && state.lifecycle !== 'destroyed');
 
         this._renderCalendar();
         if (state.open) this._positionCalendar();

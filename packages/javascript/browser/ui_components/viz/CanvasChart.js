@@ -4,7 +4,8 @@
  * 架構:混合分層——Canvas 只畫幾何,文字密集區(標題/tooltip)走 DOM(cssText),
  * 把排版留給瀏覽器排版引擎。子類只需實作 draw(ctx, w, h),其餘由基底處理:
  *   - DPR 背景儲存縮放(子類一律以 CSS px 座標繪製)
- *   - ResizeObserver 容器導向 RWD(rAF 合併重繪)
+ *   - ResizeObserver 容器導向 RWD(模組級共用 rAF:同幀先全量測、後全繪製,免交錯讀寫強制排版)
+ *   - IntersectionObserver 離視口(±200px)釋放 canvas 背景儲存,回視口自動重繪
  *   - ThemeBus 訂閱:token / data-theme 變更自動重繪(Canvas 不會自己響應 CSS 變數)
  *   - 命中測試:draw 內以 addRegion() 註冊互動區(rect/circle/path),基底處理
  *     hover(tooltip)/click(onPointClick);tooltip 為 DOM,文字用 textContent(免跳脫風險)
@@ -23,6 +24,32 @@
  *   }
  */
 import { onThemeChange, resolveTokens, FALLBACK_PAINT } from '../utils/theme-bus.js';
+
+/* ── 模組級共用排程器:同一幀 pass1 全部量測(讀 layout)、pass2 全部提交/繪製(寫 canvas),
+   避免 N 張圖各自 rAF 交錯讀寫造成 N 次強制排版。 ── */
+const _pending = new Set();
+let _flushRaf = 0;
+
+function _scheduleFlush() {
+    if (_flushRaf) return;
+    _flushRaf = requestAnimationFrame(() => {
+        _flushRaf = 0;
+        const batch = [..._pending];
+        _pending.clear();
+        const measured = [];
+        for (const c of batch) {
+            c._renderScheduled = false;
+            if (c._destroyed) continue;
+            if (c._released && c._offscreen) continue;   // 釋放中且離視口:回視口時 IO 會重新排程
+            measured.push([c, c._measure()]);
+        }
+        for (const [c, m] of measured) {
+            if (c._destroyed) continue;
+            // 逐圖隔離:單一圖表 commit 擲錯(如 ctx 取得失敗)不得中斷同幀其他圖表
+            try { c._commit(m); } catch (e) { console.error('[CanvasChart] commit 失敗:', e); }
+        }
+    });
+}
 
 export class CanvasChart {
     constructor(options = {}) {
@@ -47,7 +74,9 @@ export class CanvasChart {
         this._destroyed = false;
         this._offTheme = null;
         this._resizeObserver = null;
-        this._raf = 0;
+        this._io = null;
+        this._released = false;
+        this._offscreen = false;
 
         this._buildDom();
         if (this.container) this.container.appendChild(this.element);
@@ -56,6 +85,15 @@ export class CanvasChart {
         if (typeof ResizeObserver !== 'undefined') {
             this._resizeObserver = new ResizeObserver(() => this.render());
             this._resizeObserver.observe(this._canvasWrap);
+        }
+        if (typeof IntersectionObserver !== 'undefined') {
+            this._io = new IntersectionObserver((entries) => {
+                if (this._destroyed) return;
+                this._offscreen = !entries[entries.length - 1].isIntersecting;
+                if (this._offscreen) this._releaseBackingStore();
+                else if (this._released) this.render();
+            }, { rootMargin: '200px' });
+            this._io.observe(this._canvasWrap);
         }
         this.render();
     }
@@ -114,26 +152,36 @@ export class CanvasChart {
 
     /* ── 渲染管線 ── */
 
-    /** 排程重繪(rAF 合併;resize/theme/資料更新皆走這裡)。 */
+    /** 排程重繪(共用 rAF 合併;resize/theme/資料更新皆走這裡)。 */
     render() {
         if (this._renderScheduled || this._destroyed) return;
         this._renderScheduled = true;
-        this._raf = requestAnimationFrame(() => {
-            this._renderScheduled = false;
-            this._renderNow();
-        });
+        _pending.add(this);
+        _scheduleFlush();
     }
 
+    /** 同步重繪(量測+繪製;動畫迴圈可直呼)。 */
     _renderNow() {
         if (this._destroyed) return;
+        this._commit(this._measure());
+    }
+
+    /** 讀取階段:只量測 layout,不碰 canvas(供排程器批次先讀後寫)。 */
+    _measure() {
         const cssW = Math.max(1, this._canvasWrap.clientWidth);
         const cssH = Math.max(1, this._canvasWrap.clientHeight);
         const dpr = window.devicePixelRatio || 1;
-        const bw = Math.round(cssW * dpr), bh = Math.round(cssH * dpr);
+        return { cssW, cssH, dpr, bw: Math.round(cssW * dpr), bh: Math.round(cssH * dpr) };
+    }
+
+    /** 寫入階段:套用背景儲存尺寸並繪製。 */
+    _commit({ cssW, cssH, dpr, bw, bh }) {
+        if (this._destroyed) return;
         if (this.canvas.width !== bw || this.canvas.height !== bh) {
             this.canvas.width = bw;
             this.canvas.height = bh;
         }
+        this._released = false;
         const ctx = this.ctx;
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         ctx.clearRect(0, 0, cssW, cssH);
@@ -145,6 +193,14 @@ export class CanvasChart {
         }
         if (this.options.debug) this._drawDebugRegions(ctx);
         this._lastSize = { w: cssW, h: cssH };
+    }
+
+    /** 離視口:釋放背景儲存(canvas CSS 尺寸不變,不會回饋觸發 ResizeObserver)。 */
+    _releaseBackingStore() {
+        if (this._released || this._destroyed) return;
+        this._released = true;
+        this.canvas.width = 0;
+        this.canvas.height = 0;
     }
 
     /** 子類實作:以 CSS px 繪製。 */
@@ -317,6 +373,8 @@ export class CanvasChart {
      * @returns {string} dataURL
      */
     exportPNG(scale = 2) {
+        // 釋放中或尚未繪過:先同步重渲,避免匯出空白
+        if (this._released || !this.canvas.width || !this.canvas.height) this._renderNow();
         const w = this._lastSize ? this._lastSize.w : this._canvasWrap.clientWidth;
         const h = this._lastSize ? this._lastSize.h : this._canvasWrap.clientHeight;
         const off = document.createElement('canvas');
@@ -330,7 +388,10 @@ export class CanvasChart {
         const savedRegions = this._regions;
         this._regions = [];
         try { this.draw(ctx, w, h); } finally { this._regions = savedRegions; }
-        return off.toDataURL('image/png');
+        const dataUrl = off.toDataURL('image/png');
+        // 匯出走離屏 canvas，主背存於離視口時無需保留，釋回記憶體
+        if (this._offscreen) this._releaseBackingStore();
+        return dataUrl;
     }
 
     /* ── 生命週期 ── */
@@ -350,9 +411,10 @@ export class CanvasChart {
 
     destroy() {
         this._destroyed = true;
-        cancelAnimationFrame(this._raf);
+        _pending.delete(this);
         if (this._offTheme) this._offTheme();
         if (this._resizeObserver) this._resizeObserver.disconnect();
+        if (this._io) this._io.disconnect();
         this.canvas.removeEventListener('mousemove', this._onMove);
         this.canvas.removeEventListener('mouseleave', this._onLeave);
         this.canvas.removeEventListener('click', this._onClick);

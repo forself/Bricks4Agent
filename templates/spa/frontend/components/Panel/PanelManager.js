@@ -55,11 +55,27 @@ class PanelManagerClass {
             this.children.delete(id);
         }
 
+        // 面板可能在 modal / focus 狀態下直接被 destroy（不會經過 exitModal / exitFocus），
+        // 殘留 id 會讓 calculateZIndex 的偏移與最上層判斷永遠算進已消失的面板
+        this._purgeFromStack(this.modalStack, id);
+        this._purgeFromStack(this.focusStack, id);
+
         this.parents.delete(id);
         this.panels.delete(id);
         this.previousStates.delete(id);
 
         return this;
+    }
+
+    /**
+     * 從堆疊中移除某個 id 的所有項目
+     */
+    _purgeFromStack(stack, id) {
+        let index = stack.indexOf(id);
+        while (index >= 0) {
+            stack.splice(index, 1);
+            index = stack.indexOf(id);
+        }
     }
 
     /**
@@ -146,6 +162,9 @@ class PanelManagerClass {
      * 進入 Modal 模式
      */
     enterModal(panel) {
+        // 先清再推：重複 enter 若留下多筆，exit 只移一筆會殘留永遠退不掉的 id；
+        // 順帶讓重新 open 的面板回到堆疊頂端（真正的巢狀 modal id 相異，不受影響）
+        this._purgeFromStack(this.modalStack, panel.id);
         this.modalStack.push(panel.id);
         this._disableOthers(panel, panel.options.modalScope);
     }
@@ -165,6 +184,7 @@ class PanelManagerClass {
      * 進入 Focus 模式
      */
     enterFocus(panel) {
+        this._purgeFromStack(this.focusStack, panel.id);
         this.focusStack.push(panel.id);
         this._disableOthers(panel, panel.options.focusScope);
     }

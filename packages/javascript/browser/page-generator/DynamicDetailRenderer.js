@@ -46,6 +46,7 @@ export class DynamicDetailRenderer {
      * @param {Function} options.onBack - 返回按鈕回調
      * @param {Function} options.onEdit - 編輯按鈕回調
      * @param {Function} options.onAction - 操作回調 (actionId, data, resolvedAction) => void
+     * @param {boolean} options.lazyTabs - true 時分頁內容延後到首次啟用才產生（面板元素仍會立即存在）
      */
     constructor(options = {}) {
         this.options = {
@@ -57,20 +58,57 @@ export class DynamicDetailRenderer {
             onEdit: null,
             onAction: null,
             strings: {},
+            lazyTabs: false,
             sanitizeRichText: sanitizeHTML,
             ...options
         };
 
-        this.element = null;
+        this._element = null;
+        this._pendingBuild = true;
+        this._buildError = null;
         this._activeTabId = null;
         this._tabButtons = [];
         this._tabPanels = [];
+        this._pendingTabPanels = new Map();
         this._controlComponents = [];
-        this._build();
+    }
+
+    /**
+     * 建構延後到第一次讀取 element（或 mount / getActiveTabId），
+     * 讓建構後、首次取用前的 init()／setData() 併入同一次建構。
+     */
+    get element() {
+        if (this._pendingBuild) this._ensureBuilt();
+        // 建構失敗必須每次讀取都拋：只丟一次的話後續讀取會拿到半成品空殼而靜默渲染空白明細
+        if (this._buildError) throw this._buildError;
+        return this._element;
+    }
+
+    set element(value) {
+        this._element = value;
+        this._pendingBuild = false;
+        this._buildError = null;
+    }
+
+    _ensureBuilt() {
+        // 旗標必須在 _build() 前關閉：_build() 內部會讀取 this.element，留 true 會讓 getter 無限重入
+        this._pendingBuild = false;
+        this._runBuild();
+    }
+
+    _runBuild() {
+        this._buildError = null;
+        try {
+            this._build();
+        } catch (error) {
+            this._buildError = error;
+            throw error;
+        }
     }
 
     _build() {
         this._destroyControlComponents();
+        this._pendingTabPanels.clear();
         const { definition } = this.options;
         this.element = document.createElement('div');
         this.element.className = 'dynamic-detail';
@@ -285,7 +323,11 @@ export class DynamicDetailRenderer {
             panel.dataset.tabPanelId = tabId;
             panel.dataset.tabKind = tab.kind || '';
             panel.setAttribute('role', 'tabpanel');
-            this._populateTabPanel(panel, tab);
+            if (this.options.lazyTabs) {
+                this._pendingTabPanels.set(panel, tab);
+            } else {
+                this._populateTabPanel(panel, tab);
+            }
             panels.appendChild(panel);
             this._tabPanels.push(panel);
         });
@@ -724,9 +766,18 @@ export class DynamicDetailRenderer {
         }
         for (const panel of this._tabPanels) {
             const active = panel.dataset.tabPanelId === this._activeTabId;
+            // 以「是否可見」為唯一條件補內容，並在補完後移出佇列：切回同一分頁不會重建
+            if (active) this._populatePendingTabPanel(panel);
             panel.hidden = !active;
             panel.style.display = active ? '' : 'none';
         }
+    }
+
+    _populatePendingTabPanel(panel) {
+        const tab = this._pendingTabPanels.get(panel);
+        if (!tab) return;
+        this._pendingTabPanels.delete(panel);
+        this._populateTabPanel(panel, tab);
     }
 
     _ordered(items) {
@@ -1150,13 +1201,14 @@ export class DynamicDetailRenderer {
 
     setData(data) {
         this.options.data = data || {};
-        if (this.element?.parentNode) {
-            const parent = this.element.parentNode;
-            this.element.remove();
-            this._build();
-            parent.appendChild(this.element);
+        if (this._pendingBuild) return;
+        const parent = this._element?.parentNode;
+        if (parent) {
+            this._element.remove();
+            this._runBuild();
+            parent.appendChild(this._element);
         } else {
-            this._build();
+            this._runBuild();
         }
     }
 
@@ -1166,6 +1218,7 @@ export class DynamicDetailRenderer {
     }
 
     getActiveTabId() {
+        if (this._pendingBuild) this._ensureBuilt();
         return this._activeTabId;
     }
 
@@ -1185,9 +1238,11 @@ export class DynamicDetailRenderer {
     }
 
     destroy() {
+        this._pendingBuild = false;
+        this._pendingTabPanels.clear();
         this._destroyControlComponents();
-        if (this.element?.parentNode) {
-            this.element.remove();
+        if (this._element?.parentNode) {
+            this._element.remove();
         }
     }
 }

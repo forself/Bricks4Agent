@@ -8,6 +8,7 @@ using SpaApi.Models;
 using SpaApi.Services;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -25,6 +26,7 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultConnect
 builder.Services.AddSingleton(new AppDb(connectionString));
 
 var jwtKey = builder.Configuration["Jwt:Key"];
+var usingTransientDevJwtKey = false;
 if (string.IsNullOrEmpty(jwtKey) || jwtKey.Length < 32)
 {
     if (!builder.Environment.IsDevelopment())
@@ -32,8 +34,10 @@ if (string.IsNullOrEmpty(jwtKey) || jwtKey.Length < 32)
         throw new InvalidOperationException("JWT key must be configured with at least 32 characters.");
     }
 
-    jwtKey = "DevOnlyKey_DoNotUseInProduction_32chars!";
+    // 開發用金鑰必須每個行程隨機產生：固定常數會隨原始碼外流，任何人都能偽造 token。
+    jwtKey = Convert.ToBase64String(RandomNumberGenerator.GetBytes(48));
     builder.Configuration["Jwt:Key"] = jwtKey;
+    usingTransientDevJwtKey = true;
 }
 
 var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "SpaApi";
@@ -119,6 +123,13 @@ builder.Services.AddEndpointsApiExplorer();
 
 var app = builder.Build();
 
+if (usingTransientDevJwtKey)
+{
+    app.Logger.LogWarning(
+        "Jwt:Key is not configured. A transient development-only signing key was generated for this process; "
+        + "all issued tokens become invalid when the process restarts. Configure Jwt:Key for anything but local development.");
+}
+
 var frontendRoot = Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, "..", "frontend"));
 var packagesRoot = Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, "..", "..", "..", "packages"));
 
@@ -176,7 +187,8 @@ if (Directory.Exists(frontendRoot))
     });
 }
 
-if (Directory.Exists(packagesRoot))
+// /packages 只是開發時讓範本前端以相對路徑載入函式庫用的；正式環境掛上會把整個 repo 樹無認證公開。
+if (app.Environment.IsDevelopment() && Directory.Exists(packagesRoot))
 {
     app.UseStaticFiles(new StaticFileOptions
     {

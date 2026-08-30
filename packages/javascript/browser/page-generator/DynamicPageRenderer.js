@@ -8,7 +8,6 @@
 import { DynamicFormRenderer } from './DynamicFormRenderer.js';
 import { DynamicDetailRenderer } from './DynamicDetailRenderer.js';
 import { DynamicListRenderer } from './DynamicListRenderer.js';
-import { DynamicToolRenderer } from './DynamicToolRenderer.js';
 import { isDeclarativeListDefinition, normalizeQueryDefinition } from './QueryDefinitionAdapter.js';
 
 export class DynamicPageRenderer {
@@ -25,6 +24,7 @@ export class DynamicPageRenderer {
      * @param {Function} options.onEdit - 編輯回調（detail 模式）
      * @param {Function} options.onPermissionCheck - 權限 UX gate (permissionKey, page, definition) => boolean|Promise<boolean>
      * @param {Object} options.routeParams - 路由參數（detail 模式）
+     * @param {boolean} options.lazyTabs - true 時分頁內容延後到首次啟用才產生（detail 模式，預設 false 即立即產生）
      * @param {number} options.pageSize - 每頁筆數（list 模式）
      */
     constructor(options = {}) {
@@ -42,6 +42,7 @@ export class DynamicPageRenderer {
             onDownload: null,
             confirmDownload: null,
             routeParams: {},
+            lazyTabs: false,
             pageSize: 20,
             customComponents: null,
             customComponentRegistry: null,
@@ -69,6 +70,9 @@ export class DynamicPageRenderer {
      * 初始化並建構渲染器
      */
     async init() {
+        // 重新 init（如 switchMode 的 destroy→init）即解除銷毀狀態；
+        // init 進行中若再被 destroy()，旗標會被重新設回 true 而中止 tool 分支
+        this._destroyed = false;
         const allowed = await this._checkPermission();
         if (!allowed) return this;
 
@@ -100,6 +104,7 @@ export class DynamicPageRenderer {
                     definition,
                     data: data || {},
                     routeParams: this.options.routeParams || {},
+                    lazyTabs: this.options.lazyTabs === true,
                     onBack: this.options.onBack,
                     onEdit: this.options.onEdit,
                     onAction: this.options.onAction,
@@ -121,6 +126,10 @@ export class DynamicPageRenderer {
             }
 
             case 'tool': {
+                // 延遲載入：DynamicToolRenderer 僅 tool 模式需要，連同其元件載入鏈一併延後
+                const { DynamicToolRenderer } = await import('./DynamicToolRenderer.js');
+                // import 等待期間可能已被 destroy（如快速切換路由），中止以免建立無人回收的渲染器
+                if (this._destroyed) return this;
                 this._renderer = new DynamicToolRenderer({
                     definition,
                     commandRegistry: this.options.commandRegistry,
@@ -217,7 +226,13 @@ export class DynamicPageRenderer {
      * 切換模式（銷毀舊渲染器，建立新的）
      */
     async switchMode(mode, data = null) {
-        const container = this._renderer?.element?.parentNode;
+        // 渲染器建構失敗時 element getter 會持續拋出，容器查詢必須吞下以免擋掉後面的 destroy() 造成洩漏
+        let container = null;
+        try {
+            container = this._renderer?.element?.parentNode || null;
+        } catch {
+            container = null;
+        }
         this.destroy();
         this.options.mode = mode;
         this.options.data = data;
@@ -237,6 +252,7 @@ export class DynamicPageRenderer {
     }
 
     destroy() {
+        this._destroyed = true;
         this._renderer?.destroy?.();
         this._renderer = null;
         if (this._ownsCustomComponentRegistry) {

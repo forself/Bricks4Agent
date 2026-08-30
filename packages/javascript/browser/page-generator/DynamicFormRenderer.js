@@ -46,12 +46,39 @@ export class DynamicFormRenderer {
      * 初始化並渲染
      */
     async init() {
-        await this._fieldResolver.preload();
+        // 外部注入的 resolver 可能在本表單之外被繼續使用，維持舊行為全量預載
+        await this._fieldResolver.preload(
+            this.options.fieldResolver ? undefined : this._collectFieldTypes()
+        );
         if (this.options.customComponentRegistry) {
             this.options.customComponentRegistry.installFieldResolver(this._fieldResolver);
         }
         this._build();
         return this;
+    }
+
+    /**
+     * 蒐集定義中實際出現的 fieldType／明示 component 名稱，供 preload() 過濾。
+     * 自訂 component（含 customComponentRegistry 註冊者）不在內建映射中，
+     * preload() 會自動回退為全量預載。
+     * @returns {string[]|undefined}
+     * @private
+     */
+    _collectFieldTypes() {
+        const fields = this.options.definition?.fields;
+        if (!Array.isArray(fields)) return undefined;
+
+        const types = new Set();
+        for (const def of fields) {
+            const component = def?.component;
+            // 與 FieldResolver.resolve() 相同的分支：明示 component 優先於 fieldType
+            if (component !== null && component !== undefined && component !== '') {
+                types.add(component);
+            } else {
+                types.add(def?.fieldType);
+            }
+        }
+        return [...types];
     }
 
     _build() {

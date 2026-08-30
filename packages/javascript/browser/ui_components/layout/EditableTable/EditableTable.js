@@ -9,6 +9,9 @@ export class EditableTable {
         this.options = { columns: [], rows: [], onCellEdit: null, ...options };
         this.element = null;
         this._inputs = [];
+        this._cellInputs = new Map();
+        this._renderedKey = null;
+        this._renderedRows = -1;
         this._state = createComponentState(
             {
                 lifecycle: 'created', visibility: 'visible',
@@ -52,11 +55,20 @@ export class EditableTable {
         this.element.appendChild(this._tbody);
     }
 
-    _render() {
+    _releaseInputs() {
         this._inputs.forEach((i) => i.destroy?.());
         this._inputs = [];
+        this._cellInputs.clear();
+    }
+
+    _columnsKey(cols) {
+        return cols.map((c) => `${c.key}|${c.label ?? ''}|${c.editable ? 1 : 0}|${c.sortable ? 1 : 0}`).join('~');
+    }
+
+    _render(state = null) {
+        this._releaseInputs();
         const cols = Array.isArray(this.options.columns) ? this.options.columns : [];
-        const s = this.snapshot();
+        const s = state || this.snapshot();
 
         const htr = document.createElement('tr');
         cols.forEach((col) => {
@@ -79,7 +91,7 @@ export class EditableTable {
             const tr = document.createElement('tr');
             tr.addEventListener('mouseenter', () => { tr.style.background = 'var(--cl-bg-hover)'; });
             tr.addEventListener('mouseleave', () => { tr.style.background = ''; });
-            cols.forEach((col) => {
+            cols.forEach((col, colIndex) => {
                 const td = document.createElement('td');
                 td.style.cssText = EditableTable._CELL_CSS;
                 if (col.editable) {
@@ -92,6 +104,7 @@ export class EditableTable {
                         if (typeof this.options.onCellEdit === 'function') this.options.onCellEdit(index, col.key, value);
                     });
                     this._inputs.push(input);
+                    this._cellInputs.set(`${index}:${colIndex}`, input);
                 } else {
                     td.textContent = String(row[col.key] ?? '');
                 }
@@ -99,11 +112,49 @@ export class EditableTable {
             });
             this._tbody.appendChild(tr);
         });
+        this._renderedKey = this._columnsKey(cols);
+        this._renderedRows = s.rows.length;
         if (this.element) this.element.style.display = s.visibility === 'hidden' ? 'none' : '';
     }
 
+    /** 只改到單格的事件走定點更新;欄位定義在建構後被改寫時,layout key 不符會退回整表重繪。 */
+    _applyEvent(event, payload, state) {
+        if (event === 'DESTROY') return;
+        const cols = Array.isArray(this.options.columns) ? this.options.columns : [];
+        const patchable = this._renderedKey === this._columnsKey(cols)
+            && this._renderedRows === state.rows.length
+            && this._tbody.children.length === state.rows.length;
+        if (patchable && event === 'MOUNT') return;
+        if (patchable && event === 'EDIT') { this._patchCell(cols, payload, state); return; }
+        this._render(state);
+    }
+
+    /**
+     * 定點更新保留該格 TextInput 的驗證訊息(整表重繪時是連同元件銷毀而順帶抹掉,
+     * 把剛送出的安全性警告靜靜吃掉並非正確行為);但值被換掉時,舊值的錯誤已不成立,必須解除。
+     */
+    _patchCell(cols, payload, state) {
+        const index = payload?.index;
+        const tr = this._tbody.children[index];
+        const row = state.rows[index];
+        if (!tr || !row) return;
+        cols.forEach((col, colIndex) => {
+            if (col.key !== payload.key) return;
+            const value = String(row[col.key] ?? '');
+            if (col.editable) {
+                const input = this._cellInputs.get(`${index}:${colIndex}`);
+                if (!input || input.getValue() === value) return;
+                if (input.snapshot?.().validation?.status === 'error') input.clearError();
+                input.setValue(value);
+            } else {
+                const td = tr.children[colIndex];
+                if (td) td.textContent = value;
+            }
+        });
+    }
+
     snapshot() { return this._state.snapshot(); }
-    send(e, p = null) { const n = this._state.send(e, p); this._render(); return n; }
+    send(e, p = null) { const n = this._state.send(e, p); this._applyEvent(e, p, n); return n; }
 
     mount(container) {
         const t = typeof container === 'string' ? document.querySelector(container) : container;
@@ -114,7 +165,7 @@ export class EditableTable {
     }
 
     getRows() { return this.snapshot().rows.map((r) => ({ ...r })); }
-    destroy() { this._inputs.forEach((i) => i.destroy?.()); this._inputs = []; this.send('DESTROY'); this.element?.remove(); this.element = null; }
+    destroy() { this._releaseInputs(); this.send('DESTROY'); this.element?.remove(); this.element = null; }
 }
 
 export default EditableTable;
