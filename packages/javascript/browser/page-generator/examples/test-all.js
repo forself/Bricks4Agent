@@ -7,8 +7,11 @@
 
 import { PageGenerator, ComponentPaths, validateDefinition } from '../index.js';
 import { FieldTypes, PageTypes } from '../PageDefinition.js';
+import { PageDefinitionAdapter } from '../PageDefinitionAdapter.js';
 import { DiaryEditorDefinition } from './DiaryEditorDefinition.js';
 import { ContactFormDefinition } from './ContactFormDefinition.js';
+import { EmployeeDefinition } from './EmployeeDefinition.js';
+import { PersonnelDefinition } from './PersonnelDefinition.js';
 import { runQueryExtV1Tests } from './test-query-ext-v1.js';
 import { runDetailExtTests } from './test-detail-ext.js';
 import * as fs from 'fs';
@@ -147,6 +150,52 @@ if (libraryResult.errors.length > 0) {
         const sizeKb = (Buffer.byteLength(libraryResult.code, 'utf8') / 1024).toFixed(2);
         console.log(`Generated ${path.basename(outputPath)} (${lines} lines, ${sizeKb} KB)`);
         results.push({ name: 'PackagesTest', success: true, lines, size: `${sizeKb} KB` });
+    }
+}
+
+console.log('\n--- New-format sample definitions ---');
+
+// EmployeeDefinition / PersonnelDefinition 只透過 PageDefinitionAdapter 或
+// tools/page-gen.js 使用，先前沒有任何測試碰過它們，因此在此固定轉檔結果。
+// expectsIdentifierError：toOldFormat() 把 field.triggers 原樣放進
+// behaviors.fieldTriggers，而 PageGenerator 要求該值是方法名識別字，
+// 因此帶 triggers 的定義會走 { code: null, errors: [...] } 這條錯誤契約。
+const newFormatSamples = [
+    { name: 'Employee', def: EmployeeDefinition, expectedName: 'EmployeePage', expectedType: 'list', expectsIdentifierError: true },
+    { name: 'Personnel', def: PersonnelDefinition, expectedName: 'PersonnelPage', expectedType: 'form', expectsIdentifierError: false }
+];
+
+for (const sample of newFormatSamples) {
+    const converted = PageDefinitionAdapter.toOldFormat(sample.def);
+    const problems = [];
+
+    if (converted.name !== sample.expectedName) problems.push(`name: expected ${sample.expectedName}, got ${converted.name}`);
+    if (converted.type !== sample.expectedType) problems.push(`type: expected ${sample.expectedType}, got ${converted.type}`);
+    if (converted.description !== sample.def.page.title) problems.push(`description: expected ${sample.def.page.title}, got ${converted.description}`);
+
+    const convertedValidation = validateDefinition(converted);
+    if (!convertedValidation.valid) problems.push(...convertedValidation.errors);
+
+    const generated = generator.generate(converted);
+    if (sample.expectsIdentifierError) {
+        if (generated.code !== null) problems.push('expected the identifier contract to reject this definition');
+        if (!generated.errors.some((error) => error.includes('behaviors.fieldTriggers'))) {
+            problems.push(`expected a behaviors.fieldTriggers identifier error, got ${JSON.stringify(generated.errors)}`);
+        }
+    } else if (generated.errors.length > 0) {
+        problems.push(...generated.errors);
+    } else if (!generated.code.includes(`class ${sample.expectedName}`)) {
+        problems.push(`generated code is missing class ${sample.expectedName}`);
+    }
+
+    if (problems.length > 0) {
+        problems.forEach((problem) => console.log(`  - ${sample.name}: ${problem}`));
+        allPassed = false;
+        results.push({ name: `${sample.name}Definition`, success: false, error: 'new-format sample check failed' });
+    } else {
+        const outcome = sample.expectsIdentifierError ? 'rejected by the identifier contract' : 'generated';
+        console.log(`OK: ${sample.name} -> ${converted.name} (${converted.type}, ${outcome})`);
+        results.push({ name: `${sample.name}Definition`, success: true, lines: converted.fields.length, size: 'fields' });
     }
 }
 

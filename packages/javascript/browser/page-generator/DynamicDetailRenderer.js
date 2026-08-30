@@ -46,7 +46,7 @@ export class DynamicDetailRenderer {
      * @param {Function} options.onBack - 返回按鈕回調
      * @param {Function} options.onEdit - 編輯按鈕回調
      * @param {Function} options.onAction - 操作回調 (actionId, data, resolvedAction) => void
-     * @param {boolean} options.lazyTabs - true 時分頁內容延後到首次啟用才產生（面板元素仍會立即存在）
+     * @param {boolean} options.lazyTabs - 分頁內容延後到首次啟用才產生（面板元素仍會立即存在），預設 true；傳 false 可改回建構時就產生全部分頁內容
      */
     constructor(options = {}) {
         this.options = {
@@ -58,7 +58,7 @@ export class DynamicDetailRenderer {
             onEdit: null,
             onAction: null,
             strings: {},
-            lazyTabs: false,
+            lazyTabs: true,
             sanitizeRichText: sanitizeHTML,
             ...options
         };
@@ -323,7 +323,7 @@ export class DynamicDetailRenderer {
             panel.dataset.tabPanelId = tabId;
             panel.dataset.tabKind = tab.kind || '';
             panel.setAttribute('role', 'tabpanel');
-            if (this.options.lazyTabs) {
+            if (this.options.lazyTabs !== false) {
                 this._pendingTabPanels.set(panel, tab);
             } else {
                 this._populateTabPanel(panel, tab);

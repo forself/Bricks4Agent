@@ -98,6 +98,10 @@ Audience: platform engineers, maintainers, integration engineers</p>
 <td>canonical lightweight ORM</td>
 </tr>
 <tr>
+<td><code>packages/csharp/rag-service</code></td>
+<td>standalone RAG retrieval minimal API host</td>
+</tr>
+<tr>
 <td><code>packages/javascript/browser</code></td>
 <td>UI component library、user portal、page generator、browser package tests</td>
 </tr>
@@ -144,7 +148,7 @@ Audience: platform engineers, maintainers, integration engineers</p>
   -&gt; provision worker-auth.json
   -&gt; start broker on 127.0.0.1:5361
   -&gt; start line-worker webhook on 127.0.0.1:5357
-  -&gt; start/reuse ngrok
+  -&gt; start/reuse public tunnel (ngrok 優先；不可用時改用 localhost.run，必要時重試 cloudflared)
   -&gt; update LINE webhook
 </code></pre>
 <p>Runtime output：</p>
@@ -1362,13 +1366,19 @@ tools/page-gen.js
 node tools/page-gen.js --def employee.json --mode static --output .\output
 node tools/page-gen.js --list-types
 </code></pre>
+<p><code>--mode</code> 接受 <code>static | dynamic | both</code>（預設 <code>static</code>）。定義也可從 stdin 讀入。</p>
+<p>從 DefinitionTemplate 取頁面時，用 <code>--page</code> 選單一頁、<code>--pages</code> 逗號分隔批次、<code>--all</code> 批次生成全部（批次模式輸出彙總 JSON）：</p>
+<pre><code class="language-powershell">node tools/page-gen.js --def site-definition.json --page products-list --mode static --output .\output
+node tools/page-gen.js --def site-definition.json --pages products-list,orders-form --mode static --output .\output
+node tools/page-gen.js --def site-definition.json --all --mode static --output .\output
+</code></pre>
 <h3>15.4 SPA Generator</h3>
 <p>Workbench：</p>
 <pre><code class="language-text">tools/spa-generator
 </code></pre>
 <p>It uses:</p>
 <ul>
-<li>ASP.NET Core 8 minimal API。</li>
+<li>ASP.NET Core minimal API on .NET 10 (<code>tools/spa-generator/backend/spa-generator.csproj</code>)。</li>
 <li>SQLite。</li>
 <li>BaseOrm。</li>
 <li>JWT auth。</li>
@@ -1573,7 +1583,7 @@ $env:STACK_MODEL='gpt-5.4-mini'
 <li>deployment target record。</li>
 <li>credentials via <code>DeploymentSecrets:Mappings</code> or env vars。</li>
 </ul>
-<p>This is Critical risk and must go through approval.</p>
+<p>The shipped tool spec declares <code>risk_level: high</code> with <code>approval_policy: require_approval</code>, so this capability always goes through a single Admin-tier approval（High 不會自動放行）。</p>
 <h3>18.6 Browser Governance</h3>
 <p>Current browser subsystem has:</p>
 <ul>
@@ -1819,7 +1829,10 @@ npm run validate:broker-scope
 npm run validate:dotnet-api-usage
 npm run validate:backend-governance
 npm run validate:line-admin
+npm run validate:dotnet10
+npm run test:dotnet10
 </code></pre>
+<p><code>validate:dotnet10</code> 檢查 target-framework 政策：所有 SDK-style 專案必須是 <code>net10.0</code>，唯一豁免是 allowlist 內的 <code>packages/csharp/database/BaseOrm/netfx48/BaseOrm.csproj</code>。<code>test:dotnet10</code> 在政策通過後再以 Release + <code>--warnaserror</code> 逐一 build 這些專案。</p>
 <h3>20.6 JS/UI/generator</h3>
 <pre><code class="language-powershell">npm test
 npm run test:generator
@@ -1828,7 +1841,9 @@ npm run audit:ui-styles
 npm run validate:ui-library
 npm run validate:ui-library:browser
 npm run validate:user-portal
+npm run audit:csp
 </code></pre>
+<p><code>audit:csp</code>（<code>tools/scripts/audit-csp.mjs</code>）是動 <code>ui_components</code> 前必過的硬門檻：它同時掃 CSP 違規（<code>&lt;style&gt;</code> 注入、<code>setAttribute('style')</code>、HTML 字串內 <code>style=</code> / <code>on*=</code>、<code>eval</code> / <code>new Function</code>、<code>javascript:</code> URL）與 Canvas-only 政策的 SVG 硬零（<code>&lt;svg</code>、<code>createElementNS</code>、<code>data:image/svg</code>）。任一命中即 exit 1；<code>tools/scripts/svg-baseline.json</code> 只是盤點快照，不能豁免 SVG 命中。</p>
 <p>Browser package:</p>
 <pre><code class="language-powershell">cd packages/javascript/browser
 npm run metadata:check
@@ -1859,7 +1874,7 @@ node tools/agent/tests/validate-efcore-removal.js
 <li>Scope escape escalates to approval or deny。</li>
 <li>Free-form shell is denied。</li>
 <li>Execution adapter validates patch base commit and path scope。</li>
-<li>Deployment is Critical and requires approval。</li>
+<li>Deployment (<code>deploy.azure-vm-iis</code>) is High risk and requires Admin-tier approval。</li>
 <li>Artifact links are signed and time-limited。</li>
 <li>Portal user sessions use HttpOnly cookies and never expose internal artifact file paths to the browser。</li>
 <li>Local admin is localhost-only。</li>

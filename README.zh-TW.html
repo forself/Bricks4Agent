@@ -65,18 +65,29 @@ new TextInput({ label: '姓名', required: true }).mount('#app');
 <p>每個元件契約一致:<code>new X(options)</code> → <code>.mount(container)</code> → <code>.destroy()</code>。
 完整約定與元件清單見 <a href="AGENT-UI-GUIDE.html">AGENT-UI-GUIDE.md</a>。</p>
 <h3>從定義生成頁面</h3>
-<pre><code class="language-bash"># 驗證 / 生成 / 列出支援的欄位型別
+<pre><code class="language-bash"># 生成單頁 / 批次生成 DefinitionTemplate 全部頁面 / 列出支援的欄位型別
 node tools/page-gen.js --def page.json --mode static --output ./out/
+node tools/page-gen.js --def site-definition.json --all --mode static --output ./out/
 node tools/page-gen.js --list-types
 </code></pre>
+<p><code>--validate</code> 只驗證定義不產檔;<code>--page &lt;id&gt;</code> 與 <code>--pages &lt;id,id&gt;</code> 可從 DefinitionTemplate 挑選個別頁面。</p>
 <h3>一鍵全端 CRUD</h3>
-<pre><code class="language-bash"># 建立專案,再生成一個功能(前端頁面 + C# Model/Service/API)
+<pre><code class="language-bash"># 建立專案 —— 互動式;--name/--output 只是預填提示的預設值
 node templates/spa/scripts/spa-cli.js new --name my-app --output ./out
+
+# 非互動:先把答案寫進設定檔(參考 scripts/project-config.example.json)
+node templates/spa/scripts/create-project.js --config project.json
+
+# 生成一個功能(C# Model/Service + 前端頁面),產出落在 templates/spa 本身
 node templates/spa/scripts/spa-cli.js feature Article --fields &quot;Title:string,Content:text,IsPublic:bool&quot;
 </code></pre>
+<p><code>feature</code>、<code>page</code>、<code>api</code> 都以 <code>templates/spa/</code> 為基準寫檔,不會寫進 <code>new</code> 剛建立的專案——
+它們改的是 <code>new</code> 用來複製的範本樹。</p>
 <h3>啟動生成器 Web UI</h3>
-<pre><code class="language-bash">npm run serve   # 於 port 3080 提供 tools/spa-generator/frontend
+<pre><code class="language-bash">node tools/spa-generator/server.js   # 前端 + 生成 API,port 3080
+npm run serve                        # 只有靜態前端,同樣 port 3080
 </code></pre>
+<p>Node 伺服器預設綁 loopback,並拒絕非 loopback 的 <code>Host</code>/<code>Origin</code> 請求。</p>
 <h2>測試</h2>
 <pre><code class="language-bash">npm test                        # 頁面生成器測試
 npm run validate:ui-library     # UI 元件庫檢查

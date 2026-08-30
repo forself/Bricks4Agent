@@ -14,6 +14,7 @@
  */
 
 const http = require('http');
+const crypto = require('node:crypto');
 const fs = require('fs');
 const path = require('path');
 const url = require('url');
@@ -104,6 +105,18 @@ function isAllowedOrigin(originHeader, hostHeader) {
     if (isLoopbackHostname(normalizeHostname(parsed.hostname))) return true;
     return parsed.host.toLowerCase() === String(hostHeader || '').toLowerCase();
 }
+
+// 少數情境（部分 no-cors 導覽、舊瀏覽器）只給 Referer，取其 origin 當備援來源
+function isAllowedReferer(refererHeader, hostHeader) {
+    if (!refererHeader) return false;
+    try {
+        return isAllowedOrigin(new URL(refererHeader).origin, hostHeader);
+    } catch {
+        return false;
+    }
+}
+
+const STATE_CHANGING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
 function isWithinRoot(root, target) {
     const resolvedRoot = path.resolve(root);
@@ -203,12 +216,8 @@ function runScript(scriptName, args = []) {
 }
 
 function generateRandomString(length = 32) {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
-    let result = '';
-    for (let i = 0; i < length; i++) {
-        result += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return result;
+    // 這串會成為專案的 JWT 簽章金鑰：必須用 CSPRNG，Math.random 可由少數輸出反推
+    return crypto.randomBytes(length).toString('base64').slice(0, length);
 }
 
 function toPascalCase(str) {
@@ -1009,6 +1018,17 @@ const server = http.createServer(async (req, res) => {
 
     // 跨站的狀態變更請求（含 preflight）一律拒絕
     if (origin && !originAllowed && req.method !== 'GET' && req.method !== 'HEAD') {
+        res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end('Forbidden');
+        return;
+    }
+
+    // 兩種綁定模式刻意不對稱：loopback 預設仍放行沒有 Origin 的請求（本機 agent／curl 的既有用法），
+    // 但開放遠端綁定後 Host 白名單已失效，Origin 白名單是唯一防線，狀態變更請求就必須帶可信來源
+    if (ALLOW_REMOTE_HOSTS
+        && STATE_CHANGING_METHODS.has(req.method)
+        && !originAllowed
+        && !isAllowedReferer(req.headers.referer, req.headers.host)) {
         res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
         res.end('Forbidden');
         return;

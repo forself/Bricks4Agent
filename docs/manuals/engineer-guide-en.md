@@ -4,7 +4,7 @@
 
 ## Verified Status (2026-03-22)
 
-This guide now reflects a repository-wide validation run on 2026-03-22.
+The list below records a repository-wide validation run carried out on 2026-03-22. It is a historical snapshot of that run, not a statement about the tree as it stands today; the pinned tool versions in particular have moved on. Re-run the checks in `CLAUDE.md` before relying on it.
 
 - Verified environment:
 
@@ -92,7 +92,7 @@ This guide now reflects a repository-wide validation run on 2026-03-22.
 
 - Node.js 18+
 
-- .NET 10 SDK or newer (`10.0.104` verified)
+- .NET 10 SDK or newer
 
 - Git
 
@@ -105,47 +105,59 @@ This guide now reflects a repository-wide validation run on 2026-03-22.
 git clone <repo-url> Bricks4Agent
 cd Bricks4Agent
 
-# 2. Install dev tool dependencies (Playwright/Puppeteer for screenshots & UI testing)
-npm install
+# 2. There is nothing to npm install: the root package.json declares no
+#    dependencies. Every npm script is a thin wrapper over node / dotnet /
+#    powershell tools that are already on your PATH.
 
-# 3. Start the SPA Generator (Web UI)
+# 3. Start the SPA Generator (Web UI). This needs the .NET SDK, because
+#    "npm run serve" runs tools/static-server/StaticServer.csproj and serves
+#    ./tools/spa-generator/frontend on port 3080.
 npm run serve
-# Open http://localhost:3080 in your browser
+# Open http://localhost:3080 in your browser (the server binds loopback only)
 ```
 
 ### 1.3 Project Structure
 
 ```
 Bricks4Agent/
-?謚??? packages/                            # Reusable packages
-??  ?謚??? javascript/
-??  ??  ????? browser/
-??  ??      ?謚??? ui_components/           # Bricks4Agent UI component library
-??  ??      ??  ?謚??? form/                # Form components (12)
-??  ??      ??  ?謚??? common/              # Common components (23)
-??  ??      ??  ?謚??? layout/              # Layout components (10)
-??  ??      ??  ?謚??? input/               # Advanced input components (10)
-??  ??      ??  ?謚??? viz/                 # Visualization (18 directly usable components + BaseChart)
-??  ??      ??  ?謚??? social/              # Social components (5)
-??  ??      ??  ?謚??? editor/              # Editor component (1)
-??  ??      ??  ?謚??? data/                # Data-display component (1)
-??  ??      ??  ?謚??? binding/             # Binding modules (2)
-??  ??      ??  ????? utils/               # Utilities & services (4)
-??  ??      ????? page-generator/          # Page generator
-??  ????? csharp/
-??      ?謚??? api/                         # API and controller modules
-??      ?謚??? database/                    # Database / ORM modules
-??      ?謚??? security/                    # Security and auth modules
-??      ?謚??? logging/                     # Logging module
-??      ????? utils/                       # Backend utility modules
-?謚??? templates/
-??  ????? spa/                             # SPA project template
-??      ?謚??? frontend/                    # Frontend template
-??      ?謚??? backend/                     # .NET 10 backend template
-??      ????? scripts/                     # Template CLI (spa-cli.js)
-????? tools/
-    ?謚??? spa-generator/                   # SPA Generator Web UI
-    ????? page-gen.js                      # PageDefinition CLI
++-- packages/                            # Reusable packages
+|   +-- javascript/
+|   |   \-- browser/
+|   |       +-- ui_components/           # Bricks4Agent UI component library
+|   |       |   +-- form/                # Form components (18)
+|   |       |   +-- common/              # Common components (40)
+|   |       |   +-- layout/              # Layout components (13)
+|   |       |   +-- input/               # Advanced input components (10)
+|   |       |   +-- viz/                 # Visualization (23, all Canvas-based)
+|   |       |   +-- social/              # Social components (5)
+|   |       |   +-- editor/              # Editor component (1)
+|   |       |   +-- data/                # Region map (1)
+|   |       |   +-- analytics/           # Data explorer (1)
+|   |       |   +-- sections/            # Page sections (4)
+|   |       |   +-- binding/             # ComponentBinder / ComponentFactory / LazyComponentFactory
+|   |       |   +-- i18n/                # Locale
+|   |       |   +-- metadata/            # component-catalog.json + build-metadata.mjs
+|   |       |   +-- themes/              # Theme presets
+|   |       |   +-- vendor/              # Vendored Leaflet + html2canvas
+|   |       |   \-- utils/               # Utilities & services
+|   |       +-- page-generator/          # Page generator
+|   |       \-- custom_components/       # JSON-defined custom components
+|   \-- csharp/
+|       +-- api/                         # API, middleware and response modules
+|       +-- database/                    # BaseOrm / BaseCache
+|       +-- security/                    # Security and auth modules
+|       +-- logging/                     # Logging module
+|       +-- broker/                      # Broker (tool routing, governance)
+|       \-- utils/                       # Backend utility modules
++-- templates/
+|   \-- spa/                             # SPA project template
+|       +-- frontend/                    # Frontend template
+|       +-- backend/                     # .NET 10 backend template
+|       \-- scripts/                     # Template CLI (spa-cli.js)
+\-- tools/
+    +-- spa-generator/                   # SPA Generator Web UI
+    +-- static-server/                   # C# static server behind "npm run serve"
+    \-- page-gen.js                      # PageDefinition CLI
 ```
 
 ### 1.4 Creating Your First Project
@@ -160,11 +172,13 @@ The SPA toolchain is split into two parts:
 # Start the Web UI
 npm run serve
 
-# Create a project with the template CLI (interactive)
-node templates/spa/scripts/spa-cli.js new
-
-# Create a project with the template CLI (non-interactive)
+# Create a project with the template CLI (interactive; --name / --output only
+# preset the answers, every prompt is still asked)
 node templates/spa/scripts/spa-cli.js new --name my-app --output ./projects
+
+# Create a project without any prompts: pass a config file.
+# Copy templates/spa/scripts/project-config.example.json and edit it first.
+node templates/spa/scripts/spa-cli.js new --config ./my-project.json
 
 # Generate a full feature (page + API)
 node templates/spa/scripts/spa-cli.js feature User --fields "Name:string,Email:string"
@@ -176,18 +190,22 @@ node templates/spa/scripts/spa-cli.js feature User --fields "Name:string,Email:s
 
 ### 2.1 Component Categories
 
+The authoritative list is `packages/javascript/browser/ui_components/metadata/component-catalog.json` (116 components). Regenerate it with `node packages/javascript/browser/ui_components/metadata/build-metadata.mjs` after adding or changing a component.
+
 | Category | Directory | Count | Description |
 |---|---|---|---|
-| Form | `form/` | 12 | Text, number, date, dropdown and other form inputs |
-| Common | `common/` | 23 | Buttons, badges, tags, tooltips, progress bars, dividers, dialogs, notifications, pagination and other general UI |
-| Layout | `layout/` | 10 | Panels, tables, side menus, tabs and other layout elements |
+| Form | `form/` | 18 | Text, number, date, dropdown and other form inputs |
+| Common | `common/` | 40 | Buttons, badges, tags, tooltips, progress bars, dividers, dialogs, notifications, pagination and other general UI |
+| Layout | `layout/` | 13 | Panels, tables, side menus, tabs and other layout elements |
 | Advanced Input | `input/` | 10 | Address, phone, organization and other composite inputs |
-| Visualization | `viz/` | 18 | Charts, maps, drawing boards and data visualization (excluding the `BaseChart` base class) |
+| Visualization | `viz/` | 23 | Charts, maps, drawing boards and data visualization; all Canvas-based, sharing the `CanvasChart` base class |
 | Social | `social/` | 5 | Avatar, feed, connection, stat card, and timeline |
 | Editor | `editor/` | 1 | Rich text editor |
-| Data | `data/` | 1 | Region map and geo visualization |
-| Binding | `binding/` | 2 | Component factory and binder |
-| Utils/Services | `utils/` | 4 | Security, compression, geolocation, weather |
+| Analytics | `analytics/` | 1 | Data explorer (`DataExplorer`) |
+| Sections | `sections/` | 4 | Page header/footer, banner and content sections |
+| Data | `data/` | 1 | Taiwan administrative region map (`RegionMap`) |
+| Binding | `binding/` | 3 | Component binder, eager `ComponentFactory`, lazy `LazyComponentFactory` (modules, not catalog components) |
+| Utils/Services | `utils/` | - | Security, zip, geolocation, weather, theme bus, colour scale, aggregation/force engines (modules, not catalog components) |
 
 > Import path note: code snippets below use shortened paths for readability. If you validate them directly from this repo root, treat `./ui_components/...` as `./packages/javascript/browser/ui_components/...` and `./page-generator/...` as `./packages/javascript/browser/page-generator/...`.
 
@@ -239,6 +257,11 @@ input.destroy();
 Bricks4Agent uses CSS Custom Properties for its theme system. All variables use the `--cl-` prefix.
 
 ### 3.2 Variable Categories
+
+The values below are the *effective* light-theme values. In `theme.css` the brand and
+semantic colours are defined indirectly against the palette layer it imports
+(`@import './palette.css'`), e.g. `--cl-primary: var(--cl-blue-500)` where
+`--cl-blue-500: #2196F3`.
 
 ```css
 :root {
@@ -324,7 +347,7 @@ Bricks4Agent uses CSS Custom Properties for its theme system. All variables use 
 }
 ```
 
-> For the complete variable definitions, refer to `packages/javascript/browser/ui_components/theme.css`, which contains 140+ CSS variables.
+> For the complete variable definitions, refer to `packages/javascript/browser/ui_components/theme.css` (214 `--cl-*` declarations across the light and dark blocks) and the palette it imports, `packages/javascript/browser/ui_components/palette.css`.
 
 ### 3.3 Custom Themes
 
@@ -386,7 +409,7 @@ document.documentElement.removeAttribute('data-theme');
 Bricks4Agent provides `demo-utils.js` for quickly adding a theme toggle button to demo pages:
 
 ```javascript
-import { createThemeToggle } from '../../demo-utils.js';
+import { createThemeToggle } from './ui_components/demo-utils.js';
 
 // Add a dark/light theme toggle button to the demo page
 createThemeToggle();
@@ -414,7 +437,7 @@ node tools/fix-named-colors.js --apply
 
 ## 4. Form Components
 
-Form components are located in `packages/javascript/browser/ui_components/form/`, with 12 components total.
+Form components are located in `packages/javascript/browser/ui_components/form/`, with 18 components total. The six not covered below are `Form`, `TextArea`, `Slider`, `Rating`, `TagInput` and `CommandComposer`.
 
 ### 4.1 TextInput ??Text Input
 
@@ -631,14 +654,19 @@ field.mount(document.getElementById('email-field'));
 ```javascript
 import { SearchForm } from './ui_components/form/SearchForm/SearchForm.js';
 
+// Each field is identified by `key` (not `name`); `key` is what the
+// onSearch payload is keyed by. type is one of SearchForm.FIELD_TYPES:
+// text | number | select | multiselect | date | dateRange | checkbox
 const searchForm = new SearchForm({
+  columns: 4,          // fields per row
+  visibleRows: 1,      // rows shown before "expand"
   fields: [
-    { name: 'keyword', type: 'text', label: 'Keyword' },
-    { name: 'category', type: 'select', label: 'Category', options: [
+    { key: 'keyword', type: 'text', label: 'Keyword' },
+    { key: 'category', type: 'select', label: 'Category', options: [
       { value: 'all', label: 'All' },
       { value: 'news', label: 'News' }
     ]},
-    { name: 'dateRange', type: 'date', label: 'Date Range' }
+    { key: 'dateRange', type: 'dateRange', label: 'Date Range' }
   ],
   onSearch: (criteria) => console.log('Search criteria:', criteria),
   onReset: () => console.log('Reset')
@@ -671,7 +699,7 @@ const uploader = new BatchUploader({
 
 ## 5. Common Components
 
-Common components are located in `packages/javascript/browser/ui_components/common/`, with 23 components total.
+Common components are located in `packages/javascript/browser/ui_components/common/`, with 40 components total. See `component-catalog.json` for the ones not covered below (`Alert`, `Badge`, `CardGrid`, `CodeBlock`, `DescriptionList`, `Divider`, `DropdownMenu`, `EmptyState`, `FilterBar`, `Heading`, `Icon`, `Link`, `List`, `MediaPlayer`, `Progress`, `ResultList`, `Skeleton`, `StatGrid`, `StepIndicator`, `Tag`, `Text`, `Tooltip`).
 
 ### 5.1 Button Series
 
@@ -682,9 +710,13 @@ Common components are located in `packages/javascript/browser/ui_components/comm
 ```javascript
 import { BasicButton } from './ui_components/common/BasicButton/BasicButton.js';
 
+// There is no `text` option: the label comes from `type` (see
+// BasicButton.TYPES - confirm, cancel, save, search, delete, reset, back, ...).
+// `customLabel` overrides the built-in text for that type.
 const btn = new BasicButton({
-  text: 'Submit',
-  variant: 'primary', // primary | secondary | outline | danger
+  type: 'confirm',
+  customLabel: 'Submit',
+  variant: 'primary', // primary | secondary | text | icon | plain
   onClick: () => console.log('Button clicked')
 });
 
@@ -698,31 +730,34 @@ btn.mount(document.getElementById('btn-container'));
 ```javascript
 import { ActionButton } from './ui_components/common/ActionButton/ActionButton.js';
 
+// Icon and label are both derived from `type`
+// (ActionButton.TYPES: add | delete | edit | detail | submit | reject | archive | merge).
 const actionBtn = new ActionButton({
-  text: 'Edit',
-  icon: 'edit',
+  type: 'edit',
+  variant: 'filled',
+  tooltip: 'Edit this record',
   onClick: () => openEditor()
 });
 
 actionBtn.mount(document.getElementById('action-area'));
 ```
 
-#### AuthButton ??Permission-based Button
+#### AuthButton — Login / Logout Button
 
 ![AuthButton](screenshots/after/common-AuthButton.png)
 
 ```javascript
 import { AuthButton } from './ui_components/common/AuthButton/AuthButton.js';
 
-// Automatically shows/hides based on user permissions
-const deleteBtn = new AuthButton({
-  text: 'Delete',
-  permission: 'admin.delete',
-  variant: 'danger',
-  onClick: () => deleteItem()
+// AuthButton is a sign-in / sign-out button, not a permission gate:
+// `type` is 'login' or 'logout', and there is no `permission` option.
+const logoutBtn = new AuthButton({
+  type: 'logout',
+  confirm: true,               // show a confirmation dialog first
+  onClick: () => signOut()
 });
 
-deleteBtn.mount(document.getElementById('auth-area'));
+logoutBtn.mount(document.getElementById('auth-area'));
 ```
 
 #### DownloadButton / UploadButton
@@ -735,16 +770,21 @@ deleteBtn.mount(document.getElementById('auth-area'));
 import { DownloadButton } from './ui_components/common/DownloadButton/DownloadButton.js';
 import { UploadButton } from './ui_components/common/UploadButton/UploadButton.js';
 
+// Both take a `type` that supplies the icon, label and accepted extensions.
+// DownloadButton.TYPES: xls | word | pdf | image | portrait | json | css
+// UploadButton.TYPES:   xls | word | pdf | image | portrait | file | txt | csv
 const downloadBtn = new DownloadButton({
-  text: 'Download Report',
+  type: 'xls',
   url: '/api/reports/export',
-  filename: 'report.xlsx'
+  filename: 'report.xlsx',
+  showLabel: true
 });
 
 const uploadBtn = new UploadButton({
-  text: 'Upload File',
-  accept: '.csv,.xlsx',
-  onUpload: (file) => processFile(file)
+  type: 'csv',
+  customAccept: '.csv,.xlsx',   // override the accept list for the type
+  showLabel: true,
+  onSelect: (files) => processFile(files[0])
 });
 ```
 
@@ -821,13 +861,16 @@ Notification.warning('Please fill in the required fields.');
 // Info notification
 Notification.info('A new version has been released.');
 
-// Custom options
-Notification.show({
+// Custom options - there is no static show(); construct and call .show()
+new Notification({
   type: 'success',
   message: 'Operation complete',
-  duration: 5000,    // Display for 5 seconds
-  position: 'top-right'
-});
+  duration: 5000,    // Display for 5 seconds; 0 keeps it open
+  position: 'top-right'   // top-right | top-left | top-center | bottom-right | bottom-left | bottom-center
+}).show();
+
+// Close every open notification
+Notification.closeAll();
 ```
 
 ### 5.5 LoadingSpinner ??Loading Spinner
@@ -919,17 +962,22 @@ tree.mount(document.getElementById('tree-area'));
 import { PhotoCard } from './ui_components/common/PhotoCard/PhotoCard.js';
 import { FeatureCard } from './ui_components/common/FeatureCard/FeatureCard.js';
 
+// PhotoCard is an image tile: src / alt / type, no title or description.
 const photoCard = new PhotoCard({
-  imageUrl: '/images/landscape.jpg',
-  title: 'National Park',
-  description: 'A scenic nature area near the city',
-  onClick: () => openDetail()
+  type: 'portrait',      // portrait | landscape
+  src: '/images/landscape.jpg',
+  oriSrc: '/images/landscape-full.jpg',  // full-size image for the viewer
+  alt: 'National Park',
+  clickable: true
 });
 
+// FeatureCard has no `icon` option; it uses badge / tags instead.
 const featureCard = new FeatureCard({
-  icon: 'chart',
   title: 'Data Analytics',
-  description: 'Real-time data statistics and visual reports'
+  description: 'Real-time data statistics and visual reports',
+  tags: ['charts', 'reports'],
+  badge: 'NEW',
+  onClick: () => openDetail()
 });
 ```
 
@@ -940,17 +988,17 @@ const featureCard = new FeatureCard({
 ```javascript
 import { ImageViewer } from './ui_components/common/ImageViewer/ImageViewer.js';
 
-const viewer = new ImageViewer({
-  images: [
-    { src: '/photos/1.jpg', caption: 'Photo 1' },
-    { src: '/photos/2.jpg', caption: 'Photo 2' },
-    { src: '/photos/3.jpg', caption: 'Photo 3' }
-  ],
-  enableZoom: true,
-  enableFullscreen: true
+// ImageViewer is a single-instance lightbox opened by a static method.
+// It has no mount(), no `images` array and no fullscreen option.
+ImageViewer.open('/photos/1.jpg', {
+  minZoom: 0.1,
+  maxZoom: 3,
+  zoomStep: 0.2,
+  onPrev: () => ImageViewer.open('/photos/0.jpg'),
+  onNext: () => ImageViewer.open('/photos/2.jpg')
 });
 
-viewer.mount(document.getElementById('viewer-area'));
+ImageViewer.close();
 ```
 
 ### 5.11 SortButton ??Sort Button
@@ -977,13 +1025,13 @@ sortBtn.reset();          // Reset to none
 
 ### 5.12 EditorButton ??Editor Toolbar Button
 
-Provides 50+ predefined button types (bold, italic, link, image, etc.) for rich text editor toolbars.
+Provides 70 predefined button types (bold, italic, link, image, etc.) for rich text editor toolbars.
 
 ```javascript
 import { EditorButton } from './ui_components/common/EditorButton/EditorButton.js';
 
 const boldBtn = new EditorButton({
-  type: 'bold',           // 50+ predefined types
+  type: 'bold',           // one of the 70 EditorButton.TYPES
   onClick: () => document.execCommand('bold'),
   size: 'medium',         // 'small'|'medium'|'large'
   variant: 'default',     // 'default'|'primary'|'ghost'|'outline'
@@ -999,7 +1047,7 @@ boldBtn.setDisabled(true); // Disable
 
 ## 6. Layout Components
 
-Layout components are located in `packages/javascript/browser/ui_components/layout/`, with 10 components total.
+Layout components are located in `packages/javascript/browser/ui_components/layout/`, with 13 components total (`EditableTable`, `FormDesigner` and `Stepper` are not covered below).
 
 ### 6.1 Panel Series
 
@@ -1012,32 +1060,48 @@ import { ModalPanel } from './ui_components/layout/Panel/ModalPanel.js';
 import { ToastPanel } from './ui_components/layout/Panel/ToastPanel.js';
 import { PanelManager } from './ui_components/layout/Panel/PanelManager.js';
 
-// Modal panel
+// Modal panel. BasePanel has no `width` option - size the content yourself.
+// destroyOnClose defaults to false here, so the panel can be reopened;
+// ModalPanel.confirm/alert/prompt set destroyOnClose: true and self-destruct.
 const modal = new ModalPanel({
   title: 'Edit User',
-  width: '600px',
+  closable: true,
   onClose: () => console.log('Closed')
 });
 
 modal.setContent('<form>...</form>');
 modal.mount(document.body);
 modal.open();
+modal.close();
+modal.destroy();          // release it when you are done with it
 
-// Toast notification panel
-const toast = new ToastPanel({
-  message: 'Operation successful',
-  type: 'success',
-  duration: 3000
+// One-shot dialogs that clean themselves up after close. They are
+// callback-based and return the ModalPanel instance, not a Promise;
+// the body text option is `message`.
+ModalPanel.confirm({
+  title: 'Delete',
+  message: 'Are you sure?',
+  onConfirm: () => deleteItem(),
+  onCancel: () => {}
+});
+ModalPanel.alert({ message: 'Saved.' });
+ModalPanel.prompt({
+  message: 'Enter a name',
+  placeholder: 'e.g. Jane',
+  validate: (value) => value.trim().length > 0,
+  onConfirm: (value) => rename(value)
 });
 
-toast.mount(document.body);
-toast.show();
+// Toast notification panel: the option is `timeout`, and the usual entry
+// point is the static helper rather than the constructor.
+ToastPanel.success('Operation successful', { timeout: 3000, position: 'top-right' });
 
-// PanelManager ??Unified panel management
-const panelManager = new PanelManager();
-panelManager.register('editUser', modal);
-panelManager.open('editUser');
-panelManager.close('editUser');
+// PanelManager is an exported singleton, not a class you instantiate.
+// It tracks parent/child panels, z-index and modal/focus stacks;
+// opening and closing stays on the panel itself.
+PanelManager.register(modal);
+PanelManager.getChildren(modal);
+PanelManager.unregister(modal);
 ```
 
 ### 6.2 DataTable ??Data Table
@@ -1046,6 +1110,7 @@ panelManager.close('editUser');
 
 ```javascript
 import { DataTable } from './ui_components/layout/DataTable/DataTable.js';
+import { escapeHtml, raw } from './ui_components/utils/security.js';
 
 const table = new DataTable({
   container: document.getElementById('table-area'),
@@ -1059,8 +1124,12 @@ const table = new DataTable({
       name: 'actions',
       label: 'Actions',
       options: {
+        // A plain string returned from customBodyRender is escaped and shown as
+        // text. Wrap known-safe markup in raw() to have it written as HTML -
+        // and keep inline on* handlers out of it (the CSP audit rejects them);
+        // bind behaviour with a delegated listener on the table container.
         customBodyRender: (value, tableMeta) =>
-          `<button onclick="edit(${tableMeta.rowData[0]})">Edit</button>`
+          raw(`<button type="button" data-edit-id="${escapeHtml(String(tableMeta.rowData[0]))}">Edit</button>`)
       }
     }
   ],
@@ -1077,7 +1146,9 @@ const auditTable = new DataTable({
   columns: [
     { key: 'name', title: 'Name', sortable: true },
     { key: 'email', title: 'Email' },
-    { key: 'role', title: 'Role', render: (row) => `<b>${row.role}</b>` }
+    // render receives (cellValue, rowObject); the result is escaped unless
+    // it is wrapped in raw()
+    { key: 'role', title: 'Role', render: (value) => raw(`<b>${escapeHtml(value)}</b>`) }
   ],
   data: [
     { name: 'John Doe', email: 'john@example.com', role: 'Admin' },
@@ -1143,10 +1214,16 @@ const tabs = new TabContainer({
 ```javascript
 import { FormRow } from './ui_components/layout/FormRow/FormRow.js';
 
+// FormRow is a fixed 12-column CSS grid; there is no `columns` option.
+// Column width comes from each FormField's `col` (1-12); fields without a
+// `col` share the remaining columns evenly.
 const row = new FormRow({
-  columns: 3,  // Display 3 fields per row
   gap: '16px',
-  fields: [nameInput, emailInput, phoneInput]
+  fields: [
+    new FormField({ fieldName: 'name', label: 'Name', col: 4, component: nameInput }),
+    new FormField({ fieldName: 'email', label: 'Email', col: 4, component: emailInput }),
+    new FormField({ fieldName: 'phone', label: 'Phone', col: 4, component: phoneInput })
+  ]
 });
 
 row.mount(document.getElementById('form-area'));
@@ -1281,19 +1358,32 @@ Multi-level cascading dropdown selects, suitable for hierarchical data like coun
 ```javascript
 import { ChainedInput } from './ui_components/input/ChainedInput/ChainedInput.js';
 
+// The option is `fields`, not `levels`, and each select loads its own options
+// through its own `loadOptions(parentValue)`. There is no top-level `label`
+// and no `onLoadOptions`.
 const regionInput = new ChainedInput({
-  label: 'Region',
-  levels: [
-    { name: 'city', label: 'City', options: citiesData },
-    { name: 'district', label: 'District', dependsOn: 'city' },
-    { name: 'village', label: 'Village', dependsOn: 'district' }
+  layout: 'horizontal',        // 'horizontal' | 'vertical'
+  gap: '12px',
+  fields: [
+    { name: 'city', type: 'select', label: 'City', required: true, flex: 1,
+      loadOptions: async () => citiesData },
+    { name: 'district', type: 'select', label: 'District', flex: 1,
+      loadOptions: async (city) => city
+        ? fetch(`/api/regions?parent=${city}`).then(r => r.json())
+        : [] },
+    { name: 'village', type: 'select', label: 'Village', flex: 1,
+      loadOptions: async (district) => district
+        ? fetch(`/api/regions?parent=${district}`).then(r => r.json())
+        : [] }
   ],
-  onLoadOptions: async (level, parentValue) => {
-    return await fetch(`/api/regions?parent=${parentValue}`).then(r => r.json());
-  }
+  onChange: (values) => console.log(values)
 });
 
 regionInput.mount(document.getElementById('region-field'));
+
+// Values are read and written as a whole (setValues is async)
+const region = regionInput.getValues();  // { city, district, village }
+await regionInput.setValues({ city: 'TPE' });
 ```
 
 ### 7.2 AddressInput ??Address Input
@@ -1303,16 +1393,19 @@ Composite component integrating region cascading and detailed address.
 ```javascript
 import { AddressInput } from './ui_components/input/AddressInput/AddressInput.js';
 
+// AddressInput extends ChainedInput with three fixed fields (city / district /
+// address). It has no `label` option, and it throws unless you supply real
+// `loadCities` and `loadDistricts` data loaders.
 const addressInput = new AddressInput({
-  label: 'Mailing Address',
-  required: true
+  loadCities: async () => api.get('/regions/cities'),
+  loadDistricts: async (city) => api.get(`/regions/districts?city=${city}`)
 });
 
 addressInput.mount(document.getElementById('address-field'));
 
-// Get full address
-const address = addressInput.getValue();
-// { city: 'Taipei', district: 'Zhongzheng', detail: '122 Chongqing South Rd.' }
+// Get full address (getValues, not getValue)
+const address = addressInput.getValues();
+// { city: 'Taipei', district: 'Zhongzheng', address: '122 Chongqing South Rd.' }
 ```
 
 ### 7.3 AddressListInput ??Multiple Address Input
@@ -1322,12 +1415,15 @@ Add/remove multiple addresses, suitable for scenarios with multiple mailing addr
 ```javascript
 import { AddressListInput } from './ui_components/input/AddressListInput/AddressListInput.js';
 
+// Extends ListInput: the heading option is `title`, not `label`.
+// Defaults: minItems 1, maxItems 3.
 const addressList = new AddressListInput({
-  label: 'Address List',
+  title: 'Address List',
   maxItems: 3
 });
 
 addressList.mount(document.getElementById('address-list-field'));
+const addresses = addressList.getValues();   // array of address objects
 ```
 
 ### 7.4 PersonInfoList ??Person Info List
@@ -1335,9 +1431,11 @@ addressList.mount(document.getElementById('address-list-field'));
 ```javascript
 import { PersonInfoList } from './ui_components/input/PersonInfoList/PersonInfoList.js';
 
+// The per-row fields are fixed (name, gender, age, id, otherId); there is no
+// `fields` option. Extends ListInput, so the heading option is `title`.
 const personList = new PersonInfoList({
-  label: 'Family Members',
-  fields: ['name', 'relationship', 'phone', 'birthDate'],
+  title: 'Family Members',
+  minItems: 1,
   maxItems: 10
 });
 
@@ -1349,13 +1447,14 @@ personList.mount(document.getElementById('person-list'));
 ```javascript
 import { PhoneListInput } from './ui_components/input/PhoneListInput/PhoneListInput.js';
 
+// The phone-type list comes from the active locale, not from a `types` option.
 const phoneList = new PhoneListInput({
-  label: 'Contact Phones',
-  maxItems: 5,
-  types: ['Mobile', 'Home', 'Work']
+  title: 'Contact Phones',
+  maxItems: 5
 });
 
 phoneList.mount(document.getElementById('phone-list'));
+const phones = phoneList.getValues();   // [{ type, number }, ...]
 ```
 
 ### 7.6 OrganizationInput ??Organization Input
@@ -1363,12 +1462,15 @@ phoneList.mount(document.getElementById('phone-list'));
 ```javascript
 import { OrganizationInput } from './ui_components/input/OrganizationInput/OrganizationInput.js';
 
+// OrganizationInput extends ChainedInput with three fixed org levels
+// (level1 / level2 / level3). It has no `label` or `fields` option and
+// throws unless a real `loadUnits` loader is supplied.
 const orgInput = new OrganizationInput({
-  label: 'Employer',
-  fields: ['name', 'department', 'title', 'phone']
+  loadUnits: async (parentId) => api.get(`/org/units?parent=${parentId}`)
 });
 
 orgInput.mount(document.getElementById('org-field'));
+const org = orgInput.getValues();   // { level1, level2, level3 }
 ```
 
 ### 7.7 Other Advanced Inputs
@@ -1381,7 +1483,7 @@ orgInput.mount(document.getElementById('org-field'));
 
 - **StudentInput** ??Student information input
 
-All these components follow the unified API (`mount`, `getValue`, `setValue`, `destroy`).
+These composite inputs expose `mount`, `getValues`, `setValues` and `destroy`. They are multi-field containers, so they use the plural `getValues()` / `setValues()` accessors rather than the single-value `getValue()` / `setValue()` of the plain form components; on `ChainedInput` and its subclasses `setValues()` is async because it may have to reload dependent option lists.
 
 ---
 
@@ -1497,13 +1599,13 @@ timeline.mount(container);
 
 ## 9. Visualization Components
 
-Visualization components are located in `packages/javascript/browser/ui_components/viz/`, with 20 components total. All built with pure SVG + native DOM, zero external dependencies.
+Visualization components are located in `packages/javascript/browser/ui_components/viz/`, with 23 components total. They are built on Canvas 2D plus native DOM: SVG is banned library-wide and enforced at hard zero by `node tools/scripts/audit-csp.mjs`. The only third-party code involved is the copy of Leaflet vendored under `ui_components/vendor/`, which the map components load from the same origin.
 
 ![Visualization Overview](screenshots/after/viz-Charts.png)
 
 ### 9.1 Chart Series
 
-All charts inherit from `BaseChart` with a shared unified interface.
+All charts inherit from `CanvasChart` (`viz/CanvasChart.js`), which supplies DPR-aware sizing, hit regions, tooltips and `exportPNG()`. The old SVG `BaseChart` has been deleted. Mount with `mount(container)` and release with `destroy()`.
 
 ```javascript
 import { BarChart } from './ui_components/viz/BarChart.js';
@@ -1511,43 +1613,49 @@ import { LineChart } from './ui_components/viz/LineChart.js';
 import { PieChart } from './ui_components/viz/PieChart.js';
 import { RoseChart } from './ui_components/viz/RoseChart.js';
 
-// Bar chart
+// Bar chart - the data shape is { labels, series }, not an array of points
 const barChart = new BarChart({
   title: 'Monthly Revenue',
-  data: [
-    { label: 'Jan', value: 120000 },
-    { label: 'Feb', value: 98000 },
-    { label: 'Mar', value: 150000 }
-  ],
+  data: {
+    labels: ['Jan', 'Feb', 'Mar'],
+    series: [{ name: 'Revenue', data: [120000, 98000, 150000] }]
+  },
+  stacked: false,
+  unit: 'USD',        // suffix appended after the value in labels/tooltips
   width: 600,
   height: 400
 });
 
 barChart.mount(document.getElementById('bar-chart'));
 
-// Line chart
+// Line chart - labels and series both live inside `data`
 const lineChart = new LineChart({
   title: 'User Trends',
-  series: [
-    { name: 'New Users', data: [100, 120, 115, 140, 160] },
-    { name: 'Active Users', data: [500, 520, 530, 550, 580] }
-  ],
-  labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May'],
+  data: {
+    labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May'],
+    series: [
+      { name: 'New Users', data: [100, 120, 115, 140, 160] },
+      { name: 'Active Users', data: [500, 520, 530, 550, 580] }
+    ]
+  },
+  showPoints: true,
   width: 600,
   height: 400
 });
 
 lineChart.mount(document.getElementById('line-chart'));
 
-// Pie chart
+// Pie chart - slices are { name, value }; per-slice colours come from the
+// `colors` array (theme tokens), not from a `color` key on each slice
 const pieChart = new PieChart({
   title: 'Browser Market Share',
   data: [
-    { label: 'Chrome', value: 65, color: '#4285F4' },
-    { label: 'Safari', value: 19, color: '#FF9500' },
-    { label: 'Firefox', value: 10, color: '#FF6611' },
-    { label: 'Other', value: 6, color: '#999' }
-  ]
+    { name: 'Chrome', value: 65 },
+    { name: 'Safari', value: 19 },
+    { name: 'Firefox', value: 10 },
+    { name: 'Other', value: 6 }
+  ],
+  donut: false
 });
 
 pieChart.mount(document.getElementById('pie-chart'));
@@ -1559,28 +1667,32 @@ pieChart.mount(document.getElementById('pie-chart'));
 import { OrgChart } from './ui_components/viz/OrgChart.js';
 import { RelationChart } from './ui_components/viz/RelationChart.js';
 
-// Org chart ??supports flat data auto-conversion to tree (flatToHierarchy)
+// Org chart - the option is `root` and it takes an already-nested tree.
+// There is no `data` option and no flatToHierarchy helper; flatten/nest your
+// data before handing it over.
 const orgChart = new OrgChart({
-  data: [
-    { id: 1, name: 'CEO', parentId: null },
-    { id: 2, name: 'CTO', parentId: 1 },
-    { id: 3, name: 'VP Sales', parentId: 1 },
-    { id: 4, name: 'Frontend Engineer', parentId: 2 }
-  ],
+  root: {
+    id: 1, label: 'CEO', title: 'Chief Executive',
+    children: [
+      { id: 2, label: 'CTO', children: [{ id: 4, label: 'Frontend Engineer' }] },
+      { id: 3, label: 'VP Sales' }
+    ]
+  },
   width: 800,
   height: 600
 });
 
 orgChart.mount(document.getElementById('org-chart'));
 
-// Relation chart
+// Relation chart - the edge list option is `links`, not `edges`.
+// `group` drives node colouring and the legend.
 const relationChart = new RelationChart({
   nodes: [
-    { id: 'a', label: 'User' },
-    { id: 'b', label: 'Order' },
-    { id: 'c', label: 'Product' }
+    { id: 'a', label: 'User', group: 'core' },
+    { id: 'b', label: 'Order', group: 'core' },
+    { id: 'c', label: 'Product', group: 'catalog' }
   ],
-  edges: [
+  links: [
     { source: 'a', target: 'b', label: 'Creates' },
     { source: 'b', target: 'c', label: 'Contains' }
   ]
@@ -1591,15 +1703,27 @@ relationChart.mount(document.getElementById('relation-chart'));
 
 ### 9.3 Other Visualization Components
 
-- **TimelineChart** ??Timeline chart
+- **TimelineChart** — Timeline chart
 
-- **SankeyChart** ??Sankey diagram (flow visualization)
+- **SankeyChart** — Sankey diagram (flow visualization)
 
-- **SunburstChart** ??Sunburst chart (hierarchical proportions)
+- **SunburstChart** — Sunburst chart (hierarchical proportions)
 
-- **FlameChart** ??Flame chart (performance analysis)
+- **FlameChart** — Flame chart (performance analysis)
 
-- **HierarchyChart** ??Hierarchy structure chart
+- **HierarchyChart** — Hierarchy structure chart
+
+- **HeatmapChart** — Heatmap
+
+- **ScatterChart** — Scatter plot
+
+- **RoseChart** — Rose / polar-area chart
+
+- **Sparkline** — Inline mini chart
+
+- **ClusterGraph** — Clustered force-directed graph
+
+- **WebPainter** — Canvas painter/annotator (base class of the map editors)
 
 ### 9.4 Map Components
 
@@ -1608,18 +1732,27 @@ relationChart.mount(document.getElementById('relation-chart'));
 ```javascript
 import { LeafletMap } from './ui_components/viz/LeafletMap.js';
 
+// LeafletMap takes its container in the constructor and initialises there;
+// it has no mount() and no `markers` option. `center` is an object, not an
+// array. Leaflet itself is loaded from the vendored copy under
+// ui_components/vendor/leaflet/ (same-origin, strict-CSP friendly).
 const map = new LeafletMap({
-  center: [25.0330, 121.5654], // Taipei 101
+  container: '#map-area',
+  center: { lat: 25.0330, lng: 121.5654 }, // Taipei 101
   zoom: 13,
-  markers: [
-    { lat: 25.0330, lng: 121.5654, popup: 'Taipei 101' }
-  ]
+  tileLayer: 'nlsc',   // 'nlsc' (default) | 'osm'
+  onReady: (leafletMap) => {
+    L.marker([25.0330, 121.5654]).addTo(leafletMap).bindPopup('Taipei 101');
+  }
 });
 
-map.mount(document.getElementById('map-area'));
+map.setCenter(25.0330, 121.5654);
+map.setZoom(15);
+map.switchLayer('osm');
+map.destroy();
 ```
 
-Other map components: MapEditor, MapEditorV2, CanvasMap.
+Other map components: MapEditor, MapEditorV2, CanvasMap, TGOSMapEditor. `MapEditor` and `MapEditorV2` both implement `destroy()`; call it when tearing a page down so their listeners and child components are released.
 
 #### OSMMapEditor ??OSM Map Editor
 
@@ -1644,9 +1777,9 @@ const editor = new OSMMapEditor({
 editor.setCenter(48.8566, 2.3522);  // Move to Paris
 editor.setZoom(15);
 
-// GeoJSON import/export
-await editor.importGeoJSON(file);
-const geojson = editor.exportGeoJSON();
+// GeoJSON import/export is driven from the editor's own toolbar buttons;
+// the underlying methods are private (_importGeoJSON / _exportGeoJSON) and
+// are not part of the public API.
 ```
 
 **Features**: OSM base map (3 tile sources), distance/area measurement, coordinate panel (DD/DMS), scale bar, compass, GeoJSON import/export, map capture, inherits all WebPainter drawing/layer/export features.
@@ -1656,18 +1789,23 @@ const geojson = editor.exportGeoJSON();
 ```javascript
 import { DrawingBoard } from './ui_components/viz/DrawingBoard/DrawingBoard.js';
 
+// DrawingBoard renders into the container given to the constructor; it has no
+// mount() and no `tools` option (its toolset is pen / line / highlighter /
+// eraser, chosen from the built-in toolbar). The stroke width option is
+// `lineWidth`, and colours must be theme tokens, not raw hex.
 const board = new DrawingBoard({
+  container: '#drawing-area',
   width: 800,
   height: 600,
-  tools: ['pen', 'line', 'rect', 'circle', 'eraser'],
-  strokeColor: '#000',
-  strokeWidth: 2
+  strokeColor: 'var(--cl-text)',
+  lineWidth: 2,
+  onDraw: () => {},
+  onClear: () => {}
 });
 
-board.mount(document.getElementById('drawing-area'));
-
-// Export image
-const imageData = board.toDataURL('image/png');
+// Export image (downloads a PNG; there is no toDataURL())
+board.exportPNG('drawing.png');
+board.destroy();
 ```
 
 ### 9.6 WebTextEditor ??Rich Text Editor
@@ -1686,8 +1824,8 @@ const editor = new WebTextEditor({
   onChange: (html) => console.log('Content changed')
 });
 
-// Get/Set content
-const html = editor.getContent();
+// Get/Set content - the getter is getHTML()
+const html = editor.getHTML();
 editor.setContent('<p>New content</p>');
 ```
 
@@ -1695,7 +1833,7 @@ editor.setContent('<p>New content</p>');
 
 ### 9.7 RegionMap ??Taiwan Administrative Region Map
 
-SVG map component supporting data visualization and interaction for 22 administrative regions.
+Canvas map component supporting data visualization and interaction for the 22 administrative regions of Taiwan. The region outlines are SVG path strings fed to `Path2D` and painted on a canvas; no SVG element is created.
 
 ```javascript
 import { RegionMap } from './ui_components/data/RegionMap/RegionMap.js';
@@ -1710,7 +1848,8 @@ const map = new RegionMap({
   showLabels: true,
   showValues: true,
   colorScale: RegionMap.createColorScale(0, 5000000, ['#e3f2fd', '#1565c0']),
-  onClick: (regionCode, data) => console.log(regionCode, data)
+  onClick: (regionCode) => console.log(regionCode),
+  onChange: ({ code, name }) => console.log(code, name)
 });
 
 map.mount(document.getElementById('map-area'));
@@ -1724,7 +1863,7 @@ map.setData(updatedData);
 
 ### 10.1 TriggerEngine ??Trigger Engine
 
-TriggerEngine provides 8 built-in atomic behaviors for field-to-field cascading logic.
+TriggerEngine provides 8 built-in atomic behaviors for field-to-field cascading logic. Triggers are declared on the source field definition and bound to live component instances; unknown actions and unknown trigger events are ignored with a `console.warn`.
 
 ```javascript
 import { TriggerEngine } from './page-generator/TriggerEngine.js';
@@ -1733,114 +1872,128 @@ const engine = new TriggerEngine();
 
 // Built-in behaviors: clear, setValue, show, hide, setReadonly, setRequired, reload, reloadOptions
 
-// Define trigger rules
-engine.addRule({
-  source: 'userType',           // Source field
-  condition: (value) => value === 'admin',  // Trigger condition
-  actions: [
-    { type: 'show', target: 'adminPanel' },
-    { type: 'setRequired', target: 'adminCode', params: { required: true } }
-  ]
+// Triggers live on the source field definition as { on, target, action, params }.
+// There is no addRule() and no condition callback: `on` picks the event and
+// `action` must already be registered.
+const fieldDefinitions = [
+  {
+    fieldName: 'userType',
+    fieldType: 'select',
+    triggers: [
+      { on: 'change', target: 'adminPanel', action: 'show' },
+      { on: 'change', target: 'adminCode', action: 'setRequired', params: { value: true } }
+    ]
+  },
+  { fieldName: 'adminPanel', fieldType: 'text' },
+  { fieldName: 'adminCode', fieldType: 'text' }
+];
+
+// fieldInstances is a Map: fieldName -> { formField, component }
+engine.bind(fieldDefinitions, fieldInstances);
+
+// Run one behavior by hand: execute(action, sourceField, targetField, params)
+engine.execute('show', 'userType', 'adminPanel');
+
+// Custom behavior - the handler receives (sourceEntry, targetEntry, params),
+// each entry being { formField, component, definition }
+engine.registerAction('highlight', (source, target, params = {}) => {
+  target.component.element.style.setProperty(
+    'background-color', params.color || 'var(--cl-warning-light)');
 });
 
-// Trigger when source field value changes
-engine.trigger('userType', 'admin');
-
-// Custom behavior
-engine.registerAction('highlight', (target, params) => {
-  const el = document.getElementById(target);
-  el.style.backgroundColor = params.color || '#FFFFCC';
-});
+// Release the wrapped callbacks when the page goes away
+engine.unbind();
+engine.destroy();
 ```
+
+**Trigger events (`on`):** `change`, `check`, `uncheck`, `upload`.
 
 **Built-in Behaviors:**
 
 | Behavior | Description | Example |
 |---|---|---|
-| `clear` | Clear target field value | `{ type: 'clear', target: 'email' }` |
-| `setValue` | Set target field value | `{ type: 'setValue', target: 'status', params: { value: 'active' } }` |
-| `show` | Show target element | `{ type: 'show', target: 'detailSection' }` |
-| `hide` | Hide target element | `{ type: 'hide', target: 'detailSection' }` |
-| `setReadonly` | Set as read-only | `{ type: 'setReadonly', target: 'name', params: { readonly: true } }` |
-| `setRequired` | Set as required | `{ type: 'setRequired', target: 'phone', params: { required: true } }` |
-| `reload` | Reload component data | `{ type: 'reload', target: 'dataTable' }` |
-| `reloadOptions` | Reload options | `{ type: 'reloadOptions', target: 'cityDropdown' }` |
+| `clear` | Clear target field value | `{ on: 'change', target: 'email', action: 'clear' }` |
+| `setValue` | Set target field value | `{ on: 'change', target: 'status', action: 'setValue', params: { value: 'active' } }` |
+| `show` | Show target element | `{ on: 'check', target: 'detailSection', action: 'show' }` |
+| `hide` | Hide target element | `{ on: 'uncheck', target: 'detailSection', action: 'hide' }` |
+| `setReadonly` | Set as read-only | `{ on: 'change', target: 'name', action: 'setReadonly', params: { value: true } }` |
+| `setRequired` | Set as required | `{ on: 'change', target: 'phone', action: 'setRequired', params: { value: true } }` |
+| `reload` | Reload component data | `{ on: 'upload', target: 'dataTable', action: 'reload' }` |
+| `reloadOptions` | Reload options | `{ on: 'change', target: 'cityDropdown', action: 'reloadOptions' }` |
 
 ### 10.2 BehaviorDef ??Behavior Definition
 
-BehaviorDef defines page-level behavior patterns:
+BehaviorDef is the `behaviors` block of a PageDefinition. Every value is a **method name string**, not a function: PageGenerator emits `this._<name>()` call sites and generates matching stub methods on the page class. Because these names are written into the generated file as bare identifiers, `generate()` rejects any that is not a valid JavaScript IdentifierName.
 
 ```javascript
-const behaviorDef = {
-  // Execute on page init
-  onInit: (page) => {
-    page.loadData();
-    page.setFieldReadonly('createdDate', true);
-  },
+const definition = {
+  name: 'OrderPage',
+  type: 'form',
+  fields: [
+    { name: 'category', type: 'select', label: 'Category' },
+    { name: 'country', type: 'select', label: 'Country' }
+  ],
+  behaviors: {
+    onInit: 'loadDefaults',        // becomes: await this._loadDefaults()
+    onSave: 'afterSave',           // becomes: await this._afterSave()
+    onDelete: 'afterDelete',       // becomes: await this._afterDelete()
 
-  // Execute after save
-  onSave: (page, result) => {
-    Notification.success('Saved successfully');
-    page.navigateTo('/list');
-  },
-
-  // Execute after delete
-  onDelete: (page, result) => {
-    Notification.success('Deleted successfully');
-    page.navigateTo('/list');
-  },
-
-  // Field change cascading
-  fieldTriggers: {
-    'category': [
-      {
-        condition: (value) => value === 'urgent',
-        actions: [
-          { type: 'show', target: 'priorityPanel' },
-          { type: 'setRequired', target: 'deadline' }
-        ]
-      }
-    ],
-    'country': [
-      {
-        condition: () => true,
-        actions: [
-          { type: 'reloadOptions', target: 'cityDropdown' }
-        ]
-      }
-    ]
+    // fieldName -> handler method name, invoked when that field changes
+    fieldTriggers: {
+      category: 'onCategoryChange',
+      country: 'onCountryChange'
+    }
   }
 };
+
+// PageGenerator emits stub methods you then fill in:
+//   async _loadDefaults() { ... }
+//   async _afterSave() { ... }
+//   async _onCategoryChange() { ... }   // stubs take no arguments
+//
+// A name that is not a valid identifier fails the whole generate() call:
+//   generate({ ..., behaviors: { onInit: 'load-data' } })
+//   // -> { code: null, errors: ['behaviors.onInit is emitted as a bare
+//   //      JavaScript identifier and must be a valid IdentifierName, ...'] }
 ```
 
 ### 10.3 SPA Core Framework
 
 The SPA core is located in `templates/spa/frontend/core/`, providing a complete single-page application framework.
 
-#### Router ??Hash Router
+#### Router — Hash / History Router
 
 ```javascript
 import { Router } from './core/Router.js';
 
-const router = new Router();
-
-// Register routes
-router.addRoute('/', HomePage);
-router.addRoute('/users', UserListPage);
-router.addRoute('/users/:id', UserDetailPage);
-router.addRoute('/users/:id/edit', UserEditPage);
-
-// Nested routes
-router.addRoute('/admin', AdminPage, [
-  { path: '/admin/settings', page: AdminSettingsPage },
-  { path: '/admin/logs', page: AdminLogsPage }
-]);
+// Routes are passed to the constructor as a table; there is no addRoute().
+// Nested routes are expressed with `children`, and the page class key is
+// `component`. `mode` selects hash (default) or history routing.
+const router = new Router({
+  mode: 'hash',                 // 'hash' | 'history'
+  store,
+  api,
+  layout,
+  routes: [
+    { path: '/', component: HomePage },
+    { path: '/users', component: UserListPage, children: [
+      { path: ':id', component: UserDetailPage },
+      { path: ':id/edit', component: UserEditPage }
+    ]},
+    { path: '/admin', component: AdminPage, children: [
+      { path: 'settings', component: AdminSettingsPage },
+      { path: 'logs', component: AdminLogsPage }
+    ]}
+  ]
+});
 
 // Start router
 router.start();
 
 // Programmatic navigation
 router.navigate('/users/123');
+router.navigate('/users', { query: { page: 2 }, replace: true });
+router.back();
 ```
 
 #### Store ??State Management
@@ -1883,9 +2036,14 @@ const newUser = await api.post('/users', { name: 'Jane Smith', email: 'jane@exam
 await api.put('/users/123', { name: 'Jane Smith (Updated)' });
 await api.delete('/users/123');
 
-// Paginated query
-const result = await api.get('/users', { page: 1, pageSize: 20, keyword: 'John' });
-// { data: [...], total: 100, page: 1, pageSize: 20 }
+// Other verbs and helpers
+await api.patch('/users/123', { name: 'Jane' });
+await api.upload('/files', formData, (percent) => console.log(percent));
+await api.download('/reports/1', 'report.xlsx');
+
+// Token handling (stored in localStorage under access_token / refresh_token)
+api.setToken(accessToken, refreshToken);
+api.clearToken();
 ```
 
 #### BasePage ??Page Lifecycle
@@ -1893,30 +2051,32 @@ const result = await api.get('/users', { page: 1, pageSize: 20, keyword: 'John' 
 ```javascript
 import { BasePage } from './core/BasePage.js';
 
+// The lifecycle is onInit() -> template() -> _bindEvents() -> onMounted(),
+// with onDestroy() on teardown. There is no onLoad() and no onRender():
+// markup comes from template(), and this.esc() escapes interpolated values.
 class UserListPage extends BasePage {
-  constructor() {
-    super();
-    this.title = 'User Management';
-  }
+  // The router constructs the page with { router, store, api, params, query, meta }
 
-  // Page lifecycle
   async onInit() {
-    // Initialize components
-    this.table = new DataTable({ ... });
+    // Load data before the first render
+    this._data = { users: await this.api.get('/users') };
   }
 
-  async onLoad(params) {
-    // Load data (triggered each time entering the page)
-    const data = await this.api.get('/users');
-    this.table.setData(data);
+  template() {
+    return `<h1>User Management</h1><div id="user-table"></div>`;
   }
 
-  onRender(container) {
-    // Render UI
-    this.table.mount(container);
+  events() {
+    return { 'click .refresh': 'reload' };
   }
 
-  onDestroy() {
+  async onMounted() {
+    // Mount child components into the rendered DOM
+    this.table = new DataTable({ container: this.element.querySelector('#user-table') });
+    this.table.setData(this._data.users);
+  }
+
+  async onDestroy() {
     // Cleanup resources
     this.table.destroy();
   }
@@ -1930,20 +2090,22 @@ class UserListPage extends BasePage {
 ```javascript
 import { ComponentBinder } from './ui_components/binding/ComponentBinder.js';
 
-const binder = new ComponentBinder();
+// ComponentBinder renders components from a JSON config list; it has no
+// bind() / setModel() / getValues(). The constructor takes the context object
+// whose methods the `lifecycle` hooks name.
+const binder = new ComponentBinder(this);   // `this` = the page/controller
 
-// Bind components to data model
-binder.bind(nameInput, 'user.name');
-binder.bind(emailInput, 'user.email');
-binder.bind(roleDropdown, 'user.role');
+binder.render([
+  { component: 'TextInput', fieldName: 'name', displayName: 'Name', required: true },
+  { component: 'TextInput', fieldName: 'email', displayName: 'Email' },
+  { component: 'Dropdown', fieldName: 'role', displayName: 'Role',
+    attrs: { items: [{ value: 'admin', label: 'Admin' }] },
+    lifecycle: { onInit: 'onRoleReady', onChange: 'onRoleChanged' } }
+], document.getElementById('form-area'));
 
-// Set data model (auto-updates component values)
-binder.setModel({
-  user: { name: 'John Doe', email: 'john@example.com', role: 'admin' }
-});
-
-// Get all bound component values
-const formData = binder.getValues();
+// Reach a rendered instance and use its own accessors
+const nameInput = binder.getComponent('name');
+const name = nameInput.getValue();
 ```
 
 #### ComponentFactory ??Component Factory
@@ -1951,16 +2113,31 @@ const formData = binder.getValues();
 ```javascript
 import { ComponentFactory } from './ui_components/binding/ComponentFactory.js';
 
-// Dynamically create components from field definitions
-const component = ComponentFactory.create({
-  type: 'text',
-  name: 'username',
+// create(name, options): the first argument is the registry name of the
+// component, the second is that component's own options object.
+const component = ComponentFactory.create('TextInput', {
   label: 'Username',
   required: true,
   maxLength: 50
 });
 
 component.mount(container);
+
+// Look a class up without instantiating, or register your own
+const Cls = ComponentFactory.getComponentClass('TextInput');
+ComponentFactory.register('MyWidget', MyWidget);
+```
+
+#### LazyComponentFactory — Deferred Component Factory
+
+`LazyComponentFactory` has the same `create` / `getComponentClass` / `register` surface as `ComponentFactory`, but its registry holds dynamic `import()` loaders instead of eagerly imported classes, so a page only pulls in the modules it actually references. It is the **default factory for `DynamicToolRenderer`** (and therefore for `DynamicPageRenderer` in `tool` mode); pass `factory: ComponentFactory` to opt back into the eager one.
+
+```javascript
+import { LazyComponentFactory } from './ui_components/binding/LazyComponentFactory.js';
+
+// Load only the modules a definition needs, then create synchronously
+await LazyComponentFactory.preload(['DataTable', 'BarChart']);
+const table = LazyComponentFactory.create('DataTable', { columns, data });
 ```
 
 ### 10.5 Utilities & Services (utils/)
@@ -1979,6 +2156,15 @@ element.innerHTML = `<a href="${sanitizeUrl(userUrl)}">Link</a>`;
 
 // HTML tag whitelist filtering
 const cleanHtml = sanitizeHTML(dirtyHtml);
+
+// Explicit opt-in for markup you know is safe. raw() brands the returned
+// object with Symbol.for('bricks4agent.rawHtml') and isRawHtml() checks that
+// brand as an own property, so a plain or JSON-parsed { __html: '...' } object
+// is NOT honoured - API data can no longer smuggle itself past escaping.
+import { raw, isRawHtml } from './utils/security.js';
+const trusted = raw('<b>bold</b>');
+isRawHtml(trusted);                 // true
+isRawHtml({ __html: '<b>x</b>' });  // false
 ```
 
 > **Important**: All user input must be escaped using `escapeHtml()` when rendered to HTML, and URLs must be sanitized with `sanitizeUrl()` to prevent XSS attacks.
@@ -1990,9 +2176,12 @@ import { GeolocationService } from './utils/GeolocationService.js';
 
 const geo = new GeolocationService();
 
-// Get current position
+// Returns the browser's native GeolocationPosition
 const position = await geo.getCurrentPosition();
-console.log('Lat:', position.latitude, 'Lng:', position.longitude);
+console.log('Lat:', position.coords.latitude, 'Lng:', position.coords.longitude);
+
+// Or get coordinates plus a reverse-geocoded address in one call
+const info = await geo.getLocationInfo();
 ```
 
 #### WeatherService ??Weather Service
@@ -2000,8 +2189,11 @@ console.log('Lat:', position.latitude, 'Lng:', position.longitude);
 ```javascript
 import { WeatherService } from './utils/WeatherService.js';
 
-const weather = new WeatherService({ apiKey: 'YOUR_API_KEY' });
-const forecast = await weather.getForecast(25.033, 121.565);
+// No API key: the service calls Open-Meteo. Point `baseUrl` at your own
+// backend proxy if you need connect-src to stay 'self'.
+const weather = new WeatherService({ language: 'zh-TW', temperatureUnit: 'celsius' });
+const current = await weather.getCurrentWeather(25.033, 121.565);
+const forecast = await weather.getForecast(25.033, 121.565, 7);
 ```
 
 ---
@@ -2010,13 +2202,17 @@ const forecast = await weather.getForecast(25.033, 121.565);
 
 The page generator is located in `packages/javascript/browser/page-generator/`, capable of auto-generating complete pages from field definitions.
 
-### 11.1 Supported 30 Field Types
+### 11.1 Supported 34 Field Types
+
+Run `node tools/page-gen.js --list-types` to print the current list, together with the supported trigger events and actions.
 
 | Category | Field Type | Description |
 |---|---|---|
 | Basic Text | `text` | Single-line text |
 |  | `email` | Email |
 |  | `password` | Password |
+|  | `tel` | Phone number |
+|  | `url` | URL |
 |  | `textarea` | Multi-line text |
 |  | `richtext` | Rich text editor |
 | Number | `number` | Number input |
@@ -2043,7 +2239,9 @@ The page generator is located in `packages/javascript/browser/page-generator/`, 
 |  | `socialmedia` | Social media accounts |
 |  | `organization` | Organization info |
 |  | `student` | Student info |
-| Other | `hidden` | Hidden field |
+| Other | `rating` | Star rating |
+|  | `tags` | Tag input |
+|  | `hidden` | Hidden field |
 
 ### 11.2 Page Definition Format
 
@@ -2109,11 +2307,11 @@ if (result.errors.length > 0) {
 }
 ```
 
-> `generate()` returns `{ code, errors }`. If the definition does not provide a complete API contract or custom behaviors, the generated file keeps `_save()` / behavior stubs for follow-up implementation.
+> `generate()` returns `{ code, errors }`. On any validation failure it returns `{ code: null, errors: [...] }` and emits nothing. Besides schema validation, it checks every name that is written into the generated file as a bare JavaScript identifier - `definition.name`, each `field.name`, and `behaviors.onInit` / `onSave` / `onDelete` / `fieldTriggers.*` - and reports each offender through the same `errors` array. If the definition does not provide a complete API contract or custom behaviors, the generated file keeps `_save()` / behavior stubs for follow-up implementation.
 
 ### 11.4 Dynamic Rendering (DynamicPageRenderer)
 
-DynamicPageRenderer supports three rendering modes, creating pages dynamically without generating static files.
+DynamicPageRenderer supports four rendering modes - `form`, `detail`, `list` and `tool` - creating pages dynamically without generating static files. `tool` mode lazily imports `DynamicToolRenderer`, which builds its components through `LazyComponentFactory`. When `mode` is omitted, a declarative query definition is treated as `list` and a `type: 'tool'` definition as `tool`.
 
 ```javascript
 import { DynamicPageRenderer } from './page-generator/DynamicPageRenderer.js';
@@ -2133,6 +2331,10 @@ const detailPage = new DynamicPageRenderer({
   definition: pageDefinition,
   mode: 'detail',
   data: userData,
+  // lazyTabs defaults to true: a structured detail view (detail.tabs) creates
+  // each tab panel immediately but fills its content on first activation.
+  // Pass false to build every tab's content up front.
+  lazyTabs: true,
   onBack: () => router.navigate('/users'),
   onEdit: () => router.navigate(`/users/${userData.id}/edit`)
 });
@@ -2200,11 +2402,13 @@ The Web UI provides:
 ### 12.2 CLI Commands
 
 ```bash
-# Create a new project (interactive)
-node templates/spa/scripts/spa-cli.js new
-
-# Create a new project (non-interactive)
+# Create a new project (interactive). --name and --output only preset the
+# default answers; every prompt is still asked.
 node templates/spa/scripts/spa-cli.js new --name my-blog --output ./projects
+
+# Create a new project without prompts: --config is the only non-interactive
+# path. Start from templates/spa/scripts/project-config.example.json.
+node templates/spa/scripts/spa-cli.js new --config ./my-blog.json
 
 # Generate a page (frontend)
 node templates/spa/scripts/spa-cli.js page article/ArticleList
@@ -2221,35 +2425,38 @@ node templates/spa/scripts/spa-cli.js feature Article --fields "Title:string,Pub
 
 ```
 projects/my-app/
-?謚??? frontend/
-??  ?謚??? adapters/           # Frontend adapters
-??  ?謚??? components/         # Template-bundled components
-??  ?謚??? core/               # SPA core framework
-??  ??  ?謚??? Router.js       # Hash router
-??  ??  ?謚??? Store.js        # State management
-??  ??  ?謚??? ApiService.js   # API calls
-??  ??  ?謚??? BasePage.js     # Page base class
-??  ??  ?謚??? Layout.js       # Layout
-??  ??  ????? Security.js     # Security utilities
-??  ?謚??? pages/              # Pages
-??  ??  ????? users/
-??  ??      ?謚??? UserListPage.js
-??  ??      ????? UserDetailPage.js
-??  ?謚??? styles/             # Styles
-??  ????? index.html          # Entry file
-?謚??? backend/
-??  ?謚??? Controllers/        # Controllers
-??  ?謚??? Data/               # AppDb (BaseOrm) / initialization
-??  ?謚??? Models/             # Data models
-??  ?謚??? Services/           # Business logic
-??  ?謚??? Program.cs          # .NET 10 Minimal API entry
-??  ?謚??? appsettings.json    # Configuration
-??  ????? my-app.csproj       # Project file
-?謚??? tools/
-??  ????? static-server/      # Frontend static server
-?謚??? project.json            # Sanitized project config
-?謚??? start.bat               # Windows startup script
-????? start.sh                # Unix startup script
++-- frontend/
+|   +-- components/         # Template-bundled components
+|   +-- core/               # SPA core framework
+|   |   +-- App.js          # App shell
+|   |   +-- Router.js       # Hash / history router
+|   |   +-- Store.js        # State management
+|   |   +-- ApiService.js   # API calls
+|   |   +-- BasePage.js     # Page base class
+|   |   +-- DefinedPage.js  # PageDefinition-driven page
+|   |   +-- NestedPage.js   # Nested-route page
+|   |   +-- Layout.js       # Layout
+|   |   \-- Security.js     # Security utilities
+|   +-- definition/         # PageDefinition JSON consumed at runtime
+|   +-- runtime/            # Definition runtime glue
+|   +-- pages/              # Pages (routes.js + generated/ + per-entity folders)
+|   +-- styles/             # Styles
+|   \-- index.html          # Entry file
++-- backend/
+|   +-- Data/               # AppDbContext (BaseOrm) / initialization
+|   +-- Generated/          # Generated endpoints and services
+|   +-- Models/             # Data models
+|   +-- Services/           # Business logic
+|   +-- definition/         # Backend copy of the page definitions
+|   +-- Program.cs          # .NET 10 Minimal API entry (endpoints live here)
+|   +-- appsettings.json    # Configuration
+|   \-- my-app.csproj       # Project file
++-- tools/
+|   \-- static-server/      # Frontend static server
++-- project.json            # Sanitized project config
++-- README.html             # Generated project readme
++-- start.bat               # Windows startup script
+\-- start.sh                # Unix startup script
 ```
 
 > The SQLite filename is configured through `project.json` / `appsettings.json`; the actual database file is created on first run.
@@ -2292,52 +2499,58 @@ await db.UpdateAsync(user);
 await db.DeleteAsync<User>(id);
 ```
 
-### 13.2 Repository + UnitOfWork
+### 13.2 Transactions
+
+BaseOrm ships no Repository or UnitOfWork type - there is no `BaseRepository<T>` and no `UnitOfWork` class anywhere in the repository. Group writes with a transaction on the `BaseDb` instance and wrap your own query methods around it.
 
 ```csharp
-// Repository pattern
-public class UserRepository : BaseRepository<User>
+await using var db = BaseDb.UseSqlite("Data Source=app.db");
+
+await db.BeginTransactionAsync();
+try
 {
-    public UserRepository(IDbConnection connection) : base(connection) { }
-
-    public async Task<IEnumerable<User>> GetActiveUsersAsync()
-    {
-        return await QueryAsync("SELECT * FROM Users WHERE IsActive = 1");
-    }
+    await db.InsertAsync(newUser);
+    await db.InsertAsync(newRole);
+    await db.CommitAsync();
 }
-
-// UnitOfWork pattern
-using var uow = new UnitOfWork(connectionString);
-var userRepo = uow.GetRepository<UserRepository>();
-var roleRepo = uow.GetRepository<RoleRepository>();
-
-await userRepo.InsertAsync(newUser);
-await roleRepo.InsertAsync(newRole);
-
-uow.Commit(); // Commit transaction
+catch
+{
+    await db.RollbackAsync();
+    throw;
+}
 ```
 
 ### 13.3 JWT Helper + PasswordHasher
 
 ```csharp
-using Security;
+using Bricks4Agent.Security.Encryption;
+using Bricks4Agent.Security.JWT;
 
-// Password hashing (PBKDF2, 100,000 iterations)
-var hashedPassword = PasswordHasher.Hash("MyPassword123");
-bool isValid = PasswordHasher.Verify("MyPassword123", hashedPassword);
+// packages/csharp/security/Encryption/PasswordHasher.cs uses BCrypt
+// (work factor 12) through instance methods - not static PBKDF2 helpers.
+var hasher = new PasswordHasher();
+var hashedPassword = hasher.HashPassword("MyPassword123");
+bool isValid = hasher.VerifyPassword("MyPassword123", hashedPassword);
+bool needsRehash = hasher.NeedsRehash(hashedPassword);
 
-// JWT generation and validation
-var jwtHelper = new JwtHelper(secretKey, issuer, audience);
+// The generated SPA backend uses a different scheme: BCryptHelper in
+// backend/Data/AppDbContext.cs stores PBKDF2-SHA256 (100,000 iterations,
+// 16-byte salt, 32-byte hash) formatted as "iterations.salt.hash".
+
+// JwtHelper is configuration-driven; it reads Jwt:SecretKey (required),
+// Jwt:Issuer, Jwt:Audience and Jwt:ExpirationMinutes (default 60).
+var jwtHelper = new JwtHelper(configuration);
 
 // Generate Token
-var token = jwtHelper.GenerateToken(new Dictionary<string, string>
-{
-    ["userId"] = "123",
-    ["role"] = "admin"
-}, expiresInMinutes: 60);
+var token = jwtHelper.GenerateToken(
+    userId: 123,
+    username: "jdoe",
+    email: "jdoe@example.com",
+    roles: new[] { "admin" },
+    additionalClaims: new Dictionary<string, string> { ["tenant"] = "acme" });
 
-// Validate Token
-var claims = jwtHelper.ValidateToken(token);
+// Validate Token -> ClaimsPrincipal
+ClaimsPrincipal principal = jwtHelper.ValidateToken(token);
 ```
 
 ### 13.4 BaseController + Middleware
@@ -2347,35 +2560,38 @@ var claims = jwtHelper.ValidateToken(token);
 var builder = WebApplication.CreateBuilder(args);
 var app = builder.Build();
 
-// Register middleware
-app.UseExceptionMiddleware();  // Global exception handling
-app.UseCors("AllowedOrigins");  // CORS
+// Register middleware. The extension in
+// packages/csharp/api/Middleware/ExceptionMiddleware.cs is called
+// UseGlobalExceptionHandler(); there is no UseExceptionMiddleware().
+app.UseGlobalExceptionHandler();  // Global exception handling
+app.UseCors("AllowedOrigins");    // CORS
 app.UseAuthentication();
 app.UseAuthorization();
 
-// API endpoints
+// API endpoints. The ApiResponse factory methods are SuccessResponse /
+// ErrorResponse / NotFoundResponse / UnauthorizedResponse / ForbiddenResponse.
 app.MapGet("/api/users", async (UserService service, int page = 1, int pageSize = 20) =>
 {
     var result = await service.GetPagedAsync(page, pageSize);
-    return ApiResponse.Success(result);
+    return ApiResponse<PagedResult<User>>.SuccessResponse(result);
 });
 
 app.MapPost("/api/users", async (UserService service, CreateUserDto dto) =>
 {
     var user = await service.CreateAsync(dto);
-    return ApiResponse.Created(user);
+    return ApiResponse<User>.SuccessResponse(user, "Created", 201);
 });
 
 app.MapPut("/api/users/{id}", async (UserService service, int id, UpdateUserDto dto) =>
 {
     await service.UpdateAsync(id, dto);
-    return ApiResponse.Success();
+    return ApiResponse.SuccessResponse();
 });
 
 app.MapDelete("/api/users/{id}", async (UserService service, int id) =>
 {
     await service.DeleteAsync(id);
-    return ApiResponse.Success();
+    return ApiResponse.SuccessResponse();
 });
 
 app.Run();
@@ -2384,22 +2600,32 @@ app.Run();
 ### 13.5 ApiResponse + Pagination
 
 ```csharp
-// Unified API response format
+// Unified API response format (packages/csharp/api/Responses/ApiResponse.cs)
 public class ApiResponse<T>
 {
     public bool Success { get; set; }
+    public int StatusCode { get; set; }
     public string Message { get; set; }
     public T Data { get; set; }
-    public int? Total { get; set; }
-    public int? Page { get; set; }
-    public int? PageSize { get; set; }
+    public List<string> Errors { get; set; }
+    public DateTime Timestamp { get; set; }
+    public string TraceId { get; set; }
 }
 
-// Usage examples
-return ApiResponse.Success(data);                    // Success
-return ApiResponse.Created(newItem);                  // Created
-return ApiResponse.Error("Not found", 404);           // Error
-return ApiResponse.Paged(data, total, page, pageSize); // Paginated
+// Usage examples - the factory methods are *Response, and there is no
+// Success() / Created() / Error() / Paged()
+return ApiResponse<User>.SuccessResponse(user);                  // 200
+return ApiResponse<User>.SuccessResponse(user, "Created", 201);  // 201
+return ApiResponse<User>.ErrorResponse("Invalid input");         // 400
+return ApiResponse<User>.NotFoundResponse();                     // 404
+return ApiResponse<User>.UnauthorizedResponse();                 // 401
+return ApiResponse<User>.ForbiddenResponse();                    // 403
+return ApiResponse.SuccessResponse();                            // no payload
+
+// Paging is a separate BaseOrm type, PagedResult<T>
+// { Items, TotalCount, Page, PageSize, TotalPages }
+var paged = await db.QueryPagedAsync<User>("SELECT * FROM Users ORDER BY Id", 1, 20);
+return ApiResponse<PagedResult<User>>.SuccessResponse(paged);
 ```
 
 ### 13.6 BaseCache ??In-Memory Cache
@@ -2432,9 +2658,9 @@ var userId = cache.HGet<string>("session:abc", "userId");
 cache.Enqueue("tasks", new Task { Id = 1 });
 var task = cache.Dequeue<Task>("tasks");
 
-// Pub/Sub
-cache.Subscribe("notifications", msg => Console.WriteLine(msg));
-cache.Publish("notifications", "New message");
+// Pub/Sub - the handler is Action<string channel, object? message>
+cache.Subscribe("notifications", (channel, msg) => Console.WriteLine($"{channel}: {msg}"));
+int delivered = cache.Publish("notifications", "New message");
 
 // Persistence
 cache.SaveToFile("cache.json");
@@ -2466,14 +2692,18 @@ element.innerHTML = `<a href="${url}">Link</a>`;   // XSS vulnerability!
 
 ### 14.2 Password Security
 
-Using PBKDF2 algorithm with 100,000 iterations:
+The generated SPA backend hashes passwords with PBKDF2-SHA256 at 100,000 iterations (16-byte salt, 32-byte hash), stored as `iterations.salt.hash`. The helper lives in `backend/Data/AppDbContext.cs` and is named `BCryptHelper` despite being PBKDF2. Do not change the iteration count, salt size, hash size or stored format: the unit tests and the SPA template tests pin compatibility vectors against them.
 
 ```csharp
 // Hash password (when storing to database)
-var hashed = PasswordHasher.Hash(plainPassword);
+var hashed = BCryptHelper.HashPassword(plainPassword);
 
 // Verify password (when logging in)
-bool isMatch = PasswordHasher.Verify(plainPassword, hashedPassword);
+bool isMatch = BCryptHelper.VerifyPassword(plainPassword, storedHash);
+
+// The shared library type, Bricks4Agent.Security.Encryption.PasswordHasher,
+// is a separate BCrypt implementation with instance methods
+// (HashPassword / VerifyPassword / NeedsRehash).
 ```
 
 > Never store passwords in plaintext, and do not use outdated hashing algorithms like MD5 or SHA1.
@@ -2571,7 +2801,7 @@ Before deployment, verify the following:
 
 - [ ] All user input is escaped with `escapeHtml()` / `sanitizeUrl()`
 
-- [ ] Passwords are hashed with PBKDF2 (100K iterations)
+- [ ] Passwords are hashed with the project helper, unchanged (generated backend: PBKDF2-SHA256, 100K iterations; shared `Security` library: BCrypt, work factor 12)
 
 - [ ] JWT transport and storage are reviewed (default: Bearer header; if cookies are used, `HttpOnly` / `Secure` / `SameSite` are enabled)
 
@@ -2623,11 +2853,11 @@ Limits:
 
 See:
 
-- [AzureVmIisDeployment.md](/d:/Bricks4Agent/docs/designs/AzureVmIisDeployment.html)
+- [AzureVmIisDeployment.md](../designs/AzureVmIisDeployment.md)
 
-- [tool.json](/d:/Bricks4Agent/packages/csharp/broker/tool-specs/deploy.azure-vm-iis/tool.json)
+- [tool.json](../../packages/csharp/broker/tool-specs/deploy.azure-vm-iis/tool.json)
 
-- [TOOL.md](/d:/Bricks4Agent/packages/csharp/broker/tool-specs/deploy.azure-vm-iis/TOOL.html)
+- [TOOL.md](../../packages/csharp/broker/tool-specs/deploy.azure-vm-iis/TOOL.md)
 
 ---
 

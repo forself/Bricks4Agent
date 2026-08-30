@@ -1,8 +1,9 @@
 /**
  * PageGenerator 測試腳本
  *
- * 測試頁面生成器的完整流程
- * 執行方式: node --experimental-modules test-generator.js
+ * 測試頁面生成器的完整流程（DiaryEditorDefinition → generated/DiaryEditorPage.js）
+ * 執行方式: npm run test:generator
+ *           或 node packages/javascript/browser/page-generator/examples/test-generator.js
  *
  * @module examples/test-generator
  */

@@ -28,11 +28,25 @@ node tools/page-gen.js --def employee.json --mode static --output ./output/
 node tools/page-gen.js --list-types
 ```
 
+### Generate from a DefinitionTemplate
+
+單頁需以 `--page` 指定；批次則用 `--pages` 或 `--all`，在同一個 Node 行程內完成
+（模板只解析與驗證一次，輸出與逐頁執行逐位相同），並輸出彙總 JSON。
+
+```bash
+node tools/page-gen.js --def site-definition.json --page products-list --mode static --output ./output/
+node tools/page-gen.js --def site-definition.json --pages products-list,orders-list --mode static --output ./output/
+node tools/page-gen.js --def site-definition.json --all --mode both --output ./output/
+```
+
 ## Options
 
 | Option | Description | Default |
 |---|---|---|
 | `--def <path>` | Input definition file | - |
+| `--page <id>` | DefinitionTemplate 內要選用的單一 page id | - |
+| `--pages <ids>` | DefinitionTemplate 內要批次處理的 page id（逗號分隔） | - |
+| `--all` | 批次處理 DefinitionTemplate 內所有 pages | `false` |
 | `--mode <mode>` | `static`, `dynamic`, or `both` | `static` |
 | `--output <dir>` | Output directory | - |
 | `--validate` | Validate only, do not generate files | `false` |

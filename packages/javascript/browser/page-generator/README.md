@@ -81,6 +81,7 @@
 │  tools/page-gen.js                              │
 │  --mode static|dynamic|both                     │
 │  --def <json-file>                              │
+│  --page / --pages / --all                       │
 │  --validate / --list-types                      │
 └─────────────────────────────────────────────────┘
 ```
@@ -355,10 +356,18 @@ const resolver = new FieldResolver();
 
 | 方法 | 參數 | 回傳 | 說明 |
 |---|---|---|---|
-| `preload()` | - | `Promise<void>` | 預載入所有元件模組（必須在 resolve 前呼叫） |
+| `preload(neededTypes?)` | `string[]`（可省略） | `Promise<void>` | 預載入元件模組（必須在 resolve 前呼叫）。省略參數時載入全部模組；傳入頁面實際出現的 fieldType／component 名稱時只載入對應模組 |
 | `registerComponent(name, factory)` | `string, Function` | - | 註冊自訂元件工廠 |
 | `resolve(fieldDef)` | `Object` | `{ component, formField }` | 解析單一欄位定義為元件 + FormField |
 | `resolveAll(fieldDefs)` | `Array` | `Map<string, { component, formField }>` | 批次解析所有欄位 |
+
+**preload() 的過濾規則：**
+
+- `neededTypes` 內含任一未知名稱（例如 `registerComponent()` 註冊的自訂元件）時，自動回退為全量預載，行為與省略參數相同
+
+- 多次 `preload()` 為合併式：子集預載不會清空既有快取，只會擴充可解析的元件集合
+
+- `DynamicFormRenderer.init()` 會自動從 `definition.fields` 蒐集型別後帶入；但外部以 `options.fieldResolver` 注入的 resolver 可能在此表單之外續用，仍維持全量預載
 
 ---
 
@@ -409,6 +418,7 @@ const detail = new DynamicDetailRenderer(options);
 | `data` | `Object` | `{}` | 資料物件 `{ fieldName: value }` |
 | `onBack` | `Function` | `null` | 返回按鈕回調 |
 | `onEdit` | `Function` | `null` | 編輯按鈕回調 |
+| `lazyTabs` | `boolean` | `true` | 結構化明細（`detail.tabs`）的分頁內容延後到首次啟用才產生；面板元素仍會立即存在。傳 `false` 可改回建構時就產生全部分頁內容 |
 
 **公開方法：**
 
@@ -472,6 +482,8 @@ await list.init();
 **欄位定義中的列表相關屬性：**
 - `isSearchable: true` — 欄位出現在搜尋區
 - `listOrder: number` — 欄位在表格中的排序（> 0 才顯示）
+
+**lookup 標籤快取：** 具 `lookup` / `optionsSource` / `options` 的欄位，其 value → label 索引會依欄位定義物件快取，同一欄的所有列共用同一份索引，不再逐格重建。快取在 `setData()` 與 `destroy()` 時整批清除；渲染期間若欄位的 `options`（或 endpoint 來源的共用清單）被換成另一個陣列或長度改變，也會就地重建。因此執行期就地改寫欄位選項後，最遲在下次 `setData()` 會反映。
 
 ---
 
@@ -755,6 +767,29 @@ cat employee.json | node tools/page-gen.js --mode static --output ./output/
 ```
 
 所有輸出皆為 JSON 格式（stdout），錯誤訊息輸出至 stderr。
+
+### DefinitionTemplate 選取與批次生成
+
+輸入為 DefinitionTemplate（含多個 pages）時，可挑選要處理的 page：
+
+| 旗標 | 說明 |
+|---|---|
+| `--page <id>` | 選用單一 page id |
+| `--pages <ids>` | 批次處理逗號分隔的多個 page id（不可重複） |
+| `--all` | 批次處理 template 內所有 pages |
+
+```bash
+# 選取單一 page
+node tools/page-gen.js --def site-definition.json --page products-list --mode static --output ./output/
+
+# 批次生成指定的多個 pages
+node tools/page-gen.js --def site-definition.json --pages products-list,orders-form --mode static --output ./output/
+
+# 批次生成全部 pages
+node tools/page-gen.js --def site-definition.json --all --mode static --output ./output/
+```
+
+`--pages` / `--all` 僅適用於 DefinitionTemplate 輸入，輸出為彙總 JSON `{ success, results: [{ pageId, files }] }`；搭配 `--validate` 則只逐頁驗證，錯誤訊息會加上 `page <id>:` 前綴。
 
 ---
 

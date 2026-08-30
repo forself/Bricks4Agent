@@ -66,24 +66,38 @@ new TextInput({ label: '姓名', required: true }).mount('#app');
 ### 從定義生成頁面
 
 ```bash
-# 驗證 / 生成 / 列出支援的欄位型別
+# 生成單頁 / 批次生成 DefinitionTemplate 全部頁面 / 列出支援的欄位型別
 node tools/page-gen.js --def page.json --mode static --output ./out/
+node tools/page-gen.js --def site-definition.json --all --mode static --output ./out/
 node tools/page-gen.js --list-types
 ```
+
+`--validate` 只驗證定義不產檔;`--page <id>` 與 `--pages <id,id>` 可從 DefinitionTemplate 挑選個別頁面。
 
 ### 一鍵全端 CRUD
 
 ```bash
-# 建立專案,再生成一個功能(前端頁面 + C# Model/Service/API)
+# 建立專案 —— 互動式;--name/--output 只是預填提示的預設值
 node templates/spa/scripts/spa-cli.js new --name my-app --output ./out
+
+# 非互動:先把答案寫進設定檔(參考 scripts/project-config.example.json)
+node templates/spa/scripts/create-project.js --config project.json
+
+# 生成一個功能(C# Model/Service + 前端頁面),產出落在 templates/spa 本身
 node templates/spa/scripts/spa-cli.js feature Article --fields "Title:string,Content:text,IsPublic:bool"
 ```
+
+`feature`、`page`、`api` 都以 `templates/spa/` 為基準寫檔,不會寫進 `new` 剛建立的專案——
+它們改的是 `new` 用來複製的範本樹。
 
 ### 啟動生成器 Web UI
 
 ```bash
-npm run serve   # 於 port 3080 提供 tools/spa-generator/frontend
+node tools/spa-generator/server.js   # 前端 + 生成 API,port 3080
+npm run serve                        # 只有靜態前端,同樣 port 3080
 ```
+
+Node 伺服器預設綁 loopback,並拒絕非 loopback 的 `Host`/`Origin` 請求。
 
 ## 測試
 

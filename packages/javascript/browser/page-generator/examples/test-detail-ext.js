@@ -123,6 +123,13 @@ function findByDataset(nodes, key, value) {
     return nodes.find(node => node.dataset?.[key] === value);
 }
 
+function activateTab(root, tabId) {
+    const button = findByDataset(byClass(root, 'dynamic-detail__tab'), 'tabId', tabId);
+    assert.ok(button, `tab button not found: ${tabId}`);
+    button.dispatchEvent({ type: 'click' });
+    return button;
+}
+
 export async function runDetailExtTests() {
     const results = [];
     const t = async (name, fn) => {
@@ -156,6 +163,17 @@ export async function runDetailExtTests() {
         const tabs = byClass(root, 'dynamic-detail__tab');
         assert.deepEqual(tabs.map(tab => tab.textContent), ['基本資料', '成員', '附件', '紀錄', '組織架構圖']);
         assert.equal(detail.getActiveTabId(), 'basic');
+
+        // lazyTabs 預設開啟：未啟用的分頁面板要先是空的，首次啟用才補內容
+        const attachmentPanel = findByDataset(byClass(root, 'dynamic-detail__tab-panel'), 'tabPanelId', 'attachments');
+        assert.equal(attachmentPanel.children.length, 0);
+        activateTab(root, 'attachments');
+        assert.ok(attachmentPanel.children.length > 0);
+
+        // 其餘分頁的內容同樣延後產生，先逐一啟用後面的斷言才看得到
+        activateTab(root, 'members');
+        activateTab(root, 'history');
+        activateTab(root, 'orgChart');
 
         const subtables = byClass(root, 'dynamic-detail__subtable');
         const mainSubtable = findByDataset(subtables, 'subtableId', 'secondaryActivityAreas');

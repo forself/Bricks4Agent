@@ -24,7 +24,7 @@ export class DynamicPageRenderer {
      * @param {Function} options.onEdit - 編輯回調（detail 模式）
      * @param {Function} options.onPermissionCheck - 權限 UX gate (permissionKey, page, definition) => boolean|Promise<boolean>
      * @param {Object} options.routeParams - 路由參數（detail 模式）
-     * @param {boolean} options.lazyTabs - true 時分頁內容延後到首次啟用才產生（detail 模式，預設 false 即立即產生）
+     * @param {boolean} options.lazyTabs - 分頁內容延後到首次啟用才產生（detail 模式），預設 true；傳 false 可改回建構時就產生全部分頁內容
      * @param {number} options.pageSize - 每頁筆數（list 模式）
      */
     constructor(options = {}) {
@@ -42,7 +42,7 @@ export class DynamicPageRenderer {
             onDownload: null,
             confirmDownload: null,
             routeParams: {},
-            lazyTabs: false,
+            lazyTabs: true,
             pageSize: 20,
             customComponents: null,
             customComponentRegistry: null,
@@ -104,7 +104,7 @@ export class DynamicPageRenderer {
                     definition,
                     data: data || {},
                     routeParams: this.options.routeParams || {},
-                    lazyTabs: this.options.lazyTabs === true,
+                    lazyTabs: this.options.lazyTabs !== false,
                     onBack: this.options.onBack,
                     onEdit: this.options.onEdit,
                     onAction: this.options.onAction,

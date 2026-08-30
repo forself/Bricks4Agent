@@ -141,11 +141,11 @@ node templates/spa/scripts/generate-api.js <名稱> --fields "<欄位>"
 ### 2.4 建立新專案
 
 ```bash
-# 互動模式
-node templates/spa/scripts/spa-cli.js new
-
-# 非互動模式
+# 互動模式（--name / --output 只是提示的預設值，之後仍會逐項詢問）
 node templates/spa/scripts/spa-cli.js new --name my-app --output ./projects
+
+# 非互動模式：唯一不會停下來問的路徑是 --config
+node templates/spa/scripts/create-project.js --config templates/spa/scripts/project-config.example.json
 ```
 
 ---
@@ -305,6 +305,8 @@ const result = generator.generate(definition);
 // result.errors → 錯誤陣列（空陣列表示成功）
 ```
 
+**命名限制**：`name`、每個 `fields[].name`，以及 `behaviors.onInit/onSave/onDelete` 與 `behaviors.fieldTriggers[欄位名]` 的方法名，都會被寫成生成檔中的**裸 JavaScript 識別字**，無法跳脫，因此生成前會先驗證是否為合法的 JS `IdentifierName`（依 Unicode `ID_Start`/`ID_Continue`，中文欄位名如 `姓名` 合法；`a-b`、`2col`、含空白或引號者不合法）。保留字只在繫結位置（`name` → class 名稱）被擋。不合法時 `generate()` 回傳 `{ code: null, errors: [...] }`——**產碼後務必先檢查 `result.errors` 是否為空**。
+
 ### 7.1 完整 30 種欄位類型
 
 | 類型 | 元件 | 類型 | 元件 |
@@ -324,6 +326,37 @@ const result = generator.generate(definition);
 | avatar | AvatarUploader | tags | TagInput |
 | signature | SignaturePad | percentage | PercentageInput |
 | currency | CurrencyInput | hidden | (隱藏欄位) |
+
+### 7.2 用 `tools/page-gen.js` 批次產頁
+
+單頁：
+
+```bash
+node tools/page-gen.js --def employee.json --mode static --output ./output/
+```
+
+輸入若是 DefinitionTemplate（一份定義內含多個 pages），可在**同一個 process 內**一次產出多頁（不必每頁開一個 process）：
+
+```bash
+# 指定 page id（逗號分隔）
+node tools/page-gen.js --def site-definition.json --pages products-list,orders-form --mode static --output ./output/
+
+# 模板內所有 pages
+node tools/page-gen.js --def site-definition.json --all --mode static --output ./output/
+```
+
+| 旗標 | 說明 |
+|---|---|
+| `--def <path>` | 定義 JSON 路徑（省略則從 stdin 讀取） |
+| `--page <id>` | 從 DefinitionTemplate 取單一 page |
+| `--pages <ids>` | 從 DefinitionTemplate 批次處理指定 page id（逗號分隔，不可重複） |
+| `--all` | 批次處理 DefinitionTemplate 內所有 pages |
+| `--mode <mode>` | `static` \| `dynamic` \| `both`（預設 `static`） |
+| `--output <dir>` | 輸出目錄 |
+| `--validate` | 只驗證不生成（批次模式下逐頁驗證，錯誤訊息帶 page id 前綴） |
+| `--list-types` | 列出欄位類型、觸發器事件與動作 |
+
+批次模式輸出彙總 JSON `{ success, results: [{ pageId, files }], errors? }`；模板只解析驗證一次，並且**先驗證全部選取的 pages 才開始生成**。`--pages`/`--all` 只適用於 DefinitionTemplate 輸入，用在單頁定義上會直接報錯。
 
 ---
 
@@ -354,6 +387,12 @@ node scripts/generate-page.js orders/OrderList --api-path "/api/orders"
 
 PageGenerator 輸出的 import 路徑為 depth=1（`../components/X/X.js`）。若頁面位於子目錄（如 `pages/orders/OrderPage.js`），generate-page.js 會自動調整為 `../../components/X/X.js`。
 
+### 8.5 欄位名／頁面名不是合法識別字
+
+看到 `... is emitted as a bare JavaScript identifier and must be a valid IdentifierName` 或 `... must not be a reserved word`，表示定義裡的名稱無法寫成生成檔中的識別字（詳見 §7 的命名限制）。改名即可，`errors` 非空時 `code` 為 `null`，不會有半成品檔案。
+
+另外 `behaviors.fieldTriggers[欄位名]` 的值是**方法名字串**（如 `"reloadDistricts"`），不是動作物件陣列；後者是欄位層級 `field.triggers` 的形狀，放錯位置會被上述識別字檢查擋下。
+
 ---
 
 ## 9. 操作流程範例
@@ -364,15 +403,14 @@ PageGenerator 輸出的 import 路徑為 depth=1（`../components/X/X.js`）。�
 # 1. 建立新專案
 node templates/spa/scripts/spa-cli.js new --name my-blog --output ./projects
 
-# 2. 進入專案目錄
-cd projects/my-blog
+# 2. 生成 Article 功能
+#    注意：feature / page / api 是寫進 repo 的 templates/spa/ 樹，不是寫進剛建立的專案；
+#    create-project.js 複製時會排除 scripts/，生成的專案內沒有這支 CLI 可用。
+node templates/spa/scripts/spa-cli.js feature Article --fields "Title:string,Content:text,Author:string,PublishedAt:datetime,IsPublished:bool"
 
-# 3. 生成 Article 功能
-node scripts/spa-cli.js feature Article --fields "Title:string,Content:text,Author:string,PublishedAt:datetime,IsPublished:bool"
+# 3. 依終端輸出指示，更新 Program.cs
 
-# 4. 依終端輸出指示，更新 Program.cs
-
-# 5. 啟動
+# 4. 啟動
 dotnet run              # 後端
 # 前端用任意靜態伺服器開啟 frontend/
 ```

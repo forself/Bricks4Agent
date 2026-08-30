@@ -66,18 +66,30 @@ new TextInput({ label: 'Name', required: true }).mount('#app');
 <p>Every component follows the same contract: <code>new X(options)</code> → <code>.mount(container)</code> → <code>.destroy()</code>.
 See <a href="AGENT-UI-GUIDE.html">AGENT-UI-GUIDE.md</a> for the full convention and the component inventory.</p>
 <h3>Generate a page from a definition</h3>
-<pre><code class="language-bash"># validate / generate / list supported field types
+<pre><code class="language-bash"># generate one page / every page of a DefinitionTemplate / list supported field types
 node tools/page-gen.js --def page.json --mode static --output ./out/
+node tools/page-gen.js --def site-definition.json --all --mode static --output ./out/
 node tools/page-gen.js --list-types
 </code></pre>
+<p><code>--validate</code> checks a definition without writing files; <code>--page &lt;id&gt;</code> and <code>--pages &lt;id,id&gt;</code>
+pick individual pages out of a DefinitionTemplate.</p>
 <h3>Scaffold full-stack CRUD</h3>
-<pre><code class="language-bash"># create a project, then generate a feature (frontend pages + C# Model/Service/API)
+<pre><code class="language-bash"># create a project — interactive; --name/--output only pre-fill the prompts
 node templates/spa/scripts/spa-cli.js new --name my-app --output ./out
+
+# non-interactive: answer everything up front (see scripts/project-config.example.json)
+node templates/spa/scripts/create-project.js --config project.json
+
+# generate a feature (C# Model/Service + frontend pages) into templates/spa itself
 node templates/spa/scripts/spa-cli.js feature Article --fields &quot;Title:string,Content:text,IsPublic:bool&quot;
 </code></pre>
+<p><code>feature</code>, <code>page</code> and <code>api</code> write relative to <code>templates/spa/</code>, not into the project
+<code>new</code> just created — they edit the template tree that <code>new</code> copies from.</p>
 <h3>Run the generator Web UI</h3>
-<pre><code class="language-bash">npm run serve   # serves tools/spa-generator/frontend on port 3080
+<pre><code class="language-bash">node tools/spa-generator/server.js   # frontend + generation API on port 3080
+npm run serve                        # static frontend only, also on port 3080
 </code></pre>
+<p>The Node server binds loopback and rejects non-loopback <code>Host</code>/<code>Origin</code> requests.</p>
 <h2>Tests</h2>
 <pre><code class="language-bash">npm test                        # page-generator test suite
 npm run validate:ui-library     # UI library checks

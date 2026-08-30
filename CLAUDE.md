@@ -33,6 +33,9 @@ that turns a JSON `PageDefinition` into working pages (static code generation or
 - Rebuild component metadata after adding/changing a component:
  `node packages/javascript/browser/ui_components/metadata/build-metadata.mjs` (`--check` to validate only)
 
+- Generate pages from a PageDefinition: `node tools/page-gen.js --def page.json --mode static --output ./out/`.
+ For a DefinitionTemplate: `--page <id>` for one page, or `--pages <id,id,...>` / `--all` to generate many in a single process (aggregated JSON result; all selected pages are validated before any is written).
+
 ## Test Artifacts and Cleanup
 
 **Rule: all test-generated files must be tracked and cleaned up.**
@@ -54,11 +57,17 @@ When adding tests that produce files: add the pattern to this table, ensure it i
 
 - **SVG is banned — Canvas only**. `audit-csp.mjs` enforces hard zero; `tools/scripts/svg-baseline.json` is an empty inventory snapshot and cannot waive findings. Chart base = `viz/CanvasChart.js` (DPR, hit-regions, tooltip, exportPNG); theme reactivity via `utils/theme-bus.js`; `Path2D` accepts SVG path strings directly. Canvas color fallbacks must use `FALLBACK_PAINT` from theme-bus — no loose hex in components.
 
-- Security: escape all dynamic HTML with `escapeHtml()`; opt into raw HTML explicitly with `raw()` (see [utils/security.js](packages/javascript/browser/ui_components/utils/security.js)).
+- Security: escape all dynamic HTML with `escapeHtml()`; opt into raw HTML explicitly with `raw()` (see [utils/security.js](packages/javascript/browser/ui_components/utils/security.js)). `isRawHtml()` only accepts the `Symbol.for('bricks4agent.rawHtml')` own property that `raw()` brands — a hand-written or `JSON.parse`d `{ __html }` is no longer an opt-in and falls back to escaping/`sanitizeHTML()`, so API data cannot forge it. `__html` survives on the marker for readers, not as authorisation.
 
 - i18n: user-facing strings go through `Locale.t()` (see [i18n/index.js](packages/javascript/browser/ui_components/i18n/index.js)).
 
-- Component contract: `new X(options)` → `.mount(container)` → `.destroy()`; value components expose `getValue/setValue/setDisabled/clear` (form ones also `setError/clearError`).
+- Component contract: `new X(options)` → `.mount(container)` → `.destroy()`; value components expose `getValue/setValue/setDisabled/clear` (form ones also `setError/clearError`). `destroy()` is mandatory, not optional. `ModalPanel.confirm/alert/prompt` pass `destroyOnClose: true` so the dialog self-destructs after `close()`; a direct `new ModalPanel` keeps `destroyOnClose: false` and stays reusable across `close()`/`open()`.
+
+- Generator definitions: `definition.name`, `field.name` and `behaviors.*` (`onInit`/`onSave`/`onDelete`/`fieldTriggers` values, all handler-method names) are emitted as bare JavaScript identifiers, so `PageGenerator` validates them as real `IdentifierName` — CJK names such as `姓名` pass; reserved words are rejected only in binding positions (`definition.name`). Failures come back through the normal `{ code: null, errors: [...] }` contract.
+
+- Tool pages (`type: 'tool'` / `DynamicToolRenderer`) default to [LazyComponentFactory](packages/javascript/browser/ui_components/binding/LazyComponentFactory.js), which loads only the components a definition names: `create()` stays synchronous, `preload(names)` is awaited inside `init()`. The eager `ComponentFactory` is unchanged for direct callers.
+
+- Detail pages default to `lazyTabs: true` (`DynamicPageRenderer` / `DynamicDetailRenderer`): a tab's content is built on first activation, so components in never-activated tabs do not exist yet. Pass `lazyTabs: false` to build everything up front.
 
 - Generated backend: .NET 10 Minimal API, BaseOrm (lightweight, no EF Core).
 

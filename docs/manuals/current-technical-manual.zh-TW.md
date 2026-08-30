@@ -50,6 +50,7 @@ agent container -> broker sessions/runtime/llm/execution APIs -> broker policy -
 | `packages/csharp/workers/execution-adapter-worker` | `repo.patch.apply`、`build.test.run` trusted adapter |
 | `packages/csharp/workers/line-worker` | LINE webhook ingress bridge |
 | `packages/csharp/database/BaseOrm/net10` | canonical lightweight ORM |
+| `packages/csharp/rag-service` | standalone RAG retrieval minimal API host |
 | `packages/javascript/browser` | UI component library、user portal、page generator、browser package tests |
 | `packages/javascript/browser/user-portal` | broker-served user frontend for login, commands, results and artifacts |
 | `tools/agent` | local/generation/governed agent runtime |
@@ -73,7 +74,7 @@ PowerShell line-sidecar.ps1
   -> provision worker-auth.json
   -> start broker on 127.0.0.1:5361
   -> start line-worker webhook on 127.0.0.1:5357
-  -> start/reuse ngrok
+  -> start/reuse public tunnel (ngrok 優先；不可用時改用 localhost.run，必要時重試 cloudflared)
   -> update LINE webhook
 ```
 
@@ -904,6 +905,16 @@ node tools/page-gen.js --def employee.json --mode static --output .\output
 node tools/page-gen.js --list-types
 ```
 
+`--mode` 接受 `static | dynamic | both`（預設 `static`）。定義也可從 stdin 讀入。
+
+從 DefinitionTemplate 取頁面時，用 `--page` 選單一頁、`--pages` 逗號分隔批次、`--all` 批次生成全部（批次模式輸出彙總 JSON）：
+
+```powershell
+node tools/page-gen.js --def site-definition.json --page products-list --mode static --output .\output
+node tools/page-gen.js --def site-definition.json --pages products-list,orders-form --mode static --output .\output
+node tools/page-gen.js --def site-definition.json --all --mode static --output .\output
+```
+
 ### 15.4 SPA Generator
 
 Workbench：
@@ -914,7 +925,7 @@ tools/spa-generator
 
 It uses:
 
-- ASP.NET Core 8 minimal API。
+- ASP.NET Core minimal API on .NET 10 (`tools/spa-generator/backend/spa-generator.csproj`)。
 
 - SQLite。
 
@@ -1189,7 +1200,7 @@ Requires:
 
 - credentials via `DeploymentSecrets:Mappings` or env vars。
 
-This is Critical risk and must go through approval.
+The shipped tool spec declares `risk_level: high` with `approval_policy: require_approval`, so this capability always goes through a single Admin-tier approval（High 不會自動放行）。
 
 ### 18.6 Browser Governance
 
@@ -1334,7 +1345,11 @@ npm run validate:dotnet-deps
 npm run validate:dotnet-api-usage
 npm run validate:backend-governance
 npm run validate:line-admin
+npm run validate:dotnet10
+npm run test:dotnet10
 ```
+
+`validate:dotnet10` 檢查 target-framework 政策：所有 SDK-style 專案必須是 `net10.0`，唯一豁免是 allowlist 內的 `packages/csharp/database/BaseOrm/netfx48/BaseOrm.csproj`。`test:dotnet10` 在政策通過後再以 Release + `--warnaserror` 逐一 build 這些專案。
 
 ### 20.6 JS/UI/generator
 
@@ -1346,7 +1361,10 @@ npm run audit:ui-styles
 npm run validate:ui-library
 npm run validate:ui-library:browser
 npm run validate:user-portal
+npm run audit:csp
 ```
+
+`audit:csp`（`tools/scripts/audit-csp.mjs`）是動 `ui_components` 前必過的硬門檻：它同時掃 CSP 違規（`<style>` 注入、`setAttribute('style')`、HTML 字串內 `style=` / `on*=`、`eval` / `new Function`、`javascript:` URL）與 Canvas-only 政策的 SVG 硬零（`<svg`、`createElementNS`、`data:image/svg`）。任一命中即 exit 1；`tools/scripts/svg-baseline.json` 只是盤點快照，不能豁免 SVG 命中。
 
 Browser package:
 
@@ -1393,7 +1411,7 @@ Maintain these invariants:
 
 - Execution adapter validates patch base commit and path scope。
 
-- Deployment is Critical and requires approval。
+- Deployment (`deploy.azure-vm-iis`) is High risk and requires Admin-tier approval。
 
 - Artifact links are signed and time-limited。
 

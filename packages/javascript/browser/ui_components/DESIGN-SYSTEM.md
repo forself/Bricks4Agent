@@ -47,7 +47,7 @@ theme.custom.css (override)  :root{ --cl-primary: … }   ← Theme Studio 產�
 
 | 項目 | 位置 |
 |---|---|
-| 元件權威清單 | `metadata/component-catalog.json`(112) |
+| 元件權威清單 | `metadata/component-catalog.json`(116) |
 | 色彩來源資料 | `editor/richtext-palette.js`(MATERIAL 色階 + 吸附 + class 白名單) |
 | 色階 CSS 生成 | `editor/gen-palette-css.mjs` → `palette.css` |
 | 客製樣式生成 | `tools/theme-studio/gen-custom-css.mjs` → `theme.custom.css` |

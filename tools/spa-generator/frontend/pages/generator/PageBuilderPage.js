@@ -15,7 +15,9 @@ import { BasePage } from '../../core/BasePage.js';
  * 員工管理範例定義
  */
 const SAMPLE_EMPLOYEE = {
-    page: { pageName: '員工管理', entity: 'employee', view: 'adminList' },
+    // pageName 會被 page-gen 直接當成輸出的類別名稱（PascalCase 且以 Page 結尾），
+    // 給人看的標題放 title；'adminList' 已保留給宣告式（ext-v2）列表，一般列表用 'list'。
+    page: { pageName: 'EmployeePage', title: '員工管理', entity: 'employee', view: 'list' },
     fields: [
         { fieldName: 'id', label: '編號', fieldType: 'number', formRow: 0, formCol: null, listOrder: 1, isRequired: false, isReadonly: true, isSearchable: false },
         { fieldName: 'name', label: '姓名', fieldType: 'text', formRow: 1, formCol: 6, listOrder: 2, isRequired: true, isReadonly: false, isSearchable: true, validation: { maxLength: 50 } },
@@ -30,7 +32,7 @@ const SAMPLE_EMPLOYEE = {
  * 訂單管理範例定義
  */
 const SAMPLE_ORDER = {
-    page: { pageName: '訂單管理', entity: 'order', view: 'salesList' },
+    page: { pageName: 'OrderPage', title: '訂單管理', entity: 'order', view: 'list' },
     fields: [
         { fieldName: 'orderId', label: '訂單編號', fieldType: 'text', formRow: 0, formCol: null, listOrder: 1, isRequired: false, isReadonly: true, isSearchable: true },
         { fieldName: 'customerName', label: '客戶名稱', fieldType: 'text', formRow: 1, formCol: 6, listOrder: 2, isRequired: true, isReadonly: false, isSearchable: true, validation: { maxLength: 100 } },

@@ -1,7 +1,7 @@
 /**
  * PersonnelDefinition - 人事系統頁面定義（新格式，複合輸入元件展示）
  *
- * 展示所有複合輸入元件的使用方式：
+ * 展示 7 種複合輸入元件的使用方式：
  * - address（地址輸入，含縣市/鄉鎮聯動）
  * - phonelist（電話列表）
  * - socialmedia（社群媒體列表）
@@ -10,7 +10,10 @@
  * - personinfo（人員資訊列表）
  * - addresslist（多筆地址列表）
  *
- * 此定義同時展示 triggers、validation、dependsOn 等進階功能。
+ * （其餘兩種複合型別 chained / list 是上列元件的基底，未在此重複展示。）
+ *
+ * 此定義同時展示 validation（pattern / maxLength / maxItems）驗證規則。
+ * triggers 與 dependsOn 的用法請見 EmployeeDefinition.js。
  *
  * @module examples/PersonnelDefinition
  */
@@ -20,7 +23,9 @@
  */
 export const PersonnelDefinition = {
     page: {
-        pageName: '人事資料管理',
+        // pageName 是輸出的頁面類別名稱（PascalCase 且以 Page 結尾），標題放 title
+        pageName: 'PersonnelPage',
+        title: '人事資料管理',
         entity: 'personnel',
         view: 'form'
     },

@@ -22,6 +22,8 @@ packages/javascript/browser/custom_components/
 ├─ custom-component.schema.json  # JSON Schema
 ├─ registry.json                 # build 產生，瀏覽器從這裡發現定義
 ├─ build-registry.mjs
+├─ index.js                      # 匯出 Registry／Renderer／驗證器
+├─ custom-components.css         # layout class 樣式，頁面需另外載入
 └─ README.md
 ```
 

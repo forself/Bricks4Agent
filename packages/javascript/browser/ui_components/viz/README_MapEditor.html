@@ -53,7 +53,7 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <li><strong>拖動</strong>：直接拖動元素調整位置</li>
 <li><strong>刪除</strong>：刪除選中的元素</li>
 <li><strong>清空</strong>：一鍵清除所有標註</li>
-<li><strong>復原</strong>：支援 Ctrl+Z 復原操作</li>
+<li><strong>復原</strong>：支援 Ctrl+Z 復原操作（歷史記錄上限 50 步，超出後自動丟棄最舊的一筆）</li>
 </ul>
 <h3>💾 匯出功能</h3>
 <ul>
@@ -126,7 +126,13 @@ editor._exportImage();
 
 // 匯出 JSON（自動觸發下載）
 editor._exportJSON();
+
+// 銷毀編輯器（移除 document 上的鍵盤監聽、卸下 DOM、清空歷史與圖片引用）
+editor.destroy();
 </code></pre>
+<blockquote>
+<p>頁面切換或元件卸載時務必呼叫 <code>destroy()</code>：快捷鍵是掛在 <code>document</code> 上的，未銷毀會持續攔截 Delete / Ctrl+Z。<code>destroy()</code> 可重複呼叫，之後仍可能回來的非同步圖片載入回呼會自行略過。</p>
+</blockquote>
 <h3>配置選項</h3>
 <pre><code class="language-javascript">new MapEditor({
   container: &quot;#editor-container&quot;, // 容器選擇器或 DOM 元素
@@ -140,6 +146,9 @@ editor._exportJSON();
 <li><strong>Ctrl+Z</strong>: 復原上一步操作</li>
 <li><strong>雙擊文字</strong>: 編輯文字內容</li>
 </ul>
+<p>快捷鍵綁在 <code>document</code> 上，輸入框（<code>INPUT</code> / <code>TEXTAREA</code>）內的按鍵一律忽略。</p>
+<h3>MapEditorV2（<code>MapEditorV2.js</code>）</h3>
+<p>進階版另有 <strong>Ctrl+Y / Ctrl+Shift+Z</strong>（重做）、<strong>Ctrl+C</strong>（複製選中元素）、<strong>Ctrl+V</strong>（貼上）。其中 Ctrl+C 僅在有選中元素時攔截、Ctrl+V 僅在編輯器本身有剪貼內容時攔截，其餘情況交還瀏覽器原生複製／貼上。V2 同樣提供 <code>destroy()</code>，並會一併銷毀內部使用的子元件與待執行的計時器。</p>
 <h2>🎯 應用場景</h2>
 <ul>
 <li>地圖標註與說明</li>

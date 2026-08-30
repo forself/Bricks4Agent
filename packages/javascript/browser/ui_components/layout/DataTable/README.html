@@ -171,6 +171,20 @@ new DataTable(containerElement, config)
 </tr>
 </tbody>
 </table>
+<h3>選取變更的更新方式</h3>
+<p>使用者點擊行 checkbox 或表頭全選時，DataTable <strong>只定點同步選取相關 DOM</strong>（列的 <code>--selected</code> / <code>--even</code> class、行 checkbox、表頭全選狀態），不重建整張表：</p>
+<ul>
+<li><code>onRender</code> <strong>不會</strong>因為純選取變更而重發</li>
+<li>儲存格內既有的元件實例與事件監聽器不會被銷毀重建，外部加在 <code>&lt;tr&gt;</code> 上的其他 class 也會保留</li>
+<li><code>onRowSelectionChange</code> 仍照常發出</li>
+</ul>
+<p>以下情況維持完整重繪（工具列內容依賴選取狀態，<code>onRender</code> 會再次發出）：</p>
+<ul>
+<li>設定了 <code>options.customToolbarSelect</code></li>
+<li><code>options.customToolbar</code> 傳入的是函式（可能讀取選取狀態）</li>
+<li>由程式呼叫 <code>setSelectedRows(indices)</code></li>
+</ul>
+<p>排序結果在單次渲染流程內共用（工具列、事件綁定重複取用時免重算），流程結束即清除；渲染流程外的呼叫維持即時重算。</p>
 <h3>具名匯出</h3>
 <ul>
 <li><code>linkCell(text, href, options?)</code> — 產生連結儲存格（內部以 <code>Link</code> 元件 hydrate）</li>
@@ -219,7 +233,8 @@ const table = new DataTable({
 <p><strong>規則</strong>：
 - <code>render</code> 回傳 <code>string</code> → 自動 HTML 跳脫（safe-by-default）
 - <code>render</code> 回傳 <code>raw(html)</code> → 原樣輸出（開發者負責確保安全）
-- 在 <code>raw()</code> 內部使用使用者資料時，務必用 <code>escapeHtml()</code> / <code>escapeAttr()</code> 跳脫</p>
+- 在 <code>raw()</code> 內部使用使用者資料時，務必用 <code>escapeHtml()</code> / <code>escapeAttr()</code> 跳脫
+- 只有 <code>raw()</code> 產生的物件會被認可：標記以 <code>Symbol.for(&#39;bricks4agent.rawHtml&#39;)</code> 品牌識別，手寫的 <code>{ __html: &#39;...&#39; }</code>（或 API 回傳的同名 JSON 欄位）一律當成一般值跳脫</p>
 <h2>Demo</h2>
 <p>開啟 <code>demo.html</code> 直接在瀏覽器測試。</p>
 </main>

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
 
+import { isRawHtml } from '../../ui_components/utils/security.js';
 import { validateDefinition } from '../PageDefinition.js';
 import { PageDefinitionAdapter } from '../PageDefinitionAdapter.js';
 import { DynamicPageRenderer } from '../DynamicPageRenderer.js';
@@ -477,11 +478,15 @@ export async function runQueryExtV1Tests() {
             link: { route: '//example.invalid/{GangID}' },
         }, row.GangID, row);
         assert.equal(unsafe, row.GangID);
+        assert.equal(isRawHtml(unsafe), false);
 
         const safe = renderer._formatCellValue({
             ...baseColumn,
             link: { route: '/search/TIMGang/{GangID}' },
         }, row.GangID, row);
+        // raw() 的授權依據是 Symbol.for('bricks4agent.rawHtml') 品牌，不是 __html；
+        // 只檢查 __html 的話，退化成純物件（會被當文字跳脫掉）也一樣會通過。
+        assert.equal(isRawHtml(safe), true);
         assert.match(safe.__html, /^<span data-field-link-host="" data-link-label="G001"><\/span>$/);
         assert.doesNotMatch(safe.__html, /<a\b/i);
     });
@@ -490,10 +495,18 @@ export async function runQueryExtV1Tests() {
         const columns = getQueryColumns(gangAdvanceDefinition);
         const westernColumn = columns.find((column) => column.key === 'TubeAppvDate');
         const backendColumn = columns.find((column) => column.key === 'CreDateTime');
+        const row = gangAdvanceDefinition.fixtures.sampleRow;
+        const renderer = new DynamicListRenderer({ definition: gangAdvanceDefinition });
+
         assert.equal(westernColumn.rocDateSource, 'westernDate');
-        assert.equal(formatRocDateTime(gangAdvanceDefinition.fixtures.sampleRow.TubeAppvDate), '115/07/02 09:30:15');
+        assert.equal(formatRocDateTime(row.TubeAppvDate), '115/07/02 09:30:15');
+        assert.equal(renderer._formatCellValue(westernColumn, row.TubeAppvDate, row), '115/07/02 09:30:15');
+
+        // backendString 的值已經是民國字串，必須原樣輸出；若誤走西元轉換會得到
+        // '-1796/07/02 09:30:15'，所以這裡同時釘住「不再轉一次」這件事。
         assert.equal(backendColumn.rocDateSource, 'backendString');
-        assert.equal(gangAdvanceDefinition.fixtures.sampleRow.CreDateTime, '115/07/02 09:30:15');
+        assert.equal(renderer._formatCellValue(backendColumn, row.CreDateTime, row), '115/07/02 09:30:15');
+        assert.notEqual(formatRocDateTime(row.CreDateTime), '115/07/02 09:30:15');
     });
 
     await t('ext-v2 field.options and dependsOn filter multiselect child options', () => {

@@ -49,11 +49,11 @@ that turns a JSON `PageDefinition` into working pages (static code generation or
 
 - **SVG banned — Canvas only**. `audit-csp.mjs` enforces hard zero; `tools/scripts/svg-baseline.json` is an empty inventory snapshot and cannot waive findings. Chart base `viz/CanvasChart.js`; theme reactivity `utils/theme-bus.js`; color fallbacks only via theme-bus `FALLBACK_PAINT` (no loose hex).
 
-- Security: escape dynamic HTML with `escapeHtml()`; raw HTML only via explicit `raw()`.
+- Security: escape dynamic HTML with `escapeHtml()`; raw HTML only via an explicit `raw()` call — `isRawHtml()` checks the `Symbol.for('bricks4agent.rawHtml')` own property, so a plain or JSON-parsed `{ __html }` is not an opt-in and gets escaped/sanitised.
 
 - i18n: user-facing strings via `Locale.t()`.
 
-- Component contract: `new X(options)` → `.mount(container)` → `.destroy()`.
+- Component contract: `new X(options)` → `.mount(container)` → `.destroy()`; `destroy()` is mandatory. `ModalPanel.confirm/alert/prompt` set `destroyOnClose: true` and self-destruct after close; a direct `new ModalPanel` defaults to `false` and stays reusable.
 
 - Generated backend: .NET 10 Minimal API, BaseOrm (no EF Core).
 
@@ -64,6 +64,14 @@ that turns a JSON `PageDefinition` into working pages (static code generation or
 - The generator has two paths: **static** (`PageGenerator.generate()` / `tools/page-gen.js` emit `.js` files) and **dynamic** (`DynamicPageRenderer` renders at runtime from JSON).
 
 - Field types map to components via `PageDefinition.ComponentMapping` and `FieldResolver`; field interactions via `TriggerEngine`.
+
+- `definition.name`, `field.name` and `behaviors.*` (handler-method names) become bare JS identifiers, so `PageGenerator` validates them as real `IdentifierName` (CJK names pass; reserved words rejected in binding positions) and reports failures as `{ code: null, errors: [...] }`.
+
+- `tools/page-gen.js` takes `--page <id>` for one page of a DefinitionTemplate, and `--pages <id,id,...>` / `--all` to generate many in one process (aggregated JSON output).
+
+- Tool pages (`DynamicToolRenderer`) default to `binding/LazyComponentFactory.js` — only the components a definition names get loaded (`create()` synchronous, `preload(names)` awaited in `init()`); the eager `ComponentFactory` is unchanged.
+
+- Detail pages default to `lazyTabs: true` — a tab's content is built on first activation, not at construction; pass `lazyTabs: false` to opt out.
 
 - To add a missing component, follow [AGENT-UI-GUIDE.md](AGENT-UI-GUIDE.md) §8, then rebuild metadata.
 

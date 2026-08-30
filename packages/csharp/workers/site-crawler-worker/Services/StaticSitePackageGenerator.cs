@@ -12,6 +12,12 @@ public sealed class StaticSitePackageGenerator
         WriteIndented = true,
     };
 
+    // Ownership stamp: the only thing that lets Generate recursively delete an existing package
+    // directory. It is generator bookkeeping, so it stays out of Files and out of the archive.
+    private const string PackageMarkerFileName = ".bricks4agent-static-site-package";
+    private const string PackageMarkerContent =
+        "Written by StaticSitePackageGenerator. This directory is regenerated (and deleted) by the generator.\n";
+
     private readonly ComponentSchemaValidator validator;
     private readonly SiteGenerationQualityAnalyzer qualityAnalyzer;
 
@@ -62,12 +68,7 @@ public sealed class StaticSitePackageGenerator
         }
 
         var outputDirectory = ResolveOutputDirectory(options);
-        if (Directory.Exists(outputDirectory))
-        {
-            Directory.Delete(outputDirectory, recursive: true);
-        }
-
-        Directory.CreateDirectory(outputDirectory);
+        PrepareOutputDirectory(outputDirectory);
         Directory.CreateDirectory(Path.Combine(outputDirectory, "components"));
         Directory.CreateDirectory(Path.Combine(outputDirectory, "components", "generated"));
 
@@ -106,6 +107,37 @@ public sealed class StaticSitePackageGenerator
         };
         result.VerificationReport = new StaticSitePackageVerifier(qualityAnalyzer).Verify(result);
         return result;
+    }
+
+    /// <summary>
+    /// Clear the package directory only when it is one of ours. The caller picks
+    /// <see cref="StaticSitePackageOptions.OutputDirectory"/>, so a recursive delete of whatever
+    /// already sits there would destroy unrelated data on a mistyped path; an absent or empty
+    /// directory is safe, and a previous package is identified by the marker file written below.
+    /// </summary>
+    private static void PrepareOutputDirectory(string outputDirectory)
+    {
+        if (Directory.Exists(outputDirectory))
+        {
+            if (!IsGeneratedPackageDirectory(outputDirectory))
+            {
+                throw new InvalidOperationException(
+                    $"Refusing to overwrite '{outputDirectory}': the directory is not empty and was not created by "
+                    + $"{nameof(StaticSitePackageGenerator)} (no '{PackageMarkerFileName}' marker). "
+                    + "Point output_directory/package_name at a new or empty directory, or delete it yourself first.");
+            }
+
+            Directory.Delete(outputDirectory, recursive: true);
+        }
+
+        Directory.CreateDirectory(outputDirectory);
+        File.WriteAllText(Path.Combine(outputDirectory, PackageMarkerFileName), PackageMarkerContent);
+    }
+
+    private static bool IsGeneratedPackageDirectory(string outputDirectory)
+    {
+        return File.Exists(Path.Combine(outputDirectory, PackageMarkerFileName))
+            || !Directory.EnumerateFileSystemEntries(outputDirectory).Any();
     }
 
     private static string ResolveOutputDirectory(StaticSitePackageOptions options)
@@ -150,6 +182,7 @@ public sealed class StaticSitePackageGenerator
                 FullPath = fullPath,
                 EntryName = Path.GetRelativePath(sourceDirectory, fullPath).Replace('\\', '/'),
             })
+            .Where(entry => !string.Equals(entry.EntryName, PackageMarkerFileName, StringComparison.Ordinal))
             .OrderBy(entry => entry.EntryName, StringComparer.Ordinal)
             .ToList();
 

@@ -17,15 +17,26 @@
  * 員工管理頁面定義（新格式）
  *
  * 此定義可直接傳給：
- * - DynamicPageRenderer（動態渲染）
- * - PageDefinitionAdapter.toOldFormat()（轉為舊格式後給 PageGenerator）
- * - page-gen CLI（命令列工具）
+ * - DynamicPageRenderer（動態渲染，mode: 'form' 或 'list'）
+ * - page-gen CLI（命令列工具，--mode static|dynamic|both）
+ * - PageDefinitionAdapter.toOldFormat()（轉為舊格式）
+ *
+ * 注意：toOldFormat() 會把 field.triggers 原樣放進 behaviors.fieldTriggers，
+ * 而 PageGenerator 要求該值是「方法名識別字字串」，因此本定義（含 triggers）
+ * 轉檔後不能直接餵給 PageGenerator.generate()；靜態生成請走 page-gen CLI，
+ * 它會另外把 triggers 轉成 handle_<fieldName>_trigger 方法名。
+ * 詳見 examples/test-all.js「New-format sample definitions」段落。
  */
 export const EmployeeDefinition = {
     page: {
-        pageName: '員工管理',
+        // pageName 是輸出的頁面類別名稱（PascalCase 且以 Page 結尾），
+        // 給人看的標題放 title；page-gen CLI 會直接把 pageName 當類別名。
+        pageName: 'EmployeePage',
+        title: '員工管理',
         entity: 'employee',
-        view: 'adminList'
+        // 'adminList' 已保留給宣告式（ext-v2）列表定義，會要求 columns[] 等區塊；
+        // 一般新格式列表頁請用 'list'。
+        view: 'list'
     },
     fields: [
         {

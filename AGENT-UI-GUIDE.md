@@ -16,9 +16,9 @@
 
 2. **樣式只用 theme token**：顏色/圓角/陰影/字體一律用 `var(--cl-*)` CSS 變數，禁止寫死色碼。換膚靠文件根的 `[data-theme="dark"]`，元件不寫 media query。
 
-3. **輸出一律跳脫**：任何把資料塞進 HTML 的地方用 `escapeHtml()`；要放原始 HTML 必須顯式 `raw()`。
+3. **輸出一律跳脫**：任何把資料塞進 HTML 的地方用 `escapeHtml()`；要放原始 HTML 必須顯式呼叫 `raw()`。`raw()` 產出的標記帶有 `Symbol.for('bricks4agent.rawHtml')` 品牌鍵，`isRawHtml()` 只認這個自身屬性：手寫或 `JSON.parse` 來的 `{ __html: '…' }` **不再是** opt-in（會退回跳脫或 `sanitizeHTML()`），API 回應因此無法偽造授權。`__html` 仍保留在標記上供舊讀取端取值，但不具授權效力。
 
-4. **嚴格 CSP + SVG 禁用（機器執法）**：禁 `<style>` 注入、禁 innerHTML 模板內 `style=`/`on*=`、禁 eval/`javascript:`（樣式走 CSSOM `cssText`/`setProperty` 或同目錄 `.css` + 同源 `<link>`）；**視覺一律 Canvas、禁新增 SVG**（既有存量按 `tools/scripts/svg-baseline.json` 棘輪只減不增；圖表基底＝`viz/CanvasChart.js`，主題響應靠 `utils/theme-bus.js`，Path2D 可直接吃 SVG path 字串）。守門員：`node tools/scripts/audit-csp.mjs`（六類 CSP 全零 + G 類 SVG 棘輪）、`node tools/scripts/validate-ui-library.mjs`（風格 token 稽核：元件內禁散裝 hex，色回退唯一來源＝theme-bus 的 `FALLBACK_PAINT`）。合規宣稱只認機器判定。
+4. **嚴格 CSP + SVG 禁用（機器執法）**：禁 `<style>` 注入、禁 innerHTML 模板內 `style=`/`on*=`、禁 eval/`javascript:`（樣式走 CSSOM `cssText`/`setProperty` 或同目錄 `.css` + 同源 `<link>`）；**視覺一律 Canvas、禁用 SVG**（`tools/scripts/svg-baseline.json` 現為空的盤點快照，不能豁免任何命中；圖表基底＝`viz/CanvasChart.js`，主題響應靠 `utils/theme-bus.js`，Path2D 可直接吃 SVG path 字串）。守門員：`node tools/scripts/audit-csp.mjs`（六類 CSP 全零 + G 類 SVG 硬零）、`node tools/scripts/validate-ui-library.mjs`（風格 token 稽核：元件內禁散裝 hex，色回退唯一來源＝theme-bus 的 `FALLBACK_PAINT`）。合規宣稱只認機器判定。
 
 ---
 
@@ -79,6 +79,10 @@ c.destroy();          // 卸載並移除 DOM
 
 > ⚠️ 元件建構子的 `options` 欄位**各不相同**。動手用某元件前，先開它的原始碼看 `constructor(options = {...})` 的預設物件，那就是完整可用參數表。例如 [DataTable.js](packages/javascript/browser/ui_components/layout/DataTable/DataTable.js) 支援三種 columns 格式與三種呼叫簽章。
 
+`destroy()` 是契約的必要項而非選配：每個元件（含 `viz/MapEditor`、`viz/MapEditorV2` 這類重量級畫布元件）都要能被卸載乾淨，換頁不留 DOM／監聽／計時器。
+
+**對話框**：`ModalPanel.confirm/alert/prompt` 這三個捷徑帶 `destroyOnClose: true`，關閉後（延後一個 microtask，讓 `onClose` 有機會否決關閉）自行 `destroy()`，呼叫端不必也不該再持有它；已銷毀的面板再 `open()`/`mount()` 只會 warn。直接 `new ModalPanel` 預設 `destroyOnClose: false`，可 `close()` 後重複 `open()`，但生命週期由你負責——這是「越用越慢」的常見來源。兩邊都可用 options 明示覆寫。
+
 ### 用字串名動態建立（重製時很常用）
 
 ```js
@@ -86,6 +90,15 @@ import { ComponentFactory } from '.../ui_components/index.js';
 const dt = ComponentFactory.create('DataTable', { columns, data });   // 查不到回傳 null 並 warn
 ComponentFactory.register('MyNewThing', MyNewThingClass);             // 註冊新元件
 ```
+
+`ComponentFactory` 是 **eager** 版：import 它等於把整套元件庫拉進 bundle。若只需要定義中點名的那幾個元件，改用同介面的 [LazyComponentFactory](packages/javascript/browser/ui_components/binding/LazyComponentFactory.js)（`import { LazyComponentFactory } from '.../ui_components/binding/LazyComponentFactory.js'`，走此直接路徑才有省載入的效果）：
+
+```js
+await LazyComponentFactory.preload(['DataTable', 'BarChart']);        // 先載入，之後 create() 維持同步
+const dt = LazyComponentFactory.create('DataTable', { columns, data });
+```
+
+工具頁（`DynamicToolRenderer`）預設就是它，`preload()` 在 `init()` 內自動執行；名稱不在延遲註冊表時會回退到 eager `ComponentFactory` 的即時 registry，`ComponentFactory.register()` 註冊的元件照樣看得到。
 
 ---
 
@@ -142,8 +155,9 @@ chart.mount('#chart-area');
 import { DynamicPageRenderer } from '.../page-generator/index.js';
 const renderer = new DynamicPageRenderer({
   definition: pageDefinition,          // 見 §4 方式 C 的 PageDefinition 形狀
-  mode: 'form',                        // 'form' | 'detail' | 'list'
+  mode: 'form',                        // 'form' | 'detail' | 'list' | 'tool'
   data: null,                          // 編輯/詳情時帶入資料物件
+  lazyTabs: true,                      // detail 模式分頁延後產生內容，預設 true
   onSave: (values) => {...}, onSearch: (q) => {...}, onEdit: (row) => {...},
 });
 await renderer.init();
@@ -152,6 +166,8 @@ renderer.mount('#app');
 ```
 
 底層：`FieldResolver`（34 種 field type → 元件實例）＋ `TriggerEngine`（8 種動作 clear/setValue/show/hide/setReadonly/setRequired/reload/reloadOptions 做欄位連動）。
+
+**`lazyTabs`（detail 模式）預設 `true`**：`DynamicPageRenderer`／`DynamicDetailRenderer` 只立即建立分頁面板元素，內容等該分頁首次啟用才產生，多分頁詳情頁不必在開頁時就把全部子表／附件／圖表建出來。因此**別假設未啟用分頁裡的元件已存在**（測試或截圖前要先切過去）。要回到建構時就產生全部內容，明確傳 `lazyTabs: false`。
 
 ### 方式 C：靜態產碼（把 JSON 定義落地成 `.js` 頁面檔）
 
@@ -163,7 +179,12 @@ const { code, errors } = new PageGenerator().generate(pageDefinition);
 // errors 為空陣列才算成功；code 是一個完整的 BasePage 子類別原始碼字串
 ```
 
-或用 CLI：`node tools/page-gen.js --def page.json --mode static --output ./out/`（`--list-types` 看支援型別，`--validate` 只驗證）。
+或用 CLI：`node tools/page-gen.js --def page.json --mode static --output ./out/`（`--list-types` 看支援型別，`--validate` 只驗證）。輸入若是 DefinitionTemplate（多頁定義），可用 `--page <id>` 取單頁，或用 `--pages <id,id,...>` / `--all` 在**同一個 process 內**批次產出（舊做法是每頁開一個 process），批次模式輸出彙總 JSON `{ success, results: [{ pageId, files }], errors? }`，且會先驗證全部選取頁再開始生成：
+
+```bash
+node tools/page-gen.js --def site-definition.json --pages products-list,orders-form --mode static --output ./out/
+node tools/page-gen.js --def site-definition.json --all --mode static --output ./out/
+```
 
 **PageDefinition 形狀**（見 [PageDefinition.js](packages/javascript/browser/page-generator/PageDefinition.js)）：
 
@@ -176,10 +197,20 @@ const { code, errors } = new PageGenerator().generate(pageDefinition);
       "validation": { "maxLength": 50 } }
   ],
   "api": { "list": "/api/employee", "get": "...", "create": "...", "update": "...", "delete": "..." },
-  "behaviors": { "fieldTriggers": { "city": [{ "target": "district", "action": "reloadOptions" }] } },
+  "behaviors": { "onSave": "navigateToList", "fieldTriggers": { "city": "reloadDistricts" } },
   "styles": { "layout": "single" }
 }
 ```
+
+> `behaviors.onInit/onSave/onDelete` 與 `behaviors.fieldTriggers[欄位名]` 的值是**方法名字串**（生成器會產出對應的 `_方法名()` stub）。欄位層級的動作清單 `[{ target, action }]` 是 `field.triggers` 的形狀，不要放進 `behaviors.fieldTriggers`。
+
+**識別字限制（會被生成器擋下）**：`definition.name`、`field.name` 與上述 `behaviors.*` 的值都是直接寫進生成檔的**裸 JavaScript 識別字**，無法跳脫，因此在產碼前就會驗證：
+
+- 必須是合法的 JS `IdentifierName`（依 Unicode `ID_Start`/`ID_Continue`，所以 `姓名`、`項目1` 都合法；`a-b`、`2col`、含空白或引號的名稱不合法）。
+
+- 保留字只在「繫結位置」被擋（`definition.name` → class 名稱／import 繫結）；欄位名／行為名輸出在成員存取與加前綴的方法名上，保留字在那裡合法。
+
+- 不合法時走既有契約回報：`generate()` 回傳 `{ code: null, errors: [...] }`，不會產出無法剖析或可注入的程式碼。**產碼後一律先檢查 `errors` 是否為空**。
 
 ---
 
@@ -220,7 +251,7 @@ node templates/spa/scripts/spa-cli.js feature Article --fields "Title:string,Con
 | TGOS 地圖截圖標記(GIS 標註) | `viz/TGOSMapEditor`(臺灣通用電子地圖;OSM 版為 `OSMMapEditor`,兩者僅地圖來源不同,政網可用 `tileLayers` 指向後端 TGOS 代理) |
 | react-jvectormap(區域著色地圖) | `data/RegionMap`(內建台灣地圖,Canvas/Path2D) |
 | 民國曆日期(react-datepicker + 民國轉換) | `form/DatePicker` 用 **`format:'taiwan'`**(`useROC` 是舊參數) |
-| FontAwesome / MUI icons | `common/Icon`(內建 104 個圖示,可 `Icon.register()` 擴充;現為 SVG 存量、波 3 收斂為 Canvas/Path2D) |
+| FontAwesome / MUI icons | `common/Icon`(內建 104 個圖示,可 `Icon.register()` 擴充;已收斂為 Canvas/Path2D,無 SVG) |
 | antd Steps / react-stepzilla | `layout/Stepper` |
 | react-sparklines | `viz/Sparkline` |
 | react-quill / Draft.js | `editor/WebTextEditor` |
@@ -341,9 +372,9 @@ Studio 頁面不得複製或手刻另一套工具 UI。唯一權威定義是 `to
 
 - [ ] 所有顏色/尺寸走 `var(--cl-*)`，無寫死色碼；`[data-theme="dark"]` 下正常
 
-- [ ] 所有動態內容經 `escapeHtml`/`esc()`；原始 HTML 皆顯式 `raw()`
+- [ ] 所有動態內容經 `escapeHtml`/`esc()`；原始 HTML 皆顯式呼叫 `raw()`，沒有任何地方拿 `{ __html }` 物件字面量當 opt-in
 
-- [ ] 元件都有 `mount`/`destroy`，換頁時正確 `destroy` 無殘留 DOM/監聽
+- [ ] 元件都有 `mount`/`destroy`，換頁時正確 `destroy` 無殘留 DOM/監聽；對話框用 `ModalPanel.confirm/alert/prompt`（自動銷毀）或自行管理 `new ModalPanel` 的生命週期
 
 - [ ] 文案走 `Locale.t()`，切語言可更新
 
@@ -368,6 +399,7 @@ Studio 頁面不得複製或手刻另一套工具 UI。唯一權威定義是 `to
 | 元件總入口 | [ui_components/index.js](packages/javascript/browser/ui_components/index.js) |
 | 元件權威清單 | [metadata/component-catalog.json](packages/javascript/browser/ui_components/metadata/component-catalog.json) |
 | 字串名工廠 | [binding/ComponentFactory.js](packages/javascript/browser/ui_components/binding/ComponentFactory.js) |
+| 字串名工廠(延遲載入,工具頁預設) | [binding/LazyComponentFactory.js](packages/javascript/browser/ui_components/binding/LazyComponentFactory.js) |
 | 狀態機 | [utils/component-state.js](packages/javascript/browser/ui_components/utils/component-state.js) |
 | 安全工具 | [utils/security.js](packages/javascript/browser/ui_components/utils/security.js) |
 | i18n | [i18n/index.js](packages/javascript/browser/ui_components/i18n/index.js) |

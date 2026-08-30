@@ -41,6 +41,26 @@ new DataTable(containerElement, config)
 | `mount(container)` | `this` | 掛載至容器（CSS 選擇器或 DOM 元素） |
 | `destroy()` | `void` | 銷毀元件 |
 
+### 選取變更的更新方式
+
+使用者點擊行 checkbox 或表頭全選時，DataTable **只定點同步選取相關 DOM**（列的 `--selected` / `--even` class、行 checkbox、表頭全選狀態），不重建整張表：
+
+- `onRender` **不會**因為純選取變更而重發
+
+- 儲存格內既有的元件實例與事件監聽器不會被銷毀重建，外部加在 `<tr>` 上的其他 class 也會保留
+
+- `onRowSelectionChange` 仍照常發出
+
+以下情況維持完整重繪（工具列內容依賴選取狀態，`onRender` 會再次發出）：
+
+- 設定了 `options.customToolbarSelect`
+
+- `options.customToolbar` 傳入的是函式（可能讀取選取狀態）
+
+- 由程式呼叫 `setSelectedRows(indices)`
+
+排序結果在單次渲染流程內共用（工具列、事件綁定重複取用時免重算），流程結束即清除；渲染流程外的呼叫維持即時重算。
+
 ### 具名匯出
 
 - `linkCell(text, href, options?)` — 產生連結儲存格（內部以 `Link` 元件 hydrate）
@@ -100,6 +120,7 @@ const table = new DataTable({
 - `render` 回傳 `string` → 自動 HTML 跳脫（safe-by-default）
 - `render` 回傳 `raw(html)` → 原樣輸出（開發者負責確保安全）
 - 在 `raw()` 內部使用使用者資料時，務必用 `escapeHtml()` / `escapeAttr()` 跳脫
+- 只有 `raw()` 產生的物件會被認可：標記以 `Symbol.for('bricks4agent.rawHtml')` 品牌識別，手寫的 `{ __html: '...' }`（或 API 回傳的同名 JSON 欄位）一律當成一般值跳脫
 
 ## Demo
 

@@ -67,24 +67,39 @@ See [AGENT-UI-GUIDE.md](AGENT-UI-GUIDE.md) for the full convention and the compo
 ### Generate a page from a definition
 
 ```bash
-# validate / generate / list supported field types
+# generate one page / every page of a DefinitionTemplate / list supported field types
 node tools/page-gen.js --def page.json --mode static --output ./out/
+node tools/page-gen.js --def site-definition.json --all --mode static --output ./out/
 node tools/page-gen.js --list-types
 ```
+
+`--validate` checks a definition without writing files; `--page <id>` and `--pages <id,id>`
+pick individual pages out of a DefinitionTemplate.
 
 ### Scaffold full-stack CRUD
 
 ```bash
-# create a project, then generate a feature (frontend pages + C# Model/Service/API)
+# create a project — interactive; --name/--output only pre-fill the prompts
 node templates/spa/scripts/spa-cli.js new --name my-app --output ./out
+
+# non-interactive: answer everything up front (see scripts/project-config.example.json)
+node templates/spa/scripts/create-project.js --config project.json
+
+# generate a feature (C# Model/Service + frontend pages) into templates/spa itself
 node templates/spa/scripts/spa-cli.js feature Article --fields "Title:string,Content:text,IsPublic:bool"
 ```
+
+`feature`, `page` and `api` write relative to `templates/spa/`, not into the project
+`new` just created — they edit the template tree that `new` copies from.
 
 ### Run the generator Web UI
 
 ```bash
-npm run serve   # serves tools/spa-generator/frontend on port 3080
+node tools/spa-generator/server.js   # frontend + generation API on port 3080
+npm run serve                        # static frontend only, also on port 3080
 ```
+
+The Node server binds loopback and rejects non-loopback `Host`/`Origin` requests.
 
 ## Tests
 

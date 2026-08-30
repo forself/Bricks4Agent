@@ -77,11 +77,13 @@ High-Level Coordinator 是 LINE 高階互動層。它負責：
 {AccessRoot}/{channel}/{userId}/{conversations|documents|projects}
 ```
 
-在 sidecar 模式中，常見實際路徑位於：
+`{AccessRoot}` 由 `HighLevelCoordinator:AccessRoot` 設定，必須是絕對路徑（相對路徑會被 broker 拒絕啟動）。broker 與 sidecar 的預設值相同：
 
 ```text
-.run/line-sidecar/broker/managed-workspaces
+%LOCALAPPDATA%\Bricks4Agent\managed-workspaces
 ```
+
+Sidecar 啟動時會建立這個目錄，並掛載給受控 worker container 使用。它不在 `.run/line-sidecar` 底下，所以清掉 sidecar runtime 不會清掉使用者工作區。
 
 ### 3.4 Approval
 
@@ -104,7 +106,7 @@ High-Level Coordinator 是 LINE 高階互動層。它負責：
 | .NET SDK 10.0+ | broker / worker 建置與測試 |
 | Node.js 18+ 與 npm | agent、JS tools、UI tests |
 | Git | repo 操作 |
-| ngrok | LINE webhook public tunnel |
+| ngrok | LINE webhook public tunnel；未安裝或未設定 `ngrok.yml` 時，sidecar 會警告並改用 localhost.run ssh tunnel |
 | Podman | governed agent container stack |
 | Playwright Chromium | browser worker / browser tests |
 | Ollama | local model、embedding、host Ollama stack |
@@ -126,22 +128,25 @@ High-Level Coordinator 是 LINE 高階互動層。它負責：
 在 repo root：
 
 ```powershell
-npm install
 dotnet restore packages/csharp/ControlPlane.slnx
 dotnet build packages/csharp/ControlPlane.slnx
 ```
 
-如果要跑 browser/e2e：
+repo 的 npm 套件沒有宣告任何 dependencies / devDependencies，所以 `npm install` 不會安裝任何東西；JS 工具與測試都只用 Node 內建模組。
+
+browser/e2e 類驗證（`npm run validate:ui-library:browser`、`npm run validate:user-portal` 等）需要另外準備 Playwright，因為 repo 不宣告這個相依：
 
 ```powershell
 npx playwright install chromium
 ```
 
-如果要直接跑 `packages/javascript/browser` 的測試：
+`validate:ui-library` 找不到 Playwright 時會跳過 browser smoke（除非加 `--require-browser`），並且在 Playwright 沒有自帶瀏覽器時會退回本機已安裝的 Chrome / Edge。
+
+`packages/javascript/browser` 的測試同樣不需要安裝步驟：
 
 ```powershell
 cd packages/javascript/browser
-npm install
+npm test
 cd ..\..\..
 ```
 
@@ -212,20 +217,19 @@ Sidecar 會：
 
 6. 啟動 line-worker webhook：`127.0.0.1:5357`。
 
-7. 啟動或沿用 ngrok tunnel。
+7. 建立 public tunnel：優先用 ngrok；ngrok 不在 PATH 或沒有 `%LOCALAPPDATA%\ngrok\ngrok.yml` 時，改用 localhost.run ssh tunnel。
 
 8. 更新 LINE webhook URL，除非使用 `-SkipWebhookUpdate`。
 
 9. 檢查 broker、line-worker、tunnel ready。
 
-若 Windows Smart App Control / WDAC 在啟動時封鎖 `Broker.dll`、`BrokerCore.dll`、`BaseOrm.dll` 或其他 runtime DLL，請用系統管理員 PowerShell 修復 sidecar runtime trust：
+若 Windows Smart App Control / WDAC 在啟動時封鎖 `Broker.dll`、`BrokerCore.dll`、`BaseOrm.dll` 或其他 runtime DLL，請用系統管理員 PowerShell 在 repo root 修復 sidecar runtime trust：
 
 ```powershell
-cd D:\Bricks4Agent
 npm run signing:wdac-repair -- -Deploy
 ```
 
-此命令會掃描 `D:\Bricks4Agent\.run\line-sidecar`，產生 policy 到 `D:\Bricks4Agent\.run\wdac\line-sidecar-runtime\`，並確認 `{policy-id}.cip` 進入 `C:\Windows\System32\CodeIntegrity\CiPolicies\Active`。只有 active policy 檢查通過才表示 WDAC trust 已生效。
+此命令會掃描 repo 內的 `.run\line-sidecar`，產生 policy 到 `.run\wdac\line-sidecar-runtime\`，並確認 `{policy-id}.cip` 進入 `%WINDIR%\System32\CodeIntegrity\CiPolicies\Active`。只有 active policy 檢查通過才表示 WDAC trust 已生效。兩個路徑都可以用 `-RuntimeRoot` / `-OutputDir` 覆寫。
 
 ### 7.2 狀態
 
@@ -286,7 +290,7 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\l
 
 3. 註冊成功後，Portal 會顯示 6 位數 LINE 驗證碼與完整指令，例如 `/verify alice 123456`。
 
-4. 在 LINE 傳送 `/verify <user_id> <code>`。也可使用 `/驗證 <user_id> <code>`。
+4. 在 LINE 傳送 `/verify <user_id> <code>`。也可使用 `/v` 或 `/驗證`。
 
 5. 帳號或驗證碼不符合、過期、已使用，broker 會拒絕 LINE 操作。
 
@@ -424,22 +428,22 @@ http://127.0.0.1:5361/line-admin.html
 | `permission_admin` | operator、使用者權限、註冊政策、browser user grant、admin approval 管理 |
 | `auditor` | 只讀監控、audit、tool specs 與狀態檢視 |
 
-常用區域：
+側邊欄頁籤（依實際 UI 標籤）：
 
-| 區域 | 功能 |
+| 頁籤 | 功能 |
 |---|---|
-| 系統狀態 | broker、LLM proxy、embedding、RAG、DB 狀態 |
-| 系統監控 | LLM、Embedding、RAG、DB 與 runtime monitoring 摘要 |
-| LINE 使用者 | 使用者列表、註冊政策、權限 |
-| 對話/工作流 | 對話紀錄、draft、handoff、execution intent |
+| LINE 與使用者 | 系統摘要、交付檔案清單、註冊政策、使用者與高階權限、對話紀錄、Google Drive 授權與 artifact 交付 |
+| 系統監控 | LLM、Embedding、RAG Pipeline、Shared Context / Vectors 狀態摘要 |
+| Workflow | Recent Tasks / Plans、execution intent、handoff |
+| Browser 綁定 | site binding、user grant、lease、request build、execute、recent executions |
+| Deployment | Azure IIS target、preview、execute、recent deployments |
+| 交付記錄 | 依狀態（completed / partial / failed）檢視交付結果，partial 可重試 Drive 上傳 |
 | 權限管理 | named local admin operator 建立、角色調整、停用與 session 撤銷 |
 | 審批 | 查看 pending approval，批准或拒絕 |
-| Browser governance | site binding、user grant、lease、request build、execute |
-| Deployment | Azure IIS target、preview、execute、execution history |
-| Delivery | Google Drive OAuth、share、artifact delivery |
-| Artifacts | 使用者文件與交付物、重試 Drive 或 LINE notification |
-| Tool specs | 查看 broker tool/capability 規格 |
-| Alerts | 觀測事件與系統警示 |
+| 系統警示 | 依時間範圍（1 小時到 7 天）檢視觀測事件 |
+| Tool Specs | 查看 broker tool/capability 規格 |
+
+沒有獨立的「系統狀態」或「Artifacts」頁籤：broker 狀態與目前 operator / LLM 顯示在側邊欄頂端的標籤，artifact 清單在「LINE 與使用者」頁籤內。
 
 ## 10. 審批操作
 
@@ -503,7 +507,7 @@ http(s)://.../user-approvals.html#token=<signed>
 | Google Drive system account | 使用 service account，通常適合 Shared Drive |
 | LINE notification queue | broker queue notification，line-worker 取出後送 LINE |
 
-若 Drive 或通知失敗，可在 admin console 重試。
+Drive 上傳失敗（交付狀態為 `partial`）時，可在 admin console 的「交付記錄」頁籤按「重試 Drive 上傳」，重試成功會一併重送通知。
 
 ## 12. Governed Agent Container 使用時機
 
@@ -660,6 +664,18 @@ node tools/page-gen.js --validate --def employee.json
 node tools/page-gen.js --def employee.json --mode static --output .\output
 node tools/page-gen.js --list-types
 ```
+
+`--mode` 可用 `static`、`dynamic`、`both`（預設 `static`）。若 `--def` 給的是 DefinitionTemplate（含 `definitions.pages`），可以指定要處理哪些 page：
+
+```powershell
+node tools/page-gen.js --def site-definition.json --page products-list --mode static --output .\output
+node tools/page-gen.js --def site-definition.json --pages products-list,orders-form --mode static --output .\output
+node tools/page-gen.js --def site-definition.json --all --mode static --output .\output
+```
+
+`--pages` 與 `--all` 是批次模式，輸出一份彙總 JSON，`results` 內每個 page 各有自己的 `pageId` 與 `files`。
+
+頁面名稱必須是 PascalCase 且以 `Page` 結尾，欄位名稱與 behaviors 也必須是合法 JS 識別字；不合格時 CLI 會回 `success: false` 與 `errors` 陣列，不產生檔案。
 
 ### 14.3 UI Component Library
 

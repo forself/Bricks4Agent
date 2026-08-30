@@ -50,7 +50,7 @@
 
 - **清空**：一鍵清除所有標註
 
-- **復原**：支援 Ctrl+Z 復原操作
+- **復原**：支援 Ctrl+Z 復原操作（歷史記錄上限 50 步，超出後自動丟棄最舊的一筆）
 
 ### 💾 匯出功能
 
@@ -145,7 +145,12 @@ editor._exportImage();
 
 // 匯出 JSON（自動觸發下載）
 editor._exportJSON();
+
+// 銷毀編輯器（移除 document 上的鍵盤監聽、卸下 DOM、清空歷史與圖片引用）
+editor.destroy();
 ```
+
+> 頁面切換或元件卸載時務必呼叫 `destroy()`：快捷鍵是掛在 `document` 上的，未銷毀會持續攔截 Delete / Ctrl+Z。`destroy()` 可重複呼叫，之後仍可能回來的非同步圖片載入回呼會自行略過。
 
 ### 配置選項
 
@@ -164,6 +169,12 @@ new MapEditor({
 - **Ctrl+Z**: 復原上一步操作
 
 - **雙擊文字**: 編輯文字內容
+
+快捷鍵綁在 `document` 上，輸入框（`INPUT` / `TEXTAREA`）內的按鍵一律忽略。
+
+### MapEditorV2（`MapEditorV2.js`）
+
+進階版另有 **Ctrl+Y / Ctrl+Shift+Z**（重做）、**Ctrl+C**（複製選中元素）、**Ctrl+V**（貼上）。其中 Ctrl+C 僅在有選中元素時攔截、Ctrl+V 僅在編輯器本身有剪貼內容時攔截，其餘情況交還瀏覽器原生複製／貼上。V2 同樣提供 `destroy()`，並會一併銷毀內部使用的子元件與待執行的計時器。
 
 ## 🎯 應用場景
 
@@ -247,6 +258,7 @@ http-server -p 5500
 ```
 packages/javascript/browser/ui_components/viz/
 ├── MapEditor.js           # 核心編輯器類別
+├── MapEditorV2.js         # 進階版（圖層面板、重做、複製貼上）
 ├── demo_map_editor.html   # 完整示範頁面
 └── README_MapEditor.md    # 說明文件（本檔案）
 ```
@@ -265,7 +277,7 @@ packages/javascript/browser/ui_components/viz/
 
 2. **大圖片效能**：極大圖片可能影響渲染效能
 
-3. **歷史記錄**：復原功能目前僅支援單向復原（無重做）
+3. **歷史記錄**：`MapEditor` 僅支援單向復原（無重做），且上限 50 步；重做請改用 `MapEditorV2`
 
 ## 💡 未來擴展
 

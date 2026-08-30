@@ -243,6 +243,6 @@
  - 加入 `{category}/index.js` 匯出
  - 加入 `binding/ComponentFactory.js` 工廠註冊
 
-4. **樣式方式**：使用 `_injectStyles()` 動態注入 CSS，或獨立 `.css` 檔案
+4. **樣式方式**：以 CSSOM 指派（`element.style.cssText` / `setProperty`），或用同目錄 `.css` 搭配同源 `<link>` 載入；嚴格 CSP 下禁止動態注入 `<style>`
 
 5. **所有樣式值必須使用 `--cl-*` CSS 變數**，零硬編碼
