@@ -10,6 +10,7 @@
  * @module create-project
  */
 
+const crypto = require('node:crypto');
 const fs = require('fs');
 const path = require('path');
 const readline = require('readline');
@@ -55,12 +56,24 @@ async function askYesNo(rl, question, defaultYes = true) {
  * 產生隨機字串
  */
 function generateRandomString(length = 32) {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
-    let result = '';
-    for (let i = 0; i < length; i++) {
-        result += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return result;
+    // 這串會成為專案的 JWT 簽章金鑰：必須用 CSPRNG，Math.random 可由少數輸出反推
+    return crypto.randomBytes(length).toString('base64').slice(0, length);
+}
+
+/**
+ * 轉義字串以便安全地放進生成的啟動腳本 echo（顯示名稱可能含 shell 元字元）
+ */
+function escapeForBatchEcho(value) {
+    return String(value)
+        .replace(/[\r\n]+/g, ' ')
+        .replace(/[&|<>^"]/g, '^$&')
+        .replace(/%/g, '%%');
+}
+
+function escapeForShellDoubleQuoted(value) {
+    return String(value)
+        .replace(/[\r\n]+/g, ' ')
+        .replace(/["\\$`]/g, '\\$&');
 }
 
 /**
@@ -77,8 +90,9 @@ function copyDir(src, dest, replacements = {}) {
         const srcPath = path.join(src, entry.name);
         const destPath = path.join(dest, entry.name);
 
-        // 跳過 scripts 目錄和特定檔案
-        if (entry.name === 'scripts' || entry.name === 'node_modules' || entry.name === '.git') {
+        // 跳過 scripts 目錄、建置輸出 (bin/obj 可由 dotnet build 重新產生) 和特定檔案
+        if (entry.name === 'scripts' || entry.name === 'node_modules' || entry.name === '.git'
+            || entry.name === 'bin' || entry.name === 'obj') {
             continue;
         }
 
@@ -91,9 +105,31 @@ function copyDir(src, dest, replacements = {}) {
 }
 
 /**
- * 複製並替換檔案內容
+ * 可進行內容替換的文字副檔名（無副檔名的 dotfile 以完整檔名比對）
+ */
+const TEXT_EXTENSIONS = new Set([
+    '.cs', '.csproj', '.sln', '.js', '.mjs', '.cjs', '.json', '.md', '.html', '.css',
+    '.txt', '.yml', '.yaml', '.xml', '.config', '.props', '.targets', '.env',
+    '.gitignore', '.editorconfig', '.dockerignore'
+]);
+
+/**
+ * 判斷是否為可替換的文字檔
+ */
+function isTextFile(filePath) {
+    const base = path.basename(filePath).toLowerCase();
+    return TEXT_EXTENSIONS.has(path.extname(base) || base);
+}
+
+/**
+ * 複製並替換檔案內容（非文字檔以位元組原樣複製，避免 UTF-8 轉碼損毀）
  */
 function copyFile(src, dest, replacements = {}) {
+    if (!isTextFile(src)) {
+        fs.copyFileSync(src, dest);
+        return;
+    }
+
     let content = fs.readFileSync(src, 'utf8');
 
     // 執行替換
@@ -377,10 +413,15 @@ async function createProject(config) {
  * 建立啟動腳本
  */
 function createStartupScripts(projectPath, config) {
+    const batDisplayName = escapeForBatchEcho(config.project.displayName);
+    const batApiPort = escapeForBatchEcho(config.backend.apiPort);
+    const shDisplayName = escapeForShellDoubleQuoted(config.project.displayName);
+    const shApiPort = escapeForShellDoubleQuoted(config.backend.apiPort);
+
     // Windows batch - 自動偵測可用工具
     const batContent = `@echo off
 chcp 65001 >nul
-echo Starting ${config.project.displayName}...
+echo Starting ${batDisplayName}...
 echo.
 
 :: 啟動後端
@@ -423,7 +464,7 @@ exit /b 1
 
 :started
 echo.
-echo API Server: https://localhost:${config.backend.apiPort}
+echo API Server: https://localhost:${batApiPort}
 echo Frontend:   http://localhost:3000
 echo.
 timeout /t 3 >nul
@@ -433,7 +474,7 @@ start http://localhost:3000
 
     // Unix shell - 自動偵測可用工具
     const shContent = `#!/bin/bash
-echo "Starting ${config.project.displayName}..."
+echo "Starting ${shDisplayName}..."
 echo
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -483,7 +524,7 @@ start_frontend() {
 start_frontend
 
 echo
-echo "API Server: https://localhost:${config.backend.apiPort}"
+echo "API Server: https://localhost:${shApiPort}"
 echo "Frontend:   http://localhost:3000"
 echo
 

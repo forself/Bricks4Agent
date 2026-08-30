@@ -248,6 +248,9 @@ export const AvailableComponents = {
 // 驗證函數
 // ============================================================
 
+// 快取欄位類型集合，避免驗證每個欄位時重建陣列
+const FIELD_TYPE_SET = new Set(Object.values(FieldTypes));
+
 /**
  * 驗證頁面定義是否有效
  * @param {PageDefinition} definition
@@ -301,19 +304,25 @@ export function validateDefinition(definition) {
 
     // 欄位檢查
     if (definition.fields) {
+        // 以首次出現為準建立名稱索引，保留 find() 遇到重複名稱時取第一筆的語意
+        const byName = new Map();
+        for (const f of definition.fields) {
+            if (!byName.has(f.name)) byName.set(f.name, f);
+        }
+
         for (const field of definition.fields) {
             if (!field.name) {
                 errors.push('欄位缺少名稱');
             }
             if (!field.type) {
                 errors.push(`欄位 ${field.name} 缺少類型`);
-            } else if (!Object.values(FieldTypes).includes(field.type)) {
+            } else if (!FIELD_TYPE_SET.has(field.type)) {
                 errors.push(`欄位 ${field.name} 的類型無效: ${field.type}`);
             }
 
             // 檢查依賴欄位
             if (field.dependsOn) {
-                const depField = definition.fields.find(f => f.name === field.dependsOn);
+                const depField = byName.get(field.dependsOn);
                 if (!depField) {
                     errors.push(`欄位 ${field.name} 依賴的欄位 ${field.dependsOn} 不存在`);
                 }

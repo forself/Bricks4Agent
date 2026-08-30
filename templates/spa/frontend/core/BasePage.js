@@ -57,19 +57,26 @@ export class BasePage {
      * 響應式資料 (修改會觸發重新渲染)
      */
     get data() {
-        return new Proxy(this._data, {
-            set: (target, key, value) => {
-                const oldValue = target[key];
-                target[key] = value;
+        // 快取 Proxy；若子類別重新指派 this._data (如 onInit)，則重建以免包住舊目標
+        if (!this._dataProxy || this._dataProxyTarget !== this._data) {
+            // 先建構再提交快取：若 _data 非物件，Proxy 建構會擲錯且快取不被汙染（每次存取皆重擲）
+            const target = this._data;
+            this._dataProxy = new Proxy(target, {
+                set: (target, key, value) => {
+                    const oldValue = target[key];
+                    target[key] = value;
 
-                // 只有在掛載後且值有變化時才重新渲染
-                if (this._mounted && oldValue !== value) {
-                    this._scheduleUpdate();
+                    // 只有在掛載後且值有變化時才重新渲染
+                    if (this._mounted && oldValue !== value) {
+                        this._scheduleUpdate();
+                    }
+
+                    return true;
                 }
-
-                return true;
-            }
-        });
+            });
+            this._dataProxyTarget = target;
+        }
+        return this._dataProxy;
     }
 
     /**

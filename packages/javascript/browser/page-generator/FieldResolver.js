@@ -23,6 +23,78 @@
 
 import { FormField } from '../ui_components/form/FormField/FormField.js';
 
+// fieldType／內建 component 名稱 → preload() 模組鍵。
+// 需與 _registerBuiltins / _registerBuiltinComponents 同步維護；
+// 未列出的型別（含自訂 component）一律回退為全量預載，確保行為等價。
+const PRELOAD_KEYS_BY_TYPE = {
+    // fieldType 推論
+    text: ['TextInput'],
+    email: ['TextInput'],
+    password: ['TextInput'],
+    number: ['NumberInput'],
+    textarea: ['TextArea'],
+    memo: ['TextArea'],
+    plaintext: ['TextArea'],
+    slider: ['Slider'],
+    date: ['DatePicker'],
+    rocDate: ['DatePicker'],
+    time: ['TimePicker'],
+    select: ['Dropdown'],
+    multiselect: ['MultiSelectDropdown'],
+    checkbox: ['Checkbox'],
+    toggle: ['ToggleSwitch'],
+    radio: ['Radio'],
+    color: ['ColorPicker'],
+    image: ['ImageViewer'],
+    file: ['BatchUploader'],
+    hidden: [],
+    datetime: ['DateTimeInput'],
+    richtext: ['WebTextEditor'],
+    canvas: ['DrawingBoard'],
+    geolocation: ['GeolocationService'],
+    weather: ['WeatherService'],
+    address: ['AddressInput'],
+    addresslist: ['AddressListInput'],
+    chained: ['ChainedInput'],
+    list: ['ListInput'],
+    personinfo: ['PersonInfoList'],
+    phonelist: ['PhoneListInput'],
+    socialmedia: ['SocialMediaList'],
+    organization: ['OrganizationInput'],
+    student: ['StudentInput'],
+    // 明示 field.component 的內建名稱
+    TextInput: ['TextInput'],
+    NumberInput: ['NumberInput'],
+    Slider: ['Slider'],
+    TextArea: ['TextArea'],
+    Textarea: ['TextArea'],
+    DatePicker: ['DatePicker'],
+    TimePicker: ['TimePicker'],
+    Dropdown: ['Dropdown'],
+    MultiSelectDropdown: ['MultiSelectDropdown'],
+    Checkbox: ['Checkbox'],
+    ToggleSwitch: ['ToggleSwitch'],
+    Radio: ['Radio'],
+    ColorPicker: ['ColorPicker'],
+    ImageViewer: ['ImageViewer'],
+    BatchUploader: ['BatchUploader'],
+    HiddenInput: [],
+    DateTimeInput: ['DateTimeInput'],
+    WebTextEditor: ['WebTextEditor'],
+    DrawingBoard: ['DrawingBoard'],
+    GeolocationService: ['GeolocationService'],
+    WeatherService: ['WeatherService'],
+    AddressInput: ['AddressInput'],
+    AddressListInput: ['AddressListInput'],
+    ChainedInput: ['ChainedInput'],
+    ListInput: ['ListInput'],
+    PersonInfoList: ['PersonInfoList'],
+    PhoneListInput: ['PhoneListInput'],
+    SocialMediaList: ['SocialMediaList'],
+    OrganizationInput: ['OrganizationInput'],
+    StudentInput: ['StudentInput'],
+};
+
 export class FieldResolver {
     constructor() {
         /** @type {Map<string, Function>} fieldType → 元件工廠函式 */
@@ -534,11 +606,14 @@ export class FieldResolver {
     // ─── 公開 API ───
 
     /**
-     * 預載入所有元件模組
+     * 預載入元件模組
      * 必須在 resolve() 之前呼叫
+     * @param {string[]} [neededTypes] - 頁面實際出現的 fieldType／component 名稱；
+     *   省略、或包含任一未知型別時，載入全部模組（維持既有行為）
      */
-    async preload() {
-        this._moduleCache = new Map();
+    async preload(neededTypes) {
+        // 合併式載入：子集預載不清空既有快取，重複／交錯 preload 只會擴充可解析集合
+        if (!this._moduleCache) this._moduleCache = new Map();
 
         const modules = {
             TextInput: () => import('../ui_components/form/TextInput/TextInput.js'),
@@ -573,11 +648,33 @@ export class FieldResolver {
             StudentInput: () => import('../ui_components/input/StudentInput/StudentInput.js'),
         };
 
-        const entries = Object.entries(modules);
-        const results = await Promise.all(entries.map(([, loader]) => loader()));
-        entries.forEach(([name], i) => {
+        let names = Object.keys(modules);
+        if (neededTypes !== null && neededTypes !== undefined) {
+            const minimal = this._resolvePreloadKeys(neededTypes);
+            if (minimal) names = minimal;
+        }
+
+        const results = await Promise.all(names.map((name) => modules[name]()));
+        names.forEach((name, i) => {
             this._moduleCache.set(name, results[i]);
         });
+    }
+
+    /**
+     * 依實際出現的型別計算最小預載模組集合
+     * @param {string[]} neededTypes
+     * @returns {string[]|null} 任一型別未列於 PRELOAD_KEYS_BY_TYPE（如自訂 component）
+     *   時回傳 null，由 preload() 回退為全量預載
+     * @private
+     */
+    _resolvePreloadKeys(neededTypes) {
+        if (!Array.isArray(neededTypes)) return null;
+        const keys = new Set();
+        for (const type of neededTypes) {
+            if (!Object.prototype.hasOwnProperty.call(PRELOAD_KEYS_BY_TYPE, type)) return null;
+            for (const key of PRELOAD_KEYS_BY_TYPE[type]) keys.add(key);
+        }
+        return [...keys];
     }
 
     /**

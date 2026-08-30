@@ -3,3 +3,4 @@
  */
 export { ComponentBinder } from './ComponentBinder.js';
 export { ComponentFactory } from './ComponentFactory.js';
+export { LazyComponentFactory } from './LazyComponentFactory.js';

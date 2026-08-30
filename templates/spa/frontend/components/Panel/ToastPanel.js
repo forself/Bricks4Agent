@@ -5,6 +5,45 @@
 
 import { BasePanel } from './BasePanel.js';
 
+// opt-in 品牌：JSON.parse 永遠產不出 symbol 鍵，API 回傳的純資料因此無法偽造成 raw() 標記。
+// 固定用 Symbol.for 與 ui_components/utils/security.js 共用同一把鍵，兩邊產出的標記可互換。
+const RAW_HTML_BRAND = Symbol.for('bricks4agent.rawHtml');
+
+/**
+ * 標記字串為「已知安全的 HTML」，作為輸出標記的明確 opt-in。
+ * 與 ui_components/utils/security.js 的 raw() 同語義，兩邊產出的標記可互換。
+ * @param {string} html - 已知安全的 HTML 字串
+ * @returns {Readonly<{__html: string}>}
+ */
+export function raw(html) {
+    const html_ = String(html ?? '');
+    return Object.freeze({ [RAW_HTML_BRAND]: html_, __html: html_ });
+}
+
+function isRawHtml(value) {
+    if (value === null || typeof value !== 'object') return false;
+    // 一律查自身屬性(不用 in)：in 會走原型鏈，原型污染即可讓任意物件冒充標記
+    return Object.prototype.hasOwnProperty.call(value, RAW_HTML_BRAND)
+        && typeof value[RAW_HTML_BRAND] === 'string';
+}
+
+// 授權依據只看品牌欄位；__html 保留給既有讀取端，但不再決定是否進 innerHTML
+function rawHtmlOf(value) {
+    return value[RAW_HTML_BRAND];
+}
+
+// String() 會對 Object.create(null) 這類無 prototype 的值拋錯，
+// 舊版 setContent 遇到非字串只是安靜略過，這裡沿用「不拋錯」的行為
+function toDisplayText(value) {
+    if (value === null || value === undefined) return '';
+    if (typeof value === 'string') return value;
+    try {
+        return String(value);
+    } catch {
+        return '';
+    }
+}
+
 export class ToastPanel extends BasePanel {
     static POSITIONS = {
         TOP: 'top',
@@ -191,25 +230,59 @@ export class ToastPanel extends BasePanel {
     close() {
         if (this.timeoutId) {
             clearTimeout(this.timeoutId);
+            this.timeoutId = null;
         }
+
+        if (this._closeTransitionId) clearTimeout(this._closeTransitionId);
 
         this.element.style.opacity = '0';
         this.element.style.transform = 'translateX(100%)';
 
-        setTimeout(() => {
+        // 只移除 DOM 節點會讓 PanelManager 永遠握著實例與已脫離的子樹，
+        // 必須走 destroy() 才會呼叫 PanelManager.unregister()；但 destroy()
+        // 只會生效一次，重複使用(show/close/show/close)的實例得自己保證脫離 DOM
+        this._closeTransitionId = setTimeout(() => {
+            this._closeTransitionId = null;
             if (this.element?.parentNode) {
                 this.element.remove();
             }
+            this.destroy();
         }, 300);
 
         return this;
     }
 
+    destroy() {
+        if (this.timeoutId) clearTimeout(this.timeoutId);
+        if (this._closeTransitionId) clearTimeout(this._closeTransitionId);
+        this.timeoutId = null;
+        this._closeTransitionId = null;
+        super.destroy();
+    }
+
     // === 靜態方法 ===
+
+    /**
+     * 訊息一律以 textContent 呈現(不解析 HTML)；要輸出標記須以 raw() 明確 opt-in。
+     * 既有直接傳入節點的呼叫端維持原行為。
+     */
+    static _toContentNode(message) {
+        if (typeof HTMLElement !== 'undefined' && message instanceof HTMLElement) {
+            return message;
+        }
+
+        const span = document.createElement('span');
+        if (isRawHtml(message)) {
+            span.innerHTML = rawHtmlOf(message);
+        } else {
+            span.textContent = toDisplayText(message);
+        }
+        return span;
+    }
 
     static show(message, options = {}) {
         const toast = new ToastPanel(options);
-        toast.setContent(message);
+        toast.setContent(ToastPanel._toContentNode(message));
         toast.show();
         return toast;
     }

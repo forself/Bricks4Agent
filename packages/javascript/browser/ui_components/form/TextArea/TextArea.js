@@ -51,6 +51,7 @@ export class TextArea {
         this._apply();
     }
 
+    // 依 maxLength 設定截斷輸入值(未設定或非法時原樣返回)
     _limitInputValue(value) {
         const text = String(value ?? '');
         const configured = this.options.maxLength;

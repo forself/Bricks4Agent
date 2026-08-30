@@ -37,6 +37,7 @@ export class DrawerPanel extends BasePanel {
         this.element.setAttribute('aria-modal', 'true');
         this.element.setAttribute('tabindex', '-1');
         this._returnFocusTo = null;
+        this._reopenWarned = false;
         this._handleKeydown = event => {
             if (event.key === 'Escape' && this.options.visibility === BasePanel.VISIBILITY.VISIBLE) {
                 event.preventDefault();
@@ -162,7 +163,19 @@ export class DrawerPanel extends BasePanel {
         }
     }
 
+    _warnDestroyed(method) {
+        if (this._reopenWarned) return;
+        this._reopenWarned = true;
+        console.warn(`[DrawerPanel] ${method}() 已忽略:面板已銷毀`);
+    }
+
     open() {
+        // 已銷毀者的 backdrop 與 keydown 監聽都沒了，再開只會把 body 卷軸鎖死且看不到任何東西
+        if (this._destroyed) {
+            this._warnDestroyed('open');
+            return this;
+        }
+
         this._returnFocusTo = document.activeElement instanceof HTMLElement ? document.activeElement : null;
         this.setVisibility(BasePanel.VISIBILITY.VISIBLE);
         queueMicrotask(() => (this.element.querySelector('.panel__close') || this.element).focus?.());
@@ -178,6 +191,11 @@ export class DrawerPanel extends BasePanel {
     }
 
     mount(container = document.body) {
+        if (this._destroyed) {
+            this._warnDestroyed('mount');
+            return this;
+        }
+
         const target = typeof container === 'string'
             ? document.querySelector(container)
             : container;
@@ -186,14 +204,18 @@ export class DrawerPanel extends BasePanel {
     }
 
     destroy() {
+        if (this._destroyed) return;
+
         document.removeEventListener('keydown', this._handleKeydown);
         document.body.style.overflow = '';
+        this._returnFocusTo = null;
 
+        super.destroy();
+
+        // 不可將 this.backdrop 置 null:mount()/_applyVisibility() 仍會讀取
         if (this.backdrop?.parentNode) {
             this.backdrop.remove();
         }
-
-        PanelManager.unregister(this);
     }
 }
 

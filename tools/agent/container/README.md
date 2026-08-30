@@ -224,6 +224,7 @@ For a real provider:
 - point `LlmProxy__BaseUrl` to the actual upstream
 
 - provide the required provider key through environment variables
+- use `Provider=anthropic`, `LlmProxy__ApiFormat=messages`, and `claude-sonnet-4-6` for Claude Messages API paths
 
 - use `Provider=anthropic`, `LlmProxy__ApiFormat=messages`, and `claude-sonnet-4-6` for Claude Messages API paths
 

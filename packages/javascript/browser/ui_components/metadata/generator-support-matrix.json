@@ -22,9 +22,9 @@
       "status": "supported"
     },
     "textarea": {
-      "default_component": null,
+      "default_component": "TextArea",
       "alternative_components": [],
-      "status": "wrapped"
+      "status": "supported"
     },
     "memo": {
       "default_component": "TextArea",
@@ -191,6 +191,7 @@
       "component_roles": [
         "command_input",
         "container",
+        "data_view",
         "display",
         "editor",
         "input",
@@ -209,6 +210,7 @@
       "component_roles": [
         "command_input",
         "container",
+        "data_view",
         "editor",
         "feedback",
         "input",

@@ -13,7 +13,8 @@
     "usage_mode": "field_direct",
     "supported_field_types": [
       "memo",
-      "plaintext"
+      "plaintext",
+      "textarea"
     ],
     "supported_page_types": [
       "form",

@@ -1,9 +1,13 @@
-import { BasicButton } from '../../common/BasicButton/BasicButton.js';
+import { BasicButton } from '../../common/BasicButton/index.js';
+import { resolveTokens, paintToken } from '../../utils/theme-bus.js';
+import { queryLegacyTgosAddress } from './TgosAddressService.js';
 
+// Exact URL used by the legacy frontend.  This external contract is prescribed and is not a
+// deployment setting: changing it would also change the TGOS application identity.
 // TGOS MAP API Lite publishes this browser key for public integration. The
 // endpoint is deliberately immutable at runtime: changing a meta tag must not
 // turn the dynamic script loader into an arbitrary-script primitive.
-const TGOS_LITE_URL = 'https://api.tgos.tw/TGOS_API/tgos?ver=2&AppID=x+JLVSx85Lk=&APIKey=in8W74q0ogpcfW/STwicK8D5QwCdddJf05/7nb+OtDh8R99YN3T0LurV4xato3TpL/fOfylvJ9Wv/khZEsXEWxsBmg+GEj4AuokiNXCh14Rei21U5GtJpIkO++Mq3AguFK/ISDEWn4hMzqgrkxNe1Q==';
+export const TGOS_LITE_URL = 'https://api.tgos.tw/TGOS_API/tgos?ver=2&AppID=x+JLVSx85Lk=&APIKey=in8W74q0ogpcfW/STwicK8D5QwCdddJf05/7nb+OtDh8R99YN3T0LurV4xato3TpL/fOfylvJ9Wv/khZEsXEWxsBmg+GEj4AuokiNXCh14Rei21U5GtJpIkO++Mq3AguFK/ISDEWn4hMzqgrkxNe1Q==';
 
 let tgosLoadPromise = null;
 
@@ -90,17 +94,48 @@ export function loadTgosApi({ windowRef = globalThis.window, documentRef = globa
     return tgosLoadPromise;
 }
 
-function markerDataUrl(color) {
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="32" viewBox="0 0 24 32"><path fill="${color}" stroke="#fff" stroke-width="1.5" d="M12 1C5.9 1 1 5.9 1 12c0 8.4 11 19 11 19s11-10.6 11-19C23 5.9 18.1 1 12 1Z"/><circle cx="12" cy="12" r="4" fill="#fff"/></svg>`;
-    return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
-}
-
-const MARKERS = Object.freeze({
-    red: markerDataUrl('#d93b32'),
-    green: markerDataUrl('#2e9d57'),
-    blue: markerDataUrl('#3478c5'),
-    yellow: markerDataUrl('#e0a51b'),
+// 圖釘顏色一律取自主題 token（Canvas-only 政策；hex 散裝與 SVG 皆為稽核硬零）
+const MARKER_TOKENS = Object.freeze({
+    red: '--cl-danger',
+    green: '--cl-success',
+    blue: '--cl-primary',
+    yellow: '--cl-warning',
 });
+
+// 與原 SVG 相同的圖釘外形（Path2D 直接支援 SVG path 字串）
+const MARKER_PATH = 'M12 1C5.9 1 1 5.9 1 12c0 8.4 11 19 11 19s11-10.6 11-19C23 5.9 18.1 1 12 1Z';
+const markerCache = new Map();
+
+/** 以 Canvas 產生 24x32 圖釘 PNG data URL；依「款式＋當下解析色」快取。 */
+function markerIcon(kind) {
+    const token = MARKER_TOKENS[kind] ? MARKER_TOKENS[kind] : MARKER_TOKENS.red;
+    const tok = resolveTokens([token, '--cl-bg']);
+    const fill = paintToken(tok, token);
+    const stroke = paintToken(tok, '--cl-bg');
+    const cacheKey = `${token}|${fill}|${stroke}`;
+    if (markerCache.has(cacheKey)) return markerCache.get(cacheKey);
+
+    const scale = 2; // 固定 2x 供高 DPI；TGImage 以 TGSize(24,32) 縮放顯示
+    const canvas = document.createElement('canvas');
+    canvas.width = 24 * scale;
+    canvas.height = 32 * scale;
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(scale, 0, 0, scale, 0, 0);
+    const pin = new Path2D(MARKER_PATH);
+    ctx.fillStyle = fill;
+    ctx.fill(pin);
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = stroke;
+    ctx.stroke(pin);
+    ctx.beginPath();
+    ctx.arc(12, 12, 4, 0, Math.PI * 2);
+    ctx.fillStyle = stroke;
+    ctx.fill();
+
+    const url = canvas.toDataURL('image/png');
+    markerCache.set(cacheKey, url);
+    return url;
+}
 
 /**
  * B4A TGOS map adapter. It deliberately fails visibly when TGOS is unavailable;
@@ -117,6 +152,7 @@ export class TgosMap {
             showList: true,
             listTitle: '查詢結果',
             geocodeMissingAddresses: false,
+            addressLookup: 'tgos-locator',
             fitStrategy: 'bounds',
             emptyView: null,
             minZoom: null,
@@ -253,6 +289,13 @@ export class TgosMap {
     }
 
     _locateAddress(TGOS, address) {
+        if (this.options.addressLookup === 'legacy-query-addr') {
+            return queryLegacyTgosAddress(address?.Address).then(result => ({
+                ...address,
+                ...result,
+                ExpireDate: this._expireDateOneYearFromNow(),
+            }));
+        }
         return new Promise((resolve, reject) => {
             if (!this.locator || !address?.Address) {
                 reject(new Error('地址資訊不存在或 TGOS 定位服務尚未就緒。'));
@@ -276,7 +319,8 @@ export class TgosMap {
     }
 
     async _geocodeRows(rows) {
-        if (!this.options.geocodeMissingAddresses || !this.locator || !globalThis.window?.TGOS) return rows;
+        if (!this.options.geocodeMissingAddresses || !globalThis.window?.TGOS) return rows;
+        if (this.options.addressLookup !== 'legacy-query-addr' && !this.locator) return rows;
         const TGOS = globalThis.window.TGOS;
         const pending = rows.map((row, index) => ({ row, index }))
             .filter(({ row }) => row?.Addr?.Address && !row.Addr.ExpireDate);
@@ -336,7 +380,7 @@ export class TgosMap {
 
         for (const item of located) {
             const color = this.options.markerColorBuilder?.(item.row) || 'red';
-            const image = new TGOS.TGImage(MARKERS[color] || MARKERS.red, new TGOS.TGSize(24, 32), new TGOS.TGPoint(0, 0), new TGOS.TGPoint(10, 31));
+            const image = new TGOS.TGImage(markerIcon(color), new TGOS.TGSize(24, 32), new TGOS.TGPoint(0, 0), new TGOS.TGPoint(10, 31));
             const point = new TGOS.TGPoint(item.x, item.y);
             const marker = new TGOS.TGMarker(this.map, point, String(item.row?.Name || item.row?.CarNo || ''), image);
             marker.__b4aRow = item.row;

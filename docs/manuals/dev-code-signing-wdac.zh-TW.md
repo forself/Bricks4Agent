@@ -245,8 +245,7 @@ npm run test:broker:trusted
 
 ```powershell
 npm run signing:wdac-repair -- `
-  -RuntimeRoot "D:\Bricks4Agent\.worktrees\baselogger-governance\packages\csharp\tests\broker-tests\binDebug
-et10.0" `
+  -RuntimeRoot "D:\Bricks4Agent\.worktrees\baselogger-governance\packages\csharp\tests\broker-tests\bin\Debug\net10.0" `
   -OutputDir ".run\wdac\baselogger-worktree-broker-tests" `
   -PolicyLevel Hash
 ```
@@ -255,8 +254,7 @@ et10.0" `
 
 ```powershell
 npm run signing:wdac-repair -- `
-  -RuntimeRoot "D:\Bricks4Agent\.worktrees\baselogger-governance\packages\csharp\tests\broker-tests\binDebug
-et10.0" `
+  -RuntimeRoot "D:\Bricks4Agent\.worktrees\baselogger-governance\packages\csharp\tests\broker-tests\bin\Debug\net10.0" `
   -OutputDir ".run\wdac\baselogger-worktree-broker-tests" `
   -PolicyLevel Hash `
   -Deploy

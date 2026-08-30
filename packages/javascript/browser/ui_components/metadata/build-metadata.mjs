@@ -8,7 +8,6 @@ import {
     createManifestSkeleton,
     introspectBrowserMetadata,
     resolveManifestRelativePath,
-    validateManifestMap,
     writeJsonFile,
 } from './index.js';
 
@@ -98,8 +97,8 @@ function verifyGeneratedFile(relativePath, value) {
 const introspection = introspectBrowserMetadata(browserRoot);
 ensureManifestFiles(introspection);
 
-const artifacts = buildMetadataArtifacts(browserRoot);
-const validation = validateManifestMap(artifacts.manifestMap, artifacts.introspection, browserRoot);
+const artifacts = buildMetadataArtifacts(browserRoot, { introspection });
+const validation = artifacts.validation;
 if (validation.missingRegistryEntries.length > 0 || validation.invalidManifests.length > 0) {
     throw new Error(`Metadata validation failed: ${JSON.stringify(validation, null, 2)}`);
 }

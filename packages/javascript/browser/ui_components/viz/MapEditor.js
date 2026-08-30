@@ -50,7 +50,11 @@ export class MapEditor {
             fillColor: 'color-mix(in srgb, var(--cl-canvas-red) 20%, transparent)',
             lineWidth: 2
         };
-        
+
+        // Lifecycle
+        this._destroyed = false;
+        this._handleKeyDown = null;
+
         this._init();
     }
 
@@ -405,7 +409,10 @@ export class MapEditor {
         this.canvas.addEventListener('dblclick', (e) => this._handleDoubleClick(e));
         
         // Keyboard shortcuts
-        document.addEventListener('keydown', (e) => {
+        this._handleKeyDown = (e) => {
+            // Ignore keys typed inside form fields
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
             if (e.key === 'Delete' && this.selectedElement) {
                 this._deleteElement(this.selectedElement);
             }
@@ -413,7 +420,8 @@ export class MapEditor {
                 e.preventDefault();
                 this._undo();
             }
-        });
+        };
+        document.addEventListener('keydown', this._handleKeyDown);
     }
 
     _getMousePos(e) {
@@ -432,6 +440,7 @@ export class MapEditor {
         reader.onload = (event) => {
             const img = new Image();
             img.onload = () => {
+                if (this._destroyed) return;
                 this.backgroundImage = img;
                 this._render();
             };
@@ -581,6 +590,9 @@ export class MapEditor {
     }
 
     _render() {
+        // Image loading is async, so callbacks can still land after destroy()
+        if (this._destroyed) return;
+
         const ctx = this.ctx;
         ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
         
@@ -702,6 +714,12 @@ export class MapEditor {
     _saveHistory() {
         this.history = this.history.slice(0, this.historyIndex + 1);
         this.history.push(JSON.parse(JSON.stringify(this.elements)));
+
+        // Cap only after pushing: trimming first would drop the entry historyIndex points at
+        while (this.history.length > 50) {
+            this.history.shift();
+        }
+
         this.historyIndex = this.history.length - 1;
     }
 
@@ -849,9 +867,15 @@ export class MapEditor {
                 
                 const img = new Image();
                 img.onload = () => {
-                    this.backgroundImage = img;
+                    // Revoke before the destroy check so the blob URL is freed on both paths
                     URL.revokeObjectURL(imageUrl);
-                    
+                    if (this._destroyed) {
+                        resolve(null);
+                        return;
+                    }
+
+                    this.backgroundImage = img;
+
                     // Extract metadata
                     const metadata = this._extractPNGMetadata(uint8Array);
                     if (metadata) {
@@ -945,6 +969,7 @@ export class MapEditor {
         link.download = `${nextUid('map-config')}.json`;
         link.href = URL.createObjectURL(blob);
         link.click();
+        URL.revokeObjectURL(link.href);
     }
 
     loadJSON(jsonData) {
@@ -965,6 +990,7 @@ export class MapEditor {
     setBackgroundImage(imageUrl) {
         const img = new Image();
         img.onload = () => {
+            if (this._destroyed) return;
             this.backgroundImage = img;
             this._render();
         };
@@ -976,5 +1002,30 @@ export class MapEditor {
         this.backgroundImage = null;
         this._saveHistory();
         this._render();
+    }
+
+    destroy() {
+        if (this._destroyed) return;
+        this._destroyed = true;
+        if (this._handleKeyDown) {
+            document.removeEventListener('keydown', this._handleKeyDown);
+            this._handleKeyDown = null;
+        }
+        if (this.element && this.element.parentNode) {
+            this.element.parentNode.removeChild(this.element);
+        }
+        this.toolButtons = {};
+        this.selectedElement = null;
+        this.hoveredElement = null;
+        this.tempShape = null;
+        this.backgroundImage = null;
+        this.elements = [];
+        this.history = [];
+        this.historyIndex = -1;
+        this._crcTable = null;
+        this.fileInput = null;
+        this.element = null;
+        this.canvas = null;
+        this.ctx = null;
     }
 }

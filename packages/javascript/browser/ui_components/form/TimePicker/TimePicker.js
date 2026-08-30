@@ -436,7 +436,7 @@ export class TimePicker {
                 this.close();
             }
         };
-        document.addEventListener('click', this._onDocumentClick);
+        this._globalListenersAttached = false;
 
         this.inputWrapper.addEventListener('mouseenter', () => {
             if (this.snapshot().availability === 'disabled') return;
@@ -447,6 +447,17 @@ export class TimePicker {
                 this.inputWrapper.style.borderColor = 'var(--cl-border)';
             }
         });
+    }
+
+    // 全域 click 監聽只在面板展開期間掛載;開啟點擊 dispatch 中同步掛上(contains 守衛使其對本次點擊 no-op)
+    _syncGlobalListeners(open) {
+        if (open === this._globalListenersAttached) return;
+        this._globalListenersAttached = open;
+        if (open) {
+            document.addEventListener('click', this._onDocumentClick);
+        } else {
+            document.removeEventListener('click', this._onDocumentClick);
+        }
     }
 
     _syncLegacyFields(state) {
@@ -493,6 +504,9 @@ export class TimePicker {
         if (this.panel) {
             this.panel.style.display = state.open ? 'block' : 'none';
         }
+
+        // destroy 後不得再掛回全域監聽（reducer 不檢查 lifecycle，這裡把關）
+        this._syncGlobalListeners(state.open && state.lifecycle !== 'destroyed');
 
         this._applyColumnSelection(this.hourColumn, state.draftHour);
         this._applyColumnSelection(this.minuteColumn, state.draftMinute);

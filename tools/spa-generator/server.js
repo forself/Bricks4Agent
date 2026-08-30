@@ -41,6 +41,14 @@ const SCRIPTS_DIR = path.join(__dirname, '..', '..', 'templates', 'spa', 'script
 // 允許從 Bricks4Agent 根目錄載入的路徑前綴
 const LIBRARY_PREFIXES = ['/templates/', '/packages/'];
 
+// ===== 本機安全設定 =====
+// 這是無認證的開發伺服器：預設只綁 loopback。指定非 loopback 位址等同自願開放區網，
+// 屆時 Host 白名單會放寬（仍保留同源檢查），請只在可信網段使用。
+const BIND_HOST = process.argv.find(a => a.startsWith('--host='))?.split('=')[1]
+    || process.env.SPA_GENERATOR_HOST
+    || '127.0.0.1';
+const MAX_BODY_BYTES = 8 * 1024 * 1024;
+
 // ===== MIME 類型 =====
 const MIME_TYPES = {
     '.html': 'text/html; charset=utf-8',
@@ -54,24 +62,102 @@ const MIME_TYPES = {
     '.woff2': 'font/woff2'
 };
 
+// ===== 來源與路徑安全 =====
+
+// 逐段檢查八位元，/^127\.\d{1,3}\./ 會把 127.0.0.999、127.0.0.010 這類無效位址當成本機
+const LOOPBACK_IPV4 = /^127\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)$/;
+
+function normalizeHostname(value) {
+    if (typeof value !== 'string') return '';
+    const trimmed = value.trim().toLowerCase();
+    if (trimmed.startsWith('[')) {
+        const end = trimmed.indexOf(']');
+        return end === -1 ? '' : trimmed.slice(1, end);
+    }
+    const colon = trimmed.indexOf(':');
+    return colon === -1 ? trimmed : trimmed.slice(0, colon);
+}
+
+function isLoopbackHostname(hostname) {
+    if (!hostname) return false;
+    if (hostname === 'localhost') return true;
+    if (hostname === '::1' || hostname === '0:0:0:0:0:0:0:1') return true;
+    if (hostname.startsWith('::ffff:')) return LOOPBACK_IPV4.test(hostname.slice(7));
+    return LOOPBACK_IPV4.test(hostname);
+}
+
+const ALLOW_REMOTE_HOSTS = !isLoopbackHostname(normalizeHostname(BIND_HOST));
+
+function isTrustedHost(hostHeader) {
+    if (ALLOW_REMOTE_HOSTS) return true;
+    return isLoopbackHostname(normalizeHostname(hostHeader));
+}
+
+function isAllowedOrigin(originHeader, hostHeader) {
+    if (!originHeader) return false;
+    let parsed;
+    try {
+        parsed = new URL(originHeader);
+    } catch {
+        return false;
+    }
+    if (isLoopbackHostname(normalizeHostname(parsed.hostname))) return true;
+    return parsed.host.toLowerCase() === String(hostHeader || '').toLowerCase();
+}
+
+function isWithinRoot(root, target) {
+    const resolvedRoot = path.resolve(root);
+    const resolvedTarget = path.resolve(target);
+    const prefix = resolvedRoot.endsWith(path.sep) ? resolvedRoot : resolvedRoot + path.sep;
+    if (process.platform === 'win32') {
+        const lowerTarget = resolvedTarget.toLowerCase();
+        return lowerTarget === resolvedRoot.toLowerCase() || lowerTarget.startsWith(prefix.toLowerCase());
+    }
+    return resolvedTarget === resolvedRoot || resolvedTarget.startsWith(prefix);
+}
+
 // ===== 工具函數 =====
 
-function parseBody(req) {
+const rawBodies = new WeakMap();
+
+function readRawBody(req) {
     return new Promise((resolve, reject) => {
-        let body = '';
-        req.on('data', chunk => body += chunk);
-        req.on('end', () => {
-            try {
-                resolve(body ? JSON.parse(body) : {});
-            } catch (e) {
-                reject(new Error('Invalid JSON'));
+        const chunks = [];
+        let size = 0;
+        let rejected = false;
+
+        req.on('data', chunk => {
+            if (rejected) return;
+            size += chunk.length;
+            if (size > MAX_BODY_BYTES) {
+                rejected = true;
+                const error = new Error(`Request body too large (max ${MAX_BODY_BYTES} bytes)`);
+                error.statusCode = 413;
+                reject(error);
+                return;
             }
+            chunks.push(chunk);
         });
-        req.on('error', reject);
+        req.on('end', () => {
+            if (!rejected) resolve(Buffer.concat(chunks).toString('utf8'));
+        });
+        req.on('error', err => {
+            if (!rejected) reject(err);
+        });
     });
 }
 
+async function parseBody(req) {
+    const body = rawBodies.has(req) ? rawBodies.get(req) : await readRawBody(req);
+    try {
+        return body ? JSON.parse(body) : {};
+    } catch (e) {
+        throw new Error('Invalid JSON');
+    }
+}
+
 function sendJson(res, data, status = 200) {
+    if (res.headersSent) return;
     res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
     res.end(JSON.stringify(data, null, 2));
 }
@@ -904,10 +990,29 @@ const server = http.createServer(async (req, res) => {
     const parsedUrl = url.parse(req.url, true);
     const pathname = parsedUrl.pathname;
 
-    // CORS
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    // Host 必須指向本機，擋掉 DNS rebinding
+    if (!isTrustedHost(req.headers.host)) {
+        res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end('Forbidden');
+        return;
+    }
+
+    // CORS：只回應本機或同源的 Origin，不再開放萬用字元
+    const origin = req.headers.origin;
+    const originAllowed = isAllowedOrigin(origin, req.headers.host);
+    res.setHeader('Vary', 'Origin');
+    if (originAllowed) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    }
+
+    // 跨站的狀態變更請求（含 preflight）一律拒絕
+    if (origin && !originAllowed && req.method !== 'GET' && req.method !== 'HEAD') {
+        res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end('Forbidden');
+        return;
+    }
 
     if (req.method === 'OPTIONS') {
         res.writeHead(204);
@@ -919,10 +1024,13 @@ const server = http.createServer(async (req, res) => {
     const routeKey = `${req.method} ${pathname}`;
     if (apiHandlers[routeKey]) {
         try {
+            if (req.method !== 'GET' && req.method !== 'HEAD') {
+                rawBodies.set(req, await readRawBody(req));
+            }
             await apiHandlers[routeKey](req, res);
         } catch (error) {
             console.error(`[API Error] ${routeKey}:`, error);
-            sendError(res, error.message, 500);
+            sendError(res, error.message, error.statusCode || 500);
         }
         return;
     }
@@ -931,7 +1039,8 @@ const server = http.createServer(async (req, res) => {
     let filePath = pathname === '/' ? '/index.html' : pathname;
 
     // 判斷是否為 Bricks4Agent 根目錄下的路徑（templates/, packages/）
-    const isLibraryPath = LIBRARY_PREFIXES.some(prefix => pathname.startsWith(prefix));
+    const libraryPrefix = LIBRARY_PREFIXES.find(prefix => pathname.startsWith(prefix));
+    const isLibraryPath = Boolean(libraryPrefix);
 
     if (isLibraryPath) {
         filePath = path.join(LIBRARY_DIR, pathname);
@@ -939,10 +1048,9 @@ const server = http.createServer(async (req, res) => {
         filePath = path.join(FRONTEND_DIR, filePath);
     }
 
-    // 安全性檢查
-    const normalizedPath = path.normalize(filePath);
-    const allowedRoot = isLibraryPath ? LIBRARY_DIR : FRONTEND_DIR;
-    if (!normalizedPath.startsWith(allowedRoot)) {
+    // 安全性檢查：只能落在該前綴自己的目錄內（擋 /packages/../ 這類點段跳脫）
+    const allowedRoot = isLibraryPath ? path.join(LIBRARY_DIR, libraryPrefix) : FRONTEND_DIR;
+    if (!isWithinRoot(allowedRoot, filePath)) {
         res.writeHead(403);
         res.end('Forbidden');
         return;
@@ -984,13 +1092,20 @@ const server = http.createServer(async (req, res) => {
 
 // ===== 啟動伺服器 =====
 
-server.listen(PORT, () => {
+// 限制標頭與整段請求的收取時間，避免 slowloris 把連線佔滿
+server.headersTimeout = 10 * 1000;
+server.requestTimeout = 30 * 1000;
+
+server.listen(PORT, BIND_HOST, () => {
     console.log('');
     console.log('\x1b[36m' + '╔════════════════════════════════════════╗' + '\x1b[0m');
     console.log('\x1b[36m' + '║      SPA Generator Web Interface       ║' + '\x1b[0m');
     console.log('\x1b[36m' + '╚════════════════════════════════════════╝' + '\x1b[0m');
     console.log('');
     console.log(`\x1b[32m伺服器運行中:\x1b[0m http://localhost:${PORT}`);
+    if (ALLOW_REMOTE_HOSTS) {
+        console.log(`\x1b[31m警告:\x1b[0m 已綁定 ${BIND_HOST}（非 loopback），此伺服器無認證且可寫入任意路徑`);
+    }
     console.log('');
     console.log(`\x1b[33m腳本目錄:\x1b[0m ${SCRIPTS_DIR}`);
     console.log(`\x1b[33m前端目錄:\x1b[0m ${FRONTEND_DIR}`);

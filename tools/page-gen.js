@@ -19,7 +19,8 @@ const { pathToFileURL } = require('node:url');
 const {
     assertValidDefinitionTemplate,
     resolveTemplateEnvelope,
-    extractPageEntry
+    extractPageEntry,
+    extractPageEntries
 } = require('./lib/definition-template.js');
 
 // ============================================================
@@ -84,6 +85,8 @@ function parseArgs(argv) {
     const args = {
         def: null,
         page: null,
+        pages: null,
+        all: false,
         mode: 'static',
         output: null,
         validate: false,
@@ -102,6 +105,12 @@ function parseArgs(argv) {
                 break;
             case '--page':
                 args.page = rawArgs[++i];
+                break;
+            case '--pages':
+                args.pages = rawArgs[++i];
+                break;
+            case '--all':
+                args.all = true;
                 break;
             case '--mode':
                 args.mode = rawArgs[++i];
@@ -143,6 +152,8 @@ page-gen.js - 頁面生成 CLI 工具
 選項：
   --def <path>       頁面定義 JSON 檔案路徑
   --page <id>        DefinitionTemplate 內要選用的 page id
+  --pages <ids>      DefinitionTemplate 內要批次處理的 page id（逗號分隔）
+  --all              批次處理 DefinitionTemplate 內所有 pages
   --mode <mode>      生成模式：static | dynamic | both（預設：static）
   --output <dir>     輸出目錄
   --validate         僅驗證定義，不生成檔案
@@ -155,6 +166,12 @@ page-gen.js - 頁面生成 CLI 工具
 
   # 從 DefinitionTemplate 選取單一 page
   node tools/page-gen.js --def site-definition.json --page products-list --mode static --output ./output/
+
+  # 從 DefinitionTemplate 批次生成多個 pages（輸出彙總 JSON）
+  node tools/page-gen.js --def site-definition.json --pages products-list,orders-form --mode static --output ./output/
+
+  # 從 DefinitionTemplate 批次生成所有 pages
+  node tools/page-gen.js --def site-definition.json --all --mode static --output ./output/
 
   # 生成動態定義 JSON
   node tools/page-gen.js --def employee.json --mode dynamic --output ./output/
@@ -477,25 +494,9 @@ async function normalizeDefinitionInput(definition, pageId) {
 }
 
 async function validateNormalizedDefinition(normalized) {
-    const errors = [];
-
-    if (normalized.oldDefinition) {
-        const { validatePageDefinition } = await loadPageDefinitionModules();
-        const pageValidation = validatePageDefinition(normalized.oldDefinition);
-        if (!pageValidation.valid) {
-            errors.push(...pageValidation.errors);
-        }
-    }
-
-    const newValidation = validateNewDefinition(normalized.definition);
-    if (!newValidation.valid) {
-        errors.push(...newValidation.errors);
-    }
-
-    return {
-        valid: errors.length === 0,
-        errors
-    };
+    // oldDefinition 僅來自 definition-template 路徑，且同一物件已在
+    // assertValidDefinitionTemplate 內通過 validatePageDefinition，毋須重跑
+    return validateNewDefinition(normalized.definition);
 }
 
 // ============================================================
@@ -615,6 +616,158 @@ function outputError(errors) {
 }
 
 // ============================================================
+// 批次生成（--pages / --all）
+// ============================================================
+
+/**
+ * 對批次選取的 pages 逐一執行新格式驗證
+ * @param {Array<{pageId: string, newDefinition: Object}>} selections
+ * @returns {string[]} 錯誤訊息（附 page id 前綴）
+ */
+function collectBatchValidationErrors(selections) {
+    const errors = [];
+
+    for (const { pageId, newDefinition } of selections) {
+        const validation = validateNewDefinition(newDefinition);
+        if (!validation.valid) {
+            errors.push(...validation.errors.map(error => `page ${pageId}: ${error}`));
+        }
+    }
+
+    return errors;
+}
+
+/**
+ * 批次模式：一次處理 DefinitionTemplate 內多個（或全部）pages，
+ * 並輸出彙總 JSON { success, results: [{ pageId, files }], errors? }
+ * @param {Object} definition - 已解析的輸入 JSON
+ * @param {Object} args - CLI 參數
+ */
+async function runBatch(definition, args) {
+    const envelope = resolveTemplateEnvelope(definition, null);
+    if (!envelope) {
+        outputError(['--pages/--all 僅適用於 DefinitionTemplate 輸入']);
+        process.exit(1);
+    }
+
+    // 防止 --pages 吞掉後續旗標（如 --pages --validate）
+    if (typeof args.pages === 'string' && args.pages.startsWith('--')) {
+        outputError([`--pages 需要 page id 清單，收到旗標 "${args.pages}"`]);
+        process.exit(1);
+    }
+
+    const pageIds = typeof args.pages === 'string'
+        ? args.pages.split(',').map(id => id.trim()).filter(Boolean)
+        : null;
+
+    if (typeof args.pages === 'string' && pageIds.length === 0) {
+        outputError(['--pages 需要至少一個 page id（以逗號分隔）']);
+        process.exit(1);
+    }
+
+    if (pageIds) {
+        const dup = pageIds.find((id, i) => pageIds.indexOf(id) !== i);
+        if (dup) {
+            outputError([`--pages 含重複的 page id "${dup}"`]);
+            process.exit(1);
+        }
+    }
+
+    let templateStats;
+    let selections;
+    try {
+        // 模板僅解析與驗證一次；validatePageDefinition 已在此對每個 page.definition 執行過
+        const templateValidation = await assertValidDefinitionTemplate(envelope.template);
+        templateStats = templateValidation.stats;
+
+        const { PageDefinitionAdapter } = await loadPageDefinitionModules();
+        selections = extractPageEntries(envelope.template, pageIds).map(({ pageId, pageDefinition }) => {
+            const newDefinition = PageDefinitionAdapter.toNewFormat(pageDefinition);
+            if (!newDefinition) {
+                throw new Error(`無法將 page ${pageId} 轉為 CLI 可用格式`);
+            }
+
+            return { pageId, pageDefinition, newDefinition };
+        });
+    } catch (e) {
+        outputError(Array.isArray(e.errors) ? e.errors : [e.message]);
+        process.exit(1);
+    }
+
+    // 僅驗證模式
+    if (args.validate) {
+        const errors = collectBatchValidationErrors(selections);
+        if (errors.length > 0) {
+            outputError(errors);
+            process.exit(1);
+        }
+
+        outputJSON({
+            success: true,
+            message: '定義驗證通過',
+            source: 'definition-template',
+            templateStats,
+            results: selections.map(({ pageId }) => ({ pageId }))
+        });
+        process.exit(0);
+    }
+
+    // 檢查模式與輸出目錄
+    const validModes = ['static', 'dynamic', 'both'];
+    if (!validModes.includes(args.mode)) {
+        outputError([`無效的模式 "${args.mode}"，允許值：${validModes.join(', ')}`]);
+        process.exit(1);
+    }
+
+    if (!args.output) {
+        outputError(['缺少輸出目錄，請使用 --output <dir>']);
+        process.exit(1);
+    }
+
+    const outputDir = path.resolve(args.output);
+
+    // 先驗證所有選取的 pages，再開始生成
+    const validationErrors = collectBatchValidationErrors(selections);
+    if (validationErrors.length > 0) {
+        outputError(validationErrors);
+        process.exit(1);
+    }
+
+    // 逐頁生成（與單頁路徑相同的生成流程）
+    const results = [];
+
+    try {
+        for (const { pageId, pageDefinition, newDefinition } of selections) {
+            const files = [];
+
+            if (args.mode === 'static' || args.mode === 'both') {
+                files.push(await generateStaticFromOldDefinition(pageDefinition, outputDir));
+            }
+
+            if (args.mode === 'dynamic' || args.mode === 'both') {
+                files.push(generateDynamic(newDefinition, outputDir, pageId));
+            }
+
+            results.push({ pageId, files });
+        }
+    } catch (e) {
+        outputJSON({
+            success: false,
+            results,
+            errors: Array.isArray(e.errors) ? e.errors : [e.message]
+        });
+        process.exit(1);
+    }
+
+    outputJSON({
+        success: true,
+        source: 'definition-template',
+        templateStats,
+        results
+    });
+}
+
+// ============================================================
 // 主程式
 // ============================================================
 
@@ -648,6 +801,12 @@ async function main() {
     } catch (e) {
         outputError(Array.isArray(e.errors) ? e.errors : [e.message]);
         process.exit(1);
+    }
+
+    // 批次模式（--pages / --all）
+    if (args.all || typeof args.pages === 'string') {
+        await runBatch(definition, args);
+        return;
     }
 
     let normalized;

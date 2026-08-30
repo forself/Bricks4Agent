@@ -1,4 +1,4 @@
-import { ComponentFactory } from '../ui_components/binding/ComponentFactory.js';
+import { LazyComponentFactory } from '../ui_components/binding/LazyComponentFactory.js';
 import { validateToolPageDefinition } from './ToolPageDefinition.js';
 
 const INTERACTIVE_SELECTOR = [
@@ -127,6 +127,20 @@ function resolveControlRecords(controlRegistry) {
     return new Map();
 }
 
+// 收集定義樹會實例化的所有元件名稱(含 _replaceComponent 重建用——其節點必來自定義樹)
+function collectComponentNames(node, names = new Set()) {
+    if (!node || typeof node !== 'object') return names;
+    if (node.type === 'component') {
+        names.add(node.component);
+    } else if (node.type === 'tabs') {
+        names.add('TabContainer');
+        for (const tab of node.tabs || []) collectComponentNames(tab.content, names);
+    } else if (node.type === 'group') {
+        for (const child of node.children || []) collectComponentNames(child, names);
+    }
+    return names;
+}
+
 function instanceElement(instance) {
     const element = instance?.element;
     return element && Number.isInteger(element.nodeType) ? element : null;
@@ -144,7 +158,7 @@ export class DynamicToolRenderer {
         this.definition = options.definition ?? null;
         this.commandRegistry = options.commandRegistry ?? new Map();
         this.state = cloneData(options.state ?? {}, 'state');
-        this.factory = options.factory || ComponentFactory;
+        this.factory = options.factory || LazyComponentFactory;
         this.controlRecords = resolveControlRecords(options.controlRegistry);
 
         this.element = null;
@@ -175,6 +189,10 @@ export class DynamicToolRenderer {
         }
 
         this.definition = cloneData(this.definition, 'definition');
+        // 先把定義用到的元件模組載入快取;自訂 factory 若無 preload 則保持原行為
+        await this.factory.preload?.([...collectComponentNames(this.definition.root)]);
+        // preload 等待期間可能已被 destroy，不得將已銷毀的渲染器標記為 initialized
+        if (this._destroyed) throw new Error('A destroyed DynamicToolRenderer cannot be initialized.');
         try {
             this._preflightNode(this.definition.root);
             this._initialized = true;

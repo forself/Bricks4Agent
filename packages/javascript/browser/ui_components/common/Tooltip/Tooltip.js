@@ -96,6 +96,9 @@ export class Tooltip {
         this._onClick = this._handleClick.bind(this);
         this._onDocClick = this._handleDocumentClick.bind(this);
         this._onKeyDown = this._handleKeyDown.bind(this);
+
+        /** @type {boolean} Whether the document keydown listener is attached (visible only) */
+        this._docKeydownAttached = false;
     }
 
     /* ------------------------------------------------------------------ */
@@ -155,6 +158,7 @@ export class Tooltip {
         this._el.classList.add('cl-tooltip--visible');
         this._el.style.opacity = '1';
         this._visible = true;
+        this._syncDocKeydown(true);
 
         return this;
     }
@@ -172,6 +176,7 @@ export class Tooltip {
         this._el.classList.remove('cl-tooltip--visible');
         this._el.style.opacity = '0';
         this._visible = false;
+        this._syncDocKeydown(false);
 
         // Remove from DOM after transition
         const el = this._el;
@@ -452,8 +457,8 @@ export class Tooltip {
             document.addEventListener('click', this._onDocClick, true);
         }
 
-        // Escape always hides
-        document.addEventListener('keydown', this._onKeyDown);
+        // Escape hides; the listener is attached only while the tooltip is visible
+        this._syncDocKeydown(this._visible);
     }
 
     /** @private */
@@ -466,7 +471,18 @@ export class Tooltip {
         this._target.removeEventListener('focusout', this._onFocusOut);
         this._target.removeEventListener('click', this._onClick);
         document.removeEventListener('click', this._onDocClick, true);
-        document.removeEventListener('keydown', this._onKeyDown);
+        this._syncDocKeydown(false);
+    }
+
+    /** @private Attach/detach the document Escape listener (idempotent) */
+    _syncDocKeydown(attach) {
+        if (attach === this._docKeydownAttached) return;
+        this._docKeydownAttached = attach;
+        if (attach) {
+            document.addEventListener('keydown', this._onKeyDown);
+        } else {
+            document.removeEventListener('keydown', this._onKeyDown);
+        }
     }
 
     /* ------------------------------------------------------------------ */

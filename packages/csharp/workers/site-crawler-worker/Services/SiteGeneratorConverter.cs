@@ -18,9 +18,14 @@ public sealed class SiteGeneratorConverter
 {
     private readonly ComponentLibraryManifest baseManifest;
 
+    // Loaded once: TemplateMatcher only reads the framework and TemplateCompiler never receives it,
+    // so the validated instance is safe to share across Convert calls (no per-request disk I/O).
+    private readonly TemplateFrameworkManifest templates;
+
     public SiteGeneratorConverter(ComponentLibraryManifest componentLibrary)
     {
         baseManifest = CloneManifest(componentLibrary);
+        templates = new TemplateFrameworkLoader().LoadDefault();
     }
 
     public GeneratorSiteDocument Convert(SiteCrawlResult crawl)
@@ -29,7 +34,6 @@ public sealed class SiteGeneratorConverter
 
         var manifest = CloneManifest(baseManifest);
         var intent = new SiteIntentExtractor().Extract(crawl);
-        var templates = new TemplateFrameworkLoader().LoadDefault();
         var plan = new TemplateMatcher(templates, manifest).Match(intent);
         return new TemplateCompiler(manifest).Compile(crawl, intent, plan);
     }

@@ -151,6 +151,7 @@ export class DataTable {
         this._selectedRows = [];
         this._hoveredRow = null;
         this._cellComponents = [];
+        this._sortedCache = null;
 
         // 合併 textLabels
         const tl = this.options.textLabels || {};
@@ -322,6 +323,7 @@ export class DataTable {
      */
     render() {
         if (!this.container) return;
+        this._sortedCache = null;
         this.container.innerHTML = '';
         this._renderToElement();
         this.container.appendChild(this.element);
@@ -332,88 +334,97 @@ export class DataTable {
      */
     _renderToElement() {
         this._cellComponents.splice(0).forEach(component => component.destroy?.());
-        const sorted = this._getSortedData();
-        const paginated = this._paginationEnabled ? this._getPaginatedData(sorted) : sorted;
-        const visibleCols = this._getVisibleColumns();
-        const isSelectable = this.options.selectableRows !== 'none' && this.options.selectableRows !== false;
-        const isAnySelected = isSelectable && this._selectedRows.length > 0;
+        // 排序結果僅在本次渲染流程內共用（_renderToolbar / _bindEvents 重複取用時免重算），
+        // finally 必定清除：流程外的呼叫（如事件中的 _fireSelectionChange）維持即時重算。
+        // 進入即歸零：直接呼叫 _renderToElement（含回呼內重入）時不得沿用外層流程的快取。
+        this._sortedCache = null;
+        this._sortedCache = this._getSortedData();
+        try {
+            const sorted = this._sortedCache;
+            const paginated = this._paginationEnabled ? this._getPaginatedData(sorted) : sorted;
+            const visibleCols = this._getVisibleColumns();
+            const isSelectable = this.options.selectableRows !== 'none' && this.options.selectableRows !== false;
+            const isAnySelected = isSelectable && this._selectedRows.length > 0;
 
-        // CSP 合規：模板不用 style 屬性，改用 class（樣式在 DataTable.css）
-        const variantClass = THEMES[this.variant] ? this.variant : 'default';
-        let html = `<div class="b4a-dt b4a-dt--${variantClass}">`;
+            // CSP 合規：模板不用 style 屬性，改用 class（樣式在 DataTable.css）
+            const variantClass = THEMES[this.variant] ? this.variant : 'default';
+            let html = `<div class="b4a-dt b4a-dt--${variantClass}">`;
 
-        // 工具列
-        html += this._renderToolbar(isAnySelected);
+            // 工具列
+            html += this._renderToolbar(isAnySelected);
 
-        // 表格
-        html += '<div class="b4a-dt__scroll">';
-        html += '<table class="b4a-dt__table">';
+            // 表格
+            html += '<div class="b4a-dt__scroll">';
+            html += '<table class="b4a-dt__table">';
 
-        // 表頭
-        html += '<thead><tr>';
-        if (isSelectable) {
-            const allSelected = sorted.length > 0 && sorted.every(d => this._selectedRows.includes(d.dataIndex));
-            html += '<th class="b4a-dt__th b4a-dt__th--select">';
-            if (this.options.selectableRows !== 'single') {
-                html += `<input type="checkbox" class="b4a-dt__checkbox" data-action="select-all" ${allSelected ? 'checked' : ''}>`;
-            }
-            html += '</th>';
-        }
-        visibleCols.forEach(colIdx => {
-            const col = this.columns[colIdx];
-            const isSorted = this._sortCol === colIdx;
-            const sortIcon = isSorted ? (this._sortDir === 'asc' ? ' ▲' : ' ▼') : '';
-            const sortDisabled = col.options?.sort === false;
-            html += `<th class="b4a-dt__th${sortDisabled ? '' : ' b4a-dt__th--sortable'}" data-action="sort" data-col="${colIdx}">`;
-            html += `<div class="b4a-dt__th-inner">${escapeHtml(col.label || col.name || '')}${sortIcon}</div>`;
-            html += '</th>';
-        });
-        html += '</tr></thead>';
-
-        // 表身
-        html += '<tbody>';
-        if (paginated.length === 0) {
-            const colspan = visibleCols.length + (isSelectable ? 1 : 0);
-            html += `<tr><td colspan="${colspan}" class="b4a-dt__td b4a-dt__td--empty">${escapeHtml(this._textLabels.body.noMatch)}</td></tr>`;
-        } else {
-            paginated.forEach(({ row, dataIndex }, viewIndex) => {
-                const isEven = viewIndex % 2 === 1;
-                const isSelected = this._selectedRows.includes(dataIndex);
-                // 與舊行為一致：選取 > 偶數列 > 奇數列（hover 由 CSS :hover 蓋過）
-                const rowClass = isSelected ? ' b4a-dt__tr--selected' : (isEven ? ' b4a-dt__tr--even' : '');
-
-                html += `<tr class="b4a-dt__tr${rowClass}" data-row-index="${dataIndex}">`;
-
-                if (isSelectable) {
-                    html += '<td class="b4a-dt__td b4a-dt__td--select">';
-                    html += `<input type="checkbox" class="b4a-dt__checkbox" data-action="select-row" data-index="${dataIndex}" ${isSelected ? 'checked' : ''}>`;
-                    html += '</td>';
+            // 表頭
+            html += '<thead><tr>';
+            if (isSelectable) {
+                const allSelected = sorted.length > 0 && sorted.every(d => this._selectedRows.includes(d.dataIndex));
+                html += '<th class="b4a-dt__th b4a-dt__th--select">';
+                if (this.options.selectableRows !== 'single') {
+                    html += `<input type="checkbox" class="b4a-dt__checkbox" data-action="select-all" ${allSelected ? 'checked' : ''}>`;
                 }
-
-                visibleCols.forEach(colIdx => {
-                    const cellContent = this._renderCell(row, colIdx, dataIndex, viewIndex);
-                    html += `<td class="b4a-dt__td" data-col="${colIdx}">${cellContent}</td>`;
-                });
-
-                html += '</tr>';
+                html += '</th>';
+            }
+            visibleCols.forEach(colIdx => {
+                const col = this.columns[colIdx];
+                const isSorted = this._sortCol === colIdx;
+                const sortIcon = isSorted ? (this._sortDir === 'asc' ? ' ▲' : ' ▼') : '';
+                const sortDisabled = col.options?.sort === false;
+                html += `<th class="b4a-dt__th${sortDisabled ? '' : ' b4a-dt__th--sortable'}" data-action="sort" data-col="${colIdx}">`;
+                html += `<div class="b4a-dt__th-inner">${escapeHtml(col.label || col.name || '')}${sortIcon}</div>`;
+                html += '</th>';
             });
+            html += '</tr></thead>';
+
+            // 表身
+            html += '<tbody>';
+            if (paginated.length === 0) {
+                const colspan = visibleCols.length + (isSelectable ? 1 : 0);
+                html += `<tr><td colspan="${colspan}" class="b4a-dt__td b4a-dt__td--empty">${escapeHtml(this._textLabels.body.noMatch)}</td></tr>`;
+            } else {
+                paginated.forEach(({ row, dataIndex }, viewIndex) => {
+                    const isEven = viewIndex % 2 === 1;
+                    const isSelected = this._selectedRows.includes(dataIndex);
+                    // 與舊行為一致：選取 > 偶數列 > 奇數列（hover 由 CSS :hover 蓋過）
+                    const rowClass = isSelected ? ' b4a-dt__tr--selected' : (isEven ? ' b4a-dt__tr--even' : '');
+
+                    html += `<tr class="b4a-dt__tr${rowClass}" data-row-index="${dataIndex}">`;
+
+                    if (isSelectable) {
+                        html += '<td class="b4a-dt__td b4a-dt__td--select">';
+                        html += `<input type="checkbox" class="b4a-dt__checkbox" data-action="select-row" data-index="${dataIndex}" ${isSelected ? 'checked' : ''}>`;
+                        html += '</td>';
+                    }
+
+                    visibleCols.forEach(colIdx => {
+                        const cellContent = this._renderCell(row, colIdx, dataIndex, viewIndex);
+                        html += `<td class="b4a-dt__td" data-col="${colIdx}">${cellContent}</td>`;
+                    });
+
+                    html += '</tr>';
+                });
+            }
+            html += '</tbody></table></div>';
+
+            // 分頁
+            if (this._paginationEnabled && sorted.length > 0) {
+                html += this._renderPagination(sorted.length);
+            }
+
+            html += '</div>';
+
+            this.element.innerHTML = html;
+            this._applyDynamicStyles(visibleCols);
+            this._bindEvents(this.element);
+            this._hydrateCellComponents(this.element);
+            // Composite callers may mount B4A controls into cell hosts after every
+            // sort/page re-render. The callback receives the stable table root.
+            this.options.onRender?.(this.element, this);
+        } finally {
+            this._sortedCache = null;
         }
-        html += '</tbody></table></div>';
-
-        // 分頁
-        if (this._paginationEnabled && sorted.length > 0) {
-            html += this._renderPagination(sorted.length);
-        }
-
-        html += '</div>';
-
-        this.element.innerHTML = html;
-        this._applyDynamicStyles(visibleCols);
-        this._bindEvents(this.element);
-        this._hydrateCellComponents(this.element);
-        // Composite callers may mount B4A controls into cell hosts after every
-        // sort/page re-render. The callback receives the stable table root.
-        this.options.onRender?.(this.element, this);
     }
 
     _hydrateCellComponents(root) {
@@ -470,6 +481,7 @@ export class DataTable {
     // ── 內部方法 ──
 
     _getSortedData() {
+        if (this._sortedCache) return this._sortedCache;
         const indexed = this.data.map((row, i) => ({ row, dataIndex: i }));
         if (this._sortCol === null || !this._sortDir) return indexed;
 
@@ -622,9 +634,7 @@ export class DataTable {
         root.querySelector('[data-action="select-all"]')?.addEventListener('change', (e) => {
             const sorted = this._getSortedData();
             this._selectedRows = e.target.checked ? sorted.map(d => d.dataIndex) : [];
-            this._fireSelectionChange();
-            if (this.container) this.render();
-            else this._renderToElement();
+            this._afterSelectionChange();
         });
 
         // 單行選擇
@@ -640,9 +650,7 @@ export class DataTable {
                         this._selectedRows = this._selectedRows.filter(i => i !== dataIndex);
                     }
                 }
-                this._fireSelectionChange();
-                if (this.container) this.render();
-                else this._renderToElement();
+                this._afterSelectionChange();
             });
         });
 
@@ -665,6 +673,58 @@ export class DataTable {
 
         // 行 hover：改由 DataTable.css 的 .b4a-dt .b4a-dt__tr:hover 呈現
         //（特異性高於 --selected/--even，hover 蓋過選取/斑馬色，與舊 JS 行為一致）
+    }
+
+    /**
+     * 選取狀態變更後的更新：無 customToolbarSelect 時工具列與選取無關，
+     * 只需局部同步選取相關 DOM，免整頁重建（onRender 不重發）；
+     * customToolbarSelect 的工具列內容依賴 onRender 掛載（如選取動作按鈕），維持完整重繪。
+     */
+    _afterSelectionChange() {
+        // customToolbar 為函式時可能讀取選取狀態，維持完整重繪以重新求值（與舊行為一致）
+        if (!this.options.customToolbarSelect && typeof this.options.customToolbar !== 'function') {
+            this._applySelectionUpdate();
+            this._fireSelectionChange();
+            return;
+        }
+        this._fireSelectionChange();
+        if (this.container) this.render();
+        else this._renderToElement();
+    }
+
+    /**
+     * 局部同步選取相關 DOM（列 class、行 checkbox、表頭全選），結果與完整重繪一致
+     */
+    _applySelectionUpdate() {
+        // :scope 鏈限定在本表自身的 tbody，避免命中儲存格內的巢狀表格列
+        const ownRows = this.element.querySelectorAll(
+            ':scope > .b4a-dt > .b4a-dt__scroll > .b4a-dt__table > tbody > tr[data-row-index]'
+        );
+        ownRows.forEach((tr, viewIndex) => {
+            const dataIndex = parseInt(tr.getAttribute('data-row-index'));
+            const isSelected = this._selectedRows.includes(dataIndex);
+            const isEven = viewIndex % 2 === 1;
+            // 僅切換本元件的兩個修飾 class，保留外部程式加在列上的其他 class
+            tr.classList.toggle('b4a-dt__tr--selected', isSelected);
+            tr.classList.toggle('b4a-dt__tr--even', !isSelected && isEven);
+            const cb = tr.querySelector(':scope > .b4a-dt__td--select > [data-action="select-row"]');
+            if (cb) {
+                cb.checked = isSelected;
+                if (isSelected) cb.setAttribute('checked', '');
+                else cb.removeAttribute('checked');
+            }
+        });
+
+        const selectAll = this.element.querySelector(
+            ':scope > .b4a-dt > .b4a-dt__scroll > .b4a-dt__table > thead [data-action="select-all"]'
+        );
+        if (selectAll) {
+            // 與 _renderToElement 的 allSelected 判定等價（sorted 僅是全資料的重排，免排序）
+            const allSelected = this.data.length > 0 && this.data.every((_, i) => this._selectedRows.includes(i));
+            selectAll.checked = allSelected;
+            if (allSelected) selectAll.setAttribute('checked', '');
+            else selectAll.removeAttribute('checked');
+        }
     }
 
     _fireSelectionChange() {

@@ -188,13 +188,14 @@ export function validateManifestMap(manifestMap, introspection, browserRoot) {
         .filter((registryName) => !manifestMap[registryName])
         .sort();
 
+    const registryNames = new Set(introspection.registryNames);
     const invalidManifests = Object.values(manifestMap)
         .map((manifest) => ({
             registry_name: manifest.registry_name,
             ...validateManifest(manifest, {
                 browserRoot,
                 triggerActions: introspection.triggerActions,
-                registryNames: new Set(introspection.registryNames),
+                registryNames,
             }),
         }))
         .filter((entry) => !entry.valid)

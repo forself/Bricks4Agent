@@ -12,6 +12,7 @@ export class DropdownMenu {
         this._menu = null;
         this._children = [];
         this._onDocClick = (e) => { if (this.element && !this.element.contains(e.target)) this._setOpen(false); };
+        this._docClickAttached = false;
         this._state = createComponentState(
             { lifecycle: 'created', visibility: 'visible', open: false },
             {
@@ -93,7 +94,14 @@ export class DropdownMenu {
             this._children.push(link);
         });
         this.element.appendChild(this._menu);
-        document.addEventListener('click', this._onDocClick);
+    }
+
+    // 全域 click 監聽只在選單展開期間掛載(開啟點擊 dispatch 中同步掛上,contains 守衛使其對本次點擊 no-op)
+    _syncDocClick(attach) {
+        if (attach === this._docClickAttached) return;
+        this._docClickAttached = attach;
+        if (attach) document.addEventListener('click', this._onDocClick);
+        else document.removeEventListener('click', this._onDocClick);
     }
 
     _applyState() {
@@ -102,6 +110,8 @@ export class DropdownMenu {
         this.element.classList.toggle('cl-dropdownmenu--open', !!s.open);
         if (this._menu) this._menu.style.display = s.open ? 'block' : 'none';
         this.element.style.display = s.visibility === 'hidden' ? 'none' : 'inline-block';
+        // DESTROY 不重設 open,需併判 lifecycle 以免 destroy 流程重新掛回全域監聽
+        this._syncDocClick(!!s.open && s.lifecycle !== 'destroyed');
     }
 
     snapshot() { return this._state.snapshot(); }

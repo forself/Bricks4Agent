@@ -20,7 +20,7 @@
  */
 
 import { escapeHtml } from '../../utils/security.js';
-import { Icon } from '../../common/Icon/Icon.js';
+import { Icon } from '../../common/Icon/index.js';
 
 export class StatCard {
     /**

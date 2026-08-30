@@ -137,7 +137,7 @@ If you will run `browser-worker`, build it once and install the .NET Playwright 
 
 ```powershell
 dotnet build packages/csharp/workers/browser-worker/BrowserWorker.csproj
-powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\browser-worker\bin\Debug\net10.0playwright.ps1 install chromium
+powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\browser-worker\bin\Debug\net10.0\playwright.ps1 install chromium
 ```
 
 If you will work inside `packages/javascript/browser` directly, install its package-local dev dependencies too:
@@ -892,7 +892,7 @@ Run:
 
 ```powershell
 dotnet build packages/csharp/workers/browser-worker/BrowserWorker.csproj
-powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\browser-worker\bin\Debug\net10.0playwright.ps1 install chromium
+powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\browser-worker\bin\Debug\net10.0\playwright.ps1 install chromium
 ```
 
 ### 17.5 E2E tests fail because port `5000` or `5361` is occupied

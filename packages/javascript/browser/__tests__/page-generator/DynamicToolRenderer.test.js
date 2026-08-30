@@ -1,15 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const officialFactoryCreate = vi.hoisted(() => vi.fn());
-vi.mock('../../ui_components/binding/ComponentFactory.js', () => ({
-    ComponentFactory: {
+// 預設 factory 已改為 LazyComponentFactory（延遲載入），mock 對象隨之更換
+vi.mock('../../ui_components/binding/LazyComponentFactory.js', () => ({
+    LazyComponentFactory: {
         create: officialFactoryCreate,
-        registry: {
-            BasicButton: class BasicButton {},
-            DownloadButton: class DownloadButton {},
-            TabContainer: class TabContainer {},
-            TextInput: class TextInput {},
-        },
+        has: (name) => ['BasicButton', 'DownloadButton', 'TabContainer', 'TextInput'].includes(name),
+        preload: async () => {},
     },
 }));
 vi.mock('../../ui_components/layout/TabContainer/TabContainer.js', () => {
@@ -41,7 +38,7 @@ vi.mock('../../ui_components/layout/TabContainer/TabContainer.js', () => {
 });
 
 import { DynamicToolRenderer } from '../../page-generator/DynamicToolRenderer.js';
-import { ComponentFactory } from '../../ui_components/binding/ComponentFactory.js';
+import { LazyComponentFactory } from '../../ui_components/binding/LazyComponentFactory.js';
 
 const mountedRoots = [];
 
@@ -187,7 +184,7 @@ function findBareInteractive(root, records) {
 }
 
 describe('DynamicToolRenderer', () => {
-    it('uses the official ComponentFactory by default for components and TabContainer', async () => {
+    it('uses the official LazyComponentFactory by default for components and TabContainer', async () => {
         const { factory } = createFactory();
         officialFactoryCreate.mockImplementation(factory.create);
         const commands = {
@@ -202,7 +199,7 @@ describe('DynamicToolRenderer', () => {
             state: { form: { name: 'Ada' } },
         });
 
-        expect(ComponentFactory.create.mock.calls.map(([name]) => name)).toEqual(expect.arrayContaining([
+        expect(LazyComponentFactory.create.mock.calls.map(([name]) => name)).toEqual(expect.arrayContaining([
             'TextInput',
             'BasicButton',
             'TabContainer',

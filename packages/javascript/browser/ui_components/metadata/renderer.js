@@ -404,8 +404,9 @@ export function renderComponentCatalog(manifestMap) {
     const byUsageMode = {};
     const byRegistryName = {};
 
-    for (const manifest of components) {
-        byRegistryName[manifest.registry_name] = manifest;
+    components.forEach((manifest, index) => {
+        // by_registry_name 存 components[] 的索引，避免完整 manifest 在 JSON 中序列化兩次
+        byRegistryName[manifest.registry_name] = index;
         byCategory[manifest.category] ??= [];
         byKind[manifest.kind] ??= [];
         byMaturity[manifest.maturity] ??= [];
@@ -415,7 +416,7 @@ export function renderComponentCatalog(manifestMap) {
         byKind[manifest.kind].push(manifest.registry_name);
         byMaturity[manifest.maturity].push(manifest.registry_name);
         byUsageMode[manifest.generator.usage_mode].push(manifest.registry_name);
-    }
+    });
 
     for (const group of [byCategory, byKind, byMaturity, byUsageMode]) {
         for (const key of Object.keys(group)) {
@@ -506,8 +507,9 @@ export function renderGeneratorSupportMatrix(manifestMap, introspection) {
     };
 }
 
-export function buildMetadataArtifacts(browserRoot) {
-    const introspection = introspectBrowserMetadata(browserRoot);
+export function buildMetadataArtifacts(browserRoot, { introspection: providedIntrospection } = {}) {
+    // 允許呼叫端傳入已算好的 introspection，避免重複掃描來源檔
+    const introspection = providedIntrospection ?? introspectBrowserMetadata(browserRoot);
     const manifestMap = loadManifestMap(browserRoot, introspection);
     const validation = validateManifestMap(manifestMap, introspection, browserRoot);
     const componentCatalog = renderComponentCatalog(manifestMap);

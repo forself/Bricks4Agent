@@ -21,10 +21,15 @@ export class ModalPanel extends BasePanel {
             // originated inside it.
             autoClose: false,
             showHeader: true,
+            // 預設 false，直接 new 的呼叫端仍可 close() 後再 open() 重複使用
+            destroyOnClose: false,
             visibility: BasePanel.VISIBILITY.NONE,
             ...options,
             autoClose: false
         });
+
+        this._modalEntered = false;
+        this._reopenWarned = false;
 
         // Preserve the public ModalPanel option for the precise backdrop
         // listener below without enabling BasePanel's duplicate listener.
@@ -172,12 +177,26 @@ export class ModalPanel extends BasePanel {
         }
     }
 
+    _warnDestroyed(method) {
+        if (this._reopenWarned) return;
+        this._reopenWarned = true;
+        console.warn(`[ModalPanel] ${method}() 已忽略:面板已銷毀 (destroyOnClose 會在 close() 後自動銷毀)`);
+    }
+
     /**
      * 開啟 Modal
      */
     open() {
+        // 已銷毀者不可再開:unregister 已跑過，再 enterModal 推進去的 id 永遠清不掉，
+        // 會讓後續所有 Modal 的卷軸鎖與 z-index 計算長期失準。
+        if (this._destroyed) {
+            this._warnDestroyed('open');
+            return this;
+        }
+
         // 先註冊進入 Modal 狀態 (這會更新 Stack，影響 calculateZIndex 結果)
         PanelManager.enterModal(this);
+        this._modalEntered = true;
         this.setVisibility(BasePanel.VISIBILITY.VISIBLE);
         return this;
     }
@@ -194,7 +213,17 @@ export class ModalPanel extends BasePanel {
 
         // 先離開 Modal 狀態
         PanelManager.exitModal(this);
+        this._modalEntered = false;
         super.close();
+
+        if (this.options.destroyOnClose && !this._destroyed) {
+            // 延後到 microtask，讓 `modal.close(); onConfirm();` 的同步尾段先跑完；
+            // onClose 回調可能否決關閉並重新 open()，此時不得把面板銷毀掉。
+            queueMicrotask(() => {
+                if (this._destroyed || this.options.visibility === BasePanel.VISIBILITY.VISIBLE) return;
+                this.destroy();
+            });
+        }
         return this;
     }
 
@@ -202,6 +231,11 @@ export class ModalPanel extends BasePanel {
      * 掛載（掛到 body）
      */
     mount(container = document.body) {
+        if (this._destroyed) {
+            this._warnDestroyed('mount');
+            return this;
+        }
+
         const target = typeof container === 'string'
             ? document.querySelector(container)
             : container;
@@ -213,8 +247,9 @@ export class ModalPanel extends BasePanel {
      * 銷毀
      */
     destroy() {
+        if (this._destroyed) return;
+
         document.removeEventListener('keydown', this._handleKeydown);
-        document.body.style.overflow = '';
 
         if (this.backdrop && this._handleBackdropPointerDown) {
             this.backdrop.removeEventListener('pointerdown', this._handleBackdropPointerDown, true);
@@ -236,13 +271,25 @@ export class ModalPanel extends BasePanel {
         // turn destroys the new modal (for example, selecting a Dropdown row in
         // a reopened nested editor).  Unwind modal state and let the base class
         // remove every listener/child/manager registration first.
-        PanelManager.exitModal(this);
+        // close() 已退出過就不重複退出
+        if (this._modalEntered) {
+            PanelManager.exitModal(this);
+            this._modalEntered = false;
+        }
+
         super.destroy();
 
+        // 巢狀情境(confirm 的 onConfirm 再開 prompt)下，延後的銷毀不能搶走還開著的
+        // Modal 的 body 卷軸鎖;要等 super.destroy() 連同子面板一起 unregister、把殘留的
+        // modalStack id 清乾淨後再判斷，否則自己的殘留 id 會讓卷軸鎖永遠解不掉。
+        if (PanelManager.modalStack.length === 0) {
+            document.body.style.overflow = '';
+        }
+
+        // 不可將 this.backdrop 置 null:mount()/_applyVisibility() 仍會讀取
         if (this.backdrop?.parentNode) {
             this.backdrop.remove();
         }
-        this.backdrop = null;
     }
 
     static confirm(options = {}) {
@@ -273,6 +320,7 @@ export class ModalPanel extends BasePanel {
             // click handler must not be closed again when that same click
             // reaches the document-level outside-click listener.
             autoClose: false,
+            destroyOnClose: true,
             onClose: finishCancel,
             ...rest
         });
@@ -331,6 +379,7 @@ export class ModalPanel extends BasePanel {
         const modal = new ModalPanel({
             title,
             closable: true,
+            destroyOnClose: true,
             ...rest
         });
 
@@ -381,6 +430,7 @@ export class ModalPanel extends BasePanel {
         const modal = new ModalPanel({
             title,
             closable: true,
+            destroyOnClose: true,
             ...rest
         });
 

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.IdentityModel.Tokens;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.RateLimiting;
@@ -29,6 +30,7 @@ builder.Services.AddSingleton(new AppDb(connectionString));
 
 // JWT 認證 - 生產環境必須設定 Jwt:Key (透過環境變數 Jwt__Key)
 var jwtKey = builder.Configuration["Jwt:Key"];
+var usingTransientDevJwtKey = false;
 if (string.IsNullOrEmpty(jwtKey) || jwtKey.Length < 32)
 {
     if (!builder.Environment.IsDevelopment())
@@ -36,10 +38,11 @@ if (string.IsNullOrEmpty(jwtKey) || jwtKey.Length < 32)
         throw new InvalidOperationException(
             "JWT Key 未設定或長度不足。請透過環境變數 Jwt__Key 設定 (至少 32 字元)");
     }
-    // 開發環境使用預設值 (僅供開發，寫回 Configuration 讓 AuthService 也能讀取)
-    jwtKey = "DevOnlyKey_DoNotUseInProduction_32chars!";
+    // 開發用金鑰必須每個行程隨機產生：固定常數會隨原始碼外流，任何人都能偽造 token。
+    // (寫回 Configuration 讓 AuthService 也能讀取)
+    jwtKey = Convert.ToBase64String(RandomNumberGenerator.GetBytes(48));
     builder.Configuration["Jwt:Key"] = jwtKey;
-    Console.WriteLine("警告: 使用開發環境預設 JWT Key，請勿在生產環境使用！");
+    usingTransientDevJwtKey = true;
 }
 
 var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "SpaGenerator";
@@ -125,6 +128,13 @@ builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddEndpointsApiExplorer();
 
 var app = builder.Build();
+
+if (usingTransientDevJwtKey)
+{
+    app.Logger.LogWarning(
+        "Jwt:Key is not configured. A transient development-only signing key was generated for this process; "
+        + "all issued tokens become invalid when the process restarts. Configure Jwt:Key for anything but local development.");
+}
 
 // ===== 初始化資料庫 =====
 {
