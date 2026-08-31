@@ -55,7 +55,7 @@ theme.custom.css (override)  :root{ --cl-primary: … }   ← Theme Studio 產�
 <h2>4. 自舉(dogfooding)</h2>
 <p><code>tools/theme-studio</code> 的介面<strong>完全用本庫元件搭成</strong>。這是覆蓋度的驗證:搭不出來就是缺必要元件。開發 Theme Studio 時即以此補上了 <code>form/Slider</code> 與 <code>form/TextArea</code> 兩個基礎控制項。</p>
 <h2>5. 元件契約(摘要)</h2>
-<p><code>new X(options)</code> → <code>.mount(container)</code> → <code>.destroy()</code>;具值元件有 <code>getValue/setValue/setDisabled/clear</code>。內部狀態走 <code>utils/component-state.js</code> 的不可變狀態機。完整調用約定見 <a href="../../../../AGENT-UI-GUIDE.html">/AGENT-UI-GUIDE.md</a>。</p>
+<p><code>new X(options)</code> → <code>.mount(container)</code> → <code>.destroy()</code>;具值元件有 <code>getValue/setValue/setDisabled/clear</code>。內部狀態走 <code>utils/component-state.js</code> 的不可變狀態機。完整調用約定位於 Bricks4Agent repository 根目錄的 <code>AGENT-UI-GUIDE.md</code>。</p>
 <h2>6. 權威來源與工具</h2>
 <table>
 <thead>
