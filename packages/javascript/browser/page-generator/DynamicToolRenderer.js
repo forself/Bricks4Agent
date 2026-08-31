@@ -199,6 +199,10 @@ export class DynamicToolRenderer {
         this._hosts = new Map();
         this._instanceOrder = [];
         this._preparedInstances = new Map();
+        // 預先建立的實例是用「當時」的綁定值建構的。mount() 會重算一份新的
+        // options 卻不套用到重用的實例上，因此必須記住舊值，才能在 mount 時
+        // 判斷這段期間 state 有沒有變過。
+        this._preparedBindingValues = new Map();
         this._bindingRecords = [];
         this._initialized = false;
         this._mounted = false;
@@ -282,6 +286,11 @@ export class DynamicToolRenderer {
         optionsRecord.setInstance(instance);
         if (!instance) throw new Error(`Unknown tool component: ${node.component}`);
         this._preparedInstances.set(node.id, instance);
+        const boundValues = {};
+        for (const optionName of Object.keys(node.bindings || {})) {
+            boundValues[optionName] = optionsRecord.options[optionName];
+        }
+        this._preparedBindingValues.set(node.id, boundValues);
     }
 
     _destroyPreparedInstances() {
@@ -294,6 +303,7 @@ export class DynamicToolRenderer {
             }
         }
         this._preparedInstances.clear();
+        this._preparedBindingValues.clear();
     }
 
     mount(container) {
@@ -317,6 +327,10 @@ export class DynamicToolRenderer {
         try {
             this._renderNode(this.definition.root, this.element);
             this._mounted = true;
+            // init() 與 mount() 之間的 setState 不會套用（那時還沒 mounted），
+            // 預先建立的實例會一路帶著舊值進畫面。這裡補一次：值沒變的綁定
+            // 會被相等性檢查跳過，因此對「沒有預先建立實例」的頁面是零成本。
+            this._applyBindings();
             return this;
         } catch (error) {
             this._teardownRendered();
@@ -386,8 +400,11 @@ export class DynamicToolRenderer {
         this._components.set(node.id, instance);
         this._instanceOrder.push(instance);
         // 重用預先建立的實例時，上面新算出的 options 會被丟棄，該實例持有的是
-        // _prepareComponent 當時的值，因此不能當成「已套用」。
-        this._trackBindings(instance, node, reusedPrepared ? null : options);
+        // _prepareComponent 當時的值——種子要用那份舊值，mount 收尾的
+        // _applyBindings() 才分得出這段期間 state 有沒有變過。
+        const preparedValues = this._preparedBindingValues.get(node.id) || null;
+        this._preparedBindingValues.delete(node.id);
+        this._trackBindings(instance, node, reusedPrepared ? preparedValues : options);
         this._mountInstance(instance, host);
         this._registerControls(instance, host, node);
         return host;

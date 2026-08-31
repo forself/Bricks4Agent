@@ -223,3 +223,71 @@ test('綁定路徑不存在時仍然拋錯（相等性檢查不得吞掉）', as
         renderer.destroy();
     }
 });
+
+// ---------------------------------------------------------------------------
+// 預先建立的實例（_prepareComponent）：factory 無法回答「有沒有這個元件」時，
+// init() 會先把實例建出來。此時 init() 與 mount() 之間的 setState 不會套用
+// （_applyBindings 需要 _mounted），該實例便一路帶著舊值進入畫面。
+// ---------------------------------------------------------------------------
+
+/** 沒有 has/registry/getComponentClass，_factoryHas 回 null → 走預先建立 */
+const opaqueFactory = {
+    create(name, options) {
+        if (name === 'Labelled') return new Labelled(options);
+        if (name === 'Frozen') return new Frozen(options);
+        return null;
+    },
+};
+
+async function initOnly(component, optionName, initial = 'A') {
+    Labelled.created = 0;
+    Frozen.created = 0;
+    const renderer = new DynamicToolRenderer({
+        definition: definition(component, optionName),
+        state: { model: { text: initial } },
+        factory: opaqueFactory,
+    });
+    await renderer.init();
+    return renderer;
+}
+
+test('預先建立的實例：init 與 mount 之間的 setState 必須反映在畫面上', async () => {
+    const renderer = await initOnly('Labelled', 'label');
+    try {
+        assert.equal(Labelled.created, 1, '應在 init() 就預先建立實例');
+        renderer.setState('model.text', 'B');   // 尚未 mount，不會套用綁定
+        renderer.mount(document.createElement('div'));
+
+        const instance = renderer.getComponent('probe');
+        assert.equal(instance.options.label, 'B', 'options 仍是預先建立時的舊值');
+        assert.equal(instance.element.textContent, 'B', '畫面仍顯示舊值');
+    } finally {
+        renderer.destroy();
+    }
+});
+
+test('預先建立且沒有 setter 的元件：mount 前的變更同樣要生效', async () => {
+    const renderer = await initOnly('Frozen', 'caption');
+    try {
+        renderer.setState('model.text', 'B');
+        renderer.mount(document.createElement('div'));
+
+        const instance = renderer.getComponent('probe');
+        assert.equal(instance.options.caption, 'B', '沒有 setter 時應重建成帶新值的實例');
+        assert.equal(instance.element.textContent, 'B');
+    } finally {
+        renderer.destroy();
+    }
+});
+
+test('負向對照：mount 前沒有變更時，不得平白套用或重建', async () => {
+    const renderer = await initOnly('Labelled', 'label');
+    try {
+        renderer.mount(document.createElement('div'));
+        const instance = renderer.getComponent('probe');
+        assert.equal(Labelled.created, 1, 'mount 不應重建元件');
+        assert.deepEqual(instance.setLabelCalls, [], '值沒變卻在 mount 時呼叫了 setter');
+    } finally {
+        renderer.destroy();
+    }
+});
