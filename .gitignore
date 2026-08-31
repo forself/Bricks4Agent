@@ -71,3 +71,6 @@ packages/csharp/workers/line-worker/appsettings.json
 packages/csharp/workers/line-worker/.last-tunnel-url
 packages/csharp/workers/line-worker/bin/Debug/net10.0/pending_messages/
 *.webp
+
+# codegraph 工具快取（本機產物，160MB 等級）
+.codegraph-cache/

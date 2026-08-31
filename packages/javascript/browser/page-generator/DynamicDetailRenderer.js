@@ -325,6 +325,9 @@ export class DynamicDetailRenderer {
             panel.setAttribute('role', 'tabpanel');
             if (this.options.lazyTabs !== false) {
                 this._pendingTabPanels.set(panel, tab);
+                // 標記「內容尚未產生」：檢視 DOM 的一方（測試、截圖、代理）看到空面板時，
+                // 能分辨這是延後填充而非定義有誤；首次啟用填充後移除。
+                panel.dataset.tabPending = 'true';
             } else {
                 this._populateTabPanel(panel, tab);
             }
@@ -778,6 +781,7 @@ export class DynamicDetailRenderer {
         if (!tab) return;
         this._pendingTabPanels.delete(panel);
         this._populateTabPanel(panel, tab);
+        delete panel.dataset.tabPending;
     }
 
     _ordered(items) {

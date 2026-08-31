@@ -167,7 +167,7 @@ renderer.mount('#app');
 
 底層：`FieldResolver`（34 種 field type → 元件實例）＋ `TriggerEngine`（8 種動作 clear/setValue/show/hide/setReadonly/setRequired/reload/reloadOptions 做欄位連動）。
 
-**`lazyTabs`（detail 模式）預設 `true`**：`DynamicPageRenderer`／`DynamicDetailRenderer` 只立即建立分頁面板元素，內容等該分頁首次啟用才產生，多分頁詳情頁不必在開頁時就把全部子表／附件／圖表建出來。因此**別假設未啟用分頁裡的元件已存在**（測試或截圖前要先切過去）。要回到建構時就產生全部內容，明確傳 `lazyTabs: false`。
+**`lazyTabs`（detail 模式）預設 `true`**：`DynamicPageRenderer`／`DynamicDetailRenderer` 只立即建立分頁面板元素，內容等該分頁首次啟用才產生，多分頁詳情頁不必在開頁時就把全部子表／附件／圖表建出來。因此**別假設未啟用分頁裡的元件已存在**（測試或截圖前要先切過去）。要回到建構時就產生全部內容，明確傳 `lazyTabs: false`。未產生內容的面板會帶 `data-tab-pending="true"`，填充後移除——檢視 DOM 時可據此分辨「尚未啟用」與「定義有誤」。
 
 ### 方式 C：靜態產碼（把 JSON 定義落地成 `.js` 頁面檔）
 

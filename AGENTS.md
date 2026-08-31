@@ -71,7 +71,7 @@ that turns a JSON `PageDefinition` into working pages (static code generation or
 
 - Tool pages (`DynamicToolRenderer`) default to `binding/LazyComponentFactory.js` — only the components a definition names get loaded (`create()` synchronous, `preload(names)` awaited in `init()`); the eager `ComponentFactory` is unchanged.
 
-- Detail pages default to `lazyTabs: true` — a tab's content is built on first activation, not at construction; pass `lazyTabs: false` to opt out.
+- Detail pages default to `lazyTabs: true` — a tab's content is built on first activation, not at construction; pass `lazyTabs: false` to opt out. Unpopulated panels carry `data-tab-pending="true"` until first activation.
 
 - To add a missing component, follow [AGENT-UI-GUIDE.md](AGENT-UI-GUIDE.md) §8, then rebuild metadata.
 

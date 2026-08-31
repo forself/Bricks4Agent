@@ -57,7 +57,7 @@ When adding tests that produce files: add the pattern to this table, ensure it i
 
 - **SVG is banned — Canvas only**. `audit-csp.mjs` enforces hard zero; `tools/scripts/svg-baseline.json` is an empty inventory snapshot and cannot waive findings. Chart base = `viz/CanvasChart.js` (DPR, hit-regions, tooltip, exportPNG); theme reactivity via `utils/theme-bus.js`; `Path2D` accepts SVG path strings directly. Canvas color fallbacks must use `FALLBACK_PAINT` from theme-bus — no loose hex in components.
 
-- Security: escape all dynamic HTML with `escapeHtml()`; opt into raw HTML explicitly with `raw()` (see [utils/security.js](packages/javascript/browser/ui_components/utils/security.js)). `isRawHtml()` only accepts the `Symbol.for('bricks4agent.rawHtml')` own property that `raw()` brands — a hand-written or `JSON.parse`d `{ __html }` is no longer an opt-in and falls back to escaping/`sanitizeHTML()`, so API data cannot forge it. `__html` survives on the marker for readers, not as authorisation.
+- Security: escape all dynamic HTML with `escapeHtml()`; opt into raw HTML explicitly with `raw()` (see [utils/security.js](packages/javascript/browser/ui_components/utils/security.js)). `isRawHtml()` only accepts the `Symbol.for('bricks4agent.rawHtml')` own property that `raw()` brands (a plain `{ __html }` logs a one-time console warning naming `raw()` rather than failing silently) — a hand-written or `JSON.parse`d `{ __html }` is no longer an opt-in and falls back to escaping/`sanitizeHTML()`, so API data cannot forge it. `__html` survives on the marker for readers, not as authorisation.
 
 - i18n: user-facing strings go through `Locale.t()` (see [i18n/index.js](packages/javascript/browser/ui_components/i18n/index.js)).
 
@@ -67,7 +67,7 @@ When adding tests that produce files: add the pattern to this table, ensure it i
 
 - Tool pages (`type: 'tool'` / `DynamicToolRenderer`) default to [LazyComponentFactory](packages/javascript/browser/ui_components/binding/LazyComponentFactory.js), which loads only the components a definition names: `create()` stays synchronous, `preload(names)` is awaited inside `init()`. The eager `ComponentFactory` is unchanged for direct callers.
 
-- Detail pages default to `lazyTabs: true` (`DynamicPageRenderer` / `DynamicDetailRenderer`): a tab's content is built on first activation, so components in never-activated tabs do not exist yet. Pass `lazyTabs: false` to build everything up front.
+- Detail pages default to `lazyTabs: true` (`DynamicPageRenderer` / `DynamicDetailRenderer`): a tab's content is built on first activation, so components in never-activated tabs do not exist yet. Pass `lazyTabs: false` to build everything up front. An unpopulated panel carries `data-tab-pending="true"` until first activation (removed once populated), so DOM inspection can tell "not built yet" from "definition is wrong".
 
 - Generated backend: .NET 10 Minimal API, BaseOrm (lightweight, no EF Core).
 

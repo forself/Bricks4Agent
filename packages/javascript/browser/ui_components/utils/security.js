@@ -43,6 +43,9 @@ export function escapeAttr(str) {
 // 固定用 Symbol.for 讓不同 bundle/fork 的副本互相辨識；__html 僅為相容保留，不再是授權依據。
 const RAW_HTML_BRAND = Symbol.for('bricks4agent.rawHtml');
 
+// 未加品牌的 { __html } 只提示一次，避免在渲染迴圈中洗版
+let unbrandedWarned = false;
+
 /**
  * DOM id / 錨點識別碼安全字元驗證。
  * 僅允許 [A-Za-z0-9_-];清洗器與 TOC/錨點產生器共用此單一事實來源。
@@ -76,9 +79,19 @@ export function isRawHtml(value) {
     if (value === null || typeof value !== 'object') return false;
     const hasOwn = Object.prototype.hasOwnProperty;
     // 一律查自身屬性（不用 in）：in 會走原型鏈，原型污染即可讓任意物件冒充標記。
-    return hasOwn.call(value, RAW_HTML_BRAND)
+    if (hasOwn.call(value, RAW_HTML_BRAND)
         && hasOwn.call(value, '__html')
-        && typeof value.__html === 'string';
+        && typeof value.__html === 'string') {
+        return true;
+    }
+    // 未經 raw() 產生的 { __html } 會被當一般值跳脫。這是刻意的（JSON 可偽造），
+    // 但靜默失敗難以診斷，故提示一次；不改變回傳值。
+    if (!unbrandedWarned && hasOwn.call(value, '__html') && typeof value.__html === 'string') {
+        unbrandedWarned = true;
+        console.warn('[security] 收到未經 raw() 標記的 { __html } 物件，已當作一般文字跳脫。'
+            + '若內容確定安全，請改用 raw(html)；直接傳 { __html } 不再視為 opt-in。');
+    }
+    return false;
 }
 
 /**
