@@ -15,7 +15,7 @@ that turns a JSON `PageDefinition` into working pages (static code generation or
 
 - UI library checks: `npm run validate:ui-library` (add `:browser` for a real browser)
 
-- UI component unit tests: `npm run test:ui-components` (node:test; covers `ui_components/**/*.test.mjs` plus the DOM-equivalence utility)
+- Component/renderer unit tests: `npm run test:ui-components` (node:test; covers `ui_components/**/*.test.mjs`, `page-generator/**/*.test.mjs`, and the DOM-equivalence utility)
 
 - Style-token audit: `npm run audit:ui-styles`
 
@@ -66,6 +66,8 @@ When adding tests that produce files: add the pattern to this table, ensure it i
 - Component contract: `new X(options)` → `.mount(container)` → `.destroy()`; value components expose `getValue/setValue/setDisabled/clear` (form ones also `setError/clearError`). `destroy()` is mandatory, not optional. `ModalPanel.confirm/alert/prompt` pass `destroyOnClose: true` so the dialog self-destructs after `close()`; a direct `new ModalPanel` keeps `destroyOnClose: false` and stays reusable across `close()`/`open()`.
 
 - Generator definitions: `definition.name`, `field.name` and `behaviors.*` (`onInit`/`onSave`/`onDelete`/`fieldTriggers` values, all handler-method names) are emitted as bare JavaScript identifiers, so `PageGenerator` validates them as real `IdentifierName` — CJK names such as `姓名` pass; reserved words are rejected only in binding positions (`definition.name`). Failures come back through the normal `{ code: null, errors: [...] }` contract.
+
+- `DynamicToolRenderer` skips a binding whose value is unchanged since the last one pushed to that component (deep compare; key order counts as a change). Consumers that re-`setState` every leaf path on each sync no longer re-apply every setter — and a bound option with no `set<Option>` setter no longer destroys and recreates the component on every sync. One intended consequence: an unrelated `setState` no longer resets a component's own state (uncommitted input, scroll position) back to the bound value.
 
 - Tool pages (`type: 'tool'` / `DynamicToolRenderer`) default to [LazyComponentFactory](packages/javascript/browser/ui_components/binding/LazyComponentFactory.js), which loads only the components a definition names: `create()` stays synchronous, `preload(names)` is awaited inside `init()`. The eager `ComponentFactory` is unchanged for direct callers.
 

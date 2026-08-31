@@ -81,6 +81,37 @@ function pathSegments(path) {
     return segments;
 }
 
+/**
+ * 綁定值是否與上次推給元件的相同。值域與 cloneData 一致（JSON 相容、無函式、
+ * 無迴圈、數值有限），因此不必處理 Date/Map/Set，也不會遇到 NaN。
+ * 物件連鍵的順序一起比：順序變了就當作變了。寧可多推一次，也不要漏掉
+ * 「元件依 Object.entries 順序渲染」這種情形。
+ */
+function sameData(a, b) {
+    if (a === b) return true;
+    if (a === null || b === null) return false;
+    if (typeof a !== 'object' || typeof b !== 'object') return false;
+
+    const aIsArray = Array.isArray(a);
+    if (aIsArray !== Array.isArray(b)) return false;
+    if (aIsArray) {
+        if (a.length !== b.length) return false;
+        for (let i = 0; i < a.length; i += 1) {
+            if (!sameData(a[i], b[i])) return false;
+        }
+        return true;
+    }
+
+    const aKeys = Object.keys(a);
+    const bKeys = Object.keys(b);
+    if (aKeys.length !== bKeys.length) return false;
+    for (let i = 0; i < aKeys.length; i += 1) {
+        if (aKeys[i] !== bKeys[i]) return false;
+        if (!sameData(a[aKeys[i]], b[bKeys[i]])) return false;
+    }
+    return true;
+}
+
 function readPath(source, path) {
     let current = source;
     for (const segment of pathSegments(path)) {
@@ -344,6 +375,7 @@ export class DynamicToolRenderer {
         options.containerId = host.id;
 
         let instance = this._preparedInstances.get(node.id) || null;
+        const reusedPrepared = instance !== null;
         if (instance) {
             this._preparedInstances.delete(node.id);
         } else {
@@ -353,9 +385,9 @@ export class DynamicToolRenderer {
         if (!instance) throw new Error(`ComponentFactory could not create "${node.component}" for node "${node.id}".`);
         this._components.set(node.id, instance);
         this._instanceOrder.push(instance);
-        for (const [optionName, statePath] of Object.entries(node.bindings || {})) {
-            this._bindingRecords.push({ instance, node, optionName, statePath });
-        }
+        // 重用預先建立的實例時，上面新算出的 options 會被丟棄，該實例持有的是
+        // _prepareComponent 當時的值，因此不能當成「已套用」。
+        this._trackBindings(instance, node, reusedPrepared ? null : options);
         this._mountInstance(instance, host);
         this._registerControls(instance, host, node);
         return host;
@@ -493,22 +525,44 @@ export class DynamicToolRenderer {
         return this;
     }
 
+    /**
+     * 登記節點的綁定。傳入 options 表示元件正是用這批值建構的，可直接視為已套用，
+     * 之後同值的 setState 就不必再推一次；傳 null 則等第一次 setState 才套用。
+     */
+    _trackBindings(instance, node, options = null) {
+        for (const [optionName, statePath] of Object.entries(node.bindings || {})) {
+            const record = { instance, node, optionName, statePath, applied: false, lastValue: undefined };
+            if (options) {
+                record.applied = true;
+                record.lastValue = options[optionName];
+            }
+            this._bindingRecords.push(record);
+        }
+    }
+
     _applyBindings(changedPath = null) {
         const records = changedPath === null
             ? this._bindingRecords
             : this._bindingRecords.filter(({ statePath }) => pathsOverlap(statePath, changedPath));
-        const updates = records.map(({ instance, node, optionName, statePath }) => {
+        const updates = [];
+        for (const record of records) {
+            const { instance, node, optionName, statePath } = record;
             const bound = readPath(this.state, statePath);
             if (!bound.found) throw new Error(`Missing bound state path "${statePath}".`);
             const value = cloneData(bound.value, `state.${statePath}`);
+            // 值沒變就不推。消費端常在每次同步對每個葉路徑呼叫 setState，而沒有對應
+            // setter 的綁定會走 _replaceComponent——那是整個元件銷毀重建。
+            // 比較對象是「上次推給元件的值」而非元件現值：拿現值比，會在每次同步
+            // 把使用者尚未提交的輸入蓋回去。
+            if (record.applied && sameData(record.lastValue, value)) continue;
             const setterName = `set${optionName.charAt(0).toUpperCase()}${optionName.slice(1)}`;
             const setter = typeof instance[setterName] === 'function'
                 ? instance[setterName].bind(instance)
                 : optionName === 'value' && typeof instance.setValue === 'function'
                     ? instance.setValue.bind(instance)
                     : null;
-            return { instance, node, optionName, value, setter };
-        });
+            updates.push({ record, instance, node, optionName, value, setter });
+        }
 
         const replacements = new Map();
         for (const update of updates) {
@@ -516,13 +570,15 @@ export class DynamicToolRenderer {
         }
         for (const [instance, node] of replacements) this._replaceComponent(node, instance);
 
-        for (const { instance, node, optionName, value, setter } of updates) {
+        for (const { record, instance, node, optionName, value, setter } of updates) {
             if (replacements.has(instance)) continue;
             if (instance.options && typeof instance.options === 'object') instance.options[optionName] = value;
             const host = this._hosts.get(node.id);
             this._clearControlRecords(instance, host);
             setter(value);
             this._registerControls(instance, host, node);
+            record.applied = true;
+            record.lastValue = value;
         }
     }
 
@@ -554,9 +610,9 @@ export class DynamicToolRenderer {
 
         this._components.set(node.id, instance);
         this._instanceOrder.splice(orderIndex, 0, instance);
-        for (const [optionName, statePath] of Object.entries(node.bindings || {})) {
-            this._bindingRecords.push({ instance, node, optionName, statePath });
-        }
+        // 新實例就是用這批 options 建構的，等同已套用；不種下去的話每次同步都會
+        // 再重建一次（沒有 setter 的綁定永遠走這條路）。
+        this._trackBindings(instance, node, options);
         this._mountInstance(instance, host);
         this._registerControls(instance, host, node);
     }

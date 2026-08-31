@@ -3,8 +3,35 @@ class FakeClassList {
         this.element = element;
     }
 
+    _tokens() {
+        return this.element.className.split(/\s+/).filter(Boolean);
+    }
+
+    _write(tokens) {
+        this.element.className = tokens.join(' ');
+    }
+
     contains(name) {
         return this.element.className.split(/\s+/).includes(name);
+    }
+
+    add(...names) {
+        const tokens = this._tokens();
+        for (const name of names) {
+            if (name && !tokens.includes(name)) tokens.push(name);
+        }
+        this._write(tokens);
+    }
+
+    remove(...names) {
+        this._write(this._tokens().filter((token) => !names.includes(token)));
+    }
+
+    toggle(name, force) {
+        const has = this.contains(name);
+        const next = force === undefined ? !has : Boolean(force);
+        if (next) this.add(name); else this.remove(name);
+        return next;
     }
 }
 
