@@ -27,6 +27,7 @@
 import { escapeHtml, escapeAttr, sanitizeInput } from './Security.js';
 import { ToastPanel } from '../components/Panel/ToastPanel.js';
 import { ModalPanel } from '../components/Panel/ModalPanel.js';
+import { hydrateCanvasIcons } from '../components/CanvasIcon.js';
 
 export class BasePage {
     /**
@@ -102,6 +103,7 @@ export class BasePage {
 
             // 加入容器
             container.appendChild(mountElement);
+            hydrateCanvasIcons(mountElement);
 
             // 標記已掛載
             this._mounted = true;
@@ -261,6 +263,7 @@ export class BasePage {
 
         // 重新渲染
         this.element.innerHTML = this.template();
+        hydrateCanvasIcons(this.element);
 
         // 重新綁定事件
         this._eventCleanups.forEach(cleanup => cleanup());
@@ -470,9 +473,10 @@ export class BasePage {
             <div class="page-error">
                 <h2>頁面載入失敗</h2>
                 <p>${safeMessage}</p>
-                <button onclick="location.reload()">重新載入</button>
+                <button type="button" data-page-reload>重新載入</button>
             </div>
         `;
+        container.querySelector('[data-page-reload]')?.addEventListener('click', () => location.reload());
     }
 
     /**

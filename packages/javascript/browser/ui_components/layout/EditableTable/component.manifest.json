@@ -21,12 +21,9 @@
     "manual_only": true
   },
   "binding": {
-    "value_io": true,
+    "value_io": false,
     "listener_events": [],
-    "target_actions": [
-      "clear",
-      "setValue"
-    ]
+    "target_actions": []
   },
   "styling": {
     "theme_token_only": true,

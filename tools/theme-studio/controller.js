@@ -1,6 +1,6 @@
 import { ComponentFactory } from '../../packages/javascript/browser/ui_components/binding/index.js';
 import { Notification } from '../../packages/javascript/browser/ui_components/common/index.js';
-import { SAMPLE_OPTIONS, GALLERY_SKIP } from './sample-data.js';
+import { SAMPLE_OPTIONS, SAMPLE_RUNTIME_OPTIONS, GALLERY_SKIP } from './sample-data.js';
 
 const CATALOG_URL = new URL('../../packages/javascript/browser/ui_components/metadata/component-catalog.json', import.meta.url);
 const LS_KEY = 'b4a-theme-studio-overrides';
@@ -436,6 +436,7 @@ export function createThemeStudioController() {
                         container: body,
                         containerId: body.id,
                         ...clone(SAMPLE_OPTIONS[name]),
+                        ...(SAMPLE_RUNTIME_OPTIONS[name] || {}),
                     });
                     if (mountInstance(instance, body)) stats.rendered += 1;
                     else stats.failed += 1;

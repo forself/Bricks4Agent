@@ -8,7 +8,7 @@ export {
     validateManifestMap,
 } from './manifest-schema.js';
 
-export { introspectBrowserMetadata } from './introspection.js';
+export { extractPublicMethodNames, introspectBrowserMetadata } from './introspection.js';
 
 export {
     createManifestSkeleton,

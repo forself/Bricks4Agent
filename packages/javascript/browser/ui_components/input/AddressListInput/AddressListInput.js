@@ -4,6 +4,7 @@ import { AddressInput } from '../AddressInput/index.js';
 import Locale from '../../i18n/index.js';
 export class AddressListInput extends ListInput {
     constructor(options = {}) {
+        const { loadCities, loadDistricts } = options;
         super({
             title: Locale.t('addressListInput.title'),
             minItems: 1,
@@ -12,6 +13,8 @@ export class AddressListInput extends ListInput {
             renderItem: (container, index, value, onChange) => {
                 const addressInput = new AddressInput({
                     layout: 'horizontal',
+                    loadCities,
+                    loadDistricts,
                     onChange: (newValue) => {
                         onChange(newValue);
                     }

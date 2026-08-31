@@ -1,5 +1,5 @@
 // audit-csp.mjs — CSP + 視覺技術政策守門員(零依賴 node;不靠 rg)。
-// 掃 runtime 原始碼(ui_components + page-generator,排除 vendor/demo/tests):
+// 掃 runtime 原始碼與實際出貨的 SPA 範本(排除 vendor/demo/tests):
 //   A. <style> 元素注入(style-src 擋)          B. setAttribute('style',…)(style-src 擋)
 //   C. HTML 字串內 style="…"(style-src 擋)     D. HTML 字串內 on*= 事件(script-src 擋)
 //   E. eval / new Function(unsafe-eval)          F. javascript: URL(security.js 的防禦性過濾除外)
@@ -16,7 +16,9 @@ const roots = [
     path.join(repo, 'packages', 'javascript', 'browser', 'page-generator'),
     path.join(repo, 'packages', 'javascript', 'browser', 'custom_components'),
     path.join(repo, 'tools', 'custom-component-studio'),
-    path.join(repo, 'tools', 'theme-studio')
+    path.join(repo, 'tools', 'theme-studio'),
+    path.join(repo, 'templates', 'spa', 'frontend'),
+    path.join(repo, 'templates', 'spa', 'scripts')
 ];
 const quiet = process.argv.includes('--quiet');
 const writeBaseline = process.argv.includes('--write-baseline');
@@ -45,9 +47,11 @@ const skipJsFile = (f) =>
     f.includes(path.sep + 'vendor' + path.sep) || f.includes('__tests__') ||
     /(^|[\\/])demo[^\\/]*\.js$/i.test(f) || f.endsWith('.test.mjs') || !f.endsWith('.js');
 
-const isStudioHtml = (f) => f.endsWith('.html') && (
+const isAuditedHtml = (f) => f.endsWith('.html') && (
     f.startsWith(path.join(repo, 'tools', 'custom-component-studio') + path.sep) ||
-    f.startsWith(path.join(repo, 'tools', 'theme-studio') + path.sep)
+    f.startsWith(path.join(repo, 'tools', 'theme-studio') + path.sep) ||
+    f.startsWith(path.join(repo, 'templates', 'spa', 'frontend') + path.sep) ||
+    f.startsWith(path.join(repo, 'templates', 'spa', 'scripts', 'web') + path.sep)
 );
 
 function* walk(dir) {
@@ -76,7 +80,7 @@ for (const root of roots) {
 
 for (const root of roots) {
     for (const f of walk(root)) {
-        if (!isStudioHtml(f)) continue;
+        if (!isAuditedHtml(f)) continue;
         files++;
         const text = readFileSync(f, 'utf8');
         for (const c of HTML_CLASSES) {
@@ -91,7 +95,7 @@ const G_RE = [/<svg[\s>]/g, /createElementNS\s*\(/g, /data:image\/svg/g];
 const gHits = new Map();   // file → count
 for (const root of roots) {
     for (const f of walk(root)) {
-        if (skipJsFile(f) && !isStudioHtml(f)) continue;
+        if (skipJsFile(f) && !isAuditedHtml(f)) continue;
         const text = stripComments(readFileSync(f, 'utf8'));
         let n = 0;
         for (const re of G_RE) n += (text.match(re) || []).length;

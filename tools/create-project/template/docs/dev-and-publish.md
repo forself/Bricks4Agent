@@ -49,7 +49,7 @@ node scripts/publish.mjs           # 發佈:dist\(快照+憑證+封閉驗證,違
 dist\
   index.html            # 轉導 src/frontend/
   lib\                  # 腳手架真快照(排除 node_modules、*.test.mjs、page-generator/examples)
-  lib\SNAPSHOT.json     # 來源憑證:Bricks4Agent tree/dirty、repository commit、專案 commit、UTC 時間、檔數/位元組
+  lib\SNAPSHOT.json     # 來源憑證:tree/dirty、commits、UTC、檔數/位元組，以及三個 library 的逐檔 SHA-256/content digest
   src\frontend\         # 應用(與 repo 同幾何 → import 原樣可用)
 ```
 
@@ -66,6 +66,8 @@ dist\
 - **複本模式 + lock**：v2 lock 直接釘 Git tree object；只接受乾淨、已 commit 且可由目前 branch 到達的 B4A tree。淺層或 `--no-tags` clone 不需額外 tag/split commit。
 
 - **publish 強制**：lock 存在時，連結模式要求目前 tree==lock 且乾淨；複本模式要求 sync-state tree/source==lock。違者 fail；`--allow-drift` 已停用。
+
+- **快照內容強制**：publish 會把 `ui_components`、`page-generator`、`custom_components` 的逐檔 SHA-256 inventory 與總 digest 寫入 `SNAPSHOT.json`。B4A 維護端可執行 `npm run verify:consumer-snapshots -- --consumer-root <consumer>`，同時驗證來源 tree、dirty 狀態、content digest 與實際 bytes；任一漂移皆 fail。
 
 - **建案分流**:`create-project.mjs` 預設連結(腳手架維護者);`--no-junction` 走複本並**自動釘版**(團隊成員/CI)。
 

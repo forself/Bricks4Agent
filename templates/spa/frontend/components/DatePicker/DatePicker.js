@@ -1,4 +1,5 @@
 import { escapeHtml } from '../utils/security.js';
+import { createCanvasIcon } from '../CanvasIcon.js';
 
 /**
  * DatePicker Component
@@ -78,7 +79,14 @@ export class DatePicker {
         // 標籤
         if (label) {
             const labelEl = document.createElement('label');
-            labelEl.innerHTML = `${escapeHtml(label)}${required ? '<span style="color:#F44336;margin-left:2px;">*</span>' : ''}`;
+            labelEl.textContent = label;
+            if (required) {
+                const requiredMark = document.createElement('span');
+                requiredMark.textContent = '*';
+                requiredMark.style.color = '#F44336';
+                requiredMark.style.marginLeft = '2px';
+                labelEl.appendChild(requiredMark);
+            }
             labelEl.style.cssText = `display:block;font-size:13px;font-weight:500;color:#333;margin-bottom:4px;`;
             this.element.appendChild(labelEl);
         }
@@ -100,10 +108,7 @@ export class DatePicker {
         display.style.cssText = `flex:1;font-size:${sizeStyles.fontSize};color:${this.selectedDate ? '#333' : '#999'};`;
 
         const icon = document.createElement('span');
-        icon.innerHTML = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-            <rect x="2" y="3" width="12" height="11" rx="2" stroke="#666" stroke-width="1.5"/>
-            <path d="M2 6H14M5 1V4M11 1V4" stroke="#666" stroke-width="1.5" stroke-linecap="round"/>
-        </svg>`;
+        icon.appendChild(createCanvasIcon('calendar', 16, '', '#666'));
         icon.style.cssText = `position:absolute;right:10px;top:50%;transform:translateY(-50%);display:flex;`;
 
         inputWrapper.appendChild(display);
@@ -161,23 +166,55 @@ export class DatePicker {
         });
 
         this.calendar.innerHTML = `
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;gap:2px;">
-                <button type="button" class="dp-prev" style="background:none;border:none;cursor:pointer;padding:1px 4px;font-size:12px;flex-shrink:0;">◀</button>
-                <div style="display:flex;gap:2px;min-width:0;justify-content:center;">
-                    <select class="dp-year-select" style="padding:0 12px 0 4px;border:1px solid #ddd;border-radius:3px;font-size:11px;cursor:pointer;width:52px;height:22px;line-height:20px;appearance:none;-webkit-appearance:none;background:url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%228%22 height=%225%22><path d=%22M0 0l4 5 4-5z%22 fill=%22%23666%22/></svg>') no-repeat right 2px center/8px 5px white;">
+            <div class="dp-header">
+                <button type="button" class="dp-prev" aria-label="上個月"></button>
+                <div class="dp-selects">
+                    <select class="dp-year-select">
                         ${yearOptions}
                     </select>
-                    <select class="dp-month-select" style="padding:0 12px 0 4px;border:1px solid #ddd;border-radius:3px;font-size:11px;cursor:pointer;width:44px;height:22px;line-height:20px;appearance:none;-webkit-appearance:none;background:url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%228%22 height=%225%22><path d=%22M0 0l4 5 4-5z%22 fill=%22%23666%22/></svg>') no-repeat right 2px center/8px 5px white;">
+                    <select class="dp-month-select">
                         ${monthOptions}
                     </select>
                 </div>
-                <button type="button" class="dp-next" style="background:none;border:none;cursor:pointer;padding:1px 4px;font-size:12px;flex-shrink:0;">▶</button>
+                <button type="button" class="dp-next" aria-label="下個月"></button>
             </div>
-            <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:0;text-align:center;">
-                ${['日', '一', '二', '三', '四', '五', '六'].map(d => `<div style="font-size:10px;color:#888;padding:2px 0;">${d}</div>`).join('')}
+            <div class="dp-grid">
+                ${['日', '一', '二', '三', '四', '五', '六'].map(d => `<div class="dp-weekday">${d}</div>`).join('')}
                 ${this._renderDays()}
             </div>
         `;
+
+        const header = this.calendar.querySelector('.dp-header');
+        header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;gap:2px;';
+        const selects = this.calendar.querySelector('.dp-selects');
+        selects.style.cssText = 'display:flex;gap:2px;min-width:0;justify-content:center;';
+        for (const button of this.calendar.querySelectorAll('.dp-prev, .dp-next')) {
+            button.style.cssText = 'background:none;border:none;cursor:pointer;padding:1px 4px;flex-shrink:0;';
+        }
+        this.calendar.querySelector('.dp-prev').appendChild(createCanvasIcon('chevron-left', 12));
+        this.calendar.querySelector('.dp-next').appendChild(createCanvasIcon('chevron-right', 12));
+        const yearSelect = this.calendar.querySelector('.dp-year-select');
+        const monthSelect = this.calendar.querySelector('.dp-month-select');
+        for (const select of [yearSelect, monthSelect]) {
+            select.style.cssText = 'padding:0 4px;border:1px solid #ddd;border-radius:3px;font-size:11px;cursor:pointer;height:22px;line-height:20px;background:white;';
+        }
+        yearSelect.style.width = '52px';
+        monthSelect.style.width = '44px';
+        const grid = this.calendar.querySelector('.dp-grid');
+        grid.style.cssText = 'display:grid;grid-template-columns:repeat(7,1fr);gap:0;text-align:center;';
+        this.calendar.querySelectorAll('.dp-weekday').forEach((weekday) => {
+            weekday.style.cssText = 'font-size:10px;color:#888;padding:2px 0;';
+        });
+        this.calendar.querySelectorAll('.dp-day').forEach((day) => {
+            const isDisabled = day.dataset.disabled === 'true';
+            const isSelected = day.dataset.selected === 'true';
+            const isToday = day.dataset.today === 'true';
+            day.style.cssText = `padding:3px 2px;border-radius:3px;cursor:${isDisabled ? 'not-allowed' : 'pointer'};font-size:12px;`;
+            day.style.background = isSelected ? '#2196F3' : isToday ? '#e3f2fd' : 'transparent';
+            day.style.color = isDisabled ? '#ccc' : isSelected ? 'white' : '#333';
+            if (isToday && !isSelected) day.style.fontWeight = '600';
+            if (isDisabled) day.style.opacity = '0.5';
+        });
 
         // 綁定年份選擇
         this.calendar.querySelector('.dp-year-select').onchange = (e) => {
@@ -230,15 +267,8 @@ export class DatePicker {
             const isSelected = this.selectedDate && this.selectedDate.getDate() === d && this.selectedDate.getMonth() === this.currentMonth && this.selectedDate.getFullYear() === this.currentYear;
             const isDisabled = !this._isDateInRange(currentDate);
 
-            const style = `
-                padding:3px 2px;border-radius:3px;cursor:${isDisabled ? 'not-allowed' : 'pointer'};font-size:12px;
-                background:${isSelected ? '#2196F3' : isToday ? '#e3f2fd' : 'transparent'};
-                color:${isDisabled ? '#ccc' : isSelected ? 'white' : '#333'};
-                ${isToday && !isSelected ? 'font-weight:600;' : ''}
-                ${isDisabled ? 'opacity:0.5;' : ''}
-            `;
             const disabledAttr = isDisabled ? 'data-disabled="true"' : '';
-            html += `<div class="dp-day" data-day="${d}" ${disabledAttr} style="${style}">${d}</div>`;
+            html += `<div class="dp-day" data-day="${d}" data-selected="${isSelected}" data-today="${isToday}" ${disabledAttr}>${d}</div>`;
         }
 
         return html;

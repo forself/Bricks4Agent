@@ -276,12 +276,13 @@ function inferStyleKnobs(optionKeys, role) {
     return [...new Set(knobs)].sort();
 }
 
-function inferBinding(sourceText, requiresWrapper, listenerEvents, role) {
-    const hasGetValue = /getValue\s*\(/.test(sourceText);
-    const hasSetValue = /setValue\s*\(/.test(sourceText);
-    const hasClear = /clear\s*\(/.test(sourceText);
-    const hasSetItems = /setItems\s*\(/.test(sourceText);
-    const hasReload = /(?:reload|refresh)\s*\(/.test(sourceText);
+function inferBinding(publicMethods, requiresWrapper, listenerEvents, role) {
+    const methods = new Set(publicMethods);
+    const hasGetValue = methods.has('getValue');
+    const hasSetValue = methods.has('setValue');
+    const hasClear = methods.has('clear');
+    const hasSetItems = methods.has('setItems');
+    const hasReload = methods.has('reload') || methods.has('refresh');
 
     const targetActions = [];
     if (hasClear) targetActions.push('clear');
@@ -315,7 +316,7 @@ export function createManifestSkeleton(introspection, componentName) {
     const role = inferRole(location.category, componentName);
     const requiresFormFieldWrapper = role === 'input' || usageMode === 'field_direct';
     const binding = inferBinding(
-        location.source_text,
+        location.public_methods,
         requiresFormFieldWrapper,
         location.listener_events,
         role,

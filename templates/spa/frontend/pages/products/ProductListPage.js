@@ -31,11 +31,11 @@ export class ProductListPage extends BasePage {
                     <div class="card-body">
                         <div data-feedback-host></div>
                         <div data-search-host></div>
-                        <div data-table-host style="margin-top:16px;"></div>
+                        <div data-table-host class="table-host-spaced"></div>
                     </div>
                 </section>
 
-                <section class="card" style="margin-top:16px;">
+                <section class="card card-spaced">
                     <div class="card-body">
                         <div data-order-host></div>
                     </div>

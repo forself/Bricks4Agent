@@ -39,7 +39,7 @@
     overflow: hidden;
 }
 
-.layout-sidebar[data-collapsed="true"] .sidebar-toggle svg {
+.layout-sidebar[data-collapsed="true"] .sidebar-toggle canvas {
     transform: rotate(180deg);
 }
 
@@ -98,7 +98,7 @@
     color: var(--color-text);
 }
 
-.sidebar-toggle svg {
+.sidebar-toggle canvas {
     transition: transform var(--transition-normal);
 }
 
@@ -165,7 +165,7 @@
     color: var(--color-text);
 }
 
-.theme-toggle svg {
+.theme-toggle canvas {
     width: 20px;
     height: 20px;
 }

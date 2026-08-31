@@ -1,3 +1,5 @@
+import { escapeHtml } from './Security.js';
+
 /**
  * SPA Router - 前端路由系統
  *
@@ -434,10 +436,11 @@ export class Router {
             contentArea.innerHTML = `
                 <div class="page-404">
                     <h1>404</h1>
-                    <p>找不到頁面: ${pathname}</p>
-                    <button onclick="location.hash='/'">返回首頁</button>
+                    <p>找不到頁面: ${escapeHtml(pathname)}</p>
+                    <button type="button" data-router-home>返回首頁</button>
                 </div>
             `;
+            contentArea.querySelector('[data-router-home]')?.addEventListener('click', () => this.navigate('/'));
         }
     }
 
@@ -450,10 +453,11 @@ export class Router {
             contentArea.innerHTML = `
                 <div class="page-error">
                     <h1>載入錯誤</h1>
-                    <p>${error.message}</p>
-                    <button onclick="location.reload()">重新載入</button>
+                    <p>${escapeHtml(error?.message || '未知錯誤')}</p>
+                    <button type="button" data-router-reload>重新載入</button>
                 </div>
             `;
+            contentArea.querySelector('[data-router-reload]')?.addEventListener('click', () => location.reload());
         }
     }
 

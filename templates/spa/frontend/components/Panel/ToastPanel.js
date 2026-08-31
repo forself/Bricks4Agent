@@ -4,6 +4,7 @@
  */
 
 import { BasePanel } from './BasePanel.js';
+import { createCanvasIcon } from '../CanvasIcon.js';
 
 // opt-in 品牌：JSON.parse 永遠產不出 symbol 鍵，API 回傳的純資料因此無法偽造成 raw() 標記。
 // 固定用 Symbol.for 與 ui_components/utils/security.js 共用同一把鍵，兩邊產出的標記可互換。
@@ -101,7 +102,7 @@ export class ToastPanel extends BasePanel {
         // 圖示
         const icon = document.createElement('span');
         icon.className = 'toast__icon';
-        icon.innerHTML = this._getIcon();
+        icon.appendChild(this._createIcon());
         icon.style.cssText = `display: flex; flex-shrink: 0;`;
         toast.appendChild(icon);
 
@@ -116,9 +117,7 @@ export class ToastPanel extends BasePanel {
         if (this.options.closable) {
             const closeBtn = document.createElement('button');
             closeBtn.type = 'button';
-            closeBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                <path d="M3 3L11 11M3 11L11 3" stroke="#999" stroke-width="2" stroke-linecap="round"/>
-            </svg>`;
+            closeBtn.appendChild(createCanvasIcon('close', 14, '關閉', '#999'));
             closeBtn.style.cssText = `
                 display: flex;
                 border: none;
@@ -134,7 +133,7 @@ export class ToastPanel extends BasePanel {
         return toast;
     }
 
-    _getIcon() {
+    _createIcon() {
         const { type } = this.options;
         const colors = {
             info: '#2196F3',
@@ -144,26 +143,9 @@ export class ToastPanel extends BasePanel {
         };
         const color = colors[type] || colors.info;
 
-        const icons = {
-            info: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                <circle cx="10" cy="10" r="8" stroke="${color}" stroke-width="2"/>
-                <path d="M10 9V14M10 6V7" stroke="${color}" stroke-width="2" stroke-linecap="round"/>
-            </svg>`,
-            success: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                <circle cx="10" cy="10" r="8" stroke="${color}" stroke-width="2"/>
-                <path d="M6 10L9 13L14 7" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>`,
-            warning: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                <path d="M10 2L18 17H2L10 2Z" stroke="${color}" stroke-width="2" stroke-linejoin="round"/>
-                <path d="M10 8V11M10 14V15" stroke="${color}" stroke-width="2" stroke-linecap="round"/>
-            </svg>`,
-            error: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                <circle cx="10" cy="10" r="8" stroke="${color}" stroke-width="2"/>
-                <path d="M7 7L13 13M7 13L13 7" stroke="${color}" stroke-width="2" stroke-linecap="round"/>
-            </svg>`
-        };
-
-        return icons[type] || icons.info;
+        const iconNames = { info: 'info', success: 'check', warning: 'warning', error: 'error' };
+        const icon = createCanvasIcon(iconNames[type] || 'info', 20, '', color);
+        return icon;
     }
 
     _applyToastStyle() {

@@ -32,11 +32,8 @@
       "change"
     ],
     "target_actions": [
-      "clear",
-      "reloadOptions",
       "setReadonly",
-      "setRequired",
-      "setValue"
+      "setRequired"
     ]
   },
   "styling": {

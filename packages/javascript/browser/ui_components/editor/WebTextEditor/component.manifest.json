@@ -27,7 +27,7 @@
     "manual_only": false
   },
   "binding": {
-    "value_io": true,
+    "value_io": false,
     "listener_events": [
       "change",
       "click"
@@ -35,8 +35,7 @@
     "target_actions": [
       "clear",
       "setReadonly",
-      "setRequired",
-      "setValue"
+      "setRequired"
     ]
   },
   "styling": {

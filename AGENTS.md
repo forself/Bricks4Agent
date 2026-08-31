@@ -21,9 +21,9 @@ that turns a JSON `PageDefinition` into working pages (static code generation or
 
 - .NET tests: `dotnet test packages/csharp/tests/unit/Unit.Tests.csproj`, `dotnet test packages/csharp/tests/integration/Integration.Tests.csproj`, `dotnet test templates/spa/backend.Tests/SpaApi.Template.Tests.csproj`
 
-- CSP + SVG hard-zero gate (must pass before any commit touching ui_components): `node tools/scripts/audit-csp.mjs`
+- CSP + SVG hard-zero gate (covers both packages and shipped SPA templates): `npm run audit:csp`; also run the negative regression `npm run test:audit-csp-hard-zero`.
 
-- Browser smoke harnesses (serve repo root on :8124 first): `node tools/theme-studio/run.mjs`, `node tools/scripts/canvas-chart-smoke.mjs`, `node tools/scripts/wave2-stage-sweep.mjs`, `node tools/scripts/data-explorer-smoke.mjs`, `node tools/scripts/cluster-graph-perf.mjs`
+- Browser smoke harnesses self-host the repository and launch system Edge: `npm run validate:ui-library:browser`, `npm run test:spa-template:browser`, `npm run test:theme-studio:browser`, `npm run test:custom-components:browser`, `npm run test:studio:browser`, `npm run test:form-designer:browser`.
 
 - Generated .NET 10 backend (SPA template): `dotnet build templates/spa/backend/SpaApi.csproj`
 

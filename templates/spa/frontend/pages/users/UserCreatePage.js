@@ -43,10 +43,7 @@ export class UserCreatePage extends BasePage {
                 <!-- 返回按鈕 -->
                 <div class="page-back">
                     <a href="#/users" class="back-link">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <line x1="19" y1="12" x2="5" y2="12"/>
-                            <polyline points="12 19 5 12 12 5"/>
-                        </svg>
+                        <canvas data-canvas-icon="arrow-left" data-canvas-icon-size="24" width="24" height="24" aria-hidden="true"></canvas>
                         返回列表
                     </a>
                 </div>

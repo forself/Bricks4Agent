@@ -32,12 +32,12 @@ export class AdminProductPage extends BasePage {
 
                 <section class="card">
                     <div class="card-body">
-                        <div class="form-row form-row--between" style="margin-bottom:16px;">
+                        <div class="form-row form-row--between form-row-spaced">
                             <a href="#/admin/products/create" class="btn btn-primary">新增商品</a>
                         </div>
                         <div data-feedback-host></div>
                         <div data-search-host></div>
-                        <div data-table-host style="margin-top:16px;"></div>
+                        <div data-table-host class="table-host-spaced"></div>
                     </div>
                 </section>
             </div>
@@ -126,7 +126,7 @@ export class AdminProductPage extends BasePage {
                     key: 'actions',
                     title: '操作',
                     render: (_, row) => raw(`
-                        <div style="display:flex;gap:8px;justify-content:center;">
+                        <div class="table-row-actions">
                             <button class="btn js-edit-product" data-product-id="${escapeAttr(row.id)}">編輯</button>
                             <button class="btn js-delete-product" data-product-id="${escapeAttr(row.id)}" data-product-name="${escapeAttr(row.name)}">刪除</button>
                         </div>

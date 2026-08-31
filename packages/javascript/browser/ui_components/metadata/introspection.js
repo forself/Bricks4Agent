@@ -179,6 +179,24 @@ function extractListenerEvents(sourceText) {
     return [...listeners].sort();
 }
 
+/**
+ * Extract class method declarations rather than method-looking calls.
+ *
+ * Component sources use four-space class indentation. Requiring both that
+ * indentation and an opening method body keeps child calls such as
+ * `input.setValue(value)` and `map.clear()` out of the public capability
+ * catalog. The metadata contract intentionally covers ordinary public
+ * methods; computed/generator members are not binding targets today.
+ */
+export function extractPublicMethodNames(sourceText) {
+    const methodPattern = /^ {4}(?:(?:static|async)\s+)*([A-Za-z_$][\w$]*)\s*\([^)]*\)\s*\{/gm;
+    return [...new Set(
+        [...sourceText.matchAll(methodPattern)]
+            .map((match) => match[1])
+            .filter((name) => name !== 'constructor' && !name.startsWith('_')),
+    )].sort();
+}
+
 export function introspectBrowserMetadata(browserRoot) {
     const componentFactoryPath = path.join(browserRoot, 'ui_components', 'binding', 'ComponentFactory.js');
     const fieldResolverPath = path.join(browserRoot, 'page-generator', 'FieldResolver.js');
@@ -221,6 +239,7 @@ export function introspectBrowserMetadata(browserRoot) {
                     source_path: sourceEntry.relativePath,
                     docs_path: resolveDocsPath(browserRoot, sourceEntry),
                     source_text: sourceText,
+                    public_methods: extractPublicMethodNames(sourceText),
                     option_keys: extractOptionKeys(sourceText),
                     listener_events: extractListenerEvents(sourceText),
                 },

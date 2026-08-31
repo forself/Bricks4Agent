@@ -204,6 +204,26 @@ export const SAMPLE_OPTIONS = {
     PageHeader: { brand: '臺北市政府警察局中山分局', navLinks: [{ label: '最新消息', href: '/news' }, { label: '為民服務', href: '/services' }, { label: '治安資訊', href: '/safety' }] }
 };
 
+// Function-valued loaders stay outside SAMPLE_OPTIONS because structuredClone
+// deliberately rejects functions. They are deterministic local studio data,
+// not production fallbacks for components that require real data sources.
+const DEMO_CITIES = [{ value: 'TPE', label: '臺北市' }];
+const DEMO_DISTRICTS = [{ value: 'Zhongzheng', label: '中正區' }];
+const DEMO_UNITS = [{ value: 'hq', label: '示範總局' }];
+export const SAMPLE_RUNTIME_OPTIONS = {
+    AddressInput: {
+        loadCities: async () => DEMO_CITIES,
+        loadDistricts: async () => DEMO_DISTRICTS,
+    },
+    AddressListInput: {
+        loadCities: async () => DEMO_CITIES,
+        loadDistricts: async () => DEMO_DISTRICTS,
+    },
+    OrganizationInput: {
+        loadUnits: async () => DEMO_UNITS,
+    },
+};
+
 // 展示廊要略過的元件(需大量外部資源 / 全螢幕互動 / 專屬圖資 / 非視覺,不適合縮圖預覽)
 export const GALLERY_SKIP = new Set([
     'LeafletMap', 'OSMMapEditor', 'TGOSMapEditor', 'MapEditor', 'MapEditorV2', 'CanvasMap',   // 需圖磚/大畫布

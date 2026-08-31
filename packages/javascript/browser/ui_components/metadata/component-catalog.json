@@ -1527,7 +1527,7 @@
         "manual_only": false
       },
       "binding": {
-        "value_io": true,
+        "value_io": false,
         "listener_events": [
           "change",
           "click"
@@ -1535,8 +1535,7 @@
         "target_actions": [
           "clear",
           "setReadonly",
-          "setRequired",
-          "setValue"
+          "setRequired"
         ]
       },
       "styling": {
@@ -1812,13 +1811,11 @@
         "manual_only": true
       },
       "binding": {
-        "value_io": true,
+        "value_io": false,
         "listener_events": [
           "click"
         ],
-        "target_actions": [
-          "setValue"
-        ]
+        "target_actions": []
       },
       "styling": {
         "theme_token_only": true,
@@ -2087,7 +2084,6 @@
           "change"
         ],
         "target_actions": [
-          "clear",
           "setValue"
         ]
       },
@@ -2173,7 +2169,6 @@
           "change"
         ],
         "target_actions": [
-          "clear",
           "setReadonly",
           "setRequired"
         ]
@@ -2522,11 +2517,8 @@
           "change"
         ],
         "target_actions": [
-          "clear",
-          "reloadOptions",
           "setReadonly",
-          "setRequired",
-          "setValue"
+          "setRequired"
         ]
       },
       "styling": {
@@ -2955,12 +2947,9 @@
         "manual_only": true
       },
       "binding": {
-        "value_io": true,
+        "value_io": false,
         "listener_events": [],
-        "target_actions": [
-          "clear",
-          "setValue"
-        ]
+        "target_actions": []
       },
       "styling": {
         "theme_token_only": true,
@@ -3002,7 +2991,6 @@
           "click"
         ],
         "target_actions": [
-          "clear",
           "setValue"
         ]
       },
@@ -3036,9 +3024,7 @@
       "binding": {
         "value_io": false,
         "listener_events": [],
-        "target_actions": [
-          "clear"
-        ]
+        "target_actions": []
       },
       "styling": {
         "theme_token_only": true,
@@ -3136,9 +3122,7 @@
       "binding": {
         "value_io": false,
         "listener_events": [],
-        "target_actions": [
-          "clear"
-        ]
+        "target_actions": []
       },
       "styling": {
         "theme_token_only": true,
@@ -3205,7 +3189,6 @@
         "value_io": false,
         "listener_events": [],
         "target_actions": [
-          "clear",
           "reloadOptions"
         ]
       },
@@ -3712,9 +3695,7 @@
       "binding": {
         "value_io": false,
         "listener_events": [],
-        "target_actions": [
-          "clear"
-        ]
+        "target_actions": []
       },
       "styling": {
         "theme_token_only": true,
@@ -4027,9 +4008,7 @@
         "listener_events": [
           "click"
         ],
-        "target_actions": [
-          "clear"
-        ]
+        "target_actions": []
       },
       "styling": {
         "theme_token_only": true,
@@ -4063,9 +4042,7 @@
         "listener_events": [
           "click"
         ],
-        "target_actions": [
-          "clear"
-        ]
+        "target_actions": []
       },
       "styling": {
         "theme_token_only": true,

@@ -198,17 +198,16 @@ export class DefinedPage extends BasePage {
                         <i class="fas ${this.escAttr(def.icon || 'fa-search')}"></i> ${this.esc(def.title || '')}
                     </div>
                     <div class="card-body">
-                        <strong style="font-size:20px;">查詢條件</strong>
-                        <div class="card border-gray" style="background-color:#9dd3a8;">
+                        <strong class="defined-search-heading">查詢條件</strong>
+                        <div class="card border-gray defined-search-card">
                             <div class="card-title">
-                                <button type="button" class="btn btn-gradient cyan pull-right btn-font"
-                                    style="font-weight:bold;background-color:#54c7c7;margin-top:4px;margin-right:10px;"
+                                <button type="button" class="btn btn-gradient cyan pull-right btn-font defined-collapse-button"
                                     data-action="toggle-collapse">
                                     <i class="mdi mdi-elevator"></i> 查詢條件收合
                                 </button>
                             </div>
-                            <div id="collapse-area" style="display:${d.isOpen ? 'block' : 'none'};">
-                                <div class="card-body" style="background-color:white;">
+                            <div id="collapse-area"${d.isOpen ? '' : ' hidden'}>
+                                <div class="card-body defined-search-body">
                                     ${this._buildSearchFieldsHTML()}
                                     <div class="search-actions">
                                         <button type="submit" class="btn btn-gradient green btn-font">
@@ -225,12 +224,12 @@ export class DefinedPage extends BasePage {
                 </div>
             </form>
             <div class="card position-sticky"><div class="card-body">
-                <div id="result-title" class="pager" style="margin-bottom:10px;">
+                <div id="result-title" class="pager defined-result-title">
                     ${this.esc(def.resultLabel || '查詢結果')}
                     <span class="count">共${d.resultData.length}筆</span>
                 </div>
                 <div id="table-container"></div>
-                <div id="loading-area" style="display:none;text-align:center;padding:50px;">
+                <div id="loading-area" class="defined-loading">
                     <i class="fas fa-spinner fa-spin fa-3x"></i> 載入中...
                 </div>
             </div></div>
@@ -241,6 +240,10 @@ export class DefinedPage extends BasePage {
     // ──── onMounted ────────────────────────────────────────
 
     async onMounted() {
+        this.$$('[data-field-width]').forEach((field) => {
+            const width = field.dataset.fieldWidth || '';
+            if (/^\d+(?:\.\d+)?(?:px|rem|em|%|vw)$/.test(width)) field.style.width = width;
+        });
         // 掛載 FormManager
         const formEl = this.$('#search-form');
         if (formEl && this._FormManager) {
@@ -376,7 +379,7 @@ export class DefinedPage extends BasePage {
                 inner = `<label class="font-label">${this.esc(field.label)}</label>
                     <input type="text" name="${this.escAttr(field.key)}" class="form-control"
                         ${field.placeholder ? `placeholder="${this.escAttr(field.placeholder)}"` : ''}
-                        ${field.width ? `style="width:${this.escAttr(field.width)}"` : ''} />`;
+                        ${field.width ? `data-field-width="${this.escAttr(field.width)}"` : ''} />`;
                 break;
 
             case 'SELECT': {
@@ -410,11 +413,11 @@ export class DefinedPage extends BasePage {
                     ...(field.conditionalOptions ? field.conditionalOptions(this._data.role) : []),
                 ];
                 const hint = field.hint
-                    ? `<small style="display:inline;"> (${this.esc(field.hint)})</small>`
+                    ? `<small class="defined-inline-hint"> (${this.esc(field.hint)})</small>`
                     : '';
                 inner = `<label class="font-label">${this.esc(field.label)}${hint}</label><br/>
                     ${allOpts.map(o =>
-                        `<label><input type="radio" name="${this.escAttr(field.key)}" value="${this.escAttr(o.value)}" style="font-size:15px;" /> ${this.esc(o.label)}</label>`
+                        `<label><input type="radio" name="${this.escAttr(field.key)}" value="${this.escAttr(o.value)}" class="defined-radio" /> ${this.esc(o.label)}</label>`
                     ).join(' ')}`;
                 break;
             }
@@ -443,7 +446,8 @@ export class DefinedPage extends BasePage {
                     <input type="text" name="${this.escAttr(field.key)}" class="form-control" />`;
         }
 
-        return `<div class="${this.escAttr(colWidth)}"${field.style ? ` style="${this.escAttr(field.style)}"` : ''}>${inner}</div>`;
+        const extraClass = field.className ? ` ${this.escAttr(field.className)}` : '';
+        return `<div class="${this.escAttr(colWidth)}${extraClass}">${inner}</div>`;
     }
 
     /**
@@ -508,7 +512,7 @@ export class DefinedPage extends BasePage {
     _toggleCollapse() {
         this._data.isOpen = !this._data.isOpen;
         const el = this.$('#collapse-area');
-        if (el) el.style.display = this._data.isOpen ? 'block' : 'none';
+        if (el) el.hidden = !this._data.isOpen;
     }
 
     _resetForm() {

@@ -342,6 +342,8 @@ node templates/spa/scripts/spa-cli.js feature Article --fields "Title:string,Con
    ```
    CI/驗證用 `--check`（會校驗每個 registry 元件都有合法 manifest，且 manifest.registry_name 存在於 ComponentFactory）。
 
+   Metadata 的 `value_io` 與 `target_actions` 只會依元件類別本身公開的方法推導；呼叫子元件的同名方法不算公開能力。宣告 `clear`、`reload`、`setValue` 或 `reloadOptions` 時，manifest 驗證會要求對應公開方法確實存在。
+
 ### 8.4 不寫 JavaScript 的 JSON 客製元件
 
 若需求是調整既有元件 options 或組合既有元件，不必新增一套 JS 元件。使用 [CUSTOM-COMPONENTS.md](CUSTOM-COMPONENTS.md) 的純 JSON 定義：

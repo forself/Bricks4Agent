@@ -13,6 +13,7 @@ import { existsSync, rmSync, mkdirSync, cpSync, writeFileSync, readFileSync, rea
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { buildLibraryContentManifest } from './snapshot-integrity.mjs';
 import { resolveB4a } from './resolve-b4a.mjs';
 import { isFullGitObjectId, parseB4aLock } from './b4a-lock.mjs';
 
@@ -147,6 +148,7 @@ const snapshot = {
         dirty: libIsLink ? !!b4aWorkingTreeStatus() : !!syncState?.dirtySource
     },
     project: { name: projectName, commit: isFullGitObjectId(appCommit) ? appCommit : '(no commit)' },
+    content: buildLibraryContentManifest(path.join(dist, 'lib')),
     snapshotTimeUtc: new Date().toISOString(),
     fileCount, totalBytes
 };

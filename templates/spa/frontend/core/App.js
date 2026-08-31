@@ -5,6 +5,7 @@ import { Layout } from './Layout.js';
 import { createRoutes } from '../pages/routes.js';
 import { loadFrontendDefinitionBootstrap } from '../definition/load-definition.js';
 import { setDefinitionBundle } from '../definition/definition-store.js';
+import { escapeHtml } from './Security.js';
 
 class App {
     constructor() {
@@ -138,10 +139,11 @@ class App {
             <div class="app-error">
                 <div class="error-icon">!</div>
                 <h2>Startup error</h2>
-                <p>${message}</p>
-                <button onclick="location.reload()">Reload</button>
+                <p>${escapeHtml(message)}</p>
+                <button type="button" data-app-reload>Reload</button>
             </div>
         `;
+        this.rootElement.querySelector('[data-app-reload]')?.addEventListener('click', () => location.reload());
     }
 }
 

@@ -79,10 +79,7 @@ export class UserDetailPage extends BasePage {
                 <!-- 返回按鈕 -->
                 <div class="page-back">
                     <a href="#/users" class="back-link">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <line x1="19" y1="12" x2="5" y2="12"/>
-                            <polyline points="12 19 5 12 12 5"/>
-                        </svg>
+                        <canvas data-canvas-icon="arrow-left" data-canvas-icon-size="24" width="24" height="24" aria-hidden="true"></canvas>
                         返回列表
                     </a>
                 </div>
@@ -103,10 +100,7 @@ export class UserDetailPage extends BasePage {
                         </div>
                         <div class="detail-actions">
                             <button class="btn btn-secondary" id="btn-edit">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                                </svg>
+                                <canvas data-canvas-icon="edit" data-canvas-icon-size="24" width="24" height="24" aria-hidden="true"></canvas>
                                 編輯
                             </button>
                         </div>

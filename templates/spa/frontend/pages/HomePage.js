@@ -45,7 +45,7 @@ export class HomePage extends BasePage {
                     </div>
                 </section>
 
-                <section class="card" style="margin-top:16px;">
+                <section class="card card-spaced">
                     <div class="card-body">
                         <h2>快速入口</h2>
                         <div class="action-buttons">
@@ -59,7 +59,7 @@ export class HomePage extends BasePage {
                 </section>
 
                 ${stats ? `
-                    <section class="card" style="margin-top:16px;">
+                    <section class="card card-spaced">
                         <div class="card-body">
                             <h2>後台摘要</h2>
                             <div class="stats-grid">

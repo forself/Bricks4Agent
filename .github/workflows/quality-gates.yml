@@ -1,0 +1,58 @@
+name: Bricks4Agent quality gates
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  node-quality:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.16.0
+      - name: Generator regression suite
+        run: npm test
+      - name: UI and snapshot unit suites
+        run: npm run test:ui-components
+      - name: Custom component unit suite
+        run: npm run test:custom-components
+      - name: CSP and Canvas-only hard-zero audit
+        run: npm run audit:csp
+      - name: Security audit negative regression
+        run: npm run test:audit-csp-hard-zero
+      - name: UI library static validation
+        run: npm run validate:ui-library
+      - name: Generated custom component registry is current
+        run: npm run custom-components:check
+      - name: Generated component metadata is current
+        run: node packages/javascript/browser/ui_components/metadata/build-metadata.mjs --check
+
+  browser-quality:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.16.0
+      - name: Install test-only Playwright driver
+        run: npm install --no-save --ignore-scripts playwright-core@1.61.1
+      - name: UI demo smoke in system Edge
+        run: npm run validate:ui-library:browser
+      - name: Shipped SPA template smoke in system Edge
+        run: npm run test:spa-template:browser
+      - name: Theme Studio smoke in system Edge
+        run: npm run test:theme-studio:browser
+      - name: Custom Component Studio smoke in system Edge
+        run: npm run test:custom-components:browser
+      - name: Cross-studio integration smoke in system Edge
+        run: npm run test:studio:browser
+      - name: Form Application Studio smoke in system Edge
+        run: npm run test:form-designer:browser

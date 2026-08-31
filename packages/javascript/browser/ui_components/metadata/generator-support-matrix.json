@@ -190,28 +190,21 @@
     "clear": {
       "component_roles": [
         "command_input",
-        "container",
-        "data_view",
         "display",
         "editor",
         "input",
-        "navigation",
-        "search",
         "visualizer"
       ],
       "usage_modes": [
         "definition_explicit",
         "field_direct",
-        "manual_only",
-        "runtime_only"
+        "manual_only"
       ]
     },
     "setValue": {
       "component_roles": [
         "command_input",
         "container",
-        "data_view",
-        "editor",
         "feedback",
         "input",
         "search"

@@ -23,9 +23,7 @@
   "binding": {
     "value_io": false,
     "listener_events": [],
-    "target_actions": [
-      "clear"
-    ]
+    "target_actions": []
   },
   "styling": {
     "theme_token_only": true,

@@ -24,7 +24,6 @@
     "value_io": false,
     "listener_events": [],
     "target_actions": [
-      "clear",
       "reloadOptions"
     ]
   },

@@ -4,6 +4,7 @@
  */
 
 import { PanelManager } from './PanelManager.js';
+import { createCanvasIcon, hydrateCanvasIcons } from '../CanvasIcon.js';
 
 let panelIdCounter = 0;
 
@@ -121,7 +122,7 @@ export class BasePanel {
                 const toggleBtn = document.createElement('button');
                 toggleBtn.className = 'panel__toggle';
                 toggleBtn.type = 'button';
-                toggleBtn.innerHTML = this._getToggleIcon();
+                this._updateToggleIcon(toggleBtn);
                 toggleBtn.style.cssText = `
                     display: flex;
                     align-items: center;
@@ -154,9 +155,7 @@ export class BasePanel {
                 const closeBtn = document.createElement('button');
                 closeBtn.className = 'panel__close';
                 closeBtn.type = 'button';
-                closeBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                    <path d="M4 4L12 12M4 12L12 4" stroke="#666" stroke-width="2" stroke-linecap="round"/>
-                </svg>`;
+                closeBtn.appendChild(createCanvasIcon('close', 16, '關閉'));
                 closeBtn.style.cssText = `
                     display: flex;
                     align-items: center;
@@ -210,11 +209,12 @@ export class BasePanel {
         return container;
     }
 
-    _getToggleIcon() {
-        const rotation = this.expanded ? 'rotate(90deg)' : 'rotate(0deg)';
-        return `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" style="transform: ${rotation}; transition: transform 0.2s;">
-            <path d="M6 4L10 8L6 12" stroke="#666" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>`;
+    _updateToggleIcon(button = this.toggleBtn) {
+        if (!button) return;
+        const icon = createCanvasIcon('chevron-right', 16);
+        icon.style.transform = this.expanded ? 'rotate(90deg)' : 'rotate(0deg)';
+        icon.style.transition = 'transform 0.2s';
+        button.replaceChildren(icon);
     }
 
     _bindEvents() {
@@ -274,7 +274,7 @@ export class BasePanel {
         this.expanded = true;
         this.content.style.display = '';
         if (this.toggleBtn) {
-            this.toggleBtn.innerHTML = this._getToggleIcon();
+            this._updateToggleIcon();
         }
 
         if (this.options.onExpand) {
@@ -291,7 +291,7 @@ export class BasePanel {
         this.expanded = false;
         this.content.style.display = 'none';
         if (this.toggleBtn) {
-            this.toggleBtn.innerHTML = this._getToggleIcon();
+            this._updateToggleIcon();
         }
 
         if (this.options.onCollapse) {
@@ -400,6 +400,7 @@ export class BasePanel {
     setContent(content) {
         if (typeof content === 'string') {
             this.content.innerHTML = content;
+            hydrateCanvasIcons(this.content);
         } else if (content instanceof HTMLElement) {
             this.content.innerHTML = '';
             this.content.appendChild(content);
@@ -413,6 +414,7 @@ export class BasePanel {
     appendContent(content) {
         if (typeof content === 'string') {
             this.content.insertAdjacentHTML('beforeend', content);
+            hydrateCanvasIcons(this.content);
         } else if (content instanceof HTMLElement) {
             this.content.appendChild(content);
         }

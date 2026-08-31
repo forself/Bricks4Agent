@@ -80,7 +80,7 @@ export class Layout {
                 <div class="layout-content"></div>
             </main>
 
-            <div class="layout-loading" style="display:none;">
+            <div class="layout-loading layout-loading--hidden">
                 <div class="loading-spinner"></div>
             </div>
         `;

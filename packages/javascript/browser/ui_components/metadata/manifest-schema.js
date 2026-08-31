@@ -54,6 +54,7 @@ export function validateManifest(manifest, context = {}) {
         browserRoot = '',
         triggerActions = [],
         registryNames = new Set(),
+        publicMethods = null,
     } = context;
 
     const errors = [];
@@ -137,6 +138,26 @@ export function validateManifest(manifest, context = {}) {
         if (typeof manifest.binding.value_io !== 'boolean') {
             errors.push('binding.value_io must be boolean');
         }
+
+        if (Array.isArray(publicMethods)) {
+            const methods = new Set(publicMethods);
+            if (manifest.binding.value_io && (!methods.has('getValue') || !methods.has('setValue'))) {
+                errors.push('binding.value_io requires public getValue and setValue methods');
+            }
+
+            const actionMethods = {
+                clear: ['clear'],
+                setValue: ['setValue'],
+                reload: ['reload', 'refresh'],
+                reloadOptions: ['setItems'],
+            };
+            for (const action of manifest.binding.target_actions ?? []) {
+                const required = actionMethods[action];
+                if (required && !required.some((method) => methods.has(method))) {
+                    errors.push(`binding.target_actions ${action} has no matching public method`);
+                }
+            }
+        }
         if (!isStringArray(manifest.binding.listener_events)) {
             errors.push('binding.listener_events must be a string array');
         }
@@ -196,6 +217,7 @@ export function validateManifestMap(manifestMap, introspection, browserRoot) {
                 browserRoot,
                 triggerActions: introspection.triggerActions,
                 registryNames,
+                publicMethods: introspection.componentLocations[manifest.registry_name]?.public_methods ?? null,
             }),
         }))
         .filter((entry) => !entry.valid)

@@ -147,7 +147,7 @@ img {
     white-space: nowrap;
 }
 
-.btn svg {
+.btn canvas {
     width: 18px;
     height: 18px;
 }
@@ -433,7 +433,7 @@ img {
     color: var(--color-primary);
 }
 
-.back-link svg {
+.back-link canvas {
     width: 16px;
     height: 16px;
 }

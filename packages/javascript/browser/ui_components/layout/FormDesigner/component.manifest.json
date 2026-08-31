@@ -33,7 +33,6 @@
       "click"
     ],
     "target_actions": [
-      "clear",
       "setValue"
     ]
   },
