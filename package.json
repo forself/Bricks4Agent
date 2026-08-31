@@ -48,6 +48,7 @@
     "custom-components:build": "node packages/javascript/browser/custom_components/build-registry.mjs",
     "custom-components:check": "node packages/javascript/browser/custom_components/build-registry.mjs --check",
     "test:custom-components": "node --test packages/javascript/browser/custom_components/custom-components.test.mjs packages/javascript/browser/custom_components/custom-runtime.test.mjs",
+    "test:ui-components": "node --test \"packages/javascript/browser/ui_components/**/*.test.mjs\" \"tools/scripts/lib/*.test.mjs\"",
     "test:custom-components:browser": "node tools/scripts/custom-component-studio-smoke.mjs --require-browser",
     "test:theme-studio:browser": "node tools/theme-studio/run.mjs",
     "test:studio:self-host": "node tools/scripts/studio-self-host-audit.mjs",

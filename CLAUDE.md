@@ -15,6 +15,8 @@ that turns a JSON `PageDefinition` into working pages (static code generation or
 
 - UI library checks: `npm run validate:ui-library` (add `:browser` for a real browser)
 
+- UI component unit tests: `npm run test:ui-components` (node:test; covers `ui_components/**/*.test.mjs` plus the DOM-equivalence utility)
+
 - Style-token audit: `npm run audit:ui-styles`
 
 - All SDK-style .NET 10 projects, with every warning treated as an error: `npm run test:dotnet10`

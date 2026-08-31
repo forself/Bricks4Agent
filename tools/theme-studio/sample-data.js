@@ -37,7 +37,9 @@ export const SAMPLE_OPTIONS = {
     Divider: {},
     ColorPicker: { value: 'var(--cl-primary)' },
     FeatureCard: { title: '功能', description: '說明文字' },
-    TreeList: { items: [{ label: '節點1', children: [{ label: '子節點' }] }] },
+    // 元件讀 options.data 而非 items；節點需要 id，否則 String(node.id) 會是字面 'undefined'
+    // 而使所有節點共用同一份展開狀態。
+    TreeList: { data: [{ id: 'n1', label: '節點1', children: [{ id: 'n1-1', label: '子節點' }] }] },
 
     // layout
     DataTable: {

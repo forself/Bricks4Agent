@@ -44,6 +44,47 @@ function maskVolatile(text, extraMasks) {
 }
 
 /**
+ * 樣式簽章。只讀 cssText 是不夠的：真實 DOM 會把逐屬性賦值回寫進 cssText，
+ * 但兩套 fake DOM 的 style 都是只有 cssText 的普通物件，於是
+ * `el.style.background = ...` 對序列化完全隱形——序列化前後字串一模一樣，
+ * 比對會沉默通過。EditableTable 正是逐屬性寫法，所以這不是理論問題。
+ * 因此兩個來源都收，正規化成排序後的 prop:value 清單。
+ */
+function styleSignature(style) {
+    if (!style) return '';
+    const decls = new Map();
+    const put = (prop, value) => {
+        const name = String(prop).trim().replace(/[A-Z]/g, (c) => '-' + c.toLowerCase());
+        const v = String(value ?? '').trim();
+        if (name && v) decls.set(name, v);
+    };
+
+    if (typeof style.cssText === 'string' && style.cssText) {
+        for (const decl of style.cssText.split(';')) {
+            const i = decl.indexOf(':');
+            if (i > 0) put(decl.slice(0, i), decl.slice(i + 1));
+        }
+    }
+
+    if (typeof style.length === 'number' && typeof style.item === 'function') {
+        // 真實 DOM 的 CSSStyleDeclaration：自有屬性是數字索引，要透過 item() 取名
+        for (let i = 0; i < style.length; i += 1) {
+            const name = style.item(i);
+            if (name) put(name, style.getPropertyValue(name));
+        }
+    } else {
+        // fake DOM：style 是普通物件，逐屬性賦值只會留下自有屬性
+        for (const [k, v] of Object.entries(style)) {
+            if (k === 'cssText' || typeof v === 'function') continue;
+            put(k, v);
+        }
+    }
+
+    return [...decls].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+        .map(([k, v]) => `${k}: ${v}`).join('; ');
+}
+
+/**
  * 把 DOM 子樹序列化成可比對的正規形式。
  * class 與屬性一律排序，避免 classList.toggle 與 className 指派造成的順序差異；
  * 表單控制項另外納入 checked/value/disabled 的「實際狀態」而非只有屬性。
@@ -96,9 +137,8 @@ export function serializeDom(root, options = {}) {
             if (seen.has(name)) continue;
             attrs.push(`${name}=${JSON.stringify(String(v ?? ''))}`);
         }
-        if (node.style && typeof node.style.cssText === 'string' && node.style.cssText) {
-            attrs.push(`style=${JSON.stringify(node.style.cssText)}`);
-        }
+        const style = styleSignature(node.style);
+        if (style) attrs.push(`style=${JSON.stringify(style)}`);
         attrs.sort();
 
         // live property：屬性同步了但 property 沒同步（或反之）是定向更新最常見的漏洞
