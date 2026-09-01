@@ -41,6 +41,7 @@ export { DynamicFormRenderer } from './DynamicFormRenderer.js';
 export { DynamicDetailRenderer } from './DynamicDetailRenderer.js';
 export { DynamicListRenderer } from './DynamicListRenderer.js';
 export { DeferredHydrationQueue, scheduleDeferredHydration } from './DeferredHydration.js';
+export { createLazyModuleLoader, resolveLazyModuleValue } from './LazyModuleLoader.js';
 export { DynamicPageRenderer } from './DynamicPageRenderer.js';
 export { DynamicToolRenderer } from './DynamicToolRenderer.js';
 export { TOOL_EVENT_OPTIONS, validateToolPageDefinition } from './ToolPageDefinition.js';
