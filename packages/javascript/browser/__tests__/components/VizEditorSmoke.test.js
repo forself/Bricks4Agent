@@ -24,13 +24,15 @@ beforeEach(() => {
 });
 afterEach(() => { container.remove(); });
 
-describe('viz SVG 圖表在 jsdom 可建構', () => {
-    const svgCharts = { BarChart, LineChart, PieChart };
-    for (const [name, Cls] of Object.entries(svgCharts)) {
-        it(`${name} 建構並掛上 <svg>`, () => {
+describe('viz Canvas 圖表在 jsdom 可建構', () => {
+    const canvasCharts = { BarChart, LineChart, PieChart };
+    for (const [name, Cls] of Object.entries(canvasCharts)) {
+        it(`${name} 建構並掛上可存取的 <canvas>`, () => {
             const instance = new Cls({ container });
             expect(instance).toBeTruthy();
-            expect(container.querySelector('svg')).not.toBeNull();
+            const canvas = container.querySelector('canvas[role="img"]');
+            expect(canvas).not.toBeNull();
+            expect(canvas.getAttribute('aria-label')).toBeTruthy();
         });
     }
 

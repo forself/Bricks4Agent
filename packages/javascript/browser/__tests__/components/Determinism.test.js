@@ -18,6 +18,7 @@ function findJavaScriptFiles(root) {
         for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
             const fullPath = path.join(current, entry.name);
             if (entry.isDirectory()) {
+                if (entry.name === 'vendor') continue;
                 queue.push(fullPath);
             } else if (entry.isFile() && entry.name.endsWith('.js')) {
                 files.push(fullPath);
@@ -63,7 +64,9 @@ describe('determinism-clean IDs (Stage 3)', () => {
         for (const file of findJavaScriptFiles(uiComponentsRoot)) {
             if (ignored.has(path.normalize(file))) continue;
             const rel = path.relative(uiComponentsRoot, file).replaceAll(path.sep, '/');
-            const source = fs.readFileSync(file, 'utf8');
+            const source = fs.readFileSync(file, 'utf8')
+                .replace(/\/\*[\s\S]*?\*\//g, '')
+                .replace(/(^|\s)\/\/.*$/gm, '$1');
             for (const pattern of [/Date\.now\(/g, /Math\.random\(/g]) {
                 let match;
                 while ((match = pattern.exec(source)) !== null) {

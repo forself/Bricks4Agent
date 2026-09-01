@@ -13,7 +13,7 @@ afterEach(() => { container.remove(); });
 describe('Textarea', () => {
     it('mount 後 textarea 存在,get/set value', () => {
         const t = new Textarea({ value: 'a' }).mount(container);
-        expect(container.querySelector('textarea.cl-textarea')).not.toBeNull();
+        expect(container.querySelector('.cl-textarea textarea.cl-textarea__field')).not.toBeNull();
         t.setValue('b');
         expect(t.getValue()).toBe('b');
     });
@@ -37,7 +37,8 @@ describe('Slider', () => {
 describe('Rating', () => {
     it('依 max 產生星數,setValue 改填色數', () => {
         const r = new Rating({ max: 5, value: 2 }).mount(container);
-        expect(container.querySelectorAll('.cl-rating-star').length).toBe(5);
+        expect(container.querySelector('.cl-rating canvas')).not.toBeNull();
+        expect(r._stars).toHaveLength(5);
         r.setValue(4);
         expect(r.getValue()).toBe(4);
     });

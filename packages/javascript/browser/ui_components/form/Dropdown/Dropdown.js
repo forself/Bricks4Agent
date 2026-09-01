@@ -103,11 +103,12 @@ export class Dropdown {
                 highlightIndex: payload?.disabled ? -1 : state.highlightIndex
             }),
             FILTER: (state, payload) => {
-                const query = String(payload?.query ?? '').toLowerCase().trim();
-                const filteredItems = !query
+                const query = String(payload?.query ?? '').trim();
+                const normalizedQuery = query.toLocaleLowerCase();
+                const filteredItems = !normalizedQuery
                     ? [...this.options.items]
                     : this.options.items.filter((item) =>
-                        String(item.label).toLowerCase().includes(query)
+                        String(item.label).toLocaleLowerCase().includes(normalizedQuery)
                     );
                 return {
                     ...state,

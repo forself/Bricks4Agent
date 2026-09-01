@@ -316,14 +316,24 @@ export class ClusterGraph extends CanvasChart {
         if (this._seedPos) {
             for (const n of this._simNodes) {
                 if (!prev.has(n.vid)) {
-                    n.x = this._seedPos.x + (Math.random() - 0.5) * 30;
-                    n.y = this._seedPos.y + (Math.random() - 0.5) * 30;
+                    n.x = this._seedPos.x + this._deterministicJitter(n.vid, 'x');
+                    n.y = this._seedPos.y + this._deterministicJitter(n.vid, 'y');
                 }
             }
             this._seedPos = null;
         }
         this._sim.reheat(0.6);
         this._startLoop();
+    }
+
+    _deterministicJitter(value, axis) {
+        const text = `${axis}:${String(value ?? '')}`;
+        let hash = 2166136261;
+        for (let i = 0; i < text.length; i++) {
+            hash ^= text.charCodeAt(i);
+            hash = Math.imul(hash, 16777619);
+        }
+        return ((hash >>> 0) / 0xffffffff - 0.5) * 30;
     }
 
     _nodeTooltip(n) {

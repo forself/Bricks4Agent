@@ -50,9 +50,11 @@ describe('Icon', () => {
     beforeEach(() => { container = document.createElement('div'); document.body.appendChild(container); });
     afterEach(() => { container.remove(); });
 
-    it('已知 name 渲染 inline svg', () => {
+    it('已知 name 渲染 CSP-safe canvas icon', () => {
         new Icon({ name: 'search' }).mount(container);
-        expect(container.querySelector('.cl-icon svg path')).not.toBeNull();
+        const canvas = container.querySelector('.cl-icon canvas.cl-icon__canvas');
+        expect(canvas).not.toBeNull();
+        expect(canvas.width).toBeGreaterThan(0);
     });
 
     it('未知 name = fail-closed:渲染空,不現捏', () => {
@@ -60,6 +62,7 @@ describe('Icon', () => {
         const el = container.querySelector('.cl-icon');
         expect(el).not.toBeNull();
         expect(el.querySelector('svg')).toBeNull();
+        expect(el.querySelector('canvas.cl-icon__canvas')).not.toBeNull();
     });
 
     it('names() 是閉集且 has() 一致', () => {

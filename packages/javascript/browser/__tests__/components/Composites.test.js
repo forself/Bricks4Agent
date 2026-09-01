@@ -7,11 +7,11 @@ beforeEach(() => { container = document.createElement('div'); document.body.appe
 afterEach(() => { container.remove(); });
 
 describe('Alert (composite = Icon + Text)', () => {
-    it('mount 後由原子組成:variant icon svg + 訊息文字', () => {
+    it('mount 後由原子組成:variant canvas icon + 訊息文字', () => {
         new Alert({ variant: 'success', message: '完成' }).mount(container);
         const alert = container.querySelector('.cl-alert--success');
         expect(alert).not.toBeNull();
-        expect(alert.querySelector('.cl-icon svg')).not.toBeNull();   // Icon 原子
+        expect(alert.querySelector('.cl-icon canvas.cl-icon__canvas')).not.toBeNull(); // Icon 原子
         expect(alert.querySelector('.cl-text')).not.toBeNull();        // Text 原子
         expect(alert.querySelector('.cl-text').textContent).toBe('完成');
     });
@@ -35,7 +35,7 @@ describe('EmptyState (composite = Icon + Heading + Text + BasicButton)', () => {
     it('mount 後由原子組成', () => {
         new EmptyState({ icon: 'search', title: '無資料', description: '請調整條件' }).mount(container);
         const empty = container.querySelector('.cl-empty');
-        expect(empty.querySelector('.cl-icon svg')).not.toBeNull();
+        expect(empty.querySelector('.cl-icon canvas.cl-icon__canvas')).not.toBeNull();
         expect(empty.querySelector('h4.cl-heading').textContent).toBe('無資料');
         expect(empty.querySelector('.cl-text').textContent).toBe('請調整條件');
     });

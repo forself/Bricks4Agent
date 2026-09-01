@@ -4,7 +4,7 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "test": "node packages/javascript/browser/page-generator/examples/test-all.js",
+    "test": "node packages/javascript/browser/page-generator/examples/test-all.js && npm run test:ui-components && npm run test:custom-components && npm --prefix packages/javascript/browser run test:vitest",
     "test:generator": "node packages/javascript/browser/page-generator/examples/test-generator.js",
     "audit:ui-styles": "node tools/scripts/audit-ui-style-rules.mjs",
     "validate:agent-governed": "node tools/agent/tests/test-governed-mode.js",
