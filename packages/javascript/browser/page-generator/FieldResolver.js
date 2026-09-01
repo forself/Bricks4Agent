@@ -318,6 +318,8 @@ export class FieldResolver {
             readonly: def.isReadonly,
         };
         if (def.validation && def.validation.maxLength != null) opts.maxLength = def.validation.maxLength;
+        const maxLength = Number(def.validation?.maxLength ?? def.maxLength);
+        opts.autoResize = !Number.isFinite(maxLength) || maxLength > 200;
         if (def.defaultValue != null) opts.value = String(def.defaultValue);
         return new TextArea(opts);
     }

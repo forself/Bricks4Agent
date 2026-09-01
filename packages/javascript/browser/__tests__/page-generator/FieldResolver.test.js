@@ -8,8 +8,13 @@ describe('FieldResolver', () => {
         resolver = new FieldResolver();
     });
 
-    it('_typeMap 包含目前 33 種 fieldType', () => {
-        expect(resolver._typeMap.size).toBe(33);
+    it('_typeMap 包含目前 34 種 fieldType', () => {
+        expect(resolver._typeMap.size).toBe(34);
+    });
+
+    it('preload 型別解析只選頁面需要的模組，未知型別回退全量', () => {
+        expect(resolver._resolvePreloadKeys(['text', 'rocDate', 'text'])).toEqual(['TextInput', 'DatePicker']);
+        expect(resolver._resolvePreloadKeys(['custom-widget'])).toBeNull();
     });
 
     it('_typeMap 包含所有基本 fieldType', () => {
