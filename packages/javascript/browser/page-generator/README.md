@@ -44,6 +44,7 @@
 | `DynamicFormRenderer.js` | 動態表單渲染器，組合 FormField + FormRow + TriggerEngine |
 | `DynamicDetailRenderer.js` | 動態明細渲染器，以唯讀方式顯示 label + formatted value |
 | `DynamicListRenderer.js` | 動態列表渲染器，組合 SearchForm + DataTable + Pagination |
+| `DeferredHydration.js` | 掛載後才執行的非結構資料補水佇列；destroy 時統一取消 |
 | `ToolPageDefinition.js` | 宣告式工具頁 JSON schema 與安全驗證 |
 | `DynamicToolRenderer.js` | 由 JSON、可信 commands 與 ComponentFactory 產生工具頁 |
 | `DynamicPageRenderer.js` | 統一入口，依 mode 委派給 Form / Detail / List / Tool 渲染器 |
@@ -478,12 +479,15 @@ await list.init();
 | `setData(rows, total)` | `Array, number` | - | 設定列表資料與總筆數 |
 | `mount(container)` | `string \| Element` | `this` | 掛載到容器 |
 | `destroy()` | - | - | 銷毀渲染器 |
+| `deferHydration(task, options?)` | `Function, Object` | `{ promise, cancel, signal }` | 登記非結構資料補水；只在 `mount()` 後執行，`destroy()` 自動取消 |
 
 **欄位定義中的列表相關屬性：**
 - `isSearchable: true` — 欄位出現在搜尋區
 - `listOrder: number` — 欄位在表格中的排序（> 0 才顯示）
 
 **lookup 標籤快取：** 具 `lookup` / `optionsSource` / `options` 的欄位，其 value → label 索引會依欄位定義物件快取，同一欄的所有列共用同一份索引，不再逐格重建。快取在 `setData()` 與 `destroy()` 時整批清除；渲染期間若欄位的 `options`（或 endpoint 來源的共用清單）被換成另一個陣列或長度改變，也會就地重建。因此執行期就地改寫欄位選項後，最遲在下次 `setData()` 會反映。
+
+**漸進補水：** 子類或專案整合層若要載入選項主檔、次要摘要或自動查詢，應在 `init()` 內呼叫 `deferHydration()`，不得自行建立 `setTimeout` 或在 `init()` 阻塞首屏。B4A 會等 `mount()` 完成後再於下一個 browser task 執行；路由切換呼叫 `destroy()` 時會取消尚未開始的工作並中止 `signal`。`task` 應在可中止的 fetch 上使用收到的 `AbortSignal`。
 
 ---
 

@@ -11,6 +11,7 @@ import { Link } from '../ui_components/common/Link/Link.js';
 import { Badge } from '../ui_components/common/Badge/Badge.js';
 import { StatGrid } from '../ui_components/common/StatGrid/StatGrid.js';
 import { DrawerPanel } from '../ui_components/layout/Panel/DrawerPanel.js';
+import { DeferredHydrationQueue } from './DeferredHydration.js';
 import {
     buildActionRequest,
     buildDownloadRequest,
@@ -76,6 +77,7 @@ export class DynamicListRenderer {
         this._summaryContainer = null;
         this._controlComponents = [];
         this._renderedActionComponents = [];
+        this._deferredHydration = new DeferredHydrationQueue();
 
         /** @type {Map<string, Object>} 模組快取 */
         this._modules = new Map();
@@ -93,6 +95,16 @@ export class DynamicListRenderer {
         await this._loadModules();
         this._build();
         return this;
+    }
+
+    /**
+     * Register non-structural async work during init().  The task starts on
+     * the next browser task only after mount(), and is cancelled by destroy().
+     * @param {(signal: AbortSignal) => unknown|Promise<unknown>} task
+     * @param {{ onError?: (error: unknown) => void }} options
+     */
+    deferHydration(task, options) {
+        return this._deferredHydration.defer(task, options);
     }
 
     async _loadModules() {
@@ -1269,11 +1281,15 @@ export class DynamicListRenderer {
 
     mount(container) {
         const target = typeof container === 'string' ? document.querySelector(container) : container;
-        if (target && this.element) target.appendChild(this.element);
+        if (target && this.element) {
+            target.appendChild(this.element);
+            this._deferredHydration.markMounted();
+        }
         return this;
     }
 
     destroy() {
+        this._deferredHydration.destroy();
         this._renderedActionComponents.splice(0).forEach(component => component.destroy?.());
         this._controlComponents.splice(0).forEach(component => component.destroy?.());
         this._searchForm?.destroy?.();
