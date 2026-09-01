@@ -59,6 +59,7 @@ export class RegionMap {
      * @param {boolean} options.showValues - 顯示數值
      * @param {'jurisdiction'|'city'|null} options.legacyCatalog - 舊版警政轄區或行政區資產目錄
      * @param {string} options.legacyView - 舊版縣市畫面代碼
+     * @param {string} options.legacyAssetBaseUrl - 打包器無法保留相對目錄時使用的資產根 URL
      * @param {string} options.unit - 資產地圖數值單位
      */
     constructor(options = {}) {
@@ -78,6 +79,7 @@ export class RegionMap {
             valueFontSize: 10,
             legacyCatalog: null,
             legacyView: '00',
+            legacyAssetBaseUrl: '',
             unit: '',
             ...options
         };
@@ -156,7 +158,11 @@ export class RegionMap {
             return;
         }
 
-        this.legacyImage.src = legacyRegionMapImageUrl(this.options.legacyCatalog, layout.image);
+        this.legacyImage.src = legacyRegionMapImageUrl(
+            this.options.legacyCatalog,
+            layout.image,
+            this.options.legacyAssetBaseUrl
+        );
         this.legacyImage.alt = `台灣行政區域圖－${this.options.legacyView}`;
         for (const marker of layout.markers) {
             const row = this.options.data?.[marker.code] || {};

@@ -3138,9 +3138,17 @@ export const LEGACY_REGION_MAP_LAYOUTS = Object.freeze({
     }
 });
 
-export function legacyRegionMapImageUrl(catalog, image) {
+export function legacyRegionMapImageUrl(catalog, image, assetBaseUrl = '') {
     if (!/^(jurisdiction|city)$/.test(String(catalog || ''))) return '';
     if (!/^[A-Za-z0-9\u4e00-\u9fff_-]+\.png$/.test(String(image || ''))) return '';
-    const relativePath = `./maps/legacy/${catalog}/${image}`;
-    return new URL(relativePath, import.meta.url).href;
+    const configuredBase = String(assetBaseUrl || '').trim();
+    if (!configuredBase) {
+        const relativePath = `./maps/legacy/${catalog}/${image}`;
+        return new URL(relativePath, import.meta.url).href;
+    }
+    const baseUrl = new URL(
+        configuredBase.endsWith('/') ? configuredBase : `${configuredBase}/`,
+        globalThis.document?.baseURI || import.meta.url
+    );
+    return new URL(`${catalog}/${image}`, baseUrl).href;
 }
