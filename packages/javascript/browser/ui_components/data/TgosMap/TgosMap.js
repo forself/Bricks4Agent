@@ -2,13 +2,6 @@ import { BasicButton } from '../../common/BasicButton/index.js';
 import { resolveTokens, paintToken } from '../../utils/theme-bus.js';
 import { queryLegacyTgosAddress } from './TgosAddressService.js';
 
-// Exact URL used by the legacy frontend.  This external contract is prescribed and is not a
-// deployment setting: changing it would also change the TGOS application identity.
-// TGOS MAP API Lite publishes this browser key for public integration. The
-// endpoint is deliberately immutable at runtime: changing a meta tag must not
-// turn the dynamic script loader into an arbitrary-script primitive.
-export const TGOS_LITE_URL = 'https://api.tgos.tw/TGOS_API/tgos?ver=2&AppID=x+JLVSx85Lk=&APIKey=in8W74q0ogpcfW/STwicK8D5QwCdddJf05/7nb+OtDh8R99YN3T0LurV4xato3TpL/fOfylvJ9Wv/khZEsXEWxsBmg+GEj4AuokiNXCh14Rei21U5GtJpIkO++Mq3AguFK/ISDEWn4hMzqgrkxNe1Q==';
-
 let tgosLoadPromise = null;
 
 const asArray = value => Array.isArray(value) ? value : [];
@@ -20,8 +13,10 @@ const escapeHtml = value => String(value ?? '')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;');
 
-function configuredScriptUrl() {
-    const url = new URL(TGOS_LITE_URL);
+function configuredScriptUrl(value) {
+    const raw = String(value || '').trim();
+    if (!raw) throw new Error('TGOS 載入失敗：未提供受控 API URL。');
+    const url = new URL(raw);
     if (url.protocol !== 'https:' || url.hostname !== 'api.tgos.tw' || url.pathname !== '/TGOS_API/tgos') {
         throw new Error('TGOS API URL is outside the approved endpoint.');
     }
@@ -43,7 +38,7 @@ function safeLinkHref(value, windowRef = globalThis.window) {
     }
 }
 
-export function loadTgosApi({ windowRef = globalThis.window, documentRef = globalThis.document, timeoutMs = 15000 } = {}) {
+export function loadTgosApi({ scriptUrl = '', windowRef = globalThis.window, documentRef = globalThis.document, timeoutMs = 15000 } = {}) {
     if (windowRef?.TGOS?.TGOnlineMap) return Promise.resolve(windowRef.TGOS);
     if (tgosLoadPromise) return tgosLoadPromise;
 
@@ -84,7 +79,7 @@ export function loadTgosApi({ windowRef = globalThis.window, documentRef = globa
             script.async = true;
             script.charset = 'utf-8';
             script.dataset.b4aTgosApi = 'true';
-            script.src = configuredScriptUrl();
+            script.src = configuredScriptUrl(scriptUrl);
             documentRef.head.appendChild(script);
         } else if (!ready()) {
             poll = windowRef.setInterval(ready, 50);
@@ -145,6 +140,7 @@ export class TgosMap {
     constructor(options = {}) {
         this.options = {
             data: [],
+            scriptUrl: '',
             height: '540px',
             coordinateSystem: 'EPSG3857',
             disableDefaultUI: true,
@@ -234,7 +230,7 @@ export class TgosMap {
 
     async _initialize() {
         try {
-            const TGOS = await loadTgosApi();
+            const TGOS = await loadTgosApi({ scriptUrl: this.options.scriptUrl });
             if (this.destroyed) return;
             const visible = await this._waitUntilVisible();
             if (!visible || this.destroyed) return false;
