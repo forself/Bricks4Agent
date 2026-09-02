@@ -567,6 +567,32 @@ export async function runQueryExtV1Tests() {
         });
     });
 
+    await t('download payload may explicitly use formatted display-row values', () => {
+        const definition = {
+            page: { view: 'query' },
+            columns: [{ key: 'Code', title: '代碼' }],
+            api: {
+                download: [{
+                    id: 'displayExport',
+                    legacyPath: 'Example/Export',
+                    payload: {
+                        RawCodes: '$selection.Code',
+                        DisplayCodes: '$selectionDisplay.Code',
+                    },
+                }],
+            },
+        };
+        const request = buildActionRequest(definition, 'displayExport', {
+            rows: [{ Code: '31000' }],
+            displayRows: [{ Code: '臺北市政府警察局' }],
+            selectedIndices: [0],
+        });
+        assert.deepEqual(request.payload, {
+            RawCodes: ['31000'],
+            DisplayCodes: ['臺北市政府警察局'],
+        });
+    });
+
     const failed = results.filter((result) => !result.pass);
     if (failed.length > 0) {
         const error = new Error(`Query ext-v1 tests failed: ${failed.map((result) => result.name).join(', ')}`);

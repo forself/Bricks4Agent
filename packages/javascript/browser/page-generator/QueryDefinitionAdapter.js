@@ -292,6 +292,7 @@ export function buildDownloadRequest(definition, rows = [], selectedIndices = []
 
     return buildActionRequest(definition, action, {
         rows,
+        displayRows: options.displayRows,
         selectedIndices,
         now: options.now,
         row: options.row,
@@ -311,9 +312,13 @@ export function buildActionRequest(definition, actionOrId, options = {}) {
 
     const columns = getQueryColumns(definition);
     const rows = Array.isArray(options.rows) ? options.rows : [];
+    const displayRows = Array.isArray(options.displayRows) ? options.displayRows : rows;
     const selectedIndices = Array.isArray(options.selectedIndices) ? options.selectedIndices : [];
     const selectedRows = selectedIndices
         .map((index) => rows[index])
+        .filter((row) => row !== undefined && row !== null);
+    const selectedDisplayRows = selectedIndices
+        .map((index) => displayRows[index])
         .filter((row) => row !== undefined && row !== null);
     const selectionKey = action.selectionKey
         || action.selection?.key
@@ -321,8 +326,11 @@ export function buildActionRequest(definition, actionOrId, options = {}) {
         || null;
     const context = {
         rows,
+        displayRows,
         row: options.row || selectedRows[0] || null,
+        displayRow: options.displayRow || selectedDisplayRows[0] || options.row || selectedRows[0] || null,
         selectedRows,
+        selectedDisplayRows,
         selectionKey,
         columns,
         searchValues: options.searchValues || {},
@@ -604,11 +612,26 @@ function resolvePayloadTemplate(template, context) {
                 .map((row) => readRowValue(row, key, context.columns))
                 .filter((value) => value !== undefined);
         }
+        if (template.startsWith('$selectionDisplay.')) {
+            const key = template.slice('$selectionDisplay.'.length);
+            return context.selectedDisplayRows
+                .map((row) => readRowValue(row, key, context.columns))
+                .filter((value) => value !== undefined);
+        }
+        if (template === '$selectionDisplay') {
+            return context.selectedDisplayRows.map((row) => cloneJsonValue(row));
+        }
         if (template === '$selection') {
             return context.selectedRows.map((row) => cloneJsonValue(row));
         }
         if (template.startsWith('$row.')) {
             return readRowValue(context.row, template.slice('$row.'.length), context.columns);
+        }
+        if (template.startsWith('$rowDisplay.')) {
+            return readRowValue(context.displayRow, template.slice('$rowDisplay.'.length), context.columns);
+        }
+        if (template === '$rowDisplay') {
+            return cloneJsonValue(context.displayRow);
         }
         if (template === '$row') {
             return cloneJsonValue(context.row);

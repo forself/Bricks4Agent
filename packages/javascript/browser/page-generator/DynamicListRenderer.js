@@ -1152,7 +1152,35 @@ export class DynamicListRenderer {
     buildDownloadRequest(options = {}) {
         if (!this._isDeclarativeList) return null;
         const selected = this._dataTable?.getSelectedRows?.() || [];
-        return buildDownloadRequest(this._definition, this._rows, selected, options);
+        return buildDownloadRequest(this._definition, this._rows, selected, {
+            ...options,
+            displayRows: this._buildPayloadDisplayRows(this._rows),
+        });
+    }
+
+    _buildPayloadDisplayRows(rows = []) {
+        const source = Array.isArray(rows) ? rows : [];
+        return source.map((row) => {
+            const display = Array.isArray(row) ? [...row] : { ...row };
+            this._queryColumns.forEach((column, index) => {
+                const key = column.fieldName || column.key;
+                if (!key) return;
+                const value = Array.isArray(row) ? row[index] : row?.[key];
+                // Links and action hosts affect only the rendered cell chrome;
+                // export payloads need the underlying formatted business text.
+                const payloadColumn = column.link || column.action
+                    ? { ...column, link: null, action: null }
+                    : column;
+                const formatted = this._formatCellValue(payloadColumn, value, row);
+                const safeValue = formatted === null
+                    || ['string', 'number', 'boolean'].includes(typeof formatted)
+                    ? formatted
+                    : this._resolveDisplayValue(payloadColumn, value);
+                if (Array.isArray(display)) display[index] = safeValue;
+                else display[key] = safeValue;
+            });
+            return display;
+        });
     }
 
     async downloadSelected(options = {}) {
