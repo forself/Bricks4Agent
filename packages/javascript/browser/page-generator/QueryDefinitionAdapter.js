@@ -336,12 +336,20 @@ export function buildActionRequest(definition, actionOrId, options = {}) {
         searchValues: options.searchValues || {},
         now: options.now instanceof Date ? options.now : new Date(),
     };
-    const payloadTemplate = {
+    const payloadDefaultsTemplate = {
         ...(apiAction?.payloadDefaults || {}),
         ...(action.payloadDefaults || {}),
+    };
+    const payloadTemplate = {
         ...(apiAction?.payload || {}),
         ...(action.payload || {}),
     };
+    const resolvedDefaults = resolvePayloadTemplate(payloadDefaultsTemplate, context);
+    const resolvedPayload = resolvePayloadTemplate(payloadTemplate, context);
+    const payload = { ...(resolvedDefaults || {}) };
+    for (const [key, value] of Object.entries(resolvedPayload || {})) {
+        if (!isEmptyValue(value)) payload[key] = value;
+    }
 
     return {
         id: action.id || action.key || '',
@@ -349,7 +357,7 @@ export function buildActionRequest(definition, actionOrId, options = {}) {
         legacyPath: resolveRouteTemplate(action.legacyPath || action.url || '', context),
         method: action.method || 'POST',
         fileName: action.fileName ? formatDownloadFileName(action.fileName, options.now || new Date()) : '',
-        payload: resolvePayloadTemplate(payloadTemplate, context),
+        payload,
         confirmText: action.confirmText || '',
         selectionKey,
         selectionValues: selectionKey
