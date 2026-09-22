@@ -221,7 +221,10 @@ export class DatePicker {
         container.style.cssText = `
             position: relative;
             display: inline-block;
-            max-width: 220px;
+            width: 220px;
+            max-width: 100%;
+            min-width: 0;
+            box-sizing: border-box;
             font-family: var(--cl-font-family);
         `;
 
@@ -251,9 +254,11 @@ export class DatePicker {
             display: flex;
             align-items: center;
             position: relative;
-            height: ${sizeStyles.height};
+            min-height: ${sizeStyles.height};
+            box-sizing: border-box;
+            min-width: 0;
+            gap: 8px;
             padding: ${sizeStyles.padding};
-            padding-right: 32px;
             background: var(--cl-bg);
             border: 1px solid var(--cl-border);
             border-radius: var(--cl-radius-md);
@@ -265,6 +270,8 @@ export class DatePicker {
         display.className = 'datepicker__display';
         display.style.cssText = `
             flex: 1;
+            min-width: 0;
+            overflow-wrap: anywhere;
             font-size: ${sizeStyles.fontSize};
             color: var(--cl-text-placeholder);
         `;
@@ -274,10 +281,7 @@ export class DatePicker {
         this._calendarIcon = new Icon({ name: 'calendar', size: 16, color: 'var(--cl-text-secondary)' });
         this._calendarIcon.mount(icon);
         icon.style.cssText = `
-            position: absolute;
-            right: 10px;
-            top: 50%;
-            transform: translateY(-50%);
+            flex: 0 0 auto;
             display: flex;
         `;
 

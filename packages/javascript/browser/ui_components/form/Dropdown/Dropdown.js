@@ -174,9 +174,10 @@ export class Dropdown {
             display: flex;
             align-items: center;
             gap: 8px;
-            height: ${sizeStyles.height};
+            min-height: ${sizeStyles.height};
+            box-sizing: border-box;
+            min-width: 0;
             padding: ${sizeStyles.padding};
-            padding-right: 32px;
             background: var(--cl-bg);
             border: 1px solid var(--cl-border);
             border-radius: var(--cl-radius-md);
@@ -193,6 +194,9 @@ export class Dropdown {
             input.disabled = disabled;
             input.style.cssText = `
                 flex: 1;
+                width: 0;
+                min-width: 0;
+                box-sizing: border-box;
                 border: none;
                 outline: none;
                 font-size: ${sizeStyles.fontSize};
@@ -207,6 +211,7 @@ export class Dropdown {
             display.textContent = placeholder;
             display.style.cssText = `
                 flex: 1;
+                min-width: 0;
                 font-size: ${sizeStyles.fontSize};
                 color: var(--cl-text-placeholder);
                 overflow: hidden;
@@ -220,10 +225,9 @@ export class Dropdown {
         const icons = document.createElement('div');
         icons.className = 'dropdown__icons';
         icons.style.cssText = `
-            position: absolute;
-            right: 8px;
-            top: 50%;
-            transform: translateY(-50%);
+            position: static;
+            transform: none;
+            flex: 0 0 auto;
             display: flex;
             gap: 4px;
             align-items: center;

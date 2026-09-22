@@ -42,6 +42,7 @@ export class FormField {
 
         const container = document.createElement('div');
         container.className = 'form-field';
+        container.style.minWidth = '0';
         container.dataset.field = fieldName;
 
         // col-N 支援
@@ -53,11 +54,11 @@ export class FormField {
         if (label) {
             const labelRow = document.createElement('div');
             labelRow.className = 'form-field__label';
-            labelRow.style.cssText = 'display:flex;align-items:center;gap:4px;margin-bottom:6px;';
+            labelRow.style.cssText = 'display:flex;align-items:baseline;min-width:0;gap:4px;margin-bottom:6px;';
 
             const labelText = document.createElement('label');
             labelText.textContent = label;
-            labelText.style.cssText = 'font-size:var(--cl-font-size-lg);font-weight:500;color:var(--cl-text);';
+            labelText.style.cssText = 'min-width:0;white-space:normal;overflow-wrap:anywhere;font-size:var(--cl-font-size-lg);font-weight:500;color:var(--cl-text);';
             labelRow.appendChild(labelText);
             this._labelText = labelText;
 
@@ -75,13 +76,15 @@ export class FormField {
         // 元件插槽
         const slot = document.createElement('div');
         slot.className = 'form-field__slot';
+        slot.style.minWidth = '0';
+        slot.style.maxWidth = '100%';
         container.appendChild(slot);
         this._slot = slot;
 
         // 錯誤/提示區
         const messageEl = document.createElement('div');
         messageEl.className = 'form-field__message';
-        messageEl.style.cssText = 'font-size:var(--cl-font-size-sm);min-height:18px;margin-top:4px;';
+        messageEl.style.cssText = 'overflow-wrap:anywhere;font-size:var(--cl-font-size-sm);min-height:18px;margin-top:4px;';
         container.appendChild(messageEl);
         this._messageEl = messageEl;
 

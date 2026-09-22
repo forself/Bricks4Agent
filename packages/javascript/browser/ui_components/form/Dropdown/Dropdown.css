@@ -30,6 +30,7 @@
 
 .dropdown__display {
     flex: 1;
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -42,6 +43,8 @@
 
 .dropdown__input {
     flex: 1;
+    min-width: 0;
+    width: 0;
     border: none;
     outline: none;
     background: transparent;
@@ -53,10 +56,8 @@
 }
 
 .dropdown__icons {
-    position: absolute;
-    right: 8px;
-    top: 50%;
-    transform: translateY(-50%);
+    position: static;
+    flex: 0 0 auto;
     display: flex;
     gap: 4px;
     align-items: center;

@@ -29,7 +29,7 @@ export class FormRow {
         container.className = 'form-row';
         container.style.cssText = `
             display:grid;
-            grid-template-columns:repeat(12, 1fr);
+            grid-template-columns:repeat(12, minmax(0, 1fr));
             gap:${this.options.gap};
             margin-bottom:16px;
         `;

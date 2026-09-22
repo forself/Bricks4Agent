@@ -1,0 +1,4 @@
+body { font-family: sans-serif; margin: 24px; }
+.sample { width: min(100%, 720px); margin-bottom: 32px; }
+body.large { --cl-font-size-lg: 28px; --cl-font-size-md: 26px; --cl-font-size-sm: 24px; }
+pre { white-space: pre-wrap; }
