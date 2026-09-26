@@ -1,6 +1,6 @@
 # LINE Sidecar 執行手冊
 
-日期：2026-03-26
+日期：2026-09-26
 範圍：目前本機 Windows sidecar 與 LINE live ingress 路徑
 對象：操作人員 / 開發者
 
@@ -8,7 +8,7 @@
 
 這份手冊說明目前本機 live 路徑的啟動、驗證、操作與排障方式：
 
-`LINE webhook -> ngrok public URL -> line-worker -> broker /api/v1/high-level/line/process`
+`LINE webhook -> public tunnel URL（ngrok；備援 localhost.run）-> line-worker -> broker /api/v1/high-level/line/process`
 
 這條 broker 路徑仍然使用 plain JSON，但現在已改成 authenticated worker path，不再是單純 trusted bypass。
 
@@ -28,13 +28,13 @@
 
 - line-worker webhook：`127.0.0.1:5357`
 
-- ngrok tunnel 名稱：`line5357`
+- ngrok tunnel 名稱（僅 ngrok 路徑）：`line5357`
 
 ## Sidecar 狀態持久化
 
 - sidecar 的執行狀態現在會保存在：
 
-- `D:\Bricks4Agent\.run\line-sidecar\data\broker.db`
+- `.run\line-sidecar\data\broker.db`（位於 repo 根目錄下）
 
 - 這個資料庫目前會保存 broker 擁有的本機狀態，例如：
 
@@ -56,7 +56,7 @@
 
 - 可 publish / 執行 broker 與 line-worker 的 .NET SDK/runtime
 
-- 已安裝且已登入的 `ngrok`
+- public tunnel：建議安裝並登入 `ngrok`，但非必要——若沒有 `ngrok` 或 `%LOCALAPPDATA%\ngrok\ngrok.yml` 不存在，`up` 會發出警告並改用 localhost.run tunnel，此時需要 `PATH` 上有 OpenSSH client（`ssh`）
 
 - 已填好 LINE 憑證的本機 worker 設定
 
@@ -70,13 +70,13 @@
 
 - 沒有 `ANTHROPIC_API_KEY` 時的 OpenAI-compatible fallback key
 
-- 同一機密目錄下的 `client_secret_*.json`
+- 同一機密目錄下的 `client_secret_*.json`（優先搜尋機密目錄；repo 根目錄僅為舊版備援）
 
 - 給 Google Drive OAuth 使用
 
 - `%LOCALAPPDATA%\ngrok\ngrok.yml`
 
-- 可用的 ngrok 設定
+- 可用的 ngrok 設定（僅 ngrok 路徑需要）
 
 ## 本機檔案與輸入
 
@@ -84,7 +84,7 @@
 
 檔案：
 
-- [appsettings.json](/d:/Bricks4Agent/packages/csharp/workers/line-worker/appsettings.json)
+- `packages/csharp/workers/line-worker/appsettings.json`
 
 這是本機檔案，不應提交到 git。
 
@@ -96,11 +96,17 @@
 
 - `Line.DefaultRecipientId`
 
+- `Worker.Auth.WorkerType`
+
+- `Worker.Auth.KeyId`
+
+- `Worker.Auth.SharedSecret`
+
 ### 2. 高階模型 API key
 
 檔案：
 
-- `C:\secure\Bricks4Agent\Api.txt`（或 `$env:BRICKS4AGENT_SECRETS_DIR\Api.txt`；`D:\Bricks4Agent\Api.txt` 為舊版備援）
+- `C:\secure\Bricks4Agent\Api.txt`（或 `$env:BRICKS4AGENT_SECRETS_DIR\Api.txt`；repo 根目錄的 `Api.txt` 為舊版備援）
 
 目前 sidecar 會：
 
@@ -112,7 +118,7 @@
 
 檔案樣式：
 
-- `C:\secure\Bricks4Agent\client_secret_*.json`（repo 根目錄為舊版備援）
+- `C:\secure\Bricks4Agent\client_secret_*.json`（或 `$env:BRICKS4AGENT_SECRETS_DIR`；`start-sidecar-stack.ps1` 先搜尋機密目錄，repo 根目錄僅為舊版備援）
 
 ### 3.1 Worker 身分憑證庫
 
@@ -186,7 +192,7 @@ Google Drive 交付模式現在可設定為：
 
 正常本機操作應一律走：
 
-- [line-sidecar.ps1](/d:/Bricks4Agent/packages/csharp/workers/line-worker/line-sidecar.ps1)
+- [line-sidecar.ps1](../../packages/csharp/workers/line-worker/line-sidecar.ps1)
 
 ### 啟動
 
@@ -248,13 +254,13 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\l
 
 7. 啟動 line-worker 到 `*:5357`
 
-8. 重建 ngrok tunnel `line5357`
+8. 重建 ngrok tunnel `line5357`；若 ngrok 不可用，改啟動 localhost.run tunnel（並啟動 webhook-sync watchdog，在 localhost.run URL 變動時重新指向 LINE webhook）
 
 9. 更新 LINE webhook endpoint，除非使用 `-SkipWebhookUpdate`
 
 10. 等到 broker 與本機 webhook 真正 ready
 
-11. 確認命名的 ngrok tunnel 確實存在
+11. 走 ngrok 路徑時，確認命名的 ngrok tunnel 確實存在
 
 重要補充：
 
@@ -263,6 +269,8 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\l
 - 腳本現在會自動啟動本機 ngrok agent：
 
 - `ngrok start --none --config %LOCALAPPDATA%\ngrok\ngrok.yml`
+
+- 若 `PATH` 上沒有 `ngrok` 或設定檔不存在，腳本會警告並改用 localhost.run（警告文字仍寫「cloudflared quick tunnel」，但實際啟動的是 localhost.run；腳本內的 cloudflared 分支目前不可達）
 
 也就是說，現在文件的標準是：
 
@@ -279,20 +287,20 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\l
 這時不要只反覆重跑 `line-sidecar.ps1 up`。請用系統管理員 PowerShell 執行：
 
 ```powershell
-cd D:\Bricks4Agent
+# 在 repo 根目錄執行
 npm run signing:wdac-repair -- -Deploy
 ```
 
-這個 repair flow 會掃描：
+這個 repair flow 會掃描（相對於 repo 根目錄）：
 
 ```text
-D:\Bricks4Agent\.run\line-sidecar
+.run\line-sidecar
 ```
 
 並產生 policy 到：
 
 ```text
-D:\Bricks4Agent\.run\wdac\line-sidecar-runtime\
+.run\wdac\line-sidecar-runtime\
 ```
 
 部署成功後，輸出的 `{policy-id}.cip` 必須出現在：
@@ -301,7 +309,7 @@ D:\Bricks4Agent\.run\wdac\line-sidecar-runtime\
 C:\Windows\System32\CodeIntegrity\CiPolicies\Active
 ```
 
-只有 active policy 檢查通過才代表 WDAC policy 實際生效。完整說明見 [dev-code-signing-wdac.zh-TW.md](/d:/Bricks4Agent/docs/manuals/dev-code-signing-wdac.zh-TW.html)。
+只有 active policy 檢查通過才代表 WDAC policy 實際生效。完整說明見 [dev-code-signing-wdac.zh-TW.md](dev-code-signing-wdac.zh-TW.md)。
 
 ## 啟動成功的判準
 
@@ -309,9 +317,9 @@ C:\Windows\System32\CodeIntegrity\CiPolicies\Active
 
 - `status` 顯示 broker PID 與 line-worker PID 都在跑
 
-- `status` 顯示 ngrok PID 在跑
+- `status` 顯示 ngrok PID 在跑（走 localhost.run 備援時則是 localhost.run PID）
 
-- `status` 顯示 ngrok public URL
+- `status` 顯示 ngrok public URL（或 `latest localhost.run` URL）
 
 - `status` 顯示 LINE webhook endpoint 且 `active = True`
 
@@ -347,21 +355,27 @@ C:\Windows\System32\CodeIntegrity\CiPolicies\Active
 
 - 第一次登入必須改密碼
 
-目前後台已包含：
+目前後台的分頁如下（每個分頁只在登入的 operator 具備對應權限時顯示）：
 
-- LINE 使用者與對話
+- LINE 與使用者：LINE 使用者與標籤、註冊政策、每位使用者高階權限、Google Drive OAuth 與 delivery 操作
 
-- 註冊政策
+- 系統監控
 
-- 每位使用者高階權限
+- Workflow
 
-- browser records
+- Browser 綁定
 
-- deployment targets
+- Deployment：deployment targets
 
-- tool specs
+- 交付記錄
 
-- Google Drive OAuth 與 delivery 操作
+- 權限管理：operator 與權限管理
+
+- 審批：approval queue
+
+- 系統警示
+
+- Tool Specs
 
 ## 目前 Google Drive 交付模式
 
@@ -404,7 +418,7 @@ broker 現在支援三種 Google Drive 身分：
 - 這決定文件或網站原型能否先被生成
 
 2. 可用的 Google OAuth client JSON
-- `C:\secure\Bricks4Agent\client_secret_*.json`
+- `C:\secure\Bricks4Agent\client_secret_*.json`（先找機密目錄；repo 根目錄為舊版備援）
 - callback URI 必須對應：
  - `http://127.0.0.1:5361/api/v1/google-drive/oauth/callback`
 
@@ -415,7 +429,7 @@ broker 現在支援三種 Google Drive 身分：
 
 4. 有效的 Drive 授權憑證已保存在目前 sidecar DB
 - sidecar 現在使用的持久化 DB 是：
- - `D:\Bricks4Agent\.run\line-sidecar\data\broker.db`
+ - `.run\line-sidecar\data\broker.db`（位於 repo 根目錄下）
 - 若 `google_drive_delegated_credentials` 沒資料，交付結果只會落到本機，不會有雲端下載連結
 
 5. LINE sidecar 已重啟到最新版本
@@ -429,7 +443,7 @@ broker 現在支援三種 Google Drive 身分：
 
 - 若兩條路徑都不可用，才會退化成無連結通知
 
-目前仍沒有專門的終端使用者下載頁；fallback 仍是 broker 直接提供的簽名下載端點。
+終端使用者也可以登入使用者入口網站（`http://127.0.0.1:5361/portal/index.html`），查看自己的 artifact 清單與其 Drive 連結或 broker 簽名下載路徑。
 
 ## 目前高階模型
 
@@ -519,9 +533,9 @@ broker 現在支援三種 Google Drive 身分：
 
 - `projects`
 
-目前 live sidecar 常見路徑：
+目前 live sidecar 使用 `packages/csharp/broker/appsettings.json` 中 `HighLevelCoordinator.AccessRoot` 的預設值：
 
-- `.run/line-sidecar/broker/managed-workspaces`
+- `%LOCALAPPDATA%\Bricks4Agent\managed-workspaces`
 
 正式 broker 設定可改成別的 absolute access root。
 
@@ -548,7 +562,7 @@ UTF-8 是基本要求，不可退回 ASCII。
 
 - `line-sidecar.ps1 status`
 
-- ngrok tunnel 是否存在
+- public tunnel 是否存在（ngrok tunnel 或 localhost.run 程序）
 
 - LINE webhook endpoint 是否 active
 
@@ -556,7 +570,7 @@ UTF-8 是基本要求，不可退回 ASCII。
 
 常見原因：
 
-- ngrok tunnel 掉了
+- ngrok / localhost.run tunnel 掉了
 
 - webhook endpoint 沒更新
 
@@ -595,6 +609,8 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\l
 - 看 `.run/line-sidecar/logs/ngrok.err.log`
 
 - 確認 `%LOCALAPPDATA%\ngrok\ngrok.yml` 存在且含有效 authtoken
+
+- 走 localhost.run 備援時，看 `.run/line-sidecar/logs/localhostrun.out.log` / `localhostrun.err.log` 與 `webhook-sync.out.log` / `webhook-sync.err.log`
 
 ### 3. broker 有起來，但 LINE 說 AI 服務暫時無法回應
 
@@ -646,7 +662,7 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\l
 
 修正：
 
-- 確認 repo 根目錄有可用的 `client_secret_*.json`
+- 確認機密目錄（`C:\secure\Bricks4Agent` 或 `BRICKS4AGENT_SECRETS_DIR`）有可用的 `client_secret_*.json`；repo 根目錄僅為舊版備援
 
 - 執行 `line-sidecar.ps1 restart`
 
@@ -711,7 +727,7 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\l
 
 目前 sidecar runtime 目錄：
 
-- `D:\Bricks4Agent\.run\line-sidecar`
+- `.run\line-sidecar`（位於 repo 根目錄下）
 
 主要 log：
 
@@ -727,39 +743,41 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\l
 
 - `.run/line-sidecar/logs/ngrok.err.log`
 
-## 目前尚未完成的前台能力
+- `.run/line-sidecar/logs/localhostrun.out.log` / `localhostrun.err.log`（localhost.run 備援）
 
-目前還沒有使用者前台可讓終端使用者：
+- `.run/line-sidecar/logs/webhook-sync.out.log` / `webhook-sync.err.log`（localhost.run webhook-sync watchdog）
 
-- 查看自己的交付檔案歷史
+## 本手冊尚未涵蓋
 
-- 直接登入後下載 artifact
+- broker 與 line-worker 的多機正式部署
 
-- 透過 broker 授權規則取得安全下載
+- 強化過的遠端後台認證
 
-現在已有的是：
+- browser worker runtime 操作
 
-- 本機 admin 後台
+- 完整的 Azure IIS 部署操作
 
-- LINE 對話中的交付連結
+- 完整的災難復原程序
 
-- broker 內部 artifact records
+## 終端使用者前台（使用者入口網站）
 
-未來如果系統直接對外服務，應補上：
+broker 現在提供終端使用者入口網站：
 
-- 經驗證的前台下載 API
+- 頁面：`http://127.0.0.1:5361/portal/index.html`（靜態檔來自 `packages/javascript/browser/user-portal/`，由 `packages/csharp/broker/Program.cs` 掛載）
 
-- 使用者自己的 artifact 清單頁
+- API：`packages/csharp/broker/Endpoints/PortalEndpoints.cs` 的 `/api/v1/portal/*`——`auth/status`、`auth/register`、`auth/login`、`auth/logout`、`auth/line-verification`、`me`、`commands`、`results`、`artifacts`、`artifacts/{documentId}`
 
-- broker 控制的下載授權檢查
+- 登入的使用者只看得到自己的 artifact；每筆都附 Drive 連結或 broker 簽名下載路徑
 
-這是「前台應有功能」，目前尚未實作。
+同時仍有：本機 admin 後台、LINE 對話中的交付連結、broker 內部 artifact records。
 
 ## 相關文件
 
-- [CurrentArchitectureAndProgress-2026-03-26.md](../reports/CurrentArchitectureAndProgress-2026-03-26.md)
+- [CurrentArchitectureAndProgress-2026-06-13.md](../reports/CurrentArchitectureAndProgress-2026-06-13.md)
 
-- [README.md](/d:/Bricks4Agent/packages/csharp/workers/line-worker/README.html)
+- [current-technical-manual.zh-TW.md](current-technical-manual.zh-TW.md)
+
+- [README.md](../../packages/csharp/workers/line-worker/README.md)
 
 - [GoogleDriveDelivery.md](../designs/GoogleDriveDelivery.md)
 

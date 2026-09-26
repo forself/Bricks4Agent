@@ -21,14 +21,20 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <body>
 <main>
 <h1>ROC DatePicker Demo Instructions</h1>
-<p>Since the standard <code>demo_binding.html</code> requires a running web server (localhost) to load modules, we created a <strong>Standalone Demo</strong> that works directly by opening the file.</p>
+<p>The ROC (民國年) DatePicker demo lives in <code>demo_binding.html</code> in this folder (the <code>roc_cal</code> field, a <code>DatePicker</code> with <code>useROC: true</code>). There is no standalone demo; the page loads ES modules, so it must be served over HTTP.</p>
 <h2>How to Run</h2>
 <ol>
-<li>Locate <code>src/components/binding/demo_roc_standalone.html</code> in your project folder.</li>
-<li><strong>Double-click</strong> the file to open it in your browser.</li>
-<li>Click the input field to see the <strong>ROC Calendar</strong> working visually.</li>
+<li>
+<p>Start a static server at the repository root, e.g. <code>python -m http.server 8124</code>.</p>
+</li>
+<li>
+<p>Open <code>http://localhost:8124/packages/javascript/browser/ui_components/binding/demo_binding.html</code> in your browser.</p>
+</li>
+<li>
+<p>Click the "ROC Date (民國年)" input field to see the <strong>ROC Calendar</strong> working visually.</p>
+</li>
 </ol>
-<p>This bypasses the current server connection issues.</p>
+<p>Opening the file directly (<code>file://</code>) does not work, because browsers block module imports from local files.</p>
 </main>
 </body>
 </html>

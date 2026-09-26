@@ -45,6 +45,8 @@
 | `DynamicDetailRenderer.js` | 動態明細渲染器，以唯讀方式顯示 label + formatted value |
 | `DynamicListRenderer.js` | 動態列表渲染器，組合 SearchForm + DataTable + Pagination |
 | `DeferredHydration.js` | 掛載後才執行的非結構資料補水佇列；destroy 時統一取消 |
+| `LazyModuleLoader.js` | 記憶化的非同步模組／export 載入器（`createLazyModuleLoader`、`resolveLazyModuleValue`）；失敗不快取，可重試 |
+| `QueryDefinitionAdapter.js` | `page.view` 為 `query` / `adminList` 的宣告式列表定義轉換（searchFields / columns → 列表欄位、查詢 payload、下載請求） |
 | `ToolPageDefinition.js` | 宣告式工具頁 JSON schema 與安全驗證 |
 | `DynamicToolRenderer.js` | 由 JSON、可信 commands 與 ComponentFactory 產生工具頁 |
 | `DynamicPageRenderer.js` | 統一入口，依 mode 委派給 Form / Detail / List / Tool 渲染器 |
@@ -89,7 +91,7 @@
 
 ## 安裝
 
-此模組為 Bricks4Agent 的一部分，直接引用即可：
+此模組為 Bricks4Agent 的一部分，以相對路徑引用 `page-generator/index.js` 即可（repo 內沒有 `@component-library/page-generator` 套件別名；`packages/javascript/browser` 的 package 名稱是 `browser`）：
 
 ```javascript
 // 靜態生成 API
@@ -99,10 +101,10 @@ import {
     PageTypes,
     validateDefinition,
     createDefaultDefinition
-} from '@component-library/page-generator';
+} from '<相對路徑>/page-generator/index.js';
 
 // 格式轉換
-import { PageDefinitionAdapter } from '@component-library/page-generator';
+import { PageDefinitionAdapter } from '<相對路徑>/page-generator/index.js';
 
 // 動態渲染 API
 import {
@@ -114,8 +116,10 @@ import {
     validateToolPageDefinition,
     FieldResolver,
     TriggerEngine
-} from '@component-library/page-generator';
+} from '<相對路徑>/page-generator/index.js';
 ```
+
+注意：`PageGenerator` 靜態生成的程式碼會 import `@component-library/ui_components/...` 路徑，部署時需自行提供對應的 alias 或 import map 才能解析。
 
 ---
 
@@ -195,7 +199,7 @@ import {
 | `FieldTypes` | 欄位類型列舉（37 種，含基本、進階、複合輸入） |
 | `PageTypes` | 頁面類型列舉（form, list, detail, dashboard, tool） |
 | `ComponentMapping` | fieldType → 元件名稱映射表 |
-| `AvailableComponents` | 可用元件清單（spa / packages） |
+| `AvailableComponents` | 可用元件清單（`custom` / `packages`） |
 
 **匯出函式：**
 
@@ -230,7 +234,7 @@ const newDef = PageDefinitionAdapter.toNewFormat(oldDefinition);
 
 **轉換細節：**
 
-- `page.entity` → PascalCase + "Page" 作為 `name`（例如 employee → EmployeePage）
+- `page.entity` 首字母大寫 + "Page" 作為 `name`（例如 employee → EmployeePage；不做 snake/kebab→PascalCase 轉換，`work_order` → `Work_orderPage`）
 
 - `page.view` 含 "list" → `type: 'list'`，含 "detail" → `type: 'detail'`，其餘 → `type: 'form'`
 
@@ -321,7 +325,7 @@ const resolver = new FieldResolver();
 |  | `email` | TextInput (type=email) |
 |  | `password` | TextInput (type=password) |
 |  | `number` | NumberInput |
-|  | `textarea` | 原生 textarea 包裝 |
+|  | `textarea` | TextArea |
 | **日期時間** | `date` | DatePicker |
 |  | `time` | TimePicker |
 |  | `datetime` | DateTimeInput |
@@ -349,9 +353,11 @@ const resolver = new FieldResolver();
 | **隱藏** | `hidden` | 原生 hidden input 包裝 |
 | **其他** | `rocDate` | DatePicker (format='taiwan') |
 |  | `slider` | Slider |
-|  | `memo` / `plaintext` | 原生 textarea 包裝 |
+|  | `memo` / `plaintext` | TextArea |
 
 註：`tel`、`url`、`rating`、`tags` 存在於 FieldTypes 枚舉但尚無元件映射，動態渲染會 `console.warn` 並回退為 text。
+
+註：目前行為：`address` / `organization` 建立 AddressInput / OrganizationInput 時不帶任何資料 loader（`loadCities` / `loadDistricts`、`loadUnits`），下拉選單不會有資料（缺 loader 的錯誤由 ChainedInput 捕捉並以 `console.error` 記錄）。需要實際資料時，請以 `registerComponent(name, factory)` 註冊一個會帶入上述 loader 的 factory，在欄位定義以 `component: name` 指定，並把該 resolver 透過 `fieldResolver` 選項傳給 `DynamicFormRenderer`。
 
 **公開方法：**
 
@@ -397,7 +403,7 @@ await form.init();
 | `init()` | - | `Promise<this>` | 初始化（預載入元件 + 建構 DOM） |
 | `getValues()` | - | `Object` | 取得所有欄位值 `{ fieldName: value }` |
 | `setValues(data)` | `Object` | - | 設定欄位值 |
-| `validate()` | - | `boolean` | 驗證所有必填欄位 |
+| `validate()` | - | `boolean` | 驗證必填、`pattern` 與 `maxLength` |
 | `mount(container)` | `string \| Element` | `this` | 掛載到容器 |
 | `destroy()` | - | - | 銷毀渲染器 |
 
@@ -493,7 +499,7 @@ await list.init();
 
 ### DynamicPageRenderer
 
-統一入口渲染器。依 mode 自動委派給對應的 Form / Detail / List / Tool 渲染器；當 `definition.type === 'tool'` 且未指定 mode 時會自動使用 `tool`。
+統一入口渲染器。依 mode 自動委派給對應的 Form / Detail / List / Tool 渲染器；未指定 mode 時，宣告式列表定義（`page.view`（或 `type`）為 `query` / `adminList`）會自動使用 `list`，`definition.type === 'tool'` 會自動使用 `tool`。
 
 ```javascript
 const page = new DynamicPageRenderer(options);
@@ -514,9 +520,16 @@ await page.init();
 | `onBack` | `Function` | `null` | 返回回調（detail 模式） |
 | `onEdit` | `Function` | `null` | 編輯回調（detail 模式） |
 | `pageSize` | `number` | `20` | 每頁筆數（list 模式） |
+| `routeParams` | `Object` | `{}` | 路由參數（detail 模式） |
+| `lazyTabs` | `boolean` | `true` | 分頁內容延後到首次啟用才產生（detail 模式）；傳 `false` 改回建構時產生全部 |
+| `onPermissionCheck` | `Function` | `null` | 權限檢查 `(permissionKey, page, definition) => boolean \| Promise<boolean>`；僅在定義有 `permissionKey` 時呼叫，回傳 `false` 或拋錯則不建立渲染器 |
+| `onDownload` | `Function` | `null` | 下載回調（list 模式） |
+| `confirmDownload` | `Function` | `null` | 下載前確認回調（list 模式） |
+| `customComponents` | `string \| Array \| Object` | `null` | 自訂元件來源（folder URL、definition 陣列或 `{ folder, manifest, definitions }`） |
+| `customComponentRegistry` | `Object` | `null` | 既有的 CustomComponentRegistry 實例 |
 | `commandRegistry` | `Map \| Object` | `null` | Tool 定義可引用的可信 command allowlist |
 | `state` | `Object` | `{}` | Tool component bindings 的 JSON-compatible 初始狀態 |
-| `factory` | `Object` | `ComponentFactory` | Tool mode 使用的 factory；通常維持預設 |
+| `factory` | `Object` | `null` | Tool mode 使用的 factory；為 `null` 時 DynamicToolRenderer 使用 `LazyComponentFactory`，並在 `init()` 內預載 definition 用到的元件 |
 | `controlRegistry` | `Map \| {records: Map}` | `null` | 收集 renderer 控制 provenance 的 registry |
 
 **公開方法：**
@@ -573,7 +586,7 @@ await page.init();
 page.mount('#app');
 ```
 
-`DynamicToolRenderer` 提供 `getComponent(id)`、`getHost(id)`、`setState(path, value)`、`controlRecords` 與 `destroy()`。State 更新只套用到重疊 binding；有 setter 的正式元件保留 instance，沒有 setter 時只替換該 component，不重建 tabs 或整個工作區。元件 setter 若重畫內部控制，provenance 會同步更新。
+`DynamicToolRenderer` 提供 `getComponent(id)`、`getHost(id)`、`setState(path, value)`、`controlRecords` 與 `destroy()`。State 更新只套用到重疊 binding，且值與上次推給該元件的值相同（deep compare）的 binding 會略過；有 setter 的正式元件保留 instance，沒有 setter 時只替換該 component，不重建 tabs 或整個工作區。元件 setter 若重畫內部控制，provenance 會同步更新。
 
 `PageGenerator.generate()` 也接受 `type: "tool"`，輸出一個內嵌已驗證 definition、在 runtime 建立 `DynamicToolRenderer` 的靜態 wrapper class。Bricks4Agent Studio 的實際入口採 `DynamicPageRenderer` runtime 路徑，唯一頁面 JSON 位於 `tools/theme-studio/studio.page.json`；靜態 wrapper 另由 `ToolPageGenerator.test.js` 驗證。兩條路徑共用同一份 ToolPageDefinition 契約與 renderer。
 
@@ -709,6 +722,8 @@ if (form.validate()) {
 const definition = {
     fields: [
         // 地址輸入（含縣市/鄉鎮聯動）
+        // 注意：內建 address 不帶 loadCities/loadDistricts，下拉無資料；
+        // 需以 registerComponent() 註冊帶 loader 的 factory 並用 component 指定
         { fieldName: 'homeAddress', fieldType: 'address', label: '住家地址',
           formRow: 1, isRequired: true },
 
@@ -716,7 +731,7 @@ const definition = {
         { fieldName: 'phones', fieldType: 'phonelist', label: '聯絡電話',
           formRow: 2, validation: { maxItems: 5 } },
 
-        // 組織層級
+        // 組織層級（同上：內建不帶 loadUnits，需自行註冊帶 loader 的 factory）
         { fieldName: 'org', fieldType: 'organization', label: '所屬組織',
           formRow: 3 },
 
@@ -740,7 +755,7 @@ const engine = new TriggerEngine();
 
 // 註冊自訂行為
 engine.registerAction('highlight', (source, target, params) => {
-    target.formField.element.style.backgroundColor = params?.color || '#fff3cd';
+    target.formField.element.style.backgroundColor = params?.color || 'var(--cl-warning-light)';
 });
 ```
 
@@ -763,14 +778,14 @@ node tools/page-gen.js --def employee.json --mode dynamic --output ./output/
 # 兩者都生成
 node tools/page-gen.js --def employee.json --mode both --output ./output/
 
-# 列出所有 fieldType
+# 列出 CLI 接受的 fieldType（目前 34 種，不含 rocDate / slider / memo，CLI 驗證會拒絕這三種）
 node tools/page-gen.js --list-types
 
 # stdin 管道模式（AI 代理用）
 cat employee.json | node tools/page-gen.js --mode static --output ./output/
 ```
 
-所有輸出皆為 JSON 格式（stdout），錯誤訊息輸出至 stderr。
+所有輸出皆為 JSON 格式（stdout）；錯誤同樣以 JSON `{ success: false, errors }` 輸出到 stdout 並以 exit code 1 結束。只有未提供 `--def` 也沒有 stdin 輸入時，錯誤訊息（連同說明文字）才輸出至 stderr。
 
 ### DefinitionTemplate 選取與批次生成
 
@@ -813,6 +828,12 @@ node tools/page-gen.js --def site-definition.json --all --mode static --output .
 
 - `test-all.js` — 完整測試腳本
 
+- `test-detail-ext.js` — 明細渲染擴充測試
+
+- `test-query-ext-v1.js` — 查詢定義擴充測試
+
+- `generated/` — 靜態生成的輸出範例
+
 執行測試：
 
 ```bash
@@ -831,8 +852,8 @@ node examples/test-all.js
 | `email` | 電子郵件 | TextInput (type=email) |
 | `password` | 密碼 | TextInput (type=password) |
 | `number` | 數字 | NumberInput |
-| `textarea` | 多行文字 | 原生 textarea |
-| `memo` | 多行文字（textarea 別名） | 原生 textarea |
+| `textarea` | 多行文字 | TextArea |
+| `memo` | 多行文字（textarea 別名） | TextArea |
 | `tel` | 電話（暫無專屬映射，動態渲染回退 text） | — |
 | `url` | 網址（暫無專屬映射，動態渲染回退 text） | — |
 
@@ -879,14 +900,14 @@ node examples/test-all.js
 
 | fieldType | 說明 | 對應元件 | 繼承關係 |
 |---|---|---|---|
-| `address` | 地址（縣市/鄉鎮/地址聯動） | AddressInput | ← ChainedInput |
+| `address` | 地址（縣市/鄉鎮/地址聯動；內建不帶 loader，見 FieldResolver 註） | AddressInput | ← ChainedInput |
 | `addresslist` | 多筆地址列表 | AddressListInput | ← ListInput |
 | `chained` | 通用聯動下拉 | ChainedInput | 基底 |
 | `list` | 動態列表輸入 | ListInput | 基底 |
 | `personinfo` | 人員資訊列表 | PersonInfoList | ← ListInput |
 | `phonelist` | 電話列表 | PhoneListInput | ← ListInput |
 | `socialmedia` | 社群媒體列表 | SocialMediaList | ← ListInput |
-| `organization` | 組織層級（四級下拉） | OrganizationInput | ← ChainedInput |
+| `organization` | 組織層級（四級下拉；內建不帶 loader，見 FieldResolver 註） | OrganizationInput | ← ChainedInput |
 | `student` | 學生資訊（含學校） | StudentInput | ← ChainedInput |
 
 ### 隱藏
@@ -957,9 +978,11 @@ node examples/test-all.js
 // API 動態載入
 { "type": "api", "endpoint": "/api/data", "params": { "action": "options", "entity": "department" } }
 
-// API 連動載入（需搭配 dependsOn）
+// API 連動載入（父欄位值取自 parentField）
 { "type": "api", "endpoint": "/api/data", "params": { "action": "options", "entity": "district" }, "parentField": "city" }
 ```
+
+目前行為（表單）：`api` 型選項在表單初始化時不會自動載入（FieldResolver 解析為空陣列）；只有在某欄位的 `reloadOptions` trigger 觸發時，才會以 `POST` + JSON body（`params` 加上 `optionsSource.parentField` 對應欄位的值）呼叫 `endpoint`。父欄位值來自 `optionsSource.parentField`，不是 `dependsOn`。
 
 ---
 
@@ -975,6 +998,6 @@ node examples/test-all.js
 
 5. 使用 `esc()` 和 `escAttr()` 防止 XSS
 
-6. `PageDefinitionAdapter.toOldFormat()` 會自動從 `page.entity` 推導 PascalCase 頁面名稱
+6. `PageDefinitionAdapter.toOldFormat()` 會自動從 `page.entity` 推導頁面名稱：entity 首字母大寫 + "Page"（不做 snake/kebab→PascalCase 轉換）
 
-7. 複合輸入元件（address, phonelist 等）支援 `validation.maxItems` / `validation.minItems` 限制筆數
+7. `validation.maxItems` 只會傳給 addresslist、list、personinfo、phonelist、socialmedia；`validation.minItems` 只會傳給 addresslist、list

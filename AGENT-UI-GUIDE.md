@@ -12,13 +12,13 @@
 
 ## 0. 三條鐵則（違反即失敗）
 
-1. **零第三方 runtime**：不得 `import` 任何 npm UI/圖表/地圖/日期/富文本套件。全站只用本元件庫 + 原生瀏覽器 API。唯一例外是 `LeafletMap`（Leaflet 1.9.4 已 **vendored** 於 `ui_components/vendor/leaflet/`，預設本地載入、零外網、嚴格 CSP 可用；本地缺檔才退 CDN 備援）。
+1. **零第三方 runtime**：不得 `import` 任何 npm UI/圖表/地圖/日期/富文本套件。全站只用本元件庫 + 原生瀏覽器 API。唯一例外是 `ui_components/vendor/` 內 **vendored** 的 Leaflet 1.9.4（`vendor/leaflet/`，由 `LeafletMap` 載入）與 html2canvas（`vendor/html2canvas/`，由 `OSMMapEditor` 截圖時載入）：兩者都預設本地載入、零外網、嚴格 CSP 可用；本地缺檔才退 CDN 備援。
 
 2. **樣式只用 theme token**：顏色/圓角/陰影/字體一律用 `var(--cl-*)` CSS 變數，禁止寫死色碼。換膚靠文件根的 `[data-theme="dark"]`，元件不寫 media query。
 
 3. **輸出一律跳脫**：任何把資料塞進 HTML 的地方用 `escapeHtml()`；要放原始 HTML 必須顯式呼叫 `raw()`。`raw()` 產出的標記帶有 `Symbol.for('bricks4agent.rawHtml')` 品牌鍵，`isRawHtml()` 只認這個自身屬性：手寫或 `JSON.parse` 來的 `{ __html: '…' }` **不再是** opt-in（會退回跳脫或 `sanitizeHTML()`），API 回應因此無法偽造授權。`__html` 仍保留在標記上供舊讀取端取值，但不具授權效力。
 
-4. **嚴格 CSP + SVG 禁用（機器執法）**：禁 `<style>` 注入、禁 innerHTML 模板內 `style=`/`on*=`、禁 eval/`javascript:`（樣式走 CSSOM `cssText`/`setProperty` 或同目錄 `.css` + 同源 `<link>`）；**視覺一律 Canvas、禁用 SVG**（`tools/scripts/svg-baseline.json` 現為空的盤點快照，不能豁免任何命中；圖表基底＝`viz/CanvasChart.js`，主題響應靠 `utils/theme-bus.js`，Path2D 可直接吃 SVG path 字串）。守門員：`node tools/scripts/audit-csp.mjs`（六類 CSP 全零 + G 類 SVG 硬零）、`node tools/scripts/validate-ui-library.mjs`（風格 token 稽核：元件內禁散裝 hex，色回退唯一來源＝theme-bus 的 `FALLBACK_PAINT`）。合規宣稱只認機器判定。
+4. **嚴格 CSP + SVG 禁用（機器執法）**：禁 `<style>` 注入、禁 innerHTML 模板內 `style=`/`on*=`、禁 eval/`javascript:`（樣式走 CSSOM `cssText`/`setProperty` 或同目錄 `.css` + 同源 `<link>`）；**視覺一律 Canvas、禁用 SVG**（`tools/scripts/svg-baseline.json` 現為空的盤點快照，不能豁免任何命中；圖表基底＝`viz/CanvasChart.js`，主題響應靠 `utils/theme-bus.js`，Path2D 可直接吃 SVG path 字串）。守門員：`node tools/scripts/audit-csp.mjs`（A–F 與 H–J 九類 CSP 全零 + G 類 SVG 硬零）、`node tools/scripts/validate-ui-library.mjs`（風格 token 稽核：元件內禁散裝 hex，色回退唯一來源＝theme-bus 的 `FALLBACK_PAINT`）。合規宣稱只認機器判定。
 
 ---
 
@@ -179,7 +179,7 @@ const { code, errors } = new PageGenerator().generate(pageDefinition);
 // errors 為空陣列才算成功；code 是一個完整的 BasePage 子類別原始碼字串
 ```
 
-或用 CLI：`node tools/page-gen.js --def page.json --mode static --output ./out/`（`--list-types` 看支援型別，`--validate` 只驗證）。輸入若是 DefinitionTemplate（多頁定義），可用 `--page <id>` 取單頁，或用 `--pages <id,id,...>` / `--all` 在**同一個 process 內**批次產出（舊做法是每頁開一個 process），批次模式輸出彙總 JSON `{ success, results: [{ pageId, files }], errors? }`，且會先驗證全部選取頁再開始生成：
+或用 CLI：`node tools/page-gen.js --def page.json --mode static --output ./out/`（`--list-types` 看支援型別，`--validate` 只驗證）。CLI 的輸入須為 page-gen 格式 `{ page: {...}, fields: [{ fieldName, fieldType, ... }] }` 或 DefinitionTemplate，直接餵下方的 PageDefinition 形狀會被拒（`缺少 page 區塊`）；`--list-types` 列出 34 種，不含 `rocDate`、`slider`、`memo`。輸入若是 DefinitionTemplate（多頁定義），可用 `--page <id>` 取單頁，或用 `--pages <id,id,...>` / `--all` 在**同一個 process 內**批次產出（舊做法是每頁開一個 process），批次模式輸出彙總 JSON `{ success, results: [{ pageId, files }], errors? }`，且會先驗證全部選取頁再開始生成：
 
 ```bash
 node tools/page-gen.js --def site-definition.json --pages products-list,orders-form --mode static --output ./out/
@@ -334,7 +334,7 @@ node templates/spa/scripts/spa-cli.js feature Article --fields "Title:string,Con
 
 2. 若要能被字串名/生成器使用，在 [ComponentFactory.js](packages/javascript/browser/ui_components/binding/ComponentFactory.js) 的 `registry` 加入 `'MyWidget': MyWidget`。
 
-3. 若要被生成器當 field type 用，把 field type → 元件映射補進 [PageDefinition.js](packages/javascript/browser/page-generator/PageDefinition.js) 的 `ComponentMapping` 與 [FieldResolver.js](packages/javascript/browser/page-generator/FieldResolver.js)。
+3. 若要被生成器當 field type 用，把 field type → 元件映射補進 [PageDefinition.js](packages/javascript/browser/page-generator/PageDefinition.js) 的 `ComponentMapping` 與 [FieldResolver.js](packages/javascript/browser/page-generator/FieldResolver.js)；靜態產碼還要在 [PageGenerator.js](packages/javascript/browser/page-generator/PageGenerator.js) 的 `ComponentPaths` 登記 import 路徑（缺了會回報 `Component X is not available in the custom component library`）。
 
 4. **重建 catalog**：
    ```bash
@@ -370,7 +370,7 @@ Studio 頁面不得複製或手刻另一套工具 UI。唯一權威定義是 `to
 
 ## 9. 每頁驗收檢查表
 
-- [ ] 沒有任何第三方 UI/圖表/地圖/日期/富文本 npm import（Leaflet CDN 除外）
+- [ ] 沒有任何第三方 UI/圖表/地圖/日期/富文本 npm import（`ui_components/vendor/` 的 Leaflet 1.9.4、html2canvas 除外；兩者本地優先，缺檔才退 CDN）
 
 - [ ] 所有顏色/尺寸走 `var(--cl-*)`，無寫死色碼；`[data-theme="dark"]` 下正常
 

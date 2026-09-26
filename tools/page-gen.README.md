@@ -1,6 +1,6 @@
 # page-gen CLI
 
-`tools/page-gen.js` 會把 PageDefinition 轉成靜態頁面程式碼，或輸出動態定義 JSON。
+`tools/page-gen.js` 會把頁面定義轉成靜態頁面程式碼，或輸出動態定義 JSON。輸入須為 page-gen 格式 `{ page: {...}, fields: [{ fieldName, fieldType, ... }] }`，或 DefinitionTemplate 內的 pages；一般 PageDefinition `{ name, type, fields }` 會被拒（`缺少 page 區塊`）。
 
 ## Usage
 
@@ -50,7 +50,7 @@ node tools/page-gen.js --def site-definition.json --all --mode both --output ./o
 | `--mode <mode>` | `static`, `dynamic`, or `both` | `static` |
 | `--output <dir>` | Output directory | - |
 | `--validate` | Validate only, do not generate files | `false` |
-| `--list-types` | Print supported field, trigger, and optionsSource types | `false` |
+| `--list-types` | Print supported field (34; no `rocDate`, `slider`, `memo`), trigger, and optionsSource types | `false` |
 | `--help`, `-h` | Show help | - |
 
 ## Modes

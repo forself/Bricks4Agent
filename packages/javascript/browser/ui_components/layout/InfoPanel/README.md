@@ -14,7 +14,7 @@
 
 - ✅ **動態管理**: 動態添加、移除、更新面板
 
-- ✅ **響應式設計**: 自動適配不同螢幕尺寸
+- ✅ **響應式設計**: 窄螢幕時 masonry 面板改為單欄（grid 欄數由 inline style 固定為 `columns`，不會隨螢幕縮減）
 
 - ✅ **深色模式**: 支援深色模式
 
@@ -28,13 +28,15 @@
 <!DOCTYPE html>
 <html>
 <head>
+    <link rel="stylesheet" href="../../theme.css">
     <link rel="stylesheet" href="InfoPanel.css">
 </head>
 <body>
     <div id="my-panels"></div>
 
-    <script src="InfoPanel.js"></script>
-    <script>
+    <script type="module">
+        import { InfoPanel } from './InfoPanel.js';
+
         const panels = new InfoPanel({
             containerId: 'my-panels',
             layout: 'grid',
@@ -74,7 +76,7 @@ const panels = new InfoPanel({
     // 面板是否可收合（預設: true）
     collapsible: true,
 
-    // 面板是否可排序（預設: false）
+    // 面板是否可排序（預設: false；目前無作用，值只會被保存）
     sortable: false,
 
     // 初始面板配置
@@ -176,12 +178,13 @@ const panels = new InfoPanel({
     title: '自訂卡片',
     icon: 'fas fa-file-alt',
     data: {
-        html: '<h3>自訂內容</h3><p>可放置任何 HTML</p>'
+        html: '<h3>自訂內容</h3><p>可放置任何 HTML</p>'  // 經 sanitizeHTML 清洗；可信 HTML 請用 raw(...)
         // 或 text: '純文字內容'
-        // 或直接傳入 DOM 元素
     }
 }
 ```
+
+`data.html`（以及 `data` 本身為字串時）會經 `sanitizeHTML` 清洗，已知安全的 HTML 需以 `raw()` 包裝。要放入 DOM 元素時，`data` 本身必須就是該元素（例：`data: myElement`），而不是放在 `data` 的屬性中。
 
 ## API 方法
 
@@ -419,9 +422,9 @@ setInterval(() => {
 
 2. **圖示依賴**: 使用圖示需引入 Font Awesome
 
-3. **圖表整合**: chart 類型提供佔位符，需整合 Chart.js 等圖表庫
+3. **圖表整合**: chart 類型只提供佔位符；圖表可改用本庫 `viz/` 下的 Canvas 圖表元件（如 `LineChart`、`BarChart`）
 
-4. **響應式**: 在小螢幕上自動切換為單欄布局
+4. **響應式**: grid 布局的欄數由 inline style 固定為 `columns`，小螢幕不會自動切換為單欄（CSS 斷點只對 masonry 面板寬度生效）
 
 ## 瀏覽器支援
 
@@ -437,7 +440,7 @@ setInterval(() => {
 
 - 無外部依賴（純 JavaScript 實作）
 
-- 可選：Font Awesome（用於圖示）
+- 可選：Font Awesome（用於圖示；收合按鈕的箭頭圖示也使用 Font Awesome，未引入時按鈕無圖示）
 
 ## 授權
 

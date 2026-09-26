@@ -36,7 +36,7 @@ new PersonInfoList(options?)
 ## 使用範例
 
 ```js
-import { PersonInfoList } from './input/PersonInfoList/index.js';
+import { PersonInfoList } from './index.js';
 
 const people = new PersonInfoList({
     maxItems: 10,

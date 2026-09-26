@@ -12,7 +12,7 @@ new Breadcrumb(options?)
 
 | 參數 | 型別 | 預設值 | 說明 |
 |---|---|---|---|
-| `options.items` | `Array` | `[]` | 導航項目 `[{text, href?, icon?, active?}]` |
+| `options.items` | `Array` | `[]` | 導航項目 `[{text, href?, icon?}]`（`active` 不會被讀取；只有「最後一項且沒有 `href`」會渲染為純文字的當前頁，其餘皆為連結） |
 | `options.separator` | `string` | `'/'` | 分隔符號 |
 | `options.homeIcon` | `string` | `'🏠'` | 首頁圖示 |
 | `options.showHome` | `boolean` | `true` | 是否顯示首頁 |

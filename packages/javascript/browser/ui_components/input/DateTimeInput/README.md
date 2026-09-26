@@ -16,7 +16,7 @@ new DateTimeInput(options?)
 | `options.useROC` | `boolean` | `true` | 使用民國年格式 |
 | `options.showTime` | `boolean` | `true` | 是否顯示時間選擇 |
 | `options.minuteStep` | `number` | `15` | 分鐘間隔 |
-| `options.dateValue` | `string` | `''` | 預設日期（YYYY-MM-DD 或民國年格式） |
+| `options.dateValue` | `string` | `''` | 預設日期（西元 YYYY-MM-DD）。目前行為：民國年字串不會轉換，`'113/03/15'` 會被解析為西元 0113-03-15 |
 | `options.timeValue` | `string` | `''` | 預設時間（HH:MM） |
 | `options.onChange` | `Function` | `null` | 值變更回調，參數為 `{date, time, combined}` |
 
@@ -32,7 +32,7 @@ new DateTimeInput(options?)
 ## 使用範例
 
 ```js
-import { DateTimeInput } from './input/DateTimeInput/index.js';
+import { DateTimeInput } from './index.js';
 
 const dt = new DateTimeInput({
     label: '事件時間',

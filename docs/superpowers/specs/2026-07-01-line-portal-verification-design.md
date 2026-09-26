@@ -2,6 +2,12 @@
 
 Date: 2026-07-01
 
+> **Implementation status (checked 2026-09-26)**
+>
+> - Code generation and verification live in `PortalLineVerificationService` (`packages/csharp/broker/Services/PortalLineVerificationService.cs:21`, `:64`), not in `PortalAuthService`: `PortalAuthService` only delegates code issuance to it (`packages/csharp/broker/Services/PortalAuthService.cs:83`, `:147`), and `HighLevelCoordinator` calls `Verify` directly (`packages/csharp/broker/Services/HighLevelCoordinator.cs:570`).
+> - A signed-in Portal user can reissue a code via `POST /api/v1/portal/auth/line-verification` (`packages/csharp/broker/Endpoints/PortalEndpoints.cs:65`); the code is not only returned once at registration.
+> - LINE also accepts `/v <user_id> <code>` as an alias of `/verify` (`packages/csharp/broker/Services/HighLevelCoordinator.cs:620`).
+
 ## Goal
 
 Change LINE onboarding so a new LINE user cannot self-register only by sending a message. A user must first register on the user Portal, receive a one-time verification code, then send the Portal account id and code in LINE to bind that LINE account.

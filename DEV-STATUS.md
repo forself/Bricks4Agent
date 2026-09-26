@@ -1,7 +1,7 @@
 # 交接文件 — AI 代理接續開發用
 
 > **你是接手的 AI 代理。** 本文件自足,不依賴先前任何對話、記憶系統或其他代理的上下文;照本文件即可續作。
-> **目前已推送基準:** 分支 `main`(Tim2026 fork 同步線經 PR 併入;`main_0707` 已落後 7 個提交,不再是基準)。平台狀態以 `git log -1 -- global.json`、安全建置狀態以 `git log -1 -- tools/scripts/verify-dotnet10.mjs`、表單工作台狀態以 `git log -1 -- tools/form-application-studio` 為準；工作樹狀態一律另查 `git status`。
+> **目前已推送基準:** 分支 `main`(Tim2026 fork 同步線經 PR #10 併入;`main_0707` 已落後 23 個提交,不再是基準)。各項基準釘 commit:.NET 10 平台遷移 `d89fa4e`、.NET 10 零警告/安全建置 `51dd0f3`、Form Application Studio `396e9fa`(`git log -1 -- global.json` 等路徑查詢現在會回傳 `9e877f3` 同步提交,不能再當錨點);最新狀態以 `git log main` 為準,工作樹狀態一律另查 `git status`。
 > 本文件自身的版本以 `git log -1 -- DEV-STATUS.md` 為準(文件修訂不代表功能基準變動)。
 > 配套規則文件:[CLAUDE.md](CLAUDE.md) / [AGENTS.md](AGENTS.md)(代理規則)、[AGENT-UI-GUIDE.md](AGENT-UI-GUIDE.md)(元件調用契約,動手寫頁面前必讀)。
 
@@ -14,15 +14,15 @@
 | 線 | 內容 | 狀態 | 你現在動不動 |
 |---|---|---|---|
 | **元件庫線(本 repo)** | 補元件、嚴格 CSP、SVG→Canvas、Theme Studio、表單應用生成器 | 波 3 已推送；Form Application Studio 已完成；Tim2026 fork 已同步、三批稽核修復已併入 `main`(§4.4) | **覆核 §4 證據後可續作** |
-| 前端軌(F) | 舊頁面翻寫,產出在 `D:\proj\newTim\tim-web` | 藍圖已定、POC 已過、量產未開工 | **不動,等使用者發動** |
-| 後端軌(B) | .NET FX 4.8.1 → **.NET 10(目標)**,契約逐位相容 | 架構已裁決、未開工 | **不動,等使用者發動** |
+| 前端軌(F) | 舊頁面翻寫,現於 `D:\work\Tim2026` 的 TimWeb 前端進行 | 已在 Tim2026 進行中;`D:\proj\newTim\tim-web` 現僅為舊版語意參考(Tim2026 `AGENTS.md`);進度以 Tim2026 為準 | **不動,等使用者發動** |
+| 後端軌(B) | .NET FX 4.8.1 → **.NET 10**,契約逐位相容;現於 `D:\work\Tim2026` 的 TimNet10 後端進行 | 已在 Tim2026 進行中;B4A 內嵌於 `packages/Bricks4Agent`,由 `TimWeb/b4a.lock.json` 釘版;進度以 Tim2026 為準 | **不動,等使用者發動** |
 
 > ⚠ 本 repo 的 SDK-style 專案、SPA template、生成後端與 BaseOrm canonical implementation 已統一為 **net10.0**；另保留一份 BaseOrm .NET Framework 4.8 相容實作。這項基礎設施升級不代表後端軌(B)的舊系統契約翻寫已啟動。
 
 **硬邊界(違反=事故):**
 1. `D:\work\new`、`D:\work\TIMSolution` 兩個舊專案**唯讀**,任何產出禁止寫入。
 2. `D:\proj\newTim\tim-web` **不上本 repo 版控**(版控歸使用者的大專案),**不得對它做任何 git 操作**;檔案可讀、經使用者同意可改。
-3. git push **不直推 main**,推工作分支再開 PR 併入(最近一輪是 `codex/unified-checkpoint-20260805` → PR #10;使用者若開新分支會告知)。
+3. git push **不直推 main**,推工作分支再開 PR 併入(最近一次 PR 是 `codex/unified-checkpoint-20260805` → PR #10(08-30);其後 `11e8e95` 至 `34ba862` 共 16 個提交直接落在 `main`,未經 PR;使用者若開新分支會告知)。
 4. 本 repo 是大專案剪枝後的工作副本,已設 `git sparse-checkout set docs packages templates tools`——**不要**碰 sparse 設定、不要「還原」看似被刪的路徑(例如 `.github/` 有版控但不在 cone 內,本機看不到不代表被刪)。
 
 **已定案、不得重開的決策**(使用者已裁決,別再提替代方案):
@@ -40,7 +40,7 @@
 - 本 repo:`D:\proj\newTim\Bricks4Agent`(遠端 github.com/forself/Bricks4Agent)
 - 元件庫本體:`packages/javascript/browser/ui_components/`(下文簡稱 `ui_components`)
 - 守門與 harness:`tools/scripts/`;視覺調校台:`tools/theme-studio/`
-- 重製案文件(參考,勿版控):`D:\proj\newTim\tim-web\docs\`(blueprint.md、task-board.json)
+- 重製案文件(參考,勿版控):`D:\proj\newTim\tim-web\docs\`(blueprint.md、task-board.json;tim-web 現為舊版語意參考,現行進度見 `D:\work\Tim2026`)
 
 **開工先跑(全部應綠;有紅先修再開工):**
 
@@ -50,8 +50,9 @@ git status -sb                              # 應在 main 或當輪工作分支�
 node tools/scripts/audit-csp.mjs            # CSP A–J 全類硬零(含 G 類 SVG)
 node tools/scripts/test-audit-csp-hard-zero.mjs # G 類負向回歸:即使列入 baseline 仍必須 fail;須與 audit 串行
 node tools/scripts/validate-ui-library.mjs  # 風格稽核/裸 import/公開面/demo 引用
-npm test                                    # 頁面生成器產碼 + 元件路徑測試(根 package.json)
-npm --prefix packages/javascript/browser test   # 五套純函式單元(palette/id-url 安全/色階/聚合/力學,86 斷言)
+npm --prefix packages/javascript/browser install # 首次:安裝 devDependencies vitest/jsdom(下兩行的 Vitest 部分需要)
+npm test                                    # test-all.js 生成器範例 + test:ui-components + test:custom-components + 元件 Vitest 套件(根 package.json)
+npm --prefix packages/javascript/browser test   # 五套純函式單元(palette/id-url 安全/色階/聚合/力學,86 斷言)+ Vitest 元件套件
 npm run custom-components:check             # 客製 JSON registry deterministic + schema/引用驗證
 npm run test:custom-components              # 客製分類/build/runtime/factory/folder/lifecycle
 npm run test:studio:self-host                # 唯一 Tool JSON + renderer/Link provenance/相容入口 19/19
@@ -64,10 +65,10 @@ dotnet test packages/csharp/tests/integration/Integration.Tests.csproj
 dotnet test templates/spa/backend.Tests/SpaApi.Template.Tests.csproj
 ```
 
-**瀏覽器驗收電池**（Studio 三支會自行啟動 random-port/no-store server 與 fresh Edge；其他既有 harness 依各腳本需求啟 server。repo 本身零 runtime/dev dependency）：
+**瀏覽器驗收電池**（Studio 三支會自行啟動 random-port/no-store server 與 fresh Edge；其他既有 harness 依各腳本需求啟 server。元件庫本身零 runtime dependency;`packages/javascript/browser` 另有 devDependencies vitest/jsdom）：
 
 ```bash
-node tools/theme-studio/run.mjs             # 18 項(Theme JSON self-host/catalog/頁內說明/token/scoped/CSP)
+node tools/theme-studio/run.mjs             # 相容別名:實際執行 studio-integration-smoke.mjs(16 項,同 test:studio:browser)
 node tools/scripts/studio-integration-smoke.mjs # 16 項(說明連結/同 renderer/DOM identity/雙 JSON round-trip/provenance/CSS 注入拒絕)
 node tools/scripts/canvas-chart-smoke.mjs   # 8 項
 node tools/scripts/wave2-stage-sweep.mjs    # 29 項
@@ -113,16 +114,32 @@ node tools/scripts/form-application-studio-smoke.mjs --require-browser # 17 項(
 
 ## 3. 現況(哪裡了)
 
-**一句話:** catalog 116、CSP A–J 全類硬零、runtime SVG 0 檔/0 處、波 3 與客製元件 Studio 已推送；repo 已加入由 JSON 自舉的 Form Application Studio，可把 schema 視覺化編排後生成表單、.NET 10 API/BaseOrm 與 SQL，未給連線字串時使用本地 SQLite；35 個 .NET 10 專案已達零警告並由 CI 以 warnings-as-errors 強制執行；Tim2026 embedded fork 已同步回本 repo 並經三批稽核（洩漏／資安／效能）修復後由 PR 併入 `main`。
+**一句話:** catalog 116、CSP A–J 全類硬零、runtime SVG 0 檔/0 處、波 3 與客製元件 Studio 已推送；repo 已加入由 JSON 自舉的 Form Application Studio，可把 schema 視覺化編排後生成表單、.NET 10 API/BaseOrm 與 SQL，未給連線字串時使用本地 SQLite；35 個 .NET 10 專案已達零警告並由 CI 以 warnings-as-errors 強制執行；Tim2026 embedded fork 已同步回本 repo 並經三批稽核（洩漏／資安／效能）修復後由 PR 併入 `main`；08-30 之後另有 16 個提交直接落在 `main`（見下表；09-01 交接見 [docs/reports/CurrentIssuesAndHandoff-2026-09-01.md](docs/reports/CurrentIssuesAndHandoff-2026-09-01.md)）。
 
 | 完成 | Commit | 內容 |
 |---|---|---|
-| 08-30 | `4a5efe8` | **三批稽核與修復（洩漏／資安／效能）**：ModalPanel 對話框改 `destroyOnClose`、MapEditor/MapEditorV2 補 `destroy()`、PanelManager stack 清理；PageGenerator 六個依語境跳脫函式 + 識別字驗證；dev server 綁 loopback + Host/Origin 守衛；`raw()` 改 `Symbol.for` 品牌；新增 `LazyComponentFactory`、`page-gen --pages/--all`、`lazyTabs`。公開介面不變、生成輸出逐位相同 |
+| 09-22 | `34ba862` | 共用表單控制項（DatePicker／Dropdown／FormField／FormRow）不再互相重疊；新增 `tools/component-layout-regression` 契約測試 |
+| 09-02 | `3e717e9` | `QueryDefinitionAdapter`：payload 綁定為空值時保留 `payloadDefaults` |
+| 09-02 | `d5f620f` | 匯出動作支援格式化顯示值 payload（`$rowDisplay`／`$selectionDisplay`） |
+| 09-02 | `a201c8d` | `TgosMap` 移除已公開的後備憑證 |
+| 09-02 | `035399a` | `RegionMap` 支援已發佈的舊版 asset base |
+| 09-02 | `1eaa805` | page-generator 新增快取式 `LazyModuleLoader` |
+| 09-02 | `046d388` | 修復 Vitest 元件套件並併入 `npm test`（需先 `npm --prefix packages/javascript/browser install`）；新增 09-01 交接報告 |
+| 09-02 | `9418cc1` | FieldResolver 的 TextArea 依 maxLength 決定 `autoResize`（未設或 >200 才自動增高） |
+| 09-02 | `85a89c0` | page-generator 新增 `DeferredHydration` 集中延後水合生命週期（DynamicListRenderer 採用） |
+| 09-01 | `8911b90` | 已發佈的元件庫 HTML 文件不再連出元件庫目錄（自含） |
+| 09-01 | `6495133` | 強化出貨範本與快照完整性：新增 `quality-gates.yml`、`spa-template-smoke`、`snapshot-integrity.mjs`／`verify-consumer-snapshots`；`theme-studio/run.mjs` 改為 studio-integration-smoke 相容別名 |
+| 09-01 | `df2c31a` | DynamicToolRenderer 預先建立的元件實例不再帶 mount 前的舊值進畫面 |
+| 08-31 | `738be65` | DynamicToolRenderer 綁定值未變就不重推（無變動同步 1900 次 DOM 變動 → 0） |
+| 08-31 | `6e13e09` | 修兩處空過閘門（TreeList 展示樣本、dom-equivalence 逐屬性 style）；新增 `npm run test:ui-components` |
+| 08-31 | `4b6a654` | 三個靜默行為可診斷：未品牌 `{ __html }` 一次性警告、`data-tab-pending`、`dom-equivalence.mjs` |
+| 08-30 | `11e8e95` | 文件對齊現況；`lazyTabs` 改為預設 `true`；dev server JWT 金鑰改 `crypto.randomBytes` 等殘留資安項 |
+| 08-30 | `4a5efe8` | **三批稽核與修復（洩漏／資安／效能）**：ModalPanel 對話框改 `destroyOnClose`、MapEditor/MapEditorV2 補 `destroy()`、PanelManager stack 清理；PageGenerator 六個依語境跳脫函式 + 識別字驗證；dev server 綁 loopback + Host/Origin 守衛；`raw()` 改 `Symbol.for` 品牌；新增 `LazyComponentFactory`、`page-gen --pages/--all`、`lazyTabs`（當時預設 `false`）。公開介面不變、生成輸出逐位相同 |
 | 08-25 | `45b326b` | **WebTextEditor TOC id 屬性注入 XSS 修復**：`isSafeId` 單一事實來源 + TOC 插入 escapeAttr + sanitizeHTML 丟棄不安全 id；`sanitizeUrl` 補 backslash protocol-relative open-redirect 缺口；新增 `security.id-url.test.mjs`（23 斷言） |
 | 08-24 | `9e877f3` | **Tim2026 embedded fork 同步**：把長期在 fork 線上開發的狀態鏡射回本 repo（.NET 10 遷移、元件目錄擴充、每份文件的 Markdown + HTML 雙格式） |
-| 07-23 | `git log -1 -- tools/scripts/verify-dotnet10.mjs` | **.NET 10 零警告與密碼相容性**：MFA、AccountLock、AuditLog nullable 契約修正；8 個過時 PBKDF2 建構式改為靜態 API，但保留既有 iterations/salt/hash 大小與儲存格式；Broker、MFA、SPA template 固定相容性向量通過；CI 對所有建置警告 fail closed |
-| 07-23 | `git log -1 -- global.json` | **全 repo .NET 10 平台遷移**：35 個 SDK-style 專案與生成契約統一為 `net10.0`；BaseOrm canonical 路徑改為 `net10/`；保留明確 allowlist 的 BaseOrm .NET Framework 4.8 相容版本 |
-| 07-23 | `git log -1 -- tools/form-application-studio` | **Form Application Studio**：schema→欄位清單+12欄拖拉/縮放畫布→design JSON/PageDefinition/.NET 10 Minimal API+BaseOrm/SQL；JSON 自舉；連線字串留白→本地 SQLite；預設 secret 不落產物；unit 11/11+self-host 8/8+Edge 17/17 |
+| 07-23 | `51dd0f3` | **.NET 10 零警告與密碼相容性**：MFA、AccountLock、AuditLog nullable 契約修正；8 個過時 PBKDF2 建構式改為靜態 API，但保留既有 iterations/salt/hash 大小與儲存格式；Broker、MFA、SPA template 固定相容性向量通過；CI 對所有建置警告 fail closed |
+| 07-23 | `d89fa4e` | **全 repo .NET 10 平台遷移**：35 個 SDK-style 專案與生成契約統一為 `net10.0`；BaseOrm canonical 路徑改為 `net10/`；保留明確 allowlist 的 BaseOrm .NET Framework 4.8 相容版本 |
+| 07-23 | `396e9fa` | **Form Application Studio**：schema→欄位清單+12欄拖拉/縮放畫布→design JSON/PageDefinition/.NET 10 Minimal API+BaseOrm/SQL；JSON 自舉；連線字串留白→本地 SQLite；預設 secret 不落產物；unit 11/11+self-host 8/8+Edge 17/17 |
 | 07-17 | `e92a4d6` | **波 3 + JSON 客製元件 + Studio 自舉**：SVG 清零、三層 JSON 客製元件、Theme/Custom 同頁工具與完整驗收 |
 | 07-17 | `39f330f` | **波 2**:8 支重型圖表 + Sparkline/RegionMap/Progress/Rating 遷 Canvas;BaseChart 刪除;棘輪 31→26;風格稽核歸零(FALLBACK_PAINT 收斂) |
 | 07-16 | `30e87f6` | **DataExplorer** 統計探索複合件 + Bar/Line/Pie Canvas 化 |
@@ -145,7 +162,7 @@ node tools/scripts/form-application-studio-smoke.mjs --require-browser # 17 項(
 2. 其餘 25 檔由互斥代理分組遷移後,主代理逐檔覆核並修正語意圖示、首次重繪、active 重繪、ThemeBus/子元件生命週期與 factory destroy。
 3. Leaflet `preferCanvas` 硬設 true(呼叫端不能 opt-out),非同步載入加 destroyed guard;OSMMapEditor 追蹤並銷毀 6 個子元件;vendor/ 未動。
 4. `audit-csp` G 類改硬零,baseline 清空;新增不可被 baseline 繞過的負向回歸。
-5. 全量驗收完成，波 3 與後續 Studio／生成器工作均已提交並推送；目前狀態以 §3 的動態 `git log` 指令為準。
+5. 全量驗收完成，波 3 與後續 Studio／生成器工作均已提交並推送；目前狀態以 §3 與 `git log main` 為準。
 
 **驗證證據(2026-07-17，平台遷移前):** audit-csp A-J/G 0;負向回歸 PASS;validate-ui-library 282 source/261 import + 9 demos browser PASS;兩組 npm test PASS(四套純函式 63/63);客製元件 definition/runtime 14/14、targeted integration 30/30、Edge E2E 13/13;Tool/page-generator 63/63;Studio 18/18 + 19/19 + 16/16;SPA backend build 0 warning/0 error;既有五支 Edge harness 因 Theme 增加三項現為 70/70;Icon 13/13;Wave 3 24/24。ClusterGraph 最終獨占 CPU 重測 BH=8.77ms、draw=2.99ms、8/8 通過;效能 harness 不應與其他瀏覽器壓測並跑。legacy harness 已移除字串 `waitForFunction`、inline `addScriptTag` 與產品層 `openStage` 依賴，能在 strict CSP + JSON self-host Studio 下真實執行。
 
@@ -197,7 +214,7 @@ commit `4a5efe8`(2026-08-30),外加 `45b326b`(2026-08-25)的 WebTextEditor XSS �
 
 - **資安**:`PageGenerator` 原本把定義字串未跳脫寫進生成程式碼,改為六個依語境的跳脫函式 + 識別字驗證(`_collectIdentifierErrors` 檢 `definition.name`／每個 `field.name`／`behaviors.onInit|onSave|onDelete` 與 `fieldTriggers`);`tools/spa-generator/server.js` 與 `templates/spa/scripts/web/server.js` 兩支 dev server 都改為預設綁 `127.0.0.1` 並加 Host/Origin 守衛;`raw()` 標記改用 `Symbol.for` 品牌 + 自有屬性檢查;`tools/lib/app-generator.js` 的輸出路徑加上 prefix 檢查擋路徑穿越;開發用 JWT 金鑰改為每次啟動隨機。`45b326b` 另補 `isSafeId` 收斂 WebTextEditor TOC 的 heading id 與 `sanitizeUrl` 的 backslash open-redirect 缺口。
 
-- **效能**:新增 `binding/LazyComponentFactory.js`(動態頁不再載入整套元件庫,詳見 §2);`tools/page-gen.js` 新增 `--pages <id,id>`／`--all` 批次模式;`DynamicDetailRenderer`/`DynamicPageRenderer` 新增 `lazyTabs`(**預設 `true`**);DataTable 勾選改定向更新;EditableTable 儲存格編輯不再整批重建元件;TreeList 選取/展開改定向更新;`create-project` 不再複製 `bin/obj`;metadata 管線去重,`component-catalog.json` 由 239,500 bytes 降為 126,597 bytes。
+- **效能**:新增 `binding/LazyComponentFactory.js`(動態頁不再載入整套元件庫,詳見 §2);`tools/page-gen.js` 新增 `--pages <id,id>`／`--all` 批次模式;`DynamicDetailRenderer`/`DynamicPageRenderer` 新增 `lazyTabs`(該提交預設 `false`;**`11e8e95` 起改為預設 `true`**);DataTable 勾選改定向更新;EditableTable 儲存格編輯不再整批重建元件;TreeList 選取/展開改定向更新;`create-project` 不再複製 `bin/obj`;metadata 管線去重,`component-catalog.json` 由 239,500 bytes 降為 126,597 bytes。
 
 - **其他**:`TgosMap` 的 SVG 圖釘改 Canvas + `Path2D`、硬編碼色碼改主題 token,使 audit-csp 的 SVG 硬零與樣式稽核首次全綠。
 
@@ -213,14 +230,18 @@ commit `4a5efe8`(2026-08-30),外加 `45b326b`(2026-08-25)的 WebTextEditor XSS �
 靜態:audit-csp → validate-ui-library → npm test(根)→ npm --prefix packages/javascript/browser test
 動態:五支既有瀏覽器 harness + Icon + Wave 3(§1);效能 harness 單獨跑
 客製元件:npm run custom-components:check → npm run test:custom-components → npm run test:custom-components:browser
-Studio:npm run test:studio:self-host → npm run test:theme-studio:browser → npm run test:studio:browser
+Studio:npm run test:studio:self-host → npm run test:theme-studio:browser → npm run test:studio:browser(test:theme-studio:browser 現為相容別名,與 test:studio:browser 跑同一支 studio-integration-smoke.mjs)
 Form Application:npm run test:form-designer:all → 生成產物的 .NET 10 build
 .NET:npm run test:dotnet10 → 35/35 專案零警告；另跑 unit/integration/SPA template 三組 dotnet test
 ```
 
 GitHub Actions：`.github/workflows/ci.yml` 在 PR→`main` 與 push→`main`
 執行可攜式 JavaScript/政策守門、全部 .NET 10 專案 warnings-as-errors 建置及四 provider 生成後端 build。
-真實 Edge harness 因依賴既有外部 Playwright/Edge runtime，維持本機驗收，不以 CI 假裝通過。
+`.github/workflows/quality-gates.yml`（windows-latest；push→`main` 與所有 PR）另跑 JS 守門，並在
+`npm install --no-save --ignore-scripts playwright-core@1.61.1` 後以系統 Edge 跑六支自架 smoke：
+`validate:ui-library:browser`、`test:spa-template:browser`、`test:theme-studio:browser`、`test:custom-components:browser`、
+`test:studio:browser`、`test:form-designer:browser`。依賴 8124 server 與 `../tim-web/poc` 的
+canvas-chart／wave2／data-explorer／cluster-graph／icon-canvas／wave3 harness 仍只在本機驗收。
 
 **鐵律(前人血淚,條條有事故背書):**
 1. **回報不算數**——子代理宣稱完成後,逐檔機器驗收 + 行為驗證。波 2 實例:六路代理全報成功,實測仍揪出兩個 bug(alert content 被覆蓋、click 沒接線)——**渲染全綠也測不出,必須做互動鏈斷言**(dispatch 真實 click → 斷言彈窗文字非空)。
@@ -251,7 +272,7 @@ GitHub Actions：`.github/workflows/ci.yml` 在 PR→`main` 與 push→`main`
 
 - `node --check` 不吃瀏覽器 ESM `.js`——先複製成 `.mjs` 再驗。
 
-- 瀏覽器測試用 Edge(`channel:'msedge'`),playwright-core 從 `../tim-web/poc/node_modules` 借;**不要**在本 repo npm install 任何東西。
+- 瀏覽器測試用 Edge(`channel:'msedge'`)。自架 harness(validate-ui-library、spa-template、studio、custom-component、form-application 等)先解析 `playwright`/`playwright-core`,找不到才退到 `../tim-web/poc/node_modules`(spa-template-smoke 不退);依賴 8124 的 canvas/wave2/data-explorer/cluster/icon/wave3 仍直接 import `../../../tim-web/poc`;**不要**在本 repo npm install 任何東西(注意:`npm test` 的 Vitest 部分現需先 `npm --prefix packages/javascript/browser install`,見 §1)。
 
 - 含 junction 的專案刪除前必先解除連結(`scripts/dev-link.mjs` unlink),遞迴刪除會追進腳手架本體。
 
@@ -267,13 +288,11 @@ GitHub Actions：`.github/workflows/ci.yml` 在 PR→`main` 與 push→`main`
 
 2. **DataExplorer 擴充**:`'cluster'` 圖型接 ClusterGraph(spec 加 hierarchy 通道);ChartSpecBuilder 抽獨立元件;後端聚合模式(spec 直傳 Graph action,等 B 軌)。
 
-3. **前端軌量產**(使用者發動):按 `tim-web\docs\task-board.json`——P0-1 頁面聚類 → 每群 `_base` 模板 → 生成器測試先行 → 量產頁 extends 只寫差異。
+3. **前端軌／後端軌**(使用者發動):已移至 `D:\work\Tim2026` 進行(TimWeb 前端 + TimNet10 後端),待辦與進度以 Tim2026 的文件為準(入口為其 `README`／`AGENTS.md`),不在本 repo 追蹤。
 
-4. **後端軌**(使用者發動):B0-0 威脅建模 → B0-1 舊碼盤點 → B0-2 路由→10 動作對照表;契約釘 commit hash。
+4. 掛帳:SKILL 包裝(已評估未實作)、機制 MCP 化(僅選項)。
 
-5. 掛帳:SKILL 包裝(已評估未實作)、機制 MCP 化(僅選項)。
-
-6. 客製元件後續可選：static `PageGenerator.generate()` 自動物化 runtime/definitions；現況已支援直接 runtime 與 dynamic form，靜態產物須由啟動程式自行 `loadFolder()`。
+5. 客製元件後續可選：static `PageGenerator.generate()` 自動物化 runtime/definitions；現況已支援直接 runtime 與 dynamic form，靜態產物須由啟動程式自行 `loadFolder()`。
 
 ---
 

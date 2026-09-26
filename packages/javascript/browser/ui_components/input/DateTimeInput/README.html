@@ -64,7 +64,7 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <td><code>options.dateValue</code></td>
 <td><code>string</code></td>
 <td><code>''</code></td>
-<td>預設日期（YYYY-MM-DD 或民國年格式）</td>
+<td>預設日期（西元 YYYY-MM-DD）。目前行為：民國年字串不會轉換，<code>'113/03/15'</code> 會被解析為西元 0113-03-15</td>
 </tr>
 <tr>
 <td><code>options.timeValue</code></td>
@@ -108,7 +108,7 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 </tbody>
 </table>
 <h2>使用範例</h2>
-<pre><code class="language-js">import { DateTimeInput } from './input/DateTimeInput/index.js';
+<pre><code class="language-js">import { DateTimeInput } from './index.js';
 
 const dt = new DateTimeInput({
     label: '事件時間',

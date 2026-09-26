@@ -6,6 +6,12 @@
 
 來源：由 `templates/spa` 會員商務網站 proof 反推
 
+> **實作現況（2026-09-26 核對）**
+>
+> - 實際 `modules` 為 `["authentication", "commerce"]`（`templates/spa/backend/definition/backend-definition.json:26-29`），不是下文的 `auth / shop_catalog / shop_order / admin_product`；materializer 只濾掉空字串、未做白名單檢查，空陣列時 N2/N3 預設補成 `["authentication", "commerce"]`（`templates/spa/backend/Generated/DefinitionBackendMaterializer.cs:38`、`:76`、`:103-111`）。
+> - `backend.definition_file` 實際為相對路徑 `../../backend/definition/backend-definition.json`（`templates/spa/frontend/definition/architecture.json:14`）；三份檔案分別位於 `templates/spa/frontend/definition/` 與 `templates/spa/backend/definition/`。
+> - `project.id` 實際為 `spa-commerce-proof`（`templates/spa/frontend/definition/architecture.json:4`），不是 `commerce-proof`。
+
 ## 1. 目標
 
 本設計定義一組可機械化處理的 JSON contract，用來描述：

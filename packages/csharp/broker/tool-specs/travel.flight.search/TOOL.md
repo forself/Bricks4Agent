@@ -4,6 +4,12 @@ Purpose: broker-mediated flight lookup for travel planning.
 
 Current status: active.
 
+Implementation:
+
+- TDX only (source label `TDX 航班即時資訊 API (FIDS)`); there is no public-web fallback. If TDX is not configured, fails, or returns nothing, the tool returns an empty result
+
+- high-level LINE `?flight` queries are routed through `transport.query`, not directly through this tool
+
 Rules:
 
 - sources must be defined in policy, not hardcoded in the model prompt
@@ -12,4 +18,4 @@ Rules:
 
 - responses must identify source and retrieval time
 
-- returned options are candidate schedules gathered from public travel pages
+- returned options are candidate flights from TDX flight information (FIDS)

@@ -33,73 +33,135 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 </ul>
 <p>Site binding answers:</p>
 <ul>
-<li>which sites the tool is allowed to operate against</li>
-<li>whether a broker-registered site binding is required</li>
-<li>whether cross-origin navigation is allowed</li>
+<li>
+<p>which sites the tool is allowed to operate against</p>
+</li>
+<li>
+<p>whether a broker-registered site binding is required</p>
+</li>
+<li>
+<p>whether cross-origin navigation is allowed</p>
+</li>
 </ul>
 <p>All three are required for safe browser tooling.</p>
 <h2>Core Rule</h2>
 <p>No browser tool should be treated as "generic web automation" by default.</p>
 <p>Browser execution must always answer:</p>
 <ol>
-<li>what identity is in use</li>
-<li>how credentials/session are bound</li>
-<li>which sites or origin classes are allowed</li>
+<li>
+<p>what identity is in use</p>
+</li>
+<li>
+<p>how credentials/session are bound</p>
+</li>
+<li>
+<p>which sites or origin classes are allowed</p>
+</li>
 </ol>
 <p>If site binding is unspecified, the tool definition is incomplete.</p>
 <h2>Site Policy Fields</h2>
 <p>The registry can now carry:</p>
 <ul>
-<li><code>site_binding_mode</code></li>
-<li><code>public_open</code></li>
-<li><code>registered_site</code></li>
-<li><code>user_authorized_site</code></li>
-<li><code>allowed_site_classes</code></li>
-<li><code>requires_registered_site_binding</code></li>
-<li><code>requires_exact_origin_match</code></li>
-<li><code>allows_cross_origin_navigation</code></li>
+<li>
+<p><code>site_binding_mode</code></p>
+</li>
+<li>
+<p><code>public_open</code></p>
+</li>
+<li>
+<p><code>registered_site</code></p>
+</li>
+<li>
+<p><code>user_authorized_site</code></p>
+</li>
+<li>
+<p><code>allowed_site_classes</code></p>
+</li>
+<li>
+<p><code>requires_registered_site_binding</code></p>
+</li>
+<li>
+<p><code>requires_exact_origin_match</code></p>
+</li>
+<li>
+<p><code>allows_cross_origin_navigation</code></p>
+</li>
 </ul>
 <p>These fields belong to <code>browser_site_policy</code>.</p>
 <h2>Meaning Of Site Binding Modes</h2>
 <h3><code>public_open</code></h3>
 <ul>
-<li>the tool may operate against public web targets</li>
-<li>no broker-owned site binding record is required</li>
-<li>still subject to source policy and runtime rules</li>
+<li>
+<p>the tool may operate against public web targets</p>
+</li>
+<li>
+<p>no broker-owned site binding record is required</p>
+</li>
+<li>
+<p>still subject to source policy and runtime rules</p>
+</li>
 </ul>
 <p>Typical use:</p>
 <ul>
-<li>anonymous search</li>
-<li>anonymous page fetch</li>
+<li>
+<p>anonymous search</p>
+</li>
+<li>
+<p>anonymous page fetch</p>
+</li>
 </ul>
 <h3><code>registered_site</code></h3>
 <ul>
-<li>the tool must use a broker-registered site binding</li>
-<li>site metadata is managed by the platform</li>
-<li>this is the expected mode for system-account browser tools</li>
+<li>
+<p>the tool must use a broker-registered site binding</p>
+</li>
+<li>
+<p>site metadata is managed by the platform</p>
+</li>
+<li>
+<p>this is the expected mode for system-account browser tools</p>
+</li>
 </ul>
 <p>Typical use:</p>
 <ul>
-<li>broker-owned dashboards</li>
-<li>service-integrated backoffice sites</li>
+<li>
+<p>broker-owned dashboards</p>
+</li>
+<li>
+<p>service-integrated backoffice sites</p>
+</li>
 </ul>
 <h3><code>user_authorized_site</code></h3>
 <ul>
-<li>the tool must use a site binding that is explicitly authorized for the user context</li>
-<li>this is the expected mode for user-delegated browser tools</li>
+<li>
+<p>the tool must use a site binding that is explicitly authorized for the user context</p>
+</li>
+<li>
+<p>this is the expected mode for user-delegated browser tools</p>
+</li>
 </ul>
 <p>Typical use:</p>
 <ul>
-<li>personal assistant flows</li>
-<li>authenticated portals used on behalf of the user</li>
+<li>
+<p>personal assistant flows</p>
+</li>
+<li>
+<p>authenticated portals used on behalf of the user</p>
+</li>
 </ul>
 <h2>Allowed Site Classes</h2>
 <p><code>allowed_site_classes</code> is a coarse classification for policy and audit.</p>
 <p>Examples:</p>
 <ul>
-<li><code>public_web</code></li>
-<li><code>broker_managed_site</code></li>
-<li><code>user_authorized_site</code></li>
+<li>
+<p><code>public_web</code></p>
+</li>
+<li>
+<p><code>broker_managed_site</code></p>
+</li>
+<li>
+<p><code>user_authorized_site</code></p>
+</li>
 </ul>
 <p>These are not yet a full site catalog.
 They are registry-visible coarse constraints that later runtime/site-binding systems can refine.</p>
@@ -118,48 +180,98 @@ They are registry-visible coarse constraints that later runtime/site-binding sys
 <h2>Expected Defaults</h2>
 <h3>Anonymous Public Read</h3>
 <ul>
-<li><code>site_binding_mode = public_open</code></li>
-<li><code>allowed_site_classes = ["public_web"]</code></li>
-<li><code>requires_registered_site_binding = false</code></li>
-<li><code>requires_exact_origin_match = false</code></li>
-<li><code>allows_cross_origin_navigation = true</code></li>
+<li>
+<p><code>site_binding_mode = public_open</code></p>
+</li>
+<li>
+<p><code>allowed_site_classes = ["public_web"]</code></p>
+</li>
+<li>
+<p><code>requires_registered_site_binding = false</code></p>
+</li>
+<li>
+<p><code>requires_exact_origin_match = false</code></p>
+</li>
+<li>
+<p><code>allows_cross_origin_navigation = true</code></p>
+</li>
 </ul>
 <h3>System Account Read</h3>
 <ul>
-<li><code>site_binding_mode = registered_site</code></li>
-<li><code>allowed_site_classes = ["broker_managed_site"]</code></li>
-<li><code>requires_registered_site_binding = true</code></li>
-<li><code>requires_exact_origin_match = true</code></li>
-<li><code>allows_cross_origin_navigation = false</code></li>
+<li>
+<p><code>site_binding_mode = registered_site</code></p>
+</li>
+<li>
+<p><code>allowed_site_classes = ["broker_managed_site"]</code></p>
+</li>
+<li>
+<p><code>requires_registered_site_binding = true</code></p>
+</li>
+<li>
+<p><code>requires_exact_origin_match = true</code></p>
+</li>
+<li>
+<p><code>allows_cross_origin_navigation = false</code></p>
+</li>
 </ul>
 <h3>User Delegated Read</h3>
 <ul>
-<li><code>site_binding_mode = user_authorized_site</code></li>
-<li><code>allowed_site_classes = ["user_authorized_site"]</code></li>
-<li><code>requires_registered_site_binding = true</code></li>
-<li><code>requires_exact_origin_match = true</code></li>
-<li><code>allows_cross_origin_navigation = false</code></li>
+<li>
+<p><code>site_binding_mode = user_authorized_site</code></p>
+</li>
+<li>
+<p><code>allowed_site_classes = ["user_authorized_site"]</code></p>
+</li>
+<li>
+<p><code>requires_registered_site_binding = true</code></p>
+</li>
+<li>
+<p><code>requires_exact_origin_match = true</code></p>
+</li>
+<li>
+<p><code>allows_cross_origin_navigation = false</code></p>
+</li>
 </ul>
 <h2>Current Phase</h2>
 <p>Current implementation direction:</p>
 <ul>
-<li>broker registry can read and surface <code>browser_site_policy</code></li>
-<li>reference browser specs should declare identity, session policy, and site policy together</li>
+<li>
+<p>broker registry can read and surface <code>browser_site_policy</code></p>
+</li>
+<li>
+<p>reference browser specs should declare identity, session policy, and site policy together</p>
+</li>
+<li>
+<p>broker site-binding catalog (implemented: <code>BrowserSiteBinding</code> records with list/get/upsert, <code>packages/csharp/broker/Endpoints/BrowserBindingEndpoints.cs:14-57</code>)</p>
+</li>
+<li>
+<p>user-authorized site registry (implemented as <code>BrowserUserGrant</code> records bound to a site binding, <code>BrowserBindingEndpoints.cs:59-99</code>)</p>
+</li>
 </ul>
 <p>Not yet implemented:</p>
 <ul>
-<li>broker site-binding catalog</li>
-<li>user-authorized site registry</li>
-<li>runtime origin enforcement</li>
-<li>browser worker navigation guards</li>
+<li>
+<p>runtime origin enforcement (<code>requires_exact_origin_match</code> / <code>allows_cross_origin_navigation</code> are surfaced by the registry but not enforced at runtime)</p>
+</li>
+<li>
+<p>browser worker navigation guards (partial: <code>browser.navigate</code> only follows links on the current host or an <code>allowed_host_suffixes</code> entry, at most 5 steps — <code>packages/csharp/workers/browser-worker/PlaywrightBrowserService.cs:231-272</code>, <code>Handlers/GovernedBrowserActionHandler.cs</code>; not driven by site policy)</p>
+</li>
 </ul>
 <h2>Rule</h2>
 <p>No browser tool definition is complete until it explicitly states:</p>
 <ol>
-<li>identity mode</li>
-<li>session policy</li>
-<li>site binding mode</li>
-<li>origin/navigation constraints</li>
+<li>
+<p>identity mode</p>
+</li>
+<li>
+<p>session policy</p>
+</li>
+<li>
+<p>site binding mode</p>
+</li>
+<li>
+<p>origin/navigation constraints</p>
+</li>
 </ol>
 </main>
 </body>

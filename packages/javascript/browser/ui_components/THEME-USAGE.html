@@ -34,20 +34,21 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 &lt;link rel=&quot;stylesheet&quot; href=&quot;/theme.custom.css&quot;&gt;
 </code></pre>
 <blockquote>
+<p>元件 CSS:TabContainer、FunctionMenu、InfoPanel 的樣式在各自目錄的 <code>.css</code>(如 <code>layout/TabContainer/TabContainer.css</code>),<strong>不會自動載入</strong>,使用時需自行加 <code>&lt;link&gt;</code>;DataTable、SideMenu、FeedCard、WebTextEditor、FormDesigner 則會在執行時自動以同源 <code>&lt;link&gt;</code> 載入自己的 CSS。</p>
 <p>路徑提醒:上例的 <code>/lib/...</code> 為<strong>絕對路徑,假設網站部署於網域根</strong>。若部署在子路徑(如 <code>/web3/</code>)或用 Live Server,請改為相對於頁面的路徑或加上部署前綴,否則會 404。</p>
 </blockquote>
 <p>深色主題:在 <code>&lt;html&gt;</code> 或容器加 <code>data-theme="dark"</code> 即切換。</p>
 <p>直接用 token(不經 Theme Studio):任何元件/CSS 都可用 <code>var(--cl-*)</code>,例如 <code>var(--cl-primary)</code>、<code>var(--cl-blue-500)</code>、<code>var(--cl-radius-md)</code>。</p>
 <h2>2. Theme Studio 操作</h2>
-<p>Theme Studio 路徑全為相對路徑,任何靜態伺服器/任何根都可(含 VS Code Live Server):</p>
+<p>Theme Studio 載入資源用相對路徑,伺服器根只要涵蓋 repo 即可(含 VS Code Live Server);但頁面上的說明連結(如 <code>/AGENT-UI-GUIDE.md</code>、<code>/CUSTOM-COMPONENTS.md</code>)是站台根絕對路徑,只有以 repo 根作為伺服器根時才能開啟:</p>
 <pre><code class="language-powershell"># 例:任一根啟動靜態伺服器,或於 VS Code 對 index.html 按「Go Live」
 python -m http.server 8124 --bind 127.0.0.1
 # 開 .../tools/theme-studio/index.html(前綴依伺服器根)
 </code></pre>
 <ul>
-<li><strong>左側</strong>:分頁 token 編輯器(語意色 / 圓角 / 字級 / 效果·字體 / 進階 JSON)——調整即時套用到右側全部元件。</li>
+<li><strong>左側</strong>:分頁 token 編輯器(色彩 / 圓角 / 字級 / 效果／字體 / 個別元件 / 進階 JSON)——調整即時套用到右側全部元件。</li>
 <li><strong>右側</strong>:元件展示廊(隨 token 即時變化)。</li>
-<li><strong>頂部</strong>:深色切換、<strong>儲存</strong>(localStorage,供下次繼續)、<strong>匯出 tokens.json</strong>、<strong>匯出 custom.css</strong>、<strong>匯入 tokens</strong>、重置。</li>
+<li><strong>頂部</strong>:「選擇元件個別調整」下拉、深色切換、<strong>儲存</strong>(localStorage,供下次繼續)、<strong>匯出 tokens.json</strong>、<strong>匯出 custom.css</strong>、<strong>匯入 tokens</strong>、重設。</li>
 </ul>
 <h2>3. 客製化產出如何使用 ★</h2>
 <p>Theme Studio 產出<strong>兩個檔</strong>,用途不同:</p>
@@ -75,7 +76,7 @@ python -m http.server 8124 --bind 127.0.0.1
 <h3>3.1 套用到網站(最常用)</h3>
 <ol>
 <li>在 Theme Studio 調好 → 點「匯出 custom.css」下載 <code>theme.custom.css</code>。</li>
-<li>放進你的網站(例:<code>tim-web/src/frontend/theme.custom.css</code>)。</li>
+<li>放進你的網站(例:<code>&lt;網站靜態資源根&gt;/theme.custom.css</code>)。</li>
 <li>在頁面 <strong>theme.css 之後</strong>引入(見 §1 的第三個 <code>&lt;link&gt;</code>)。順序錯了不會生效。</li>
 <li>完成——覆蓋全站生效;未調整的 token 沿用 theme.css 預設。</li>
 </ol>
@@ -96,12 +97,12 @@ node tools/theme-studio/gen-custom-css.mjs theme.tokens.json theme.custom.css
 </code></pre>
 <ul>
 <li>AI 代理調主題:<strong>改 tokens.json → 跑 gen-custom-css.mjs</strong>,不需開 UI。</li>
-<li>也可把匯出的 tokens.json 用 Theme Studio「匯入 tokens」載回繼續編。</li>
+<li>也可把匯出的 tokens.json 用 Theme Studio「匯入 tokens」載回繼續編(含 <code>tokensDark</code> 的檔案除外,見 §3.3)。</li>
 </ul>
 <h3>3.4 個別元件覆蓋(★ 只調某個元件)</h3>
-<p>除了全域 token,Theme Studio 每張<strong>已渲染元件卡</strong>右上角有 <strong>⚙</strong>:點開右側抽屜可<strong>只調該元件</strong>(同一套語意色/圓角/字級/效果控制項),即時預覽。</p>
+<p>除了全域 token,可用頂部「選擇元件個別調整」下拉選一個元件,再到左側「個別元件」分頁<strong>只調該元件</strong>的 <code>--cl-primary</code> / <code>--cl-bg</code> / <code>--cl-text</code> / <code>--cl-border</code> 與套用的 class 名稱,即時預覽。</p>
 <ul>
-<li><strong>作用域 = 具名 class</strong>,預設 <code>b4a-c-&lt;元件名&gt;</code>,可在抽屜內改名 → 同一元件能建立<strong>多種變體</strong>(例:<code>cta-primary</code>、<code>cta-danger</code>)。</li>
+<li><strong>作用域 = 具名 class</strong>,預設 <code>b4a-c-&lt;元件名&gt;</code>,可在「套用 class 名稱」欄位改名 → 同一元件能建立<strong>多種變體</strong>(例:<code>cta-primary</code>、<code>cta-danger</code>)。</li>
 <li>匯出時併入<strong>同一個</strong> <code>theme.custom.css</code>:<code>:root{全域}</code> 在前、各 <code>.具名class{元件覆蓋}</code> 在後 → CSS cascade 讓元件覆蓋贏過全域。tokens.json 也多一段 <code>components</code>。</li>
 </ul>
 <pre><code class="language-jsonc">{
@@ -126,7 +127,7 @@ node tools/theme-studio/gen-custom-css.mjs theme.tokens.json theme.custom.css
 </blockquote>
 <h3>3.3 深色主題客製</h3>
 <ul>
-<li>UI:頂部「深色」切換僅預覽;要為深色另設值,填 <code>tokensDark</code>(或用 gen-custom-css 的 <code>tokensDark</code>),產出會多一段 <code>[data-theme="dark"]{…}</code>。</li>
+<li>UI:頂部「深色」切換僅預覽;UI 不支援 <code>tokensDark</code>(匯出不含此欄位,匯入含 <code>tokensDark</code> 的 JSON 會被拒絕)。要為深色另設值,請在 tokens.json 填 <code>tokensDark</code> 再用 gen-custom-css.mjs 產出,會多一段 <code>[data-theme="dark"]{…}</code>。</li>
 </ul>
 <h2>4. 載入順序總表(重要)</h2>
 <pre><code>palette.css   (theme.css @import,色階 primitive)

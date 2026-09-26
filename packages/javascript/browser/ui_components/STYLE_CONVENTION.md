@@ -28,7 +28,9 @@
 | `#FF9800` | `var(--cl-warning)` |
 | `#E65100` | `var(--cl-warning-dark)` |
 | `#fff3e0` | `var(--cl-warning-light)` |
-| `#03A9F4` | `var(--cl-info)` |
+| `#2196F3`（info 用途） | `var(--cl-info)` |
+
+註：`--cl-info` 為 `var(--cl-blue-500)`（`#2196F3`），與 `--cl-primary` 同色；`#03A9F4` 沒有對應 token。
 
 ### Material 擴充色
 
@@ -185,9 +187,9 @@
 
 - `inherit` — 保留
 
-- `rgba(0,0,0,0.08)` 等低透明度 hover 效果 — 保留（無對應變數）
-
-- `rgba(255,255,255,0.15)` 等反色 hover 效果 — 保留
+- `rgba()` 只有下列完全相符的字串可保留（`tools/scripts/audit-ui-style-rules.mjs` 的白名單，逐字比對；其他寫法如無空格的 `rgba(0,0,0,0.08)` 仍會被標記）：
+ - 低透明度 hover：`rgba(0, 0, 0, 0.08)`（含空格）
+ - 反色 hover：`rgba(255, 255, 255, 0.15)`、`rgba(255,255,255,0.15)`、`rgba(255, 255, 255, 0.2)`、`rgba(255,255,255,0.2)`
 
 - `border-bottom-color: #fff` 用於 tab active 技巧 — 改為 `var(--cl-bg)`
 
@@ -211,38 +213,43 @@
 
 ### 原子化設計（Atomic Design）
 
-元件按複雜度分為三層：
+元件分類以 `metadata/component-catalog.json` 的 `kind`（`by_kind`）為準，共四類：
 
-1. **原子（Atoms）** — 最小可重用單位，不依賴其他元件
- - 按鈕類：BasicButton, ActionButton, EditorButton, AuthButton, SortButton, UploadButton, DownloadButton
- - 輸入類：TextInput, NumberInput, Checkbox, Radio, ToggleSwitch, ColorPicker, Dropdown
+1. **原子（atomic）** — 最小可重用單位（可使用 Icon 等基礎元件）
+ - 按鈕類：BasicButton, EditorButton, SortButton, UploadButton, DownloadButton
+ - 輸入類：TextInput, TextArea, NumberInput, Checkbox, Radio, ToggleSwitch, ColorPicker, Dropdown, MultiSelectDropdown, DatePicker, TimePicker, Slider
+ - 表單：FormField
  - 展示類：Badge, Tag, Tooltip, Progress, Divider, LoadingSpinner, Avatar
  - 回饋類：Notification
 
-2. **分子（Molecules）** — 由原子組合而成
- - FormField（Label + 任意輸入原子）
- - SearchForm（TextInput + BasicButton）
- - DatePicker / TimePicker / DateTimeInput
+2. **組合（composite）** — 由其他元件組合而成
+ - ActionButton, AuthButton
+ - SearchForm（TextInput、Dropdown、MultiSelectDropdown、DatePicker、NumberInput + 原生按鈕）
+ - DateTimeInput
  - Breadcrumb, Pagination, ButtonGroup
 
-3. **有機體（Organisms）** — 由分子/原子組合的複雜元件
+3. **容器（container）** — 承載其他內容的版面型元件
  - DataTable, TabContainer, FunctionMenu, SideMenu
- - Panel 系統（PanelManager + 多種 Panel 變體）
+ - PanelManager
  - InfoPanel, WorkflowPanel, DocumentWall, PhotoWall
+
+4. **視覺化（visualizer）** — `viz/` 下的 Canvas 圖表、地圖與繪圖元件
 
 ### 新元件開發規範
 
-1. **每個元件一個資料夾**：`{category}/{ComponentName}/`
+1. **每個元件一個資料夾**：`{category}/{ComponentName}/`（例外：`viz/` 的圖表元件與 `analytics/DataExplorer` 為扁平檔案 `<Name>.js` + `<Name>.manifest.json`）
 
 2. **必要檔案**：
  - `ComponentName.js` — 主元件類別
  - `index.js` — 重新匯出（`export { X } from './X.js';`）
- - `demo.html` — 完整展示頁面（含深色主題切換）
+ - `ComponentName.manifest.json`（或 `component.manifest.json`）— 元件 metadata（schema 見 `metadata/manifest-schema.js`）
+ - 建議另提供 `demo.html` — 完整展示頁面（含深色主題切換）
 
 3. **註冊流程**：
  - 加入 `{category}/index.js` 匯出
  - 加入 `binding/ComponentFactory.js` 工廠註冊
+ - 重建並檢查 metadata：`node packages/javascript/browser/ui_components/metadata/build-metadata.mjs --check`
 
-4. **樣式方式**：以 CSSOM 指派（`element.style.cssText` / `setProperty`），或用同目錄 `.css` 搭配同源 `<link>` 載入；嚴格 CSP 下禁止動態注入 `<style>`
+4. **樣式方式**：以 CSSOM 指派（`element.style.cssText` / `setProperty`），或用同目錄 `.css` 搭配同源 `<link>` 載入；嚴格 CSP 下禁止動態注入 `<style>`。`tools/scripts/audit-csp.mjs` 另對 HTML 字串內的 `on*=` 事件、`eval` / `new Function`、`javascript:` URL 與 SVG 使用採零容忍
 
-5. **所有樣式值必須使用 `--cl-*` CSS 變數**，零硬編碼
+5. **所有樣式值必須使用 `--cl-*` CSS 變數**，零硬編碼。Canvas 的顏色回退值必須使用 `utils/theme-bus.js` 的 `FALLBACK_PAINT`，元件內不得散寫 hex；唯一允許直寫的 hex 是文字對比遮罩常數 `#00000099`、`#ffffffcc`、`#000000aa`、`#ffffffdd`

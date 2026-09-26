@@ -34,14 +34,24 @@ the library.</p>
 <h2>Scope</h2>
 <p>This document is limited to:</p>
 <ul>
-<li><code>packages/javascript/browser/ui_components</code></li>
-<li>the import entrypoints that this directory itself exposes</li>
+<li>
+<p><code>packages/javascript/browser/ui_components</code></p>
+</li>
+<li>
+<p>the import entrypoints that this directory itself exposes</p>
+</li>
 </ul>
 <p>This document is not a policy for:</p>
 <ul>
-<li>application architecture</li>
-<li>generator output shape</li>
-<li>agent behavior</li>
+<li>
+<p>application architecture</p>
+</li>
+<li>
+<p>generator output shape</p>
+</li>
+<li>
+<p>agent behavior</p>
+</li>
 </ul>
 <p>Those concerns belong to other layers.</p>
 <h2>Current Surface Model</h2>
@@ -54,118 +64,238 @@ three visible entrypoint layers plus a small set of exceptions.</p>
 </ul>
 <p>Current role:</p>
 <ul>
-<li>category-level aggregation</li>
-<li>top-level import surface for consumers who want one library entrypoint</li>
+<li>
+<p>category-level aggregation</p>
+</li>
+<li>
+<p>top-level import surface for consumers who want one library entrypoint</p>
+</li>
 </ul>
 <p>Current exports:</p>
 <ul>
-<li><code>binding</code></li>
-<li><code>common</code></li>
-<li><code>data</code></li>
-<li><code>editor</code></li>
-<li><code>form</code></li>
-<li><code>layout</code></li>
-<li><code>input</code></li>
-<li><code>social</code></li>
-<li><code>utils</code></li>
-<li><code>viz</code></li>
-<li><code>Locale</code> from <code>i18n/index.js</code></li>
+<li>
+<p><code>binding</code></p>
+</li>
+<li>
+<p><code>common</code></p>
+</li>
+<li>
+<p><code>data</code></p>
+</li>
+<li>
+<p><code>editor</code></p>
+</li>
+<li>
+<p><code>form</code></p>
+</li>
+<li>
+<p><code>layout</code></p>
+</li>
+<li>
+<p><code>input</code></p>
+</li>
+<li>
+<p><code>social</code></p>
+</li>
+<li>
+<p><code>utils</code></p>
+</li>
+<li>
+<p><code>viz</code></p>
+</li>
+<li>
+<p><code>sections</code></p>
+</li>
+<li>
+<p><code>Locale</code> from <code>i18n/index.js</code></p>
+</li>
+<li>
+<p><code>DataExplorer</code> from <code>analytics/index.js</code> (named re-export only; <code>CHART_TYPES</code> stays on the category entrypoint)</p>
+</li>
 </ul>
 <p>Important limitation:</p>
 <ul>
 <li>this root entrypoint still does not aggregate non-JS asset directories such as
-  <code>themes</code> or <code>refresource</code></li>
+ <code>themes</code> or <code>refresource</code></li>
 </ul>
 <h2>2. Category entrypoints</h2>
 <p>Present files include:</p>
 <ul>
-<li><code>packages/javascript/browser/ui_components/binding/index.js</code></li>
-<li><code>packages/javascript/browser/ui_components/common/index.js</code></li>
-<li><code>packages/javascript/browser/ui_components/data/index.js</code></li>
-<li><code>packages/javascript/browser/ui_components/editor/index.js</code></li>
-<li><code>packages/javascript/browser/ui_components/form/index.js</code></li>
-<li><code>packages/javascript/browser/ui_components/input/index.js</code></li>
-<li><code>packages/javascript/browser/ui_components/layout/index.js</code></li>
-<li><code>packages/javascript/browser/ui_components/social/index.js</code></li>
-<li><code>packages/javascript/browser/ui_components/utils/index.js</code></li>
-<li><code>packages/javascript/browser/ui_components/viz/index.js</code></li>
+<li>
+<p><code>packages/javascript/browser/ui_components/binding/index.js</code></p>
+</li>
+<li>
+<p><code>packages/javascript/browser/ui_components/common/index.js</code></p>
+</li>
+<li>
+<p><code>packages/javascript/browser/ui_components/data/index.js</code></p>
+</li>
+<li>
+<p><code>packages/javascript/browser/ui_components/editor/index.js</code></p>
+</li>
+<li>
+<p><code>packages/javascript/browser/ui_components/form/index.js</code></p>
+</li>
+<li>
+<p><code>packages/javascript/browser/ui_components/input/index.js</code></p>
+</li>
+<li>
+<p><code>packages/javascript/browser/ui_components/layout/index.js</code></p>
+</li>
+<li>
+<p><code>packages/javascript/browser/ui_components/social/index.js</code></p>
+</li>
+<li>
+<p><code>packages/javascript/browser/ui_components/utils/index.js</code></p>
+</li>
+<li>
+<p><code>packages/javascript/browser/ui_components/viz/index.js</code></p>
+</li>
+<li>
+<p><code>packages/javascript/browser/ui_components/sections/index.js</code></p>
+</li>
+<li>
+<p><code>packages/javascript/browser/ui_components/analytics/index.js</code></p>
+</li>
 </ul>
 <p>Current role:</p>
 <ul>
-<li>category-level public surface</li>
-<li>stable aggregation point for components in the same domain</li>
+<li>
+<p>category-level public surface</p>
+</li>
+<li>
+<p>stable aggregation point for components in the same domain</p>
+</li>
 </ul>
 <p>Important limitation:</p>
 <ul>
-<li>category structure is not fully uniform</li>
-<li><code>viz/index.js</code> mixes direct file exports such as <code>./BarChart.js</code> with nested
-  folder exports such as <code>./DrawingBoard/index.js</code></li>
-<li><code>utils/index.js</code> is now present, but <code>utils</code> still exposes direct file modules
-  alongside the category entrypoint</li>
+<li>
+<p>category structure is not fully uniform</p>
+</li>
+<li>
+<p><code>viz/index.js</code> mixes direct file exports such as <code>./BarChart.js</code> with nested
+ folder exports such as <code>./DrawingBoard/index.js</code></p>
+</li>
+<li>
+<p><code>utils/index.js</code> is now present, but <code>utils</code> still exposes direct file modules
+ alongside the category entrypoint</p>
+</li>
 </ul>
 <h2>3. Leaf entrypoints</h2>
 <p>Many component folders expose their own <code>index.js</code>, for example:</p>
 <ul>
-<li><code>packages/javascript/browser/ui_components/form/TextInput/index.js</code></li>
-<li><code>packages/javascript/browser/ui_components/common/ColorPicker/index.js</code></li>
-<li><code>packages/javascript/browser/ui_components/layout/Panel/index.js</code></li>
-<li><code>packages/javascript/browser/ui_components/input/AddressInput/index.js</code></li>
-<li><code>packages/javascript/browser/ui_components/viz/DrawingBoard/index.js</code></li>
+<li>
+<p><code>packages/javascript/browser/ui_components/form/TextInput/index.js</code></p>
+</li>
+<li>
+<p><code>packages/javascript/browser/ui_components/common/ColorPicker/index.js</code></p>
+</li>
+<li>
+<p><code>packages/javascript/browser/ui_components/layout/Panel/index.js</code></p>
+</li>
+<li>
+<p><code>packages/javascript/browser/ui_components/input/AddressInput/index.js</code></p>
+</li>
+<li>
+<p><code>packages/javascript/browser/ui_components/viz/DrawingBoard/index.js</code></p>
+</li>
 </ul>
 <p>Current role:</p>
 <ul>
-<li>component-local public surface</li>
-<li>preferred place for a component folder to re-export its implementation</li>
+<li>
+<p>component-local public surface</p>
+</li>
+<li>
+<p>preferred place for a component folder to re-export its implementation</p>
+</li>
 </ul>
 <p>Observed pattern:</p>
 <ul>
 <li>when a component has its own directory, an <code>index.js</code> usually re-exports the
-  implementation file and may also expose a default export</li>
+ implementation file and may also expose a default export</li>
 </ul>
 <h2>4. File-level exceptions</h2>
 <p>Not all library-owned public modules currently use the same pattern.</p>
 <p>The current repository also exposes some direct file modules as public modules
 in parallel with category entrypoints:</p>
 <ul>
-<li><code>packages/javascript/browser/ui_components/utils/GeolocationService.js</code></li>
-<li><code>packages/javascript/browser/ui_components/utils/WeatherService.js</code></li>
-<li><code>packages/javascript/browser/ui_components/utils/security.js</code></li>
-<li><code>packages/javascript/browser/ui_components/utils/SimpleZip.js</code></li>
+<li>
+<p><code>packages/javascript/browser/ui_components/utils/GeolocationService.js</code></p>
+</li>
+<li>
+<p><code>packages/javascript/browser/ui_components/utils/WeatherService.js</code></p>
+</li>
+<li>
+<p><code>packages/javascript/browser/ui_components/utils/security.js</code></p>
+</li>
+<li>
+<p><code>packages/javascript/browser/ui_components/utils/SimpleZip.js</code></p>
+</li>
 </ul>
 <p>Also, parts of <code>viz</code> are exported directly from files at category root:</p>
 <ul>
-<li><code>packages/javascript/browser/ui_components/viz/BarChart.js</code></li>
-<li><code>packages/javascript/browser/ui_components/viz/LineChart.js</code></li>
-<li><code>packages/javascript/browser/ui_components/viz/PieChart.js</code></li>
-<li><code>packages/javascript/browser/ui_components/viz/RoseChart.js</code></li>
-<li>and related root-level visualization files exported by
-  <code>packages/javascript/browser/ui_components/viz/index.js</code></li>
+<li>
+<p><code>packages/javascript/browser/ui_components/viz/BarChart.js</code></p>
+</li>
+<li>
+<p><code>packages/javascript/browser/ui_components/viz/LineChart.js</code></p>
+</li>
+<li>
+<p><code>packages/javascript/browser/ui_components/viz/PieChart.js</code></p>
+</li>
+<li>
+<p><code>packages/javascript/browser/ui_components/viz/RoseChart.js</code></p>
+</li>
+<li>
+<p>and related root-level visualization files exported by
+ <code>packages/javascript/browser/ui_components/viz/index.js</code></p>
+</li>
 </ul>
 <h2>What The Library Can Actually Promise</h2>
 <p>Based on the current structure, the library can make these claims about itself:</p>
 <ul>
-<li>it owns the entrypoint files under <code>ui_components/**/index.js</code></li>
-<li>it owns direct public modules that are intentionally exposed without an
-  <code>index.js</code>, such as the current <code>utils</code> files and some <code>viz</code> files</li>
-<li>it can document which of those surfaces are preferred for consumers</li>
-<li>it can change internal implementation files as long as the chosen public
-  entrypoints remain stable</li>
+<li>
+<p>it owns the entrypoint files under <code>ui_components/**/index.js</code></p>
+</li>
+<li>
+<p>it owns direct public modules that are intentionally exposed without an
+ <code>index.js</code>, such as the current <code>utils</code> files and some <code>viz</code> files</p>
+</li>
+<li>
+<p>it can document which of those surfaces are preferred for consumers</p>
+</li>
+<li>
+<p>it can change internal implementation files as long as the chosen public
+ entrypoints remain stable</p>
+</li>
 </ul>
 <p>For library-owned code, that also means:</p>
 <ul>
-<li>composite components should prefer public entrypoints when they compose other
-  components from the library</li>
-<li>when a child component has a folder-level <code>index.js</code>, library-owned composite
-  code should prefer that leaf entrypoint over the child implementation file</li>
-<li>this is a rule about library maintenance inside <code>ui_components</code>, not a rule
-  imposed on external applications</li>
+<li>
+<p>composite components should prefer public entrypoints when they compose other
+ components from the library</p>
+</li>
+<li>
+<p>when a child component has a folder-level <code>index.js</code>, library-owned composite
+ code should prefer that leaf entrypoint over the child implementation file</p>
+</li>
+<li>
+<p>this is a rule about library maintenance inside <code>ui_components</code>, not a rule
+ imposed on external applications</p>
+</li>
 </ul>
 <h2>What The Library Should Not Claim</h2>
 <p>The library should not claim:</p>
 <ul>
-<li>how all applications must import it</li>
-<li>how generators must compose pages</li>
-<li>how agents must choose between generators and handwritten code</li>
+<li>
+<p>how all applications must import it</p>
+</li>
+<li>
+<p>how generators must compose pages</p>
+</li>
+<li>
+<p>how agents must choose between generators and handwritten code</p>
+</li>
 </ul>
 <p>Those are consumer-layer or orchestration-layer decisions.</p>
 <h2>Current Practical Reading</h2>
@@ -173,19 +303,37 @@ in parallel with category entrypoints:</p>
 surface.</p>
 <p>Instead, it has:</p>
 <ul>
-<li>a real root entrypoint</li>
-<li>real category entrypoints</li>
-<li>many real leaf entrypoints</li>
-<li>a few direct file exceptions</li>
+<li>
+<p>a real root entrypoint</p>
+</li>
+<li>
+<p>real category entrypoints</p>
+</li>
+<li>
+<p>many real leaf entrypoints</p>
+</li>
+<li>
+<p>a few direct file exceptions</p>
+</li>
 </ul>
 <p>That is enough to define a truthful contract:</p>
 <ul>
-<li>the library already has public surfaces</li>
-<li>those surfaces are currently uneven</li>
-<li>normalizing them is a library maintenance task</li>
-<li>library-owned composite components should move toward those same public
-  surfaces instead of cross-component deep imports</li>
-<li>consumer behavior should be described separately from the library contract</li>
+<li>
+<p>the library already has public surfaces</p>
+</li>
+<li>
+<p>those surfaces are currently uneven</p>
+</li>
+<li>
+<p>normalizing them is a library maintenance task</p>
+</li>
+<li>
+<p>library-owned composite components should move toward those same public
+ surfaces instead of cross-component deep imports</p>
+</li>
+<li>
+<p>consumer behavior should be described separately from the library contract</p>
+</li>
 </ul>
 </main>
 </body>

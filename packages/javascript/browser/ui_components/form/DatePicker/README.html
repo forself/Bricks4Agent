@@ -24,14 +24,30 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <p>高度可自訂的日期選擇器組件，支援<strong>民國年（ROC）格式</strong>和<strong>日期範圍限制</strong>功能。</p>
 <h2>功能特性</h2>
 <ul>
-<li>✅ <strong>雙曆法支援</strong>: 西元年 / 民國年（ROC）格式切換</li>
-<li>✅ <strong>日期範圍限制</strong>: 設定最小/最大可選日期</li>
-<li>✅ <strong>三種尺寸</strong>: Small、Medium、Large</li>
-<li>✅ <strong>視覺回饋</strong>: 禁用日期自動標示為灰色不可點擊</li>
-<li>✅ <strong>月份導航</strong>: 下拉選單快速切換年月</li>
-<li>✅ <strong>今日標記</strong>: 自動高亮顯示今天日期</li>
-<li>✅ <strong>響應式設計</strong>: 自適應不同螢幕尺寸</li>
-<li>✅ <strong>無外部依賴</strong>: 純 JavaScript 實作</li>
+<li>
+<p>✅ <strong>雙曆法支援</strong>: 西元年 / 民國年（ROC）格式切換</p>
+</li>
+<li>
+<p>✅ <strong>日期範圍限制</strong>: 設定最小/最大可選日期</p>
+</li>
+<li>
+<p>✅ <strong>三種尺寸</strong>: Small、Medium、Large</p>
+</li>
+<li>
+<p>✅ <strong>視覺回饋</strong>: 禁用日期自動標示為灰色不可點擊</p>
+</li>
+<li>
+<p>✅ <strong>月份導航</strong>: 下拉選單快速切換年月</p>
+</li>
+<li>
+<p>✅ <strong>今日標記</strong>: 自動高亮顯示今天日期</p>
+</li>
+<li>
+<p>✅ <strong>響應式設計</strong>: 自適應不同螢幕尺寸</p>
+</li>
+<li>
+<p>✅ <strong>無外部依賴</strong>: 純 JavaScript 實作</p>
+</li>
 </ul>
 <hr>
 <h2>安裝</h2>
@@ -39,7 +55,7 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <pre><code class="language-javascript">import { DatePicker } from './packages/javascript/browser/ui_components/form/DatePicker/DatePicker.js';
 </code></pre>
 <h3>CSS 樣式</h3>
-<p>DatePicker 使用 inline styles，無需額外導入 CSS 檔。</p>
+<p>DatePicker 以 CSSOM 設定樣式，不需額外的元件 CSS 檔；但樣式值使用 <code>var(--cl-*)</code> token，頁面必須載入 <code>theme.css</code>。</p>
 <hr>
 <h2>基本用法</h2>
 <h3>1. 西元年日期選擇器</h3>
@@ -116,7 +132,7 @@ pickerRange.mount('#date-range-container');
 <tr>
 <td><code>placeholder</code></td>
 <td>String</td>
-<td><code>'請選擇日期'</code></td>
+<td><code>Locale.t('datePicker.placeholder')</code></td>
 <td>未選擇時的提示文字</td>
 </tr>
 <tr>
@@ -135,7 +151,7 @@ pickerRange.mount('#date-range-container');
 <td><code>required</code></td>
 <td>Boolean</td>
 <td><code>false</code></td>
-<td>是否必填（顯示紅色星號）</td>
+<td>只在有設定 <code>label</code> 時於標籤旁顯示紅色星號；元件本身不做必填驗證</td>
 </tr>
 <tr>
 <td><code>size</code></td>
@@ -238,6 +254,17 @@ console.log(formatted); // &quot;2026/01/24&quot; 或 &quot;115/01/24&quot;
 <pre><code class="language-javascript">picker.toggle();
 </code></pre>
 <hr>
+<h4><code>setDisabled(disabled)</code></h4>
+<p>設定停用狀態。</p>
+<pre><code class="language-javascript">picker.setDisabled(true);
+</code></pre>
+<hr>
+<h4><code>show()</code> / <code>hide()</code></h4>
+<p>顯示 / 隱藏組件。</p>
+<pre><code class="language-javascript">picker.hide();
+picker.show();
+</code></pre>
+<hr>
 <h4><code>destroy()</code></h4>
 <p>銷毀組件並從 DOM 中移除。</p>
 <pre><code class="language-javascript">picker.destroy();
@@ -278,9 +305,9 @@ picker.mount('#specific-month');
 
 picker.mount('#dynamic-date');
 
-// 根據業務邏輯動態更新範圍
+// 根據業務邏輯動態更新範圍（改 options.max 不會生效，需直接設定 maxDate）
 document.getElementById('limit-future').addEventListener('click', () =&gt; {
-    picker.options.max = new Date();
+    picker.maxDate = new Date();
     picker._renderCalendar();
     console.log('已限制為今天或之前的日期');
 });
@@ -292,8 +319,8 @@ const startDatePicker = new DatePicker({
     label: '開始日期',
     required: true,
     onChange: (date) =&gt; {
-        // 動態設定結束日期的最小值
-        endDatePicker.options.min = date;
+        // 動態設定結束日期的最小值（改 options.min 不會生效，需直接設定 minDate）
+        endDatePicker.minDate = date;
         endDatePicker._renderCalendar();
     }
 });
@@ -344,14 +371,14 @@ new DatePicker({
 // 顯示: 2026/01/24
 </code></pre>
 <h3>民國年格式 (format: 'taiwan')</h3>
-<pre><code class="language-javascript">// 輸出格式: YYY/MM/DD (民國年)
+<pre><code class="language-javascript">// 輸出格式: 民國年/MM/DD（民國年不補零，例：1990/05/12 → 79/05/12）
 new DatePicker({
     format: 'taiwan'
 });
 
 // 選擇 2026 年 1 月 24 日（民國 115 年）
 // 顯示: 115/01/24
-// 年份下拉選單顯示: 民國 115 年
+// 年份下拉選單顯示: 115
 </code></pre>
 <p><strong>民國年轉換公式</strong>: 民國年 = 西元年 - 1911</p>
 <hr>
@@ -368,7 +395,7 @@ new DatePicker({
 <tbody>
 <tr>
 <td><code>color</code></td>
-<td>灰色 (<code>#ccc</code>)</td>
+<td>灰色 (<code>var(--cl-border-dark)</code>)</td>
 </tr>
 <tr>
 <td><code>opacity</code></td>
@@ -390,9 +417,15 @@ new DatePicker({
 <p>這確保了日期比較的準確性。</p>
 <h3>雙重驗證機制</h3>
 <ol>
-<li><strong>渲染層面</strong>: 禁用日期添加 <code>data-disabled="true"</code> 屬性</li>
-<li><strong>事件層面</strong>: 點擊事件檢查 <code>data-disabled</code> 屬性</li>
-<li><strong>邏輯層面</strong>: <code>_selectDate()</code> 方法內再次檢查日期範圍</li>
+<li>
+<p><strong>渲染層面</strong>: 禁用日期添加 <code>data-disabled="true"</code> 屬性</p>
+</li>
+<li>
+<p><strong>事件層面</strong>: 點擊事件檢查渲染時計算的 <code>isDisabled</code>（closure 變數，不讀 <code>data-disabled</code> 屬性）</p>
+</li>
+<li>
+<p><strong>邏輯層面</strong>: 狀態機的 <code>SELECT_DAY</code> reducer 內再次檢查日期範圍</p>
+</li>
 </ol>
 <p>這種三層防護確保絕對不會選擇超出範圍的日期。</p>
 <hr>
@@ -666,24 +699,44 @@ form.addEventListener('submit', (e) =&gt; {
 <hr>
 <h2>相關檔案</h2>
 <ul>
-<li><strong>組件原始碼</strong>: <a href="DatePicker.js">DatePicker.js</a></li>
-<li><strong>Demo 範例</strong>: <code>demo.html</code>（同目錄）</li>
+<li>
+<p><strong>組件原始碼</strong>: <a href="DatePicker.js">DatePicker.js</a></p>
+</li>
+<li>
+<p><strong>Demo 範例</strong>: <code>demo.html</code>（同目錄）</p>
+</li>
 </ul>
 <hr>
 <h2>更新日誌</h2>
 <h3>v2.0.0 (2026-01-24)</h3>
 <ul>
-<li>✨ 新增 <code>min</code> 和 <code>max</code> 參數支援日期範圍限制</li>
-<li>✨ 新增 <code>format</code> 參數（<code>'western'</code> / <code>'taiwan'</code>）</li>
-<li>✨ 禁用日期視覺效果（灰色、半透明、不可點擊）</li>
-<li>🐛 修復民國年顯示錯誤問題</li>
-<li>📚 新增完整文檔和測試頁面</li>
+<li>
+<p>✨ 新增 <code>min</code> 和 <code>max</code> 參數支援日期範圍限制</p>
+</li>
+<li>
+<p>✨ 新增 <code>format</code> 參數（<code>'western'</code> / <code>'taiwan'</code>）</p>
+</li>
+<li>
+<p>✨ 禁用日期視覺效果（灰色、半透明、不可點擊）</p>
+</li>
+<li>
+<p>🐛 修復民國年顯示錯誤問題</p>
+</li>
+<li>
+<p>📚 新增完整文檔和測試頁面</p>
+</li>
 </ul>
 <h3>v1.0.0</h3>
 <ul>
-<li>🎉 初始版本</li>
-<li>✅ 基本日期選擇功能</li>
-<li>✅ 民國年支援（<code>useROC</code> 參數）</li>
+<li>
+<p>🎉 初始版本</p>
+</li>
+<li>
+<p>✅ 基本日期選擇功能</p>
+</li>
+<li>
+<p>✅ 民國年支援（<code>useROC</code> 參數）</p>
+</li>
 </ul>
 <hr>
 <h2>授權</h2>

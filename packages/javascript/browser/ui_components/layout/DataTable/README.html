@@ -96,13 +96,13 @@ new DataTable(containerElement, config)
 <td><code>config.striped</code></td>
 <td><code>boolean</code></td>
 <td>—</td>
-<td>斑馬紋（未設定時依主題 CSS）</td>
+<td>目前無作用：值會被保存但不會被讀取，斑馬紋一律依主題 CSS</td>
 </tr>
 <tr>
 <td><code>config.hoverable</code></td>
 <td><code>boolean</code></td>
 <td>—</td>
-<td>懸停效果（未設定時依主題 CSS）</td>
+<td>目前無作用：值會被保存但不會被讀取，懸停效果一律依主題 CSS</td>
 </tr>
 <tr>
 <td><code>config.selectableRows</code></td>
@@ -136,7 +136,7 @@ new DataTable(containerElement, config)
 <tbody>
 <tr>
 <td><code>setData(data)</code></td>
-<td><code>void</code></td>
+<td><code>this</code></td>
 <td>設定資料並重置分頁/選取，重新渲染</td>
 </tr>
 <tr>
@@ -174,35 +174,57 @@ new DataTable(containerElement, config)
 <h3>選取變更的更新方式</h3>
 <p>使用者點擊行 checkbox 或表頭全選時，DataTable <strong>只定點同步選取相關 DOM</strong>（列的 <code>--selected</code> / <code>--even</code> class、行 checkbox、表頭全選狀態），不重建整張表：</p>
 <ul>
-<li><code>onRender</code> <strong>不會</strong>因為純選取變更而重發</li>
-<li>儲存格內既有的元件實例與事件監聽器不會被銷毀重建，外部加在 <code>&lt;tr&gt;</code> 上的其他 class 也會保留</li>
-<li><code>onRowSelectionChange</code> 仍照常發出</li>
+<li>
+<p><code>onRender</code> <strong>不會</strong>因為純選取變更而重發</p>
+</li>
+<li>
+<p>儲存格內既有的元件實例與事件監聽器不會被銷毀重建，外部加在 <code>&lt;tr&gt;</code> 上的其他 class 也會保留</p>
+</li>
+<li>
+<p><code>onRowSelectionChange</code> 仍照常發出</p>
+</li>
 </ul>
 <p>以下情況維持完整重繪（工具列內容依賴選取狀態，<code>onRender</code> 會再次發出）：</p>
 <ul>
-<li>設定了 <code>options.customToolbarSelect</code></li>
-<li><code>options.customToolbar</code> 傳入的是函式（可能讀取選取狀態）</li>
-<li>由程式呼叫 <code>setSelectedRows(indices)</code></li>
+<li>
+<p>設定了 <code>options.customToolbarSelect</code></p>
+</li>
+<li>
+<p><code>options.customToolbar</code> 傳入的是函式（可能讀取選取狀態）</p>
+</li>
+<li>
+<p>由程式呼叫 <code>setSelectedRows(indices)</code></p>
+</li>
 </ul>
 <p>排序結果在單次渲染流程內共用（工具列、事件綁定重複取用時免重算），流程結束即清除；渲染流程外的呼叫維持即時重算。</p>
 <h3>具名匯出</h3>
 <ul>
-<li><code>linkCell(text, href, options?)</code> — 產生連結儲存格（內部以 <code>Link</code> 元件 hydrate）</li>
-<li><code>badgeCell(text, options?)</code> — 產生徽章儲存格（內部以 <code>Badge</code> 元件 hydrate）</li>
+<li>
+<p><code>linkCell(text, href, options?)</code> — 產生連結儲存格（內部以 <code>Link</code> 元件 hydrate）</p>
+</li>
+<li>
+<p><code>badgeCell(text, options?)</code> — 產生徽章儲存格（內部以 <code>Badge</code> 元件 hydrate）</p>
+</li>
 </ul>
 <h3>依賴</h3>
 <ul>
-<li><code>Link</code>、<code>Badge</code> — <code>linkCell()</code> / <code>badgeCell()</code> 儲存格渲染</li>
-<li><code>utils/security.js</code> — <code>escapeHtml</code> / <code>escapeAttr</code> / <code>raw</code></li>
+<li>
+<p><code>Link</code>、<code>Badge</code> — <code>linkCell()</code> / <code>badgeCell()</code> 儲存格渲染</p>
+</li>
+<li>
+<p><code>utils/security.js</code> — <code>escapeHtml</code> / <code>isRawHtml</code> / <code>raw</code></p>
+</li>
 </ul>
 <h2>使用範例</h2>
 <pre><code class="language-js">import { DataTable } from './DataTable.js';
+import { raw } from '../../utils/security.js';
 
 const table = new DataTable({
     columns: [
+        { key: 'id', hidden: true },   // render 的 row 只含 columns 定義的 key
         { key: 'name', title: '姓名' },
         { key: 'age', title: '年齡' },
-        { key: 'action', title: '操作', render: (_, row) =&gt; `&lt;button&gt;編輯&lt;/button&gt;` }
+        { key: 'action', title: '操作', render: (_, row) =&gt; raw(`&lt;button&gt;編輯&lt;/button&gt;`) }
     ],
     data: [{ id: 1, name: '張三', age: 28 }],
     pageSize: 10,
@@ -220,6 +242,9 @@ table.mount('#app');
 
 const table = new DataTable({
     columns: [
+        // 隱藏欄位 — render 收到的 row 只含 columns 定義的 key，要用 row.id 就必須宣告
+        { key: 'id', hidden: true },
+
         // 純文字 — 自動跳脫，安全
         { key: 'name', title: '姓名' },
 
@@ -233,8 +258,9 @@ const table = new DataTable({
 <p><strong>規則</strong>：
 - <code>render</code> 回傳 <code>string</code> → 自動 HTML 跳脫（safe-by-default）
 - <code>render</code> 回傳 <code>raw(html)</code> → 原樣輸出（開發者負責確保安全）
+- <code>render(value, row)</code> 的 <code>row</code> 只包含 <code>columns</code> 中宣告的 key（資料物件的其他屬性會被捨棄）；需要的欄位請以 <code>{ key, hidden: true }</code> 加入
 - 在 <code>raw()</code> 內部使用使用者資料時，務必用 <code>escapeHtml()</code> / <code>escapeAttr()</code> 跳脫
-- 只有 <code>raw()</code> 產生的物件會被認可：標記以 <code>Symbol.for(&#39;bricks4agent.rawHtml&#39;)</code> 品牌識別，手寫的 <code>{ __html: &#39;...&#39; }</code>（或 API 回傳的同名 JSON 欄位）一律當成一般值跳脫</p>
+- 只有 <code>raw()</code> 產生的物件會被認可：標記以 <code>Symbol.for('bricks4agent.rawHtml')</code> 品牌識別，手寫的 <code>{ __html: '...' }</code>（或 API 回傳的同名 JSON 欄位）一律當成一般值跳脫</p>
 <h2>Demo</h2>
 <p>開啟 <code>demo.html</code> 直接在瀏覽器測試。</p>
 </main>

@@ -11,7 +11,7 @@ that turns a JSON `PageDefinition` into working pages (static code generation or
 
 ## Build & Test
 
-- Page-generator tests: `npm test`
+- Full JS gate: `npm test` (runs `test-all.js` generator examples, then `test:ui-components`, `test:custom-components` and the Vitest component suites via `npm --prefix packages/javascript/browser run test:vitest`; run `npm --prefix packages/javascript/browser install` once first to get the vitest/jsdom devDependencies)
 
 - UI library checks: `npm run validate:ui-library` (add `:browser` for a real browser)
 
@@ -25,17 +25,20 @@ that turns a JSON `PageDefinition` into working pages (static code generation or
 
 - CSP + SVG hard-zero gate (must pass before any commit touching ui_components): `node tools/scripts/audit-csp.mjs`
 
-- Browser smoke harnesses (need `python -m http.server 8124` at repo root; Edge via tim-web/poc playwright-core):
- `node tools/theme-studio/run.mjs`, `node tools/scripts/canvas-chart-smoke.mjs`,
+- Browser smoke harnesses (need `python -m http.server 8124` at repo root; they hard-import playwright-core from `../../../tim-web/poc`):
+ `node tools/scripts/canvas-chart-smoke.mjs`,
  `node tools/scripts/wave2-stage-sweep.mjs`, `node tools/scripts/data-explorer-smoke.mjs`,
  `node tools/scripts/cluster-graph-perf.mjs`
+
+- Studio browser smoke (self-hosted on a random port, no 8124 server needed): `npm run test:studio:browser`; `node tools/theme-studio/run.mjs` is a compatibility alias that runs the same `tools/scripts/studio-integration-smoke.mjs`
 
 - Generated .NET 10 backend (SPA template): `dotnet build templates/spa/backend/SpaApi.csproj`
 
 - Rebuild component metadata after adding/changing a component:
  `node packages/javascript/browser/ui_components/metadata/build-metadata.mjs` (`--check` to validate only)
 
-- Generate pages from a PageDefinition: `node tools/page-gen.js --def page.json --mode static --output ./out/`.
+- Generate pages from a definition: `node tools/page-gen.js --def page.json --mode static --output ./out/`.
+ The input must be the page-gen format `{ page: {...}, fields: [{ fieldName, fieldType, ... }] }` or a DefinitionTemplate; a plain PageDefinition `{ name, type, fields }` is rejected (`缺少 page 區塊`).
  For a DefinitionTemplate: `--page <id>` for one page, or `--pages <id,id,...>` / `--all` to generate many in a single process (aggregated JSON result; all selected pages are validated before any is written).
 
 ## Test Artifacts and Cleanup

@@ -21,16 +21,33 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <body>
 <main>
 <h1>ExceptionMiddleware - Global Exception Handling</h1>
+<blockquote>
+<p>⚠ Reference code: this folder has no .csproj, is not compiled or referenced by any project, and is not built by CI; the content below is not build-verified.</p>
+</blockquote>
 <p>Global exception handling middleware for ASP.NET Core applications.</p>
 <h2>Features</h2>
 <ul>
-<li>Centralized exception handling</li>
-<li>Custom exception types (ValidationException, NotFoundException, etc.)</li>
-<li>Automatic error logging</li>
-<li>Consistent error response format</li>
-<li>Environment-aware error details (development vs production)</li>
-<li>Automatic status code mapping</li>
-<li>Trace ID tracking</li>
+<li>
+<p>Centralized exception handling</p>
+</li>
+<li>
+<p>Custom exception types (ValidationException, NotFoundException, etc.)</p>
+</li>
+<li>
+<p>Automatic error logging</p>
+</li>
+<li>
+<p>Consistent error response format</p>
+</li>
+<li>
+<p>Build-configuration-dependent error details: stack trace and inner-exception message only when compiled with <code>DEBUG</code> (<code>#if DEBUG</code>, a compile-time switch, not the hosting environment)</p>
+</li>
+<li>
+<p>Automatic status code mapping</p>
+</li>
+<li>
+<p>Trace ID tracking</p>
+</li>
 </ul>
 <h2>Setup</h2>
 <h3>1. Register Middleware in Program.cs</h3>
@@ -146,7 +163,7 @@ if (!HasAccess())
   &quot;traceId&quot;: &quot;0HMVFE42N8GJ7:00000001&quot;
 }
 </code></pre>
-<p>In development environment (DEBUG mode), additional details are included:</p>
+<p>For every mapping marked "Include Details" below (400/404/409/500), the raw <code>exception.Message</code> is always added to <code>errors</code>, in Release builds too; e.g. an unhandled <code>NullReferenceException</code> returns its message to the client. Only builds compiled with <code>DEBUG</code> (<code>#if DEBUG</code>, compile-time, not <code>ASPNETCORE_ENVIRONMENT</code>) additionally include the stack trace and inner-exception message:</p>
 <pre><code class="language-json">{
   &quot;success&quot;: false,
   &quot;statusCode&quot;: 500,
@@ -223,6 +240,7 @@ if (!HasAccess())
 </tr>
 </tbody>
 </table>
+<p>"Yes" means <code>exception.Message</code> is sent to the client in every build configuration; for the built-in exception rows the top-level <code>message</code> is generic but <code>errors</code> still carries the original exception text.</p>
 <h2>Logging</h2>
 <p>All exceptions are automatically logged with:
 - Exception details
@@ -256,21 +274,42 @@ private (HttpStatusCode statusCode, string message, bool includeDetails) GetErro
 </code></pre>
 <h2>Dependencies</h2>
 <ul>
-<li>Microsoft.AspNetCore.Http</li>
-<li>Microsoft.Extensions.Logging</li>
-<li>System.Text.Json</li>
-<li>ApiResponse component</li>
-<li>.NET 6.0 or higher</li>
+<li>
+<p>Microsoft.AspNetCore.Http</p>
+</li>
+<li>
+<p>Microsoft.Extensions.Logging</p>
+</li>
+<li>
+<p>System.Text.Json</p>
+</li>
+<li>
+<p>ApiResponse component</p>
+</li>
+<li>
+<p>.NET 10 (<code>net10.0</code>, the repo's target framework)</p>
+</li>
 </ul>
 <h2>Benefits</h2>
 <ol>
-<li><strong>Centralized Handling</strong> - All exceptions handled in one place</li>
-<li><strong>Consistent Responses</strong> - Uniform error format across the application</li>
-<li><strong>Automatic Logging</strong> - All errors logged automatically</li>
-<li><strong>Type Safety</strong> - Custom exception types for different scenarios</li>
-<li><strong>Development-Friendly</strong> - Detailed error info in development mode</li>
-<li><strong>Production-Safe</strong> - Minimal error exposure in production</li>
-<li><strong>Request Tracking</strong> - Trace ID for debugging</li>
+<li>
+<p><strong>Centralized Handling</strong> - All exceptions handled in one place</p>
+</li>
+<li>
+<p><strong>Consistent Responses</strong> - Uniform error format across the application</p>
+</li>
+<li>
+<p><strong>Automatic Logging</strong> - All errors logged automatically</p>
+</li>
+<li>
+<p><strong>Type Safety</strong> - Custom exception types for different scenarios</p>
+</li>
+<li>
+<p><strong>Debug-Build Details</strong> - Stack trace and inner exception only in <code>DEBUG</code> builds</p>
+</li>
+<li>
+<p><strong>Request Tracking</strong> - Trace ID for debugging</p>
+</li>
 </ol>
 </main>
 </body>

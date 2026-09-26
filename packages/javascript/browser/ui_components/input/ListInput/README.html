@@ -64,7 +64,7 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <td><code>options.fields</code></td>
 <td><code>Array</code></td>
 <td><code>null</code></td>
-<td>欄位 schema <code>[{name, type, label, placeholder, flex, width, options, required, min, max, maxLength, accept}]</code>，支援 type: <code>text</code>、<code>select</code>、<code>number</code>、<code>checkbox</code>、<code>email</code>、<code>tel</code>、<code>date</code>、<code>image</code>、<code>file</code></td>
+<td>欄位 schema <code>[{name, type, label, placeholder, flex, width, options, required, min, max, maxLength, accept}]</code>，支援 type: <code>text</code>、<code>select</code>、<code>number</code>、<code>checkbox</code>、<code>email</code>、<code>tel</code>、<code>date</code>、<code>image</code>、<code>file</code>（目前行為：<code>image</code> / <code>file</code> 欄位選取的檔案不會保留在項目值中，<code>getValues()</code> / <code>onChange</code> 取得的該欄位為 <code>undefined</code>）</td>
 </tr>
 <tr>
 <td><code>options.renderItem</code></td>
@@ -111,13 +111,21 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 </table>
 <h3>內建功能</h3>
 <ul>
-<li>拖曳排序（drag &amp; drop）</li>
-<li>上移/下移按鈕</li>
-<li>項目計數器（<code>n / maxItems</code>）</li>
-<li>CSV 範本下載（使用 fields schema 時自動提供）</li>
+<li>
+<p>拖曳排序（drag &amp; drop）</p>
+</li>
+<li>
+<p>上移/下移按鈕</p>
+</li>
+<li>
+<p>項目計數器（<code>n / maxItems</code>，僅在設定 <code>title</code> 時顯示）</p>
+</li>
+<li>
+<p>CSV 範本下載（同時設定 <code>title</code> 與 <code>fields</code> 時才提供）</p>
+</li>
 </ul>
 <h2>使用範例</h2>
-<pre><code class="language-js">import { ListInput } from './input/ListInput/index.js';
+<pre><code class="language-js">import { ListInput } from './index.js';
 
 // 方式一：使用 fields schema
 const list = new ListInput({

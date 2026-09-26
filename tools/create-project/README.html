@@ -49,11 +49,19 @@ node tools/create-project/create-project.mjs --name my-app
 </tr>
 <tr>
 <td><code>node scripts/publish.mjs</code></td>
-<td>發佈 <code>dist\</code>：快照（穿透 junction）+ <code>SNAPSHOT.json</code> 憑證（tree/dirty/時間/檔數）+ 封閉驗證（fail 即擋）</td>
+<td>發佈 <code>dist\</code>：快照（穿透 junction）+ <code>SNAPSHOT.json</code> 憑證（tree/dirty/時間/檔數，另記 ui_components、page-generator、custom_components 三庫各自的檔數、位元組數與 SHA-256 內容摘要及合併摘要）+ 封閉驗證（fail 即擋）</td>
 </tr>
 <tr>
 <td><code>scripts\verify-sealed.mjs</code></td>
 <td>靜態解析 JS/HTML/CSS 全部相對引用:禁逃出、禁外部腳手架路徑、禁根絕對、禁 bare import</td>
+</tr>
+<tr>
+<td><code>scripts\b4a-lock.mjs</code></td>
+<td><code>b4a.lock.json</code> 解析與建立（v2 釘 Git tree，v1 commit 僅相容讀取）；dev-link／sync-lib／publish 共用</td>
+</tr>
+<tr>
+<td><code>scripts\snapshot-integrity.mjs</code></td>
+<td>三庫內容盤點：逐檔 SHA-256 → 每庫摘要與合併摘要；publish 寫入 <code>SNAPSHOT.json</code>，<code>tools/scripts/verify-consumer-snapshots.mjs</code> 用來驗證</td>
 </tr>
 <tr>
 <td><code>src\frontend\</code></td>

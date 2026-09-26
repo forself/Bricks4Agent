@@ -36,7 +36,7 @@ const msd = new MultiSelectDropdown({
     onChange: (values, items) =&gt; {}, // 變更回調
     size: 'medium',                 // 'small' | 'medium' | 'large'
     disabled: false,                // 停用
-    width: '300px',                 // 寬度
+    width: '100%',                  // 寬度（預設跟隨容器）
     emptyText: '無符合項目',         // 無結果文字
     modalTitle: '選擇項目',          // Modal 標題
     maxCount: Infinity,             // 最大可選數量
@@ -80,12 +80,28 @@ const msd = new MultiSelectDropdown({
 <td><code>open()</code> / <code>close()</code></td>
 <td>開關下拉選單</td>
 </tr>
+<tr>
+<td><code>toggle()</code></td>
+<td>切換下拉選單開關</td>
+</tr>
+<tr>
+<td><code>setDisabled(bool)</code></td>
+<td>設定停用狀態</td>
+</tr>
+<tr>
+<td><code>show()</code> / <code>hide()</code></td>
+<td>顯示 / 隱藏元件</td>
+</tr>
 </tbody>
 </table>
 <h3>屬性</h3>
 <ul>
-<li><code>element</code> — 根 DOM 元素</li>
-<li><code>selectedValues</code> — Set，目前已選值</li>
+<li>
+<p><code>element</code> — 根 DOM 元素</p>
+</li>
+<li>
+<p><code>selectedValues</code> — Set，目前已選值</p>
+</li>
 </ul>
 <h2>使用範例</h2>
 <pre><code class="language-javascript">import { MultiSelectDropdown } from './MultiSelectDropdown.js';

@@ -31,31 +31,65 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <code>line-worker</code> must sign broker HTTP requests with the shared worker credential configured under <code>Worker.Auth</code>.</p>
 <p>Operator runbook:</p>
 <ul>
-<li><a href="../../../../docs/manuals/line-sidecar-runbook.html">line-sidecar-runbook.md</a></li>
-<li><a href="../../../../docs/manuals/line-sidecar-runbook.zh-TW.html">line-sidecar-runbook.zh-TW.md</a></li>
+<li>
+<p><a href="../../../../docs/manuals/line-sidecar-runbook.html">line-sidecar-runbook.md</a></p>
+</li>
+<li>
+<p><a href="../../../../docs/manuals/line-sidecar-runbook.zh-TW.html">line-sidecar-runbook.zh-TW.md</a></p>
+</li>
 </ul>
 <p>The worker is only the ingress bridge.
 User-facing dialogue, routing, confirmation, and query/production decisions belong to the broker high-level layer, which is configured separately from execution/runtime LLM settings through <code>HighLevelLlm</code>.</p>
 <p>Verified on 2026-03-22:</p>
 <ul>
-<li>signed live webhook verification returned <code>200</code></li>
-<li>broker high-level processing accepted UTF-8 Chinese production input</li>
-<li>canonical sidecar ingress path remained functional on ports <code>5357/5361</code></li>
+<li>
+<p>signed live webhook verification returned <code>200</code></p>
+</li>
+<li>
+<p>broker high-level processing accepted UTF-8 Chinese production input</p>
+</li>
+<li>
+<p>canonical sidecar ingress path remained functional on ports <code>5357/5361</code></p>
+</li>
 </ul>
 <p>Current verified query boundary:</p>
 <ul>
-<li>explicit broker-mediated search is available through <code>?search &lt;keywords&gt;</code></li>
-<li>plain <code>?query</code> messages still go through the high-level dialogue path</li>
-<li>real-time query tooling is not yet auto-selected for arbitrary query text; the current controlled live path is the explicit <code>?search</code> subcommand</li>
+<li>
+<p>explicit broker-mediated search is available through <code>?search &lt;keywords&gt;</code> (alias <code>?s</code>)</p>
+</li>
+<li>
+<p>explicit transport queries are routed by the broker through the <code>transport.query</code> tool: <code>?rail</code> (aliases <code>?r</code>, <code>?train</code>, <code>?tra</code>), <code>?hsr</code> (<code>?thsr</code>), <code>?bus</code> (<code>?b</code>), <code>?flight</code> (<code>?f</code>, <code>?flights</code>)</p>
+</li>
+<li>
+<p><code>?profile</code> (aliases <code>?p</code>, <code>?me</code>, <code>?whoami</code>) is answered by the broker from the stored high-level user profile, without a tool call</p>
+</li>
+<li>
+<p>plain <code>?query</code> messages without one of these subcommands still go through the high-level dialogue path</p>
+</li>
+<li>
+<p>real-time query tooling is not yet auto-selected for arbitrary query text; the current controlled live paths are the explicit subcommands above</p>
+</li>
 </ul>
 <p>Recommended sidecar flow:</p>
 <ol>
-<li>Copy <code>appsettings.sidecar.example.json</code> to local <code>appsettings.json</code> and fill in real LINE credentials.</li>
-<li>Fill in <code>Worker.Auth.WorkerType</code>, <code>Worker.Auth.KeyId</code>, and <code>Worker.Auth.SharedSecret</code>.</li>
-<li>Ensure <code>%LOCALAPPDATA%\ngrok\ngrok.yml</code> exists and contains a valid ngrok authtoken.</li>
-<li>Run <code>line-sidecar.ps1 up</code>.</li>
-<li>Run <code>line-sidecar.ps1 verify</code> to send a signed synthetic webhook event.</li>
-<li>Use <code>line-sidecar.ps1 status</code>, <code>line-sidecar.ps1 restart</code>, and <code>line-sidecar.ps1 down</code> for runtime control.</li>
+<li>
+<p>Copy <code>appsettings.sidecar.example.json</code> to local <code>appsettings.json</code> and fill in real LINE credentials.</p>
+</li>
+<li>
+<p>Fill in <code>Worker.Auth.WorkerType</code>, <code>Worker.Auth.KeyId</code>, and <code>Worker.Auth.SharedSecret</code>.</p>
+</li>
+<li>
+<p>Ensure <code>%LOCALAPPDATA%\ngrok\ngrok.yml</code> exists and contains a valid ngrok authtoken.</p>
+</li>
+<li>
+<p>Run <code>line-sidecar.ps1 up</code>.</p>
+</li>
+<li>
+<p>Run <code>line-sidecar.ps1 verify</code> to send a signed synthetic webhook event.</p>
+</li>
+<li>
+<p>Use <code>line-sidecar.ps1 status</code>, <code>line-sidecar.ps1 restart</code>, and <code>line-sidecar.ps1 down</code> for runtime control.</p>
+</li>
 </ol>
 <p>Unified one-command entrypoint:</p>
 <pre><code class="language-powershell">powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\line-sidecar.ps1 up
@@ -68,28 +102,60 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\l
 <p>The unified script is the canonical operator entrypoint. It still starts separate broker, line-worker, and ngrok processes, but it now auto-starts the local ngrok agent if the admin API on <code>127.0.0.1:4040</code> is not already running.</p>
 <p>Default sidecar ports:</p>
 <ul>
-<li>broker: <code>5361</code></li>
-<li>line-worker webhook: <code>5357</code></li>
+<li>
+<p>broker: <code>5361</code></p>
+</li>
+<li>
+<p>line-worker webhook: <code>5357</code></p>
+</li>
 </ul>
 <p>Why <code>5357</code>:</p>
 <ul>
-<li>this machine already has a reusable <code>http://*:5357/</code> URL ACL</li>
-<li>it avoids the old long-running <code>19090</code> worker</li>
-<li>it avoids the more collision-prone <code>8xxx</code> range</li>
-<li>sidecar therefore binds <code>WebhookHost="*"</code> on this port</li>
+<li>
+<p>this machine already has a reusable <code>http://*:5357/</code> URL ACL</p>
+</li>
+<li>
+<p>it avoids the old long-running <code>19090</code> worker</p>
+</li>
+<li>
+<p>it avoids the more collision-prone <code>8xxx</code> range</p>
+</li>
+<li>
+<p>sidecar therefore binds <code>WebhookHost="*"</code> on this port</p>
+</li>
 </ul>
 <p>Notes:</p>
 <ul>
-<li><code>appsettings.json</code> is local-only and ignored by git.</li>
-<li><code>line-sidecar.ps1</code> is the canonical operator entrypoint for local Windows sidecar usage.</li>
-<li><code>start-sidecar-stack.ps1</code> creates a <code>.run/line-sidecar</code> workspace and updates the LINE webhook endpoint to the active tunnel URL unless <code>-SkipWebhookUpdate</code> is used.</li>
-<li>in sidecar mode, the observed managed workspace root is <code>.run/line-sidecar/broker/managed-workspaces</code>; production broker configuration can override this with an absolute <code>HighLevelCoordinator:AccessRoot</code></li>
-<li><code>verify-live-webhook.ps1</code> reads the current LINE webhook endpoint from LINE first, then falls back to <code>.last-tunnel-url</code>.</li>
-<li>all broker and webhook verification should use UTF-8 input; use <code>verify-high-level-process.ps1</code> or <code>verify-live-webhook.ps1</code> with <code>-MessageFile</code> / <code>-MessageBase64Utf8</code> when shell encoding is unreliable.</li>
-<li><code>start-sidecar-stack.ps1</code>, <code>status-sidecar-stack.ps1</code>, <code>stop-sidecar-stack.ps1</code>, <code>verify-live-webhook.ps1</code>, and <code>verify-high-level-process.ps1</code> remain as lower-level scripts behind <code>line-sidecar.ps1</code>.</li>
-<li><code>line-sidecar.ps1 restart</code> is the canonical reload path after broker or worker changes.</li>
-<li><code>start-with-tunnel.ps1</code> is a legacy tunnel launcher path, not the canonical sidecar flow.</li>
-<li>the current canonical sidecar pair is <code>5357</code> for the webhook ingress and <code>5361</code> for the broker.</li>
+<li>
+<p><code>appsettings.json</code> is local-only and ignored by git.</p>
+</li>
+<li>
+<p><code>line-sidecar.ps1</code> is the canonical operator entrypoint for local Windows sidecar usage.</p>
+</li>
+<li>
+<p><code>start-sidecar-stack.ps1</code> creates a <code>.run/line-sidecar</code> workspace and updates the LINE webhook endpoint to the active tunnel URL unless <code>-SkipWebhookUpdate</code> is used.</p>
+</li>
+<li>
+<p>in sidecar mode, the observed managed workspace root is <code>.run/line-sidecar/broker/managed-workspaces</code>; production broker configuration can override this with an absolute <code>HighLevelCoordinator:AccessRoot</code></p>
+</li>
+<li>
+<p><code>verify-live-webhook.ps1</code> reads the current LINE webhook endpoint from LINE first, then falls back to <code>.last-tunnel-url</code>.</p>
+</li>
+<li>
+<p>all broker and webhook verification should use UTF-8 input; use <code>verify-high-level-process.ps1</code> or <code>verify-live-webhook.ps1</code> with <code>-MessageFile</code> / <code>-MessageBase64Utf8</code> when shell encoding is unreliable.</p>
+</li>
+<li>
+<p><code>start-sidecar-stack.ps1</code>, <code>status-sidecar-stack.ps1</code>, <code>stop-sidecar-stack.ps1</code>, <code>verify-live-webhook.ps1</code>, and <code>verify-high-level-process.ps1</code> remain as lower-level scripts behind <code>line-sidecar.ps1</code>.</p>
+</li>
+<li>
+<p><code>line-sidecar.ps1 restart</code> is the canonical reload path after broker or worker changes.</p>
+</li>
+<li>
+<p><code>start-with-tunnel.ps1</code> is a legacy tunnel launcher path, not the canonical sidecar flow.</p>
+</li>
+<li>
+<p>the current canonical sidecar pair is <code>5357</code> for the webhook ingress and <code>5361</code> for the broker.</p>
+</li>
 </ul>
 </main>
 </body>

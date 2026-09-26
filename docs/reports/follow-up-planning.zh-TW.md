@@ -68,7 +68,7 @@ LOG / Audit / Observability 不應只被視為維運便利功能。對 Bricks4Ag
 
 4. 產品化 runtime logging。
  - 決定 canonical stack：優先沿用 `Microsoft.Extensions.Logging`，接 structured JSON / file sink / OpenTelemetry。
- - `BaseLogger` 若要保留，需正式接入；否則標記為 legacy 或移除 broker reference，避免雙軌制度。
+ - `BaseLogger` 若要保留，需正式接入；否則標記為 legacy 或移除 broker reference，避免雙軌制度。接入方向見 [BaseLogger 治理式 logging 設計](../superpowers/specs/2026-06-20-baselogger-governance-design.zh-TW.md) 與 [實作計畫](../superpowers/plans/2026-06-20-baselogger-governance-pipeline.md)。
  - sidecar log 加入 rotation、retention、啟動批次識別與封存策略。
 
 5. 建立 redaction policy。

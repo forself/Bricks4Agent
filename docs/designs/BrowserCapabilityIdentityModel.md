@@ -1,5 +1,10 @@
 # Browser Capability Identity Model
 
+> **Implementation status (checked 2026-09-26)**
+>
+> - The implemented action-level ladder is `read` / `navigate` / `authenticate` / `draft_action` / `committed_action` (`packages/csharp/broker-core/Services/BrowserActionGate.cs:7-14`); there is no `submit` level as listed under Secondary Axes. See [BrowserActionAndApprovalModel.md](BrowserActionAndApprovalModel.md).
+> - `browser.reference.anonymous.read` and `browser.reference.anonymous.navigate` are `active`; the system-account and user-delegated reference specs remain `planned` (`packages/csharp/broker/tool-specs/*/tool.json`).
+
 ## Goal
 
 Define the first-level identity split for broker-governed browser tools.
@@ -200,15 +205,17 @@ Current phase:
 
 - make the tool registry able to read and surface `browser_profile`
 
-- keep browser tools in `planned` state until execution/runtime policy is ready
+- keep browser tools in `planned` state until execution/runtime policy is ready (anonymous `read` / `navigate` reference tools are now `active`; system-account and user-delegated remain `planned`)
+
+- browser worker runtime (implemented: `packages/csharp/workers/browser-worker`, handlers for `browser.read` and `browser.navigate`)
+
+- broker-owned session leasing records with issue/revoke (implemented: `packages/csharp/broker/Endpoints/BrowserBindingEndpoints.cs:160-188`)
 
 Not yet implemented:
 
-- browser worker runtime
-
 - credential vault integration
 
-- session replay or session leasing
+- session replay (browser worker reuse of leased sessions)
 
 - delegated write flows
 

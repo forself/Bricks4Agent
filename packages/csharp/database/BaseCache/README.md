@@ -27,7 +27,8 @@
 ```csharp
 using BaseCache;
 
-var cache = new BaseCache();
+// 命名空間與類別同名：只寫 new BaseCache() 會觸發 CS0118，必須寫完整名稱
+var cache = new BaseCache.BaseCache();
 
 // 基本 Key-Value
 cache.Set("user:1", new User { Name = "John" }, TimeSpan.FromMinutes(30));
@@ -203,7 +204,7 @@ Console.WriteLine($"命中率: {cache.Stats.HitRate:F2}%");
 ### 配置選項
 
 ```csharp
-var cache = new BaseCache(new CachOptions
+var cache = new BaseCache.BaseCache(new CachOptions
 {
     CleanupInterval = TimeSpan.FromMinutes(5),  // 清理間隔
     MaxItems = 10000,  // 最大項目數 (0 = 無限制)
@@ -216,11 +217,17 @@ var cache = new BaseCache(new CachOptions
 ### 1. API 響應快取
 
 ```csharp
+// GetOrSet 只接受同步 factory；傳入 async lambda 會把 Task 本身當成值快取，在 async 方法中直接 return 也無法編譯（CS4016），
+// 非同步來源請先 TryGet，未命中再 await 後 Set
 public async Task<UserDto> GetUserAsync(int id)
 {
-    return cache.GetOrSet($"user:{id}", async () => {
-        return await _repository.GetUserAsync(id);
-    }, TimeSpan.FromMinutes(10));
+    var key = $"user:{id}";
+    if (cache.TryGet<UserDto>(key, out var cached) && cached != null)
+        return cached;
+
+    var user = await _repository.GetUserAsync(id);
+    cache.Set(key, user, TimeSpan.FromMinutes(10));
+    return user;
 }
 ```
 

@@ -21,29 +21,66 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <body>
 <main>
 <h1>LINE 專案訪談代理設計</h1>
-<p>Date: 2026-03-30<br>
-Status: 已在 <code>main</code> 落地第一階段訪談/審核範圍</p>
+<p>Date: 2026-03-30  </p>
+<p>Status: 已在 <code>main</code> 落地第一階段訪談/審核範圍</p>
+<blockquote>
+<p><strong>實作現況（2026-09-26 核對）</strong></p>
+<ul>
+<li>實際只寫入兩種 document：<code>hlm.project-interview.requirements.{channel}.{userId}</code>（整份 task document，含 session state）與 <code>hlm.project-interview.version-graph.{channel}.{userId}.{version}</code>（<code>packages/csharp/broker/Services/ProjectInterviewStateService.cs:113</code>、<code>:116</code>）。「Data Persistence」列出的 <code>.state.*</code>、<code>.review.*</code> 兩族並不存在。</li>
+<li>沒有獨立的 project interview validator 類別；phase／command 的閘控在 <code>packages/csharp/broker/Services/ProjectInterviewStateMachine.cs</code>。</li>
+</ul>
+</blockquote>
 <h2>Implementation Snapshot</h2>
 <p>目前 <code>main</code> 已實作：</p>
 <ul>
-<li><code>/proj</code>、<code>/ok</code>、<code>/revise</code>、<code>/cancel</code> 明確命令入口</li>
-<li>broker-owned project interview state machine</li>
-<li>task-scoped assertion persistence</li>
-<li>explicit restatement option gating</li>
-<li>project scale classification</li>
-<li>template family catalog 與 narrowing</li>
-<li>canonical project definition compilation</li>
-<li>per-version DAG persistence</li>
-<li><code>workflow-design.vN.json</code> / <code>workflow-design.vN.pdf</code> versioned artifact generation</li>
-<li><code>/revise</code> 會建立新 review version，同時保留舊 DAG</li>
-<li><code>/proj</code> 目前的 LINE prompts 已是中英雙語</li>
-<li>對外文案不再直接暴露 <code>tool_page</code>、<code>mini_app</code>、<code>structured_app</code>、<code>template family</code> 這類內部術語</li>
+<li>
+<p><code>/proj</code>、<code>/ok</code>、<code>/revise</code>、<code>/cancel</code> 明確命令入口</p>
+</li>
+<li>
+<p>broker-owned project interview state machine</p>
+</li>
+<li>
+<p>task-scoped assertion persistence</p>
+</li>
+<li>
+<p>explicit restatement option gating</p>
+</li>
+<li>
+<p>project scale classification</p>
+</li>
+<li>
+<p>template family catalog 與 narrowing</p>
+</li>
+<li>
+<p>canonical project definition compilation</p>
+</li>
+<li>
+<p>per-version DAG persistence</p>
+</li>
+<li>
+<p><code>workflow-design.vN.json</code> / <code>workflow-design.vN.pdf</code> versioned artifact generation</p>
+</li>
+<li>
+<p><code>/revise</code> 會建立新 review version，同時保留舊 DAG</p>
+</li>
+<li>
+<p><code>/proj</code> 目前的 LINE prompts 已是中英雙語</p>
+</li>
+<li>
+<p>對外文案不再直接暴露 <code>tool_page</code>、<code>mini_app</code>、<code>structured_app</code>、<code>template family</code> 這類內部術語</p>
+</li>
 </ul>
 <p>目前仍刻意留在第一階段，尚未展開的部分：</p>
 <ul>
-<li>更深的 template-specific requirement collection</li>
-<li>更豐富的 assertion bundle 與 module/style interview</li>
-<li>從 review-approved artifacts 自動進入後續 project construction 的完整執行階段</li>
+<li>
+<p>更深的 template-specific requirement collection</p>
+</li>
+<li>
+<p>更豐富的 assertion bundle 與 module/style interview</p>
+</li>
+<li>
+<p>從 review-approved artifacts 自動進入後續 project construction 的完整執行階段</p>
+</li>
 </ul>
 <h2>學理設計理由</h2>
 <h3>為什麼這是一個協議化訪談系統</h3>
@@ -62,8 +99,12 @@ Status: 已在 <code>main</code> 落地第一階段訪談/審核範圍</p>
 <p>此功能同時需要精確實作交接與深度架構討論。雙語 spec 可以提升 review 可及性；英文版保留 exact naming 的 canonical 地位，中文版負責完整傳達架構、限制與決策脈絡。</p>
 <h2>語言版本</h2>
 <ul>
-<li>英文主 spec：<code>docs/superpowers/specs/2026-03-30-line-project-interview-agent-design.md</code></li>
-<li>繁體中文對應版：<code>docs/superpowers/specs/2026-03-30-line-project-interview-agent-design.zh-TW.md</code></li>
+<li>
+<p>英文主 spec：<code>docs/superpowers/specs/2026-03-30-line-project-interview-agent-design.md</code></p>
+</li>
+<li>
+<p>繁體中文對應版：<code>docs/superpowers/specs/2026-03-30-line-project-interview-agent-design.zh-TW.md</code></p>
+</li>
 </ul>
 <p>規則：
 - 英文版是 exact type/file naming 的 canonical source
@@ -71,27 +112,51 @@ Status: 已在 <code>main</code> 落地第一階段訪談/審核範圍</p>
 - 若兩份內容衝突，以英文 naming 為準，但需同步回修中文版</p>
 <h2>Goal</h2>
 <p>新增一個專用的 LINE task-mode agent，從 <code>/proj</code> 進入，執行任務範圍內的軟體專案需求訪談，檢測缺漏與衝突需求，並產出可下載的 workflow design 文件供使用者審查。</p>
-<p>這是第一階段而已。<br>
-第一版不自動實作專案。</p>
+<p>這是第一階段而已。  </p>
+<p>第一版不自動實作專案。</p>
 <p>第一版的任務是：</p>
 <ul>
-<li>訪談使用者</li>
-<li>將需求正規化為結構化狀態</li>
-<li>產出架構與實作計畫輸出</li>
-<li>生成版本化 workflow design 文件</li>
-<li>生成對應的結構化 JSON artifact</li>
-<li>讓使用者在 LINE 內審查並明確批准</li>
+<li>
+<p>訪談使用者</p>
+</li>
+<li>
+<p>將需求正規化為結構化狀態</p>
+</li>
+<li>
+<p>產出架構與實作計畫輸出</p>
+</li>
+<li>
+<p>生成版本化 workflow design 文件</p>
+</li>
+<li>
+<p>生成對應的結構化 JSON artifact</p>
+</li>
+<li>
+<p>讓使用者在 LINE 內審查並明確批准</p>
+</li>
 </ul>
 <h2>為什麼是獨立 task type</h2>
 <p>這個能力不應塞進一般 LINE 對話，也不應混入現有 <code>system_scaffold</code>。</p>
 <p>因為它需要：</p>
 <ul>
-<li>明確 task entry</li>
-<li>高階模型做 requirement elicitation</li>
-<li>任務範圍內記憶，不重用跨任務人格</li>
-<li>決定性的 completeness/conflict checks</li>
-<li>版本化設計文件生成</li>
-<li>在任何 implementation workflow 前的硬性 approval gate</li>
+<li>
+<p>明確 task entry</p>
+</li>
+<li>
+<p>高階模型做 requirement elicitation</p>
+</li>
+<li>
+<p>任務範圍內記憶，不重用跨任務人格</p>
+</li>
+<li>
+<p>決定性的 completeness/conflict checks</p>
+</li>
+<li>
+<p>版本化設計文件生成</p>
+</li>
+<li>
+<p>在任何 implementation workflow 前的硬性 approval gate</p>
+</li>
 </ul>
 <p>新的 task type：</p>
 <ul>
@@ -100,237 +165,513 @@ Status: 已在 <code>main</code> 落地第一階段訪談/審核範圍</p>
 <h2>Scope</h2>
 <h3>Version one 包含</h3>
 <ul>
-<li><code>/proj</code> 明確入口</li>
-<li>建立 project interview session</li>
-<li>project name 唯一性檢查</li>
-<li>task-scoped assertion memory</li>
-<li>project scale classification</li>
-<li>template-family selection</li>
-<li>JSON-defined program generation</li>
-<li>gap/conflict detection</li>
-<li>workflow design 文件生成</li>
-<li>面向使用者的版本化 PDF</li>
-<li>面向 broker 的版本化 JSON</li>
-<li>Google Drive upload 與 LINE delivery</li>
-<li>明確 review commands：</li>
-<li><code>/ok</code></li>
-<li><code>/revise</code></li>
-<li><code>/cancel</code></li>
+<li>
+<p><code>/proj</code> 明確入口</p>
+</li>
+<li>
+<p>建立 project interview session</p>
+</li>
+<li>
+<p>project name 唯一性檢查</p>
+</li>
+<li>
+<p>task-scoped assertion memory</p>
+</li>
+<li>
+<p>project scale classification</p>
+</li>
+<li>
+<p>template-family selection</p>
+</li>
+<li>
+<p>JSON-defined program generation</p>
+</li>
+<li>
+<p>gap/conflict detection</p>
+</li>
+<li>
+<p>workflow design 文件生成</p>
+</li>
+<li>
+<p>面向使用者的版本化 PDF</p>
+</li>
+<li>
+<p>面向 broker 的版本化 JSON</p>
+</li>
+<li>
+<p>Google Drive upload 與 LINE delivery</p>
+</li>
+<li>
+<p>明確 review commands：</p>
+</li>
+<li>
+<p><code>/ok</code></p>
+</li>
+<li>
+<p><code>/revise</code></p>
+</li>
+<li>
+<p><code>/cancel</code></p>
+</li>
 </ul>
 <h3>Version one 不包含</h3>
 <ul>
-<li>真正專案實作</li>
-<li>自主 code execution</li>
-<li>長期 user memory</li>
-<li>重用舊專案偏好</li>
-<li>跨任務 personalization</li>
-<li>任意自然語言 approval detection</li>
+<li>
+<p>真正專案實作</p>
+</li>
+<li>
+<p>自主 code execution</p>
+</li>
+<li>
+<p>長期 user memory</p>
+</li>
+<li>
+<p>重用舊專案偏好</p>
+</li>
+<li>
+<p>跨任務 personalization</p>
+</li>
+<li>
+<p>任意自然語言 approval detection</p>
+</li>
 </ul>
 <h2>Entry And Routing</h2>
 <h3>明確入口</h3>
-<p>這個 agent 不能從一般對話隱式進入。<br>
-Version one 唯一支援的入口是：</p>
+<p>這個 agent 不能從一般對話隱式進入。  </p>
+<p>Version one 唯一支援的入口是：</p>
 <ul>
 <li><code>/proj</code></li>
 </ul>
 <h3>Routing 規則</h3>
 <ul>
-<li>一般 LINE chat 維持在既有 high-level conversation path</li>
-<li><code>/proj</code> 轉進 <code>project_interview</code></li>
-<li>進入 active session 後，後續訊息都綁在該 session，直到：</li>
-<li>confirmed</li>
-<li>cancelled</li>
-<li>expired</li>
+<li>
+<p>一般 LINE chat 維持在既有 high-level conversation path</p>
+</li>
+<li>
+<p><code>/proj</code> 轉進 <code>project_interview</code></p>
+</li>
+<li>
+<p>進入 active session 後，後續訊息都綁在該 session，直到：</p>
+</li>
+<li>
+<p>confirmed</p>
+</li>
+<li>
+<p>cancelled</p>
+</li>
+<li>
+<p>expired</p>
+</li>
 </ul>
 <h3>Review commands</h3>
 <p>文件生成後，只允許下列明確指令改變狀態：</p>
 <ul>
-<li><code>/ok</code></li>
-<li><code>/revise</code></li>
-<li><code>/cancel</code></li>
+<li>
+<p><code>/ok</code></p>
+</li>
+<li>
+<p><code>/revise</code></p>
+</li>
+<li>
+<p><code>/cancel</code></p>
+</li>
 </ul>
 <h2>Core Constraints</h2>
 <h3>只保留 task-scoped memory</h3>
-<p>它不是一般聊天人格。<br>
-除 broker 原本就必須保留的 audit/artifact records 外，不保留任何跨任務 user memory。</p>
+<p>它不是一般聊天人格。  </p>
+<p>除 broker 原本就必須保留的 audit/artifact records 外，不保留任何跨任務 user memory。</p>
 <h3>高級模型要求</h3>
-<p>requirement elicitation、contradiction detection、design synthesis 必須使用高級模型。<br>
-但 broker 不能直接信任模型輸出。</p>
+<p>requirement elicitation、contradiction detection、design synthesis 必須使用高級模型。  </p>
+<p>但 broker 不能直接信任模型輸出。</p>
 <p>因此 version one 明確分離：</p>
 <ul>
-<li>高級 interview/synthesis model</li>
-<li>broker 端 deterministic validators</li>
+<li>
+<p>高級 interview/synthesis model</p>
+</li>
+<li>
+<p>broker 端 deterministic validators</p>
+</li>
 </ul>
 <h3>Superpowers-style process compliance</h3>
 <p>雖然 LINE 裡不是真的在跑本地 Codex skill，但流程上必須模擬相同約束：</p>
 <ul>
-<li>reviewed design 出現前，不得進 implementation</li>
-<li>使用者沒有明確確認前，不得轉進下游 implementation workflow</li>
-<li>輸出必須明講 testing expectations</li>
-<li>workflow design 中必須明講 TDD 是下游規則</li>
-<li>gaps/conflicts 在設計定稿前必須解決</li>
+<li>
+<p>reviewed design 出現前，不得進 implementation</p>
+</li>
+<li>
+<p>使用者沒有明確確認前，不得轉進下游 implementation workflow</p>
+</li>
+<li>
+<p>輸出必須明講 testing expectations</p>
+</li>
+<li>
+<p>workflow design 中必須明講 TDD 是下游規則</p>
+</li>
+<li>
+<p>gaps/conflicts 在設計定稿前必須解決</p>
+</li>
 </ul>
 <h2>High-Level Architecture</h2>
 <p>整體 flow 仍然掛在既有 broker high-level 系統上：</p>
 <p><code>LINE -&gt; line-worker -&gt; broker /api/v1/high-level/line/process -&gt; HighLevelCoordinator -&gt; project_interview services</code></p>
 <p>建議元件：</p>
 <ul>
-<li><code>/proj</code> command/parser extension</li>
-<li><code>HighLevelCoordinator</code> 內的 <code>project_interview</code> 路由</li>
-<li>assertion-state store</li>
-<li>interview progression service</li>
-<li>template-library selection service</li>
-<li>workflow design generator</li>
-<li>PDF render service</li>
-<li>現有 <code>LineArtifactDeliveryService</code></li>
+<li>
+<p><code>/proj</code> command/parser extension</p>
+</li>
+<li>
+<p><code>HighLevelCoordinator</code> 內的 <code>project_interview</code> 路由</p>
+</li>
+<li>
+<p>assertion-state store</p>
+</li>
+<li>
+<p>interview progression service</p>
+</li>
+<li>
+<p>template-library selection service</p>
+</li>
+<li>
+<p>workflow design generator</p>
+</li>
+<li>
+<p>PDF render service</p>
+</li>
+<li>
+<p>現有 <code>LineArtifactDeliveryService</code></p>
+</li>
 </ul>
 <p>broker 仍負責：</p>
 <ul>
-<li>task/session state</li>
-<li>storage</li>
-<li>validation</li>
-<li>artifact creation</li>
-<li>delivery</li>
-<li>approval gating</li>
+<li>
+<p>task/session state</p>
+</li>
+<li>
+<p>storage</p>
+</li>
+<li>
+<p>validation</p>
+</li>
+<li>
+<p>artifact creation</p>
+</li>
+<li>
+<p>delivery</p>
+</li>
+<li>
+<p>approval gating</p>
+</li>
 </ul>
 <p>模型負責：</p>
 <ul>
-<li>提出下一個最值得問的問題</li>
-<li>從使用者回答中抽取結構化語意</li>
-<li>建議架構與 task flow</li>
+<li>
+<p>提出下一個最值得問的問題</p>
+</li>
+<li>
+<p>從使用者回答中抽取結構化語意</p>
+</li>
+<li>
+<p>建議架構與 task flow</p>
+</li>
 </ul>
 <h2>Session And State Model</h2>
-<p>這個功能不能只靠單一抽象。<br>
-Version one 應採：</p>
+<p>這個功能不能只靠單一抽象。  </p>
+<p>Version one 應採：</p>
 <ul>
-<li>session-level state machine</li>
-<li>per-version directed acyclic graph (DAG)</li>
+<li>
+<p>session-level state machine</p>
+</li>
+<li>
+<p>per-version directed acyclic graph (DAG)</p>
+</li>
 </ul>
 <p>前者控制 phase 與 command admissibility，後者控制某一版文件的依賴真相。</p>
 <h3>Session state 應追蹤</h3>
 <ul>
-<li><code>current_phase</code></li>
-<li><code>current_question_id</code></li>
-<li><code>project_name</code></li>
-<li><code>project_folder_name</code></li>
-<li><code>project_scale</code></li>
-<li><code>candidate_template_families</code></li>
-<li><code>selected_template_family</code></li>
-<li><code>selected_modules</code></li>
-<li><code>selected_style_profile</code></li>
-<li><code>document_version</code></li>
-<li><code>review_state</code></li>
-<li><code>latest_pdf_artifact_id</code></li>
-<li><code>latest_json_artifact_id</code></li>
-<li><code>open_gaps</code></li>
-<li><code>open_conflicts</code></li>
-<li><code>pending_revision_request</code></li>
+<li>
+<p><code>current_phase</code></p>
+</li>
+<li>
+<p><code>current_question_id</code></p>
+</li>
+<li>
+<p><code>project_name</code></p>
+</li>
+<li>
+<p><code>project_folder_name</code></p>
+</li>
+<li>
+<p><code>project_scale</code></p>
+</li>
+<li>
+<p><code>candidate_template_families</code></p>
+</li>
+<li>
+<p><code>selected_template_family</code></p>
+</li>
+<li>
+<p><code>selected_modules</code></p>
+</li>
+<li>
+<p><code>selected_style_profile</code></p>
+</li>
+<li>
+<p><code>document_version</code></p>
+</li>
+<li>
+<p><code>review_state</code></p>
+</li>
+<li>
+<p><code>latest_pdf_artifact_id</code></p>
+</li>
+<li>
+<p><code>latest_json_artifact_id</code></p>
+</li>
+<li>
+<p><code>open_gaps</code></p>
+</li>
+<li>
+<p><code>open_conflicts</code></p>
+</li>
+<li>
+<p><code>pending_revision_request</code></p>
+</li>
 </ul>
 <h3>建議 phase</h3>
 <ol>
-<li><code>idle</code></li>
-<li><code>collect_project_name</code></li>
-<li><code>classify_project_scale</code></li>
-<li><code>narrow_template_family</code></li>
-<li><code>confirm_template_family</code></li>
-<li><code>collect_template_requirements</code></li>
-<li><code>resolve_conflicts</code></li>
-<li><code>compile_project_definition</code></li>
-<li><code>render_review_artifacts</code></li>
-<li><code>await_user_review</code></li>
-<li><code>revise_requested</code></li>
-<li><code>confirmed</code></li>
-<li><code>cancelled</code></li>
-<li><code>failed</code></li>
+<li>
+<p><code>idle</code></p>
+</li>
+<li>
+<p><code>collect_project_name</code></p>
+</li>
+<li>
+<p><code>classify_project_scale</code></p>
+</li>
+<li>
+<p><code>narrow_template_family</code></p>
+</li>
+<li>
+<p><code>confirm_template_family</code></p>
+</li>
+<li>
+<p><code>collect_template_requirements</code></p>
+</li>
+<li>
+<p><code>resolve_conflicts</code></p>
+</li>
+<li>
+<p><code>compile_project_definition</code></p>
+</li>
+<li>
+<p><code>render_review_artifacts</code></p>
+</li>
+<li>
+<p><code>await_user_review</code></p>
+</li>
+<li>
+<p><code>revise_requested</code></p>
+</li>
+<li>
+<p><code>confirmed</code></p>
+</li>
+<li>
+<p><code>cancelled</code></p>
+</li>
+<li>
+<p><code>failed</code></p>
+</li>
 </ol>
 <h3>轉移規則</h3>
 <ul>
-<li><code>/proj</code>：<code>idle -&gt; collect_project_name</code></li>
-<li>project name 合法且唯一後，才能離開 <code>collect_project_name</code></li>
-<li>required assertion bundles 若仍 unresolved/conflicted，不得進 <code>compile_project_definition</code></li>
-<li>canonical project-instance JSON build 成功前，不得進 <code>render_review_artifacts</code></li>
-<li>沒有 reviewable document version 且沒有 <code>/ok</code>，不得進 <code>confirmed</code></li>
-<li><code>/revise</code> 會進 <code>revise_requested</code>，再回到適當的收集 phase</li>
-<li><code>/cancel</code> 可把 active non-terminal phase 轉進 <code>cancelled</code></li>
+<li>
+<p><code>/proj</code>：<code>idle -&gt; collect_project_name</code></p>
+</li>
+<li>
+<p>project name 合法且唯一後，才能離開 <code>collect_project_name</code></p>
+</li>
+<li>
+<p>required assertion bundles 若仍 unresolved/conflicted，不得進 <code>compile_project_definition</code></p>
+</li>
+<li>
+<p>canonical project-instance JSON build 成功前，不得進 <code>render_review_artifacts</code></p>
+</li>
+<li>
+<p>沒有 reviewable document version 且沒有 <code>/ok</code>，不得進 <code>confirmed</code></p>
+</li>
+<li>
+<p><code>/revise</code> 會進 <code>revise_requested</code>，再回到適當的收集 phase</p>
+</li>
+<li>
+<p><code>/cancel</code> 可把 active non-terminal phase 轉進 <code>cancelled</code></p>
+</li>
 </ul>
 <h2>Per-Version DAG Model</h2>
-<p>每個 review 版本 <code>vN</code> 都應有一張自己的 DAG。<br>
-revision 不改舊 DAG，而是建立新的 <code>vN+1 DAG</code>。</p>
+<p>每個 review 版本 <code>vN</code> 都應有一張自己的 DAG。  </p>
+<p>revision 不改舊 DAG，而是建立新的 <code>vN+1 DAG</code>。</p>
 <h3>DAG 的目的</h3>
 <ul>
-<li>表示哪些 assertions 已確認</li>
-<li>表示哪些 derived choices 依賴哪些 assertions</li>
-<li>表示哪些 JSON/PDF/links 由哪些 canonical inputs 產生</li>
+<li>
+<p>表示哪些 assertions 已確認</p>
+</li>
+<li>
+<p>表示哪些 derived choices 依賴哪些 assertions</p>
+</li>
+<li>
+<p>表示哪些 JSON/PDF/links 由哪些 canonical inputs 產生</p>
+</li>
 </ul>
 <h3>建議節點</h3>
 <ul>
-<li><code>raw_user_messages</code></li>
-<li><code>interpreted_candidates</code></li>
-<li><code>restatement_options</code></li>
-<li><code>user_selection_or_correction</code></li>
-<li><code>confirmed_assertions</code></li>
-<li><code>project_scale</code></li>
-<li><code>template_family_candidates</code></li>
-<li><code>selected_template_family</code></li>
-<li><code>selected_modules</code></li>
-<li><code>style_profile</code></li>
-<li><code>constraints</code></li>
-<li><code>project_instance_definition_json</code></li>
-<li><code>workflow_design_view_model</code></li>
-<li><code>workflow_design_pdf</code></li>
-<li><code>artifact_bundle</code></li>
-<li><code>delivery_links</code></li>
+<li>
+<p><code>raw_user_messages</code></p>
+</li>
+<li>
+<p><code>interpreted_candidates</code></p>
+</li>
+<li>
+<p><code>restatement_options</code></p>
+</li>
+<li>
+<p><code>user_selection_or_correction</code></p>
+</li>
+<li>
+<p><code>confirmed_assertions</code></p>
+</li>
+<li>
+<p><code>project_scale</code></p>
+</li>
+<li>
+<p><code>template_family_candidates</code></p>
+</li>
+<li>
+<p><code>selected_template_family</code></p>
+</li>
+<li>
+<p><code>selected_modules</code></p>
+</li>
+<li>
+<p><code>style_profile</code></p>
+</li>
+<li>
+<p><code>constraints</code></p>
+</li>
+<li>
+<p><code>project_instance_definition_json</code></p>
+</li>
+<li>
+<p><code>workflow_design_view_model</code></p>
+</li>
+<li>
+<p><code>workflow_design_pdf</code></p>
+</li>
+<li>
+<p><code>artifact_bundle</code></p>
+</li>
+<li>
+<p><code>delivery_links</code></p>
+</li>
 </ul>
 <h2>Requirement Memory Model</h2>
 <p>task-scoped memory 應拆成多層：</p>
 <ol>
-<li><code>conversation log</code></li>
-<li><code>working memory</code></li>
-<li><code>assertion registry</code></li>
-<li><code>structured project definition</code></li>
-<li><code>design artifact state</code></li>
+<li>
+<p><code>conversation log</code></p>
+</li>
+<li>
+<p><code>working memory</code></p>
+</li>
+<li>
+<p><code>assertion registry</code></p>
+</li>
+<li>
+<p><code>structured project definition</code></p>
+</li>
+<li>
+<p><code>design artifact state</code></p>
+</li>
 </ol>
 <p>關鍵規則：
 - canonical state 不是自由摘要
 - canonical state 來自 confirmed restatements 與 assertions</p>
 <h3>Assertion registry</h3>
-<p>最小真值單位是 assertion。<br>
-使用者不直接面對裸 assertion；系統會把多個 assertions 組成 explicit statement options 給使用者確認。</p>
+<p>最小真值單位是 assertion。  </p>
+<p>使用者不直接面對裸 assertion；系統會把多個 assertions 組成 explicit statement options 給使用者確認。</p>
 <p>每個 assertion 至少帶：</p>
 <ul>
-<li><code>assertion_id</code></li>
-<li><code>statement</code></li>
-<li><code>status</code></li>
-<li><code>evidence</code></li>
-<li><code>updated_at</code></li>
+<li>
+<p><code>assertion_id</code></p>
+</li>
+<li>
+<p><code>statement</code></p>
+</li>
+<li>
+<p><code>status</code></p>
+</li>
+<li>
+<p><code>evidence</code></p>
+</li>
+<li>
+<p><code>updated_at</code></p>
+</li>
 </ul>
 <p>狀態：</p>
 <ul>
-<li><code>missing</code></li>
-<li><code>candidate</code></li>
-<li><code>confirmed</code></li>
-<li><code>rejected</code></li>
-<li><code>superseded</code></li>
-<li><code>conflicted</code></li>
+<li>
+<p><code>missing</code></p>
+</li>
+<li>
+<p><code>candidate</code></p>
+</li>
+<li>
+<p><code>confirmed</code></p>
+</li>
+<li>
+<p><code>rejected</code></p>
+</li>
+<li>
+<p><code>superseded</code></p>
+</li>
+<li>
+<p><code>conflicted</code></p>
+</li>
 </ul>
 <h2>Restatement And Confirmation Protocol</h2>
 <p>核心規則：</p>
 <ol>
-<li>user input</li>
-<li>system interpretation</li>
-<li>explicit restatement</li>
-<li>user confirmation or correction</li>
-<li>assertion-state update</li>
+<li>
+<p>user input</p>
+</li>
+<li>
+<p>system interpretation</p>
+</li>
+<li>
+<p>explicit restatement</p>
+</li>
+<li>
+<p>user confirmation or correction</p>
+</li>
+<li>
+<p>assertion-state update</p>
+</li>
 </ol>
 <h3>對使用者的互動單位</h3>
-<p>內部真值單位是 assertion。<br>
-對外互動單位是由 1 到多個 assertions 組成的 explicit statement。</p>
+<p>內部真值單位是 assertion。  </p>
+<p>對外互動單位是由 1 到多個 assertions 組成的 explicit statement。</p>
 <p>每輪應偏好：</p>
 <ul>
-<li>1 到 3 個 explicit statement options</li>
-<li>1 個 conservative escape option，例如：</li>
-<li>none of these is precise</li>
-<li>closest to A, but I need to revise it</li>
+<li>
+<p>1 到 3 個 explicit statement options</p>
+</li>
+<li>
+<p>1 個 conservative escape option，例如：</p>
+</li>
+<li>
+<p>none of these is precise</p>
+</li>
+<li>
+<p>closest to A, but I need to revise it</p>
+</li>
 </ul>
 <h3>硬規則</h3>
 <p>未確認 interpretation 不得 promotion 到 canonical memory。</p>
@@ -338,84 +679,196 @@ revision 不改舊 DAG，而是建立新的 <code>vN+1 DAG</code>。</p>
 <p>固定 schema 仍然需要，但這個 schema 不是直接靠 slot filling，而是由 confirmed assertions 填充。</p>
 <p>至少包含：</p>
 <ul>
-<li><code>project_name</code></li>
-<li><code>project_scale</code></li>
-<li><code>template_family</code></li>
-<li><code>project_goal</code></li>
-<li><code>target_users</code></li>
-<li><code>enabled_modules</code></li>
-<li><code>disabled_modules</code></li>
-<li><code>core_user_flows</code></li>
-<li><code>data_entities</code></li>
-<li><code>auth_profile</code></li>
-<li><code>external_integrations</code></li>
-<li><code>deployment_target</code></li>
-<li><code>style_profile</code></li>
-<li><code>non_functional_requirements</code></li>
-<li><code>acceptance_criteria</code></li>
-<li><code>constraints</code></li>
-<li><code>out_of_scope</code></li>
+<li>
+<p><code>project_name</code></p>
+</li>
+<li>
+<p><code>project_scale</code></p>
+</li>
+<li>
+<p><code>template_family</code></p>
+</li>
+<li>
+<p><code>project_goal</code></p>
+</li>
+<li>
+<p><code>target_users</code></p>
+</li>
+<li>
+<p><code>enabled_modules</code></p>
+</li>
+<li>
+<p><code>disabled_modules</code></p>
+</li>
+<li>
+<p><code>core_user_flows</code></p>
+</li>
+<li>
+<p><code>data_entities</code></p>
+</li>
+<li>
+<p><code>auth_profile</code></p>
+</li>
+<li>
+<p><code>external_integrations</code></p>
+</li>
+<li>
+<p><code>deployment_target</code></p>
+</li>
+<li>
+<p><code>style_profile</code></p>
+</li>
+<li>
+<p><code>non_functional_requirements</code></p>
+</li>
+<li>
+<p><code>acceptance_criteria</code></p>
+</li>
+<li>
+<p><code>constraints</code></p>
+</li>
+<li>
+<p><code>out_of_scope</code></p>
+</li>
 </ul>
 <h2>Project Scale Classification</h2>
 <p>在深挖需求前，必須先判定專案尺度：</p>
 <ul>
-<li><code>tool_page</code></li>
-<li>單功能頁或小工具</li>
-<li>走 lightweight UI composition DSL</li>
-<li><code>mini_app</code></li>
-<li>少量頁面與基本資料流</li>
-<li>走 compact structure DSL</li>
-<li><code>structured_app</code></li>
-<li>多模組、多流程</li>
-<li>走 full workflow/structure DSL</li>
+<li>
+<p><code>tool_page</code></p>
+</li>
+<li>
+<p>單功能頁或小工具</p>
+</li>
+<li>
+<p>走 lightweight UI composition DSL</p>
+</li>
+<li>
+<p><code>mini_app</code></p>
+</li>
+<li>
+<p>少量頁面與基本資料流</p>
+</li>
+<li>
+<p>走 compact structure DSL</p>
+</li>
+<li>
+<p><code>structured_app</code></p>
+</li>
+<li>
+<p>多模組、多流程</p>
+</li>
+<li>
+<p>走 full workflow/structure DSL</p>
+</li>
 </ul>
 <h2>Template Library Strategy</h2>
-<p>模板應位於既有 component library 之上，作為 large reusable components。<br>
-模板不應先是手寫 project code；第一版應優先定義成 JSON-defined programs。</p>
+<p>模板應位於既有 component library 之上，作為 large reusable components。  </p>
+<p>模板不應先是手寫 project code；第一版應優先定義成 JSON-defined programs。</p>
 <p>建議初始 template families：</p>
 <ul>
-<li><code>content_showcase</code></li>
-<li><code>form_collection</code></li>
-<li><code>member_portal</code></li>
-<li><code>list_search</code></li>
-<li><code>crud_admin</code></li>
-<li><code>dashboard</code></li>
-<li><code>multi_step_flow</code></li>
-<li><code>transaction_flow</code></li>
+<li>
+<p><code>content_showcase</code></p>
+</li>
+<li>
+<p><code>form_collection</code></p>
+</li>
+<li>
+<p><code>member_portal</code></p>
+</li>
+<li>
+<p><code>list_search</code></p>
+</li>
+<li>
+<p><code>crud_admin</code></p>
+</li>
+<li>
+<p><code>dashboard</code></p>
+</li>
+<li>
+<p><code>multi_step_flow</code></p>
+</li>
+<li>
+<p><code>transaction_flow</code></p>
+</li>
 </ul>
 <h2>JSON-Defined Program Model</h2>
-<p>canonical project definition 應該是 document-first。<br>
-建議三層 JSON：</p>
+<p>canonical project definition 應該是 document-first。  </p>
+<p>建議三層 JSON：</p>
 <ol>
-<li><code>template_definition</code></li>
-<li><code>module_definition</code></li>
-<li><code>project_instance_definition</code></li>
+<li>
+<p><code>template_definition</code></p>
+</li>
+<li>
+<p><code>module_definition</code></p>
+</li>
+<li>
+<p><code>project_instance_definition</code></p>
+</li>
 </ol>
 <p>既有執行基底：</p>
 <ul>
-<li><code>packages/javascript/browser/page-generator</code></li>
-<li><code>packages/javascript/browser/ui_components</code></li>
-<li><code>templates/spa/frontend/runtime/page-generator</code></li>
-<li><code>templates/spa/frontend/core</code></li>
+<li>
+<p><code>packages/javascript/browser/page-generator</code></p>
+</li>
+<li>
+<p><code>packages/javascript/browser/ui_components</code></p>
+</li>
+<li>
+<p><code>templates/spa/frontend/runtime/page-generator</code></p>
+</li>
+<li>
+<p><code>templates/spa/frontend/core</code></p>
+</li>
 </ul>
 <h2>Interview Script</h2>
 <p>預設流程應改成 template-first：</p>
 <ol>
-<li>project name</li>
-<li>project scale classification</li>
-<li>candidate template family narrowing</li>
-<li>primary template family selection</li>
-<li>project goal and target users</li>
-<li>enabled/disabled modules</li>
-<li>key user flows</li>
-<li>data and persistence</li>
-<li>auth and permissions</li>
-<li>external integrations</li>
-<li>deployment target</li>
-<li>style profile</li>
-<li>non-functional requirements</li>
-<li>acceptance criteria</li>
-<li>constraints and out-of-scope</li>
+<li>
+<p>project name</p>
+</li>
+<li>
+<p>project scale classification</p>
+</li>
+<li>
+<p>candidate template family narrowing</p>
+</li>
+<li>
+<p>primary template family selection</p>
+</li>
+<li>
+<p>project goal and target users</p>
+</li>
+<li>
+<p>enabled/disabled modules</p>
+</li>
+<li>
+<p>key user flows</p>
+</li>
+<li>
+<p>data and persistence</p>
+</li>
+<li>
+<p>auth and permissions</p>
+</li>
+<li>
+<p>external integrations</p>
+</li>
+<li>
+<p>deployment target</p>
+</li>
+<li>
+<p>style profile</p>
+</li>
+<li>
+<p>non-functional requirements</p>
+</li>
+<li>
+<p>acceptance criteria</p>
+</li>
+<li>
+<p>constraints and out-of-scope</p>
+</li>
 </ol>
 <p>規則：
 - 一次一個主問題
@@ -431,23 +884,51 @@ revision 不改舊 DAG，而是建立新的 <code>vN+1 DAG</code>。</p>
 - <code>project_scale = tool_page</code> 卻要求 structured multi-role workflow
 - <code>template_family = content_showcase</code> 卻要求 CRUD admin</p>
 <h2>Workflow Design Output</h2>
-<p>workflow design 是必經檢核點。<br>
-內容應含：</p>
+<p>workflow design 是必經檢核點。  </p>
+<p>內容應含：</p>
 <ul>
-<li>project overview</li>
-<li>project scale classification</li>
-<li>selected template family and rationale</li>
-<li>selected/excluded modules</li>
-<li>normalized requirements summary</li>
-<li>architecture proposal</li>
-<li>component/module breakdown</li>
-<li>data model summary</li>
-<li>external integration summary</li>
-<li>deployment target summary</li>
-<li>DSL path summary</li>
-<li>implementation phases</li>
-<li>detailed task flow table</li>
-<li>testing strategy with TDD expectation</li>
+<li>
+<p>project overview</p>
+</li>
+<li>
+<p>project scale classification</p>
+</li>
+<li>
+<p>selected template family and rationale</p>
+</li>
+<li>
+<p>selected/excluded modules</p>
+</li>
+<li>
+<p>normalized requirements summary</p>
+</li>
+<li>
+<p>architecture proposal</p>
+</li>
+<li>
+<p>component/module breakdown</p>
+</li>
+<li>
+<p>data model summary</p>
+</li>
+<li>
+<p>external integration summary</p>
+</li>
+<li>
+<p>deployment target summary</p>
+</li>
+<li>
+<p>DSL path summary</p>
+</li>
+<li>
+<p>implementation phases</p>
+</li>
+<li>
+<p>detailed task flow table</p>
+</li>
+<li>
+<p>testing strategy with TDD expectation</p>
+</li>
 </ul>
 <h2>PDF And JSON Output Model</h2>
 <h3>對使用者</h3>
@@ -461,18 +942,36 @@ revision 不改舊 DAG，而是建立新的 <code>vN+1 DAG</code>。</p>
 <p>這個 JSON 應是 derived <code>project-instance definition</code>，不是 slot dump。</p>
 <h3>Render pipeline</h3>
 <ol>
-<li>confirmed assertion state</li>
-<li>version DAG build</li>
-<li>canonical project-instance JSON</li>
-<li>deterministic document view-model</li>
-<li>deterministic intermediate markdown/html</li>
-<li>PDF render</li>
+<li>
+<p>confirmed assertion state</p>
+</li>
+<li>
+<p>version DAG build</p>
+</li>
+<li>
+<p>canonical project-instance JSON</p>
+</li>
+<li>
+<p>deterministic document view-model</p>
+</li>
+<li>
+<p>deterministic intermediate markdown/html</p>
+</li>
+<li>
+<p>PDF render</p>
+</li>
 </ol>
 <h3>驗證策略</h3>
 <ol>
-<li>schema completeness check</li>
-<li>render manifest check</li>
-<li>section coverage check</li>
+<li>
+<p>schema completeness check</p>
+</li>
+<li>
+<p>render manifest check</p>
+</li>
+<li>
+<p>section coverage check</p>
+</li>
 </ol>
 <p>另外：
 - artifact state 需記錄 JSON digest
@@ -481,9 +980,15 @@ revision 不改舊 DAG，而是建立新的 <code>vN+1 DAG</code>。</p>
 <p>使用既有 artifact-delivery path。</p>
 <p>建議交付：</p>
 <ul>
-<li>user-facing PDF</li>
-<li>machine-readable JSON</li>
-<li>可選 zip（pdf + json）</li>
+<li>
+<p>user-facing PDF</p>
+</li>
+<li>
+<p>machine-readable JSON</p>
+</li>
+<li>
+<p>可選 zip（pdf + json）</p>
+</li>
 </ul>
 <p>若 Google Drive 成功：
 - 維持 Drive-first</p>
@@ -491,9 +996,15 @@ revision 不改舊 DAG，而是建立新的 <code>vN+1 DAG</code>。</p>
 - 用既有 broker signed download fallback</p>
 <h2>Commands During Review</h2>
 <ul>
-<li><code>/ok</code></li>
-<li><code>/revise</code></li>
-<li><code>/cancel</code></li>
+<li>
+<p><code>/ok</code></p>
+</li>
+<li>
+<p><code>/revise</code></p>
+</li>
+<li>
+<p><code>/cancel</code></p>
+</li>
 </ul>
 <p>可選：
 - <code>/status</code>
@@ -501,92 +1012,198 @@ revision 不改舊 DAG，而是建立新的 <code>vN+1 DAG</code>。</p>
 <h2>Data Persistence</h2>
 <p>建議 document families：</p>
 <ul>
-<li><code>hlm.project-interview.state.{channel}.{userId}</code></li>
-<li><code>hlm.project-interview.requirements.{channel}.{userId}</code></li>
-<li><code>hlm.project-interview.review.{channel}.{userId}</code></li>
-<li><code>hlm.project-interview.version-graph.{channel}.{userId}.{version}</code></li>
+<li>
+<p><code>hlm.project-interview.state.{channel}.{userId}</code></p>
+</li>
+<li>
+<p><code>hlm.project-interview.requirements.{channel}.{userId}</code></p>
+</li>
+<li>
+<p><code>hlm.project-interview.review.{channel}.{userId}</code></p>
+</li>
+<li>
+<p><code>hlm.project-interview.version-graph.{channel}.{userId}.{version}</code></p>
+</li>
 </ul>
 <h2>Model And Prompting Policy</h2>
 <p>interview model prompt 必須強制：</p>
 <ul>
-<li>task-scoped memory only</li>
-<li>no user-history reuse</li>
-<li>one primary question at a time</li>
-<li>explicit restatement before canonical write</li>
-<li>extraction into assertions and confirmed bundles</li>
-<li>template-first narrowing</li>
-<li>no implementation promises</li>
-<li>no approval inference without <code>/ok</code></li>
-<li>no skipped gaps/conflicts</li>
+<li>
+<p>task-scoped memory only</p>
+</li>
+<li>
+<p>no user-history reuse</p>
+</li>
+<li>
+<p>one primary question at a time</p>
+</li>
+<li>
+<p>explicit restatement before canonical write</p>
+</li>
+<li>
+<p>extraction into assertions and confirmed bundles</p>
+</li>
+<li>
+<p>template-first narrowing</p>
+</li>
+<li>
+<p>no implementation promises</p>
+</li>
+<li>
+<p>no approval inference without <code>/ok</code></p>
+</li>
+<li>
+<p>no skipped gaps/conflicts</p>
+</li>
 </ul>
 <h2>Error Handling</h2>
 <h3>duplicate project name</h3>
 <ul>
-<li>不前進</li>
-<li>留在 project-name phase</li>
+<li>
+<p>不前進</p>
+</li>
+<li>
+<p>留在 project-name phase</p>
+</li>
 </ul>
 <h3>incomplete requirements</h3>
 <ul>
-<li>不生成 workflow design</li>
-<li>持續追問</li>
+<li>
+<p>不生成 workflow design</p>
+</li>
+<li>
+<p>持續追問</p>
+</li>
 </ul>
 <h3>render failure</h3>
 <ul>
-<li>標記 artifact generation failure</li>
-<li>保留 assertion state 與 canonical JSON inputs</li>
+<li>
+<p>標記 artifact generation failure</p>
+</li>
+<li>
+<p>保留 assertion state 與 canonical JSON inputs</p>
+</li>
 </ul>
 <h3>delivery failure</h3>
 <ul>
-<li>使用現有 fallback</li>
-<li>不得遺失 version state</li>
+<li>
+<p>使用現有 fallback</p>
+</li>
+<li>
+<p>不得遺失 version state</p>
+</li>
 </ul>
 <h2>Testing Strategy</h2>
-<p>Version one 應採 TDD。<br>
-至少驗證：</p>
+<p>Version one 應採 TDD。  </p>
+<p>至少驗證：</p>
 <ol>
-<li><code>/proj</code> 正確路由</li>
-<li>一般 chat 不會誤入</li>
-<li>duplicate project name 會阻擋</li>
-<li>project scale classification 正確選 DSL path</li>
-<li>template-family narrowing 回 bounded candidate set</li>
-<li>restatement confirmation 只有 explicit confirm 才 promotion</li>
-<li>required assertions/fields 未完成前不得生成文件</li>
-<li>versioned JSON 會生成</li>
-<li>versioned PDF metadata 會生成</li>
-<li><code>/ok</code> 只有在存在 reviewable version 時有效</li>
-<li><code>/revise</code> 建新版本，不覆蓋 approval state</li>
-<li><code>/cancel</code> 正確關閉 task</li>
-<li>review artifacts 能被交付</li>
-<li>對使用者輸出不暴露內部 managed-workspace paths</li>
+<li>
+<p><code>/proj</code> 正確路由</p>
+</li>
+<li>
+<p>一般 chat 不會誤入</p>
+</li>
+<li>
+<p>duplicate project name 會阻擋</p>
+</li>
+<li>
+<p>project scale classification 正確選 DSL path</p>
+</li>
+<li>
+<p>template-family narrowing 回 bounded candidate set</p>
+</li>
+<li>
+<p>restatement confirmation 只有 explicit confirm 才 promotion</p>
+</li>
+<li>
+<p>required assertions/fields 未完成前不得生成文件</p>
+</li>
+<li>
+<p>versioned JSON 會生成</p>
+</li>
+<li>
+<p>versioned PDF metadata 會生成</p>
+</li>
+<li>
+<p><code>/ok</code> 只有在存在 reviewable version 時有效</p>
+</li>
+<li>
+<p><code>/revise</code> 建新版本，不覆蓋 approval state</p>
+</li>
+<li>
+<p><code>/cancel</code> 正確關閉 task</p>
+</li>
+<li>
+<p>review artifacts 能被交付</p>
+</li>
+<li>
+<p>對使用者輸出不暴露內部 managed-workspace paths</p>
+</li>
 </ol>
 <h2>Rollout Strategy</h2>
 <h3>Stage 1</h3>
 <p>只做 interview-and-review workflow：</p>
 <ul>
-<li><code>/proj</code></li>
-<li>assertion-based interview state</li>
-<li>scale/template/DSL selection</li>
-<li>document generation</li>
-<li>PDF/JSON delivery</li>
-<li>explicit review gate</li>
+<li>
+<p><code>/proj</code></p>
+</li>
+<li>
+<p>assertion-based interview state</p>
+</li>
+<li>
+<p>scale/template/DSL selection</p>
+</li>
+<li>
+<p>document generation</p>
+</li>
+<li>
+<p>PDF/JSON delivery</p>
+</li>
+<li>
+<p>explicit review gate</p>
+</li>
 </ul>
 <h3>Stage 2</h3>
 <p>再接下游 implementation agent，消費已批准的 <code>project_interview</code> 輸出，建立 unique project folder、依 TDD 實作並最終打包。</p>
 <h2>Acceptance Criteria</h2>
 <p>version one 完成條件：</p>
 <ul>
-<li>LINE user 可輸入 <code>/proj</code></li>
-<li>broker 啟動 task-scoped interview session</li>
-<li>session 能完成 scale classification 與 template family selection</li>
-<li>所有 required fields 透過 confirmed restatements 收齊</li>
-<li>duplicate project names 會被阻擋</li>
-<li>gap/conflict 在生成文件前能被偵測</li>
-<li>broker 生成 versioned workflow design PDF</li>
-<li>broker 生成 matching versioned project-definition JSON</li>
-<li>artifacts 被記錄與交付</li>
-<li>user 可用 <code>/ok</code>、<code>/revise</code>、<code>/cancel</code></li>
-<li>不重用 long-term user memory</li>
-<li>不會 silently transition into implementation</li>
+<li>
+<p>LINE user 可輸入 <code>/proj</code></p>
+</li>
+<li>
+<p>broker 啟動 task-scoped interview session</p>
+</li>
+<li>
+<p>session 能完成 scale classification 與 template family selection</p>
+</li>
+<li>
+<p>所有 required fields 透過 confirmed restatements 收齊</p>
+</li>
+<li>
+<p>duplicate project names 會被阻擋</p>
+</li>
+<li>
+<p>gap/conflict 在生成文件前能被偵測</p>
+</li>
+<li>
+<p>broker 生成 versioned workflow design PDF</p>
+</li>
+<li>
+<p>broker 生成 matching versioned project-definition JSON</p>
+</li>
+<li>
+<p>artifacts 被記錄與交付</p>
+</li>
+<li>
+<p>user 可用 <code>/ok</code>、<code>/revise</code>、<code>/cancel</code></p>
+</li>
+<li>
+<p>不重用 long-term user memory</p>
+</li>
+<li>
+<p>不會 silently transition into implementation</p>
+</li>
 </ul>
 </main>
 </body>

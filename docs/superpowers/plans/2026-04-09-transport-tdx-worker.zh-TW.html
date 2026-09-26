@@ -31,49 +31,123 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <h2>File Structure</h2>
 <h3>Create</h3>
 <ul>
-<li><code>packages/csharp/broker-core/Contracts/Transport/TransportQueryRequest.cs</code></li>
-<li><code>packages/csharp/broker-core/Contracts/Transport/TransportQueryResponse.cs</code></li>
-<li><code>packages/csharp/broker-core/Contracts/Transport/TransportFollowUpOption.cs</code></li>
-<li><code>packages/csharp/workers/transport-tdx-worker/TransportTdxWorker.csproj</code></li>
-<li><code>packages/csharp/workers/transport-tdx-worker/Program.cs</code></li>
-<li><code>packages/csharp/workers/transport-tdx-worker/Handlers/TransportQueryHandler.cs</code></li>
-<li><code>packages/csharp/workers/transport-tdx-worker/Services/TransportQuerySufficiencyAnalyzer.cs</code></li>
-<li><code>packages/csharp/workers/transport-tdx-worker/Services/TransportFollowUpBuilder.cs</code></li>
-<li><code>packages/csharp/workers/transport-tdx-worker/Services/TransportRangeAnswerBuilder.cs</code></li>
-<li><code>packages/csharp/workers/transport-tdx-worker/Services/TdxTransportProvider.cs</code></li>
-<li><code>packages/csharp/workers/transport-tdx-worker/Services/TdxTokenService.cs</code></li>
-<li><code>packages/csharp/workers/transport-tdx-worker/Services/TdxEntityResolver.cs</code></li>
-<li><code>packages/csharp/tests/unit/Transport/TransportQuerySufficiencyAnalyzerTests.cs</code></li>
-<li><code>packages/csharp/tests/unit/Transport/TransportFollowUpBuilderTests.cs</code></li>
-<li><code>packages/csharp/tests/unit/Transport/TransportRangeAnswerBuilderTests.cs</code></li>
-<li><code>packages/csharp/tests/integration/Transport/TransportQueryCapabilityTests.cs</code></li>
-<li><code>packages/csharp/tests/integration/Transport/TransportCompatibilityRouteTests.cs</code></li>
-<li><code>packages/csharp/broker/tool-specs/transport.query/tool.json</code></li>
+<li>
+<p><code>packages/csharp/broker-core/Contracts/Transport/TransportQueryRequest.cs</code></p>
+</li>
+<li>
+<p><code>packages/csharp/broker-core/Contracts/Transport/TransportQueryResponse.cs</code></p>
+</li>
+<li>
+<p><code>packages/csharp/broker-core/Contracts/Transport/TransportFollowUpOption.cs</code></p>
+</li>
+<li>
+<p><code>packages/csharp/workers/transport-tdx-worker/TransportTdxWorker.csproj</code></p>
+</li>
+<li>
+<p><code>packages/csharp/workers/transport-tdx-worker/Program.cs</code></p>
+</li>
+<li>
+<p><code>packages/csharp/workers/transport-tdx-worker/Handlers/TransportQueryHandler.cs</code></p>
+</li>
+<li>
+<p><code>packages/csharp/workers/transport-tdx-worker/Services/TransportQuerySufficiencyAnalyzer.cs</code></p>
+</li>
+<li>
+<p><code>packages/csharp/workers/transport-tdx-worker/Services/TransportFollowUpBuilder.cs</code></p>
+</li>
+<li>
+<p><code>packages/csharp/workers/transport-tdx-worker/Services/TransportRangeAnswerBuilder.cs</code></p>
+</li>
+<li>
+<p><code>packages/csharp/workers/transport-tdx-worker/Services/TdxTransportProvider.cs</code></p>
+</li>
+<li>
+<p><code>packages/csharp/workers/transport-tdx-worker/Services/TdxTokenService.cs</code></p>
+</li>
+<li>
+<p><code>packages/csharp/workers/transport-tdx-worker/Services/TdxEntityResolver.cs</code></p>
+</li>
+<li>
+<p><code>packages/csharp/tests/unit/Transport/TransportQuerySufficiencyAnalyzerTests.cs</code></p>
+</li>
+<li>
+<p><code>packages/csharp/tests/unit/Transport/TransportFollowUpBuilderTests.cs</code></p>
+</li>
+<li>
+<p><code>packages/csharp/tests/unit/Transport/TransportRangeAnswerBuilderTests.cs</code></p>
+</li>
+<li>
+<p><code>packages/csharp/tests/integration/Transport/TransportQueryCapabilityTests.cs</code></p>
+</li>
+<li>
+<p><code>packages/csharp/tests/integration/Transport/TransportCompatibilityRouteTests.cs</code></p>
+</li>
+<li>
+<p><code>packages/csharp/broker/tool-specs/transport.query/tool.json</code></p>
+</li>
 </ul>
 <h3>Modify</h3>
 <ul>
-<li><code>packages/csharp/ControlPlane.slnx</code></li>
-<li><code>packages/csharp/broker/Program.cs</code></li>
-<li><code>packages/csharp/broker/Services/HighLevelQueryToolMediator.cs</code></li>
-<li><code>packages/csharp/broker/Services/HighLevelCoordinator.cs</code></li>
-<li><code>packages/csharp/broker/Adapters/InProcessDispatcher.cs</code></li>
-<li><code>packages/csharp/broker/verify/Program.cs</code></li>
-<li><code>packages/csharp/broker/Handlers/Travel/TravelRailSearchHandler.cs</code></li>
-<li><code>packages/csharp/broker/Handlers/Travel/TravelHsrSearchHandler.cs</code></li>
-<li><code>packages/csharp/broker/Handlers/Travel/TravelBusSearchHandler.cs</code></li>
-<li><code>packages/csharp/broker/Handlers/Travel/TravelFlightSearchHandler.cs</code></li>
-<li><code>packages/csharp/broker/tool-specs/travel.rail.search/tool.json</code></li>
-<li><code>packages/csharp/broker/tool-specs/travel.hsr.search/tool.json</code></li>
-<li><code>packages/csharp/broker/tool-specs/travel.bus.search/tool.json</code></li>
-<li><code>packages/csharp/broker/tool-specs/travel.flight.search/tool.json</code></li>
-<li><code>packages/csharp/worker-sdk/WorkerHostOptions.cs</code></li>
-<li><code>packages/csharp/workers/line-worker/Program.cs</code></li>
+<li>
+<p><code>packages/csharp/ControlPlane.slnx</code></p>
+</li>
+<li>
+<p><code>packages/csharp/broker/Program.cs</code></p>
+</li>
+<li>
+<p><code>packages/csharp/broker/Services/HighLevelQueryToolMediator.cs</code></p>
+</li>
+<li>
+<p><code>packages/csharp/broker/Services/HighLevelCoordinator.cs</code></p>
+</li>
+<li>
+<p><code>packages/csharp/broker/Adapters/InProcessDispatcher.cs</code></p>
+</li>
+<li>
+<p><code>packages/csharp/broker/verify/Program.cs</code></p>
+</li>
+<li>
+<p><code>packages/csharp/broker/Handlers/Travel/TravelRailSearchHandler.cs</code></p>
+</li>
+<li>
+<p><code>packages/csharp/broker/Handlers/Travel/TravelHsrSearchHandler.cs</code></p>
+</li>
+<li>
+<p><code>packages/csharp/broker/Handlers/Travel/TravelBusSearchHandler.cs</code></p>
+</li>
+<li>
+<p><code>packages/csharp/broker/Handlers/Travel/TravelFlightSearchHandler.cs</code></p>
+</li>
+<li>
+<p><code>packages/csharp/broker/tool-specs/travel.rail.search/tool.json</code></p>
+</li>
+<li>
+<p><code>packages/csharp/broker/tool-specs/travel.hsr.search/tool.json</code></p>
+</li>
+<li>
+<p><code>packages/csharp/broker/tool-specs/travel.bus.search/tool.json</code></p>
+</li>
+<li>
+<p><code>packages/csharp/broker/tool-specs/travel.flight.search/tool.json</code></p>
+</li>
+<li>
+<p><code>packages/csharp/worker-sdk/WorkerHostOptions.cs</code></p>
+</li>
+<li>
+<p><code>packages/csharp/workers/line-worker/Program.cs</code></p>
+</li>
 </ul>
 <h3>Reuse / Migrate logic from</h3>
 <ul>
-<li><code>packages/csharp/broker/Handlers/Travel/TdxTravelHelper.cs</code></li>
-<li><code>packages/csharp/broker/Handlers/Travel/TdxBusTravelHelper.cs</code></li>
-<li><code>packages/csharp/broker/Handlers/Travel/TravelTdxResponseHelper.cs</code></li>
+<li>
+<p><code>packages/csharp/broker/Handlers/Travel/TdxTravelHelper.cs</code></p>
+</li>
+<li>
+<p><code>packages/csharp/broker/Handlers/Travel/TdxBusTravelHelper.cs</code></p>
+</li>
+<li>
+<p><code>packages/csharp/broker/Handlers/Travel/TravelTdxResponseHelper.cs</code></p>
+</li>
 </ul>
 <hr>
 <h3>Task 1: 定義 transport.query contract</h3>
@@ -126,8 +200,8 @@ public class TransportContractSerializationTests
 <ul>
 <li>[ ] <strong>Step 2: Run test to verify it fails</strong></li>
 </ul>
-<p>Run: <code>dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter TransportContractSerializationTests -v minimal</code><br>
-Expected: FAIL with missing <code>BrokerCore.Contracts.Transport</code> types.</p>
+<p>Run: <code>dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter TransportContractSerializationTests -v minimal</code>  </p>
+<p>Expected: FAIL with missing <code>BrokerCore.Contracts.Transport</code> types.</p>
 <ul>
 <li>[ ] <strong>Step 3: Write minimal transport contracts</strong></li>
 </ul>
@@ -217,8 +291,8 @@ public sealed class TransportFollowUpOption
 <ul>
 <li>[ ] <strong>Step 5: Run test to verify it passes</strong></li>
 </ul>
-<p>Run: <code>dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter TransportContractSerializationTests -v minimal</code><br>
-Expected: PASS</p>
+<p>Run: <code>dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter TransportContractSerializationTests -v minimal</code>  </p>
+<p>Expected: PASS</p>
 <ul>
 <li>[ ] <strong>Step 6: Commit</strong></li>
 </ul>
@@ -256,8 +330,8 @@ public class TransportWorkerRegistrationTests
 <ul>
 <li>[ ] <strong>Step 2: Run test to verify it fails</strong></li>
 </ul>
-<p>Run: <code>dotnet test packages/csharp/tests/integration/Integration.Tests.csproj --filter TransportWorkerRegistrationTests -v minimal</code><br>
-Expected: FAIL because worker project/harness does not exist.</p>
+<p>Run: <code>dotnet test packages/csharp/tests/integration/Integration.Tests.csproj --filter TransportWorkerRegistrationTests -v minimal</code>  </p>
+<p>Expected: FAIL because worker project/harness does not exist.</p>
 <ul>
 <li>[ ] <strong>Step 3: Add worker project and minimal registration</strong></li>
 </ul>
@@ -315,8 +389,8 @@ public sealed class TransportQueryHandler : ICapabilityHandler
 <ul>
 <li>[ ] <strong>Step 4: Run test to verify it passes</strong></li>
 </ul>
-<p>Run: <code>dotnet test packages/csharp/tests/integration/Integration.Tests.csproj --filter TransportWorkerRegistrationTests -v minimal</code><br>
-Expected: PASS</p>
+<p>Run: <code>dotnet test packages/csharp/tests/integration/Integration.Tests.csproj --filter TransportWorkerRegistrationTests -v minimal</code>  </p>
+<p>Expected: PASS</p>
 <ul>
 <li>[ ] <strong>Step 5: Commit</strong></li>
 </ul>
@@ -371,8 +445,8 @@ public class TransportQuerySufficiencyAnalyzerTests
 <ul>
 <li>[ ] <strong>Step 2: Run tests to verify they fail</strong></li>
 </ul>
-<p>Run: <code>dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter "TransportQuerySufficiencyAnalyzerTests|TransportFollowUpBuilderTests|TransportRangeAnswerBuilderTests" -v minimal</code><br>
-Expected: FAIL because analyzer/builders do not exist.</p>
+<p>Run: <code>dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter "TransportQuerySufficiencyAnalyzerTests|TransportFollowUpBuilderTests|TransportRangeAnswerBuilderTests" -v minimal</code>  </p>
+<p>Expected: FAIL because analyzer/builders do not exist.</p>
 <ul>
 <li>[ ] <strong>Step 3: Implement analyzer and builders</strong></li>
 </ul>
@@ -508,8 +582,8 @@ public sealed class TransportRangeAnswerBuilder
 <ul>
 <li>[ ] <strong>Step 4: Run tests to verify they pass</strong></li>
 </ul>
-<p>Run: <code>dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter "TransportQuerySufficiencyAnalyzerTests|TransportFollowUpBuilderTests|TransportRangeAnswerBuilderTests" -v minimal</code><br>
-Expected: PASS</p>
+<p>Run: <code>dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter "TransportQuerySufficiencyAnalyzerTests|TransportFollowUpBuilderTests|TransportRangeAnswerBuilderTests" -v minimal</code>  </p>
+<p>Expected: PASS</p>
 <ul>
 <li>[ ] <strong>Step 5: Commit</strong></li>
 </ul>
@@ -557,8 +631,8 @@ public class TdxTransportProviderTests
 <ul>
 <li>[ ] <strong>Step 2: Run tests to verify they fail</strong></li>
 </ul>
-<p>Run: <code>dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter TdxTransportProviderTests -v minimal</code><br>
-Expected: FAIL because provider service does not exist.</p>
+<p>Run: <code>dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter TdxTransportProviderTests -v minimal</code>  </p>
+<p>Expected: FAIL because provider service does not exist.</p>
 <ul>
 <li>[ ] <strong>Step 3: Implement provider service with migrated helpers</strong></li>
 </ul>
@@ -617,8 +691,8 @@ public sealed class TdxTransportProvider
 <ul>
 <li>[ ] <strong>Step 4: Run tests to verify they pass</strong></li>
 </ul>
-<p>Run: <code>dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter TdxTransportProviderTests -v minimal</code><br>
-Expected: PASS</p>
+<p>Run: <code>dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter TdxTransportProviderTests -v minimal</code>  </p>
+<p>Expected: PASS</p>
 <ul>
 <li>[ ] <strong>Step 5: Commit</strong></li>
 </ul>
@@ -655,8 +729,8 @@ public class TransportQueryCapabilityTests
 <ul>
 <li>[ ] <strong>Step 2: Run test to verify it fails</strong></li>
 </ul>
-<p>Run: <code>dotnet test packages/csharp/tests/integration/Integration.Tests.csproj --filter TransportQueryCapabilityTests -v minimal</code><br>
-Expected: FAIL because broker still routes to old <code>travel_*</code> paths.</p>
+<p>Run: <code>dotnet test packages/csharp/tests/integration/Integration.Tests.csproj --filter TransportQueryCapabilityTests -v minimal</code>  </p>
+<p>Expected: FAIL because broker still routes to old <code>travel_*</code> paths.</p>
 <ul>
 <li>[ ] <strong>Step 3: Update broker to use transport.query as primary path</strong></li>
 </ul>
@@ -691,8 +765,8 @@ Expected: FAIL because broker still routes to old <code>travel_*</code> paths.</
 <ul>
 <li>[ ] <strong>Step 4: Run test to verify it passes</strong></li>
 </ul>
-<p>Run: <code>dotnet test packages/csharp/tests/integration/Integration.Tests.csproj --filter TransportQueryCapabilityTests -v minimal</code><br>
-Expected: PASS</p>
+<p>Run: <code>dotnet test packages/csharp/tests/integration/Integration.Tests.csproj --filter TransportQueryCapabilityTests -v minimal</code>  </p>
+<p>Expected: PASS</p>
 <ul>
 <li>[ ] <strong>Step 5: Commit</strong></li>
 </ul>
@@ -733,8 +807,8 @@ public class TransportCompatibilityRouteTests
 <ul>
 <li>[ ] <strong>Step 2: Run test to verify it fails</strong></li>
 </ul>
-<p>Run: <code>dotnet test packages/csharp/tests/integration/Integration.Tests.csproj --filter TransportCompatibilityRouteTests -v minimal</code><br>
-Expected: FAIL because legacy paths still produce old direct broker behavior.</p>
+<p>Run: <code>dotnet test packages/csharp/tests/integration/Integration.Tests.csproj --filter TransportCompatibilityRouteTests -v minimal</code>  </p>
+<p>Expected: FAIL because legacy paths still produce old direct broker behavior.</p>
 <ul>
 <li>[ ] <strong>Step 3: Make legacy handlers forward to transport.query</strong></li>
 </ul>
@@ -757,8 +831,8 @@ Expected: FAIL because legacy paths still produce old direct broker behavior.</p
 <ul>
 <li>[ ] <strong>Step 4: Run test to verify it passes</strong></li>
 </ul>
-<p>Run: <code>dotnet test packages/csharp/tests/integration/Integration.Tests.csproj --filter TransportCompatibilityRouteTests -v minimal</code><br>
-Expected: PASS</p>
+<p>Run: <code>dotnet test packages/csharp/tests/integration/Integration.Tests.csproj --filter TransportCompatibilityRouteTests -v minimal</code>  </p>
+<p>Expected: PASS</p>
 <ul>
 <li>[ ] <strong>Step 5: Commit</strong></li>
 </ul>
@@ -771,8 +845,7 @@ git commit -m &quot;refactor: forward legacy travel routes to transport query&qu
 - Modify: <code>packages/csharp/broker/verify/Program.cs</code>
 - Modify: <code>docs/manuals/line-sidecar-runbook.md</code>
 - Modify: <code>docs/manuals/line-sidecar-runbook.zh-TW.md</code>
-- Modify: <code>docs/0329/01-broker.md</code>
-- Modify: <code>docs/0329/07-tests.md</code></p>
+- Modify: <code>docs/manuals/current-technical-manual.zh-TW.md</code></p>
 <ul>
 <li>[ ] <strong>Step 1: Add failing verify coverage</strong></li>
 </ul>
@@ -785,8 +858,8 @@ await AssertTransportQueryAsync(&quot;?bus 台北市 307&quot;, expectedResultTy
 <ul>
 <li>[ ] <strong>Step 2: Run verify to confirm failure</strong></li>
 </ul>
-<p>Run: <code>dotnet run --project packages/csharp/broker/verify/Broker.Verify.csproj --disable-build-servers</code><br>
-Expected: FAIL because new transport capability path is not fully wired yet.</p>
+<p>Run: <code>dotnet run --project packages/csharp/broker/verify/Broker.Verify.csproj --disable-build-servers</code>  </p>
+<p>Expected: FAIL because new transport capability path is not fully wired yet.</p>
 <ul>
 <li>[ ] <strong>Step 3: Update verify helpers and docs</strong></li>
 </ul>
@@ -815,41 +888,73 @@ dotnet run --project packages/csharp/broker/verify/Broker.Verify.csproj -c Relea
 <ul>
 <li>[ ] <strong>Step 5: Commit</strong></li>
 </ul>
-<pre><code class="language-bash">git add packages/csharp/broker/verify/Program.cs docs/manuals/line-sidecar-runbook.md docs/manuals/line-sidecar-runbook.zh-TW.md docs/0329/01-broker.md docs/0329/07-tests.md
+<pre><code class="language-bash">git add packages/csharp/broker/verify/Program.cs docs/manuals/line-sidecar-runbook.md docs/manuals/line-sidecar-runbook.zh-TW.md docs/manuals/current-technical-manual.zh-TW.md
 git commit -m &quot;test: verify transport query worker flow&quot;
 </code></pre>
 <hr>
 <h2>Self-Review</h2>
 <h3>Spec coverage</h3>
 <ul>
-<li>獨立 <code>transport-tdx worker</code>：Task 2, Task 4</li>
-<li>broker 僅保留 capability / dispatch：Task 5, Task 6</li>
-<li><code>transport.query</code> 統一 contract：Task 1</li>
-<li>sufficiency / follow-up / range answer：Task 3</li>
-<li>compatibility layer：Task 6</li>
-<li>verify / docs：Task 7</li>
+<li>
+<p>獨立 <code>transport-tdx worker</code>：Task 2, Task 4</p>
+</li>
+<li>
+<p>broker 僅保留 capability / dispatch：Task 5, Task 6</p>
+</li>
+<li>
+<p><code>transport.query</code> 統一 contract：Task 1</p>
+</li>
+<li>
+<p>sufficiency / follow-up / range answer：Task 3</p>
+</li>
+<li>
+<p>compatibility layer：Task 6</p>
+</li>
+<li>
+<p>verify / docs：Task 7</p>
+</li>
 </ul>
 <p>無明顯 spec coverage gap。</p>
 <h3>Placeholder scan</h3>
 <ul>
-<li>無 <code>TBD</code> / <code>TODO</code> / <code>implement later</code></li>
-<li>每個 task 都列出明確檔案、測試、命令與 commit</li>
+<li>
+<p>無 <code>TBD</code> / <code>TODO</code> / <code>implement later</code></p>
+</li>
+<li>
+<p>每個 task 都列出明確檔案、測試、命令與 commit</p>
+</li>
 </ul>
 <h3>Type consistency</h3>
 <ul>
-<li>capability 對外名稱固定為 <code>transport.query</code></li>
-<li>dispatcher route 內部固定為 <code>transport_query</code></li>
-<li>response type 固定為：</li>
-<li><code>final_answer</code></li>
-<li><code>need_follow_up</code></li>
-<li><code>range_answer</code></li>
+<li>
+<p>capability 對外名稱固定為 <code>transport.query</code></p>
+</li>
+<li>
+<p>dispatcher route 內部固定為 <code>transport_query</code></p>
+</li>
+<li>
+<p>response type 固定為：</p>
+</li>
+<li>
+<p><code>final_answer</code></p>
+</li>
+<li>
+<p><code>need_follow_up</code></p>
+</li>
+<li>
+<p><code>range_answer</code></p>
+</li>
 </ul>
 <hr>
 <h2>Notes</h2>
 <ul>
-<li>目前 root workspace 尚有未提交的 transport TDX-only 改動；執行本 plan 前先決定要不要將現有改動納入 feature branch 起點。</li>
-<li>第一批不做 MaaS/道路/停車/POI 的全量整合，只聚焦 rail/hsr/bus/flight 的 worker 邊界重建。
-```</li>
+<li>
+<p>目前 root workspace 尚有未提交的 transport TDX-only 改動；執行本 plan 前先決定要不要將現有改動納入 feature branch 起點。</p>
+</li>
+<li>
+<p>第一批不做 MaaS/道路/停車/POI 的全量整合，只聚焦 rail/hsr/bus/flight 的 worker 邊界重建。
+  ```</p>
+</li>
 </ul>
 </main>
 </body>

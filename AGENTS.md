@@ -11,7 +11,7 @@ that turns a JSON `PageDefinition` into working pages (static code generation or
 
 ## Build & Test
 
-- Page-generator tests: `npm test`
+- Full JS gate: `npm test` (runs `test-all.js` generator examples, then `test:ui-components`, `test:custom-components` and the Vitest component suites via `npm --prefix packages/javascript/browser run test:vitest`; run `npm --prefix packages/javascript/browser install` once first to get the vitest/jsdom devDependencies)
 
 - UI library checks: `npm run validate:ui-library`
 

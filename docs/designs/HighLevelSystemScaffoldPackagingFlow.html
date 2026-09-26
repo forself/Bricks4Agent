@@ -23,63 +23,140 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <h1>High-Level System Scaffold Packaging Flow</h1>
 <p>Date: 2026-03-29
 Status: planning draft</p>
+<blockquote>
+<p><strong>Implementation status (checked 2026-09-26)</strong></p>
+<ul>
+<li>A first version was implemented in commit <code>75cf1be</code> as <code>packages/csharp/broker/Services/HighLevelSystemScaffoldService.cs</code>, invoked from <code>HighLevelCoordinator</code> after draft confirmation. <code>GenerateAndDeliverAsync</code> (<code>HighLevelSystemScaffoldService.cs:140-214</code>) runs requirements analysis → design planning → implementation → testing → packaging (zip) → delivery in a single pass.</li>
+<li>The 15-state model in §7 is not implemented. Progress is recorded as a free-form <code>phase</code> string (e.g. <code>requirements_analysis</code>, <code>design_planning</code>, <code>implementation</code>, <code>testing</code>, <code>packaging</code>, <code>delivery</code>) plus <code>status</code> (e.g. <code>started</code> / <code>completed</code> / <code>failed</code> / <code>partial</code> / <code>updated</code>) (<code>HighLevelSystemScaffoldService.cs:157-212</code>). Iteration exists only as pre-confirmation requirement refinement (<code>ApplyRequirementRefinement</code>, <code>HighLevelSystemScaffoldService.cs:62-84</code>); there is no post-test review/revision loop.</li>
+<li><code>hlm.scaffold-spec.{channel}.{userId}</code> and <code>hlm.scaffold-iteration.{channel}.{userId}</code> are written as described. <code>hlm.scaffold-plan.*</code> (§8.2) is never written; the design plan is only a file, <code>docs/design-plan.md</code>, inside the generated project root (<code>HighLevelSystemScaffoldService.cs:421-456</code>).</li>
+<li>Progress documents carry an event suffix: <code>hlm.scaffold-progress.{channel}.{userId}.{eventId}</code>, one entry per event (<code>HighLevelSystemScaffoldService.cs:848-849</code>).</li>
+<li>Delivery mode is not selectable (§11.1): it is hard-coded to <code>shared_delegated</code> Google Drive (<code>HighLevelSystemScaffoldService.cs:192,199</code>). When the Drive upload fails, <code>LineArtifactDeliveryService</code> falls back to a signed broker download link.</li>
+<li>The broker download API that §11 / §11.2 list as missing now exists: <code>GET /api/v1/artifacts/download/{artifactId}</code> (<code>packages/csharp/broker/Endpoints/ArtifactDownloadEndpoints.cs:9</code>), and end users can browse their artifacts in the <code>/portal</code> user portal.</li>
+</ul>
+</blockquote>
 <h2>1. Goal</h2>
 <p>Add a new high-level capability where the system can:</p>
 <ol>
-<li>clarify requirements through high-level conversation,</li>
-<li>converge on a structured system scaffold specification,</li>
-<li>generate a complete project skeleton,</li>
-<li>package the result,</li>
-<li>deliver a downloadable artifact back to the user.</li>
+<li>
+<p>clarify requirements through high-level conversation,</p>
+</li>
+<li>
+<p>converge on a structured system scaffold specification,</p>
+</li>
+<li>
+<p>generate a complete project skeleton,</p>
+</li>
+<li>
+<p>package the result,</p>
+</li>
+<li>
+<p>deliver a downloadable artifact back to the user.</p>
+</li>
 </ol>
 <p>This is not the same as the current <code>doc_gen</code> or minimal <code>code_gen</code> path.</p>
 <p>The current system can already:</p>
 <ul>
-<li>create production drafts,</li>
-<li>confirm them into <code>task / plan / handoff</code>,</li>
-<li>generate documents,</li>
-<li>generate a minimal website prototype,</li>
-<li>upload artifacts to Google Drive,</li>
-<li>notify LINE users with delivery links.</li>
+<li>
+<p>create production drafts,</p>
+</li>
+<li>
+<p>confirm them into <code>task / plan / handoff</code>,</p>
+</li>
+<li>
+<p>generate documents,</p>
+</li>
+<li>
+<p>generate a minimal website prototype,</p>
+</li>
+<li>
+<p>upload artifacts to Google Drive,</p>
+</li>
+<li>
+<p>notify LINE users with delivery links.</p>
+</li>
 </ul>
 <p>What it cannot yet do is produce a coherent multi-file application scaffold from a requirement interview and return that scaffold as a packaged deliverable.</p>
 <h2>2. Why This Is A Different Feature</h2>
 <p>This feature is materially more complex than the current <code>doc_gen</code> and current <code>code_gen</code>.</p>
 <p>The difficulty is not only code generation. The real complexity is in:</p>
 <ul>
-<li>requirement elicitation,</li>
-<li>deciding when requirements are complete enough,</li>
-<li>turning conversation into a stable specification,</li>
-<li>generating multiple coordinated files,</li>
-<li>validating the scaffold,</li>
-<li>packaging the scaffold,</li>
-<li>preserving per-user isolation,</li>
-<li>delivering the result in a way users can actually consume.</li>
+<li>
+<p>requirement elicitation,</p>
+</li>
+<li>
+<p>deciding when requirements are complete enough,</p>
+</li>
+<li>
+<p>turning conversation into a stable specification,</p>
+</li>
+<li>
+<p>generating multiple coordinated files,</p>
+</li>
+<li>
+<p>validating the scaffold,</p>
+</li>
+<li>
+<p>packaging the scaffold,</p>
+</li>
+<li>
+<p>preserving per-user isolation,</p>
+</li>
+<li>
+<p>delivering the result in a way users can actually consume.</p>
+</li>
 </ul>
 <p>If this is implemented carelessly, the system will regress into:</p>
 <ul>
-<li>vague chat pretending to be specification,</li>
-<li>brittle single-shot generation,</li>
-<li>unverifiable output,</li>
-<li>oversized prompts with no stable artifact model,</li>
-<li>delivery paths that produce files but do not produce usable downloads.</li>
+<li>
+<p>vague chat pretending to be specification,</p>
+</li>
+<li>
+<p>brittle single-shot generation,</p>
+</li>
+<li>
+<p>unverifiable output,</p>
+</li>
+<li>
+<p>oversized prompts with no stable artifact model,</p>
+</li>
+<li>
+<p>delivery paths that produce files but do not produce usable downloads.</p>
+</li>
 </ul>
 <h2>2.1 This Must Be Iterative, Not One-Shot</h2>
 <p>This feature must explicitly support iterative engineering behavior.</p>
 <p>The target workflow is not:</p>
 <ul>
-<li>ask once,</li>
-<li>generate once,</li>
-<li>deliver once.</li>
+<li>
+<p>ask once,</p>
+</li>
+<li>
+<p>generate once,</p>
+</li>
+<li>
+<p>deliver once.</p>
+</li>
 </ul>
 <p>The real workflow must allow repeated cycles of:</p>
 <ul>
-<li>requirement analysis,</li>
-<li>design planning,</li>
-<li>implementation,</li>
-<li>testing,</li>
-<li>review,</li>
-<li>revision.</li>
+<li>
+<p>requirement analysis,</p>
+</li>
+<li>
+<p>design planning,</p>
+</li>
+<li>
+<p>implementation,</p>
+</li>
+<li>
+<p>testing,</p>
+</li>
+<li>
+<p>review,</p>
+</li>
+<li>
+<p>revision.</p>
+</li>
 </ul>
 <p>Without that, the system can only produce fragile first drafts. That is not enough for a useful system scaffold capability.</p>
 <h2>2.2 This Must Not Be A Silent Workflow</h2>
@@ -87,34 +164,70 @@ Status: planning draft</p>
 <p>The system must not disappear into a long-running internal workflow and return only at the end.</p>
 <p>Users need to know:</p>
 <ul>
-<li>which phase is currently running,</li>
-<li>what was completed,</li>
-<li>what is blocked,</li>
-<li>whether user input is required,</li>
-<li>whether the system is revising due to test or validation failures,</li>
-<li>whether packaging and delivery have started.</li>
+<li>
+<p>which phase is currently running,</p>
+</li>
+<li>
+<p>what was completed,</p>
+</li>
+<li>
+<p>what is blocked,</p>
+</li>
+<li>
+<p>whether user input is required,</p>
+</li>
+<li>
+<p>whether the system is revising due to test or validation failures,</p>
+</li>
+<li>
+<p>whether packaging and delivery have started.</p>
+</li>
 </ul>
 <p>This is not optional UX polish. It is required for trust and controllability.</p>
 <h2>2.3 Memory Is A Core Constraint</h2>
 <p>This feature will fail if memory is treated as a generic chat transcript.</p>
 <p>An iterative scaffold workflow accumulates:</p>
 <ul>
-<li>requirements,</li>
-<li>assumptions,</li>
-<li>rejected ideas,</li>
-<li>design revisions,</li>
-<li>test failures,</li>
-<li>packaging outcomes,</li>
-<li>delivery outcomes.</li>
+<li>
+<p>requirements,</p>
+</li>
+<li>
+<p>assumptions,</p>
+</li>
+<li>
+<p>rejected ideas,</p>
+</li>
+<li>
+<p>design revisions,</p>
+</li>
+<li>
+<p>test failures,</p>
+</li>
+<li>
+<p>packaging outcomes,</p>
+</li>
+<li>
+<p>delivery outcomes.</p>
+</li>
 </ul>
 <p>Those are not all the same kind of memory.</p>
 <p>If they are mixed together carelessly, the system will:</p>
 <ul>
-<li>reintroduce discarded requirements,</li>
-<li>treat tentative ideas as confirmed design,</li>
-<li>forget which iteration actually passed testing,</li>
-<li>package stale outputs,</li>
-<li>or tell the user misleading progress.</li>
+<li>
+<p>reintroduce discarded requirements,</p>
+</li>
+<li>
+<p>treat tentative ideas as confirmed design,</p>
+</li>
+<li>
+<p>forget which iteration actually passed testing,</p>
+</li>
+<li>
+<p>package stale outputs,</p>
+</li>
+<li>
+<p>or tell the user misleading progress.</p>
+</li>
 </ul>
 <p>So memory handling is not a secondary implementation detail. It is one of the main design constraints.</p>
 <h2>3. Architectural Fit</h2>
@@ -122,31 +235,61 @@ Status: planning draft</p>
 <h3>3.1 High-level model</h3>
 <p>The high-level model should handle:</p>
 <ul>
-<li>requirement interview,</li>
-<li>clarification questions,</li>
-<li>scope reduction,</li>
-<li>structured scaffold-spec proposal,</li>
-<li>user confirmation of the spec.</li>
+<li>
+<p>requirement interview,</p>
+</li>
+<li>
+<p>clarification questions,</p>
+</li>
+<li>
+<p>scope reduction,</p>
+</li>
+<li>
+<p>structured scaffold-spec proposal,</p>
+</li>
+<li>
+<p>user confirmation of the spec.</p>
+</li>
 </ul>
 <p>It should not directly generate arbitrary side effects outside broker governance.</p>
 <h3>3.2 Broker</h3>
 <p>The broker should remain the control point for:</p>
 <ul>
-<li>state transitions,</li>
-<li>spec persistence,</li>
-<li>execution intent promotion,</li>
-<li>managed workspace allocation,</li>
-<li>artifact packaging,</li>
-<li>delivery routing.</li>
+<li>
+<p>state transitions,</p>
+</li>
+<li>
+<p>spec persistence,</p>
+</li>
+<li>
+<p>execution intent promotion,</p>
+</li>
+<li>
+<p>managed workspace allocation,</p>
+</li>
+<li>
+<p>artifact packaging,</p>
+</li>
+<li>
+<p>delivery routing.</p>
+</li>
 </ul>
 <p>The broker should not “become the generator”. It should orchestrate the generation path and validate transitions.</p>
 <h3>3.3 Execution layer</h3>
 <p>The execution layer should consume:</p>
 <ul>
-<li>a structured scaffold spec,</li>
-<li>target paths,</li>
-<li>allowed generation scope,</li>
-<li>packaging instructions.</li>
+<li>
+<p>a structured scaffold spec,</p>
+</li>
+<li>
+<p>target paths,</p>
+</li>
+<li>
+<p>allowed generation scope,</p>
+</li>
+<li>
+<p>packaging instructions.</p>
+</li>
 </ul>
 <p>It should not consume raw conversation as its primary input.</p>
 <h2>4. Proposed Capability</h2>
@@ -156,25 +299,53 @@ Status: planning draft</p>
 </ul>
 <p>This is distinct from:</p>
 <ul>
-<li><code>doc_gen</code></li>
-<li><code>code_gen</code></li>
-<li><code>code_modify</code></li>
+<li>
+<p><code>doc_gen</code></p>
+</li>
+<li>
+<p><code>code_gen</code></p>
+</li>
+<li>
+<p><code>code_modify</code></p>
+</li>
 </ul>
 <p>It represents a bounded, scaffold-oriented generation workflow where the target output is a packaged project skeleton rather than a single HTML page or a single markdown file.</p>
 <h2>5. User-Level Flow</h2>
 <p>The intended user flow is:</p>
 <ol>
-<li>User asks for a system or project scaffold.</li>
-<li>High-level model enters requirement interview mode.</li>
-<li>High-level model asks targeted questions until the scaffold specification is sufficiently complete.</li>
-<li>Broker stores a structured scaffold draft state.</li>
-<li>High-level model presents a concise spec summary.</li>
-<li>User confirms.</li>
-<li>Broker promotes the scaffold spec into executable intent.</li>
-<li>Generator produces files into the user’s project workspace.</li>
-<li>Broker runs packaging.</li>
-<li>Broker delivers the package through configured delivery mode.</li>
-<li>User receives a download link or package notice.</li>
+<li>
+<p>User asks for a system or project scaffold.</p>
+</li>
+<li>
+<p>High-level model enters requirement interview mode.</p>
+</li>
+<li>
+<p>High-level model asks targeted questions until the scaffold specification is sufficiently complete.</p>
+</li>
+<li>
+<p>Broker stores a structured scaffold draft state.</p>
+</li>
+<li>
+<p>High-level model presents a concise spec summary.</p>
+</li>
+<li>
+<p>User confirms.</p>
+</li>
+<li>
+<p>Broker promotes the scaffold spec into executable intent.</p>
+</li>
+<li>
+<p>Generator produces files into the user’s project workspace.</p>
+</li>
+<li>
+<p>Broker runs packaging.</p>
+</li>
+<li>
+<p>Broker delivers the package through configured delivery mode.</p>
+</li>
+<li>
+<p>User receives a download link or package notice.</p>
+</li>
 </ol>
 <p>The user should not need to manually reconstruct the spec from memory.</p>
 <h2>6. Requirement Interview Model</h2>
@@ -183,98 +354,208 @@ Status: planning draft</p>
 <h3>6.1 Minimal scaffold spec</h3>
 <p>At minimum, the scaffold spec should capture:</p>
 <ul>
-<li>project name</li>
-<li>project type</li>
-<li>target platform</li>
-<li>language / stack</li>
-<li>frontend presence</li>
-<li>backend presence</li>
-<li>database presence</li>
-<li>auth requirement</li>
-<li>deployment target intent</li>
-<li>output artifact format</li>
+<li>
+<p>project name</p>
+</li>
+<li>
+<p>project type</p>
+</li>
+<li>
+<p>target platform</p>
+</li>
+<li>
+<p>language / stack</p>
+</li>
+<li>
+<p>frontend presence</p>
+</li>
+<li>
+<p>backend presence</p>
+</li>
+<li>
+<p>database presence</p>
+</li>
+<li>
+<p>auth requirement</p>
+</li>
+<li>
+<p>deployment target intent</p>
+</li>
+<li>
+<p>output artifact format</p>
+</li>
 </ul>
 <h3>6.2 Optional scaffold spec</h3>
 <p>As the system matures, the spec can expand to include:</p>
 <ul>
-<li>routing style</li>
-<li>UI style or design system preference</li>
-<li>API shape</li>
-<li>persistence technology</li>
-<li>testing scaffold requirement</li>
-<li>CI/deployment files</li>
-<li>containerization preference</li>
-<li>Azure/IIS target preference</li>
+<li>
+<p>routing style</p>
+</li>
+<li>
+<p>UI style or design system preference</p>
+</li>
+<li>
+<p>API shape</p>
+</li>
+<li>
+<p>persistence technology</p>
+</li>
+<li>
+<p>testing scaffold requirement</p>
+</li>
+<li>
+<p>CI/deployment files</p>
+</li>
+<li>
+<p>containerization preference</p>
+</li>
+<li>
+<p>Azure/IIS target preference</p>
+</li>
 </ul>
 <p>Default principle:</p>
 <ul>
-<li>prefer the project's custom component library,</li>
-<li>do not assume a generic third-party UI kit unless the user explicitly asks for one.</li>
+<li>
+<p>prefer the project's custom component library,</p>
+</li>
+<li>
+<p>do not assume a generic third-party UI kit unless the user explicitly asks for one.</p>
+</li>
 </ul>
 <h3>6.3 Completion rule</h3>
 <p>The interview should end only when:</p>
 <ul>
-<li>required scaffold fields are filled,</li>
-<li>unresolved ambiguity is below threshold,</li>
-<li>the user has reviewed the generated summary.</li>
+<li>
+<p>required scaffold fields are filled,</p>
+</li>
+<li>
+<p>unresolved ambiguity is below threshold,</p>
+</li>
+<li>
+<p>the user has reviewed the generated summary.</p>
+</li>
 </ul>
 <p>This must be explicit. Otherwise the system will oscillate between over-questioning and under-specified generation.</p>
 <h2>6.4 Requirement Analysis Output</h2>
 <p>The interview stage should not only fill fields. It should also produce a requirement-analysis artifact.</p>
 <p>Suggested outputs:</p>
 <ul>
-<li>scope summary</li>
-<li>assumptions</li>
-<li>constraints</li>
-<li>missing decisions</li>
-<li>risks</li>
-<li>accepted tradeoffs</li>
+<li>
+<p>scope summary</p>
+</li>
+<li>
+<p>assumptions</p>
+</li>
+<li>
+<p>constraints</p>
+</li>
+<li>
+<p>missing decisions</p>
+</li>
+<li>
+<p>risks</p>
+</li>
+<li>
+<p>accepted tradeoffs</p>
+</li>
 </ul>
 <p>This becomes the basis for later design and implementation iterations.</p>
 <h2>6.5 Requirement Memory Rules</h2>
 <p>Requirement-related memory should be split at least into:</p>
 <ul>
-<li><code>candidate_requirements</code></li>
-<li><code>confirmed_requirements</code></li>
-<li><code>rejected_requirements</code></li>
-<li><code>open_questions</code></li>
-<li><code>assumptions</code></li>
+<li>
+<p><code>candidate_requirements</code></p>
+</li>
+<li>
+<p><code>confirmed_requirements</code></p>
+</li>
+<li>
+<p><code>rejected_requirements</code></p>
+</li>
+<li>
+<p><code>open_questions</code></p>
+</li>
+<li>
+<p><code>assumptions</code></p>
+</li>
 </ul>
 <p>The system must not silently promote a candidate requirement into a confirmed one just because it appeared repeatedly in conversation.</p>
 <p>Confirmation should happen through:</p>
 <ul>
-<li>explicit user confirmation,</li>
-<li>or an explicit summarized spec review step.</li>
+<li>
+<p>explicit user confirmation,</p>
+</li>
+<li>
+<p>or an explicit summarized spec review step.</p>
+</li>
 </ul>
 <h2>7. New State Model</h2>
 <p>This feature needs additional workflow states beyond current draft confirmation.</p>
 <p>Suggested states:</p>
 <ul>
-<li><code>ScaffoldInterview</code></li>
-<li><code>RequirementsAnalyzed</code></li>
-<li><code>DesignPlanned</code></li>
-<li><code>ScaffoldDraftReady</code></li>
-<li><code>ScaffoldConfirmed</code></li>
-<li><code>ImplementationInProgress</code></li>
-<li><code>ImplementationCompleted</code></li>
-<li><code>TestingInProgress</code></li>
-<li><code>TestingCompleted</code></li>
-<li><code>RevisionRequested</code></li>
-<li><code>ScaffoldGenerating</code></li>
-<li><code>ScaffoldGenerated</code></li>
-<li><code>ScaffoldPackaged</code></li>
-<li><code>ScaffoldDelivered</code></li>
-<li><code>ScaffoldFailed</code></li>
+<li>
+<p><code>ScaffoldInterview</code></p>
+</li>
+<li>
+<p><code>RequirementsAnalyzed</code></p>
+</li>
+<li>
+<p><code>DesignPlanned</code></p>
+</li>
+<li>
+<p><code>ScaffoldDraftReady</code></p>
+</li>
+<li>
+<p><code>ScaffoldConfirmed</code></p>
+</li>
+<li>
+<p><code>ImplementationInProgress</code></p>
+</li>
+<li>
+<p><code>ImplementationCompleted</code></p>
+</li>
+<li>
+<p><code>TestingInProgress</code></p>
+</li>
+<li>
+<p><code>TestingCompleted</code></p>
+</li>
+<li>
+<p><code>RevisionRequested</code></p>
+</li>
+<li>
+<p><code>ScaffoldGenerating</code></p>
+</li>
+<li>
+<p><code>ScaffoldGenerated</code></p>
+</li>
+<li>
+<p><code>ScaffoldPackaged</code></p>
+</li>
+<li>
+<p><code>ScaffoldDelivered</code></p>
+</li>
+<li>
+<p><code>ScaffoldFailed</code></p>
+</li>
 </ul>
 <p>This should not be collapsed into the existing generic <code>production draft</code> shape without extra state, because the interview loop is different from a simple one-shot draft.</p>
 <p>The important point is that generation is only one phase inside a larger iterative workflow.</p>
 <p>Each state transition should also have a user-facing progress event.</p>
 <p>State transitions should also define memory-commit behavior. Each transition should specify:</p>
 <ul>
-<li>which memory fields may be updated,</li>
-<li>which fields may only be appended,</li>
-<li>which fields become immutable once confirmed,</li>
-<li>which prior iteration memories are superseded rather than overwritten.</li>
+<li>
+<p>which memory fields may be updated,</p>
+</li>
+<li>
+<p>which fields may only be appended,</p>
+</li>
+<li>
+<p>which fields become immutable once confirmed,</p>
+</li>
+<li>
+<p>which prior iteration memories are superseded rather than overwritten.</p>
+</li>
 </ul>
 <h2>8. New Data Models</h2>
 <h3>8.1 Scaffold spec document</h3>
@@ -284,12 +565,24 @@ Status: planning draft</p>
 </ul>
 <p>Contents should include:</p>
 <ul>
-<li>current scaffold field values,</li>
-<li>missing required fields,</li>
-<li>completion status,</li>
-<li>last spec summary,</li>
-<li>associated project root,</li>
-<li>packaging preference.</li>
+<li>
+<p>current scaffold field values,</p>
+</li>
+<li>
+<p>missing required fields,</p>
+</li>
+<li>
+<p>completion status,</p>
+</li>
+<li>
+<p>last spec summary,</p>
+</li>
+<li>
+<p>associated project root,</p>
+</li>
+<li>
+<p>packaging preference.</p>
+</li>
 </ul>
 <p>This document should contain only the current normalized scaffold spec, not the full conversational history.</p>
 <h3>8.2 Design plan document</h3>
@@ -299,12 +592,24 @@ Status: planning draft</p>
 </ul>
 <p>Contents should include:</p>
 <ul>
-<li>architecture summary</li>
-<li>module breakdown</li>
-<li>file/package layout</li>
-<li>generation strategy</li>
-<li>test strategy</li>
-<li>packaging target</li>
+<li>
+<p>architecture summary</p>
+</li>
+<li>
+<p>module breakdown</p>
+</li>
+<li>
+<p>file/package layout</p>
+</li>
+<li>
+<p>generation strategy</p>
+</li>
+<li>
+<p>test strategy</p>
+</li>
+<li>
+<p>packaging target</p>
+</li>
 </ul>
 <p>This document should be versioned by iteration, because design plans can change across revisions.</p>
 <h3>8.3 Iteration state document</h3>
@@ -314,19 +619,39 @@ Status: planning draft</p>
 </ul>
 <p>Contents should include:</p>
 <ul>
-<li>current phase</li>
-<li>iteration count</li>
-<li>latest review result</li>
-<li>open issues</li>
-<li>last requested revision</li>
-<li>last successful checkpoint</li>
+<li>
+<p>current phase</p>
+</li>
+<li>
+<p>iteration count</p>
+</li>
+<li>
+<p>latest review result</p>
+</li>
+<li>
+<p>open issues</p>
+</li>
+<li>
+<p>last requested revision</p>
+</li>
+<li>
+<p>last successful checkpoint</p>
+</li>
 </ul>
 <p>This document should make it possible to distinguish:</p>
 <ul>
-<li>current iteration,</li>
-<li>last completed iteration,</li>
-<li>last test-passing iteration,</li>
-<li>last deliverable iteration.</li>
+<li>
+<p>current iteration,</p>
+</li>
+<li>
+<p>last completed iteration,</p>
+</li>
+<li>
+<p>last test-passing iteration,</p>
+</li>
+<li>
+<p>last deliverable iteration.</p>
+</li>
 </ul>
 <h3>8.4 Progress event document</h3>
 <p>New persisted document:</p>
@@ -335,34 +660,70 @@ Status: planning draft</p>
 </ul>
 <p>Contents should include:</p>
 <ul>
-<li>current phase</li>
-<li>iteration index</li>
-<li>status summary</li>
-<li>short user-facing message</li>
-<li>whether response was already delivered to the user</li>
-<li>whether user action is required</li>
-<li>timestamp</li>
+<li>
+<p>current phase</p>
+</li>
+<li>
+<p>iteration index</p>
+</li>
+<li>
+<p>status summary</p>
+</li>
+<li>
+<p>short user-facing message</p>
+</li>
+<li>
+<p>whether response was already delivered to the user</p>
+</li>
+<li>
+<p>whether user action is required</p>
+</li>
+<li>
+<p>timestamp</p>
+</li>
 </ul>
 <p>This document is for progress communication, not long-term design truth.</p>
 <h3>8.5 Scaffold artifact document</h3>
 <p>New artifact record type or extended artifact metadata should include:</p>
 <ul>
-<li>artifact type = <code>system_scaffold_package</code></li>
-<li>package path</li>
-<li>package filename</li>
-<li>package format</li>
-<li>project root</li>
-<li>generation summary</li>
-<li>delivery mode</li>
+<li>
+<p>artifact type = <code>system_scaffold_package</code></p>
+</li>
+<li>
+<p>package path</p>
+</li>
+<li>
+<p>package filename</p>
+</li>
+<li>
+<p>package format</p>
+</li>
+<li>
+<p>project root</p>
+</li>
+<li>
+<p>generation summary</p>
+</li>
+<li>
+<p>delivery mode</p>
+</li>
 </ul>
 <p>Artifacts should be tied to the iteration that produced them. Otherwise later revisions may accidentally deliver obsolete outputs.</p>
 <h3>8.6 Scaffold packaging evidence</h3>
 <p>Packaging should generate explicit evidence, for example:</p>
 <ul>
-<li>package manifest</li>
-<li>zipped file list</li>
-<li>packaging timestamp</li>
-<li>source project root</li>
+<li>
+<p>package manifest</p>
+</li>
+<li>
+<p>zipped file list</p>
+</li>
+<li>
+<p>packaging timestamp</p>
+</li>
+<li>
+<p>source project root</p>
+</li>
 </ul>
 <p>This matters because packaging is a real step, not a cosmetic add-on.</p>
 <h2>9. Generation Strategy</h2>
@@ -371,47 +732,91 @@ Status: planning draft</p>
 <p>Use known scaffold recipes and template emitters.</p>
 <p>Examples:</p>
 <ul>
-<li>static SPA scaffold</li>
-<li>frontend + API scaffold</li>
-<li>documentation-heavy prototype scaffold</li>
+<li>
+<p>static SPA scaffold</p>
+</li>
+<li>
+<p>frontend + API scaffold</p>
+</li>
+<li>
+<p>documentation-heavy prototype scaffold</p>
+</li>
 </ul>
 <p>Advantages:</p>
 <ul>
-<li>predictable output,</li>
-<li>easier validation,</li>
-<li>lower hallucination risk,</li>
-<li>easier packaging.</li>
+<li>
+<p>predictable output,</p>
+</li>
+<li>
+<p>easier validation,</p>
+</li>
+<li>
+<p>lower hallucination risk,</p>
+</li>
+<li>
+<p>easier packaging.</p>
+</li>
 </ul>
 <p>Disadvantages:</p>
 <ul>
-<li>narrower range,</li>
-<li>less expressive.</li>
+<li>
+<p>narrower range,</p>
+</li>
+<li>
+<p>less expressive.</p>
+</li>
 </ul>
 <h3>9.2 Phase B: Template + model-assisted synthesis</h3>
 <p>Use:</p>
 <ul>
-<li>fixed scaffold template,</li>
-<li>plus model-generated files where safe,</li>
-<li>plus validation and rewrite steps.</li>
+<li>
+<p>fixed scaffold template,</p>
+</li>
+<li>
+<p>plus model-generated files where safe,</p>
+</li>
+<li>
+<p>plus validation and rewrite steps.</p>
+</li>
 </ul>
 <p>Examples:</p>
 <ul>
-<li>README generation,</li>
-<li>route/page placeholders,</li>
-<li>seed components,</li>
-<li>config files with user-specific naming.</li>
+<li>
+<p>README generation,</p>
+</li>
+<li>
+<p>route/page placeholders,</p>
+</li>
+<li>
+<p>seed components,</p>
+</li>
+<li>
+<p>config files with user-specific naming.</p>
+</li>
 </ul>
 <p>This should come after deterministic scaffold packaging works.</p>
 <h2>9.3 Iterative Generation Strategy</h2>
 <p>Generation should be organized into explicit passes rather than one giant output.</p>
 <p>Suggested pass structure:</p>
 <ol>
-<li>requirement-analysis pass</li>
-<li>design-plan pass</li>
-<li>implementation pass</li>
-<li>validation/test pass</li>
-<li>revision pass</li>
-<li>packaging pass</li>
+<li>
+<p>requirement-analysis pass</p>
+</li>
+<li>
+<p>design-plan pass</p>
+</li>
+<li>
+<p>implementation pass</p>
+</li>
+<li>
+<p>validation/test pass</p>
+</li>
+<li>
+<p>revision pass</p>
+</li>
+<li>
+<p>packaging pass</p>
+</li>
 </ol>
 <p>Each pass should consume structured outputs from the previous pass, not the full raw conversation by default.</p>
 <p>This matters because iterative systems degrade quickly if every revision restarts from unbounded raw chat context.</p>
@@ -419,11 +824,21 @@ Status: planning draft</p>
 <p>Each major pass should write a reduced, phase-specific memory projection.</p>
 <p>Suggested projections:</p>
 <ul>
-<li>requirement-analysis projection</li>
-<li>design-plan projection</li>
-<li>implementation projection</li>
-<li>test-result projection</li>
-<li>delivery projection</li>
+<li>
+<p>requirement-analysis projection</p>
+</li>
+<li>
+<p>design-plan projection</p>
+</li>
+<li>
+<p>implementation projection</p>
+</li>
+<li>
+<p>test-result projection</p>
+</li>
+<li>
+<p>delivery projection</p>
+</li>
 </ul>
 <p>These projections should be the canonical inputs for later phases.</p>
 <p>Raw chat history may still be retained for audit, but should not be the primary working memory for downstream steps.</p>
@@ -435,21 +850,37 @@ Status: planning draft</p>
 </ul>
 <p>Package content should include:</p>
 <ul>
-<li>generated project files,</li>
-<li>top-level README,</li>
-<li>package manifest,</li>
-<li>generated summary.</li>
+<li>
+<p>generated project files,</p>
+</li>
+<li>
+<p>top-level README,</p>
+</li>
+<li>
+<p>package manifest,</p>
+</li>
+<li>
+<p>generated summary.</p>
+</li>
 </ul>
 <p>Initial package placement:</p>
 <ul>
-<li>under the user’s managed workspace,</li>
-<li>probably in <code>documents</code> or a dedicated <code>packages</code> folder under the project root.</li>
+<li>
+<p>under the user’s managed workspace,</p>
+</li>
+<li>
+<p>probably in <code>documents</code> or a dedicated <code>packages</code> folder under the project root.</p>
+</li>
 </ul>
 <p>Suggested canonical path:</p>
 <ul>
-<li><code>{projectRoot}/dist/{packageFile}</code>
-or</li>
-<li><code>{userRoot}/documents/{packageFile}</code></li>
+<li>
+<p><code>{projectRoot}/dist/{packageFile}</code>
+or</p>
+</li>
+<li>
+<p><code>{userRoot}/documents/{packageFile}</code></p>
+</li>
 </ul>
 <p>This must be defined clearly before implementation. Avoid hidden temporary outputs with no formal artifact path.</p>
 <h2>11. Delivery Strategy</h2>
@@ -465,88 +896,176 @@ or</li>
 <h3>11.1 Delivery modes</h3>
 <p>The feature should support selectable delivery modes:</p>
 <ul>
-<li><code>google_drive_shared</code></li>
-<li><code>google_drive_user_delegated</code></li>
-<li><code>local_only</code></li>
-<li><code>broker_download_api</code> (planned, not implemented yet)</li>
+<li>
+<p><code>google_drive_shared</code></p>
+</li>
+<li>
+<p><code>google_drive_user_delegated</code></p>
+</li>
+<li>
+<p><code>local_only</code></p>
+</li>
+<li>
+<p><code>broker_download_api</code> (planned, not implemented yet)</p>
+</li>
 </ul>
 <h3>11.2 Important front-end gap</h3>
 <p>The project does not currently have a formal end-user front-end download surface for artifacts.</p>
 <p>That means:</p>
 <ul>
-<li>delivery is currently operational through Drive,</li>
-<li>but broker-native download is still a product gap.</li>
+<li>
+<p>delivery is currently operational through Drive,</p>
+</li>
+<li>
+<p>but broker-native download is still a product gap.</p>
+</li>
 </ul>
 <p>This is not a blocker for scaffold generation itself, but it is a blocker for calling the broker a complete direct-delivery system.</p>
 <h2>12. Validation</h2>
 <p>This feature must not stop at “files were written”.</p>
 <p>Minimum validation after generation:</p>
 <ul>
-<li>required files exist,</li>
-<li>package can be created,</li>
-<li>package path is recorded,</li>
-<li>delivery path returns a usable link or explicit local-only result.</li>
+<li>
+<p>required files exist,</p>
+</li>
+<li>
+<p>package can be created,</p>
+</li>
+<li>
+<p>package path is recorded,</p>
+</li>
+<li>
+<p>delivery path returns a usable link or explicit local-only result.</p>
+</li>
 </ul>
 <p>For selected scaffold types, stronger validation should exist:</p>
 <ul>
-<li>static site entry file exists,</li>
-<li>API project file exists,</li>
-<li>README exists,</li>
-<li>package opens as valid zip.</li>
+<li>
+<p>static site entry file exists,</p>
+</li>
+<li>
+<p>API project file exists,</p>
+</li>
+<li>
+<p>README exists,</p>
+</li>
+<li>
+<p>package opens as valid zip.</p>
+</li>
 </ul>
 <p>Later phases may add:</p>
 <ul>
-<li><code>dotnet build</code></li>
-<li><code>npm install</code></li>
-<li>smoke tests</li>
+<li>
+<p><code>dotnet build</code></p>
+</li>
+<li>
+<p><code>npm install</code></p>
+</li>
+<li>
+<p>smoke tests</p>
+</li>
 </ul>
 <p>But the first phase should not pretend build validation exists if it does not.</p>
 <h2>12.1 Testing As A First-Class Iteration Phase</h2>
 <p>Testing is not a postscript. It must be represented as an explicit workflow phase.</p>
 <p>At minimum, the system should track:</p>
 <ul>
-<li>whether generation completed,</li>
-<li>whether packaging completed,</li>
-<li>whether structural checks passed,</li>
-<li>whether build/test was attempted,</li>
-<li>whether revision is required before delivery.</li>
+<li>
+<p>whether generation completed,</p>
+</li>
+<li>
+<p>whether packaging completed,</p>
+</li>
+<li>
+<p>whether structural checks passed,</p>
+</li>
+<li>
+<p>whether build/test was attempted,</p>
+</li>
+<li>
+<p>whether revision is required before delivery.</p>
+</li>
 </ul>
 <p>The system should be allowed to stop before delivery if testing indicates the scaffold is inconsistent.</p>
 <h2>12.3 Test Memory Rules</h2>
 <p>Testing must produce structured memory, not just free-form logs.</p>
 <p>At minimum, store:</p>
 <ul>
-<li>iteration number</li>
-<li>test suite attempted</li>
-<li>pass/fail outcome</li>
-<li>blocking failures</li>
-<li>unresolved warnings</li>
-<li>tested artifact reference</li>
+<li>
+<p>iteration number</p>
+</li>
+<li>
+<p>test suite attempted</p>
+</li>
+<li>
+<p>pass/fail outcome</p>
+</li>
+<li>
+<p>blocking failures</p>
+</li>
+<li>
+<p>unresolved warnings</p>
+</li>
+<li>
+<p>tested artifact reference</p>
+</li>
 </ul>
 <p>Only a test-passing iteration should be eligible for packaging and delivery unless the user explicitly accepts a weaker outcome.</p>
 <h2>12.2 User-Facing Progress Contract</h2>
 <p>Every major phase should emit a concise progress response.</p>
 <p>Minimum phase-level responses:</p>
 <ol>
-<li>requirement interview started</li>
-<li>requirement analysis completed</li>
-<li>design plan completed</li>
-<li>implementation iteration started</li>
-<li>implementation iteration completed</li>
-<li>testing started</li>
-<li>testing completed</li>
-<li>revision requested</li>
-<li>packaging started</li>
-<li>packaging completed</li>
-<li>delivery started</li>
-<li>delivery completed</li>
+<li>
+<p>requirement interview started</p>
+</li>
+<li>
+<p>requirement analysis completed</p>
+</li>
+<li>
+<p>design plan completed</p>
+</li>
+<li>
+<p>implementation iteration started</p>
+</li>
+<li>
+<p>implementation iteration completed</p>
+</li>
+<li>
+<p>testing started</p>
+</li>
+<li>
+<p>testing completed</p>
+</li>
+<li>
+<p>revision requested</p>
+</li>
+<li>
+<p>packaging started</p>
+</li>
+<li>
+<p>packaging completed</p>
+</li>
+<li>
+<p>delivery started</p>
+</li>
+<li>
+<p>delivery completed</p>
+</li>
 </ol>
 <p>Each response should be short and operational, for example:</p>
 <ul>
-<li>current phase</li>
-<li>iteration number</li>
-<li>current outcome</li>
-<li>next step</li>
+<li>
+<p>current phase</p>
+</li>
+<li>
+<p>iteration number</p>
+</li>
+<li>
+<p>current outcome</p>
+</li>
+<li>
+<p>next step</p>
+</li>
 </ul>
 <p>If user input is needed, that prompt should be its own explicit follow-up, not buried inside a long paragraph.</p>
 <p>This matches the existing LINE direction where actionable follow-up commands should be separated from the main message.</p>
@@ -564,11 +1083,21 @@ or</li>
 <h3>Step 1</h3>
 <p>Add <code>system_scaffold</code> task type plus:</p>
 <ul>
-<li>scaffold-spec document</li>
-<li>design-plan document</li>
-<li>iteration-state document</li>
-<li>progress-event document</li>
-<li>memory-commit rules for each phase</li>
+<li>
+<p>scaffold-spec document</p>
+</li>
+<li>
+<p>design-plan document</p>
+</li>
+<li>
+<p>iteration-state document</p>
+</li>
+<li>
+<p>progress-event document</p>
+</li>
+<li>
+<p>memory-commit rules for each phase</p>
+</li>
 </ul>
 <h3>Step 2</h3>
 <p>Add high-level interview mode and requirement-analysis output.</p>
@@ -577,9 +1106,13 @@ or</li>
 <h3>Step 4</h3>
 <p>Implement deterministic scaffold generation for one narrow target:</p>
 <ul>
-<li><code>single-page app scaffold</code>
-or</li>
-<li><code>frontend + minimal API scaffold</code></li>
+<li>
+<p><code>single-page app scaffold</code>
+or</p>
+</li>
+<li>
+<p><code>frontend + minimal API scaffold</code></p>
+</li>
 </ul>
 <h3>Step 5</h3>
 <p>Add structural validation and basic testing stage.</p>
@@ -590,13 +1123,27 @@ or</li>
 <h3>Step 8</h3>
 <p>Add admin visibility:</p>
 <ul>
-<li>scaffold spec</li>
-<li>design plan</li>
-<li>iteration state</li>
-<li>progress events</li>
-<li>iteration memory projections</li>
-<li>generation result</li>
-<li>package artifact</li>
+<li>
+<p>scaffold spec</p>
+</li>
+<li>
+<p>design plan</p>
+</li>
+<li>
+<p>iteration state</p>
+</li>
+<li>
+<p>progress events</p>
+</li>
+<li>
+<p>iteration memory projections</p>
+</li>
+<li>
+<p>generation result</p>
+</li>
+<li>
+<p>package artifact</p>
+</li>
 </ul>
 <h3>Step 9</h3>
 <p>Only then expand into richer multi-project or multi-service generation.</p>
@@ -605,35 +1152,75 @@ or</li>
 <p>The difficult part is not asking one more model call to write files.
 The difficult part is making the result:</p>
 <ul>
-<li>analysis-driven,</li>
-<li>plan-driven,</li>
-<li>spec-driven,</li>
-<li>inspectable,</li>
-<li>revisable,</li>
-<li>testable,</li>
-<li>packageable,</li>
-<li>deliverable,</li>
-<li>and stable enough that users can rely on it.</li>
+<li>
+<p>analysis-driven,</p>
+</li>
+<li>
+<p>plan-driven,</p>
+</li>
+<li>
+<p>spec-driven,</p>
+</li>
+<li>
+<p>inspectable,</p>
+</li>
+<li>
+<p>revisable,</p>
+</li>
+<li>
+<p>testable,</p>
+</li>
+<li>
+<p>packageable,</p>
+</li>
+<li>
+<p>deliverable,</p>
+</li>
+<li>
+<p>and stable enough that users can rely on it.</p>
+</li>
 </ul>
 <p>If implemented properly, this becomes one of the most valuable features in the whole system.</p>
 <p>If implemented lazily, it becomes a demo trap:</p>
 <ul>
-<li>impressive in screenshots,</li>
-<li>unreliable in real use,</li>
-<li>and expensive to maintain.</li>
+<li>
+<p>impressive in screenshots,</p>
+</li>
+<li>
+<p>unreliable in real use,</p>
+</li>
+<li>
+<p>and expensive to maintain.</p>
+</li>
 </ul>
 <h2>16. Current Recommendation</h2>
 <p>Do not jump straight to “generate any full system”.</p>
 <p>The correct next target is:</p>
 <ul>
-<li>requirement interview</li>
-<li>requirement analysis artifact</li>
-<li>structured scaffold spec</li>
-<li>design plan</li>
-<li>one deterministic scaffold family</li>
-<li>basic validation/test phase</li>
-<li>zip packaging</li>
-<li>Google Drive delivery</li>
+<li>
+<p>requirement interview</p>
+</li>
+<li>
+<p>requirement analysis artifact</p>
+</li>
+<li>
+<p>structured scaffold spec</p>
+</li>
+<li>
+<p>design plan</p>
+</li>
+<li>
+<p>one deterministic scaffold family</p>
+</li>
+<li>
+<p>basic validation/test phase</p>
+</li>
+<li>
+<p>zip packaging</p>
+</li>
+<li>
+<p>Google Drive delivery</p>
+</li>
 </ul>
 <p>That is the smallest version that is still architecturally honest.</p>
 </main>

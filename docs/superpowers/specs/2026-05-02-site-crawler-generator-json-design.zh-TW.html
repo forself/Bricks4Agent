@@ -24,6 +24,17 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <p>日期：2026-05-02
 狀態：approved design draft
 範圍：從使用者在 LINE 指定網站，到產出可由現有 generator 消費的網站定義 JSON；若現有元件庫無法覆蓋，產生新元件與元件 manifest。</p>
+<blockquote>
+<p><strong>實作現況（2026-09-26 核對）</strong></p>
+<ul>
+<li>沒有 <code>site-generator-agent-worker</code>，也沒有 <code>site.convert_to_generator_json</code> capability；<code>SiteGeneratorConverter</code> 位於 crawler worker 內（<code>packages/csharp/workers/site-crawler-worker/Services/SiteGeneratorConverter.cs</code>），worker 註冊的是 <code>site.crawl_source</code>、<code>site.generate_package</code>、<code>site.reconstruct_package</code>（<code>packages/csharp/workers/site-crawler-worker/Handlers/*.cs</code>）。</li>
+<li>§4.1 的 <code>SiteCloneCoordinator</code>、<code>ComponentResolver</code>、<code>GeneratedComponentSynthesizer</code>、<code>GeneratorBundleValidator</code> 均不存在；broker 端實作是 <code>HighLevelSiteRebuildService</code>，以 <code>SiteGenerationQualityAnalyzer</code> 做品質閘（<code>packages/csharp/broker/Services/HighLevelSiteRebuildService.cs:102-103</code>）。</li>
+<li>沒有 <code>/clone</code> 命令，也沒有回問爬取範圍的流程；<code>site_rebuild</code> 由關鍵字判定（<code>packages/csharp/broker/Services/HighLevelCoordinator.cs:2198</code>），深度從訊息解析、預設 1 層（<code>packages/csharp/broker/Services/HighLevelSiteRebuildService.cs:26</code>）。</li>
+<li><code>site_rebuild</code> 路徑的上限為 <code>MaxPages = int.MaxValue</code>、逾時 1800 秒（<code>packages/csharp/broker/Services/HighLevelSiteRebuildService.cs:27-28</code>），不是 §3／§5／§11 的 50 頁／180 秒（50／180 只是 <code>packages/csharp/workers/site-crawler-worker/Models/SiteCrawlContracts.cs:68</code>、<code>:77</code> 的類別預設值）。</li>
+<li>§12 的 artifacts 未由此路徑產出；<code>site_rebuild</code> 交付的是 zip 靜態網站套件（<code>packages/csharp/broker/Services/HighLevelSiteRebuildService.cs:121-128</code>）。<code>crawl-source-bundle.json</code>、<code>component-resolution.json</code>、<code>generated-components/</code> 在程式中皆不存在；只有另一條 Node 路徑 <code>tools/scripts/crawl-site-to-generator-json.mjs:872-875</code> 會寫出 <code>site-generator-bundle.json</code>、<code>extracted-site-model.json</code>、<code>validation-report.json</code>。</li>
+<li>broker 不是透過 worker 派工爬取，而是以 ProjectReference 引用 crawler worker 專案（<code>packages/csharp/broker/Broker.csproj:21</code>），在程序內直接呼叫 <code>SiteCrawlerService</code>（<code>packages/csharp/broker/Services/HighLevelSiteRebuildService.cs:195</code>）。</li>
+</ul>
+</blockquote>
 <h2>1. 問題定義</h2>
 <p>使用者希望提供一個網址，系統爬取該網址範圍內的網站程式碼與資產，並轉換成可以直接交給既有 SPA/page generator 使用的 JSON。此流程不能讓 LLM 自由猜測網站結構，因為輸出必須能落到現有 generator、元件庫與可驗證的 artifacts。</p>
 <p>本設計取代舊的「網站分析報告」思路。新目標不是只產生 <code>site-map.json</code> 或 markdown 分析，而是產生 generator-native bundle。</p>
@@ -59,10 +70,18 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 </code></pre>
 <p>若起始 URL 是 <code>https://example.com/docs/</code>：</p>
 <ul>
-<li>只擷取這個頁面：只抓 <code>/docs/</code></li>
-<li>第一層：抓 <code>/docs/a</code>、<code>/docs/b</code>，不抓 <code>/docs/a/detail</code></li>
-<li>兩層以內：抓 <code>/docs/a</code>、<code>/docs/a/detail</code></li>
-<li>N 層：抓深度小於或等於 N 的同路徑子頁</li>
+<li>
+<p>只擷取這個頁面：只抓 <code>/docs/</code></p>
+</li>
+<li>
+<p>第一層：抓 <code>/docs/a</code>、<code>/docs/b</code>，不抓 <code>/docs/a/detail</code></p>
+</li>
+<li>
+<p>兩層以內：抓 <code>/docs/a</code>、<code>/docs/a/detail</code></p>
+</li>
+<li>
+<p>N 層：抓深度小於或等於 N 的同路徑子頁</p>
+</li>
 </ul>
 <p>使用者回答後，系統建立 crawl intent：</p>
 <pre><code class="language-json">{
@@ -165,17 +184,33 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <h3>5.2 Path depth 規則</h3>
 <p>Crawler 先 canonicalize start URL：</p>
 <ul>
-<li>移除 fragment。</li>
-<li>正規化 trailing slash。</li>
-<li>只允許 <code>http</code> 與 <code>https</code>。</li>
-<li><code>path_prefix_lock = true</code> 時，只展開以起始 path prefix 開頭的 URL。</li>
-<li><code>same_origin_only = true</code> 時，只展開同 scheme、host、port 的 URL。</li>
+<li>
+<p>移除 fragment。</p>
+</li>
+<li>
+<p>正規化 trailing slash。</p>
+</li>
+<li>
+<p>只允許 <code>http</code> 與 <code>https</code>。</p>
+</li>
+<li>
+<p><code>path_prefix_lock = true</code> 時，只展開以起始 path prefix 開頭的 URL。</p>
+</li>
+<li>
+<p><code>same_origin_only = true</code> 時，只展開同 scheme、host、port 的 URL。</p>
+</li>
 </ul>
 <p>Depth 計算以 start path 為 root：</p>
 <ul>
-<li>start URL depth = 0</li>
-<li>start path 下第一個子 segment = 1</li>
-<li>再下一層 = 2</li>
+<li>
+<p>start URL depth = 0</p>
+</li>
+<li>
+<p>start path 下第一個子 segment = 1</p>
+</li>
+<li>
+<p>再下一層 = 2</p>
+</li>
 </ul>
 <p>Query string 不增加 depth，但不同 query 預設不展開，除非後續版本明確支援 faceted pages。</p>
 <h3>5.3 Output</h3>
@@ -296,9 +331,15 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <h3>7.1 可直接映射</h3>
 <p>以下情況可直接映射：</p>
 <ul>
-<li>section 是 form field，且 field type 對應 catalog 中 <code>generator.usage_mode = field_direct</code> 的元件。</li>
-<li>section 是明確 action group，且可對應 <code>definition_explicit</code> 元件。</li>
-<li>section 是 generator 既有 page type 可表達的 <code>form</code>、<code>list</code>、<code>detail</code>、<code>dashboard</code>。</li>
+<li>
+<p>section 是 form field，且 field type 對應 catalog 中 <code>generator.usage_mode = field_direct</code> 的元件。</p>
+</li>
+<li>
+<p>section 是明確 action group，且可對應 <code>definition_explicit</code> 元件。</p>
+</li>
+<li>
+<p>section 是 generator 既有 page type 可表達的 <code>form</code>、<code>list</code>、<code>detail</code>、<code>dashboard</code>。</p>
+</li>
 </ul>
 <p>Resolver 需要記錄 evidence：</p>
 <pre><code class="language-json">{
@@ -312,9 +353,15 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <h3>7.2 必須生成新元件</h3>
 <p>以下情況必須生成新元件：</p>
 <ul>
-<li>視覺或互動結構無法用現有 <code>field_direct</code>、<code>definition_explicit</code> 或 page type 表達。</li>
-<li>catalog 中只有 <code>manual_only</code> 元件，且 generator 不能直接 consume。</li>
-<li>原站有複合區塊，例如價格方案卡、品牌 hero、特殊 carousel、產品比較表、互動 map、非標準 article layout。</li>
+<li>
+<p>視覺或互動結構無法用現有 <code>field_direct</code>、<code>definition_explicit</code> 或 page type 表達。</p>
+</li>
+<li>
+<p>catalog 中只有 <code>manual_only</code> 元件，且 generator 不能直接 consume。</p>
+</li>
+<li>
+<p>原站有複合區塊，例如價格方案卡、品牌 hero、特殊 carousel、產品比較表、互動 map、非標準 article layout。</p>
+</li>
 </ul>
 <p>生成要求：</p>
 <pre><code class="language-json">{
@@ -375,70 +422,152 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <h2>9. Generator 相容性調整</h2>
 <p>目前 <code>PageGenerator</code> 的 <code>ComponentPaths</code> 與 <code>AvailableComponents</code> 是靜態清單。為支援新元件，實作時需要新增一層 dynamic component registry：</p>
 <ol>
-<li>讀取既有 <code>component-catalog.json</code>。</li>
-<li>讀取 bundle 中的 <code>generated_components[]</code>。</li>
-<li>合併成 runtime component path map。</li>
-<li><code>PageGenerator.generate()</code> 接受 <code>componentPathOverrides</code> 或 <code>componentRegistry</code>。</li>
-<li>validation 不再只看靜態 <code>AvailableComponents.custom</code>，也要看 registry 中 <code>generator.usable = true</code> 的元件。</li>
+<li>
+<p>讀取既有 <code>component-catalog.json</code>。</p>
+</li>
+<li>
+<p>讀取 bundle 中的 <code>generated_components[]</code>。</p>
+</li>
+<li>
+<p>合併成 runtime component path map。</p>
+</li>
+<li>
+<p><code>PageGenerator.generate()</code> 接受 <code>componentPathOverrides</code> 或 <code>componentRegistry</code>。</p>
+</li>
+<li>
+<p>validation 不再只看靜態 <code>AvailableComponents.custom</code>，也要看 registry 中 <code>generator.usable = true</code> 的元件。</p>
+</li>
 </ol>
 <p>這是本功能的必要前置改造；否則新元件即使產生，generator 仍會報 unavailable。</p>
 <h2>10. LLM 使用邊界</h2>
 <p>LLM 只允許處理：</p>
 <ul>
-<li>將 deterministic sections 命名為人可讀頁面名稱。</li>
-<li>將相近 sections 歸納成 component requirement。</li>
-<li>在 schema 內填寫 description、props 名稱、content labels。</li>
-<li>產生新元件程式碼時，必須以 component requirement、theme tokens、asset refs 為輸入。</li>
+<li>
+<p>將 deterministic sections 命名為人可讀頁面名稱。</p>
+</li>
+<li>
+<p>將相近 sections 歸納成 component requirement。</p>
+</li>
+<li>
+<p>在 schema 內填寫 description、props 名稱、content labels。</p>
+</li>
+<li>
+<p>產生新元件程式碼時，必須以 component requirement、theme tokens、asset refs 為輸入。</p>
+</li>
 </ul>
 <p>LLM 不允許：</p>
 <ul>
-<li>自行新增 crawler 未抓到的頁面。</li>
-<li>自行新增沒有 source evidence 的 section。</li>
-<li>自行改變 path depth scope。</li>
-<li>自行引用不存在的元件。</li>
-<li>輸出未通過 schema validation 的 JSON。</li>
+<li>
+<p>自行新增 crawler 未抓到的頁面。</p>
+</li>
+<li>
+<p>自行新增沒有 source evidence 的 section。</p>
+</li>
+<li>
+<p>自行改變 path depth scope。</p>
+</li>
+<li>
+<p>自行引用不存在的元件。</p>
+</li>
+<li>
+<p>輸出未通過 schema validation 的 JSON。</p>
+</li>
 </ul>
 <h2>11. 安全約束</h2>
 <p>Crawler 必須防 SSRF：</p>
 <ul>
-<li>拒絕 localhost、loopback、private IP、link-local、metadata IP。</li>
-<li>拒絕 <code>file:</code>、<code>data:</code>、<code>ftp:</code>、<code>chrome:</code> 等非 http/https scheme。</li>
-<li>redirect 後仍需重新檢查 URL。</li>
-<li>DNS resolution 結果若落在禁止網段，拒絕。</li>
-<li>同 origin/path prefix/depth 檢查在每次 enqueue 與 fetch 前都要做。</li>
+<li>
+<p>拒絕 localhost、loopback、private IP、link-local、metadata IP。</p>
+</li>
+<li>
+<p>拒絕 <code>file:</code>、<code>data:</code>、<code>ftp:</code>、<code>chrome:</code> 等非 http/https scheme。</p>
+</li>
+<li>
+<p>redirect 後仍需重新檢查 URL。</p>
+</li>
+<li>
+<p>DNS resolution 結果若落在禁止網段，拒絕。</p>
+</li>
+<li>
+<p>同 origin/path prefix/depth 檢查在每次 enqueue 與 fetch 前都要做。</p>
+</li>
 </ul>
 <p>資源限制：</p>
 <ul>
-<li>預設 <code>max_pages = 50</code>。</li>
-<li>預設 <code>max_total_bytes = 10MB</code>。</li>
-<li>預設 <code>max_asset_bytes = 2MB</code>。</li>
-<li>預設 <code>wall_clock_timeout_seconds = 180</code>。</li>
-<li>超限時保留 partial bundle，但標記 <code>limits.truncated = true</code>，不得宣稱完整轉換。</li>
+<li>
+<p>預設 <code>max_pages = 50</code>。</p>
+</li>
+<li>
+<p>預設 <code>max_total_bytes = 10MB</code>。</p>
+</li>
+<li>
+<p>預設 <code>max_asset_bytes = 2MB</code>。</p>
+</li>
+<li>
+<p>預設 <code>wall_clock_timeout_seconds = 180</code>。</p>
+</li>
+<li>
+<p>超限時保留 partial bundle，但標記 <code>limits.truncated = true</code>，不得宣稱完整轉換。</p>
+</li>
 </ul>
 <h2>12. Artifacts</h2>
 <p>流程產出以下 broker-managed artifacts：</p>
 <ul>
-<li><code>crawl-source-bundle.json</code></li>
-<li><code>extracted-site-model.json</code></li>
-<li><code>component-resolution.json</code></li>
-<li><code>generated-components/</code></li>
-<li><code>site-generator-bundle.json</code></li>
-<li><code>validation-report.json</code></li>
-<li>可選：<code>source-screenshots.zip</code></li>
+<li>
+<p><code>crawl-source-bundle.json</code></p>
+</li>
+<li>
+<p><code>extracted-site-model.json</code></p>
+</li>
+<li>
+<p><code>component-resolution.json</code></p>
+</li>
+<li>
+<p><code>generated-components/</code></p>
+</li>
+<li>
+<p><code>site-generator-bundle.json</code></p>
+</li>
+<li>
+<p><code>validation-report.json</code></p>
+</li>
+<li>
+<p>可選：<code>source-screenshots.zip</code></p>
+</li>
 </ul>
 <p>LINE 回覆只提供摘要與 artifact link，不直接貼大量 JSON。</p>
 <h2>13. 驗收條件</h2>
 <ol>
-<li>使用者只提供 URL 時，系統必須先問 path depth scope。</li>
-<li>Crawler 不會抓取 path prefix 之外的頁面。</li>
-<li>Crawler 不會抓取 private/localhost/metadata 網段。</li>
-<li>Converter 必須先產生 deterministic extracted model。</li>
-<li>每個 output page block 必須有 source evidence。</li>
-<li>每個 component reference 必須能解析到既有元件或新生成元件。</li>
-<li><code>component_resolution.unresolved</code> 在成功交付時必須為空。</li>
-<li>新生成元件必須有 JS、CSS、manifest、generator import path。</li>
-<li><code>PageGenerator.generate()</code> 必須能使用 bundle registry 成功產生 page code。</li>
-<li>若任何 validation 失敗，LINE 回覆要說明失敗階段與可修正方向。</li>
+<li>
+<p>使用者只提供 URL 時，系統必須先問 path depth scope。</p>
+</li>
+<li>
+<p>Crawler 不會抓取 path prefix 之外的頁面。</p>
+</li>
+<li>
+<p>Crawler 不會抓取 private/localhost/metadata 網段。</p>
+</li>
+<li>
+<p>Converter 必須先產生 deterministic extracted model。</p>
+</li>
+<li>
+<p>每個 output page block 必須有 source evidence。</p>
+</li>
+<li>
+<p>每個 component reference 必須能解析到既有元件或新生成元件。</p>
+</li>
+<li>
+<p><code>component_resolution.unresolved</code> 在成功交付時必須為空。</p>
+</li>
+<li>
+<p>新生成元件必須有 JS、CSS、manifest、generator import path。</p>
+</li>
+<li>
+<p><code>PageGenerator.generate()</code> 必須能使用 bundle registry 成功產生 page code。</p>
+</li>
+<li>
+<p>若任何 validation 失敗，LINE 回覆要說明失敗階段與可修正方向。</p>
+</li>
 </ol>
 <h2>14. 分階段實作建議</h2>
 <h3>Phase 1：安全 crawler 與 path depth scope</h3>
@@ -454,12 +583,24 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <h2>15. 需要保留的未來能力</h2>
 <p>以下能力不列入 v1，但設計不封死：</p>
 <ul>
-<li>robots.txt policy mode。</li>
-<li>sitemap.xml seed。</li>
-<li>user-delegated authenticated crawl。</li>
-<li>form interaction replay。</li>
-<li>multi-origin asset mirroring。</li>
-<li>visual diff validation against screenshots。</li>
+<li>
+<p>robots.txt policy mode。</p>
+</li>
+<li>
+<p>sitemap.xml seed。</p>
+</li>
+<li>
+<p>user-delegated authenticated crawl。</p>
+</li>
+<li>
+<p>form interaction replay。</p>
+</li>
+<li>
+<p>multi-origin asset mirroring。</p>
+</li>
+<li>
+<p>visual diff validation against screenshots。</p>
+</li>
 </ul>
 </main>
 </body>

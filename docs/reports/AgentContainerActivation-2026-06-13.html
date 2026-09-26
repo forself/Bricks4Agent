@@ -22,7 +22,7 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <main>
 <h1>受控代理容器啟用計畫與驗證</h1>
 <p>Date: 2026-06-13
-Status: in progress
+Status: <strong>已完成</strong> —— V1–V7 全數通過(見「最終 e2e 驗證」)。結論段所列後續項目的現況(網路隔離、OS hardening、執行配接器、審批已實作;客製 seccomp 仍未做)與操作方式見 <a href="../manuals/agent-container-runbook.html">agent-container-runbook.md</a>。
 依據規格: <a href="../designs/ControlledAutonomousAISystemTechnicalDesign.html">ControlledAutonomousAISystemTechnicalDesign.md</a></p>
 <h2>1. 目的與「完成」的定義</h2>
 <p>設計規格 §6.6 定義 Agent 容器是「受控主體執行殼層」:它<strong>只能</strong>向控制平面請領工作、讀授權上下文、呼叫模型、產生結構化執行請求、回報結果;<strong>不可</strong>直接碰工具、資料源、倉庫、部署、模型供應商,或自行發放權限。§21 列出最小成功判準。</p>
@@ -167,22 +167,42 @@ Status: in progress
 </table>
 <h2>4. 工作項與修法</h2>
 <ol>
-<li><strong>修 broker 容器 build 衝突(NETSDK1152)</strong> — 必做,阻擋一切。
-   - 方案 A(最小):在 broker 對 site-crawler-worker 的 ProjectReference 阻止 content 流入 publish(<code>&lt;ExcludeAssets&gt;contentFiles&lt;/ExcludeAssets&gt;</code> 或 worker 的 appsettings 改 <code>CopyToPublishDirectory=Never</code>)。
-   - 方案 B(較正規,符合 §3.2):把 broker 用到的 SiteCrawler 型別(Models/contracts + extractor)下沉到共用層,broker 不再引用 worker 專案。
-   - 本次採可解 build 且風險最低者,並記錄取捨。</li>
-<li><strong>重跑 governed stack e2e</strong>,逐一解後續 build/compose/stack 問題直到綠。</li>
-<li><strong>依本文件 §5 驗收條件確認</strong>,把結果填回 §7。</li>
+<li>
+<p><strong>修 broker 容器 build 衝突(NETSDK1152)</strong> — 必做,阻擋一切。
+ - 方案 A(最小):在 broker 對 site-crawler-worker 的 ProjectReference 阻止 content 流入 publish(<code>&lt;ExcludeAssets&gt;contentFiles&lt;/ExcludeAssets&gt;</code> 或 worker 的 appsettings 改 <code>CopyToPublishDirectory=Never</code>)。
+ - 方案 B(較正規,符合 §3.2):把 broker 用到的 SiteCrawler 型別(Models/contracts + extractor)下沉到共用層,broker 不再引用 worker 專案。
+ - 本次採可解 build 且風險最低者,並記錄取捨。</p>
+</li>
+<li>
+<p><strong>重跑 governed stack e2e</strong>,逐一解後續 build/compose/stack 問題直到綠。</p>
+</li>
+<li>
+<p><strong>依本文件 §5 驗收條件確認</strong>,把結果填回 §7。</p>
+</li>
 </ol>
 <h2>5. 驗收條件(依此驗證)</h2>
 <ul>
-<li>[ ] V1:五個容器映像(broker/mock-ollama/file-worker/line-worker/agent)全部 build 成功</li>
-<li>[ ] V2:<code>podman compose up</code> 整個受控 stack 起來,broker 健康</li>
-<li>[ ] V3:agent 容器註冊 session、領 capability、產生結構化執行請求(STACK_OK)</li>
-<li>[ ] V4:agent 透過 broker 裁決執行 governed <code>read_file</code>(<code>[governed] read_file</code>)——對應 §21「AI 走同一授權路徑、不直連工具」</li>
-<li>[ ] V5:<code>test-podman-governed-stack.js</code> 整體綠燈</li>
-<li>[ ] V6:既有單元測試(337)不被修復破壞;solution build 0 錯誤</li>
-<li>[ ] V7:compose down 清理乾淨,無殘留容器/測試 db</li>
+<li>
+<p>[x] V1:五個容器映像(broker/mock-ollama/file-worker/line-worker/agent)全部 build 成功</p>
+</li>
+<li>
+<p>[x] V2:<code>podman compose up</code> 整個受控 stack 起來,broker 健康</p>
+</li>
+<li>
+<p>[x] V3:agent 容器註冊 session、領 capability、產生結構化執行請求(STACK_OK)</p>
+</li>
+<li>
+<p>[x] V4:agent 透過 broker 裁決執行 governed <code>read_file</code>(<code>[governed] read_file</code>)——對應 §21「AI 走同一授權路徑、不直連工具」</p>
+</li>
+<li>
+<p>[x] V5:<code>test-podman-governed-stack.js</code> 整體綠燈</p>
+</li>
+<li>
+<p>[x] V6:既有單元測試(337)不被修復破壞;solution build 0 錯誤</p>
+</li>
+<li>
+<p>[x] V7:compose down 清理乾淨,無殘留容器/測試 db</p>
+</li>
 </ul>
 <h2>6. 明確劃為「後續」的(本次不做,記錄以免誤判完成)</h2>
 <p>對照規格但超出「首次通電」範圍、留待後續:
@@ -195,21 +215,39 @@ Status: in progress
 <p>「通電」過程逐一暴露了三個單元測試抓不到、只有真正跑容器 stack 才會現形的整合 bug:</p>
 <h3>Bug A:broker 容器 build 失敗(NETSDK1152)</h3>
 <ul>
-<li>根因:<code>broker.csproj</code> 引用 <code>site-crawler-worker</code>(<code>HighLevelSiteRebuildService</code> 就地用其 extractor + Playwright),worker 的 <code>appsettings.json</code> 流入 broker publish 與 broker 自己的同名衝突。</li>
-<li>修法:broker.csproj 加 <code>RemoveTransitiveWorkerSettingsFromPublish</code> target,publish 時移除來自 worker 的重複設定。下沉型別成本過高(會把 Playwright 汙染進 broker-core)故不採。</li>
-<li>驗證:本機 <code>dotnet publish broker</code> 無 NETSDK1152,broker 拿到自己的 appsettings(含 HighLevelLlm)。✅</li>
+<li>
+<p>根因:<code>broker.csproj</code> 引用 <code>site-crawler-worker</code>(<code>HighLevelSiteRebuildService</code> 就地用其 extractor + Playwright),worker 的 <code>appsettings.json</code> 流入 broker publish 與 broker 自己的同名衝突。</p>
+</li>
+<li>
+<p>修法:broker.csproj 加 <code>RemoveTransitiveWorkerSettingsFromPublish</code> target,publish 時移除來自 worker 的重複設定。下沉型別成本過高(會把 Playwright 汙染進 broker-core)故不採。</p>
+</li>
+<li>
+<p>驗證:本機 <code>dotnet publish broker</code> 無 NETSDK1152,broker 拿到自己的 appsettings(含 HighLevelLlm)。✅</p>
+</li>
 </ul>
 <h3>Bug B:監控 HealthScoreService 在 FunctionPool 關閉時無法啟動(我整合監控時引入的回歸)</h3>
 <ul>
-<li>根因:<code>HealthScoreService</code>(從 AnthonyLee 擷取)依賴 <code>IWorkerRegistry</code>(FunctionPool),但無條件註冊;FunctionPool 關閉時 <code>IWorkerRegistry</code> 不存在 → broker 啟動 DI activation 失敗。<strong>預設設定(<code>FunctionPool:Enabled=false</code>)的 broker 因此完全起不來</strong>。agent 1 在 worktree 只 build 沒 run 故漏掉。</li>
-<li>修法:HealthScore 子系統(LeaderGuard/HealthScoreService/SnapshotService)只在 FunctionPool 啟用時註冊(它本質是監控 worker pool);LLM metrics(不依賴 pool)保持無條件。</li>
-<li>驗證:本機起 broker(FunctionPool=false)正常啟動。✅</li>
+<li>
+<p>根因:<code>HealthScoreService</code>(從 AnthonyLee 擷取)依賴 <code>IWorkerRegistry</code>(FunctionPool),但無條件註冊;FunctionPool 關閉時 <code>IWorkerRegistry</code> 不存在 → broker 啟動 DI activation 失敗。<strong>預設設定(<code>FunctionPool:Enabled=false</code>)的 broker 因此完全起不來</strong>。agent 1 在 worktree 只 build 沒 run 故漏掉。</p>
+</li>
+<li>
+<p>修法:HealthScore 子系統(LeaderGuard/HealthScoreService/SnapshotService)只在 FunctionPool 啟用時註冊(它本質是監控 worker pool);LLM metrics(不依賴 pool)保持無條件。</p>
+</li>
+<li>
+<p>驗證:本機起 broker(FunctionPool=false)正常啟動。✅</p>
+</li>
 </ul>
 <h3>Bug C:register 時 <code>Get&lt;BrokerTask&gt;</code> 在 Linux 容器丟「No data exists for the row/column」(500)</h3>
 <ul>
-<li>定位過程:本機(Windows)無論帶大 RuntimeDescriptor、FunctionPool=true、雙啟動都<strong>無法重現</strong>;把容器建的 broker.db 複製出來、本機讀仍正常 → 排除 schema/data,確認是 <strong>Microsoft.Data.Sqlite 在 Linux 的 <code>IsDBNull(index)</code> 行為</strong>(BrokerTask 欄位比 Principal 多才觸發,故 register 在 <code>Get&lt;BrokerTask&gt;</code> 那行才炸)。</li>
-<li>修法:<code>BaseOrm.MapToObject</code> 不再用 <code>IsDBNull(index)</code>,改用 <code>GetValue(index)</code>(NULL → <code>DBNull.Value</code>,跨平台一致的 ADO.NET 契約)後判斷。</li>
-<li>驗證:337 單元測試全綠(改動不破壞既有查詢);Linux 容器最終效果由 governed stack e2e 確認(進行中)。</li>
+<li>
+<p>定位過程:本機(Windows)無論帶大 RuntimeDescriptor、FunctionPool=true、雙啟動都<strong>無法重現</strong>;把容器建的 broker.db 複製出來、本機讀仍正常 → 排除 schema/data,確認是 <strong>Microsoft.Data.Sqlite 在 Linux 的 <code>IsDBNull(index)</code> 行為</strong>(BrokerTask 欄位比 Principal 多才觸發,故 register 在 <code>Get&lt;BrokerTask&gt;</code> 那行才炸)。</p>
+</li>
+<li>
+<p>修法:<code>BaseOrm.MapToObject</code> 不再用 <code>IsDBNull(index)</code>,改用 <code>GetValue(index)</code>(NULL → <code>DBNull.Value</code>,跨平台一致的 ADO.NET 契約)後判斷。</p>
+</li>
+<li>
+<p>驗證:337 單元測試全綠(改動不破壞既有查詢);Linux 容器最終效果由 governed stack e2e 確認(進行中)。</p>
+</li>
 </ul>
 <h3>最終 e2e 驗證 ✅ 全部通過(2026-06-13)</h3>
 <p><code>node tools/agent/tests/test-podman-governed-stack.js</code> → exit 0,<code>Podman governed stack integration test passed.</code></p>

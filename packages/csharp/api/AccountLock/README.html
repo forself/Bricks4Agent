@@ -21,9 +21,17 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <body>
 <main>
 <h1>AccountLock</h1>
+<blockquote>
+<p>⚠ 參考程式碼：此目錄沒有 .csproj，未被任何專案編譯或引用，CI 也不建置它；以下說明未經建置驗證。</p>
+<p>已知無法編譯：<code>AccountLockController.cs:121</code> 與 <code>:206</code> 的 <code>typeof(AccountLock)</code> 會觸發 CS0118（<code>AccountLock</code> 是命名空間而非型別）。</p>
+</blockquote>
 <p>帳號鎖定管理 API 控制器 — 提供使用者帳號與 IP 位址的鎖定/解鎖管理端點。</p>
 <h2>初始化方式</h2>
-<pre><code class="language-csharp">builder.Services.AddScoped&lt;IAccountLockService, AccountLockService&gt;();
+<pre><code class="language-csharp">// IAccountLockService / AccountLockService 已由 security/AccountLock 提供，不需自行實作。
+// 單獨 AddScoped&lt;IAccountLockService, AccountLockService&gt;() 會在 DI 解析時失敗（未註冊 IAccountLockRepository），
+// 且 scoped 生命週期會讓內建的 InMemoryFailedAttemptTracker 每個請求重建，失敗次數永遠累計不到門檻、鎖定不會觸發。
+builder.Services.AddSingleton&lt;IAccountLockRepository, InMemoryAccountLockRepository&gt;();
+builder.Services.AddSingleton&lt;IAccountLockService, AccountLockService&gt;();
 // Controller 由 DI 自動注入
 </code></pre>
 <h2>API 列表</h2>
@@ -102,7 +110,7 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <tr>
 <td><code>GET</code></td>
 <td><code>/api/account-locks/{lockId}</code></td>
-<td>依 ID 取得鎖定詳情</td>
+<td>依 ID 取得鎖定詳情（尚未實作：TODO stub，一律回傳 404）</td>
 <td><code>Admin,SecurityAdmin</code></td>
 </tr>
 <tr>
@@ -219,7 +227,7 @@ Content-Type: application/json
 <tbody>
 <tr>
 <td><code>IAccountLockService</code></td>
-<td>帳號鎖定服務介面（需自行實作）</td>
+<td>帳號鎖定服務介面（實作 <code>AccountLockService</code> 位於 <code>security/AccountLock</code>，另需註冊 <code>IAccountLockRepository</code>）</td>
 </tr>
 <tr>
 <td><code>ILogger&lt;AccountLockController&gt;</code></td>
@@ -237,11 +245,21 @@ Content-Type: application/json
 </table>
 <h2>相關 DTO</h2>
 <ul>
-<li><code>LockUserRequest</code> — 鎖定使用者請求（LockType, Scope, Reason, DurationMinutes 等）</li>
-<li><code>UnlockUserRequest</code> — 解鎖使用者請求（LockId, Scope, Reason）</li>
-<li><code>LockIpApiRequest</code> — 鎖定 IP 請求（IpAddress, LockType, Reason, DurationMinutes）</li>
-<li><code>UnlockIpRequest</code> — 解鎖 IP 請求（IpAddress）</li>
-<li><code>UnlockResponse</code> — 解鎖回應（UnlockedCount）</li>
+<li>
+<p><code>LockUserRequest</code> — 鎖定使用者請求（LockType, Scope, Reason, DurationMinutes 等）</p>
+</li>
+<li>
+<p><code>UnlockUserRequest</code> — 解鎖使用者請求（LockId, Scope, Reason）</p>
+</li>
+<li>
+<p><code>LockIpApiRequest</code> — 鎖定 IP 請求（IpAddress, LockType, Reason, DurationMinutes）</p>
+</li>
+<li>
+<p><code>UnlockIpRequest</code> — 解鎖 IP 請求（IpAddress）</p>
+</li>
+<li>
+<p><code>UnlockResponse</code> — 解鎖回應（UnlockedCount）</p>
+</li>
 </ul>
 </main>
 </body>

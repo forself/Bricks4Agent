@@ -60,7 +60,7 @@ The verifier must pass for normal delivery. It checks:
 
 - `components/manifest.json`
 
-- `README.md`
+- `README.html`
 
 - `index.html` declares `#app` and loads `./runtime.js`
 

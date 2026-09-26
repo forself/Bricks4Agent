@@ -23,7 +23,7 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <h1>交接文件 — AI 代理接續開發用</h1>
 <blockquote>
 <p><strong>你是接手的 AI 代理。</strong> 本文件自足,不依賴先前任何對話、記憶系統或其他代理的上下文;照本文件即可續作。
-<strong>目前已推送基準:</strong> 分支 <code>main</code>(Tim2026 fork 同步線經 PR 併入;<code>main_0707</code> 已落後 7 個提交,不再是基準)。平台狀態以 <code>git log -1 -- global.json</code>、安全建置狀態以 <code>git log -1 -- tools/scripts/verify-dotnet10.mjs</code>、表單工作台狀態以 <code>git log -1 -- tools/form-application-studio</code> 為準；工作樹狀態一律另查 <code>git status</code>。
+<strong>目前已推送基準:</strong> 分支 <code>main</code>(Tim2026 fork 同步線經 PR #10 併入;<code>main_0707</code> 已落後 23 個提交,不再是基準)。各項基準釘 commit:.NET 10 平台遷移 <code>d89fa4e</code>、.NET 10 零警告/安全建置 <code>51dd0f3</code>、Form Application Studio <code>396e9fa</code>(<code>git log -1 -- global.json</code> 等路徑查詢現在會回傳 <code>9e877f3</code> 同步提交,不能再當錨點);最新狀態以 <code>git log main</code> 為準,工作樹狀態一律另查 <code>git status</code>。
 本文件自身的版本以 <code>git log -1 -- DEV-STATUS.md</code> 為準(文件修訂不代表功能基準變動)。
 配套規則文件:<a href="CLAUDE.html">CLAUDE.md</a> / <a href="AGENTS.html">AGENTS.md</a>(代理規則)、<a href="AGENT-UI-GUIDE.html">AGENT-UI-GUIDE.md</a>(元件調用契約,動手寫頁面前必讀)。</p>
 </blockquote>
@@ -48,14 +48,14 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 </tr>
 <tr>
 <td>前端軌(F)</td>
-<td>舊頁面翻寫,產出在 <code>D:\proj\newTim\tim-web</code></td>
-<td>藍圖已定、POC 已過、量產未開工</td>
+<td>舊頁面翻寫,現於 <code>D:\work\Tim2026</code> 的 TimWeb 前端進行</td>
+<td>已在 Tim2026 進行中;<code>D:\proj\newTim\tim-web</code> 現僅為舊版語意參考(Tim2026 <code>AGENTS.md</code>);進度以 Tim2026 為準</td>
 <td><strong>不動,等使用者發動</strong></td>
 </tr>
 <tr>
 <td>後端軌(B)</td>
-<td>.NET FX 4.8.1 → <strong>.NET 10(目標)</strong>,契約逐位相容</td>
-<td>架構已裁決、未開工</td>
+<td>.NET FX 4.8.1 → <strong>.NET 10</strong>,契約逐位相容;現於 <code>D:\work\Tim2026</code> 的 TimNet10 後端進行</td>
+<td>已在 Tim2026 進行中;B4A 內嵌於 <code>packages/Bricks4Agent</code>,由 <code>TimWeb/b4a.lock.json</code> 釘版;進度以 Tim2026 為準</td>
 <td><strong>不動,等使用者發動</strong></td>
 </tr>
 </tbody>
@@ -66,7 +66,7 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <p><strong>硬邊界(違反=事故):</strong>
 1. <code>D:\work\new</code>、<code>D:\work\TIMSolution</code> 兩個舊專案<strong>唯讀</strong>,任何產出禁止寫入。
 2. <code>D:\proj\newTim\tim-web</code> <strong>不上本 repo 版控</strong>(版控歸使用者的大專案),<strong>不得對它做任何 git 操作</strong>;檔案可讀、經使用者同意可改。
-3. git push <strong>不直推 main</strong>,推工作分支再開 PR 併入(最近一輪是 <code>codex/unified-checkpoint-20260805</code> → PR #10;使用者若開新分支會告知)。
+3. git push <strong>不直推 main</strong>,推工作分支再開 PR 併入(最近一次 PR 是 <code>codex/unified-checkpoint-20260805</code> → PR #10(08-30);其後 <code>11e8e95</code> 至 <code>34ba862</code> 共 16 個提交直接落在 <code>main</code>,未經 PR;使用者若開新分支會告知)。
 4. 本 repo 是大專案剪枝後的工作副本,已設 <code>git sparse-checkout set docs packages templates tools</code>——<strong>不要</strong>碰 sparse 設定、不要「還原」看似被刪的路徑(例如 <code>.github/</code> 有版控但不在 cone 內,本機看不到不代表被刪)。</p>
 <p><strong>已定案、不得重開的決策</strong>(使用者已裁決,別再提替代方案):
 - <strong>SVG 全面禁用、只允許 Canvas</strong>（含 UI 小圖示），由 <code>audit-csp.mjs</code> hard-zero 執法；空 baseline 不得豁免命中（§2）。
@@ -80,15 +80,16 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 - 本 repo:<code>D:\proj\newTim\Bricks4Agent</code>(遠端 github.com/forself/Bricks4Agent)
 - 元件庫本體:<code>packages/javascript/browser/ui_components/</code>(下文簡稱 <code>ui_components</code>)
 - 守門與 harness:<code>tools/scripts/</code>;視覺調校台:<code>tools/theme-studio/</code>
-- 重製案文件(參考,勿版控):<code>D:\proj\newTim\tim-web\docs\</code>(blueprint.md、task-board.json)</p>
+- 重製案文件(參考,勿版控):<code>D:\proj\newTim\tim-web\docs\</code>(blueprint.md、task-board.json;tim-web 現為舊版語意參考,現行進度見 <code>D:\work\Tim2026</code>)</p>
 <p><strong>開工先跑(全部應綠;有紅先修再開工):</strong></p>
 <pre><code class="language-bash">cd D:/proj/newTim/Bricks4Agent
 git status -sb                              # 應在 main 或當輪工作分支；提交前會看到本節所列待提交變更
 node tools/scripts/audit-csp.mjs            # CSP A–J 全類硬零(含 G 類 SVG)
 node tools/scripts/test-audit-csp-hard-zero.mjs # G 類負向回歸:即使列入 baseline 仍必須 fail;須與 audit 串行
 node tools/scripts/validate-ui-library.mjs  # 風格稽核/裸 import/公開面/demo 引用
-npm test                                    # 頁面生成器產碼 + 元件路徑測試(根 package.json)
-npm --prefix packages/javascript/browser test   # 五套純函式單元(palette/id-url 安全/色階/聚合/力學,86 斷言)
+npm --prefix packages/javascript/browser install # 首次:安裝 devDependencies vitest/jsdom(下兩行的 Vitest 部分需要)
+npm test                                    # test-all.js 生成器範例 + test:ui-components + test:custom-components + 元件 Vitest 套件(根 package.json)
+npm --prefix packages/javascript/browser test   # 五套純函式單元(palette/id-url 安全/色階/聚合/力學,86 斷言)+ Vitest 元件套件
 npm run custom-components:check             # 客製 JSON registry deterministic + schema/引用驗證
 npm run test:custom-components              # 客製分類/build/runtime/factory/folder/lifecycle
 npm run test:studio:self-host                # 唯一 Tool JSON + renderer/Link provenance/相容入口 19/19
@@ -100,8 +101,8 @@ dotnet test packages/csharp/tests/unit/Unit.Tests.csproj
 dotnet test packages/csharp/tests/integration/Integration.Tests.csproj
 dotnet test templates/spa/backend.Tests/SpaApi.Template.Tests.csproj
 </code></pre>
-<p><strong>瀏覽器驗收電池</strong>（Studio 三支會自行啟動 random-port/no-store server 與 fresh Edge；其他既有 harness 依各腳本需求啟 server。repo 本身零 runtime/dev dependency）：</p>
-<pre><code class="language-bash">node tools/theme-studio/run.mjs             # 18 項(Theme JSON self-host/catalog/頁內說明/token/scoped/CSP)
+<p><strong>瀏覽器驗收電池</strong>（Studio 三支會自行啟動 random-port/no-store server 與 fresh Edge；其他既有 harness 依各腳本需求啟 server。元件庫本身零 runtime dependency;<code>packages/javascript/browser</code> 另有 devDependencies vitest/jsdom）：</p>
+<pre><code class="language-bash">node tools/theme-studio/run.mjs             # 相容別名:實際執行 studio-integration-smoke.mjs(16 項,同 test:studio:browser)
 node tools/scripts/studio-integration-smoke.mjs # 16 項(說明連結/同 renderer/DOM identity/雙 JSON round-trip/provenance/CSS 注入拒絕)
 node tools/scripts/canvas-chart-smoke.mjs   # 8 項
 node tools/scripts/wave2-stage-sweep.mjs    # 29 項
@@ -115,23 +116,49 @@ node tools/scripts/form-application-studio-smoke.mjs --require-browser # 17 項(
 <hr>
 <h2>2. 必須內化的架構事實</h2>
 <ul>
-<li><strong>catalog 116 元件</strong>,權威來源=<code>ui_components/metadata/component-catalog.json</code>;元件契約 <code>new X(options)</code> → <code>.mount(el)</code> → <code>.destroy()</code>(個別元件用 <code>render</code>,harness 已示範相容處理)。</li>
-<li><strong>CSP 守門員</strong> <code>tools/scripts/audit-csp.mjs</code>:十類全部硬零——JS 源碼 A <code>&lt;style&gt;</code> 注入/B setAttribute('style')/C innerHTML 模板 <code>style=</code>/D 模板 <code>on*=</code>/E eval/F <code>javascript:</code>(僅 <code>utils/security.js</code> 豁免),SVG 為 G,HTML 字面另有 H <code>&lt;style&gt;</code>/I <code>style=</code>/J <code>on*=</code>。<code>tools/scripts/svg-baseline.json</code> 已為空物件,只保留盤點快照語意,<strong>不能豁免 G 類命中</strong>;<code>test-audit-csp-hard-zero.mjs</code> 會把單一命中寫進 baseline 再確認 audit 仍 exit 1 並於 finally 還原/清理。<strong>合規宣稱只認機器判定。</strong></li>
-<li><strong>樣式作法</strong>:CSSOM(<code>cssText</code>/<code>setProperty</code>)為主;hover/focus 用事件;偽元素/@media/大量子孫選擇器 → 同目錄 <code>.css</code> + 同源 <code>&lt;link&gt;</code> 注入(注意 inline CSSOM 蓋樣式表,@media 覆蓋需 <code>!important</code>)。</li>
-<li><strong>Canvas 體系</strong>:<code>CanvasChart</code> 提供 DPR 背景儲存/ResizeObserver/ThemeBus 重繪/hit-region(rect/circle/Path2D,<code>isPointInPath</code> 要乘 dpr)/DOM tooltip(textContent)/<code>exportPNG(scale)</code>/<code>niceTicks/fmt/ellipsis/wrapText</code> 排版輔助。子類契約=實作 <code>draw(ctx,w,h)</code> + <code>addRegion()</code> + 選配 <code>getTooltip(data)</code>。<strong>點擊回拋走 <code>options.onPointClick</code>——基底不會自動呼叫你的 <code>_handleClick</code>,要嘛建構子裡預設接線、要嘛自己 addEventListener(波 2 曾因此出過死代碼 bug)。</strong></li>
-<li><strong><code>ModalPanel.alert()</code> 只認 <code>message</code> 字串</strong>;要放 DOM 內容:取回傳的 modal,把 message <code>&lt;p&gt;</code> <code>replaceWith(node)</code>(TimelineChart/FlameChart 有現成範例)。<strong><code>confirm/alert/prompt</code> 三個 static helper 現在都帶 <code>destroyOnClose: true</code></strong>——<code>close()</code> 後該 modal 自動銷毀,別再持有或重開同一個實例(舊行為從不 destroy,正是「越用越慢」的根因)。</li>
-<li><strong>raw HTML opt-in 只認 <code>raw()</code></strong>:<code>utils/security.js</code> 的標記以 <code>Symbol.for('bricks4agent.rawHtml')</code> 品牌化,<code>isRawHtml()</code> 查<strong>自身</strong>屬性。手寫或 <code>JSON.parse</code> 出來的 <code>{__html: "…"}</code> 一律不再被當成授權(<code>__html</code> 只留相容欄位),API 回傳的純資料因此無法冒充。</li>
-<li><strong>動態頁預設不再拉整套元件庫</strong>:<code>binding/LazyComponentFactory.js</code> 只 dynamic import 定義實際引用到的元件,是 <code>DynamicToolRenderer</code> 的預設 factory;找不到的名稱回退到 eager <code>ComponentFactory</code> 的即時 registry,所以 <code>ComponentFactory.register()</code>(含客製元件)對 tool 頁仍可見。eager <code>ComponentFactory</code> 本身未變。</li>
-<li><strong><code>lazyTabs</code> 預設為 <code>true</code></strong>(<code>DynamicPageRenderer</code>／<code>DynamicDetailRenderer</code>):分頁面板元素立即存在,內容延到首次啟用才產生;要回到建構時就畫完全部分頁,明確傳 <code>lazyTabs: false</code>。</li>
-<li><strong><code>PageGenerator</code> 會驗識別字</strong>:<code>definition.name</code>／<code>field.name</code>／<code>behaviors.*</code> 必須是合法 JS IdentifierName(中文欄位名仍可用),失敗走 <code>{ code: null, errors: [...] }</code> 契約回報,不再把定義字串未跳脫地寫進產出程式碼。</li>
-<li><strong>色彩</strong>:單一來源=<code>editor/richtext-palette.js</code> 的 MATERIAL(16 色相;<strong>這份 palette 無 deep-purple/light-blue,有 blue-grey/grey</strong>——注意 theme.css 另有歷史語意 token 如 <code>--cl-deep-purple</code>,兩者是不同層,別混為一談)→ <code>ui_components/editor/gen-palette-css.mjs</code> 產 palette.css → theme.css 引用。程式取色用 <code>utils/color-scale.js</code>(sequential/diverging/categorical/hierarchical)。Canvas 內色回退一律 <code>FALLBACK_PAINT</code>(theme-bus 匯出),<strong>元件內禁散裝 hex</strong>;亮度對比遮罩四常數(<code>#00000099/#ffffffcc/#000000aa/#ffffffdd</code>)已在稽核 allow 名單。</li>
-<li><strong>vendor/ 豁免一切庫規範</strong>(CSP/風格/裸 import 掃描都跳過):Leaflet 1.9.4 + html2canvas,本地優先、缺檔才退 CDN。</li>
-<li><strong>聚合</strong>:<code>utils/aggregation-engine.js</code> 白名單 fail-closed;<strong>時間聚合先按日期排序再分組</strong>(民國標籤字典序不可靠)。</li>
-<li><strong>新元件流程</strong>:三件套(<code>&lt;Name&gt;.js</code>+<code>index.js</code>+<code>&lt;Name&gt;.manifest.json</code>)→ 類別 barrel export → 需要的話進 ComponentFactory → <code>node ui_components/metadata/build-metadata.mjs</code>。<strong>新「分類」要動兩處白名單</strong>:<code>metadata/introspection.js</code> SEARCH_CATEGORIES + <code>metadata/manifest-schema.js</code> 分類枚舉。</li>
+<li>
+<p><strong>catalog 116 元件</strong>,權威來源=<code>ui_components/metadata/component-catalog.json</code>;元件契約 <code>new X(options)</code> → <code>.mount(el)</code> → <code>.destroy()</code>(個別元件用 <code>render</code>,harness 已示範相容處理)。</p>
+</li>
+<li>
+<p><strong>CSP 守門員</strong> <code>tools/scripts/audit-csp.mjs</code>:十類全部硬零——JS 源碼 A <code>&lt;style&gt;</code> 注入/B setAttribute('style')/C innerHTML 模板 <code>style=</code>/D 模板 <code>on*=</code>/E eval/F <code>javascript:</code>(僅 <code>utils/security.js</code> 豁免),SVG 為 G,HTML 字面另有 H <code>&lt;style&gt;</code>/I <code>style=</code>/J <code>on*=</code>。<code>tools/scripts/svg-baseline.json</code> 已為空物件,只保留盤點快照語意,<strong>不能豁免 G 類命中</strong>;<code>test-audit-csp-hard-zero.mjs</code> 會把單一命中寫進 baseline 再確認 audit 仍 exit 1 並於 finally 還原/清理。<strong>合規宣稱只認機器判定。</strong></p>
+</li>
+<li>
+<p><strong>樣式作法</strong>:CSSOM(<code>cssText</code>/<code>setProperty</code>)為主;hover/focus 用事件;偽元素/@media/大量子孫選擇器 → 同目錄 <code>.css</code> + 同源 <code>&lt;link&gt;</code> 注入(注意 inline CSSOM 蓋樣式表,@media 覆蓋需 <code>!important</code>)。</p>
+</li>
+<li>
+<p><strong>Canvas 體系</strong>:<code>CanvasChart</code> 提供 DPR 背景儲存/ResizeObserver/ThemeBus 重繪/hit-region(rect/circle/Path2D,<code>isPointInPath</code> 要乘 dpr)/DOM tooltip(textContent)/<code>exportPNG(scale)</code>/<code>niceTicks/fmt/ellipsis/wrapText</code> 排版輔助。子類契約=實作 <code>draw(ctx,w,h)</code> + <code>addRegion()</code> + 選配 <code>getTooltip(data)</code>。<strong>點擊回拋走 <code>options.onPointClick</code>——基底不會自動呼叫你的 <code>_handleClick</code>,要嘛建構子裡預設接線、要嘛自己 addEventListener(波 2 曾因此出過死代碼 bug)。</strong></p>
+</li>
+<li>
+<p><strong><code>ModalPanel.alert()</code> 只認 <code>message</code> 字串</strong>;要放 DOM 內容:取回傳的 modal,把 message <code>&lt;p&gt;</code> <code>replaceWith(node)</code>(TimelineChart/FlameChart 有現成範例)。<strong><code>confirm/alert/prompt</code> 三個 static helper 現在都帶 <code>destroyOnClose: true</code></strong>——<code>close()</code> 後該 modal 自動銷毀,別再持有或重開同一個實例(舊行為從不 destroy,正是「越用越慢」的根因)。</p>
+</li>
+<li>
+<p><strong>raw HTML opt-in 只認 <code>raw()</code></strong>:<code>utils/security.js</code> 的標記以 <code>Symbol.for('bricks4agent.rawHtml')</code> 品牌化,<code>isRawHtml()</code> 查<strong>自身</strong>屬性。手寫或 <code>JSON.parse</code> 出來的 <code>{__html: "…"}</code> 一律不再被當成授權(<code>__html</code> 只留相容欄位),API 回傳的純資料因此無法冒充。</p>
+</li>
+<li>
+<p><strong>動態頁預設不再拉整套元件庫</strong>:<code>binding/LazyComponentFactory.js</code> 只 dynamic import 定義實際引用到的元件,是 <code>DynamicToolRenderer</code> 的預設 factory;找不到的名稱回退到 eager <code>ComponentFactory</code> 的即時 registry,所以 <code>ComponentFactory.register()</code>(含客製元件)對 tool 頁仍可見。eager <code>ComponentFactory</code> 本身未變。</p>
+</li>
+<li>
+<p><strong><code>lazyTabs</code> 預設為 <code>true</code></strong>(<code>DynamicPageRenderer</code>／<code>DynamicDetailRenderer</code>):分頁面板元素立即存在,內容延到首次啟用才產生;要回到建構時就畫完全部分頁,明確傳 <code>lazyTabs: false</code>。</p>
+</li>
+<li>
+<p><strong><code>PageGenerator</code> 會驗識別字</strong>:<code>definition.name</code>／<code>field.name</code>／<code>behaviors.*</code> 必須是合法 JS IdentifierName(中文欄位名仍可用),失敗走 <code>{ code: null, errors: [...] }</code> 契約回報,不再把定義字串未跳脫地寫進產出程式碼。</p>
+</li>
+<li>
+<p><strong>色彩</strong>:單一來源=<code>editor/richtext-palette.js</code> 的 MATERIAL(16 色相;<strong>這份 palette 無 deep-purple/light-blue,有 blue-grey/grey</strong>——注意 theme.css 另有歷史語意 token 如 <code>--cl-deep-purple</code>,兩者是不同層,別混為一談)→ <code>ui_components/editor/gen-palette-css.mjs</code> 產 palette.css → theme.css 引用。程式取色用 <code>utils/color-scale.js</code>(sequential/diverging/categorical/hierarchical)。Canvas 內色回退一律 <code>FALLBACK_PAINT</code>(theme-bus 匯出),<strong>元件內禁散裝 hex</strong>;亮度對比遮罩四常數(<code>#00000099/#ffffffcc/#000000aa/#ffffffdd</code>)已在稽核 allow 名單。</p>
+</li>
+<li>
+<p><strong>vendor/ 豁免一切庫規範</strong>(CSP/風格/裸 import 掃描都跳過):Leaflet 1.9.4 + html2canvas,本地優先、缺檔才退 CDN。</p>
+</li>
+<li>
+<p><strong>聚合</strong>:<code>utils/aggregation-engine.js</code> 白名單 fail-closed;<strong>時間聚合先按日期排序再分組</strong>(民國標籤字典序不可靠)。</p>
+</li>
+<li>
+<p><strong>新元件流程</strong>:三件套(<code>&lt;Name&gt;.js</code>+<code>index.js</code>+<code>&lt;Name&gt;.manifest.json</code>)→ 類別 barrel export → 需要的話進 ComponentFactory → <code>node ui_components/metadata/build-metadata.mjs</code>。<strong>新「分類」要動兩處白名單</strong>:<code>metadata/introspection.js</code> SEARCH_CATEGORIES + <code>metadata/manifest-schema.js</code> 分類枚舉。</p>
+</li>
 </ul>
 <hr>
 <h2>3. 現況(哪裡了)</h2>
-<p><strong>一句話:</strong> catalog 116、CSP A–J 全類硬零、runtime SVG 0 檔/0 處、波 3 與客製元件 Studio 已推送；repo 已加入由 JSON 自舉的 Form Application Studio，可把 schema 視覺化編排後生成表單、.NET 10 API/BaseOrm 與 SQL，未給連線字串時使用本地 SQLite；35 個 .NET 10 專案已達零警告並由 CI 以 warnings-as-errors 強制執行；Tim2026 embedded fork 已同步回本 repo 並經三批稽核（洩漏／資安／效能）修復後由 PR 併入 <code>main</code>。</p>
+<p><strong>一句話:</strong> catalog 116、CSP A–J 全類硬零、runtime SVG 0 檔/0 處、波 3 與客製元件 Studio 已推送；repo 已加入由 JSON 自舉的 Form Application Studio，可把 schema 視覺化編排後生成表單、.NET 10 API/BaseOrm 與 SQL，未給連線字串時使用本地 SQLite；35 個 .NET 10 專案已達零警告並由 CI 以 warnings-as-errors 強制執行；Tim2026 embedded fork 已同步回本 repo 並經三批稽核（洩漏／資安／效能）修復後由 PR 併入 <code>main</code>；08-30 之後另有 16 個提交直接落在 <code>main</code>（見下表；09-01 交接見 <a href="docs/reports/CurrentIssuesAndHandoff-2026-09-01.html">docs/reports/CurrentIssuesAndHandoff-2026-09-01.md</a>）。</p>
 <table>
 <thead>
 <tr>
@@ -142,9 +169,89 @@ node tools/scripts/form-application-studio-smoke.mjs --require-browser # 17 項(
 </thead>
 <tbody>
 <tr>
+<td>09-22</td>
+<td><code>34ba862</code></td>
+<td>共用表單控制項（DatePicker／Dropdown／FormField／FormRow）不再互相重疊；新增 <code>tools/component-layout-regression</code> 契約測試</td>
+</tr>
+<tr>
+<td>09-02</td>
+<td><code>3e717e9</code></td>
+<td><code>QueryDefinitionAdapter</code>：payload 綁定為空值時保留 <code>payloadDefaults</code></td>
+</tr>
+<tr>
+<td>09-02</td>
+<td><code>d5f620f</code></td>
+<td>匯出動作支援格式化顯示值 payload（<code>$rowDisplay</code>／<code>$selectionDisplay</code>）</td>
+</tr>
+<tr>
+<td>09-02</td>
+<td><code>a201c8d</code></td>
+<td><code>TgosMap</code> 移除已公開的後備憑證</td>
+</tr>
+<tr>
+<td>09-02</td>
+<td><code>035399a</code></td>
+<td><code>RegionMap</code> 支援已發佈的舊版 asset base</td>
+</tr>
+<tr>
+<td>09-02</td>
+<td><code>1eaa805</code></td>
+<td>page-generator 新增快取式 <code>LazyModuleLoader</code></td>
+</tr>
+<tr>
+<td>09-02</td>
+<td><code>046d388</code></td>
+<td>修復 Vitest 元件套件並併入 <code>npm test</code>（需先 <code>npm --prefix packages/javascript/browser install</code>）；新增 09-01 交接報告</td>
+</tr>
+<tr>
+<td>09-02</td>
+<td><code>9418cc1</code></td>
+<td>FieldResolver 的 TextArea 依 maxLength 決定 <code>autoResize</code>（未設或 &gt;200 才自動增高）</td>
+</tr>
+<tr>
+<td>09-02</td>
+<td><code>85a89c0</code></td>
+<td>page-generator 新增 <code>DeferredHydration</code> 集中延後水合生命週期（DynamicListRenderer 採用）</td>
+</tr>
+<tr>
+<td>09-01</td>
+<td><code>8911b90</code></td>
+<td>已發佈的元件庫 HTML 文件不再連出元件庫目錄（自含）</td>
+</tr>
+<tr>
+<td>09-01</td>
+<td><code>6495133</code></td>
+<td>強化出貨範本與快照完整性：新增 <code>quality-gates.yml</code>、<code>spa-template-smoke</code>、<code>snapshot-integrity.mjs</code>／<code>verify-consumer-snapshots</code>；<code>theme-studio/run.mjs</code> 改為 studio-integration-smoke 相容別名</td>
+</tr>
+<tr>
+<td>09-01</td>
+<td><code>df2c31a</code></td>
+<td>DynamicToolRenderer 預先建立的元件實例不再帶 mount 前的舊值進畫面</td>
+</tr>
+<tr>
+<td>08-31</td>
+<td><code>738be65</code></td>
+<td>DynamicToolRenderer 綁定值未變就不重推（無變動同步 1900 次 DOM 變動 → 0）</td>
+</tr>
+<tr>
+<td>08-31</td>
+<td><code>6e13e09</code></td>
+<td>修兩處空過閘門（TreeList 展示樣本、dom-equivalence 逐屬性 style）；新增 <code>npm run test:ui-components</code></td>
+</tr>
+<tr>
+<td>08-31</td>
+<td><code>4b6a654</code></td>
+<td>三個靜默行為可診斷：未品牌 <code>{ __html }</code> 一次性警告、<code>data-tab-pending</code>、<code>dom-equivalence.mjs</code></td>
+</tr>
+<tr>
+<td>08-30</td>
+<td><code>11e8e95</code></td>
+<td>文件對齊現況；<code>lazyTabs</code> 改為預設 <code>true</code>；dev server JWT 金鑰改 <code>crypto.randomBytes</code> 等殘留資安項</td>
+</tr>
+<tr>
 <td>08-30</td>
 <td><code>4a5efe8</code></td>
-<td><strong>三批稽核與修復（洩漏／資安／效能）</strong>：ModalPanel 對話框改 <code>destroyOnClose</code>、MapEditor/MapEditorV2 補 <code>destroy()</code>、PanelManager stack 清理；PageGenerator 六個依語境跳脫函式 + 識別字驗證；dev server 綁 loopback + Host/Origin 守衛；<code>raw()</code> 改 <code>Symbol.for</code> 品牌；新增 <code>LazyComponentFactory</code>、<code>page-gen --pages/--all</code>、<code>lazyTabs</code>。公開介面不變、生成輸出逐位相同</td>
+<td><strong>三批稽核與修復（洩漏／資安／效能）</strong>：ModalPanel 對話框改 <code>destroyOnClose</code>、MapEditor/MapEditorV2 補 <code>destroy()</code>、PanelManager stack 清理；PageGenerator 六個依語境跳脫函式 + 識別字驗證；dev server 綁 loopback + Host/Origin 守衛；<code>raw()</code> 改 <code>Symbol.for</code> 品牌；新增 <code>LazyComponentFactory</code>、<code>page-gen --pages/--all</code>、<code>lazyTabs</code>（當時預設 <code>false</code>）。公開介面不變、生成輸出逐位相同</td>
 </tr>
 <tr>
 <td>08-25</td>
@@ -158,17 +265,17 @@ node tools/scripts/form-application-studio-smoke.mjs --require-browser # 17 項(
 </tr>
 <tr>
 <td>07-23</td>
-<td><code>git log -1 -- tools/scripts/verify-dotnet10.mjs</code></td>
+<td><code>51dd0f3</code></td>
 <td><strong>.NET 10 零警告與密碼相容性</strong>：MFA、AccountLock、AuditLog nullable 契約修正；8 個過時 PBKDF2 建構式改為靜態 API，但保留既有 iterations/salt/hash 大小與儲存格式；Broker、MFA、SPA template 固定相容性向量通過；CI 對所有建置警告 fail closed</td>
 </tr>
 <tr>
 <td>07-23</td>
-<td><code>git log -1 -- global.json</code></td>
+<td><code>d89fa4e</code></td>
 <td><strong>全 repo .NET 10 平台遷移</strong>：35 個 SDK-style 專案與生成契約統一為 <code>net10.0</code>；BaseOrm canonical 路徑改為 <code>net10/</code>；保留明確 allowlist 的 BaseOrm .NET Framework 4.8 相容版本</td>
 </tr>
 <tr>
 <td>07-23</td>
-<td><code>git log -1 -- tools/form-application-studio</code></td>
+<td><code>396e9fa</code></td>
 <td><strong>Form Application Studio</strong>：schema→欄位清單+12欄拖拉/縮放畫布→design JSON/PageDefinition/.NET 10 Minimal API+BaseOrm/SQL；JSON 自舉；連線字串留白→本地 SQLite；預設 secret 不落產物；unit 11/11+self-host 8/8+Edge 17/17</td>
 </tr>
 <tr>
@@ -222,42 +329,86 @@ node tools/scripts/form-application-studio-smoke.mjs --require-browser # 17 項(
 2. 其餘 25 檔由互斥代理分組遷移後,主代理逐檔覆核並修正語意圖示、首次重繪、active 重繪、ThemeBus/子元件生命週期與 factory destroy。
 3. Leaflet <code>preferCanvas</code> 硬設 true(呼叫端不能 opt-out),非同步載入加 destroyed guard;OSMMapEditor 追蹤並銷毀 6 個子元件;vendor/ 未動。
 4. <code>audit-csp</code> G 類改硬零,baseline 清空;新增不可被 baseline 繞過的負向回歸。
-5. 全量驗收完成，波 3 與後續 Studio／生成器工作均已提交並推送；目前狀態以 §3 的動態 <code>git log</code> 指令為準。</p>
+5. 全量驗收完成，波 3 與後續 Studio／生成器工作均已提交並推送；目前狀態以 §3 與 <code>git log main</code> 為準。</p>
 <p><strong>驗證證據(2026-07-17，平台遷移前):</strong> audit-csp A-J/G 0;負向回歸 PASS;validate-ui-library 282 source/261 import + 9 demos browser PASS;兩組 npm test PASS(四套純函式 63/63);客製元件 definition/runtime 14/14、targeted integration 30/30、Edge E2E 13/13;Tool/page-generator 63/63;Studio 18/18 + 19/19 + 16/16;SPA backend build 0 warning/0 error;既有五支 Edge harness 因 Theme 增加三項現為 70/70;Icon 13/13;Wave 3 24/24。ClusterGraph 最終獨占 CPU 重測 BH=8.77ms、draw=2.99ms、8/8 通過;效能 harness 不應與其他瀏覽器壓測並跑。legacy harness 已移除字串 <code>waitForFunction</code>、inline <code>addScriptTag</code> 與產品層 <code>openStage</code> 依賴，能在 strict CSP + JSON self-host Studio 下真實執行。</p>
 <h3>4.1 最新追加：JSON 客製元件系統</h3>
 <ul>
-<li>權威契約：<a href="CUSTOM-COMPONENTS.html">CUSTOM-COMPONENTS.md</a>；定義放 <code>packages/javascript/browser/custom_components/definitions/*.json</code>。</li>
-<li><code>build-registry.mjs</code> 會驗證 path/symlink/名稱碰撞/引用/cycle/kind，產生 deterministic <code>registry.json</code>；瀏覽器不直接列舉資料夾。</li>
-<li><code>CustomComponentRegistry</code> 採整批原子註冊與全圖重驗證，具 ownership-aware <code>dispose()</code>，預設可接 ComponentFactory；<code>CustomComponentRenderer</code> 負責 group/leaf/custom 遞迴、值 round-trip、runtime unsafe option 過濾與反序 destroy。</li>
-<li><code>DynamicPageRenderer</code> 可用 <code>customComponents: { definitions, folder }</code> 在 async init 先全數取得、再單次註冊並接 FieldResolver；自建 registry 不污染全域 factory。SPA <code>DefinitionRuntimePage</code> 僅從可信 class/constructor options 取得來源，不信任頁面 JSON；目前自動接線為 dynamic form，靜態產碼不會自動打包 JSON folder。</li>
-<li>Studio 主入口：<code>tools/theme-studio/index.html</code>；「樣式客製」與「元件組合」共用 <code>tools/theme-studio/studio.page.json</code>、同一個 <code>DynamicToolRenderer</code> 與同一份 DOM。兩側均有 JSON-native 頁內說明與正式 <code>Link</code> 往返；組合頁另列三層規則、definitions 路徑與驗收指令。<code>tools/custom-component-studio/index.html</code> 僅為導向第二頁籤的相容 URL。</li>
-<li>新增驗收：definition/runtime 14/14；Adapter/FieldResolver/SPA targeted integration 30/30；真實 Edge E2E 13/13（含下載 JSON、拒絕錯誤副檔名/破損/危險/超限匯入、匯入 template、factory lifecycle、值 round-trip、dynamic form、CSP/SVG=0）。</li>
+<li>
+<p>權威契約：<a href="CUSTOM-COMPONENTS.html">CUSTOM-COMPONENTS.md</a>；定義放 <code>packages/javascript/browser/custom_components/definitions/*.json</code>。</p>
+</li>
+<li>
+<p><code>build-registry.mjs</code> 會驗證 path/symlink/名稱碰撞/引用/cycle/kind，產生 deterministic <code>registry.json</code>；瀏覽器不直接列舉資料夾。</p>
+</li>
+<li>
+<p><code>CustomComponentRegistry</code> 採整批原子註冊與全圖重驗證，具 ownership-aware <code>dispose()</code>，預設可接 ComponentFactory；<code>CustomComponentRenderer</code> 負責 group/leaf/custom 遞迴、值 round-trip、runtime unsafe option 過濾與反序 destroy。</p>
+</li>
+<li>
+<p><code>DynamicPageRenderer</code> 可用 <code>customComponents: { definitions, folder }</code> 在 async init 先全數取得、再單次註冊並接 FieldResolver；自建 registry 不污染全域 factory。SPA <code>DefinitionRuntimePage</code> 僅從可信 class/constructor options 取得來源，不信任頁面 JSON；目前自動接線為 dynamic form，靜態產碼不會自動打包 JSON folder。</p>
+</li>
+<li>
+<p>Studio 主入口：<code>tools/theme-studio/index.html</code>；「樣式客製」與「元件組合」共用 <code>tools/theme-studio/studio.page.json</code>、同一個 <code>DynamicToolRenderer</code> 與同一份 DOM。兩側均有 JSON-native 頁內說明與正式 <code>Link</code> 往返；組合頁另列三層規則、definitions 路徑與驗收指令。<code>tools/custom-component-studio/index.html</code> 僅為導向第二頁籤的相容 URL。</p>
+</li>
+<li>
+<p>新增驗收：definition/runtime 14/14；Adapter/FieldResolver/SPA targeted integration 30/30；真實 Edge E2E 13/13（含下載 JSON、拒絕錯誤副檔名/破損/危險/超限匯入、匯入 template、factory lifecycle、值 round-trip、dynamic form、CSP/SVG=0）。</p>
+</li>
 </ul>
 <h3>4.2 Studio JSON 自舉</h3>
 <ul>
-<li>新增 <code>ToolPageDefinition</code>：純 JSON 僅允許 <code>group/component/tabs/slot</code>、safe state path 與 allowlisted event；函式/getter/raw HTML/prototype key/未知 command/component 全部 fail closed。</li>
-<li>新增 <code>DynamicToolRenderer</code>，並接進 <code>DynamicPageRenderer</code> tool mode 與 <code>PageGenerator.generate(type:'tool')</code> 靜態 wrapper。狀態更新只觸及重疊 bindings；setter 缺失只替換單一 component；內部控制重畫後 provenance 同步更新。</li>
-<li>Studio chrome 全由正式 ComponentFactory 元件建立。<code>List</code>/<code>TreeList</code> 補 action/active/data API，<code>UploadButton</code> 補 stable input id，<code>NumberInput.setValue()</code> 預設不回觸 onChange，作為自舉所需的正式元件能力。</li>
-<li>Theme 匯入會先把 token、catalog component、單一 class 與 CSS value 完整驗證到暫存快照，全部通過才一次套用；拒絕 selector/declaration/URL 注入且失敗不留下部分狀態。<code>customCss()</code> 匯出前再做防禦性驗證。</li>
-<li>機器證據：Tool/page-generator Vitest 7 files 63/63；Studio static/fresh-Edge self-host 19/19；Theme 18/18；頁內說明、正式 Link 同頁導覽、跨頁籤、雙 JSON round-trip、匯入原子性與防禦性匯出 16/16；Custom runtime/browser 13/13；全部維持 CSP/SVG hard-zero。</li>
+<li>
+<p>新增 <code>ToolPageDefinition</code>：純 JSON 僅允許 <code>group/component/tabs/slot</code>、safe state path 與 allowlisted event；函式/getter/raw HTML/prototype key/未知 command/component 全部 fail closed。</p>
+</li>
+<li>
+<p>新增 <code>DynamicToolRenderer</code>，並接進 <code>DynamicPageRenderer</code> tool mode 與 <code>PageGenerator.generate(type:'tool')</code> 靜態 wrapper。狀態更新只觸及重疊 bindings；setter 缺失只替換單一 component；內部控制重畫後 provenance 同步更新。</p>
+</li>
+<li>
+<p>Studio chrome 全由正式 ComponentFactory 元件建立。<code>List</code>/<code>TreeList</code> 補 action/active/data API，<code>UploadButton</code> 補 stable input id，<code>NumberInput.setValue()</code> 預設不回觸 onChange，作為自舉所需的正式元件能力。</p>
+</li>
+<li>
+<p>Theme 匯入會先把 token、catalog component、單一 class 與 CSS value 完整驗證到暫存快照，全部通過才一次套用；拒絕 selector/declaration/URL 注入且失敗不留下部分狀態。<code>customCss()</code> 匯出前再做防禦性驗證。</p>
+</li>
+<li>
+<p>機器證據：Tool/page-generator Vitest 7 files 63/63；Studio static/fresh-Edge self-host 19/19；Theme 18/18；頁內說明、正式 Link 同頁導覽、跨頁籤、雙 JSON round-trip、匯入原子性與防禦性匯出 16/16；Custom runtime/browser 13/13；全部維持 CSP/SVG hard-zero。</p>
+</li>
 </ul>
 <h3>4.3 Form Application Studio</h3>
 <ul>
-<li>核心契約位於 <code>packages/javascript/browser/form-application/</code>：嚴格驗證 schema、provider、欄位與 CRUD allowlist，生成 normalized definition、design JSON、PageDefinition、provider SQL/rollback、.NET 10 Model/Service/Endpoints/bootstrap 與整合說明。</li>
-<li>正式 <code>layout/FormDesigner</code> 提供 schema 欄位清單、改欄位/顯示名、切換輸入元件、增刪欄位，以及 12 欄畫布的滑鼠/鍵盤拖拉與縮放；已註冊 <code>ComponentFactory</code> 並納入 catalog。</li>
-<li>工具入口 <code>tools/form-application-studio/index.html</code>；唯一頁面定義為 <code>studio.page.json</code>，由 <code>DynamicPageRenderer(tool)</code> 產生，沒有另刻一套工具 UI。</li>
-<li>連線政策：空白或缺少連線字串一律落到本地 SQLite <code>data/&lt;application_id&gt;.db</code>；外部 provider 必須明確指定且提供非空連線字串。secret 只存 controller 記憶體，預設不進 definition/design/bundle；只有使用者明確勾選才進 <code>backend/appsettings.Development.json</code>。</li>
-<li>Studio/CLI 只預覽與生成，絕不連線或套用 SQL。實際資料庫變更仍須先確認資料表、目標欄位、來源、寫入規則、例外處理與 rollback/驗證計畫。</li>
-<li>驗證證據（2026-07-23，平台遷移前）：核心 11/11、自舉 8/8、真實 Edge 17/17；提交前獨立 CLI 稽核曾抓到外部 provider 的 definition JSON 被二次正規化為 SQLite，修正後已新增單元與 Edge 產物一致性斷言。CLI help/未知參數、首次生成/byte-identical 再生成、PostgreSQL provider 保留與 secret 0 命中均通過，CLI 產出的 Web 專案 build 0 warning/0 error。全量回歸另含 page-generator、四套純函式、客製元件 14/14、UI static+9 demos、CSP A-J/G 正負向、Theme/Custom Studio 19/19+18/18+16/16+13/13、Canvas/Wave2/Data/Icon/Wave3 8/8+29/29+8/8+13/13+24/24、ClusterGraph 8/8（BH 7.15ms、draw 2.46ms）及 SPA backend build 0 warning/0 error；<code>.test-output/</code> 已清理。</li>
+<li>
+<p>核心契約位於 <code>packages/javascript/browser/form-application/</code>：嚴格驗證 schema、provider、欄位與 CRUD allowlist，生成 normalized definition、design JSON、PageDefinition、provider SQL/rollback、.NET 10 Model/Service/Endpoints/bootstrap 與整合說明。</p>
+</li>
+<li>
+<p>正式 <code>layout/FormDesigner</code> 提供 schema 欄位清單、改欄位/顯示名、切換輸入元件、增刪欄位，以及 12 欄畫布的滑鼠/鍵盤拖拉與縮放；已註冊 <code>ComponentFactory</code> 並納入 catalog。</p>
+</li>
+<li>
+<p>工具入口 <code>tools/form-application-studio/index.html</code>；唯一頁面定義為 <code>studio.page.json</code>，由 <code>DynamicPageRenderer(tool)</code> 產生，沒有另刻一套工具 UI。</p>
+</li>
+<li>
+<p>連線政策：空白或缺少連線字串一律落到本地 SQLite <code>data/&lt;application_id&gt;.db</code>；外部 provider 必須明確指定且提供非空連線字串。secret 只存 controller 記憶體，預設不進 definition/design/bundle；只有使用者明確勾選才進 <code>backend/appsettings.Development.json</code>。</p>
+</li>
+<li>
+<p>Studio/CLI 只預覽與生成，絕不連線或套用 SQL。實際資料庫變更仍須先確認資料表、目標欄位、來源、寫入規則、例外處理與 rollback/驗證計畫。</p>
+</li>
+<li>
+<p>驗證證據（2026-07-23，平台遷移前）：核心 11/11、自舉 8/8、真實 Edge 17/17；提交前獨立 CLI 稽核曾抓到外部 provider 的 definition JSON 被二次正規化為 SQLite，修正後已新增單元與 Edge 產物一致性斷言。CLI help/未知參數、首次生成/byte-identical 再生成、PostgreSQL provider 保留與 secret 0 命中均通過，CLI 產出的 Web 專案 build 0 warning/0 error。全量回歸另含 page-generator、四套純函式、客製元件 14/14、UI static+9 demos、CSP A-J/G 正負向、Theme/Custom Studio 19/19+18/18+16/16+13/13、Canvas/Wave2/Data/Icon/Wave3 8/8+29/29+8/8+13/13+24/24、ClusterGraph 8/8（BH 7.15ms、draw 2.46ms）及 SPA backend build 0 warning/0 error；<code>.test-output/</code> 已清理。</p>
+</li>
 </ul>
 <h3>4.4 最新完成:三批稽核(洩漏／資安／效能)</h3>
 <p>commit <code>4a5efe8</code>(2026-08-30),外加 <code>45b326b</code>(2026-08-25)的 WebTextEditor XSS 修復。<strong>公開介面不變、生成輸出逐位相同</strong>。</p>
 <ul>
-<li><strong>洩漏(「越用越慢、記憶體持續成長」的根因)</strong>:<code>ModalPanel.confirm/alert/prompt</code> 建立的對話框從不 destroy——現在三個 static helper 都帶 <code>destroyOnClose: true</code>,<code>ModalPanel</code>/<code>DrawerPanel</code> 的 <code>destroy()</code> 也補回 <code>super.destroy()</code>;<code>MapEditor</code>/<code>MapEditorV2</code> 原本完全沒有 <code>destroy()</code>(洩漏的 MapEditorV2 會無條件 <code>preventDefault</code> Ctrl+C/V,劫持整頁複製貼上),已補上;<code>PanelManager.unregister</code> 現在會 <code>_purgeFromStack</code> 清掉 <code>modalStack</code>/<code>focusStack</code>,<code>enterModal</code>/<code>enterFocus</code> 改為冪等。<code>templates/spa/frontend/components/Panel/</code> 是 BasePage 實際使用的第二份副本,同步修復。</li>
-<li><strong>資安</strong>:<code>PageGenerator</code> 原本把定義字串未跳脫寫進生成程式碼,改為六個依語境的跳脫函式 + 識別字驗證(<code>_collectIdentifierErrors</code> 檢 <code>definition.name</code>／每個 <code>field.name</code>／<code>behaviors.onInit|onSave|onDelete</code> 與 <code>fieldTriggers</code>);<code>tools/spa-generator/server.js</code> 與 <code>templates/spa/scripts/web/server.js</code> 兩支 dev server 都改為預設綁 <code>127.0.0.1</code> 並加 Host/Origin 守衛;<code>raw()</code> 標記改用 <code>Symbol.for</code> 品牌 + 自有屬性檢查;<code>tools/lib/app-generator.js</code> 的輸出路徑加上 prefix 檢查擋路徑穿越;開發用 JWT 金鑰改為每次啟動隨機。<code>45b326b</code> 另補 <code>isSafeId</code> 收斂 WebTextEditor TOC 的 heading id 與 <code>sanitizeUrl</code> 的 backslash open-redirect 缺口。</li>
-<li><strong>效能</strong>:新增 <code>binding/LazyComponentFactory.js</code>(動態頁不再載入整套元件庫,詳見 §2);<code>tools/page-gen.js</code> 新增 <code>--pages &lt;id,id&gt;</code>／<code>--all</code> 批次模式;<code>DynamicDetailRenderer</code>/<code>DynamicPageRenderer</code> 新增 <code>lazyTabs</code>(<strong>預設 <code>true</code></strong>);DataTable 勾選改定向更新;EditableTable 儲存格編輯不再整批重建元件;TreeList 選取/展開改定向更新;<code>create-project</code> 不再複製 <code>bin/obj</code>;metadata 管線去重,<code>component-catalog.json</code> 由 239,500 bytes 降為 126,597 bytes。</li>
-<li><strong>其他</strong>:<code>TgosMap</code> 的 SVG 圖釘改 Canvas + <code>Path2D</code>、硬編碼色碼改主題 token,使 audit-csp 的 SVG 硬零與樣式稽核首次全綠。</li>
-<li><strong>新增純函式覆蓋</strong>:<code>ui_components/utils/security.id-url.test.mjs</code>(23 斷言),<code>npm --prefix packages/javascript/browser test</code> 因此由四套 63 斷言變成五套 86 斷言。</li>
+<li>
+<p><strong>洩漏(「越用越慢、記憶體持續成長」的根因)</strong>:<code>ModalPanel.confirm/alert/prompt</code> 建立的對話框從不 destroy——現在三個 static helper 都帶 <code>destroyOnClose: true</code>,<code>ModalPanel</code>/<code>DrawerPanel</code> 的 <code>destroy()</code> 也補回 <code>super.destroy()</code>;<code>MapEditor</code>/<code>MapEditorV2</code> 原本完全沒有 <code>destroy()</code>(洩漏的 MapEditorV2 會無條件 <code>preventDefault</code> Ctrl+C/V,劫持整頁複製貼上),已補上;<code>PanelManager.unregister</code> 現在會 <code>_purgeFromStack</code> 清掉 <code>modalStack</code>/<code>focusStack</code>,<code>enterModal</code>/<code>enterFocus</code> 改為冪等。<code>templates/spa/frontend/components/Panel/</code> 是 BasePage 實際使用的第二份副本,同步修復。</p>
+</li>
+<li>
+<p><strong>資安</strong>:<code>PageGenerator</code> 原本把定義字串未跳脫寫進生成程式碼,改為六個依語境的跳脫函式 + 識別字驗證(<code>_collectIdentifierErrors</code> 檢 <code>definition.name</code>／每個 <code>field.name</code>／<code>behaviors.onInit|onSave|onDelete</code> 與 <code>fieldTriggers</code>);<code>tools/spa-generator/server.js</code> 與 <code>templates/spa/scripts/web/server.js</code> 兩支 dev server 都改為預設綁 <code>127.0.0.1</code> 並加 Host/Origin 守衛;<code>raw()</code> 標記改用 <code>Symbol.for</code> 品牌 + 自有屬性檢查;<code>tools/lib/app-generator.js</code> 的輸出路徑加上 prefix 檢查擋路徑穿越;開發用 JWT 金鑰改為每次啟動隨機。<code>45b326b</code> 另補 <code>isSafeId</code> 收斂 WebTextEditor TOC 的 heading id 與 <code>sanitizeUrl</code> 的 backslash open-redirect 缺口。</p>
+</li>
+<li>
+<p><strong>效能</strong>:新增 <code>binding/LazyComponentFactory.js</code>(動態頁不再載入整套元件庫,詳見 §2);<code>tools/page-gen.js</code> 新增 <code>--pages &lt;id,id&gt;</code>／<code>--all</code> 批次模式;<code>DynamicDetailRenderer</code>/<code>DynamicPageRenderer</code> 新增 <code>lazyTabs</code>(該提交預設 <code>false</code>;<strong><code>11e8e95</code> 起改為預設 <code>true</code></strong>);DataTable 勾選改定向更新;EditableTable 儲存格編輯不再整批重建元件;TreeList 選取/展開改定向更新;<code>create-project</code> 不再複製 <code>bin/obj</code>;metadata 管線去重,<code>component-catalog.json</code> 由 239,500 bytes 降為 126,597 bytes。</p>
+</li>
+<li>
+<p><strong>其他</strong>:<code>TgosMap</code> 的 SVG 圖釘改 Canvas + <code>Path2D</code>、硬編碼色碼改主題 token,使 audit-csp 的 SVG 硬零與樣式稽核首次全綠。</p>
+</li>
+<li>
+<p><strong>新增純函式覆蓋</strong>:<code>ui_components/utils/security.id-url.test.mjs</code>(23 斷言),<code>npm --prefix packages/javascript/browser test</code> 因此由四套 63 斷言變成五套 86 斷言。</p>
+</li>
 </ul>
 <p><strong>本輪驗證證據(2026-08-30):</strong> <code>npm test</code>、<code>audit-csp</code>(0 CSP / 0 SVG)、<code>validate:ui-library</code>、<code>build-metadata --check</code> 全數通過;生成輸出逐位相同;<code>dotnet build</code> 0 錯誤。上述測試數字皆為該 commit 的自陳證據,接手時請自行重跑 §1 清單確認。</p>
 <hr>
@@ -265,13 +416,17 @@ node tools/scripts/form-application-studio-smoke.mjs --require-browser # 17 項(
 <pre><code>靜態:audit-csp → validate-ui-library → npm test(根)→ npm --prefix packages/javascript/browser test
 動態:五支既有瀏覽器 harness + Icon + Wave 3(§1);效能 harness 單獨跑
 客製元件:npm run custom-components:check → npm run test:custom-components → npm run test:custom-components:browser
-Studio:npm run test:studio:self-host → npm run test:theme-studio:browser → npm run test:studio:browser
+Studio:npm run test:studio:self-host → npm run test:theme-studio:browser → npm run test:studio:browser(test:theme-studio:browser 現為相容別名,與 test:studio:browser 跑同一支 studio-integration-smoke.mjs)
 Form Application:npm run test:form-designer:all → 生成產物的 .NET 10 build
 .NET:npm run test:dotnet10 → 35/35 專案零警告；另跑 unit/integration/SPA template 三組 dotnet test
 </code></pre>
 <p>GitHub Actions：<code>.github/workflows/ci.yml</code> 在 PR→<code>main</code> 與 push→<code>main</code>
 執行可攜式 JavaScript/政策守門、全部 .NET 10 專案 warnings-as-errors 建置及四 provider 生成後端 build。
-真實 Edge harness 因依賴既有外部 Playwright/Edge runtime，維持本機驗收，不以 CI 假裝通過。</p>
+<code>.github/workflows/quality-gates.yml</code>（windows-latest；push→<code>main</code> 與所有 PR）另跑 JS 守門，並在
+<code>npm install --no-save --ignore-scripts playwright-core@1.61.1</code> 後以系統 Edge 跑六支自架 smoke：
+<code>validate:ui-library:browser</code>、<code>test:spa-template:browser</code>、<code>test:theme-studio:browser</code>、<code>test:custom-components:browser</code>、
+<code>test:studio:browser</code>、<code>test:form-designer:browser</code>。依賴 8124 server 與 <code>../tim-web/poc</code> 的
+canvas-chart／wave2／data-explorer／cluster-graph／icon-canvas／wave3 harness 仍只在本機驗收。</p>
 <p><strong>鐵律(前人血淚,條條有事故背書):</strong>
 1. <strong>回報不算數</strong>——子代理宣稱完成後,逐檔機器驗收 + 行為驗證。波 2 實例:六路代理全報成功,實測仍揪出兩個 bug(alert content 被覆蓋、click 沒接線)——<strong>渲染全綠也測不出,必須做互動鏈斷言</strong>(dispatch 真實 click → 斷言彈窗文字非空)。
 2. <strong>代理死於 session 上限會留半成品</strong>(曾發生寫了 <code>&lt;link&gt;</code> 沒建 .css):驗收看檔案,不看回報清單。
@@ -281,39 +436,78 @@ Form Application:npm run test:form-designer:all → 生成產物的 .NET 10 buil
 <hr>
 <h2>6. 多代理波工作法(若你派子代理)</h2>
 <ol>
-<li>檔案互斥——絕不兩代理碰同檔。</li>
-<li>提示詞內建機器驗收命令與通過標準,要求代理自跑並貼輸出。</li>
-<li>上限 6 代理/波;機械遷移用 sonnet,設計判斷自己做。</li>
-<li>波收束=本人逐檔驗收(§5),然後才 commit。</li>
+<li>
+<p>檔案互斥——絕不兩代理碰同檔。</p>
+</li>
+<li>
+<p>提示詞內建機器驗收命令與通過標準,要求代理自跑並貼輸出。</p>
+</li>
+<li>
+<p>上限 6 代理/波;機械遷移用 sonnet,設計判斷自己做。</p>
+</li>
+<li>
+<p>波收束=本人逐檔驗收(§5),然後才 commit。</p>
+</li>
 </ol>
 <hr>
 <h2>7. 環境坑(照做,都踩過)</h2>
 <ul>
-<li><strong>工具腳本不得假設執行環境有 ripgrep 或任何外部搜尋工具</strong>(有的機器有、有的沒有——<code>audit-ui-style-rules.mjs</code> 曾因 spawn rg 在無 rg 機器上從沒真跑過):一律純 Node <code>fs</code>+regex,禁 spawn 外部工具。</li>
-<li><strong>PowerShell 5.1</strong>:<code>.ps1</code> 只寫英文註解(UTF-8 無 BOM 中文=parse 炸);<strong>改檔一律用編輯工具,禁 shell 重導向寫檔</strong>(UTF-16 BOM 毀損坑)。機制腳本已全 Node 化。</li>
-<li><code>node --check</code> 不吃瀏覽器 ESM <code>.js</code>——先複製成 <code>.mjs</code> 再驗。</li>
-<li>瀏覽器測試用 Edge(<code>channel:'msedge'</code>),playwright-core 從 <code>../tim-web/poc/node_modules</code> 借;<strong>不要</strong>在本 repo npm install 任何東西。</li>
-<li>含 junction 的專案刪除前必先解除連結(<code>scripts/dev-link.mjs</code> unlink),遞迴刪除會追進腳手架本體。</li>
-<li>測試產物(<code>.test-output/</code>、<code>out/</code>)用完即刪,見 CLAUDE.md 附表。</li>
-<li><code>test-audit-csp-hard-zero.mjs</code> 會在 runtime root 與 baseline 暫放負向 fixture,只能與正式 audit <strong>串行</strong>執行;腳本 finally 會還原,跑完仍要確認 fixture 不存在且 baseline=<code>{}</code>。</li>
+<li>
+<p><strong>工具腳本不得假設執行環境有 ripgrep 或任何外部搜尋工具</strong>(有的機器有、有的沒有——<code>audit-ui-style-rules.mjs</code> 曾因 spawn rg 在無 rg 機器上從沒真跑過):一律純 Node <code>fs</code>+regex,禁 spawn 外部工具。</p>
+</li>
+<li>
+<p><strong>PowerShell 5.1</strong>:<code>.ps1</code> 只寫英文註解(UTF-8 無 BOM 中文=parse 炸);<strong>改檔一律用編輯工具,禁 shell 重導向寫檔</strong>(UTF-16 BOM 毀損坑)。機制腳本已全 Node 化。</p>
+</li>
+<li>
+<p><code>node --check</code> 不吃瀏覽器 ESM <code>.js</code>——先複製成 <code>.mjs</code> 再驗。</p>
+</li>
+<li>
+<p>瀏覽器測試用 Edge(<code>channel:'msedge'</code>)。自架 harness(validate-ui-library、spa-template、studio、custom-component、form-application 等)先解析 <code>playwright</code>/<code>playwright-core</code>,找不到才退到 <code>../tim-web/poc/node_modules</code>(spa-template-smoke 不退);依賴 8124 的 canvas/wave2/data-explorer/cluster/icon/wave3 仍直接 import <code>../../../tim-web/poc</code>;<strong>不要</strong>在本 repo npm install 任何東西(注意:<code>npm test</code> 的 Vitest 部分現需先 <code>npm --prefix packages/javascript/browser install</code>,見 §1)。</p>
+</li>
+<li>
+<p>含 junction 的專案刪除前必先解除連結(<code>scripts/dev-link.mjs</code> unlink),遞迴刪除會追進腳手架本體。</p>
+</li>
+<li>
+<p>測試產物(<code>.test-output/</code>、<code>out/</code>)用完即刪,見 CLAUDE.md 附表。</p>
+</li>
+<li>
+<p><code>test-audit-csp-hard-zero.mjs</code> 會在 runtime root 與 baseline 暫放負向 fixture,只能與正式 audit <strong>串行</strong>執行;腳本 finally 會還原,跑完仍要確認 fixture 不存在且 baseline=<code>{}</code>。</p>
+</li>
 </ul>
 <hr>
 <h2>8. 波 3 之後的待辦(順序供參,發動前先跟使用者確認)</h2>
 <ol>
-<li><strong>Form Application 後續</strong>：若要真正套用 SQL／連接既有資料庫，先依高影響資料規則確認寫入計畫。多表關聯、migration diff、既有 API 反向匯入目前不在 v1。</li>
-<li><strong>DataExplorer 擴充</strong>:<code>'cluster'</code> 圖型接 ClusterGraph(spec 加 hierarchy 通道);ChartSpecBuilder 抽獨立元件;後端聚合模式(spec 直傳 Graph action,等 B 軌)。</li>
-<li><strong>前端軌量產</strong>(使用者發動):按 <code>tim-web\docs\task-board.json</code>——P0-1 頁面聚類 → 每群 <code>_base</code> 模板 → 生成器測試先行 → 量產頁 extends 只寫差異。</li>
-<li><strong>後端軌</strong>(使用者發動):B0-0 威脅建模 → B0-1 舊碼盤點 → B0-2 路由→10 動作對照表;契約釘 commit hash。</li>
-<li>掛帳:SKILL 包裝(已評估未實作)、機制 MCP 化(僅選項)。</li>
-<li>客製元件後續可選：static <code>PageGenerator.generate()</code> 自動物化 runtime/definitions；現況已支援直接 runtime 與 dynamic form，靜態產物須由啟動程式自行 <code>loadFolder()</code>。</li>
+<li>
+<p><strong>Form Application 後續</strong>：若要真正套用 SQL／連接既有資料庫，先依高影響資料規則確認寫入計畫。多表關聯、migration diff、既有 API 反向匯入目前不在 v1。</p>
+</li>
+<li>
+<p><strong>DataExplorer 擴充</strong>:<code>'cluster'</code> 圖型接 ClusterGraph(spec 加 hierarchy 通道);ChartSpecBuilder 抽獨立元件;後端聚合模式(spec 直傳 Graph action,等 B 軌)。</p>
+</li>
+<li>
+<p><strong>前端軌／後端軌</strong>(使用者發動):已移至 <code>D:\work\Tim2026</code> 進行(TimWeb 前端 + TimNet10 後端),待辦與進度以 Tim2026 的文件為準(入口為其 <code>README</code>／<code>AGENTS.md</code>),不在本 repo 追蹤。</p>
+</li>
+<li>
+<p>掛帳:SKILL 包裝(已評估未實作)、機制 MCP 化(僅選項)。</p>
+</li>
+<li>
+<p>客製元件後續可選：static <code>PageGenerator.generate()</code> 自動物化 runtime/definitions；現況已支援直接 runtime 與 dynamic form，靜態產物須由啟動程式自行 <code>loadFolder()</code>。</p>
+</li>
 </ol>
 <hr>
 <h2>9. 與使用者協作的慣例</h2>
 <ul>
-<li>溝通用<strong>繁體中文</strong>;直接、不奉承;壞消息直說(測試紅就說紅)。</li>
-<li>使用者重視<strong>驗證文化</strong>:宣稱完成要附機器證據;被抓到「說清了但沒清」會嚴重損害信任(發生過,教訓=全類別盤點+機器守門)。</li>
-<li>已定案決策(§0)別重開;真正的新決策(如動 tim-web、開新波、改公開 API)先問。</li>
-<li>commit 訊息:近期已改用 conventional-commit 前綴的英文首行(<code>fix:</code>／<code>fix(security):</code>／<code>docs:</code>／<code>chore:</code>),正文仍以繁中條列;不直推 main,推工作分支再開 PR(或使用者指定的分支)。</li>
+<li>
+<p>溝通用<strong>繁體中文</strong>;直接、不奉承;壞消息直說(測試紅就說紅)。</p>
+</li>
+<li>
+<p>使用者重視<strong>驗證文化</strong>:宣稱完成要附機器證據;被抓到「說清了但沒清」會嚴重損害信任(發生過,教訓=全類別盤點+機器守門)。</p>
+</li>
+<li>
+<p>已定案決策(§0)別重開;真正的新決策(如動 tim-web、開新波、改公開 API)先問。</p>
+</li>
+<li>
+<p>commit 訊息:近期已改用 conventional-commit 前綴的英文首行(<code>fix:</code>／<code>fix(security):</code>／<code>docs:</code>／<code>chore:</code>),正文仍以繁中條列;不直推 main,推工作分支再開 PR(或使用者指定的分支)。</p>
+</li>
 </ul>
 </main>
 </body>

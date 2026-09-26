@@ -38,11 +38,15 @@ Canonical live path：
 
 目前查詢邊界：
 
-- 明確 broker-mediated search 可用：`?search <keywords>`
+- 明確 broker-mediated search 可用：`?search <keywords>`（別名 `?s`）
 
-- 一般 `?query` 仍走高階對話路徑
+- 明確交通查詢由 broker 經 `transport.query` 工具處理：`?rail`（別名 `?r`、`?train`、`?tra`）、`?hsr`（`?thsr`）、`?bus`（`?b`）、`?flight`（`?f`、`?flights`）
 
-- 任意 query 尚未全面自動切成即時工具查詢，現行受控 live 路徑仍以顯式子命令為主
+- `?profile`（別名 `?p`、`?me`、`?whoami`）由 broker 依已儲存的高階使用者 profile 直接回覆，不呼叫工具
+
+- 不帶上述子命令的一般 `?query` 仍走高階對話路徑
+
+- 任意 query 尚未全面自動切成即時工具查詢，現行受控 live 路徑仍以上述顯式子命令為主
 
 建議 sidecar 流程：
 

@@ -73,7 +73,7 @@ const card = new StatCard(options);
 <td><code>color</code></td>
 <td><code>string</code></td>
 <td><code>'var(--cl-primary)'</code></td>
-<td>主題色（用於圖示背景和文字色）</td>
+<td>主題色（用於圖示背景和文字色）；可用語意名稱 <code>'primary'</code> / <code>'success'</code> / <code>'warning'</code> / <code>'danger'</code> / <code>'info'</code>（對應 <code>var(--cl-*)</code>）或 CSS 色值</td>
 </tr>
 <tr>
 <td><code>onClick</code></td>
@@ -116,7 +116,7 @@ const card = new StatCard(options);
 </tbody>
 </table>
 <h3>使用範例</h3>
-<pre><code class="language-js">import { StatCard } from '../packages/javascript/browser/ui_components/social/StatCard/StatCard.js';
+<pre><code class="language-js">import { StatCard } from './StatCard.js';
 
 const card = new StatCard({
     icon: '👥',
@@ -124,7 +124,7 @@ const card = new StatCard({
     value: 42,
     trend: 'up',
     trendValue: '+5',
-    color: '#4A90D9'
+    color: 'var(--cl-primary)'
 });
 card.mount('#stat-container');
 </code></pre>

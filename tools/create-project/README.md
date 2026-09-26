@@ -15,8 +15,10 @@ node tools/create-project/create-project.mjs --name my-app
 | `node scripts/dev-link.mjs` | lib\ → 腳手架 連結(產生時已自動執行;`--unlink` 可拆;Windows=junction、POSIX=symlink) |
 | `node scripts/dev.mjs` | 靜態伺服(root=專案根) |
 | `node scripts/sync-lib.mjs` | 無腳手架機器的複本後備(junction 護欄拒跑) |
-| `node scripts/publish.mjs` | 發佈 `dist\`：快照（穿透 junction）+ `SNAPSHOT.json` 憑證（tree/dirty/時間/檔數）+ 封閉驗證（fail 即擋） |
+| `node scripts/publish.mjs` | 發佈 `dist\`：快照（穿透 junction）+ `SNAPSHOT.json` 憑證（tree/dirty/時間/檔數，另記 ui_components、page-generator、custom_components 三庫各自的檔數、位元組數與 SHA-256 內容摘要及合併摘要）+ 封閉驗證（fail 即擋） |
 | `scripts\verify-sealed.mjs` | 靜態解析 JS/HTML/CSS 全部相對引用:禁逃出、禁外部腳手架路徑、禁根絕對、禁 bare import |
+| `scripts\b4a-lock.mjs` | `b4a.lock.json` 解析與建立（v2 釘 Git tree，v1 commit 僅相容讀取）；dev-link／sync-lib／publish 共用 |
+| `scripts\snapshot-integrity.mjs` | 三庫內容盤點：逐檔 SHA-256 → 每庫摘要與合併摘要；publish 寫入 `SNAPSHOT.json`，`tools/scripts/verify-consumer-snapshots.mjs` 用來驗證 |
 | `src\frontend\` | 最小起始頁(示範相對深度規則、元件掛載、escapeHtml、theme 鏈) |
 | `docs\dev-and-publish.md` | 機制文件(核心不變式:引用字面永遠是 `lib/…` 相對路徑) |
 

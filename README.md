@@ -104,7 +104,8 @@ The Node server binds loopback and rejects non-loopback `Host`/`Origin` requests
 ## Tests
 
 ```bash
-npm test                        # page-generator test suite
+npm --prefix packages/javascript/browser install  # once: vitest/jsdom devDependencies needed by npm test
+npm test                        # generator examples + test:ui-components + test:custom-components + Vitest component suites
 npm run validate:ui-library     # UI library checks
 npm run audit:ui-styles         # style-token audit
 npm run test:studio:self-host   # one authoritative JSON + component provenance
@@ -119,9 +120,12 @@ dotnet test templates/spa/backend.Tests/SpaApi.Template.Tests.csproj
 
 Pull requests targeting `main` and pushes to `main` run the portable JavaScript, policy,
 metadata, warning-free .NET 10 project matrix and generated-backend checks through
-[GitHub Actions](.github/workflows/ci.yml). The real Edge interaction harness remains
-a local acceptance gate because it intentionally uses the repository's pre-existing
-external Playwright/Edge runtime instead of adding npm dependencies.
+[GitHub Actions](.github/workflows/ci.yml). [`quality-gates.yml`](.github/workflows/quality-gates.yml)
+also installs `playwright-core` with `--no-save` and runs six self-hosted smokes in system Edge
+(`validate:ui-library:browser`, `test:spa-template:browser`, `test:theme-studio:browser`,
+`test:custom-components:browser`, `test:studio:browser`, `test:form-designer:browser`).
+Only the harnesses that need a `python -m http.server 8124` server (canvas chart, wave 2/3,
+data explorer, cluster graph, icon) remain local-only.
 
 The .NET 10 migration preserves the existing PBKDF2 password storage formats. Fixed
 compatibility vectors cover Broker, MFA and the SPA template, so existing hashes remain

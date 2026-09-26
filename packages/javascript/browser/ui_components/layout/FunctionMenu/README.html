@@ -24,28 +24,48 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <p>功能完整的功能選單容器組件，支援多種布局、尺寸、顏色主題，適用於工具欄、快捷功能、操作選單。</p>
 <h2>特性</h2>
 <ul>
-<li>✅ <strong>多種布局</strong>: Horizontal（水平）、Vertical（垂直）、Grid（網格）</li>
-<li>✅ <strong>三種尺寸</strong>: Small、Medium、Large</li>
-<li>✅ <strong>顏色主題</strong>: 支援 5 種預設主題顏色</li>
-<li>✅ <strong>徽章顯示</strong>: 顯示通知數量徽章</li>
-<li>✅ <strong>圖示支援</strong>: 支援 Font Awesome 等圖示庫</li>
-<li>✅ <strong>禁用狀態</strong>: 支援單個項目的啟用/禁用</li>
-<li>✅ <strong>工具提示</strong>: 支援 tooltip 提示文字</li>
-<li>✅ <strong>響應式設計</strong>: 自動適配不同螢幕尺寸</li>
-<li>✅ <strong>深色模式</strong>: 支援深色模式</li>
+<li>
+<p>✅ <strong>多種布局</strong>: Horizontal（水平）、Vertical（垂直）、Grid（網格）</p>
+</li>
+<li>
+<p>✅ <strong>三種尺寸</strong>: Small、Medium、Large</p>
+</li>
+<li>
+<p>✅ <strong>顏色主題</strong>: 支援 5 種預設主題顏色</p>
+</li>
+<li>
+<p>✅ <strong>徽章顯示</strong>: 顯示通知數量徽章</p>
+</li>
+<li>
+<p>✅ <strong>圖示支援</strong>: 支援 Font Awesome 等圖示庫</p>
+</li>
+<li>
+<p>✅ <strong>禁用狀態</strong>: 支援單個項目的啟用/禁用</p>
+</li>
+<li>
+<p>✅ <strong>工具提示</strong>: 支援 tooltip 提示文字</p>
+</li>
+<li>
+<p>✅ <strong>響應式設計</strong>: 水平布局在小螢幕改為直向排列（grid 欄數由 inline style 固定為 <code>columns</code>，不會隨螢幕縮減）</p>
+</li>
+<li>
+<p>✅ <strong>深色模式</strong>: 支援深色模式</p>
+</li>
 </ul>
 <h2>使用方法</h2>
 <h3>基本使用</h3>
 <pre><code class="language-html">&lt;!DOCTYPE html&gt;
 &lt;html&gt;
 &lt;head&gt;
+    &lt;link rel=&quot;stylesheet&quot; href=&quot;../../theme.css&quot;&gt;
     &lt;link rel=&quot;stylesheet&quot; href=&quot;FunctionMenu.css&quot;&gt;
 &lt;/head&gt;
 &lt;body&gt;
     &lt;div id=&quot;my-menu&quot;&gt;&lt;/div&gt;
 
-    &lt;script src=&quot;FunctionMenu.js&quot;&gt;&lt;/script&gt;
-    &lt;script&gt;
+    &lt;script type=&quot;module&quot;&gt;
+        import { FunctionMenu } from './FunctionMenu.js';
+
         const menu = new FunctionMenu({
             containerId: 'my-menu',
             layout: 'horizontal',
@@ -71,7 +91,7 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 </code></pre>
 <h3>配置選項</h3>
 <pre><code class="language-javascript">const menu = new FunctionMenu({
-    // 容器元素 ID（必填）
+    // 容器元素 ID（預設: 'function-menu'）
     containerId: 'my-menu',
 
     // 布局方式: 'horizontal', 'vertical', 'grid'（預設: 'horizontal'）
@@ -281,17 +301,17 @@ if (!hasPermission('delete')) {
 <h3>自訂顏色</h3>
 <pre><code class="language-css">/* 自訂按鈕背景 */
 .menu-item-button {
-    background: #f0f0f0;
+    background: var(--cl-bg-subtle);
 }
 
 /* 自訂懸停效果 */
 .menu-item-button:hover {
-    background: #e0e0e0;
+    background: var(--cl-bg-hover);
 }
 
 /* 自訂圖示顏色 */
 .menu-item-icon i {
-    color: #ff6b6b;
+    color: var(--cl-danger);
 }
 </code></pre>
 <h3>自訂尺寸</h3>
@@ -307,22 +327,42 @@ if (!hasPermission('delete')) {
 </code></pre>
 <h2>注意事項</h2>
 <ol>
-<li><strong>項目 ID 必須唯一</strong>: 每個選單項目的 <code>id</code> 必須是唯一的</li>
-<li><strong>圖示依賴</strong>: 使用圖示需引入 Font Awesome</li>
-<li><strong>響應式</strong>: 在小螢幕上自動調整布局</li>
-<li><strong>點擊事件</strong>: 支援單個項目回調和全域回調</li>
+<li>
+<p><strong>項目 ID 必須唯一</strong>: 每個選單項目的 <code>id</code> 必須是唯一的</p>
+</li>
+<li>
+<p><strong>圖示依賴</strong>: 使用圖示需引入 Font Awesome</p>
+</li>
+<li>
+<p><strong>響應式</strong>: 水平布局在小螢幕改為直向排列；grid 布局的欄數由 inline style 固定為 <code>columns</code>，CSS 的斷點欄數不會生效</p>
+</li>
+<li>
+<p><strong>點擊事件</strong>: 支援單個項目回調和全域回調</p>
+</li>
 </ol>
 <h2>瀏覽器支援</h2>
 <ul>
-<li>Chrome 90+</li>
-<li>Firefox 88+</li>
-<li>Safari 14+</li>
-<li>Edge 90+</li>
+<li>
+<p>Chrome 90+</p>
+</li>
+<li>
+<p>Firefox 88+</p>
+</li>
+<li>
+<p>Safari 14+</p>
+</li>
+<li>
+<p>Edge 90+</p>
+</li>
 </ul>
 <h2>依賴</h2>
 <ul>
-<li>無外部依賴（純 JavaScript 實作）</li>
-<li>可選：Font Awesome（用於圖示）</li>
+<li>
+<p>無外部依賴（純 JavaScript 實作）</p>
+</li>
+<li>
+<p>可選：Font Awesome（用於圖示）</p>
+</li>
 </ul>
 <h2>授權</h2>
 <p>MIT License</p>

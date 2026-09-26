@@ -1,7 +1,7 @@
 # 組件庫整併與重構規劃(Component Library Consolidation)
 
 Date: 2026-06-15
-Status: **重新分析 + 規劃(待分階段執行)**
+Status: **已完成** —— Stage 0–3 皆已落地 main(2026-06-16,commit 見 §10.4);§7 提案原子 / 中層複合 / 區段亦已落地(§7.4)。
 基準:`packages/javascript/browser/ui_components`(B,183 檔、~38.8K LOC)為 canonical。
 範圍:把產生器側那套 C# schema 詞表(A)有價值的部分**拆解後吸收**進 B,移除其罐頭詞表與現捏邏輯,並同步文件。
 
@@ -13,7 +13,7 @@ Status: **重新分析 + 規劃(待分階段執行)**
 
 - **A — 產生器 schema 詞表(C#)**:`ComponentLibraryManifest` + 約 30 個版面區塊型別(`HeroSection`、`NewsGrid`、`MegaHeader`…),渲染語意是內嵌在 [StaticSitePackageGenerator](../../packages/csharp/workers/site-crawler-worker/Services/StaticSitePackageGenerator.cs) 的 JS 字串。Demo #3(網站複製)用它。
 
-- **B — `ui_components`(JS)**:15 類真實可重用組件,中文註解、刻意的 `createComponentState` FSM 契約、`BaseChart`/`BasePanel` 階層、vanilla 無依賴、強資安。page-generator 用它。
+- **B — `ui_components`(JS)**:15 類真實可重用組件,中文註解、刻意的 `createComponentState` FSM 契約、`BaseChart`/`BasePanel` 階層(`BaseChart` 已於 `39f330f` 退役刪除,圖表改以 `viz/CanvasChart.js` 為基底)、vanilla 無依賴、強資安。page-generator 用它。
 
 **A 不是規劃的詞表,是語料 sample 出來的罐頭。** `HeroSection`/`hero` 是英文西方 landing-page 行話,非設計;`SiteGeneratorConverter.EnsureGeneratedComponent` 還會在 role 湊不上時**現捏** `Generated{Role}Section` 塞進 manifest(射箭再畫靶,且目前在孤兒路徑上)。B 才是設計的那條。本規劃以 B 為基準,把 A 的**紀律與組裝模式**留下、**詞表與現捏**丟掉。
 
@@ -46,7 +46,7 @@ Status: **重新分析 + 規劃(待分階段執行)**
 
 1. **B 的組件清單 = 固定詞表(由人框,非 sample)。** A 的罐頭詞表不吸收。
 
-2. **複合元件是一級公民(= 樹的內節點 / 定言組),不是樣板。** B 本來就富含複合(Panel 家族、DataTable、SearchForm、FormField、ChainedInput、FeatureCard、BaseChart 家族…),它們留。只有「某次爬取才出現、無重用」的區段組裝才是 generator 側樣板。`HeroSection` 這種**區段級** composite 走 §2.5 的升 / 降 / 丟判準。
+2. **複合元件是一級公民(= 樹的內節點 / 定言組),不是樣板。** B 本來就富含複合(Panel 家族、DataTable、SearchForm、FormField、ChainedInput、FeatureCard、BaseChart 家族(現為 `CanvasChart` 家族,`BaseChart` 已於 `39f330f` 刪除)…),它們留。只有「某次爬取才出現、無重用」的區段組裝才是 generator 側樣板。`HeroSection` 這種**區段級** composite 走 §2.5 的升 / 降 / 丟判準。
 
 3. **schema 驗證 + 決定性紀律保留,套到 B 詞表上。** section 樣板對「B 組件閉集」做 schema 驗證、輸出位元組決定。
 
@@ -65,7 +65,7 @@ Status: **重新分析 + 規劃(待分階段執行)**
 | 層 | 是什麼 | 處置 |
 |---|---|---|
 | 原子(葉) | `TextInput`、`ImageBlock`、`ActionButton`、`Badge`… | B 既有,留 |
-| 中層複合(內節點) | `Panel`/`DataTable`/`SearchForm`/`FormField`/`ChainedInput`/`FeatureCard`/`BaseChart`… | **B 既有公民,留,不動** |
+| 中層複合(內節點) | `Panel`/`DataTable`/`SearchForm`/`FormField`/`ChainedInput`/`FeatureCard`/`BaseChart`(已於 `39f330f` 刪除,由 `CanvasChart` 取代)… | **B 既有公民,留,不動** |
 | 區段複合(祖) | hero banner、card grid section、tabbed news… | A 的領域,逐一判(下) |
 
 **區段複合三判準(逐一,不整批升格):**
@@ -147,7 +147,7 @@ Status: **重新分析 + 規劃(待分階段執行)**
 
 | 提案原子 | 對應常見模式 | B 現況 |
 |---|---|---|
-| `Icon` | 圖示系統(幾乎每站) | ✅ **已加**(`common/Icon`,固定 SVG 閉集,未知=fail-closed) |
+| `Icon` | 圖示系統(幾乎每站) | ✅ **已加**(`common/Icon`;現為 Canvas + `Path2D` 繪製內建 path 集,未知名稱 `console.warn` 後退回 `help`,可用 `Icon.register()` 擴充) |
 | `Link` | 受控連結(帶 scope / 安全;site-gen 正需要) | ✅ **已加**(`common/Link`,scope + 協定白名單) |
 | `Text` / `Heading` | 排版原子(字級 / 標題 / 段落) | ✅ **已加**(`common/Text`、`common/Heading`) |
 | `Textarea` | 多行文字 | ✅ **已加**(`form/Textarea`) |
@@ -286,4 +286,4 @@ doc 原 Stage 2 字面要求「退役 `StaticSitePackageGenerator` 內嵌 render
 - 順帶修一個潛在 bug:`parseRegistryNames` 正則要求尾逗號 → 註冊表**最後一項一直被靜默丟掉**(先前因此漏掉 `RegionMap`)。補尾逗號,`RegionMap` 一併進 catalog。
 - **多代理稽核**:27 個 Explore 代理各讀一個組件的真實 source + README,更正自動推導的 kind/role(複合元件實例化子組件 → `composite`,非預設的 `atomic`;Link/DropdownMenu→navigation、Alert→feedback、EditableTable→data_view、Form→container…),落地為 `KIND_OVERRIDES`/`ROLE_OVERRIDES`。全部 `manual_only`(非 generator 欄位輸入)。
 
-**結果**:catalog **80 → 108**。驗證:`build-metadata.mjs --check` 決定性通過、`ComponentMetadata.test`(catalog == 重建 + 涵蓋每個註冊項)綠、全 Vitest **168** 綠。commit `f22efc8`。
+**結果**:catalog **80 → 108**(2026-09-26 現況:116,見 [component-catalog.json](../../packages/javascript/browser/ui_components/metadata/component-catalog.json))。驗證:`build-metadata.mjs --check` 決定性通過、`ComponentMetadata.test`(catalog == 重建 + 涵蓋每個註冊項)綠、全 Vitest **168** 綠。commit `f22efc8`。

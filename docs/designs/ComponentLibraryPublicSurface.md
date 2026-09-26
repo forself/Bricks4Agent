@@ -71,7 +71,11 @@ Current exports:
 
 - `viz`
 
+- `sections`
+
 - `Locale` from `i18n/index.js`
+
+- `DataExplorer` from `analytics/index.js` (named re-export only; `CHART_TYPES` stays on the category entrypoint)
 
 Important limitation:
 
@@ -101,6 +105,10 @@ Present files include:
 - `packages/javascript/browser/ui_components/utils/index.js`
 
 - `packages/javascript/browser/ui_components/viz/index.js`
+
+- `packages/javascript/browser/ui_components/sections/index.js`
+
+- `packages/javascript/browser/ui_components/analytics/index.js`
 
 Current role:
 

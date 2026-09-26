@@ -10,7 +10,7 @@
 import { BatchUploader } from './BatchUploader.js';
 
 const uploader = new BatchUploader({
-    container: '#upload-area',       // 容器（selector 或 DOM），必填
+    container: '#upload-area',       // 容器（selector 或 DOM），選填；省略時可稍後呼叫 mount()
     apiEndpoint: '/api/files/upload', // 上傳 API 端點
     ruleId: null,                    // 上傳規則 ID
     tableName: null,                 // 關聯資料表名稱
@@ -21,6 +21,8 @@ const uploader = new BatchUploader({
     allowedExtensions: null,         // 允許副檔名（如 ['.jpg','.png']），null=全部
     autoUpload: false,               // 加入檔案後自動上傳
     multiple: true,                  // 允許多檔選擇
+    selectionOnly: false,            // 只選檔：不顯示上傳/清除操作列
+    compact: false,                  // 精簡版拖放區（較小的內距與圖示）
     uploadMode: 'sequential',        // 'sequential' | 'parallel'
     headers: {},                     // 自訂 HTTP headers
     onFileAdded: (fileItem) => {},   // 檔案加入回調
@@ -28,7 +30,7 @@ const uploader = new BatchUploader({
     onProgress: (fileItem, pct) => {},// 進度回調
     onFileComplete: (fileItem, result) => {}, // 單檔完成回調
     onComplete: ({total, success, failed, files}) => {}, // 全部完成回調
-    onError: (fileItem, error) => {},// 錯誤回調
+    onError: (fileItem, error) => {},// 錯誤回調（加入檔案時驗證失敗/超過數量，fileItem 為 null）
     labels: { ... }                  // 自訂 UI 文字
 });
 ```
@@ -37,7 +39,8 @@ const uploader = new BatchUploader({
 
 | 方法 | 說明 |
 |---|---|
-| `upload()` | 開始上傳所有待傳檔案（async） |
+| `mount(container)` | 掛載至容器（selector 或 DOM），回傳 `this` |
+| `upload()` | 開始上傳所有待傳檔案，並重試狀態為 `error` 的檔案（async） |
 | `removeFile(fileId)` | 移除指定檔案 |
 | `clear()` | 清除所有檔案 |
 | `getFiles()` | 取得所有檔案陣列 |
@@ -51,7 +54,7 @@ const uploader = new BatchUploader({
 
 ```javascript
 {
-    id: 'file_xxx',    // 唯一 ID
+    id: 'file-1',      // 唯一 ID（格式 file-<序號>）
     file: File,        // 原始 File 物件
     name: 'photo.jpg', // 檔名
     size: 12345,       // bytes

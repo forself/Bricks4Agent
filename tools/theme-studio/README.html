@@ -13,8 +13,12 @@
 <h1>Bricks4Agent Studio</h1>
 <p>這是同一個頁面內的元件客製工作台；「客製」是操作，不是另一套元件家族。</p>
 <ul>
-<li>「樣式客製」：調整全域 theme tokens、元件 scoped tokens 與 class，匯入／匯出 <code>theme.tokens.json</code>、匯出 <code>theme.custom.css</code>。</li>
-<li>「元件組合」：從內建 catalog 與客製 registry 組合元件，依規則自動分類為 <code>atomic</code>、<code>composite</code>、<code>template</code>，匯入／匯出客製元件 JSON。</li>
+<li>
+<p>「樣式客製」：調整全域 theme tokens、元件 scoped tokens 與 class，匯入／匯出 <code>theme.tokens.json</code>、匯出 <code>theme.custom.css</code>。</p>
+</li>
+<li>
+<p>「元件組合」：從內建 catalog 與客製 registry 組合元件，依規則自動分類為 <code>atomic</code>、<code>composite</code>、<code>template</code>，匯入／匯出客製元件 JSON。</p>
+</li>
 </ul>
 <p>兩個頁籤都內建可見說明與互相導覽的正式 <code>Link</code> 元件。「樣式客製」說明 catalog 展示與 scoped token 操作；「元件組合」說明 Palette → Outline → Inspector → 驗證／匯出流程、三層分類規則、definitions 路徑與驗收指令，並連到本 repo 的完整指南。</p>
 <h2>自舉架構</h2>
@@ -22,9 +26,15 @@
 <p>JSON 只保存資料與可信 command ID，不包含函式、HTML 或任意 CSS。<code>controller.js</code> 與 <code>../custom-component-studio/controller.js</code> 提供 command registry、狀態與預覽資料。<code>slot</code> 只承載由 catalog/runtime 建立的動態預覽，不另建一套工具控制。</p>
 <p>這個結構同時驗證：</p>
 <ol>
-<li>PageDefinition JSON 能產生實際工具頁。</li>
-<li>Studio 缺少的互動能力必須回補到正式元件與 renderer，而不是在頁面手刻控制。</li>
-<li>樣式與元件組合在同一個 renderer、同一份文件、不同頁籤中運作；切頁與 state 更新不得重建整個工作台。</li>
+<li>
+<p>PageDefinition JSON 能產生實際工具頁。</p>
+</li>
+<li>
+<p>Studio 缺少的互動能力必須回補到正式元件與 renderer，而不是在頁面手刻控制。</p>
+</li>
+<li>
+<p>樣式與元件組合在同一個 renderer、同一份文件、不同頁籤中運作；切頁與 state 更新不得重建整個工作台。</p>
+</li>
 </ol>
 <h2>開啟</h2>
 <p>以 repository root 啟動任一靜態 HTTP server，再開啟：</p>
@@ -34,18 +44,28 @@
 <p>舊的 <code>/tools/custom-component-studio/index.html</code> 會導向第二個頁籤，保留書籤相容性。</p>
 <h2>驗收</h2>
 <p>下列腳本都會自行啟動 random-port、no-store server 與 fresh Microsoft Edge，不依賴既有 8124 server：</p>
-<pre><code class="language-powershell">npm run test:theme-studio:browser   # Theme、catalog 與頁內說明 18/18
+<pre><code class="language-powershell">npm run test:theme-studio:browser   # 相容別名：與 test:studio:browser 跑同一支 studio-integration-smoke（16/16）
 npm run test:studio:self-host       # 單一 JSON、Link provenance、相容入口 19/19
 npm run test:studio:browser         # 說明連結、DOM identity、雙 JSON round-trip、CSS 注入拒絕 16/16
 npm run test:custom-components:browser # 客製元件安全/runtime 13/13
 </code></pre>
 <p>主要測試鉤子：</p>
 <ul>
-<li><code>window.__studio</code>：definition、SHA-256、pageRenderer、renderer 與兩個 controller。</li>
-<li><code>window.__toolPageRenderer</code>：實際 <code>DynamicToolRenderer</code>。</li>
-<li><code>window.__studioControls.records</code>：互動控制到正式元件實例的 provenance map。</li>
-<li><code>window.__ts</code>：Theme controller 相容 API。</li>
-<li><code>window.__customComponentStudio</code>：元件組合 controller 相容 API。</li>
+<li>
+<p><code>window.__studio</code>：definition、SHA-256、pageRenderer、renderer 與兩個 controller。</p>
+</li>
+<li>
+<p><code>window.__toolPageRenderer</code>：實際 <code>DynamicToolRenderer</code>。</p>
+</li>
+<li>
+<p><code>window.__studioControls.records</code>：互動控制到正式元件實例的 provenance map。</p>
+</li>
+<li>
+<p><code>window.__ts</code>：Theme controller 相容 API。</p>
+</li>
+<li>
+<p><code>window.__customComponentStudio</code>：元件組合 controller 相容 API。</p>
+</li>
 </ul>
 <h2>檔案</h2>
 <table>
@@ -82,7 +102,7 @@ npm run test:custom-components:browser # 客製元件安全/runtime 13/13
 </tr>
 <tr>
 <td><code>run.mjs</code></td>
-<td>Theme Studio fresh-Edge 回歸</td>
+<td>相容入口：直接執行 <code>tools/scripts/studio-integration-smoke.mjs</code>（同 <code>test:studio:browser</code>）</td>
 </tr>
 </tbody>
 </table>

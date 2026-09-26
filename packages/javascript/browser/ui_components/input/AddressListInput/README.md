@@ -10,7 +10,16 @@
 new AddressListInput(options?)
 ```
 
-繼承 `ListInput` 所有選項，預設值：
+繼承 `ListInput` 所有選項，並**必須**提供每筆 `AddressInput` 使用的資料載入函式：
+
+| 參數 | 說明 |
+|---|---|
+| `loadCities` | `async () => [...]`，載入縣市選項（必填） |
+| `loadDistricts` | `async (city) => [...]`，依縣市載入行政區選項（必填） |
+
+未提供時，各筆地址的縣市/行政區下拉選單不會有資料（錯誤由 ChainedInput 以 `console.error` 記錄）。
+
+預設值：
 
 | 參數 | 預設值 | 說明 |
 |---|---|---|
@@ -26,9 +35,11 @@ new AddressListInput(options?)
 ## 使用範例
 
 ```js
-import { AddressListInput } from './input/AddressListInput/index.js';
+import { AddressListInput } from './index.js';
 
 const list = new AddressListInput({
+    loadCities: async () => fetchCities(),
+    loadDistricts: async (city) => fetchDistricts(city),
     maxItems: 5,
     onChange: (items) => console.log(items)
 });

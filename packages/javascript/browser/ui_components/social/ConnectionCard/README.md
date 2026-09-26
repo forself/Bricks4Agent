@@ -26,13 +26,14 @@ const card = new ConnectionCard(options);
 
 | 方法 | 回傳 | 說明 |
 |---|---|---|
-| `ConnectionCard.gridHTML(items)` | `string` | 批次產生多張卡片的 HTML（Flex Grid 佈局） |
+| `ConnectionCard.gridHTML(items)` | `string` | 批次產生多張卡片的 HTML（Flex Grid 佈局）；嵌入 DOM 後需呼叫 `ConnectionCard.applyStyles(container)`，且卡片不會綁定點擊事件 |
+| `ConnectionCard.applyStyles(container)` | `void` | 為嵌入的 HTML 卡片（含頭像）套用樣式 |
 
 ### 實例方法
 
 | 方法 | 回傳 | 說明 |
 |---|---|---|
-| `toHTML()` | `string` | 產生 HTML 字串 |
+| `toHTML()` | `string` | 產生 HTML 字串（嵌入後同樣需 `ConnectionCard.applyStyles(container)`，不綁定 `onClick`） |
 | `mount(container)` | `void` | 掛載到容器 |
 | `update(options)` | `void` | 更新配置並重新渲染 |
 | `destroy()` | `void` | 移除 DOM 元素 |
@@ -44,7 +45,7 @@ const card = new ConnectionCard(options);
 ### 使用範例
 
 ```js
-import { ConnectionCard } from '../packages/javascript/browser/ui_components/social/ConnectionCard/ConnectionCard.js';
+import { ConnectionCard } from './ConnectionCard.js';
 
 // 單張卡片
 const card = new ConnectionCard({
@@ -56,11 +57,13 @@ const card = new ConnectionCard({
 });
 card.mount('#card-container');
 
-// 批次 Grid
-document.getElementById('grid').innerHTML = ConnectionCard.gridHTML([
+// 批次 Grid（HTML 字串：需手動套樣式，且不會有點擊事件）
+const grid = document.getElementById('grid');
+grid.innerHTML = ConnectionCard.gridHTML([
     { name: '張三', subtitle: '幹部', tags: ['販毒'] },
     { name: '李四', subtitle: '成員', tags: ['勒索'] }
 ]);
+ConnectionCard.applyStyles(grid);
 ```
 
 ## Demo

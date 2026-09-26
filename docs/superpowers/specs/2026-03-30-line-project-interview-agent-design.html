@@ -23,27 +23,64 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <h1>LINE Project Interview Agent Design</h1>
 <p>Date: 2026-03-30
 Status: implemented on <code>main</code> for the phase-1 interview/review scope</p>
+<blockquote>
+<p><strong>Implementation status (checked 2026-09-26)</strong></p>
+<ul>
+<li>Only two document families are persisted: <code>hlm.project-interview.requirements.{channel}.{userId}</code> (the whole task document, including session state) and <code>hlm.project-interview.version-graph.{channel}.{userId}.{version}</code> (<code>packages/csharp/broker/Services/ProjectInterviewStateService.cs:113</code>, <code>:116</code>). The separate <code>.state.*</code> and <code>.review.*</code> families listed under "Data Persistence" do not exist.</li>
+<li>No dedicated project interview validator class exists (see "Recommended File-Level Change Direction"); phase/command gating lives in <code>packages/csharp/broker/Services/ProjectInterviewStateMachine.cs</code>.</li>
+</ul>
+</blockquote>
 <h2>Implementation Snapshot</h2>
 <p>Implemented on <code>main</code>:</p>
 <ul>
-<li>explicit <code>/proj</code>, <code>/ok</code>, <code>/revise</code>, <code>/cancel</code> command parsing</li>
-<li>broker-owned project interview state machine</li>
-<li>persisted task-scoped assertion document store</li>
-<li>explicit restatement-option gating before confirmation</li>
-<li>project-scale classification</li>
-<li>template-family catalog and narrowing</li>
-<li>canonical project-definition compilation</li>
-<li>per-version DAG persistence</li>
-<li>versioned <code>workflow-design.vN.json</code> and <code>workflow-design.vN.pdf</code> generation</li>
-<li>minimal <code>/revise</code> path that regenerates a new review version while preserving prior DAGs</li>
-<li>bilingual LINE prompts for the active <code>/proj</code> flow</li>
-<li>user-facing copy that hides internal scale/template identifiers such as <code>tool_page</code>, <code>mini_app</code>, <code>structured_app</code>, and <code>template family</code></li>
+<li>
+<p>explicit <code>/proj</code>, <code>/ok</code>, <code>/revise</code>, <code>/cancel</code> command parsing</p>
+</li>
+<li>
+<p>broker-owned project interview state machine</p>
+</li>
+<li>
+<p>persisted task-scoped assertion document store</p>
+</li>
+<li>
+<p>explicit restatement-option gating before confirmation</p>
+</li>
+<li>
+<p>project-scale classification</p>
+</li>
+<li>
+<p>template-family catalog and narrowing</p>
+</li>
+<li>
+<p>canonical project-definition compilation</p>
+</li>
+<li>
+<p>per-version DAG persistence</p>
+</li>
+<li>
+<p>versioned <code>workflow-design.vN.json</code> and <code>workflow-design.vN.pdf</code> generation</p>
+</li>
+<li>
+<p>minimal <code>/revise</code> path that regenerates a new review version while preserving prior DAGs</p>
+</li>
+<li>
+<p>bilingual LINE prompts for the active <code>/proj</code> flow</p>
+</li>
+<li>
+<p>user-facing copy that hides internal scale/template identifiers such as <code>tool_page</code>, <code>mini_app</code>, <code>structured_app</code>, and <code>template family</code></p>
+</li>
 </ul>
 <p>Still intentionally out of scope:</p>
 <ul>
-<li>deeper template-specific requirement collection</li>
-<li>richer assertion bundles beyond the current scale/template path</li>
-<li>final implementation-stage handoff from approved review artifacts into autonomous project construction</li>
+<li>
+<p>deeper template-specific requirement collection</p>
+</li>
+<li>
+<p>richer assertion bundles beyond the current scale/template path</p>
+</li>
+<li>
+<p>final implementation-stage handoff from approved review artifacts into autonomous project construction</p>
+</li>
 </ul>
 <h2>Design Rationale</h2>
 <h3>Why this is a protocolized interview system</h3>
@@ -62,8 +99,12 @@ Status: implemented on <code>main</code> for the phase-1 interview/review scope<
 <p>This feature requires both precise implementation handoff and deep architectural discussion. Maintaining English and Traditional Chinese spec artifacts improves review accessibility while preserving exact technical meaning. The English spec remains the canonical source for exact naming when conflicts arise, but both versions must stay aligned.</p>
 <h2>Language Versions</h2>
 <ul>
-<li>English source spec: <code>docs/superpowers/specs/2026-03-30-line-project-interview-agent-design.md</code></li>
-<li>Traditional Chinese companion: <code>docs/superpowers/specs/2026-03-30-line-project-interview-agent-design.zh-TW.md</code></li>
+<li>
+<p>English source spec: <code>docs/superpowers/specs/2026-03-30-line-project-interview-agent-design.md</code></p>
+</li>
+<li>
+<p>Traditional Chinese companion: <code>docs/superpowers/specs/2026-03-30-line-project-interview-agent-design.zh-TW.md</code></p>
+</li>
 </ul>
 <p>The English spec is the canonical source for exact type and file naming. The Traditional Chinese companion must preserve the same architecture, constraints, and review checkpoints.</p>
 <h2>Goal</h2>
@@ -72,23 +113,47 @@ Status: implemented on <code>main</code> for the phase-1 interview/review scope<
 <p>The agent must not yet auto-implement the project.
 Its job is to:</p>
 <ul>
-<li>interview the user,</li>
-<li>normalize requirements into structured state,</li>
-<li>produce architecture and implementation planning output,</li>
-<li>generate a versioned workflow design document,</li>
-<li>generate a matching structured JSON artifact,</li>
-<li>let the user review and approve the design checkpoint through LINE.</li>
+<li>
+<p>interview the user,</p>
+</li>
+<li>
+<p>normalize requirements into structured state,</p>
+</li>
+<li>
+<p>produce architecture and implementation planning output,</p>
+</li>
+<li>
+<p>generate a versioned workflow design document,</p>
+</li>
+<li>
+<p>generate a matching structured JSON artifact,</p>
+</li>
+<li>
+<p>let the user review and approve the design checkpoint through LINE.</p>
+</li>
 </ul>
 <h2>Why This Is A Separate Task Type</h2>
 <p>This capability should not be folded into normal LINE chat or the existing <code>system_scaffold</code> task type.</p>
 <p>It is materially different because it requires:</p>
 <ul>
-<li>explicit task entry,</li>
-<li>high-grade requirement elicitation,</li>
-<li>task-scoped memory only,</li>
-<li>deterministic requirement completeness checks,</li>
-<li>versioned design-document generation,</li>
-<li>a hard approval gate before any implementation workflow begins.</li>
+<li>
+<p>explicit task entry,</p>
+</li>
+<li>
+<p>high-grade requirement elicitation,</p>
+</li>
+<li>
+<p>task-scoped memory only,</p>
+</li>
+<li>
+<p>deterministic requirement completeness checks,</p>
+</li>
+<li>
+<p>versioned design-document generation,</p>
+</li>
+<li>
+<p>a hard approval gate before any implementation workflow begins.</p>
+</li>
 </ul>
 <p>The new task type should therefore be independent:</p>
 <ul>
@@ -96,39 +161,91 @@ Its job is to:</p>
 </ul>
 <p>This keeps it separate from:</p>
 <ul>
-<li>casual LINE conversation,</li>
-<li><code>doc_gen</code>,</li>
-<li>minimal <code>code_gen</code>,</li>
-<li>current <code>system_scaffold</code> packaging flow.</li>
+<li>
+<p>casual LINE conversation,</p>
+</li>
+<li>
+<p><code>doc_gen</code>,</p>
+</li>
+<li>
+<p>minimal <code>code_gen</code>,</p>
+</li>
+<li>
+<p>current <code>system_scaffold</code> packaging flow.</p>
+</li>
 </ul>
 <h2>Scope</h2>
 <p>Version one covers:</p>
 <ul>
-<li><code>/proj</code> explicit task entry</li>
-<li>project interview session creation</li>
-<li>project-name uniqueness validation</li>
-<li>task-scoped assertion memory</li>
-<li>project scale classification</li>
-<li>template-family selection</li>
-<li>JSON-defined program generation</li>
-<li>gap and conflict detection</li>
-<li>workflow design document generation</li>
-<li>versioned PDF output for the user</li>
-<li>versioned JSON output for the broker</li>
-<li>Google Drive upload and LINE delivery of the generated document</li>
-<li>explicit review commands:</li>
-<li><code>/ok</code></li>
-<li><code>/revise</code></li>
-<li><code>/cancel</code></li>
+<li>
+<p><code>/proj</code> explicit task entry</p>
+</li>
+<li>
+<p>project interview session creation</p>
+</li>
+<li>
+<p>project-name uniqueness validation</p>
+</li>
+<li>
+<p>task-scoped assertion memory</p>
+</li>
+<li>
+<p>project scale classification</p>
+</li>
+<li>
+<p>template-family selection</p>
+</li>
+<li>
+<p>JSON-defined program generation</p>
+</li>
+<li>
+<p>gap and conflict detection</p>
+</li>
+<li>
+<p>workflow design document generation</p>
+</li>
+<li>
+<p>versioned PDF output for the user</p>
+</li>
+<li>
+<p>versioned JSON output for the broker</p>
+</li>
+<li>
+<p>Google Drive upload and LINE delivery of the generated document</p>
+</li>
+<li>
+<p>explicit review commands:</p>
+</li>
+<li>
+<p><code>/ok</code></p>
+</li>
+<li>
+<p><code>/revise</code></p>
+</li>
+<li>
+<p><code>/cancel</code></p>
+</li>
 </ul>
 <p>Version one does not cover:</p>
 <ul>
-<li>actual project implementation</li>
-<li>autonomous code execution for the requested project</li>
-<li>long-term user memory</li>
-<li>reuse of prior project preferences</li>
-<li>cross-task personalization</li>
-<li>arbitrary natural-language approval detection</li>
+<li>
+<p>actual project implementation</p>
+</li>
+<li>
+<p>autonomous code execution for the requested project</p>
+</li>
+<li>
+<p>long-term user memory</p>
+</li>
+<li>
+<p>reuse of prior project preferences</p>
+</li>
+<li>
+<p>cross-task personalization</p>
+</li>
+<li>
+<p>arbitrary natural-language approval detection</p>
+</li>
 </ul>
 <h2>Entry And Routing</h2>
 <h3>Explicit entry only</h3>
@@ -140,19 +257,37 @@ Its job is to:</p>
 <p>This command starts a new task-scoped project interview session.</p>
 <h3>General routing rule</h3>
 <ul>
-<li>normal LINE chat remains on the current high-level conversation path</li>
-<li><code>/proj</code> routes to the new <code>project_interview</code> workflow</li>
-<li>once inside an active project interview session, incoming user messages are interpreted against that session until the session is:</li>
-<li>confirmed</li>
-<li>cancelled</li>
-<li>expired</li>
+<li>
+<p>normal LINE chat remains on the current high-level conversation path</p>
+</li>
+<li>
+<p><code>/proj</code> routes to the new <code>project_interview</code> workflow</p>
+</li>
+<li>
+<p>once inside an active project interview session, incoming user messages are interpreted against that session until the session is:</p>
+</li>
+<li>
+<p>confirmed</p>
+</li>
+<li>
+<p>cancelled</p>
+</li>
+<li>
+<p>expired</p>
+</li>
 </ul>
 <h3>Review commands</h3>
 <p>After a workflow design document is generated, only these explicit commands may move the session:</p>
 <ul>
-<li><code>/ok</code></li>
-<li><code>/revise</code></li>
-<li><code>/cancel</code></li>
+<li>
+<p><code>/ok</code></p>
+</li>
+<li>
+<p><code>/revise</code></p>
+</li>
+<li>
+<p><code>/cancel</code></p>
+</li>
 </ul>
 <p>Plain-language approval such as "可以" or "好" must not be treated as final confirmation in version one.</p>
 <h2>Core Constraints</h2>
@@ -161,26 +296,48 @@ Its job is to:</p>
 <p>It must retain no cross-task user memory except standard audit and artifact records already required by the broker.</p>
 <p>The agent must not reuse:</p>
 <ul>
-<li>previous project preferences,</li>
-<li>previous architecture choices,</li>
-<li>historical user habits,</li>
-<li>earlier task-specific assumptions.</li>
+<li>
+<p>previous project preferences,</p>
+</li>
+<li>
+<p>previous architecture choices,</p>
+</li>
+<li>
+<p>historical user habits,</p>
+</li>
+<li>
+<p>earlier task-specific assumptions.</p>
+</li>
 </ul>
 <p>Only the current <code>project_interview</code> task state may influence its questioning and document output.</p>
 <h3>High-grade model requirement</h3>
 <p>Requirement elicitation, contradiction detection, and design synthesis must use a high-grade model tier.</p>
 <p>This is necessary because the agent must:</p>
 <ul>
-<li>ask focused clarification questions,</li>
-<li>interpret partial answers correctly,</li>
-<li>preserve consistency across many turns,</li>
-<li>produce architecture and planning output,</li>
-<li>respect skill-like process rules.</li>
+<li>
+<p>ask focused clarification questions,</p>
+</li>
+<li>
+<p>interpret partial answers correctly,</p>
+</li>
+<li>
+<p>preserve consistency across many turns,</p>
+</li>
+<li>
+<p>produce architecture and planning output,</p>
+</li>
+<li>
+<p>respect skill-like process rules.</p>
+</li>
 </ul>
 <p>Version one should therefore explicitly separate:</p>
 <ul>
-<li>high-grade interview/synthesis model for requirement work,</li>
-<li>deterministic broker validators for state transitions and completeness checks.</li>
+<li>
+<p>high-grade interview/synthesis model for requirement work,</p>
+</li>
+<li>
+<p>deterministic broker validators for state transitions and completeness checks.</p>
+</li>
 </ul>
 <p>The broker must not trust model output by itself.</p>
 <h3>Superpowers-style process compliance</h3>
@@ -188,115 +345,263 @@ Its job is to:</p>
 However, it must emulate the same process constraints where applicable.</p>
 <p>For version one this means:</p>
 <ul>
-<li>no implementation before reviewed design output exists,</li>
-<li>no transition to downstream implementation workflow before explicit user confirmation,</li>
-<li>structured plan output must include testing expectations,</li>
-<li>TDD must be stated as a downstream implementation rule in the workflow design output,</li>
-<li>requirement gaps and contradictions must be resolved before design finalization.</li>
+<li>
+<p>no implementation before reviewed design output exists,</p>
+</li>
+<li>
+<p>no transition to downstream implementation workflow before explicit user confirmation,</p>
+</li>
+<li>
+<p>structured plan output must include testing expectations,</p>
+</li>
+<li>
+<p>TDD must be stated as a downstream implementation rule in the workflow design output,</p>
+</li>
+<li>
+<p>requirement gaps and contradictions must be resolved before design finalization.</p>
+</li>
 </ul>
 <h2>High-Level Architecture</h2>
 <p>The new flow should sit on top of the current broker high-level system:</p>
 <p><code>LINE -&gt; line-worker -&gt; broker /api/v1/high-level/line/process -&gt; HighLevelCoordinator -&gt; project_interview services</code></p>
 <p>Recommended components:</p>
 <ul>
-<li>command/parser extension for <code>/proj</code></li>
-<li><code>project_interview</code> task draft and state handling inside <code>HighLevelCoordinator</code></li>
-<li>assertion-state store</li>
-<li>interview progression service</li>
-<li>template-library selection service</li>
-<li>workflow design document generator</li>
-<li>PDF render service</li>
-<li>artifact delivery through existing <code>LineArtifactDeliveryService</code></li>
+<li>
+<p>command/parser extension for <code>/proj</code></p>
+</li>
+<li>
+<p><code>project_interview</code> task draft and state handling inside <code>HighLevelCoordinator</code></p>
+</li>
+<li>
+<p>assertion-state store</p>
+</li>
+<li>
+<p>interview progression service</p>
+</li>
+<li>
+<p>template-library selection service</p>
+</li>
+<li>
+<p>workflow design document generator</p>
+</li>
+<li>
+<p>PDF render service</p>
+</li>
+<li>
+<p>artifact delivery through existing <code>LineArtifactDeliveryService</code></p>
+</li>
 </ul>
 <p>The broker remains responsible for:</p>
 <ul>
-<li>task/session state,</li>
-<li>storage,</li>
-<li>validation,</li>
-<li>artifact creation,</li>
-<li>delivery,</li>
-<li>approval gating.</li>
+<li>
+<p>task/session state,</p>
+</li>
+<li>
+<p>storage,</p>
+</li>
+<li>
+<p>validation,</p>
+</li>
+<li>
+<p>artifact creation,</p>
+</li>
+<li>
+<p>delivery,</p>
+</li>
+<li>
+<p>approval gating.</p>
+</li>
 </ul>
 <p>The model remains responsible for:</p>
 <ul>
-<li>asking the next best question,</li>
-<li>extracting structured meaning from the user answer,</li>
-<li>summarizing requirements,</li>
-<li>proposing architecture and task flow.</li>
+<li>
+<p>asking the next best question,</p>
+</li>
+<li>
+<p>extracting structured meaning from the user answer,</p>
+</li>
+<li>
+<p>summarizing requirements,</p>
+</li>
+<li>
+<p>proposing architecture and task flow.</p>
+</li>
 </ul>
 <h2>Session And State Model</h2>
 <p>The correct control model for this feature is not a single abstraction.
 Version one should use:</p>
 <ul>
-<li>a session-level state machine for task progression and command handling</li>
-<li>a per-version directed acyclic graph (DAG) for requirement compilation and artifact derivation</li>
+<li>
+<p>a session-level state machine for task progression and command handling</p>
+</li>
+<li>
+<p>a per-version directed acyclic graph (DAG) for requirement compilation and artifact derivation</p>
+</li>
 </ul>
 <p>The state machine controls allowed transitions.
 The DAG controls dependency truth for a specific document version.</p>
 <p>Each <code>/proj</code> invocation creates a dedicated session bound to:</p>
 <ul>
-<li><code>task_id</code></li>
-<li><code>channel = line</code></li>
-<li><code>user_id</code></li>
-<li><code>task_type = project_interview</code></li>
-<li><code>created_at</code></li>
-<li><code>expires_at</code></li>
+<li>
+<p><code>task_id</code></p>
+</li>
+<li>
+<p><code>channel = line</code></p>
+</li>
+<li>
+<p><code>user_id</code></p>
+</li>
+<li>
+<p><code>task_type = project_interview</code></p>
+</li>
+<li>
+<p><code>created_at</code></p>
+</li>
+<li>
+<p><code>expires_at</code></p>
+</li>
 </ul>
 <p>The task state should track:</p>
 <ul>
-<li><code>current_phase</code></li>
-<li><code>current_question_id</code></li>
-<li><code>project_name</code></li>
-<li><code>project_folder_name</code></li>
-<li><code>project_scale</code></li>
-<li><code>candidate_template_families</code></li>
-<li><code>selected_template_family</code></li>
-<li><code>selected_modules</code></li>
-<li><code>selected_style_profile</code></li>
-<li><code>document_version</code></li>
-<li><code>review_state</code></li>
-<li><code>latest_pdf_artifact_id</code></li>
-<li><code>latest_json_artifact_id</code></li>
-<li><code>open_gaps</code></li>
-<li><code>open_conflicts</code></li>
-<li><code>pending_revision_request</code></li>
+<li>
+<p><code>current_phase</code></p>
+</li>
+<li>
+<p><code>current_question_id</code></p>
+</li>
+<li>
+<p><code>project_name</code></p>
+</li>
+<li>
+<p><code>project_folder_name</code></p>
+</li>
+<li>
+<p><code>project_scale</code></p>
+</li>
+<li>
+<p><code>candidate_template_families</code></p>
+</li>
+<li>
+<p><code>selected_template_family</code></p>
+</li>
+<li>
+<p><code>selected_modules</code></p>
+</li>
+<li>
+<p><code>selected_style_profile</code></p>
+</li>
+<li>
+<p><code>document_version</code></p>
+</li>
+<li>
+<p><code>review_state</code></p>
+</li>
+<li>
+<p><code>latest_pdf_artifact_id</code></p>
+</li>
+<li>
+<p><code>latest_json_artifact_id</code></p>
+</li>
+<li>
+<p><code>open_gaps</code></p>
+</li>
+<li>
+<p><code>open_conflicts</code></p>
+</li>
+<li>
+<p><code>pending_revision_request</code></p>
+</li>
 </ul>
 <p>Recommended phases:</p>
 <ol>
-<li><code>idle</code></li>
-<li><code>collect_project_name</code></li>
-<li><code>classify_project_scale</code></li>
-<li><code>narrow_template_family</code></li>
-<li><code>confirm_template_family</code></li>
-<li><code>collect_template_requirements</code></li>
-<li><code>resolve_conflicts</code></li>
-<li><code>compile_project_definition</code></li>
-<li><code>render_review_artifacts</code></li>
-<li><code>await_user_review</code></li>
-<li><code>revise_requested</code></li>
-<li><code>confirmed</code></li>
-<li><code>cancelled</code></li>
-<li><code>failed</code></li>
+<li>
+<p><code>idle</code></p>
+</li>
+<li>
+<p><code>collect_project_name</code></p>
+</li>
+<li>
+<p><code>classify_project_scale</code></p>
+</li>
+<li>
+<p><code>narrow_template_family</code></p>
+</li>
+<li>
+<p><code>confirm_template_family</code></p>
+</li>
+<li>
+<p><code>collect_template_requirements</code></p>
+</li>
+<li>
+<p><code>resolve_conflicts</code></p>
+</li>
+<li>
+<p><code>compile_project_definition</code></p>
+</li>
+<li>
+<p><code>render_review_artifacts</code></p>
+</li>
+<li>
+<p><code>await_user_review</code></p>
+</li>
+<li>
+<p><code>revise_requested</code></p>
+</li>
+<li>
+<p><code>confirmed</code></p>
+</li>
+<li>
+<p><code>cancelled</code></p>
+</li>
+<li>
+<p><code>failed</code></p>
+</li>
 </ol>
 <p>State transition rules:</p>
 <ul>
-<li>the session starts in <code>idle</code> and enters <code>collect_project_name</code> on <code>/proj</code></li>
-<li>it cannot leave that phase until the name is valid and unique</li>
-<li>it cannot enter <code>compile_project_definition</code> while any required assertion bundle is unresolved or conflicted</li>
-<li>it cannot enter <code>render_review_artifacts</code> without a successful canonical project-instance JSON build</li>
-<li>it cannot enter <code>confirmed</code> without a generated document version and explicit <code>/ok</code></li>
-<li><code>/revise</code> from <code>await_user_review</code> must move the session to <code>revise_requested</code>, then back to the appropriate collection phase</li>
-<li><code>/cancel</code> may transition any active non-terminal phase to <code>cancelled</code></li>
+<li>
+<p>the session starts in <code>idle</code> and enters <code>collect_project_name</code> on <code>/proj</code></p>
+</li>
+<li>
+<p>it cannot leave that phase until the name is valid and unique</p>
+</li>
+<li>
+<p>it cannot enter <code>compile_project_definition</code> while any required assertion bundle is unresolved or conflicted</p>
+</li>
+<li>
+<p>it cannot enter <code>render_review_artifacts</code> without a successful canonical project-instance JSON build</p>
+</li>
+<li>
+<p>it cannot enter <code>confirmed</code> without a generated document version and explicit <code>/ok</code></p>
+</li>
+<li>
+<p><code>/revise</code> from <code>await_user_review</code> must move the session to <code>revise_requested</code>, then back to the appropriate collection phase</p>
+</li>
+<li>
+<p><code>/cancel</code> may transition any active non-terminal phase to <code>cancelled</code></p>
+</li>
 </ul>
 <h3>State-machine responsibilities</h3>
 <p>The session state machine owns:</p>
 <ul>
-<li>command admissibility</li>
-<li>phase progression</li>
-<li>review gating</li>
-<li>retry and failure handling</li>
-<li>cancellation</li>
-<li>revision entry</li>
+<li>
+<p>command admissibility</p>
+</li>
+<li>
+<p>phase progression</p>
+</li>
+<li>
+<p>review gating</p>
+</li>
+<li>
+<p>retry and failure handling</p>
+</li>
+<li>
+<p>cancellation</p>
+</li>
+<li>
+<p>revision entry</p>
+</li>
 </ul>
 <p>It does not define truth derivation for the generated artifacts.
 That belongs to the per-version DAG.</p>
@@ -309,29 +614,67 @@ Revision creates a new graph for the next version.</p>
 <h3>DAG purpose</h3>
 <p>The DAG exists to make these relationships explicit:</p>
 <ul>
-<li>which assertions are confirmed</li>
-<li>which derived choices depend on them</li>
-<li>which outputs were rendered from which canonical inputs</li>
+<li>
+<p>which assertions are confirmed</p>
+</li>
+<li>
+<p>which derived choices depend on them</p>
+</li>
+<li>
+<p>which outputs were rendered from which canonical inputs</p>
+</li>
 </ul>
 <h3>Recommended DAG nodes</h3>
 <p>At minimum, a version DAG should contain nodes equivalent to:</p>
 <ul>
-<li><code>raw_user_messages</code></li>
-<li><code>interpreted_candidates</code></li>
-<li><code>restatement_options</code></li>
-<li><code>user_selection_or_correction</code></li>
-<li><code>confirmed_assertions</code></li>
-<li><code>project_scale</code></li>
-<li><code>template_family_candidates</code></li>
-<li><code>selected_template_family</code></li>
-<li><code>selected_modules</code></li>
-<li><code>style_profile</code></li>
-<li><code>constraints</code></li>
-<li><code>project_instance_definition_json</code></li>
-<li><code>workflow_design_view_model</code></li>
-<li><code>workflow_design_pdf</code></li>
-<li><code>artifact_bundle</code></li>
-<li><code>delivery_links</code></li>
+<li>
+<p><code>raw_user_messages</code></p>
+</li>
+<li>
+<p><code>interpreted_candidates</code></p>
+</li>
+<li>
+<p><code>restatement_options</code></p>
+</li>
+<li>
+<p><code>user_selection_or_correction</code></p>
+</li>
+<li>
+<p><code>confirmed_assertions</code></p>
+</li>
+<li>
+<p><code>project_scale</code></p>
+</li>
+<li>
+<p><code>template_family_candidates</code></p>
+</li>
+<li>
+<p><code>selected_template_family</code></p>
+</li>
+<li>
+<p><code>selected_modules</code></p>
+</li>
+<li>
+<p><code>style_profile</code></p>
+</li>
+<li>
+<p><code>constraints</code></p>
+</li>
+<li>
+<p><code>project_instance_definition_json</code></p>
+</li>
+<li>
+<p><code>workflow_design_view_model</code></p>
+</li>
+<li>
+<p><code>workflow_design_pdf</code></p>
+</li>
+<li>
+<p><code>artifact_bundle</code></p>
+</li>
+<li>
+<p><code>delivery_links</code></p>
+</li>
 </ul>
 <h3>Recommended DAG edges</h3>
 <p>The main dependency shape should be:</p>
@@ -347,10 +690,18 @@ Revision creates a new graph for the next version.</p>
 <h3>Revision rule</h3>
 <p>If the user sends <code>/revise</code>:</p>
 <ul>
-<li>the previous version graph remains immutable</li>
-<li>revision requests produce new candidate assertions</li>
-<li>newly confirmed assertions produce a new canonical project-instance JSON</li>
-<li>the system builds a fresh DAG for <code>vN+1</code></li>
+<li>
+<p>the previous version graph remains immutable</p>
+</li>
+<li>
+<p>revision requests produce new candidate assertions</p>
+</li>
+<li>
+<p>newly confirmed assertions produce a new canonical project-instance JSON</p>
+</li>
+<li>
+<p>the system builds a fresh DAG for <code>vN+1</code></p>
+</li>
 </ul>
 <p>This makes version history auditable and prevents hidden mutation of past outputs.</p>
 <h2>Requirement Memory Model</h2>
@@ -363,12 +714,24 @@ The canonical state is built from confirmed restatements and assertions.</p>
 <h3>2. Working memory</h3>
 <p>Short-lived operational state:</p>
 <ul>
-<li>current phase</li>
-<li>current question</li>
-<li>current restatement bundle</li>
-<li>unresolved ambiguities</li>
-<li>recent user answer</li>
-<li>pending follow-up reason</li>
+<li>
+<p>current phase</p>
+</li>
+<li>
+<p>current question</p>
+</li>
+<li>
+<p>current restatement bundle</p>
+</li>
+<li>
+<p>unresolved ambiguities</p>
+</li>
+<li>
+<p>recent user answer</p>
+</li>
+<li>
+<p>pending follow-up reason</p>
+</li>
 </ul>
 <h3>3. Assertion registry</h3>
 <p>This is the canonical requirement state.</p>
@@ -377,44 +740,96 @@ Users do not interact with naked assertions directly.
 The system groups assertions into explicit restatement options for confirmation.</p>
 <p>Each assertion should carry:</p>
 <ul>
-<li><code>assertion_id</code></li>
-<li><code>statement</code></li>
-<li><code>status</code></li>
-<li><code>evidence</code></li>
-<li><code>updated_at</code></li>
+<li>
+<p><code>assertion_id</code></p>
+</li>
+<li>
+<p><code>statement</code></p>
+</li>
+<li>
+<p><code>status</code></p>
+</li>
+<li>
+<p><code>evidence</code></p>
+</li>
+<li>
+<p><code>updated_at</code></p>
+</li>
 </ul>
 <p>Allowed statuses:</p>
 <ul>
-<li><code>missing</code></li>
-<li><code>candidate</code></li>
-<li><code>confirmed</code></li>
-<li><code>rejected</code></li>
-<li><code>superseded</code></li>
-<li><code>conflicted</code></li>
+<li>
+<p><code>missing</code></p>
+</li>
+<li>
+<p><code>candidate</code></p>
+</li>
+<li>
+<p><code>confirmed</code></p>
+</li>
+<li>
+<p><code>rejected</code></p>
+</li>
+<li>
+<p><code>superseded</code></p>
+</li>
+<li>
+<p><code>conflicted</code></p>
+</li>
 </ul>
 <h3>4. Structured project definition</h3>
 <p>This is the canonical machine-readable task output derived from confirmed assertions.</p>
 <p>It should contain:</p>
 <ul>
-<li>project scale</li>
-<li>selected template family</li>
-<li>selected modules</li>
-<li>style profile</li>
-<li>constraint set</li>
-<li>generated JSON-defined program</li>
-<li>workflow-design render metadata</li>
+<li>
+<p>project scale</p>
+</li>
+<li>
+<p>selected template family</p>
+</li>
+<li>
+<p>selected modules</p>
+</li>
+<li>
+<p>style profile</p>
+</li>
+<li>
+<p>constraint set</p>
+</li>
+<li>
+<p>generated JSON-defined program</p>
+</li>
+<li>
+<p>workflow-design render metadata</p>
+</li>
 </ul>
 <h3>5. Design artifact state</h3>
 <p>Tracks generated outputs:</p>
 <ul>
-<li>version number</li>
-<li>render timestamp</li>
-<li>current PDF artifact id</li>
-<li>current JSON artifact id</li>
-<li>review history</li>
-<li>approval status</li>
-<li>current DAG id or digest</li>
-<li>prior version references</li>
+<li>
+<p>version number</p>
+</li>
+<li>
+<p>render timestamp</p>
+</li>
+<li>
+<p>current PDF artifact id</p>
+</li>
+<li>
+<p>current JSON artifact id</p>
+</li>
+<li>
+<p>review history</p>
+</li>
+<li>
+<p>approval status</p>
+</li>
+<li>
+<p>current DAG id or digest</p>
+</li>
+<li>
+<p>prior version references</p>
+</li>
 </ul>
 <h2>Restatement And Confirmation Protocol</h2>
 <p>Version one should not rely on long free-form conversational carryover.
@@ -422,21 +837,39 @@ It should reduce semantic scope every turn.</p>
 <h3>Core rule</h3>
 <p>Every meaningful requirement update must pass through:</p>
 <ol>
-<li>user input</li>
-<li>system interpretation</li>
-<li>explicit restatement</li>
-<li>user confirmation or correction</li>
-<li>assertion-state update</li>
+<li>
+<p>user input</p>
+</li>
+<li>
+<p>system interpretation</p>
+</li>
+<li>
+<p>explicit restatement</p>
+</li>
+<li>
+<p>user confirmation or correction</p>
+</li>
+<li>
+<p>assertion-state update</p>
+</li>
 </ol>
 <h3>User-facing interaction unit</h3>
 <p>The internal truth unit is an assertion.
 The user-facing interaction unit is an explicit statement composed from one or more assertions.</p>
 <p>Each question round should prefer:</p>
 <ul>
-<li>1 to 3 explicit statement options</li>
-<li>1 conservative escape option such as:</li>
-<li>"none of these is precise"</li>
-<li>"closest to A, but I need to revise it"</li>
+<li>
+<p>1 to 3 explicit statement options</p>
+</li>
+<li>
+<p>1 conservative escape option such as:</p>
+</li>
+<li>
+<p>"none of these is precise"</p>
+</li>
+<li>
+<p>"closest to A, but I need to revise it"</p>
+</li>
 </ul>
 <h3>Hard rule</h3>
 <p>Unconfirmed interpretation must not be promoted to canonical memory.
@@ -446,45 +879,107 @@ It may remain in working memory as a pending interpretation only.</p>
 This schema is populated from confirmed assertions, not direct free-form slot filling.</p>
 <p>Minimum required fields:</p>
 <ul>
-<li><code>project_name</code></li>
-<li><code>project_scale</code></li>
-<li><code>template_family</code></li>
-<li><code>project_goal</code></li>
-<li><code>target_users</code></li>
-<li><code>enabled_modules</code></li>
-<li><code>disabled_modules</code></li>
-<li><code>core_user_flows</code></li>
-<li><code>data_entities</code></li>
-<li><code>auth_profile</code></li>
-<li><code>external_integrations</code></li>
-<li><code>deployment_target</code></li>
-<li><code>style_profile</code></li>
-<li><code>non_functional_requirements</code></li>
-<li><code>acceptance_criteria</code></li>
-<li><code>constraints</code></li>
-<li><code>out_of_scope</code></li>
+<li>
+<p><code>project_name</code></p>
+</li>
+<li>
+<p><code>project_scale</code></p>
+</li>
+<li>
+<p><code>template_family</code></p>
+</li>
+<li>
+<p><code>project_goal</code></p>
+</li>
+<li>
+<p><code>target_users</code></p>
+</li>
+<li>
+<p><code>enabled_modules</code></p>
+</li>
+<li>
+<p><code>disabled_modules</code></p>
+</li>
+<li>
+<p><code>core_user_flows</code></p>
+</li>
+<li>
+<p><code>data_entities</code></p>
+</li>
+<li>
+<p><code>auth_profile</code></p>
+</li>
+<li>
+<p><code>external_integrations</code></p>
+</li>
+<li>
+<p><code>deployment_target</code></p>
+</li>
+<li>
+<p><code>style_profile</code></p>
+</li>
+<li>
+<p><code>non_functional_requirements</code></p>
+</li>
+<li>
+<p><code>acceptance_criteria</code></p>
+</li>
+<li>
+<p><code>constraints</code></p>
+</li>
+<li>
+<p><code>out_of_scope</code></p>
+</li>
 </ul>
 <p>These fields must be complete enough to support:</p>
 <ul>
-<li>template selection,</li>
-<li>architecture summary,</li>
-<li>implementation plan outline,</li>
-<li>task-flow decomposition,</li>
-<li>downstream implementation gating.</li>
+<li>
+<p>template selection,</p>
+</li>
+<li>
+<p>architecture summary,</p>
+</li>
+<li>
+<p>implementation plan outline,</p>
+</li>
+<li>
+<p>task-flow decomposition,</p>
+</li>
+<li>
+<p>downstream implementation gating.</p>
+</li>
 </ul>
 <h2>Project Scale Classification</h2>
 <p>The interview must classify project scale before deep requirement expansion.</p>
 <p>Version one should support:</p>
 <ul>
-<li><code>tool_page</code></li>
-<li>single-purpose page or simple utility</li>
-<li>uses lightweight UI composition DSL</li>
-<li><code>mini_app</code></li>
-<li>small multi-page application with basic data flow</li>
-<li>uses compact structure DSL</li>
-<li><code>structured_app</code></li>
-<li>multi-module, multi-flow application</li>
-<li>uses full workflow/structure DSL</li>
+<li>
+<p><code>tool_page</code></p>
+</li>
+<li>
+<p>single-purpose page or simple utility</p>
+</li>
+<li>
+<p>uses lightweight UI composition DSL</p>
+</li>
+<li>
+<p><code>mini_app</code></p>
+</li>
+<li>
+<p>small multi-page application with basic data flow</p>
+</li>
+<li>
+<p>uses compact structure DSL</p>
+</li>
+<li>
+<p><code>structured_app</code></p>
+</li>
+<li>
+<p>multi-module, multi-flow application</p>
+</li>
+<li>
+<p>uses full workflow/structure DSL</p>
+</li>
 </ul>
 <p>This classification limits both interview scope and the allowed template space.</p>
 <h2>Template Library Strategy</h2>
@@ -493,68 +988,128 @@ This schema is populated from confirmed assertions, not direct free-form slot fi
 Version one should define templates primarily as JSON-defined programs that compile onto existing runtime and component mechanisms.</p>
 <p>Each template family should declare:</p>
 <ul>
-<li>interaction structure</li>
-<li>supported project scales</li>
-<li>required sections/pages</li>
-<li>optional modules</li>
-<li>unsupported patterns</li>
-<li>allowed style controls</li>
-<li>required component-library capabilities</li>
-<li>DSL path</li>
+<li>
+<p>interaction structure</p>
+</li>
+<li>
+<p>supported project scales</p>
+</li>
+<li>
+<p>required sections/pages</p>
+</li>
+<li>
+<p>optional modules</p>
+</li>
+<li>
+<p>unsupported patterns</p>
+</li>
+<li>
+<p>allowed style controls</p>
+</li>
+<li>
+<p>required component-library capabilities</p>
+</li>
+<li>
+<p>DSL path</p>
+</li>
 </ul>
 <p>Recommended initial template families:</p>
 <ul>
-<li><code>content_showcase</code></li>
-<li><code>form_collection</code></li>
-<li><code>member_portal</code></li>
-<li><code>list_search</code></li>
-<li><code>crud_admin</code></li>
-<li><code>dashboard</code></li>
-<li><code>multi_step_flow</code></li>
-<li><code>transaction_flow</code></li>
+<li>
+<p><code>content_showcase</code></p>
+</li>
+<li>
+<p><code>form_collection</code></p>
+</li>
+<li>
+<p><code>member_portal</code></p>
+</li>
+<li>
+<p><code>list_search</code></p>
+</li>
+<li>
+<p><code>crud_admin</code></p>
+</li>
+<li>
+<p><code>dashboard</code></p>
+</li>
+<li>
+<p><code>multi_step_flow</code></p>
+</li>
+<li>
+<p><code>transaction_flow</code></p>
+</li>
 </ul>
 <h2>JSON-Defined Program Model</h2>
 <p>The canonical project definition should be document-first.</p>
 <p>Version one should prefer three JSON layers:</p>
 <ol>
-<li><code>template_definition</code>
+<li>
+<p><code>template_definition</code>
    - structure skeleton
    - route graph
    - page/section composition
-   - module attachment points</li>
-<li><code>module_definition</code>
+   - module attachment points</p>
+</li>
+<li>
+<p><code>module_definition</code>
    - auth
    - search/filter
    - CRUD detail
    - workflow steps
-   - dashboard widgets</li>
-<li><code>project_instance_definition</code>
+   - dashboard widgets</p>
+</li>
+<li>
+<p><code>project_instance_definition</code>
    - selected template
    - enabled modules
    - style selections
-   - project-specific configuration</li>
+   - project-specific configuration</p>
+</li>
 </ol>
 <p>Existing runtime mechanisms remain the execution substrate:</p>
 <ul>
-<li><code>packages/javascript/browser/page-generator</code></li>
-<li><code>packages/javascript/browser/ui_components</code></li>
-<li><code>templates/spa/frontend/runtime/page-generator</code></li>
-<li><code>templates/spa/frontend/core</code></li>
+<li>
+<p><code>packages/javascript/browser/page-generator</code></p>
+</li>
+<li>
+<p><code>packages/javascript/browser/ui_components</code></p>
+</li>
+<li>
+<p><code>templates/spa/frontend/runtime/page-generator</code></p>
+</li>
+<li>
+<p><code>templates/spa/frontend/core</code></p>
+</li>
 </ul>
 <h2>Project Name Rules</h2>
 <p>Project name is the first hard gate.</p>
 <p>The system must:</p>
 <ul>
-<li>ask for project name first,</li>
-<li>normalize it into a folder-safe name,</li>
-<li>verify that the normalized folder name does not conflict with existing managed project folders,</li>
-<li>reject duplicates before continuing.</li>
+<li>
+<p>ask for project name first,</p>
+</li>
+<li>
+<p>normalize it into a folder-safe name,</p>
+</li>
+<li>
+<p>verify that the normalized folder name does not conflict with existing managed project folders,</p>
+</li>
+<li>
+<p>reject duplicates before continuing.</p>
+</li>
 </ul>
 <p>If the name is unavailable:</p>
 <ul>
-<li>remain in <code>collect_project_name</code></li>
-<li>explain that the project name is already taken</li>
-<li>ask for another name</li>
+<li>
+<p>remain in <code>collect_project_name</code></p>
+</li>
+<li>
+<p>explain that the project name is already taken</p>
+</li>
+<li>
+<p>ask for another name</p>
+</li>
 </ul>
 <p>This check should reuse the existing managed-workspace isolation rules already present in the high-level coordinator.</p>
 <h2>Interview Script</h2>
@@ -563,21 +1118,51 @@ Version one should define templates primarily as JSON-defined programs that comp
 The sequence should be template-first rather than fully open-ended.</p>
 <p>Recommended base sequence:</p>
 <ol>
-<li>project name</li>
-<li>project scale classification</li>
-<li>candidate template family narrowing</li>
-<li>primary template family selection</li>
-<li>project goal and target users</li>
-<li>enabled and disabled modules</li>
-<li>key user flows</li>
-<li>data and persistence</li>
-<li>auth and permissions</li>
-<li>external integrations</li>
-<li>deployment target</li>
-<li>style profile</li>
-<li>non-functional requirements</li>
-<li>acceptance criteria</li>
-<li>constraints and out-of-scope</li>
+<li>
+<p>project name</p>
+</li>
+<li>
+<p>project scale classification</p>
+</li>
+<li>
+<p>candidate template family narrowing</p>
+</li>
+<li>
+<p>primary template family selection</p>
+</li>
+<li>
+<p>project goal and target users</p>
+</li>
+<li>
+<p>enabled and disabled modules</p>
+</li>
+<li>
+<p>key user flows</p>
+</li>
+<li>
+<p>data and persistence</p>
+</li>
+<li>
+<p>auth and permissions</p>
+</li>
+<li>
+<p>external integrations</p>
+</li>
+<li>
+<p>deployment target</p>
+</li>
+<li>
+<p>style profile</p>
+</li>
+<li>
+<p>non-functional requirements</p>
+</li>
+<li>
+<p>acceptance criteria</p>
+</li>
+<li>
+<p>constraints and out-of-scope</p>
+</li>
 </ol>
 <h3>One-question rule</h3>
 <p>Version one should ask one primary question at a time.</p>
@@ -586,79 +1171,163 @@ Each question should prefer explicit statement options over broad free-form prom
 <h3>Dynamic follow-up rule</h3>
 <p>After every user answer, the system must do three things:</p>
 <ol>
-<li>update pending interpretations</li>
-<li>restate them as explicit statement options when needed</li>
-<li>choose the next most important question</li>
+<li>
+<p>update pending interpretations</p>
+</li>
+<li>
+<p>restate them as explicit statement options when needed</p>
+</li>
+<li>
+<p>choose the next most important question</p>
+</li>
 </ol>
 <p>Priority order:</p>
 <ol>
-<li>resolve <code>conflicted</code></li>
-<li>confirm candidate assertions</li>
-<li>fill <code>missing</code></li>
-<li>continue the default skeleton</li>
+<li>
+<p>resolve <code>conflicted</code></p>
+</li>
+<li>
+<p>confirm candidate assertions</p>
+</li>
+<li>
+<p>fill <code>missing</code></p>
+</li>
+<li>
+<p>continue the default skeleton</p>
+</li>
 </ol>
 <h3>Handling user interruptions</h3>
 <p>If the user interrupts with additional requirement detail:</p>
 <ul>
-<li>map it into pending assertions</li>
-<li>mark affected template/module choices for re-check</li>
-<li>continue from the highest-priority unresolved field</li>
+<li>
+<p>map it into pending assertions</p>
+</li>
+<li>
+<p>mark affected template/module choices for re-check</p>
+</li>
+<li>
+<p>continue from the highest-priority unresolved field</p>
+</li>
 </ul>
 <p>If the user asks a side question:</p>
 <ul>
-<li>answer briefly</li>
-<li>then return to the unfinished interview path</li>
+<li>
+<p>answer briefly</p>
+</li>
+<li>
+<p>then return to the unfinished interview path</p>
+</li>
 </ul>
 <p>If the user requests revision after document generation:</p>
 <ul>
-<li>enter <code>revise_requested</code></li>
-<li>capture the revision request</li>
-<li>update affected assertions, template selections, and document sections</li>
-<li>regenerate the next version</li>
+<li>
+<p>enter <code>revise_requested</code></p>
+</li>
+<li>
+<p>capture the revision request</p>
+</li>
+<li>
+<p>update affected assertions, template selections, and document sections</p>
+</li>
+<li>
+<p>regenerate the next version</p>
+</li>
 </ul>
 <h2>Gap And Conflict Detection</h2>
 <p>The model may propose interpretations, but the broker must also run deterministic validation.</p>
 <h3>Gap examples</h3>
 <ul>
-<li>a template family is selected but no enabled modules are chosen</li>
-<li>auth is required but no login or role model is confirmed</li>
-<li>deployment target is declared but no compatible DSL path is selected</li>
-<li>core features are given but no acceptance criteria are confirmed</li>
+<li>
+<p>a template family is selected but no enabled modules are chosen</p>
+</li>
+<li>
+<p>auth is required but no login or role model is confirmed</p>
+</li>
+<li>
+<p>deployment target is declared but no compatible DSL path is selected</p>
+</li>
+<li>
+<p>core features are given but no acceptance criteria are confirmed</p>
+</li>
 </ul>
 <h3>Conflict examples</h3>
 <ul>
-<li><code>project_scale = tool_page</code> with a structured multi-role workflow</li>
-<li><code>template_family = content_showcase</code> with required CRUD admin behavior</li>
-<li><code>deployment_target = windows service</code> with a SPA-only template path</li>
-<li><code>auth_profile = none</code> while role-based access control is required</li>
+<li>
+<p><code>project_scale = tool_page</code> with a structured multi-role workflow</p>
+</li>
+<li>
+<p><code>template_family = content_showcase</code> with required CRUD admin behavior</p>
+</li>
+<li>
+<p><code>deployment_target = windows service</code> with a SPA-only template path</p>
+</li>
+<li>
+<p><code>auth_profile = none</code> while role-based access control is required</p>
+</li>
 </ul>
 <h3>Hard rule</h3>
 <p>The session must not generate a reviewable workflow design document until:</p>
 <ul>
-<li>no required assertion bundle is unresolved</li>
-<li>no required field is <code>missing</code></li>
-<li>no required field is <code>conflicted</code></li>
+<li>
+<p>no required assertion bundle is unresolved</p>
+</li>
+<li>
+<p>no required field is <code>missing</code></p>
+</li>
+<li>
+<p>no required field is <code>conflicted</code></p>
+</li>
 </ul>
 <p>Version one should be conservative and require all required fields to be backed by confirmed assertions.</p>
 <h2>Workflow Design Output</h2>
 <p>The workflow design output is the mandatory checkpoint artifact for this task.</p>
 <p>It should include:</p>
 <ul>
-<li>project overview</li>
-<li>project scale classification</li>
-<li>selected template family and why it fits</li>
-<li>selected modules and excluded modules</li>
-<li>normalized requirements summary</li>
-<li>architecture proposal</li>
-<li>component/module breakdown</li>
-<li>data model summary</li>
-<li>external integration summary</li>
-<li>deployment target summary</li>
-<li>DSL path summary</li>
-<li>implementation phases</li>
-<li>detailed task flow table</li>
-<li>testing strategy with TDD expectation</li>
-<li>open assumptions, if any remain</li>
+<li>
+<p>project overview</p>
+</li>
+<li>
+<p>project scale classification</p>
+</li>
+<li>
+<p>selected template family and why it fits</p>
+</li>
+<li>
+<p>selected modules and excluded modules</p>
+</li>
+<li>
+<p>normalized requirements summary</p>
+</li>
+<li>
+<p>architecture proposal</p>
+</li>
+<li>
+<p>component/module breakdown</p>
+</li>
+<li>
+<p>data model summary</p>
+</li>
+<li>
+<p>external integration summary</p>
+</li>
+<li>
+<p>deployment target summary</p>
+</li>
+<li>
+<p>DSL path summary</p>
+</li>
+<li>
+<p>implementation phases</p>
+</li>
+<li>
+<p>detailed task flow table</p>
+</li>
+<li>
+<p>testing strategy with TDD expectation</p>
+</li>
+<li>
+<p>open assumptions, if any remain</p>
+</li>
 </ul>
 <p>This artifact is not just a conversation summary.
 It is the formal handoff document for the next implementation-stage agent.</p>
@@ -679,14 +1348,24 @@ It should be the derived project-instance definition, not just a slot dump.</p>
 <h3>Versioning</h3>
 <p>Before approval, the document may be regenerated many times:</p>
 <ul>
-<li><code>v1</code></li>
-<li><code>v2</code></li>
-<li><code>v3</code></li>
+<li>
+<p><code>v1</code></p>
+</li>
+<li>
+<p><code>v2</code></p>
+</li>
+<li>
+<p><code>v3</code></p>
+</li>
 </ul>
 <p>Each revision produces both:</p>
 <ul>
-<li>a new PDF</li>
-<li>a new JSON</li>
+<li>
+<p>a new PDF</p>
+</li>
+<li>
+<p>a new JSON</p>
+</li>
 </ul>
 <p>The latest version becomes the current review target.</p>
 <h2>PDF/JSON Mutual Verification</h2>
@@ -698,12 +1377,24 @@ More precisely, it is the canonical project-instance JSON derived from confirmed
 <h3>Render pipeline</h3>
 <p>Recommended pipeline:</p>
 <ol>
-<li>confirmed assertion state</li>
-<li>version DAG build</li>
-<li>canonical project-instance JSON</li>
-<li>deterministic document view-model</li>
-<li>deterministic intermediate markdown or HTML</li>
-<li>PDF render</li>
+<li>
+<p>confirmed assertion state</p>
+</li>
+<li>
+<p>version DAG build</p>
+</li>
+<li>
+<p>canonical project-instance JSON</p>
+</li>
+<li>
+<p>deterministic document view-model</p>
+</li>
+<li>
+<p>deterministic intermediate markdown or HTML</p>
+</li>
+<li>
+<p>PDF render</p>
+</li>
 </ol>
 <h3>Verification strategy</h3>
 <p>Version one should enforce consistency using three checks:</p>
@@ -723,34 +1414,62 @@ More precisely, it is the canonical project-instance JSON derived from confirmed
 <p><strong>section coverage check</strong>
    - before rendering PDF, validate that the intermediate document contains all required sections:</p>
 <ul>
-<li>overview</li>
-<li>requirements</li>
-<li>architecture</li>
-<li>task flow</li>
-<li>testing</li>
+<li>
+<p>overview</p>
+</li>
+<li>
+<p>requirements</p>
+</li>
+<li>
+<p>architecture</p>
+</li>
+<li>
+<p>task flow</p>
+</li>
+<li>
+<p>testing</p>
+</li>
 </ul>
 </li>
 </ol>
 <p>This gives a defensible mutual-verification model:</p>
 <ul>
-<li>JSON validates the required structured meaning</li>
-<li>rendered document proves it corresponds to a specific JSON version</li>
-<li>broker can verify the artifact pair before delivery</li>
+<li>
+<p>JSON validates the required structured meaning</p>
+</li>
+<li>
+<p>rendered document proves it corresponds to a specific JSON version</p>
+</li>
+<li>
+<p>broker can verify the artifact pair before delivery</p>
+</li>
 </ul>
 <p>Version one should not claim that parsing the PDF back into full JSON is reliable enough to be a hard gate.</p>
 <h2>Delivery Behavior</h2>
 <p>The generated review artifact pair should be delivered through the existing artifact-delivery path.</p>
 <p>Recommended delivery set:</p>
 <ul>
-<li>user-facing PDF artifact</li>
-<li>machine-readable JSON artifact</li>
-<li>optional zip containing both files</li>
+<li>
+<p>user-facing PDF artifact</p>
+</li>
+<li>
+<p>machine-readable JSON artifact</p>
+</li>
+<li>
+<p>optional zip containing both files</p>
+</li>
 </ul>
 <p>For LINE delivery, the simplest usable version is:</p>
 <ul>
-<li>upload the PDF</li>
-<li>upload a zip containing <code>pdf + json</code></li>
-<li>send the user the download link for the zip and mention the PDF as the primary review file</li>
+<li>
+<p>upload the PDF</p>
+</li>
+<li>
+<p>upload a zip containing <code>pdf + json</code></p>
+</li>
+<li>
+<p>send the user the download link for the zip and mention the PDF as the primary review file</p>
+</li>
 </ul>
 <p>If Google Drive delivery succeeds:</p>
 <ul>
@@ -763,109 +1482,217 @@ More precisely, it is the canonical project-instance JSON derived from confirmed
 <h2>Commands During Review</h2>
 <p>After document generation:</p>
 <ul>
-<li><code>/ok</code> marks the current version as approved</li>
-<li><code>/revise</code> marks the current version as needing revision</li>
-<li><code>/cancel</code> cancels the task</li>
+<li>
+<p><code>/ok</code> marks the current version as approved</p>
+</li>
+<li>
+<p><code>/revise</code> marks the current version as needing revision</p>
+</li>
+<li>
+<p><code>/cancel</code> cancels the task</p>
+</li>
 </ul>
 <p>Suggested optional convenience commands for version one:</p>
 <ul>
-<li><code>/status</code> to show current phase and version</li>
-<li><code>/latest</code> to resend the latest review artifact links</li>
+<li>
+<p><code>/status</code> to show current phase and version</p>
+</li>
+<li>
+<p><code>/latest</code> to resend the latest review artifact links</p>
+</li>
 </ul>
 <p>These are useful but not mandatory for the first rollout.</p>
 <h2>Data Persistence</h2>
 <p>The current broker persistence model should be reused.</p>
 <p>Recommended new document families:</p>
 <ul>
-<li><code>hlm.project-interview.state.{channel}.{userId}</code></li>
-<li><code>hlm.project-interview.requirements.{channel}.{userId}</code></li>
-<li><code>hlm.project-interview.review.{channel}.{userId}</code></li>
-<li><code>hlm.project-interview.version-graph.{channel}.{userId}.{version}</code></li>
+<li>
+<p><code>hlm.project-interview.state.{channel}.{userId}</code></p>
+</li>
+<li>
+<p><code>hlm.project-interview.requirements.{channel}.{userId}</code></p>
+</li>
+<li>
+<p><code>hlm.project-interview.review.{channel}.{userId}</code></p>
+</li>
+<li>
+<p><code>hlm.project-interview.version-graph.{channel}.{userId}.{version}</code></p>
+</li>
 </ul>
 <p>Suggested artifact linkage:</p>
 <ul>
-<li>PDF and JSON outputs should be recorded through existing artifact recording and delivery services</li>
-<li>the current task state should point to the latest artifact ids and version number</li>
-<li>the task state should also point to the selected scale, template family, and DSL path</li>
-<li>each version should preserve its own DAG metadata and upstream assertion references</li>
+<li>
+<p>PDF and JSON outputs should be recorded through existing artifact recording and delivery services</p>
+</li>
+<li>
+<p>the current task state should point to the latest artifact ids and version number</p>
+</li>
+<li>
+<p>the task state should also point to the selected scale, template family, and DSL path</p>
+</li>
+<li>
+<p>each version should preserve its own DAG metadata and upstream assertion references</p>
+</li>
 </ul>
 <p>This keeps the new feature aligned with the broker’s existing task/document model instead of introducing a parallel storage system.</p>
 <h2>Model And Prompting Policy</h2>
 <p>The interview model prompt must explicitly enforce:</p>
 <ul>
-<li>task-scoped memory only</li>
-<li>no user-history reuse</li>
-<li>one primary question at a time</li>
-<li>explicit restatement before canonical write</li>
-<li>requirement extraction into assertions and confirmed bundles</li>
-<li>template-first narrowing</li>
-<li>no implementation promises</li>
-<li>no approval inference without <code>/ok</code></li>
-<li>no skipped gaps or unresolved contradictions</li>
+<li>
+<p>task-scoped memory only</p>
+</li>
+<li>
+<p>no user-history reuse</p>
+</li>
+<li>
+<p>one primary question at a time</p>
+</li>
+<li>
+<p>explicit restatement before canonical write</p>
+</li>
+<li>
+<p>requirement extraction into assertions and confirmed bundles</p>
+</li>
+<li>
+<p>template-first narrowing</p>
+</li>
+<li>
+<p>no implementation promises</p>
+</li>
+<li>
+<p>no approval inference without <code>/ok</code></p>
+</li>
+<li>
+<p>no skipped gaps or unresolved contradictions</p>
+</li>
 </ul>
 <p>The model should also be instructed that downstream implementation is expected to follow:</p>
 <ul>
-<li>planning discipline</li>
-<li>TDD</li>
-<li>verification before completion</li>
+<li>
+<p>planning discipline</p>
+</li>
+<li>
+<p>TDD</p>
+</li>
+<li>
+<p>verification before completion</p>
+</li>
 </ul>
 <p>That requirement belongs in the generated workflow design output even though version one stops before implementation.</p>
 <h2>Error Handling</h2>
 <h3>Invalid or duplicate project name</h3>
 <ul>
-<li>do not progress</li>
-<li>remain in project-name collection</li>
+<li>
+<p>do not progress</p>
+</li>
+<li>
+<p>remain in project-name collection</p>
+</li>
 </ul>
 <h3>Incomplete requirements</h3>
 <ul>
-<li>do not generate the workflow design</li>
-<li>keep asking focused follow-up questions</li>
+<li>
+<p>do not generate the workflow design</p>
+</li>
+<li>
+<p>keep asking focused follow-up questions</p>
+</li>
 </ul>
 <h3>Render failure</h3>
 <ul>
-<li>mark the artifact generation step as failed</li>
-<li>retain the assertion state and canonical project-instance JSON inputs</li>
-<li>allow regeneration after retry</li>
+<li>
+<p>mark the artifact generation step as failed</p>
+</li>
+<li>
+<p>retain the assertion state and canonical project-instance JSON inputs</p>
+</li>
+<li>
+<p>allow regeneration after retry</p>
+</li>
 </ul>
 <h3>Delivery failure</h3>
 <ul>
-<li>rely on existing artifact-delivery fallback behavior</li>
-<li>never lose the current approved or pending review version state because delivery failed</li>
+<li>
+<p>rely on existing artifact-delivery fallback behavior</p>
+</li>
+<li>
+<p>never lose the current approved or pending review version state because delivery failed</p>
+</li>
 </ul>
 <h2>Testing Strategy</h2>
 <p>Version one should be implemented with TDD.</p>
 <p>Minimum test coverage should include:</p>
 <ol>
-<li><code>/proj</code> routes into <code>project_interview</code></li>
-<li>normal chat does not enter <code>project_interview</code></li>
-<li>project name uniqueness gate blocks duplicates</li>
-<li>project scale classification selects the correct DSL path</li>
-<li>template-family narrowing returns bounded candidate sets</li>
-<li>restatement confirmation promotes assertions only after explicit user confirmation</li>
-<li>document generation is blocked while required assertions or fields are incomplete</li>
-<li>document generation creates versioned JSON state</li>
-<li>document generation creates versioned PDF artifact metadata</li>
-<li><code>/ok</code> only confirms when a reviewable document version exists</li>
-<li><code>/revise</code> creates a new version instead of overwriting approval state</li>
-<li><code>/cancel</code> closes the task cleanly</li>
-<li>generated review artifacts can be delivered through existing artifact delivery</li>
-<li>user-facing output does not expose internal managed-workspace paths</li>
+<li>
+<p><code>/proj</code> routes into <code>project_interview</code></p>
+</li>
+<li>
+<p>normal chat does not enter <code>project_interview</code></p>
+</li>
+<li>
+<p>project name uniqueness gate blocks duplicates</p>
+</li>
+<li>
+<p>project scale classification selects the correct DSL path</p>
+</li>
+<li>
+<p>template-family narrowing returns bounded candidate sets</p>
+</li>
+<li>
+<p>restatement confirmation promotes assertions only after explicit user confirmation</p>
+</li>
+<li>
+<p>document generation is blocked while required assertions or fields are incomplete</p>
+</li>
+<li>
+<p>document generation creates versioned JSON state</p>
+</li>
+<li>
+<p>document generation creates versioned PDF artifact metadata</p>
+</li>
+<li>
+<p><code>/ok</code> only confirms when a reviewable document version exists</p>
+</li>
+<li>
+<p><code>/revise</code> creates a new version instead of overwriting approval state</p>
+</li>
+<li>
+<p><code>/cancel</code> closes the task cleanly</p>
+</li>
+<li>
+<p>generated review artifacts can be delivered through existing artifact delivery</p>
+</li>
+<li>
+<p>user-facing output does not expose internal managed-workspace paths</p>
+</li>
 </ol>
 <h2>Recommended File-Level Change Direction</h2>
 <p>Likely areas of change:</p>
 <ul>
-<li><code>packages/csharp/broker/Services/HighLevelCoordinator.cs</code></li>
-<li>new task type routing</li>
-<li><code>/proj</code> command handling</li>
+<li>
+<p><code>packages/csharp/broker/Services/HighLevelCoordinator.cs</code></p>
+</li>
+<li>
+<p>new task type routing</p>
+</li>
+<li>
+<p><code>/proj</code> command handling</p>
+</li>
 <li>
 <p>project interview state transitions</p>
 </li>
 <li>
 <p>new focused services under <code>packages/csharp/broker/Services/</code></p>
 </li>
-<li>project interview state service</li>
-<li>project interview validator</li>
-<li>workflow design document generator</li>
+<li>
+<p>project interview state service</p>
+</li>
+<li>
+<p>project interview validator</p>
+</li>
+<li>
+<p>workflow design document generator</p>
+</li>
 <li>
 <p>PDF render helper/service</p>
 </li>
@@ -878,20 +1705,36 @@ More precisely, it is the canonical project-instance JSON derived from confirmed
 <li>
 <p>broker verification and formal test layers</p>
 </li>
-<li><code>packages/csharp/broker/verify/Program.cs</code></li>
-<li><code>packages/csharp/tests/integration/**</code></li>
+<li>
+<p><code>packages/csharp/broker/verify/Program.cs</code></p>
+</li>
+<li>
+<p><code>packages/csharp/tests/integration/**</code></p>
+</li>
 </ul>
 <h2>Rollout Strategy</h2>
 <p>This feature should be shipped in two stages.</p>
 <h3>Stage 1</h3>
 <p>Build only the dedicated interview-and-review workflow:</p>
 <ul>
-<li><code>/proj</code></li>
-<li>assertion-based interview state</li>
-<li>scale/template/DSL selection</li>
-<li>document generation</li>
-<li>PDF/JSON delivery</li>
-<li>explicit review gate</li>
+<li>
+<p><code>/proj</code></p>
+</li>
+<li>
+<p>assertion-based interview state</p>
+</li>
+<li>
+<p>scale/template/DSL selection</p>
+</li>
+<li>
+<p>document generation</p>
+</li>
+<li>
+<p>PDF/JSON delivery</p>
+</li>
+<li>
+<p>explicit review gate</p>
+</li>
 </ul>
 <h3>Stage 2</h3>
 <p>Add the downstream implementation agent that consumes the approved <code>project_interview</code> output and actually builds the project in a unique project folder with TDD and final packaging.</p>
@@ -899,18 +1742,42 @@ More precisely, it is the canonical project-instance JSON derived from confirmed
 <h2>Acceptance Criteria</h2>
 <p>The feature is complete for version one when:</p>
 <ul>
-<li>a LINE user can enter <code>/proj</code></li>
-<li>the broker starts a task-scoped interview session</li>
-<li>the session classifies project scale and selects a template family</li>
-<li>the session collects all required requirement fields through confirmed restatements</li>
-<li>duplicate project names are blocked up front</li>
-<li>the system detects requirement gaps and conflicts before document generation</li>
-<li>the broker generates a versioned workflow design PDF</li>
-<li>the broker generates a matching versioned project-definition JSON artifact</li>
-<li>both artifacts are recorded and delivered to the user</li>
-<li>the user can explicitly respond with <code>/ok</code>, <code>/revise</code>, or <code>/cancel</code></li>
-<li>no long-term user memory is reused</li>
-<li>the flow does not silently transition into implementation</li>
+<li>
+<p>a LINE user can enter <code>/proj</code></p>
+</li>
+<li>
+<p>the broker starts a task-scoped interview session</p>
+</li>
+<li>
+<p>the session classifies project scale and selects a template family</p>
+</li>
+<li>
+<p>the session collects all required requirement fields through confirmed restatements</p>
+</li>
+<li>
+<p>duplicate project names are blocked up front</p>
+</li>
+<li>
+<p>the system detects requirement gaps and conflicts before document generation</p>
+</li>
+<li>
+<p>the broker generates a versioned workflow design PDF</p>
+</li>
+<li>
+<p>the broker generates a matching versioned project-definition JSON artifact</p>
+</li>
+<li>
+<p>both artifacts are recorded and delivered to the user</p>
+</li>
+<li>
+<p>the user can explicitly respond with <code>/ok</code>, <code>/revise</code>, or <code>/cancel</code></p>
+</li>
+<li>
+<p>no long-term user memory is reused</p>
+</li>
+<li>
+<p>the flow does not silently transition into implementation</p>
+</li>
 </ul>
 </main>
 </body>

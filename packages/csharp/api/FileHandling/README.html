@@ -21,15 +21,31 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <body>
 <main>
 <h1>File Handling Module</h1>
+<blockquote>
+<p>⚠ Reference code: this folder has no .csproj, is not compiled or referenced by any project, and is not built by CI; the content below is not build-verified.</p>
+<p>Known not to compile: <code>FileUploadService.cs</code> and <code>UploadRuleController.cs</code> use <code>Bricks4Agent.Database.Repository</code> / <code>IGenericRepository&lt;&gt;</code> (and <code>GenericRepository&lt;&gt;</code> below), which do not exist in this repo.</p>
+</blockquote>
 <p>A comprehensive file upload system with configurable path templates, upload rules, and batch upload support.</p>
 <h2>Features</h2>
 <ul>
-<li><strong>Single and Batch Upload</strong>: Support for uploading single files or multiple files at once</li>
-<li><strong>Configurable Path Templates</strong>: Dynamic path generation using template variables</li>
-<li><strong>Upload Rules</strong>: Customizable rules for file validation (extensions, size limits)</li>
-<li><strong>File Tracking</strong>: Database records for all uploaded files with metadata</li>
-<li><strong>Soft Delete</strong>: Safe deletion with option to preserve or remove physical files</li>
-<li><strong>Security</strong>: Built-in validation against path traversal and dangerous file types</li>
+<li>
+<p><strong>Single and Batch Upload</strong>: Support for uploading single files or multiple files at once</p>
+</li>
+<li>
+<p><strong>Configurable Path Templates</strong>: Dynamic path generation using template variables</p>
+</li>
+<li>
+<p><strong>Upload Rules</strong>: Customizable rules for file validation (extensions, size limits)</p>
+</li>
+<li>
+<p><strong>File Tracking</strong>: Database records for all uploaded files with metadata</p>
+</li>
+<li>
+<p><strong>Soft Delete</strong>: Safe deletion with option to preserve or remove physical files</p>
+</li>
+<li>
+<p><strong>Security</strong>: Built-in validation against path traversal and dangerous file types</p>
+</li>
 </ul>
 <h2>Directory Structure</h2>
 <pre><code>FileHandling/
@@ -66,7 +82,10 @@ services.AddScoped&lt;IGenericRepository&lt;UploadPathRule&gt;, GenericRepositor
 }
 </code></pre>
 <h3>3. Database Migration</h3>
-<p>Create entity configurations for <code>FileRecord</code> and <code>UploadPathRule</code>:</p>
+<p>Create entity configurations for <code>FileRecord</code> and <code>UploadPathRule</code>.</p>
+<blockquote>
+<p>The snippet below uses EF Core <code>IEntityTypeConfiguration&lt;T&gt;</code>, which contradicts this repo's data-access convention (BaseOrm, no EF Core). It is illustrative only; nothing in the repo provides or references these classes.</p>
+</blockquote>
 <pre><code class="language-csharp">public class FileRecordConfiguration : IEntityTypeConfiguration&lt;FileRecord&gt;
 {
     public void Configure(EntityTypeBuilder&lt;FileRecord&gt; builder)
@@ -110,8 +129,18 @@ public class UploadPathRuleConfiguration : IEntityTypeConfiguration&lt;UploadPat
 </tr>
 <tr>
 <td>POST</td>
+<td><code>/api/files/upload-single</code></td>
+<td>Upload a single file (form-bound <code>FileUploadRequest</code>)</td>
+</tr>
+<tr>
+<td>POST</td>
 <td><code>/api/files/upload-batch</code></td>
 <td>Upload multiple files</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/files/upload-batch-form</code></td>
+<td>Upload multiple files (form-bound <code>BatchUploadRequest</code>)</td>
 </tr>
 <tr>
 <td>GET</td>
@@ -357,11 +386,24 @@ Authorization: Bearer &lt;token&gt;
 </code></pre>
 <h2>Security Considerations</h2>
 <ol>
-<li><strong>File Extension Validation</strong>: Configure allowed extensions per rule</li>
-<li><strong>File Size Limits</strong>: Set maximum file size per rule (default: 10MB)</li>
-<li><strong>Dangerous Files</strong>: Automatic blocking of executable files (.exe, .dll, .bat, etc.)</li>
-<li><strong>Path Traversal</strong>: Prevention of <code>..</code> patterns in paths</li>
-<li><strong>Authentication</strong>: All endpoints require authentication</li>
+<li>
+<p><strong>File Extension Validation</strong>: Configure allowed extensions per rule</p>
+</li>
+<li>
+<p><strong>File Size Limits</strong>: Set maximum file size per rule (default: 10MB)</p>
+</li>
+<li>
+<p><strong>Dangerous Files</strong>: Automatic blocking of executable files (.exe, .dll, .bat, etc.)</p>
+</li>
+<li>
+<p><strong>Path Traversal</strong>: Prevention of <code>..</code> patterns in paths</p>
+</li>
+<li>
+<p><strong>Authentication</strong>: All endpoints require authentication</p>
+</li>
+</ol>
+<p><strong>No ownership check</strong>: authentication is the only gate. Any authenticated user can list any user's files (<code>GET /api/files?uploadedBy=...</code>), read any record by ID (<code>GET /api/files/{id}</code>) and delete any file, including the physical file (<code>DELETE /api/files/{id}?physicalDelete=true</code>). Add per-record authorization before exposing these endpoints.</p>
+<ol start="6">
 <li><strong>Authorization</strong>: Rule management requires Admin role</li>
 </ol>
 <h2>Frontend Integration</h2>

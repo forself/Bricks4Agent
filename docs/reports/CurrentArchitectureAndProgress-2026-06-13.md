@@ -1,8 +1,8 @@
 # Bricks4Agent Current Architecture And Progress
 
 Date: 2026-06-13
-Status: current working report
-Supersedes: [CurrentArchitectureAndProgress-2026-03-26.md](CurrentArchitectureAndProgress-2026-03-26.md)
+Status: dated snapshot (2026-06-13) — for the current state see [current-technical-manual.zh-TW.md](../manuals/current-technical-manual.zh-TW.md)
+Supersedes: the 2026-03-26 architecture report (retired)
 
 ## 1. Executive Summary
 
@@ -133,23 +133,24 @@ site crawl source, and the agent-container governed tools (read_file etc.).
 
 - Browser runtime: action-level gating runs, but authenticated browser automation does not.
 
-- Monitoring is health/metrics only; the control-plane console remains design-only (operator surface is still `line-admin.html`).
+- Monitoring is health/metrics only; the control-plane console remains design-only (operator surface is still `line-admin.html`). (Update 2026-08-24, `9e877f3`: end users now also have a separate user portal at `/portal` — static pages from `packages/javascript/browser/user-portal/` plus `/api/v1/portal/*` in `packages/csharp/broker/Endpoints/PortalEndpoints.cs`.)
 
 - README/runbook now cover the agent container path, but broader operator docs lag the code.
 
 ### Dishonest to claim
 
-Not: a custom seccomp profile (the runtime default applies), full named-operator
-account management for dual approvals (the current local-admin approver id is
-session-derived), a fully production-hardened operator console, or
-distributed/all-capability LINE send quotas. Broker-level dual approval for
+Not: a custom seccomp profile (the runtime default applies), a fully
+production-hardened operator console, or distributed/all-capability LINE send
+quotas. (Update 2026-08-24, `9e877f3`: named local-admin operator accounts now
+exist — list/create/role/disable/reset-password in `LocalAdminAuthService`, and the
+local-admin approver id is `local-admin:{OperatorId}` rather than session-derived.) Broker-level dual approval for
 Critical actions now persists `ApprovalRequest.required_approval_count` plus
 per-approver `approval_decisions` and requires two distinct approver ids. Worker-local rate
 limiting exists for `line.message.send` and `line.audio.send`; `line.notification.send`
 and distributed quota coordination are still open. Container confinement (egress + OS sandbox),
 the execution adapters (e2e-verified — a model drove `apply_patch` through the
 governed chain), and the §18.2 approval layer (decision + lifecycle + two tiers +
-both web surfaces, see §10) are all done and verified this cycle.
+both web surfaces, see §9) are all done and verified this cycle.
 
 ### Dishonest to deny
 
@@ -165,13 +166,13 @@ broker governance" in this cycle.
 
 3. ~~Execution adapters (§18.1 MVP): repo-adapter, build-test-adapter.~~ **Implemented + e2e-verified 2026-06-13** — `execution-adapter-worker` (`repo.patch.apply` + `build.test.run`), 38 real-git unit assertions + a full podman stack test where a model drives `apply_patch` through the governed chain and the file is actually patched. Remaining: broker `--integration` HTTP coverage of the new routes.
 
-4. ~~Approval service + risk tiering (§18.2).~~ **Implemented + verified 2026-06-13** — see §10.
+4. ~~Approval service + risk tiering (§18.2).~~ **Implemented + verified 2026-06-13** — see §9.
 
 5. ~~Control-plane console (approval surface).~~ **Partially built 2026-06-13** — `line-admin.html` gained an approval queue tab; the broader operator console is still design-only.
 
 6. Custom seccomp profile for the agent; broker `--integration` coverage of adapter + approval routes; distributed/all-capability LINE send quotas.
 
-## 10. Governance approval system (§18.2) — implemented + verified 2026-06-13
+## 9. Governance approval system (§18.2) — implemented + verified 2026-06-13
 
 The risk-tiering + approval layer, built test-first this cycle on a written
 definition ([RiskClassificationAndApproval-2026-06-13.md](../designs/RiskClassificationAndApproval-2026-06-13.md),
@@ -187,9 +188,9 @@ definition ([RiskClassificationAndApproval-2026-06-13.md](../designs/RiskClassif
 
 - **Verified**: PolicyEngine 13 tests, approval lifecycle 25, link/notifier 13 — broker suite **192/192**, xUnit **343/343**, solution builds clean; a live broker smoke confirmed the endpoints serve and enforce auth (bad token → 401, admin without login → 401).
 
-- **Not done**: named operator account management for local-admin dual approvals (current approver ids are admin-session based), distributed/all-capability LINE send quotas, a full browser+LINE manual e2e, and the broader control-plane console.
+- **Not done**: distributed/all-capability LINE send quotas, a full browser+LINE manual e2e, and the broader control-plane console. (Named operator account management for local-admin dual approvals landed later — 2026-08-24, `9e877f3`; approver ids are now `local-admin:{OperatorId}`.)
 
-## 9. Bottom Line
+## 10. Bottom Line
 
 The platform converged three developers back onto a live main, and its central
 controlled-agent core now genuinely runs — including against ChatGPT. It is past
@@ -198,7 +199,7 @@ controlled autonomous system yet: custom seccomp, broader operator-console
 coverage, distributed/all-capability LINE send quotas, and deeper HTTP integration coverage are still
 ahead.
 
-## 10. Addendum 2026-06-16 — Component-library consolidation + site-replica e2e
+## 11. Addendum 2026-06-16 — Component-library consolidation + site-replica e2e
 
 The site-crawler generator's component vocabulary was a corpus-sampled "canned" schema
 (`HeroSection`, `NewsGrid`, …) masquerading as a designed library. It is now anchored to the

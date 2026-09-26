@@ -60,7 +60,7 @@ Strict mode 也會把 package 驗收失敗視為交付阻擋。呼叫端會收�
 
 - `components/manifest.json`
 
-- `README.md`
+- `README.html`
 
 - `index.html` 宣告 `#app` 並載入 `./runtime.js`
 

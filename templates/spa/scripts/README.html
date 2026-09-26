@@ -24,10 +24,18 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <p>This directory contains the CLI scripts used to generate projects from the SPA template.</p>
 <p>Current scripts include:</p>
 <ul>
-<li><code>spa-cli.js</code></li>
-<li><code>create-project.js</code></li>
-<li><code>generate-page.js</code></li>
-<li><code>generate-api.js</code></li>
+<li>
+<p><code>spa-cli.js</code></p>
+</li>
+<li>
+<p><code>create-project.js</code></p>
+</li>
+<li>
+<p><code>generate-page.js</code></p>
+</li>
+<li>
+<p><code>generate-api.js</code></p>
+</li>
 </ul>
 <h2>Scope</h2>
 <p>This CLI helps scaffold SPA-style projects from the template.</p>
@@ -48,14 +56,30 @@ node spa-cli.js api Order --fields &quot;CustomerId:int,Total:decimal,Status:str
 </code></pre>
 <p>Supported field aliases include:</p>
 <ul>
-<li><code>string</code></li>
-<li><code>int</code>, <code>integer</code></li>
-<li><code>long</code></li>
-<li><code>decimal</code></li>
-<li><code>float</code>, <code>double</code></li>
-<li><code>bool</code>, <code>boolean</code></li>
-<li><code>datetime</code>, <code>date</code></li>
-<li><code>guid</code></li>
+<li>
+<p><code>string</code></p>
+</li>
+<li>
+<p><code>int</code>, <code>integer</code></p>
+</li>
+<li>
+<p><code>long</code></p>
+</li>
+<li>
+<p><code>decimal</code></p>
+</li>
+<li>
+<p><code>float</code>, <code>double</code></p>
+</li>
+<li>
+<p><code>bool</code>, <code>boolean</code></p>
+</li>
+<li>
+<p><code>datetime</code>, <code>date</code></p>
+</li>
+<li>
+<p><code>guid</code></p>
+</li>
 </ul>
 <h3>Generate a feature</h3>
 <pre><code class="language-bash">node spa-cli.js feature Product
@@ -68,11 +92,23 @@ node spa-cli.js feature Product --fields &quot;Name:string,Price:decimal,Stock:i
 </code></pre>
 <h2>Important limitation</h2>
 <p>Generated output still needs manual integration.</p>
-<p>Typical follow-up work includes:</p>
+<p>By default <code>generate-api.js</code> tries to patch <code>backend/Program.cs</code> and
+<code>backend/Data/AppDbContext.cs</code> at <code>// --- BRICKS:* ---</code> markers, but those markers
+were removed from the template, so it only prints <code>Marker not found</code>. Pass
+<code>--no-patch</code> (also accepted by <code>spa-cli.js api</code> / <code>feature</code>) to get the service
+registration and endpoint code printed instead, then:</p>
 <ol>
-<li>update backend schema/bootstrap in <code>backend/Data/AppDbContext.cs</code></li>
-<li>update backend routing in <code>backend/Program.cs</code></li>
-<li>update frontend routing in <code>frontend/pages/routes.js</code></li>
+<li>
+<p>update backend schema/bootstrap in <code>backend/Data/AppDbContext.cs</code></p>
+</li>
+<li>
+<p>update backend routing in <code>backend/Program.cs</code></p>
+</li>
+<li>
+<p>frontend routes are auto-registered by <code>generate-page.js</code> in
+ <code>frontend/pages/generated/routes.generated.js</code> (pass <code>--no-register</code> to skip and
+ wire them yourself)</p>
+</li>
 </ol>
 <p>This CLI is a scaffold helper, not a full end-to-end product compiler.</p>
 <h2>Config file</h2>

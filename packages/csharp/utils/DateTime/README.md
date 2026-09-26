@@ -1,11 +1,13 @@
 # DateTime
 
+> ⚠ 參考程式碼：此目錄沒有 .csproj，未被任何專案編譯或引用，CI 也不建置它；以下說明未經建置驗證。
+
 日期時間工具類別 — 提供 Unix Timestamp 轉換、ISO 8601 處理、相對時間、期間計算、工作日等擴充方法。
 
 ## 初始化方式
 
 ```csharp
-using YourNamespace.Utils.DateTime;
+using Bricks4Agent.Utils.DateTime;
 // 靜態類別，直接以擴充方法呼叫
 ```
 
@@ -107,7 +109,7 @@ using YourNamespace.Utils.DateTime;
 ## 使用範例
 
 ```csharp
-using YourNamespace.Utils.DateTime;
+using Bricks4Agent.Utils.DateTime;
 
 // Unix Timestamp
 var now = System.DateTime.UtcNow;
@@ -129,7 +131,7 @@ var quarterEnd = now.EndOfQuarter();
 
 // 年齡
 var birthday = new System.DateTime(1990, 5, 15);
-int age = birthday.GetAge();  // 35
+int age = birthday.GetAge();  // 36（2026-05-15 之後）
 ```
 
 ## 依賴清單

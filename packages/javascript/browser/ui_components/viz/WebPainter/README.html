@@ -27,16 +27,30 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 </blockquote>
 <h2>Features</h2>
 <ul>
-<li><strong>多圖層管理</strong>：新增、刪除、隱藏、切換圖層。</li>
-<li><strong>豐富的繪圖工具</strong>：文字、畫筆（自由繪製）、矩形、圓形、線條、箭頭、打點標記。</li>
-<li><strong>物件編輯</strong>：選取移動、刪除、修改屬性（顏色、字型、線寬）。</li>
-<li><strong>歷史記錄</strong>：支援 Undo/Redo (Ctrl+Z / Ctrl+Y)。</li>
-<li><strong>剪貼簿</strong>：支援複製與貼上 (Ctrl+C / Ctrl+V)。</li>
-<li><strong>縮放功能</strong>：支援畫布縮放，並保持標註點位準確。</li>
-<li><strong>高度客製化</strong>：可透過參數決定要顯示哪些功能按鈕與面板。</li>
+<li>
+<p><strong>多圖層管理</strong>：新增、刪除、隱藏、切換圖層。</p>
+</li>
+<li>
+<p><strong>豐富的繪圖工具</strong>：文字、畫筆（自由繪製）、矩形、圓形、線條、箭頭（程式另支援打點標記 <code>marker</code>，但工具列未提供對應按鈕）。</p>
+</li>
+<li>
+<p><strong>物件編輯</strong>：選取移動、刪除；字型選單可套用到選取的文字，顏色與線寬設定只影響之後新增的圖形。</p>
+</li>
+<li>
+<p><strong>歷史記錄</strong>：支援 Undo/Redo (Ctrl+Z / Ctrl+Y)。</p>
+</li>
+<li>
+<p><strong>剪貼簿</strong>：支援複製與貼上 (Ctrl+C / Ctrl+V)。</p>
+</li>
+<li>
+<p><strong>縮放功能</strong>：支援畫布縮放，並保持標註點位準確。</p>
+</li>
+<li>
+<p><strong>高度客製化</strong>：可透過參數決定要顯示哪些功能按鈕與面板。</p>
+</li>
 </ul>
 <h2>Usage</h2>
-<pre><code class="language-javascript">import { WebPainter } from &quot;./components/viz/WebPainter/WebPainter.js&quot;;
+<pre><code class="language-javascript">import { WebPainter } from &quot;./WebPainter.js&quot;;
 
 // 初始化
 const painter = new WebPainter({
@@ -75,11 +89,21 @@ const painter = new WebPainter({
 </code></pre>
 <h2>Shortcuts</h2>
 <ul>
-<li><strong>Del</strong>: 刪除選中物件</li>
-<li><strong>Ctrl + Z</strong>: 復原 (Undo)</li>
-<li><strong>Ctrl + Y</strong> (or Ctrl + Shift + Z): 重做 (Redo)</li>
-<li><strong>Ctrl + C</strong>: 複製 (Copy)</li>
-<li><strong>Ctrl + V</strong>: 貼上 (Paste)</li>
+<li>
+<p><strong>Del</strong>: 刪除選中物件</p>
+</li>
+<li>
+<p><strong>Ctrl + Z</strong>: 復原 (Undo)</p>
+</li>
+<li>
+<p><strong>Ctrl + Y</strong> (or Ctrl + Shift + Z): 重做 (Redo)</p>
+</li>
+<li>
+<p><strong>Ctrl + C</strong>: 複製 (Copy)</p>
+</li>
+<li>
+<p><strong>Ctrl + V</strong>: 貼上 (Paste)</p>
+</li>
 </ul>
 </main>
 </body>

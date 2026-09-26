@@ -3,6 +3,15 @@
 Date: 2026-03-29
 Status: planning draft
 
+> **Implementation status (checked 2026-09-26)**
+>
+> - A first version was implemented in commit `75cf1be` as `packages/csharp/broker/Services/HighLevelSystemScaffoldService.cs`, invoked from `HighLevelCoordinator` after draft confirmation. `GenerateAndDeliverAsync` (`HighLevelSystemScaffoldService.cs:140-214`) runs requirements analysis → design planning → implementation → testing → packaging (zip) → delivery in a single pass.
+> - The 15-state model in §7 is not implemented. Progress is recorded as a free-form `phase` string (e.g. `requirements_analysis`, `design_planning`, `implementation`, `testing`, `packaging`, `delivery`) plus `status` (e.g. `started` / `completed` / `failed` / `partial` / `updated`) (`HighLevelSystemScaffoldService.cs:157-212`). Iteration exists only as pre-confirmation requirement refinement (`ApplyRequirementRefinement`, `HighLevelSystemScaffoldService.cs:62-84`); there is no post-test review/revision loop.
+> - `hlm.scaffold-spec.{channel}.{userId}` and `hlm.scaffold-iteration.{channel}.{userId}` are written as described. `hlm.scaffold-plan.*` (§8.2) is never written; the design plan is only a file, `docs/design-plan.md`, inside the generated project root (`HighLevelSystemScaffoldService.cs:421-456`).
+> - Progress documents carry an event suffix: `hlm.scaffold-progress.{channel}.{userId}.{eventId}`, one entry per event (`HighLevelSystemScaffoldService.cs:848-849`).
+> - Delivery mode is not selectable (§11.1): it is hard-coded to `shared_delegated` Google Drive (`HighLevelSystemScaffoldService.cs:192,199`). When the Drive upload fails, `LineArtifactDeliveryService` falls back to a signed broker download link.
+> - The broker download API that §11 / §11.2 list as missing now exists: `GET /api/v1/artifacts/download/{artifactId}` (`packages/csharp/broker/Endpoints/ArtifactDownloadEndpoints.cs:9`), and end users can browse their artifacts in the `/portal` user portal.
+
 ## 1. Goal
 
 Add a new high-level capability where the system can:

@@ -18,9 +18,13 @@
 
 ## 安裝
 
+本 repo 不發佈此套件（`dotnet add package AccountLock` 取得的若是 nuget.org 上的同名套件，也不是這份程式碼），請以專案參考（ProjectReference）引用，於 repo 根目錄執行：
+
 ```bash
-dotnet add package AccountLock
+dotnet add <你的專案>.csproj reference packages/csharp/security/AccountLock/AccountLock.csproj
 ```
+
+> 目前 repo 內沒有任何專案引用 `AccountLock.csproj`。
 
 ## 快速開始
 
@@ -172,6 +176,8 @@ var config = new AccountLockConfig
 
 ## API 端點
 
+> 以下端點定義在未建置的參考程式碼 `api/AccountLock/AccountLockController.cs`（沒有 .csproj，且無法編譯），repo 內沒有任何主機提供這些端點；本模組本身不含 Controller。
+
 ### 用戶端點
 
 | 方法 | 路徑 | 說明 |
@@ -313,21 +319,21 @@ HTTP 狀態碼：`423 Locked`
 var lockService = new AccountLockService(repository, config);
 
 // 訂閱鎖定事件
-lockService.OnAccountLocked += (lock) =>
+lockService.OnAccountLocked += (l) =>
 {
     // 發送通知、記錄日誌等
-    _notificationService.NotifyUserLocked(lock.UserId, lock.Reason);
-    _auditLog.LogAccountLocked(lock);
+    _notificationService.NotifyUserLocked(l.UserId, l.Reason);
+    _auditLog.LogAccountLocked(l);
 };
 
-lockService.OnAccountUnlocked += (lock) =>
+lockService.OnAccountUnlocked += (l) =>
 {
-    _notificationService.NotifyUserUnlocked(lock.UserId);
+    _notificationService.NotifyUserUnlocked(l.UserId);
 };
 
-lockService.OnIpLocked += (lock) =>
+lockService.OnIpLocked += (l) =>
 {
-    _alertService.SendSecurityAlert($"IP blocked: {lock.IpAddress}");
+    _alertService.SendSecurityAlert($"IP blocked: {l.IpAddress}");
 };
 ```
 
@@ -380,14 +386,14 @@ if (!rateLimitResult.IsAllowed)
 ### 與 AuditLog 模組整合
 
 ```csharp
-lockService.OnAccountLocked += (lock) =>
+lockService.OnAccountLocked += (l) =>
 {
     _securityLogService.LogAccountEvent(
         SecurityEventType.AccountLocked,
-        lock.UserId,
-        lock.Username,
-        lock.TriggerIpAddress,
-        $"Lock type: {lock.LockType}, Scope: {lock.Scope}, Duration: {lock.ExpiresAt}"
+        l.UserId,
+        l.Username,
+        l.TriggerIpAddress,
+        $"Lock type: {l.LockType}, Scope: {l.Scope}, Duration: {l.ExpiresAt}"
     );
 };
 ```
@@ -406,7 +412,7 @@ lockService.OnAccountLocked += (lock) =>
 
 ## 相依套件
 
-- `Microsoft.AspNetCore.Http.Abstractions` >= 2.2.0
+- 目標框架 `net10.0`，透過 `<FrameworkReference Include="Microsoft.AspNetCore.App" />` 取得 ASP.NET Core API（不使用 `Microsoft.AspNetCore.Http.Abstractions` NuGet 套件）
 
 ## 授權
 

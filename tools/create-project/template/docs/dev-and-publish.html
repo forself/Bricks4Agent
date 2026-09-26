@@ -35,7 +35,7 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <tbody>
 <tr>
 <td>開發</td>
-<td><strong>NTFS junction</strong> → <code>Bricks4Agent\packages\javascript\browser\{ui_components,page-generator}</code>(活腳手架)</td>
+<td>Windows <strong>NTFS junction</strong>／POSIX symlink → <code>Bricks4Agent\packages\javascript\browser\{ui_components,page-generator,custom_components}</code>(活腳手架)</td>
 <td><code>node scripts/dev-link.mjs</code></td>
 </tr>
 <tr>
@@ -73,7 +73,7 @@ node scripts/publish.mjs           # 發佈:dist\(快照+憑證+封閉驗證,違
 <pre><code>dist\
   index.html            # 轉導 src/frontend/
   lib\                  # 腳手架真快照(排除 node_modules、*.test.mjs、page-generator/examples)
-  lib\SNAPSHOT.json     # 來源憑證:Bricks4Agent tree/dirty、repository commit、專案 commit、UTC 時間、檔數/位元組
+  lib\SNAPSHOT.json     # 來源憑證:tree/dirty、commits、UTC、檔數/位元組，以及三個 library 的逐檔 SHA-256/content digest
   src\frontend\         # 應用(與 repo 同幾何 → import 原樣可用)
 </code></pre>
 <p>部署=任何靜態伺服器指向 dist(或作為後端的 wwwroot);進入點 <code>/src/frontend/index.html</code>。</p>
@@ -105,18 +105,35 @@ node scripts/publish.mjs           # 發佈:dist\(快照+憑證+封閉驗證,違
 </tbody>
 </table>
 <ul>
-<li><strong>複本模式 + lock</strong>：v2 lock 直接釘 Git tree object；只接受乾淨、已 commit 且可由目前 branch 到達的 B4A tree。淺層或 <code>--no-tags</code> clone 不需額外 tag/split commit。</li>
-<li><strong>publish 強制</strong>：lock 存在時，連結模式要求目前 tree==lock 且乾淨；複本模式要求 sync-state tree/source==lock。違者 fail；<code>--allow-drift</code> 已停用。</li>
-<li><strong>建案分流</strong>:<code>create-project.mjs</code> 預設連結(腳手架維護者);<code>--no-junction</code> 走複本並<strong>自動釘版</strong>(團隊成員/CI)。</li>
-<li><strong>機制升級</strong>:<code>node &lt;B4A&gt;/tools/create-project/upgrade-project.mjs --dest &lt;專案&gt; [--dry-run]</code>——只更新機制腳本、跳過 customized、印變更清單,git diff 審閱後 commit。</li>
+<li>
+<p><strong>複本模式 + lock</strong>：v2 lock 直接釘 Git tree object；只接受乾淨、已 commit 且可由目前 branch 到達的 B4A tree。淺層或 <code>--no-tags</code> clone 不需額外 tag/split commit。</p>
+</li>
+<li>
+<p><strong>publish 強制</strong>：lock 存在時，連結模式要求目前 tree==lock 且乾淨；複本模式要求 sync-state tree/source==lock。違者 fail；<code>--allow-drift</code> 已停用。</p>
+</li>
+<li>
+<p><strong>快照內容強制</strong>：publish 會把 <code>ui_components</code>、<code>page-generator</code>、<code>custom_components</code> 的逐檔 SHA-256 inventory 與總 digest 寫入 <code>SNAPSHOT.json</code>。B4A 維護端可執行 <code>npm run verify:consumer-snapshots -- --consumer-root &lt;consumer&gt;</code>，同時驗證來源 tree、dirty 狀態、content digest 與實際 bytes；任一漂移皆 fail。</p>
+</li>
+<li>
+<p><strong>建案分流</strong>:<code>create-project.mjs</code> 預設連結(腳手架維護者);<code>--no-junction</code> 走複本並<strong>自動釘版</strong>(團隊成員/CI)。</p>
+</li>
+<li>
+<p><strong>機制升級</strong>:<code>node &lt;B4A&gt;/tools/create-project/upgrade-project.mjs --dest &lt;專案&gt; [--dry-run]</code>——只更新機制腳本、跳過 customized、印變更清單,git diff 審閱後 commit。</p>
+</li>
 </ul>
 <h2>封閉性驗證(scripts\verify-sealed.mjs)</h2>
 <p>publish 內建、可單獨跑:<code>node scripts\verify-sealed.mjs dist</code>。逐檔靜態解析 JS(import/from/動態 import/new URL,先剝註解)、HTML(src/href)、CSS(@import/url()),斷言每個相對引用 (a) 不逃出 dist 根 (b) 目標存在;另擋:引用含 <code>packages/javascript/browser</code>|<code>Bricks4Agent</code>、根絕對路徑、JS bare 匯入。<code>${…}</code> 模板字串與 <code>node:</code>/http(s)/data: 協定略過。</p>
 <h2>陷阱備忘</h2>
 <ul>
-<li><code>lib/</code>、<code>dist/</code> 不入版控；可重現性靠 v2 tree lock 與 SNAPSHOT.json。</li>
-<li>PS 5.1 腳本一律英文註解(無 BOM UTF-8 中文會 parse 失敗);PS 內呼叫 git 走 <code>cmd /c … 2&gt;nul</code>(原生 stderr 轉錄陷阱)。</li>
-<li>別手改 <code>lib\</code> 內容(junction 模式下那就是腳手架本體!改元件回 Bricks4Agent repo 走正規流程)。</li>
+<li>
+<p><code>lib/</code>、<code>dist/</code> 不入版控；可重現性靠 v2 tree lock 與 SNAPSHOT.json。</p>
+</li>
+<li>
+<p>PS 5.1 腳本一律英文註解(無 BOM UTF-8 中文會 parse 失敗);PS 內呼叫 git 走 <code>cmd /c … 2&gt;nul</code>(原生 stderr 轉錄陷阱)。</p>
+</li>
+<li>
+<p>別手改 <code>lib\</code> 內容(junction 模式下那就是腳手架本體!改元件回 Bricks4Agent repo 走正規流程)。</p>
+</li>
 </ul>
 </main>
 </body>

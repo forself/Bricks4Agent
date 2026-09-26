@@ -1,5 +1,7 @@
 # ExceptionMiddleware - Global Exception Handling
 
+> ⚠ Reference code: this folder has no .csproj, is not compiled or referenced by any project, and is not built by CI; the content below is not build-verified.
+
 Global exception handling middleware for ASP.NET Core applications.
 
 ## Features
@@ -12,7 +14,7 @@ Global exception handling middleware for ASP.NET Core applications.
 
 - Consistent error response format
 
-- Environment-aware error details (development vs production)
+- Build-configuration-dependent error details: stack trace and inner-exception message only when compiled with `DEBUG` (`#if DEBUG`, a compile-time switch, not the hosting environment)
 
 - Automatic status code mapping
 
@@ -151,7 +153,7 @@ All exceptions are converted to consistent ApiResponse format:
 }
 ```
 
-In development environment (DEBUG mode), additional details are included:
+For every mapping marked "Include Details" below (400/404/409/500), the raw `exception.Message` is always added to `errors`, in Release builds too; e.g. an unhandled `NullReferenceException` returns its message to the client. Only builds compiled with `DEBUG` (`#if DEBUG`, compile-time, not `ASPNETCORE_ENVIRONMENT`) additionally include the stack trace and inner-exception message:
 
 ```json
 {
@@ -183,6 +185,8 @@ In development environment (DEBUG mode), additional details are included:
 | InvalidOperationException | 400 Bad Request | Yes |
 | UnauthorizedAccessException | 401 Unauthorized | No |
 | All Others | 500 Internal Server Error | Yes |
+
+"Yes" means `exception.Message` is sent to the client in every build configuration; for the built-in exception rows the top-level `message` is generic but `errors` still carries the original exception text.
 
 ## Logging
 
@@ -232,7 +236,7 @@ private (HttpStatusCode statusCode, string message, bool includeDetails) GetErro
 
 - ApiResponse component
 
-- .NET 6.0 or higher
+- .NET 10 (`net10.0`, the repo's target framework)
 
 ## Benefits
 
@@ -244,8 +248,6 @@ private (HttpStatusCode statusCode, string message, bool includeDetails) GetErro
 
 4. **Type Safety** - Custom exception types for different scenarios
 
-5. **Development-Friendly** - Detailed error info in development mode
+5. **Debug-Build Details** - Stack trace and inner exception only in `DEBUG` builds
 
-6. **Production-Safe** - Minimal error exposure in production
-
-7. **Request Tracking** - Trace ID for debugging
+6. **Request Tracking** - Trace ID for debugging

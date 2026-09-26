@@ -140,7 +140,7 @@ mock stack 已實測:套上述 hardening 後 agent 仍能完成 governed `read_f
 | 能力 / route | 行為 |
 |------|------|
 | `repo.patch.apply` / `execution.repo.apply_patch` | 驗 patch(非自由 shell)、驗 base_commit==HEAD、限 `scope.allowed_paths`、`git apply --check` 後套用、存 diff 證據、支援 idempotency_key(重放回前次結果不重套) |
-| `build.test.run` / `execution.build_test.run` | 只跑白名單命令(npm test / npm run build / dotnet test / pytest)、不經 shell、收 stdout/stderr+exit、截斷大輸出、存 log 證據 |
+| `build.test.run` / `execution.build_test.run` | 只跑白名單命令(npm test / npm run build / dotnet test / dotnet build / pytest;預設見 `packages/csharp/workers/execution-adapter-worker/Handlers/BuildTestRunHandler.cs:23-26`,可由 `Worker:BuildTest:Whitelist` 覆寫)、不經 shell、收 stdout/stderr+exit、截斷大輸出、存 log 證據 |
 
 adapter 是**受信任執行節點**:套 §13.2 OS 加固(非 root uid 10004、read-only rootfs、cap-drop ALL、no-new-privileges、無 docker socket),但與 agent 不同 —— 可寫 workspace(它就是經控制平面中介的寫入路徑)、有出口(build/test restore)。
 
@@ -163,10 +163,12 @@ compose 中 adapter 服務以 **profile 隔離**(`--profile adapters`),預設不
 
 尚未做:broker `--integration` HTTP 對新 route 的覆蓋(stack 測試已涵蓋真實 dispatch 路徑)。
 
-## 10. 範圍界線(尚未做,對照規格 §13/§18)
+## 10. 範圍界線(對照規格 §13/§18;2026-09-26 核對)
+
+**已實作**:
+- §18.2 審批服務與風險分級:`PolicyEngine` 依 `RiskLevel` / `approval_policy` 裁決 —— High/Critical 需管理員層審批(Critical 需 2 票)、`auto_if_task_scope_match` 逸出 scope 轉管理員審批(`packages/csharp/broker-core/Services/PolicyEngine.cs:68-117`);`RequireApproval` 時 broker 建審批請求並擱置執行(`packages/csharp/broker-core/Services/BrokerService.cs:256-280`)。放行端點:使用者層 `/api/v1/user/approvals`(`packages/csharp/broker/Endpoints/UserApprovalEndpoints.cs`)、管理員層 `/api/v1/local-admin/approvals`(`packages/csharp/broker/Endpoints/LocalAdminEndpoints.cs:933-953`)。
 
 **尚未實作**:
-- §18.2 審批服務、風險分級(高風險 adapter 動作走人工放行)
 - agent 客製 seccomp profile(目前用 runtime 預設)
 
-這些是後續階段。重點:容器「關得住」已做到;agent「能做什麼、危險動作怎麼放行」尚未做。
+重點:容器「關得住」已做到;危險動作的人工放行也已接上,剩客製 seccomp。

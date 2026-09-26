@@ -4,6 +4,14 @@ Date: 2026-04-07
 
 Status: draft for review
 
+> **實作現況（2026-09-26 核對）**
+>
+> - registration base string 實際順序為 `WORKER_REGISTER`、`worker_type`、`key_id`、`worker_id`、`SHA-256(capabilities 以 \n 串接，未排序)`、`max_concurrent`、`timestamp`、`nonce`（`packages/csharp/broker-core/Services/WorkerIdentityAuthService.cs:194-204`），與下文 `<sorted_capabilities_csv>` 版本不同。
+> - `worker_type` 與 capability allowlist 的相容性檢查未實作；`ValidateWorkerRegister` 只驗 credential、timestamp、nonce、signature（`packages/csharp/broker-core/Services/WorkerIdentityAuthService.cs:103-147`）。
+> - 設定鍵：broker 端為 `WorkerAuth:*`（`packages/csharp/broker/Program.cs:211`）；worker 端為 `Worker:Auth:WorkerType/KeyId/SharedSecret`，line-worker 另以 `Broker:WorkerAuth:*` 為 fallback（`packages/csharp/workers/line-worker/Program.cs:53-61`），而非下文的 `WorkerAuth:KeyId` 等。
+> - HTTP route 權限不是寫死的靜態規則，而是讀 `WorkerAuth:HttpRoutes`（`packages/csharp/broker-core/Services/WorkerIdentityAuthService.cs:149-162`；預設值見 `packages/csharp/broker/appsettings.json:261`）。
+> - 預設 `WorkerAuth:Enforce=false`（`packages/csharp/broker/appsettings.json:239`），此時 HTTP 與 registration 驗證一律放行。
+
 ## 摘要
 
 目前 broker 對不同 worker 類型採用了不一致的信任模型：

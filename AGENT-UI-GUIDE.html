@@ -32,10 +32,18 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <hr>
 <h2>0. 三條鐵則（違反即失敗）</h2>
 <ol>
-<li><strong>零第三方 runtime</strong>：不得 <code>import</code> 任何 npm UI/圖表/地圖/日期/富文本套件。全站只用本元件庫 + 原生瀏覽器 API。唯一例外是 <code>LeafletMap</code>（Leaflet 1.9.4 已 <strong>vendored</strong> 於 <code>ui_components/vendor/leaflet/</code>，預設本地載入、零外網、嚴格 CSP 可用；本地缺檔才退 CDN 備援）。</li>
-<li><strong>樣式只用 theme token</strong>：顏色/圓角/陰影/字體一律用 <code>var(--cl-*)</code> CSS 變數，禁止寫死色碼。換膚靠文件根的 <code>[data-theme="dark"]</code>，元件不寫 media query。</li>
-<li><strong>輸出一律跳脫</strong>：任何把資料塞進 HTML 的地方用 <code>escapeHtml()</code>；要放原始 HTML 必須顯式 <code>raw()</code>。</li>
-<li><strong>嚴格 CSP + SVG 禁用（機器執法）</strong>：禁 <code>&lt;style&gt;</code> 注入、禁 innerHTML 模板內 <code>style=</code>/<code>on*=</code>、禁 eval/<code>javascript:</code>（樣式走 CSSOM <code>cssText</code>/<code>setProperty</code> 或同目錄 <code>.css</code> + 同源 <code>&lt;link&gt;</code>）；<strong>視覺一律 Canvas、禁新增 SVG</strong>（既有存量按 <code>tools/scripts/svg-baseline.json</code> 棘輪只減不增；圖表基底＝<code>viz/CanvasChart.js</code>，主題響應靠 <code>utils/theme-bus.js</code>，Path2D 可直接吃 SVG path 字串）。守門員：<code>node tools/scripts/audit-csp.mjs</code>（六類 CSP 全零 + G 類 SVG 棘輪）、<code>node tools/scripts/validate-ui-library.mjs</code>（風格 token 稽核：元件內禁散裝 hex，色回退唯一來源＝theme-bus 的 <code>FALLBACK_PAINT</code>）。合規宣稱只認機器判定。</li>
+<li>
+<p><strong>零第三方 runtime</strong>：不得 <code>import</code> 任何 npm UI/圖表/地圖/日期/富文本套件。全站只用本元件庫 + 原生瀏覽器 API。唯一例外是 <code>ui_components/vendor/</code> 內 <strong>vendored</strong> 的 Leaflet 1.9.4（<code>vendor/leaflet/</code>，由 <code>LeafletMap</code> 載入）與 html2canvas（<code>vendor/html2canvas/</code>，由 <code>OSMMapEditor</code> 截圖時載入）：兩者都預設本地載入、零外網、嚴格 CSP 可用；本地缺檔才退 CDN 備援。</p>
+</li>
+<li>
+<p><strong>樣式只用 theme token</strong>：顏色/圓角/陰影/字體一律用 <code>var(--cl-*)</code> CSS 變數，禁止寫死色碼。換膚靠文件根的 <code>[data-theme="dark"]</code>，元件不寫 media query。</p>
+</li>
+<li>
+<p><strong>輸出一律跳脫</strong>：任何把資料塞進 HTML 的地方用 <code>escapeHtml()</code>；要放原始 HTML 必須顯式呼叫 <code>raw()</code>。<code>raw()</code> 產出的標記帶有 <code>Symbol.for('bricks4agent.rawHtml')</code> 品牌鍵，<code>isRawHtml()</code> 只認這個自身屬性：手寫或 <code>JSON.parse</code> 來的 <code>{ __html: '…' }</code> <strong>不再是</strong> opt-in（會退回跳脫或 <code>sanitizeHTML()</code>），API 回應因此無法偽造授權。<code>__html</code> 仍保留在標記上供舊讀取端取值，但不具授權效力。</p>
+</li>
+<li>
+<p><strong>嚴格 CSP + SVG 禁用（機器執法）</strong>：禁 <code>&lt;style&gt;</code> 注入、禁 innerHTML 模板內 <code>style=</code>/<code>on*=</code>、禁 eval/<code>javascript:</code>（樣式走 CSSOM <code>cssText</code>/<code>setProperty</code> 或同目錄 <code>.css</code> + 同源 <code>&lt;link&gt;</code>）；<strong>視覺一律 Canvas、禁用 SVG</strong>（<code>tools/scripts/svg-baseline.json</code> 現為空的盤點快照，不能豁免任何命中；圖表基底＝<code>viz/CanvasChart.js</code>，主題響應靠 <code>utils/theme-bus.js</code>，Path2D 可直接吃 SVG path 字串）。守門員：<code>node tools/scripts/audit-csp.mjs</code>（A–F 與 H–J 九類 CSP 全零 + G 類 SVG 硬零）、<code>node tools/scripts/validate-ui-library.mjs</code>（風格 token 稽核：元件內禁散裝 hex，色回退唯一來源＝theme-bus 的 <code>FALLBACK_PAINT</code>）。合規宣稱只認機器判定。</p>
+</li>
 </ol>
 <hr>
 <h2>1. 唯一的匯入入口</h2>
@@ -113,25 +121,52 @@ c.destroy();          // 卸載並移除 DOM
 <blockquote>
 <p>⚠️ 元件建構子的 <code>options</code> 欄位<strong>各不相同</strong>。動手用某元件前，先開它的原始碼看 <code>constructor(options = {...})</code> 的預設物件，那就是完整可用參數表。例如 <a href="packages/javascript/browser/ui_components/layout/DataTable/DataTable.js">DataTable.js</a> 支援三種 columns 格式與三種呼叫簽章。</p>
 </blockquote>
+<p><code>destroy()</code> 是契約的必要項而非選配：每個元件（含 <code>viz/MapEditor</code>、<code>viz/MapEditorV2</code> 這類重量級畫布元件）都要能被卸載乾淨，換頁不留 DOM／監聽／計時器。</p>
+<p><strong>對話框</strong>：<code>ModalPanel.confirm/alert/prompt</code> 這三個捷徑帶 <code>destroyOnClose: true</code>，關閉後（延後一個 microtask，讓 <code>onClose</code> 有機會否決關閉）自行 <code>destroy()</code>，呼叫端不必也不該再持有它；已銷毀的面板再 <code>open()</code>/<code>mount()</code> 只會 warn。直接 <code>new ModalPanel</code> 預設 <code>destroyOnClose: false</code>，可 <code>close()</code> 後重複 <code>open()</code>，但生命週期由你負責——這是「越用越慢」的常見來源。兩邊都可用 options 明示覆寫。</p>
 <h3>用字串名動態建立（重製時很常用）</h3>
 <pre><code class="language-js">import { ComponentFactory } from '.../ui_components/index.js';
 const dt = ComponentFactory.create('DataTable', { columns, data });   // 查不到回傳 null 並 warn
 ComponentFactory.register('MyNewThing', MyNewThingClass);             // 註冊新元件
 </code></pre>
+<p><code>ComponentFactory</code> 是 <strong>eager</strong> 版：import 它等於把整套元件庫拉進 bundle。若只需要定義中點名的那幾個元件，改用同介面的 <a href="packages/javascript/browser/ui_components/binding/LazyComponentFactory.js">LazyComponentFactory</a>（<code>import { LazyComponentFactory } from '.../ui_components/binding/LazyComponentFactory.js'</code>，走此直接路徑才有省載入的效果）：</p>
+<pre><code class="language-js">await LazyComponentFactory.preload(['DataTable', 'BarChart']);        // 先載入，之後 create() 維持同步
+const dt = LazyComponentFactory.create('DataTable', { columns, data });
+</code></pre>
+<p>工具頁（<code>DynamicToolRenderer</code>）預設就是它，<code>preload()</code> 在 <code>init()</code> 內自動執行；名稱不在延遲註冊表時會回退到 eager <code>ComponentFactory</code> 的即時 registry，<code>ComponentFactory.register()</code> 註冊的元件照樣看得到。</p>
 <hr>
 <h2>3. 元件清單（116 個，權威來源＝catalog）</h2>
 <p><code>*</code> = <code>generator.usable=false</code>（<code>manual_only</code>：不能靠生成器欄位自動映射，需<strong>手動組合</strong>；仍可正常 <code>new</code> 使用）。</p>
 <ul>
-<li><strong>form (18)</strong>：<code>BatchUploader, Checkbox, DatePicker, Dropdown, FormField*, MultiSelectDropdown, NumberInput, Radio, SearchForm*, Slider, TextArea, TextInput, TimePicker, ToggleSwitch</code> + 0626 併入:<code>CommandComposer*, Form*, Rating*, TagInput*</code>(Textarea 已併入 TextArea,單一實作雙名稱)</li>
-<li><strong>common (40)</strong>：<code>ActionButton*, AuthButton*, Badge*, BasicButton, Breadcrumb*, ButtonGroup, ColorPicker, Divider*, DownloadButton*, EditorButton, FeatureCard*, Icon*, ImageViewer, LoadingSpinner*, Notification*, Pagination*, PhotoCard*, Progress*, SimpleDialog*, SortButton*, Tag*, Tooltip*, TreeList*, UploadButton*</code> + 0626 併入的 atoms/composites:<code>Alert*, CardGrid*, CodeBlock*, DescriptionList*, DropdownMenu*, EmptyState*, FilterBar*, Heading*, Link*, List*, MediaPlayer*, ResultList*, Skeleton*, StatGrid*, StepIndicator*, Text*</code></li>
-<li><strong>layout (13)</strong>：<code>DataTable*, DocumentWall*, FormRow*, FunctionMenu*, InfoPanel*, PanelManager*, PhotoWall*, SideMenu*, Stepper*, TabContainer*, WorkflowPanel*, EditableTable*, FormDesigner</code>（12 欄表單設計畫布；拖拉、縮放、換元件、改欄位）</li>
-<li><strong>input (10, 複合輸入)</strong>：<code>AddressInput, AddressListInput, ChainedInput, DateTimeInput, ListInput, OrganizationInput, PersonInfoList, PhoneListInput, SocialMediaList, StudentInput</code></li>
-<li><strong>viz (23)</strong>：<code>BarChart*, CanvasMap*, ClusterGraph*, DrawingBoard, FlameChart*, HeatmapChart*, HierarchyChart*, LeafletMap*, LineChart*, MapEditor*, MapEditorV2*, OrgChart*, OSMMapEditor*, PieChart*, RelationChart*, RoseChart*, SankeyChart*, ScatterChart*, Sparkline*, SunburstChart*, TGOSMapEditor*, TimelineChart*, WebPainter</code>（全數 Canvas 渲染；共同基底 <code>viz/CanvasChart.js</code> 非目錄元件、不在 catalog。舊 SVG 基底 BaseChart 已刪除）</li>
-<li><strong>social (5)</strong>：<code>Avatar*, ConnectionCard*, FeedCard*, StatCard*, Timeline*</code></li>
-<li><strong>editor (1)</strong>:<code>WebTextEditor</code></li>
-<li><strong>sections (4,0626 併入)</strong>:<code>BannerSection*, ContentSection*, PageFooter*, PageHeader*</code>(頁首/頁尾/橫幅/內容區段複合)</li>
-<li><strong>data (1)</strong>:<code>RegionMap*</code>(台灣著色地圖,Canvas/Path2D)</li>
-<li><strong>analytics (1)</strong>:<code>DataExplorer*</code>(統計探索複合件:繫結表單/資料 → ChartSpec → 聚合引擎 → 8 種圖型 2D~4D + 聚合表/明細分頁/CSV/PNG 匯出;spec 白名單 fail-closed)</li>
+<li>
+<p><strong>form (18)</strong>：<code>BatchUploader, Checkbox, DatePicker, Dropdown, FormField*, MultiSelectDropdown, NumberInput, Radio, SearchForm*, Slider, TextArea, TextInput, TimePicker, ToggleSwitch</code> + 0626 併入:<code>CommandComposer*, Form*, Rating*, TagInput*</code>(Textarea 已併入 TextArea,單一實作雙名稱)</p>
+</li>
+<li>
+<p><strong>common (40)</strong>：<code>ActionButton*, AuthButton*, Badge*, BasicButton, Breadcrumb*, ButtonGroup, ColorPicker, Divider*, DownloadButton*, EditorButton, FeatureCard*, Icon*, ImageViewer, LoadingSpinner*, Notification*, Pagination*, PhotoCard*, Progress*, SimpleDialog*, SortButton*, Tag*, Tooltip*, TreeList*, UploadButton*</code> + 0626 併入的 atoms/composites:<code>Alert*, CardGrid*, CodeBlock*, DescriptionList*, DropdownMenu*, EmptyState*, FilterBar*, Heading*, Link*, List*, MediaPlayer*, ResultList*, Skeleton*, StatGrid*, StepIndicator*, Text*</code></p>
+</li>
+<li>
+<p><strong>layout (13)</strong>：<code>DataTable*, DocumentWall*, FormRow*, FunctionMenu*, InfoPanel*, PanelManager*, PhotoWall*, SideMenu*, Stepper*, TabContainer*, WorkflowPanel*, EditableTable*, FormDesigner</code>（12 欄表單設計畫布；拖拉、縮放、換元件、改欄位）</p>
+</li>
+<li>
+<p><strong>input (10, 複合輸入)</strong>：<code>AddressInput, AddressListInput, ChainedInput, DateTimeInput, ListInput, OrganizationInput, PersonInfoList, PhoneListInput, SocialMediaList, StudentInput</code></p>
+</li>
+<li>
+<p><strong>viz (23)</strong>：<code>BarChart*, CanvasMap*, ClusterGraph*, DrawingBoard, FlameChart*, HeatmapChart*, HierarchyChart*, LeafletMap*, LineChart*, MapEditor*, MapEditorV2*, OrgChart*, OSMMapEditor*, PieChart*, RelationChart*, RoseChart*, SankeyChart*, ScatterChart*, Sparkline*, SunburstChart*, TGOSMapEditor*, TimelineChart*, WebPainter</code>（全數 Canvas 渲染；共同基底 <code>viz/CanvasChart.js</code> 非目錄元件、不在 catalog。舊 SVG 基底 BaseChart 已刪除）</p>
+</li>
+<li>
+<p><strong>social (5)</strong>：<code>Avatar*, ConnectionCard*, FeedCard*, StatCard*, Timeline*</code></p>
+</li>
+<li>
+<p><strong>editor (1)</strong>:<code>WebTextEditor</code></p>
+</li>
+<li>
+<p><strong>sections (4,0626 併入)</strong>:<code>BannerSection*, ContentSection*, PageFooter*, PageHeader*</code>(頁首/頁尾/橫幅/內容區段複合)</p>
+</li>
+<li>
+<p><strong>data (1)</strong>:<code>RegionMap*</code>(台灣著色地圖,Canvas/Path2D)</p>
+</li>
+<li>
+<p><strong>analytics (1)</strong>:<code>DataExplorer*</code>(統計探索複合件:繫結表單/資料 → ChartSpec → 聚合引擎 → 8 種圖型 2D~4D + 聚合表/明細分頁/CSV/PNG 匯出;spec 白名單 fail-closed)</p>
+</li>
 </ul>
 <blockquote>
 <p>想查某元件能不能被生成器直接吃、支援哪些 field type、可綁哪些事件/動作 → 查它在 catalog 的 <code>generator</code> / <code>binding</code> 區塊，或它資料夾內的 <code>*.manifest.json</code>。</p>
@@ -155,8 +190,9 @@ chart.mount('#chart-area');
 <pre><code class="language-js">import { DynamicPageRenderer } from '.../page-generator/index.js';
 const renderer = new DynamicPageRenderer({
   definition: pageDefinition,          // 見 §4 方式 C 的 PageDefinition 形狀
-  mode: 'form',                        // 'form' | 'detail' | 'list'
+  mode: 'form',                        // 'form' | 'detail' | 'list' | 'tool'
   data: null,                          // 編輯/詳情時帶入資料物件
+  lazyTabs: true,                      // detail 模式分頁延後產生內容，預設 true
   onSave: (values) =&gt; {...}, onSearch: (q) =&gt; {...}, onEdit: (row) =&gt; {...},
 });
 await renderer.init();
@@ -164,13 +200,17 @@ renderer.mount('#app');
 // await renderer.switchMode('list', data)  // 切換模式（會重建並重掛）
 </code></pre>
 <p>底層：<code>FieldResolver</code>（34 種 field type → 元件實例）＋ <code>TriggerEngine</code>（8 種動作 clear/setValue/show/hide/setReadonly/setRequired/reload/reloadOptions 做欄位連動）。</p>
+<p><strong><code>lazyTabs</code>（detail 模式）預設 <code>true</code></strong>：<code>DynamicPageRenderer</code>／<code>DynamicDetailRenderer</code> 只立即建立分頁面板元素，內容等該分頁首次啟用才產生，多分頁詳情頁不必在開頁時就把全部子表／附件／圖表建出來。因此<strong>別假設未啟用分頁裡的元件已存在</strong>（測試或截圖前要先切過去）。要回到建構時就產生全部內容，明確傳 <code>lazyTabs: false</code>。未產生內容的面板會帶 <code>data-tab-pending="true"</code>，填充後移除——檢視 DOM 時可據此分辨「尚未啟用」與「定義有誤」。</p>
 <h3>方式 C：靜態產碼（把 JSON 定義落地成 <code>.js</code> 頁面檔）</h3>
 <p>適合要進版控、成為原始碼的頁面。</p>
 <pre><code class="language-js">import { PageGenerator } from '.../page-generator/index.js';
 const { code, errors } = new PageGenerator().generate(pageDefinition);
 // errors 為空陣列才算成功；code 是一個完整的 BasePage 子類別原始碼字串
 </code></pre>
-<p>或用 CLI：<code>node tools/page-gen.js --def page.json --mode static --output ./out/</code>（<code>--list-types</code> 看支援型別，<code>--validate</code> 只驗證）。</p>
+<p>或用 CLI：<code>node tools/page-gen.js --def page.json --mode static --output ./out/</code>（<code>--list-types</code> 看支援型別，<code>--validate</code> 只驗證）。CLI 的輸入須為 page-gen 格式 <code>{ page: {...}, fields: [{ fieldName, fieldType, ... }] }</code> 或 DefinitionTemplate，直接餵下方的 PageDefinition 形狀會被拒（<code>缺少 page 區塊</code>）；<code>--list-types</code> 列出 34 種，不含 <code>rocDate</code>、<code>slider</code>、<code>memo</code>。輸入若是 DefinitionTemplate（多頁定義），可用 <code>--page &lt;id&gt;</code> 取單頁，或用 <code>--pages &lt;id,id,...&gt;</code> / <code>--all</code> 在<strong>同一個 process 內</strong>批次產出（舊做法是每頁開一個 process），批次模式輸出彙總 JSON <code>{ success, results: [{ pageId, files }], errors? }</code>，且會先驗證全部選取頁再開始生成：</p>
+<pre><code class="language-bash">node tools/page-gen.js --def site-definition.json --pages products-list,orders-form --mode static --output ./out/
+node tools/page-gen.js --def site-definition.json --all --mode static --output ./out/
+</code></pre>
 <p><strong>PageDefinition 形狀</strong>（見 <a href="packages/javascript/browser/page-generator/PageDefinition.js">PageDefinition.js</a>）：</p>
 <pre><code class="language-jsonc">{
   &quot;name&quot;: &quot;EmployeePage&quot;,           // PascalCase，靜態格式以 Page 結尾
@@ -180,17 +220,38 @@ const { code, errors } = new PageGenerator().generate(pageDefinition);
       &quot;validation&quot;: { &quot;maxLength&quot;: 50 } }
   ],
   &quot;api&quot;: { &quot;list&quot;: &quot;/api/employee&quot;, &quot;get&quot;: &quot;...&quot;, &quot;create&quot;: &quot;...&quot;, &quot;update&quot;: &quot;...&quot;, &quot;delete&quot;: &quot;...&quot; },
-  &quot;behaviors&quot;: { &quot;fieldTriggers&quot;: { &quot;city&quot;: [{ &quot;target&quot;: &quot;district&quot;, &quot;action&quot;: &quot;reloadOptions&quot; }] } },
+  &quot;behaviors&quot;: { &quot;onSave&quot;: &quot;navigateToList&quot;, &quot;fieldTriggers&quot;: { &quot;city&quot;: &quot;reloadDistricts&quot; } },
   &quot;styles&quot;: { &quot;layout&quot;: &quot;single&quot; }
 }
 </code></pre>
+<blockquote>
+<p><code>behaviors.onInit/onSave/onDelete</code> 與 <code>behaviors.fieldTriggers[欄位名]</code> 的值是<strong>方法名字串</strong>（生成器會產出對應的 <code>_方法名()</code> stub）。欄位層級的動作清單 <code>[{ target, action }]</code> 是 <code>field.triggers</code> 的形狀，不要放進 <code>behaviors.fieldTriggers</code>。</p>
+</blockquote>
+<p><strong>識別字限制（會被生成器擋下）</strong>：<code>definition.name</code>、<code>field.name</code> 與上述 <code>behaviors.*</code> 的值都是直接寫進生成檔的<strong>裸 JavaScript 識別字</strong>，無法跳脫，因此在產碼前就會驗證：</p>
+<ul>
+<li>
+<p>必須是合法的 JS <code>IdentifierName</code>（依 Unicode <code>ID_Start</code>/<code>ID_Continue</code>，所以 <code>姓名</code>、<code>項目1</code> 都合法；<code>a-b</code>、<code>2col</code>、含空白或引號的名稱不合法）。</p>
+</li>
+<li>
+<p>保留字只在「繫結位置」被擋（<code>definition.name</code> → class 名稱／import 繫結）；欄位名／行為名輸出在成員存取與加前綴的方法名上，保留字在那裡合法。</p>
+</li>
+<li>
+<p>不合法時走既有契約回報：<code>generate()</code> 回傳 <code>{ code: null, errors: [...] }</code>，不會產出無法剖析或可注入的程式碼。<strong>產碼後一律先檢查 <code>errors</code> 是否為空</strong>。</p>
+</li>
+</ul>
 <hr>
 <h2>5. 應用外殼（多頁 App 用這個，取代 react-router / redux）</h2>
 <p>生成/重製的 SPA 跑在 <a href="templates/spa/frontend/core">templates/spa/frontend/core</a> 上：</p>
 <ul>
-<li><strong><code>BasePage</code></strong>：頁面基底。覆寫 <code>template()</code> 回傳 HTML 字串、<code>events()</code> 回傳事件委派表 <code>{ 'click .btn': 'onClick' }</code>、生命週期 <code>onInit()/onMounted()/onDestroy()</code>。<code>this.data</code> 是 reactive Proxy（改值自動重繪）。內建 <code>esc()/escAttr()</code>、<code>navigate()</code>、<code>showMessage()</code>、<code>confirm()</code>。</li>
-<li><strong><code>Router</code></strong>：hash/history 模式、<code>:param</code> 動態路由、<code>beforeEach/afterEach</code> 守衛。取代 react-router。</li>
-<li><strong><code>Store</code></strong>：<code>get/set/update/subscribe</code>、dot-notation、可選 localStorage 持久化。取代 redux/zustand。</li>
+<li>
+<p><strong><code>BasePage</code></strong>：頁面基底。覆寫 <code>template()</code> 回傳 HTML 字串、<code>events()</code> 回傳事件委派表 <code>{ 'click .btn': 'onClick' }</code>、生命週期 <code>onInit()/onMounted()/onDestroy()</code>。<code>this.data</code> 是 reactive Proxy（改值自動重繪）。內建 <code>esc()/escAttr()</code>、<code>navigate()</code>、<code>showMessage()</code>、<code>confirm()</code>。</p>
+</li>
+<li>
+<p><strong><code>Router</code></strong>：hash/history 模式、<code>:param</code> 動態路由、<code>beforeEach/afterEach</code> 守衛。取代 react-router。</p>
+</li>
+<li>
+<p><strong><code>Store</code></strong>：<code>get/set/update/subscribe</code>、dot-notation、可選 localStorage 持久化。取代 redux/zustand。</p>
+</li>
 </ul>
 <p>一鍵產全端 CRUD（前端頁 + C# 後端 Model/Service/API + 自動更新 routes）：</p>
 <pre><code class="language-bash">node templates/spa/scripts/spa-cli.js feature Article --fields &quot;Title:string,Content:text,IsPublic:bool&quot;
@@ -260,7 +321,7 @@ const { code, errors } = new PageGenerator().generate(pageDefinition);
 </tr>
 <tr>
 <td>FontAwesome / MUI icons</td>
-<td><code>common/Icon</code>(內建 104 個圖示,可 <code>Icon.register()</code> 擴充;現為 SVG 存量、波 3 收斂為 Canvas/Path2D)</td>
+<td><code>common/Icon</code>(內建 104 個圖示,可 <code>Icon.register()</code> 擴充;已收斂為 Canvas/Path2D,無 SVG)</td>
 </tr>
 <tr>
 <td>antd Steps / react-stepzilla</td>
@@ -302,13 +363,27 @@ const { code, errors } = new PageGenerator().generate(pageDefinition);
 <h3>8.1 元件實作契約</h3>
 <p>在 <code>ui_components/&lt;category&gt;/&lt;Name&gt;/</code> 建立：</p>
 <ul>
-<li><strong><code>&lt;Name&gt;.js</code></strong>：<code>export class &lt;Name&gt; { constructor(options={}){...} mount(c){...return this} destroy(){...} }</code>。</li>
-<li>具值元件請實作 <code>getValue/setValue/setDisabled/clear</code>（＋表單類的 <code>setError/clearError</code>）。</li>
-<li>內部狀態建議走 <code>createComponentState</code>（與既有元件一致）。</li>
-<li>樣式只用 <code>var(--cl-*)</code>；輸出用 <code>escapeHtml</code>/<code>raw</code>（<code>import ... from '../../utils/security.js'</code>）。</li>
-<li>文案走 i18n：<code>import Locale from '../../i18n/index.js'</code>。</li>
-<li><strong><code>index.js</code></strong>：<code>export { &lt;Name&gt; } from './&lt;Name&gt;.js';</code></li>
-<li><strong><code>&lt;Name&gt;.manifest.json</code></strong>：機器可讀 metadata（見 8.2）。</li>
+<li>
+<p><strong><code>&lt;Name&gt;.js</code></strong>：<code>export class &lt;Name&gt; { constructor(options={}){...} mount(c){...return this} destroy(){...} }</code>。</p>
+</li>
+<li>
+<p>具值元件請實作 <code>getValue/setValue/setDisabled/clear</code>（＋表單類的 <code>setError/clearError</code>）。</p>
+</li>
+<li>
+<p>內部狀態建議走 <code>createComponentState</code>（與既有元件一致）。</p>
+</li>
+<li>
+<p>樣式只用 <code>var(--cl-*)</code>；輸出用 <code>escapeHtml</code>/<code>raw</code>（<code>import ... from '../../utils/security.js'</code>）。</p>
+</li>
+<li>
+<p>文案走 i18n：<code>import Locale from '../../i18n/index.js'</code>。</p>
+</li>
+<li>
+<p><strong><code>index.js</code></strong>：<code>export { &lt;Name&gt; } from './&lt;Name&gt;.js';</code></p>
+</li>
+<li>
+<p><strong><code>&lt;Name&gt;.manifest.json</code></strong>：機器可讀 metadata（見 8.2）。</p>
+</li>
 </ul>
 <h3>8.2 manifest.json 必填格式</h3>
 <p>由 <a href="packages/javascript/browser/ui_components/metadata/manifest-schema.js">manifest-schema.js</a> 驗證，欄位與合法值固定：</p>
@@ -343,22 +418,41 @@ const { code, errors } = new PageGenerator().generate(pageDefinition);
 </blockquote>
 <h3>8.3 註冊與收尾（缺一不可）</h3>
 <ol>
-<li>在該 category 的 <code>index.js</code> 加 <code>export</code>。</li>
-<li>若要能被字串名/生成器使用，在 <a href="packages/javascript/browser/ui_components/binding/ComponentFactory.js">ComponentFactory.js</a> 的 <code>registry</code> 加入 <code>'MyWidget': MyWidget</code>。</li>
-<li>若要被生成器當 field type 用，把 field type → 元件映射補進 <a href="packages/javascript/browser/page-generator/PageDefinition.js">PageDefinition.js</a> 的 <code>ComponentMapping</code> 與 <a href="packages/javascript/browser/page-generator/FieldResolver.js">FieldResolver.js</a>。</li>
-<li><strong>重建 catalog</strong>：
+<li>
+<p>在該 category 的 <code>index.js</code> 加 <code>export</code>。</p>
+</li>
+<li>
+<p>若要能被字串名/生成器使用，在 <a href="packages/javascript/browser/ui_components/binding/ComponentFactory.js">ComponentFactory.js</a> 的 <code>registry</code> 加入 <code>'MyWidget': MyWidget</code>。</p>
+</li>
+<li>
+<p>若要被生成器當 field type 用，把 field type → 元件映射補進 <a href="packages/javascript/browser/page-generator/PageDefinition.js">PageDefinition.js</a> 的 <code>ComponentMapping</code> 與 <a href="packages/javascript/browser/page-generator/FieldResolver.js">FieldResolver.js</a>；靜態產碼還要在 <a href="packages/javascript/browser/page-generator/PageGenerator.js">PageGenerator.js</a> 的 <code>ComponentPaths</code> 登記 import 路徑（缺了會回報 <code>Component X is not available in the custom component library</code>）。</p>
+</li>
+<li>
+<p><strong>重建 catalog</strong>：
    <code>bash
    node packages/javascript/browser/ui_components/metadata/build-metadata.mjs</code>
-   CI/驗證用 <code>--check</code>（會校驗每個 registry 元件都有合法 manifest，且 manifest.registry_name 存在於 ComponentFactory）。</li>
+   CI/驗證用 <code>--check</code>（會校驗每個 registry 元件都有合法 manifest，且 manifest.registry_name 存在於 ComponentFactory）。</p>
+</li>
 </ol>
+<p>Metadata 的 <code>value_io</code> 與 <code>target_actions</code> 只會依元件類別本身公開的方法推導；呼叫子元件的同名方法不算公開能力。宣告 <code>clear</code>、<code>reload</code>、<code>setValue</code> 或 <code>reloadOptions</code> 時，manifest 驗證會要求對應公開方法確實存在。</p>
 <h3>8.4 不寫 JavaScript 的 JSON 客製元件</h3>
 <p>若需求是調整既有元件 options 或組合既有元件，不必新增一套 JS 元件。使用 <a href="CUSTOM-COMPONENTS.html">CUSTOM-COMPONENTS.md</a> 的純 JSON 定義：</p>
 <ol>
-<li>開啟 <a href="tools/theme-studio/">Theme Studio</a> 的「元件組合」頁籤，組裝、預覽並匯出 JSON。舊的 <a href="tools/custom-component-studio/">Custom Component Studio</a> URL 保留為相容入口，會導向同一頁籤。</li>
-<li>將 JSON 放進 <code>packages/javascript/browser/custom_components/definitions/</code>。</li>
-<li>執行 <code>npm run custom-components:build</code> 產生 deterministic <code>registry.json</code>。</li>
-<li>執行 <code>npm run custom-components:check</code> 與 <code>npm run test:custom-components</code>。</li>
-<li>Runtime 以 <code>CustomComponentRegistry.loadFolder()</code> 載入；dynamic form 可直接傳 <code>customComponents: { folder }</code>。</li>
+<li>
+<p>開啟 <a href="tools/theme-studio/">Theme Studio</a> 的「元件組合」頁籤，組裝、預覽並匯出 JSON。舊的 <a href="tools/custom-component-studio/">Custom Component Studio</a> URL 保留為相容入口，會導向同一頁籤。</p>
+</li>
+<li>
+<p>將 JSON 放進 <code>packages/javascript/browser/custom_components/definitions/</code>。</p>
+</li>
+<li>
+<p>執行 <code>npm run custom-components:build</code> 產生 deterministic <code>registry.json</code>。</p>
+</li>
+<li>
+<p>執行 <code>npm run custom-components:check</code> 與 <code>npm run test:custom-components</code>。</p>
+</li>
+<li>
+<p>Runtime 以 <code>CustomComponentRegistry.loadFolder()</code> 載入；dynamic form 可直接傳 <code>customComponents: { folder }</code>。</p>
+</li>
 </ol>
 <p>JSON 客製元件分為 <code>atomic</code>、<code>composite</code>、<code>template</code>，由組合樹自動推導；不得靠手填 <code>kind</code> 規避深度規則。客製 JSON 禁止函式、raw HTML、任意 style/import 與 prototype-sensitive key。</p>
 <h3>8.5 Studio 自舉規則</h3>
@@ -367,13 +461,27 @@ const { code, errors } = new PageGenerator().generate(pageDefinition);
 <hr>
 <h2>9. 每頁驗收檢查表</h2>
 <ul>
-<li>[ ] 沒有任何第三方 UI/圖表/地圖/日期/富文本 npm import（Leaflet CDN 除外）</li>
-<li>[ ] 所有顏色/尺寸走 <code>var(--cl-*)</code>，無寫死色碼；<code>[data-theme="dark"]</code> 下正常</li>
-<li>[ ] 所有動態內容經 <code>escapeHtml</code>/<code>esc()</code>；原始 HTML 皆顯式 <code>raw()</code></li>
-<li>[ ] 元件都有 <code>mount</code>/<code>destroy</code>，換頁時正確 <code>destroy</code> 無殘留 DOM/監聽</li>
-<li>[ ] 文案走 <code>Locale.t()</code>，切語言可更新</li>
-<li>[ ] 新增的元件：有 <code>index.js</code> export + manifest + ComponentFactory 註冊 + <code>build-metadata.mjs --check</code> 通過</li>
-<li>[ ] 路由用 <code>Router</code>、共享狀態用 <code>Store</code></li>
+<li>
+<p>[ ] 沒有任何第三方 UI/圖表/地圖/日期/富文本 npm import（<code>ui_components/vendor/</code> 的 Leaflet 1.9.4、html2canvas 除外；兩者本地優先，缺檔才退 CDN）</p>
+</li>
+<li>
+<p>[ ] 所有顏色/尺寸走 <code>var(--cl-*)</code>，無寫死色碼；<code>[data-theme="dark"]</code> 下正常</p>
+</li>
+<li>
+<p>[ ] 所有動態內容經 <code>escapeHtml</code>/<code>esc()</code>；原始 HTML 皆顯式呼叫 <code>raw()</code>，沒有任何地方拿 <code>{ __html }</code> 物件字面量當 opt-in</p>
+</li>
+<li>
+<p>[ ] 元件都有 <code>mount</code>/<code>destroy</code>，換頁時正確 <code>destroy</code> 無殘留 DOM/監聽；對話框用 <code>ModalPanel.confirm/alert/prompt</code>（自動銷毀）或自行管理 <code>new ModalPanel</code> 的生命週期</p>
+</li>
+<li>
+<p>[ ] 文案走 <code>Locale.t()</code>，切語言可更新</p>
+</li>
+<li>
+<p>[ ] 新增的元件：有 <code>index.js</code> export + manifest + ComponentFactory 註冊 + <code>build-metadata.mjs --check</code> 通過</p>
+</li>
+<li>
+<p>[ ] 路由用 <code>Router</code>、共享狀態用 <code>Store</code></p>
+</li>
 </ul>
 <hr>
 <h2>10. 關鍵檔案索引</h2>
@@ -430,6 +538,10 @@ const { code, errors } = new PageGenerator().generate(pageDefinition);
 <td><a href="packages/javascript/browser/ui_components/binding/ComponentFactory.js">binding/ComponentFactory.js</a></td>
 </tr>
 <tr>
+<td>字串名工廠(延遲載入,工具頁預設)</td>
+<td><a href="packages/javascript/browser/ui_components/binding/LazyComponentFactory.js">binding/LazyComponentFactory.js</a></td>
+</tr>
+<tr>
 <td>狀態機</td>
 <td><a href="packages/javascript/browser/ui_components/utils/component-state.js">utils/component-state.js</a></td>
 </tr>
@@ -475,11 +587,21 @@ const { code, errors } = new PageGenerator().generate(pageDefinition);
 <h2>11. Schema → 表單／API／資料表</h2>
 <p><a href="tools/form-application-studio/">Form Application Studio</a> 接受資料表 schema，先產生可編輯的欄位清單與 12 欄 <code>FormDesigner</code> 畫布，再輸出設計 JSON、前端 <code>PageDefinition</code>、.NET 10 Minimal API／BaseOrm 程式碼、建表與 rollback SQL。工具頁本身由 <a href="tools/form-application-studio/studio.page.json"><code>studio.page.json</code></a> 經 <code>DynamicPageRenderer({ mode: 'tool' })</code> 產生，<code>FormDesigner</code> 也來自正式元件庫，作為自舉驗證。</p>
 <ul>
-<li>左側欄位可改欄位名、顯示名、圖示／輸入元件，也可新增、刪除欄位。</li>
-<li>欄位可拖到右側畫布；畫布上的元件可拖曳、以滑鼠或鍵盤調整位置與長寬。</li>
-<li>未提供連線字串時，目標固定為本地 SQLite <code>data/&lt;application_id&gt;.db</code>。</li>
-<li>有連線字串時，須明確選擇 provider；密碼只留在 Studio controller 記憶體，預設不進 design JSON 或下載 bundle。只有明確勾選時才輸出至 <code>backend/appsettings.Development.json</code>。</li>
-<li>Studio 與 CLI 都只生成／預覽，不會連線或寫入資料庫。套用生成的 SQL 前，仍須依資料表、欄位、來源、寫入規則、例外處理及 rollback 計畫另行確認。</li>
+<li>
+<p>左側欄位可改欄位名、顯示名、圖示／輸入元件，也可新增、刪除欄位。</p>
+</li>
+<li>
+<p>欄位可拖到右側畫布；畫布上的元件可拖曳、以滑鼠或鍵盤調整位置與長寬。</p>
+</li>
+<li>
+<p>未提供連線字串時，目標固定為本地 SQLite <code>data/&lt;application_id&gt;.db</code>。</p>
+</li>
+<li>
+<p>有連線字串時，須明確選擇 provider；密碼只留在 Studio controller 記憶體，預設不進 design JSON 或下載 bundle。只有明確勾選時才輸出至 <code>backend/appsettings.Development.json</code>。</p>
+</li>
+<li>
+<p>Studio 與 CLI 都只生成／預覽，不會連線或寫入資料庫。套用生成的 SQL 前，仍須依資料表、欄位、來源、寫入規則、例外處理及 rollback 計畫另行確認。</p>
+</li>
 </ul>
 <p>CLI 範例：</p>
 <pre><code class="language-bash">node tools/form-application-studio/generate.mjs --schema tools/form-application-studio/sample-schema.json --output ./out/form-app

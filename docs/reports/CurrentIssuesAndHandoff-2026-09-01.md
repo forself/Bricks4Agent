@@ -2,6 +2,8 @@
 
 > 2026-09-02 更新：本文件保留為 9/1 的歷史交接快照。其後已新增通用 lazy module loader，並將原本未納入主閘門的 Vitest 元件套件修至 210/210 通過且併入 `npm test`；請以目前 Git 與測試輸出判定最新狀態。
 
+> 2026-09-26 更新：§2 中已由 `6495133`（2026-09-01）處理的項目已就地標註「✅ 已解決」，原文保留作為歷史紀錄；§3 建議順序同步更新。
+
 > 本文件自足，不依賴先前對話。涵蓋 `11e8e95..df2c31a` 這四個提交的內容，以及當下經覆核的遺留問題。
 > 每一項遺留問題都附可自行驗證的證據（檔案:行號或指令），請勿只憑本文件的敘述行動——先覆核再動手。
 > 基準：分支 `main`，工作樹狀態另查 `git status`。
@@ -85,7 +87,7 @@ factory 無法回答「有沒有這個元件」時（`_factoryHas` 回 `null`）
 | `node tools/scripts/audit-csp.mjs` | 304 檔，CSP 0 / SVG 0 |
 | `npm run validate:ui-library` | 全過（browser smoke 未要求） |
 | `build-metadata.mjs --check` | exit 0 |
-| `npm run test:theme-studio:browser` | **未跑成**——本機 Edge 起不來（見 §2.7） |
+| `npm run test:theme-studio:browser` | **未跑成**——本機 Edge 起不來（見 §2.7）；✅ 已解決（6495133, 2026-09-01），2026-09-26 覆跑 16/16 通過 |
 
 新增的測試都做過「對修正前版本執行」的負向對照，確認不是空過：
 
@@ -101,30 +103,38 @@ factory 無法回答「有沒有這個元件」時（`_factoryHas` 回 `null`）
 ### 結構性 — 「修了但沒生效」
 
 **2.1 `templates/` 不在資安閘門的掃描範圍內。**
+✅ 已解決（6495133, 2026-09-01）：`audit-csp.mjs` 的 `roots` 已加入 `templates/spa/frontend` 與 `templates/spa/scripts`（第 20–21 行），這兩處的 HTML 也一併納入檢查。以下為原始紀錄。
 `tools/scripts/audit-csp.mjs` 的 `roots`（第 14 行起）只有 5 個：`ui_components`、`page-generator`、`custom_components`、`tools/custom-component-studio`、`tools/theme-studio`。**不含 `templates/`。**
 而 `templates/spa/frontend/components/Panel/`（`BasePanel.js` / `ModalPanel.js` / `PanelManager.js` / `ToastPanel.js`）是 `core/BasePage.js` 實際 import 的第二份副本。也就是說，真正出貨到生成專案的那份程式碼是沒有閘門的。
 
 **2.2 tim-web 內嵌了約 6 份元件庫快照。**
 `qa-publish-20260817`、`qa-live-fixed-20260817`、`qa-debug-20260817`、`outputs/validation/iis-fixed`、`outputs/validation/iis-fixed-final`、`artifacts/icon-guard-iis`，各自的 `wwwroot/lib/ui_components/`。上游修補（含本次的 `raw()` 品牌檢查、ModalPanel 洩漏修復）不會自動到達，要重新發佈才會。
+（仍開放。`6495133` 新增 `node tools/scripts/verify-consumer-snapshots.mjs --consumer-root <已發佈根目錄>`，可檢出快照與目前 Git tree 不一致，但既有快照仍須重新發佈。）
 
 ### 驗證覆蓋
 
 **2.3 沒有 CI。** 無 `.github/workflows`；所有閘門靠人記得跑。
+✅ 已解決（6495133, 2026-09-01）：`6495133` 新增 `.github/workflows/quality-gates.yml`；另 `.github/workflows/ci.yml` 其實自 `9e877f3`（2026-08-24）即存在。稀疏檢出不含 `.github/`，請以 `git ls-files .github` 確認，而非看磁碟。
 
 **2.4 必跑的 `tools/theme-studio/run.mjs` 對 outline / palette / TreeList 零覆蓋。** 只斷言 gallery 的 116 與 `failed === 0`。§1.2 修好之後，gallery 對 TreeList 才第一次有渲染驗證價值；outline 面板仍無覆蓋。
+（仍開放。`6495133` 後 `run.mjs` 改為委派 `tools/scripts/studio-integration-smoke.mjs`，其中仍無 outline / palette / TreeList 斷言。）
 
 **2.5 fake DOM 的能力缺口。** `scrollTop`、`customElements`、`MutationObserver`、`requestAnimationFrame` 在兩套 fake DOM 都不存在。因此「捲動位置保存」「Icon 連上 DOM 後重畫」「theme-bus 通知與訂閱洩漏」這幾類斷言在 Node 裡只能空過——寫了也是恆綠。要驗這些只能上真實瀏覽器。
 
 **2.6 `4a5efe8` 宣稱的 100.3ms → 1.9ms 沒有對應腳本進版控**，無法覆核。本文件 §1.3 的量測同理——是在瀏覽器 console 手動跑的，沒有進版控的 benchmark。
 
 **2.7 本機 Edge 起不來。** `node tools/theme-studio/run.mjs` 回報 `Could not connect to Edge DevTools pipe: Edge exited unexpectedly (code=0)`。本次改用內建瀏覽器手動驗證替代。原因未查（可能是既有實例佔著設定檔）。
+✅ 已解決（6495133, 2026-09-01）：`run.mjs` 不再使用自寫的 DevTools pipe，改為委派 `tools/scripts/studio-integration-smoke.mjs`（Playwright 的 Edge launcher）；2026-09-26 覆跑 `node tools/theme-studio/run.mjs` 16/16 通過。
 
 ### metadata 品質（這份 catalog 是對代理公開的產品本體）
 
 **2.8 `EditableTable` 的 manifest 在說謊。**
+✅ 已解決（6495133, 2026-09-01）：manifest 已改為 `value_io: false`、`target_actions: []`。以下為原始紀錄。
 `component.manifest.json` 宣告 `binding: { value_io: true, target_actions: ["clear", "setValue"] }`，但 `EditableTable.js` 這些方法**一個都沒有**（公開成員只有 `constructor` / `snapshot` / `send` / `mount` / `getRows` / `destroy`）。旗標來自 `this._cellInputs.clear()` 與對子元件 TextInput 的 `setValue` / `getValue` 呼叫。
 
-**2.9 推導方式是整檔正則。** `metadata/renderer.js` 的 `inferBinding` 對整份 source text 做 `/clear\s*\(/`、`/(?:reload|refresh)\s*\(/`、`/setItems\s*\(/` 等比對，因此**把方法命名成 `clear(` / `refresh(` / `setItems(` 就會污染 catalog**，且 `build-metadata --check` 是逐位元組比對，會直接失敗。
+**2.9 推導方式是整檔正則。**
+✅ 已解決（6495133, 2026-09-01）：`inferBinding` 改以內省得到的公開方法集合判斷（`metadata/renderer.js` 第 279–285 行），不再對整份原始碼做正則比對。以下為原始紀錄。
+`metadata/renderer.js` 的 `inferBinding` 對整份 source text 做 `/clear\s*\(/`、`/(?:reload|refresh)\s*\(/`、`/setItems\s*\(/` 等比對，因此**把方法命名成 `clear(` / `refresh(` / `setItems(` 就會污染 catalog**，且 `build-metadata --check` 是逐位元組比對，會直接失敗。
 19 個元件檔含 `setData(`；若要讓 `inferBinding` 認得 `setData`，那是一次 19 個元件的 catalog diff，不是一個。
 
 ### 元件層（已評估，建議維持不做）
@@ -143,6 +153,7 @@ factory 無法回答「有沒有這個元件」時（`_factoryHas` 回 `null`）
 ### 其他
 
 **2.14 studio 主控台三個既有錯誤**：`AddressInput requires a real loadCities data loader`、`OrganizationInput requires a real loadUnits data loader`。展示用資料載入器缺失，與綁定層無關，但代表這幾個元件在 studio 裡是壞的。
+✅ 已解決（6495133, 2026-09-01）：`tools/theme-studio/sample-data.js` 新增 `SAMPLE_RUNTIME_OPTIONS`（AddressInput / AddressListInput 的 `loadCities` / `loadDistricts`、OrganizationInput 的 `loadUnits`），由 `controller.js` 在展示廊建立元件時併入。
 
 **2.15 `_replaceComponent` 的節省目前是潛在的。** studio 那 57 條綁定的 setter 恰好都存在，所以 §1.3 量到的收益全部來自 setter 側。一旦有 tool page 綁到沒有 setter 的選項，省下的就是整個元件的銷毀重建。
 
@@ -150,9 +161,11 @@ factory 無法回答「有沒有這個元件」時（`_factoryHas` 回 `null`）
 
 ## 3. 建議順序
 
-1. **2.1（`templates/` 沒有資安閘門）** — 這是資安閘門有洞，而且洞的另一邊正是出貨給下游的程式碼。
-2. **2.3（沒有 CI）** — 所有閘門都靠人記得跑；上面每一項驗證的長期價值都繫於此。
-3. **2.8 / 2.9（catalog 說謊）** — 這份 metadata 是 AI 代理選用元件的輸入，錯誤宣告會直接誤導產生的頁面。
+1. ~~**2.1（`templates/` 沒有資安閘門）** — 這是資安閘門有洞，而且洞的另一邊正是出貨給下游的程式碼。~~ ✅ 已解決（6495133, 2026-09-01）
+2. ~~**2.3（沒有 CI）** — 所有閘門都靠人記得跑；上面每一項驗證的長期價值都繫於此。~~ ✅ 已解決（6495133, 2026-09-01）
+3. ~~**2.8 / 2.9（catalog 說謊）** — 這份 metadata 是 AI 代理選用元件的輸入，錯誤宣告會直接誤導產生的頁面。~~ ✅ 已解決（6495133, 2026-09-01）
+
+上列三項（以及 2.7、2.14）均已處理。目前仍開放、值得接著做的是：2.2（tim-web 內嵌快照需重新發佈）、2.4（outline / palette / TreeList 無瀏覽器斷言）、2.5（fake DOM 能力缺口）、2.6（效能量測沒有進版控的 benchmark）。
 
 2.10 – 2.13 維持不做，理由如各項所述：改的是沒人走的路，而風險類別（元件回收洩漏）恰好是近期才付出代價修好的。
 

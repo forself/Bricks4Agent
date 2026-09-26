@@ -73,7 +73,7 @@ const distance = GeolocationService.calculateDistance(
     25.0330, 121.5654,  // 台北101
     24.1477, 120.6736   // 台中火車站
 );
-console.log(GeolocationService.formatDistance(distance));  // "162.3 公里"
+console.log(GeolocationService.formatDistance(distance));  // "133.5 公里"
 ```
 
 ### 錯誤代碼

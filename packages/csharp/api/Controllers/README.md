@@ -1,5 +1,7 @@
 # BaseController - API Controller Base Class
 
+> ⚠ Reference code: this folder has no .csproj, is not compiled or referenced by any project, and is not built by CI; the content below is not build-verified.
+
 Base controller class that provides common functionality for all API controllers.
 
 ## Features
@@ -208,7 +210,7 @@ public IActionResult ValidateModel([FromBody] DataDto dto)
 
 - `InternalServerError(string message)` - 500 Internal Server Error
 
-- `InternalServerError(Exception ex)` - 500 with exception details
+- `InternalServerError(Exception ex)` - 500 with exception details. This leaks exception text: `ex.Message` is returned to the client in Release builds too (only the stack trace is behind `#if DEBUG`), and every `Execute*` helper routes caught exceptions through this method
 
 ## Available Properties
 
@@ -238,13 +240,15 @@ public IActionResult ValidateModel([FromBody] DataDto dto)
 
 - `ExecuteFunctionAsync<T>(Func<Task<T>> func, string successMessage)` - Execute async function with error handling
 
+> All four `Execute*` helpers catch every exception and return `InternalServerError(ex)`, so the raw exception message reaches the client.
+
 ## Dependencies
 
 - Microsoft.AspNetCore.Mvc (ASP.NET Core)
 
 - ApiResponse component
 
-- .NET 6.0 or higher
+- .NET 10 (`net10.0`, the repo's target framework)
 
 ## Benefits
 

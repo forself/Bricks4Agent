@@ -25,10 +25,18 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <h2>這是什麼</h2>
 <p><code>Bricks4Agent</code> 是一套<strong>零 runtime 依賴的 Vanilla JS UI 元件庫</strong>,加上一個把 JSON <code>PageDefinition</code> 轉成頁面的<strong>頁面／SPA 生成器</strong>。</p>
 <ul>
-<li><strong>UI 元件庫</strong> — 116 個元件(form、layout、common、input、viz、social、editor、sections、data、analytics),純 Vanilla JS,以 theme token 上色,內建 XSS 防護與 i18n。</li>
-<li><strong>頁面生成器</strong> — 一份 <code>PageDefinition</code>(JSON)有兩條路變成頁面:<strong>靜態產碼</strong>(產出 <code>.js</code> 頁面檔)或<strong>動態渲染</strong>(執行期直接依 JSON 畫出來)。</li>
-<li><strong>SPA 工具鏈</strong> — CLI 與 Web UI,可一鍵生成全端 CRUD(前端頁面 + 選配的 .NET 10 後端)。</li>
-<li><strong>表單應用工作台</strong> — 匯入資料表 schema、視覺編排欄位，並生成表單 <code>PageDefinition</code>、.NET 10 Minimal API/BaseOrm 程式碼與資料庫 SQL；連線字串留白時以本地 SQLite 為目標。</li>
+<li>
+<p><strong>UI 元件庫</strong> — 116 個元件(form、layout、common、input、viz、social、editor、sections、data、analytics),純 Vanilla JS,以 theme token 上色,內建 XSS 防護與 i18n。</p>
+</li>
+<li>
+<p><strong>頁面生成器</strong> — 一份 <code>PageDefinition</code>(JSON)有兩條路變成頁面:<strong>靜態產碼</strong>(產出 <code>.js</code> 頁面檔)或<strong>動態渲染</strong>(執行期直接依 JSON 畫出來)。</p>
+</li>
+<li>
+<p><strong>SPA 工具鏈</strong> — CLI 與 Web UI,可一鍵生成全端 CRUD(前端頁面 + 選配的 .NET 10 後端)。</p>
+</li>
+<li>
+<p><strong>表單應用工作台</strong> — 匯入資料表 schema、視覺編排欄位，並生成表單 <code>PageDefinition</code>、.NET 10 Minimal API/BaseOrm 程式碼與資料庫 SQL；連線字串留白時以本地 SQLite 為目標。</p>
+</li>
 </ul>
 <blockquote>
 <p>要在這套庫上開發?請先讀 <a href="AGENT-UI-GUIDE.html">AGENT-UI-GUIDE.md</a> — 那是給人與 AI Agent 的元件調用入口。</p>
@@ -36,24 +44,48 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <h2>主要區域</h2>
 <h3>UI 元件庫</h3>
 <ul>
-<li><a href="packages/javascript/browser/ui_components">ui_components</a> — 元件本體</li>
-<li><a href="packages/javascript/browser/ui_components/index.js">ui_components/index.js</a> — 單一匯入入口 barrel</li>
-<li><a href="packages/javascript/browser/ui_components/metadata/component-catalog.json">metadata/component-catalog.json</a> — 元件權威清單</li>
-<li><a href="packages/javascript/browser/ui_components/STYLE_CONVENTION.html">STYLE_CONVENTION.md</a> — 樣式／token 規範</li>
+<li>
+<p><a href="packages/javascript/browser/ui_components">ui_components</a> — 元件本體</p>
+</li>
+<li>
+<p><a href="packages/javascript/browser/ui_components/index.js">ui_components/index.js</a> — 單一匯入入口 barrel</p>
+</li>
+<li>
+<p><a href="packages/javascript/browser/ui_components/metadata/component-catalog.json">metadata/component-catalog.json</a> — 元件權威清單</p>
+</li>
+<li>
+<p><a href="packages/javascript/browser/ui_components/STYLE_CONVENTION.html">STYLE_CONVENTION.md</a> — 樣式／token 規範</p>
+</li>
 </ul>
 <h3>頁面生成器</h3>
 <ul>
-<li><a href="packages/javascript/browser/page-generator">page-generator</a> — 引擎(靜態 + 動態)</li>
-<li><a href="packages/javascript/browser/page-generator/README.html">page-generator/README.md</a></li>
+<li>
+<p><a href="packages/javascript/browser/page-generator">page-generator</a> — 引擎(靜態 + 動態)</p>
+</li>
+<li>
+<p><a href="packages/javascript/browser/page-generator/README.html">page-generator/README.md</a></p>
+</li>
 </ul>
 <h3>SPA 鷹架</h3>
 <ul>
-<li><a href="templates/spa">templates/spa</a> — SPA 專案範本(前端核心 + .NET 10 後端)</li>
-<li><a href="templates/spa/scripts">templates/spa/scripts</a> — <code>spa-cli.js</code>、<code>generate-page.js</code>、<code>generate-api.js</code></li>
-<li><a href="tools/spa-generator">tools/spa-generator</a> — 生成器 Web UI(port 3080)</li>
-<li><a href="tools/page-gen.js">tools/page-gen.js</a> — 獨立 PageDefinition CLI(<a href="tools/page-gen.README.html">說明</a>)</li>
-<li><a href="tools/static-server">tools/static-server</a> — 預覽用靜態伺服器</li>
-<li><a href="tools/form-application-studio">tools/form-application-studio</a> — JSON 自舉的表單／API／資料庫設計工具</li>
+<li>
+<p><a href="templates/spa">templates/spa</a> — SPA 專案範本(前端核心 + .NET 10 後端)</p>
+</li>
+<li>
+<p><a href="templates/spa/scripts">templates/spa/scripts</a> — <code>spa-cli.js</code>、<code>generate-page.js</code>、<code>generate-api.js</code></p>
+</li>
+<li>
+<p><a href="tools/spa-generator">tools/spa-generator</a> — 生成器 Web UI(port 3080)</p>
+</li>
+<li>
+<p><a href="tools/page-gen.js">tools/page-gen.js</a> — 獨立 PageDefinition CLI(<a href="tools/page-gen.README.html">說明</a>)</p>
+</li>
+<li>
+<p><a href="tools/static-server">tools/static-server</a> — 預覽用靜態伺服器</p>
+</li>
+<li>
+<p><a href="tools/form-application-studio">tools/form-application-studio</a> — JSON 自舉的表單／API／資料庫設計工具</p>
+</li>
 </ul>
 <h2>快速開始</h2>
 <p>請使用 Node.js 22 與 .NET 10 SDK；repo 內的 <code>global.json</code> 允許使用目前已安裝的最新 .NET 10 feature band。</p>
@@ -89,7 +121,8 @@ npm run serve                        # 只有靜態前端,同樣 port 3080
 </code></pre>
 <p>Node 伺服器預設綁 loopback,並拒絕非 loopback 的 <code>Host</code>/<code>Origin</code> 請求。</p>
 <h2>測試</h2>
-<pre><code class="language-bash">npm test                        # 頁面生成器測試
+<pre><code class="language-bash">npm --prefix packages/javascript/browser install  # 首次：安裝 npm test 需要的 vitest/jsdom
+npm test                        # 生成器範例 + test:ui-components + test:custom-components + Vitest 元件套件
 npm run validate:ui-library     # UI 元件庫檢查
 npm run audit:ui-styles         # 樣式 token 稽核
 npm run test:studio:self-host   # 唯一權威 JSON + 正式元件 provenance
@@ -103,19 +136,35 @@ dotnet test templates/spa/backend.Tests/SpaApi.Template.Tests.csproj
 </code></pre>
 <p>PR 目標為 <code>main</code> 或推送至 <code>main</code> 時，<a href=".github/workflows/ci.yml">GitHub Actions</a>
 會執行可攜式 JavaScript、政策、metadata、零警告 .NET 10 專案矩陣與生成後端檢查。
-真實 Edge 互動 harness 仍是本機驗收守門，因其刻意沿用既有外部
-Playwright／Edge runtime，不為 CI 增加 npm dependency。</p>
+<a href=".github/workflows/quality-gates.yml"><code>quality-gates.yml</code></a> 另以 <code>--no-save</code> 安裝 <code>playwright-core</code>，
+在系統 Edge 跑六支自架 smoke（<code>validate:ui-library:browser</code>、<code>test:spa-template:browser</code>、
+<code>test:theme-studio:browser</code>、<code>test:custom-components:browser</code>、<code>test:studio:browser</code>、<code>test:form-designer:browser</code>）。
+只有需要 <code>python -m http.server 8124</code> 的 harness（canvas chart、波 2／3、data explorer、cluster graph、icon）仍只在本機驗收。</p>
 <p>.NET 10 遷移保留既有 PBKDF2 密碼儲存格式；Broker、MFA 與 SPA 範本都有固定
 相容性向量，確保既有雜湊仍可驗證，同時改用目前的靜態 PBKDF2 API。</p>
 <h2>文件</h2>
 <ul>
-<li><a href="AGENT-UI-GUIDE.html">AGENT-UI-GUIDE.md</a> — 元件調用約定 + React 重製 playbook(給 AI Agent)</li>
-<li><a href="CUSTOM-COMPONENTS.html">CUSTOM-COMPONENTS.md</a> — JSON 產生的自舉 Studio、客製元件三層分類與資料夾載入</li>
-<li><a href="tools/form-application-studio/README.html">tools/form-application-studio/README.md</a> — Schema→表單/API/資料表工作台與連線政策</li>
-<li><a href="AGENT.html">AGENT.md</a> — SPA 生成器操作手冊(給 AI Agent)</li>
-<li><a href="CLAUDE.html">CLAUDE.md</a> — 本 repo 的 Claude Code 規則</li>
-<li><a href="packages/javascript/browser/page-generator/README.html">page-generator/README.md</a> — 頁面生成器細節</li>
-<li><a href="templates/spa/README.html">templates/spa/README.md</a> — SPA 範本</li>
+<li>
+<p><a href="AGENT-UI-GUIDE.html">AGENT-UI-GUIDE.md</a> — 元件調用約定 + React 重製 playbook(給 AI Agent)</p>
+</li>
+<li>
+<p><a href="CUSTOM-COMPONENTS.html">CUSTOM-COMPONENTS.md</a> — JSON 產生的自舉 Studio、客製元件三層分類與資料夾載入</p>
+</li>
+<li>
+<p><a href="tools/form-application-studio/README.html">tools/form-application-studio/README.md</a> — Schema→表單/API/資料表工作台與連線政策</p>
+</li>
+<li>
+<p><a href="AGENT.html">AGENT.md</a> — SPA 生成器操作手冊(給 AI Agent)</p>
+</li>
+<li>
+<p><a href="CLAUDE.html">CLAUDE.md</a> — 本 repo 的 Claude Code 規則</p>
+</li>
+<li>
+<p><a href="packages/javascript/browser/page-generator/README.html">page-generator/README.md</a> — 頁面生成器細節</p>
+</li>
+<li>
+<p><a href="templates/spa/README.html">templates/spa/README.md</a> — SPA 範本</p>
+</li>
 </ul>
 </main>
 </body>

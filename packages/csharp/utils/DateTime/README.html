@@ -21,9 +21,12 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <body>
 <main>
 <h1>DateTime</h1>
+<blockquote>
+<p>⚠ 參考程式碼：此目錄沒有 .csproj，未被任何專案編譯或引用，CI 也不建置它；以下說明未經建置驗證。</p>
+</blockquote>
 <p>日期時間工具類別 — 提供 Unix Timestamp 轉換、ISO 8601 處理、相對時間、期間計算、工作日等擴充方法。</p>
 <h2>初始化方式</h2>
-<pre><code class="language-csharp">using YourNamespace.Utils.DateTime;
+<pre><code class="language-csharp">using Bricks4Agent.Utils.DateTime;
 // 靜態類別，直接以擴充方法呼叫
 </code></pre>
 <h2>API 列表</h2>
@@ -367,7 +370,7 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 </tbody>
 </table>
 <h2>使用範例</h2>
-<pre><code class="language-csharp">using YourNamespace.Utils.DateTime;
+<pre><code class="language-csharp">using Bricks4Agent.Utils.DateTime;
 
 // Unix Timestamp
 var now = System.DateTime.UtcNow;
@@ -389,7 +392,7 @@ var quarterEnd = now.EndOfQuarter();
 
 // 年齡
 var birthday = new System.DateTime(1990, 5, 15);
-int age = birthday.GetAge();  // 35
+int age = birthday.GetAge();  // 36（2026-05-15 之後）
 </code></pre>
 <h2>依賴清單</h2>
 <table>

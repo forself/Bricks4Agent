@@ -8,7 +8,8 @@
 {{PROJECT_NAME}}\
 ├── lib\                 腳手架掛載點(gitignored):開發=junction、發佈=快照
 │   ├── ui_components\   元件庫(權威清單 metadata\component-catalog.json)
-│   └── page-generator\  PageDefinition 靜態產碼 + 動態渲染
+│   ├── page-generator\  PageDefinition 靜態產碼 + 動態渲染
+│   └── custom_components\ JSON 客製元件(definitions + registry)
 ├── src\frontend\        應用(index.html / app.js / styles\)
 ├── scripts\             dev-link(junction)/ dev / sync-lib(複本後備)/ publish(快照+封閉驗證)
 ├── docs\                機制文件

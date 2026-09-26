@@ -23,22 +23,35 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <h1>Execution Adapters (§18.1) — Test-Driven Implementation Plan</h1>
 <p>Date: 2026-06-13
 Status: <strong>implemented + e2e-verified</strong> (Steps A–F done; 38 real-git unit assertions, config test, and a full podman stack test where a model drives <code>apply_patch</code> through the governed chain and the file is actually patched — all green; no regression to the governed stack). Remaining: broker <code>--integration</code> HTTP coverage of the new routes.
+Implementation status (checked 2026-09-26): Steps A–D and the stack/config tests (§2c, §2d) are in the repo — <code>packages/csharp/workers/execution-adapter-worker/</code>, <code>packages/csharp/tests/broker-tests/ExecutionAdapterTests.cs</code> (registered at <code>packages/csharp/tests/broker-tests/Program.cs:373</code>), <code>tools/agent/tests/test-podman-execution-adapter-stack.js</code>, <code>tools/agent/tests/test-execution-adapter-config.js</code>. Still open: (1) §2b <code>ExecutionAdapterIntegrationTests</code> was never written — the <code>--integration</code> branch (same <code>Program.cs:399-402</code>) runs only the generic <code>IntegrationTest.RunAsync</code>; (2) Step E is only partly done — <code>execution-adapter-worker</code> and the <code>repo.patch.apply</code> / <code>build.test.run</code> grants exist only in <code>tools/agent/container/compose.yml</code>, not in <code>compose.ollama-host.yml</code> or <code>compose.openai-compatible.yml</code>.
 Spec: <a href="ControlledAutonomousAISystemTechnicalDesign.html">ControlledAutonomousAISystemTechnicalDesign.md</a> §14 (執行配接層), §18.1 (MVP), §9.2 (structured request), §6.4 (capability catalog), §13.2 (execution baseline), §21 (success criteria)
 Builds on: agent container already activated + sealed (§13.1 egress, §13 OS sandbox) — see <a href="../reports/CurrentArchitectureAndProgress-2026-06-13.html">CurrentArchitectureAndProgress-2026-06-13.md</a></p>
 <h2>0. Goal</h2>
 <p>Make the controlled agent able to do <strong>real work</strong> — not just read under governance — by adding the two §18.1 MVP execution adapters:</p>
 <ul>
-<li><strong>repo-adapter</strong> — apply a patch to a repo under scope, save a diff artifact, return a change summary.</li>
-<li><strong>build-test-adapter</strong> — run a whitelisted build/test command in isolation, return structured stdout/stderr + exit code.</li>
+<li>
+<p><strong>repo-adapter</strong> — apply a patch to a repo under scope, save a diff artifact, return a change summary.</p>
+</li>
+<li>
+<p><strong>build-test-adapter</strong> — run a whitelisted build/test command in isolation, return structured stdout/stderr + exit code.</p>
+</li>
 </ul>
 <p>The agent never touches the repo or runs commands directly (§6.6). It emits a <strong>structured execution request</strong>; the broker adjudicates (capability + grant + scope + quota + policy); a <strong>hardened adapter worker</strong> executes and returns evidence. This is the piece that turns "powered-on, sealed, read-only agent" into "agent that can propose and—under governance—land changes."</p>
 <h2>1. Architecture decision</h2>
 <p><strong>Adapters are a dedicated worker (<code>execution-adapter-worker</code>) implementing <code>ICapabilityHandler</code>, NOT inline broker routes.</strong> Rationale, anchored to spec:</p>
 <ul>
-<li>§14 names a distinct "執行配接層" (execution adapter layer) — keep the broker a pure control plane.</li>
-<li>§13.2 requires adapters run in an isolated, hardened environment — a worker container gives that.</li>
-<li>§21 #4 requires work be re-executable on a different node without changing governance — a stateless worker satisfies it.</li>
-<li>Reuses the <strong>proven</strong> path: <code>WorkerHost</code> → <code>WORKER_REGISTER</code> → <code>PoolDispatcher</code> round-robin → <code>ICapabilityHandler.ExecuteAsync</code>, with the broker's 16-step PEP (<code>BrokerService.SubmitExecutionRequestAsync</code>) already enforcing grant/quota/scope/policy before dispatch.</li>
+<li>
+<p>§14 names a distinct "執行配接層" (execution adapter layer) — keep the broker a pure control plane.</p>
+</li>
+<li>
+<p>§13.2 requires adapters run in an isolated, hardened environment — a worker container gives that.</p>
+</li>
+<li>
+<p>§21 #4 requires work be re-executable on a different node without changing governance — a stateless worker satisfies it.</p>
+</li>
+<li>
+<p>Reuses the <strong>proven</strong> path: <code>WorkerHost</code> → <code>WORKER_REGISTER</code> → <code>PoolDispatcher</code> round-robin → <code>ICapabilityHandler.ExecuteAsync</code>, with the broker's 16-step PEP (<code>BrokerService.SubmitExecutionRequestAsync</code>) already enforcing grant/quota/scope/policy before dispatch.</p>
+</li>
 </ul>
 <h3>Handler contract (exact, from <code>packages/csharp/worker-sdk/ICapabilityHandler.cs</code>)</h3>
 <pre><code class="language-csharp">string CapabilityId { get; }
@@ -80,66 +93,114 @@ Task&lt;(bool Success, string? ResultPayload, string? Error)&gt; ExecuteAsync(
 <p>Seeded in <code>packages/csharp/broker-core/Data/BrokerDbInitializer.cs</code> <code>SeedCapabilities()</code> with <code>param_schema</code> from §9.2 / §14.</p>
 <h3>Network/workspace posture (differs from the agent — adapters are trusted execution nodes)</h3>
 <ul>
-<li>The <strong>agent</strong> stays sealed (internal-only <code>agent-net</code>, no egress) — unchanged.</li>
-<li>The <strong>adapter worker</strong> is on the broker's worker network and (for build/test) needs <strong>egress</strong> (npm/nuget/pip restore). It mounts the repo workspace <strong>rw</strong> (it is the control-plane-mediated write path, §13.4). It still gets §13.2 OS hardening (non-root, read-only rootfs + tmpfs, cap-drop, no docker socket) — only its network egress and workspace-write differ from the agent.</li>
+<li>
+<p>The <strong>agent</strong> stays sealed (internal-only <code>agent-net</code>, no egress) — unchanged.</p>
+</li>
+<li>
+<p>The <strong>adapter worker</strong> is on the broker's worker network and (for build/test) needs <strong>egress</strong> (npm/nuget/pip restore). It mounts the repo workspace <strong>rw</strong> (it is the control-plane-mediated write path, §13.4). It still gets §13.2 OS hardening (non-root, read-only rootfs + tmpfs, cap-drop, no docker socket) — only its network egress and workspace-write differ from the agent.</p>
+</li>
 </ul>
 <h2>2. Test-first inventory (write these RED before any implementation)</h2>
 <p>Per repo conventions (custom broker test runner returning <code>(passed, failed)</code>; node stack tests asserting on <code>combinedOutput</code>).</p>
 <h3>2a. Broker unit tests — <code>packages/csharp/tests/broker-tests/ExecutionAdapterTests.cs</code></h3>
 <p>Registered in <code>Program.cs</code> alongside <code>AgentContainerTests.Run()</code>.</p>
-<p><strong>repo-adapter:</strong>
-1. valid patch within scope → files match patch, diff artifact written, change-summary returned, <code>Success=true</code>
-2. <code>base_commit</code> ≠ repo HEAD → <code>Success=false</code>, reason "base commit mismatch", <strong>no writes</strong>
-3. patch touches path outside <code>scope.allowed_paths</code> → rejected, <strong>no writes</strong> (§14.2)
-4. payload is free-form shell / not a patch → rejected (§14.2 "不得直接接受自由 shell")
-5. patch implicitly rewrites a file not in the patch → rejected (§14.2)
-6. idempotency: replay same <code>idempotency_key</code> → returns prior result, does <strong>not</strong> double-apply (§14.1)</p>
-<p><strong>build-test-adapter:</strong>
-7. whitelisted command (<code>dotnet --version</code> or a stub) → structured result: stdout, stderr, exit_code, <code>Success=true</code>
-8. non-whitelisted command (<code>rm -rf</code>, arbitrary shell) → rejected (§14.3 whitelist)
-9. large output truncated; exit code preserved; evidence_ref present</p>
-<p><strong>catalog:</strong>
-10. <code>SeedCapabilities()</code> produces <code>repo.patch.apply</code> + <code>build.test.run</code> with correct route/risk/param_schema</p>
+<p><strong>repo-adapter:</strong></p>
+<ol>
+<li>valid patch within scope → files match patch, diff artifact written, change-summary returned, <code>Success=true</code></li>
+<li><code>base_commit</code> ≠ repo HEAD → <code>Success=false</code>, reason "base commit mismatch", <strong>no writes</strong></li>
+<li>patch touches path outside <code>scope.allowed_paths</code> → rejected, <strong>no writes</strong> (§14.2)</li>
+<li>payload is free-form shell / not a patch → rejected (§14.2 "不得直接接受自由 shell")</li>
+<li>patch implicitly rewrites a file not in the patch → rejected (§14.2)</li>
+<li>idempotency: replay same <code>idempotency_key</code> → returns prior result, does <strong>not</strong> double-apply (§14.1)</li>
+</ol>
+<p><strong>build-test-adapter:</strong></p>
+<ol start="7">
+<li>whitelisted command (<code>dotnet --version</code> or a stub) → structured result: stdout, stderr, exit_code, <code>Success=true</code></li>
+<li>non-whitelisted command (<code>rm -rf</code>, arbitrary shell) → rejected (§14.3 whitelist)</li>
+<li>large output truncated; exit code preserved; evidence_ref present</li>
+</ol>
+<p><strong>catalog:</strong></p>
+<ol start="10">
+<li><code>SeedCapabilities()</code> produces <code>repo.patch.apply</code> + <code>build.test.run</code> with correct route/risk/param_schema</li>
+</ol>
 <h3>2b. Broker integration tests — <code>ExecutionAdapterIntegrationTests.RunAsync(brokerUrl)</code> (<code>-- --integration</code>)</h3>
-<ol start="11">
-<li>submit <code>repo.patch.apply</code> with a valid grant → success; with no grant → <code>Denied</code> (PEP seam)</li>
-<li>an audit row is written with <code>trace_id</code> + <code>request_id</code> (§21 #3 traceability)</li>
+<ol>
+<li>
+<p>submit <code>repo.patch.apply</code> with a valid grant → success; with no grant → <code>Denied</code> (PEP seam)</p>
+</li>
+<li>
+<p>an audit row is written with <code>trace_id</code> + <code>request_id</code> (§21 #3 traceability)</p>
+</li>
 </ol>
 <h3>2c. Node stack test — <code>tools/agent/tests/test-podman-execution-adapter-stack.js</code></h3>
-<ol start="13">
+<ol>
 <li>bring up broker + <code>execution-adapter-worker</code> + agent; instruct the agent (mock LLM scripted tool call) to apply a tiny patch; assert <code>combinedOutput</code> includes the governed route + an <code>EXEC_ADAPTER_OK</code> marker; assert the target file actually changed in a mounted snapshot; <code>down -v</code> cleanup.</li>
 </ol>
 <h3>2d. Config validation test — <code>tools/agent/tests/test-execution-adapter-config.js</code> (no containers)</h3>
-<ol start="14">
+<ol>
 <li>compose declares <code>execution-adapter-worker</code> with §13.2 hardening keys (read_only, cap_drop ALL, no-new-privileges, no docker socket) and the repo mount.</li>
 </ol>
 <h2>3. Implementation steps (each turns specific tests green)</h2>
 <ul>
-<li><strong>Step A — capability seed + result conventions</strong> (broker-core). Seed the two capabilities; define a shared result envelope <code>{ success, summary, evidence_ref, stdout?, stderr?, exit_code? }</code>. → tests 10, (enables 1–9).</li>
-<li><strong>Step B — repo-adapter handler.</strong> New <code>packages/csharp/workers/execution-adapter-worker/</code> with <code>RepoApplyPatchHandler : ICapabilityHandler</code> (<code>CapabilityId="repo.patch.apply"</code>): validate base_commit, enforce allowed_paths + patch-only writes, apply patch, write diff artifact, return summary + evidence; idempotency store. → tests 1–6.</li>
-<li><strong>Step C — build-test-adapter handler.</strong> <code>BuildTestRunHandler : ICapabilityHandler</code> (<code>CapabilityId="build.test.run"</code>): config-driven command whitelist, run in workspace, capture stdout/stderr+exit, truncate, structured result + evidence. → tests 7–9.</li>
-<li><strong>Step D — agent tool surface.</strong> <code>tools/agent/lib/tool-registry.js</code>: add <code>apply_patch → repo.patch.apply</code> and <code>run_build_test → build.test.run</code> to <code>TOOL_DEFINITIONS</code> + <code>TOOL_TO_CAPABILITY</code>; <code>governed-executor.js</code>: intent strings. → supports 13.</li>
-<li><strong>Step E — compose wiring + hardening.</strong> Add <code>execution-adapter-worker</code> to the three compose files (worker-net + egress for build, repo mount rw, §13.2 hardening, no docker socket); grant the capabilities via <code>DevelopmentSeed__RuntimeDescriptor</code>. → tests 14, 13.</li>
-<li><strong>Step F — integration + stack run.</strong> Run broker unit + <code>--integration</code>; run the new stack test; verify scope enforcement, evidence, and audit end-to-end. → tests 11–13.</li>
+<li>
+<p><strong>Step A — capability seed + result conventions</strong> (broker-core). Seed the two capabilities; define a shared result envelope <code>{ success, summary, evidence_ref, stdout?, stderr?, exit_code? }</code>. → tests 10, (enables 1–9).</p>
+</li>
+<li>
+<p><strong>Step B — repo-adapter handler.</strong> New <code>packages/csharp/workers/execution-adapter-worker/</code> with <code>RepoApplyPatchHandler : ICapabilityHandler</code> (<code>CapabilityId="repo.patch.apply"</code>): validate base_commit, enforce allowed_paths + patch-only writes, apply patch, write diff artifact, return summary + evidence; idempotency store. → tests 1–6.</p>
+</li>
+<li>
+<p><strong>Step C — build-test-adapter handler.</strong> <code>BuildTestRunHandler : ICapabilityHandler</code> (<code>CapabilityId="build.test.run"</code>): config-driven command whitelist, run in workspace, capture stdout/stderr+exit, truncate, structured result + evidence. → tests 7–9.</p>
+</li>
+<li>
+<p><strong>Step D — agent tool surface.</strong> <code>tools/agent/lib/tool-registry.js</code>: add <code>apply_patch → repo.patch.apply</code> and <code>run_build_test → build.test.run</code> to <code>TOOL_DEFINITIONS</code> + <code>TOOL_TO_CAPABILITY</code>; <code>governed-executor.js</code>: intent strings. → supports 13.</p>
+</li>
+<li>
+<p><strong>Step E — compose wiring + hardening.</strong> Add <code>execution-adapter-worker</code> to the three compose files (worker-net + egress for build, repo mount rw, §13.2 hardening, no docker socket); grant the capabilities via <code>DevelopmentSeed__RuntimeDescriptor</code>. → tests 14, 13.</p>
+</li>
+<li>
+<p><strong>Step F — integration + stack run.</strong> Run broker unit + <code>--integration</code>; run the new stack test; verify scope enforcement, evidence, and audit end-to-end. → tests 11–13.</p>
+</li>
 </ul>
 <h2>4. Invariants that must hold (each is tested)</h2>
 <ul>
-<li>Adapter executes <strong>only</strong> an <code>ApprovedRequest</code> routed by the broker — agent can't call it directly (§6.6, §21 #2).</li>
-<li>Adapter <strong>re-validates</strong> scope; refuses out-of-scope writes, free-form shell, non-whitelisted commands (§14.1–14.3).</li>
-<li>Every result carries <code>evidence_ref</code>; every execution writes an audit row (§14.1, §21 #3).</li>
-<li>Idempotency key honored (§14.1).</li>
-<li>Adapter is <strong>stateless</strong> — all durable state in the control plane / shared context (§21 #4).</li>
-<li>Adapter container hardened per §13.2; <strong>no docker socket</strong>, non-root, read-only rootfs.</li>
+<li>
+<p>Adapter executes <strong>only</strong> an <code>ApprovedRequest</code> routed by the broker — agent can't call it directly (§6.6, §21 #2).</p>
+</li>
+<li>
+<p>Adapter <strong>re-validates</strong> scope; refuses out-of-scope writes, free-form shell, non-whitelisted commands (§14.1–14.3).</p>
+</li>
+<li>
+<p>Every result carries <code>evidence_ref</code>; every execution writes an audit row (§14.1, §21 #3).</p>
+</li>
+<li>
+<p>Idempotency key honored (§14.1).</p>
+</li>
+<li>
+<p>Adapter is <strong>stateless</strong> — all durable state in the control plane / shared context (§21 #4).</p>
+</li>
+<li>
+<p>Adapter container hardened per §13.2; <strong>no docker socket</strong>, non-root, read-only rootfs.</p>
+</li>
 </ul>
 <h2>5. Approval seam (Phase Two §18.2 — NOT built now)</h2>
 <p>Capabilities carry <code>risk_level</code> + <code>approval_policy</code>. In the MVP both are <code>auto_if_task_scope_match</code>. The adapter <strong>never</strong> sees approval logic — it only ever receives pre-approved requests. When §18.2 lands, the broker will intercept <code>require_approval</code> decisions before dispatch; the adapter contract does not change. Keep it that way.</p>
 <h2>6. Open decisions (need Benson's call before/while building)</h2>
 <ol>
-<li><strong>Patch tooling</strong>: <code>git apply</code> in the adapter worker vs a managed diff applier. (Recommend <code>git apply --check</code> then apply, for base_commit + path enforcement.)</li>
-<li><strong>Build/test egress</strong>: confirm the adapter worker may reach npm/nuget/pip registries (it must, for restore) — adapter on an egress network, distinct from the sealed agent. OK?</li>
-<li><strong>Evidence/artifact storage</strong>: reuse the existing artifact store / shared-context entry, or a new <code>evidence/</code> path? (Recommend reuse the artifact pattern already used by deploy/ delivery.)</li>
-<li><strong>Idempotency replay</strong>: return cached result vs re-run-and-compare. (Recommend return cached.)</li>
-<li><strong>Quota timing</strong>: reserve at submit vs charge on result. (Recommend charge on success.)</li>
+<li>
+<p><strong>Patch tooling</strong>: <code>git apply</code> in the adapter worker vs a managed diff applier. (Recommend <code>git apply --check</code> then apply, for base_commit + path enforcement.)</p>
+</li>
+<li>
+<p><strong>Build/test egress</strong>: confirm the adapter worker may reach npm/nuget/pip registries (it must, for restore) — adapter on an egress network, distinct from the sealed agent. OK?</p>
+</li>
+<li>
+<p><strong>Evidence/artifact storage</strong>: reuse the existing artifact store / shared-context entry, or a new <code>evidence/</code> path? (Recommend reuse the artifact pattern already used by deploy/ delivery.)</p>
+</li>
+<li>
+<p><strong>Idempotency replay</strong>: return cached result vs re-run-and-compare. (Recommend return cached.)</p>
+</li>
+<li>
+<p><strong>Quota timing</strong>: reserve at submit vs charge on result. (Recommend charge on success.)</p>
+</li>
 </ol>
 <h2>7. Out of scope (MVP)</h2>
 <p>Approval service / risk-tier UI (§18.2), custom seccomp profile, control-plane console, multi-repo orchestration.</p>

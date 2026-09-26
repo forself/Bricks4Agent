@@ -42,7 +42,7 @@ For institutional or multi-subdomain sites, callers may include public same-site
 
 ## Output Contract
 
-The result is a `SiteCrawlResult` package containing `crawl_run_id`, `status`, `root`, `pages`, `excluded`, `extracted_model`, and `limits`.
+The result is a `SiteCrawlResult` package containing `crawl_run_id`, `status`, `root`, `pages`, `assets`, `excluded`, `redirects`, `extracted_model`, and `limits`.
 
 Pages include rendered visual snapshots for a bounded set of representative pages when available: visible regions, layout boxes, text hierarchy, media, links, forms, and source selectors. The crawl can still include more pages/routes than rendered snapshots; source-oriented fields such as `html`, `text_excerpt`, `links`, and `forms` remain auxiliary evidence.
 

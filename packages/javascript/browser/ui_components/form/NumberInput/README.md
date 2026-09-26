@@ -21,7 +21,7 @@ const input = new NumberInput({
     placeholder: '',         // 提示文字
     width: '100%',           // 寬度
     size: 'medium',          // 'small' | 'medium' | 'large'
-    onChange: (value) => {},  // 變更回調
+    onChange: (value) => {},  // 變更回調（目前行為：只在 +/- 按鈕、方向鍵與 clear() 時觸發；直接輸入後 blur/Enter 不會觸發）
     className: ''            // 自訂 CSS 類別
 });
 ```

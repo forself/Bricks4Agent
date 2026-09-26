@@ -16,7 +16,7 @@ new ListInput(options?)
 | `options.minItems` | `number` | `0` | 最小項目數 |
 | `options.maxItems` | `number` | `10` | 最大項目數 |
 | `options.addButtonText` | `string` | `'新增項目'` | 新增按鈕文字 |
-| `options.fields` | `Array` | `null` | 欄位 schema `[{name, type, label, placeholder, flex, width, options, required, min, max, maxLength, accept}]`，支援 type: `text`、`select`、`number`、`checkbox`、`email`、`tel`、`date`、`image`、`file` |
+| `options.fields` | `Array` | `null` | 欄位 schema `[{name, type, label, placeholder, flex, width, options, required, min, max, maxLength, accept}]`，支援 type: `text`、`select`、`number`、`checkbox`、`email`、`tel`、`date`、`image`、`file`（目前行為：`image` / `file` 欄位選取的檔案不會保留在項目值中，`getValues()` / `onChange` 取得的該欄位為 `undefined`） |
 | `options.renderItem` | `Function` | `null` | 自訂渲染回調 `(container, index, value, onChange)`，優先於 fields |
 | `options.onItemChange` | `Function` | `null` | 單項變更回調 `(index, value)` |
 | `options.onChange` | `Function` | `null` | 列表變更回調 `(items)` |
@@ -35,14 +35,14 @@ new ListInput(options?)
 
 - 上移/下移按鈕
 
-- 項目計數器（`n / maxItems`）
+- 項目計數器（`n / maxItems`，僅在設定 `title` 時顯示）
 
-- CSV 範本下載（使用 fields schema 時自動提供）
+- CSV 範本下載（同時設定 `title` 與 `fields` 時才提供）
 
 ## 使用範例
 
 ```js
-import { ListInput } from './input/ListInput/index.js';
+import { ListInput } from './index.js';
 
 // 方式一：使用 fields schema
 const list = new ListInput({

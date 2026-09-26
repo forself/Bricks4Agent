@@ -1,5 +1,9 @@
 # JwtHelper - JWT Token Management
 
+> ⚠ Reference code: this folder has no .csproj, is not compiled or referenced by any project, and is not built by CI; the content below is not build-verified.
+>
+> Known not to compile as-is: `JwtHelper.cs` needs `System.IdentityModel.Tokens.Jwt` / `Microsoft.IdentityModel.Tokens`, and no project here provides them for this folder.
+
 Helper class for generating and validating JWT (JSON Web Tokens) for authentication and authorization.
 
 ## Features
@@ -28,6 +32,8 @@ dotnet add package Microsoft.AspNetCore.Authentication.JwtBearer
 ```
 
 ### 2. Configure appsettings.json
+
+> `JwtHelper` reads `Jwt:SecretKey`. That conflicts with the repo convention `Jwt:Key` used by the SPA template (`templates/spa/backend/appsettings.json`) and `security/Mfa` (`MfaAuthService`); a host configured with `Jwt:Key` only will make `JwtHelper` throw at construction.
 
 ```json
 {
@@ -136,7 +142,7 @@ var token = _jwtHelper.GenerateToken(
 ### Generate Refresh Token
 
 ```csharp
-public (string accessToken, string refreshToken) Login(User user)
+public async Task<(string accessToken, string refreshToken)> Login(User user)
 {
     var accessToken = _jwtHelper.GenerateToken(
         userId: user.Id,
@@ -356,7 +362,7 @@ Generated token includes these claims:
 
 - Microsoft.AspNetCore.Authentication.JwtBearer
 
-- .NET 6.0 or higher
+- .NET 10 (`net10.0`, the repo's target framework)
 
 ## Benefits
 

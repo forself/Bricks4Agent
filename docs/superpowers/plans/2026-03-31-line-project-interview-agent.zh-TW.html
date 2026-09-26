@@ -29,11 +29,21 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <p>這份計劃的主要任務已在第一階段訪談/審核範圍內完成，文件本身保留作為歷史實作計劃。</p>
 <p>目前 <code>main</code> 的狀態：</p>
 <ul>
-<li><code>/proj</code>、<code>#專案名稱</code>、規模收斂、網站結構方向收斂、review artifact generation 已可用</li>
-<li><code>/ok</code>、<code>/revise</code>、<code>/cancel</code> 已可用</li>
-<li>LINE 對外 prompts 已是中英文且偏一般使用者文案</li>
-<li>內部 scale/template 識別字仍只留在 broker 內部，不直接暴露給使用者</li>
-<li>更深一層的需求訪談與自動實作交接仍是後續工作</li>
+<li>
+<p><code>/proj</code>、<code>#專案名稱</code>、規模收斂、網站結構方向收斂、review artifact generation 已可用</p>
+</li>
+<li>
+<p><code>/ok</code>、<code>/revise</code>、<code>/cancel</code> 已可用</p>
+</li>
+<li>
+<p>LINE 對外 prompts 已是中英文且偏一般使用者文案</p>
+</li>
+<li>
+<p>內部 scale/template 識別字仍只留在 broker 內部，不直接暴露給使用者</p>
+</li>
+<li>
+<p>更深一層的需求訪談與自動實作交接仍是後續工作</p>
+</li>
 </ul>
 <p><strong>架構：</strong> 在既有 broker high-level 路徑上擴充一個獨立的 <code>project_interview</code> 狀態機與每版本一張的 DAG。真相由 broker 擁有並持久化在 assertion documents 與 version-graph documents 中；LLM 只負責提出 interpretation 與 restatement options。已確認 assertions 會被編譯成 canonical <code>project-instance JSON</code>，再驅動 PDF review 文件與 artifact delivery。模板選擇則由既有 browser page-generator / component runtime 之上的 JSON catalog 驅動。</p>
 <p><strong>技術棧：</strong> C# /.NET 8 minimal API broker、既有 <code>HighLevelCoordinator</code> 與 artifact services、broker verify、<code>packages/csharp/tests</code> 下的 integration tests、<code>packages/javascript/browser</code> 下的 JSON template catalog、現有 SPA runtime/page-generator</p>
@@ -54,8 +64,12 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <hr>
 <h2>語言版本</h2>
 <ul>
-<li>英文主計劃：<code>docs/superpowers/plans/2026-03-31-line-project-interview-agent.md</code></li>
-<li>繁體中文對應版：<code>docs/superpowers/plans/2026-03-31-line-project-interview-agent.zh-TW.md</code></li>
+<li>
+<p>英文主計劃：<code>docs/superpowers/plans/2026-03-31-line-project-interview-agent.md</code></p>
+</li>
+<li>
+<p>繁體中文對應版：<code>docs/superpowers/plans/2026-03-31-line-project-interview-agent.zh-TW.md</code></p>
+</li>
 </ul>
 <p>說明：
 - 英文版是執行時的 canonical plan，包含精確 code blocks 與指令。
@@ -65,46 +79,114 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <h2>File Map</h2>
 <h3>新增</h3>
 <ul>
-<li><code>packages/csharp/broker/Services/ProjectInterviewModels.cs</code></li>
-<li>定義 session state、assertion、restatement option、version-graph node/edge、project-definition DTO。</li>
-<li><code>packages/csharp/broker/Services/ProjectInterviewStateService.cs</code></li>
-<li>讀寫 <code>hlm.project-interview.*</code> 文件，提供 broker 擁有的 canonical task state API。</li>
-<li><code>packages/csharp/broker/Services/ProjectInterviewStateMachine.cs</code></li>
-<li>管 <code>/proj</code>、<code>/ok</code>、<code>/revise</code>、<code>/cancel</code> 與 phase progression。</li>
-<li><code>packages/csharp/broker/Services/ProjectInterviewRestatementService.cs</code></li>
-<li>將模型提案轉成 bounded explicit statement options，並附 conservative escape option。</li>
-<li><code>packages/csharp/broker/Services/ProjectInterviewTemplateCatalogService.cs</code></li>
-<li>載入 template manifests，依 project scale、modules、constraints 收斂候選模板。</li>
-<li><code>packages/csharp/broker/Services/ProjectInterviewProjectDefinitionCompiler.cs</code></li>
-<li>從 confirmed assertions 編譯 canonical <code>project_instance_definition</code> JSON 與 immutable per-version DAG。</li>
-<li><code>packages/csharp/broker/Services/ProjectInterviewWorkflowDesignService.cs</code></li>
-<li>建立 deterministic workflow-design view model 與 render manifest。</li>
-<li><code>packages/csharp/broker/Services/ProjectInterviewPdfRenderService.cs</code></li>
-<li>產出 versioned PDF，並寫入 task/version/digest metadata。</li>
-<li><code>packages/csharp/tests/integration/Api/ProjectInterviewLifecycleTests.cs</code></li>
-<li><code>packages/csharp/tests/integration/Api/ProjectInterviewReviewTests.cs</code></li>
-<li><code>packages/javascript/browser/templates/catalog.json</code></li>
-<li><code>packages/javascript/browser/templates/*/template.manifest.json</code></li>
-<li><code>packages/javascript/browser/__tests__/templates/TemplateCatalog.test.js</code></li>
+<li>
+<p><code>packages/csharp/broker/Services/ProjectInterviewModels.cs</code></p>
+</li>
+<li>
+<p>定義 session state、assertion、restatement option、version-graph node/edge、project-definition DTO。</p>
+</li>
+<li>
+<p><code>packages/csharp/broker/Services/ProjectInterviewStateService.cs</code></p>
+</li>
+<li>
+<p>讀寫 <code>hlm.project-interview.*</code> 文件，提供 broker 擁有的 canonical task state API。</p>
+</li>
+<li>
+<p><code>packages/csharp/broker/Services/ProjectInterviewStateMachine.cs</code></p>
+</li>
+<li>
+<p>管 <code>/proj</code>、<code>/ok</code>、<code>/revise</code>、<code>/cancel</code> 與 phase progression。</p>
+</li>
+<li>
+<p><code>packages/csharp/broker/Services/ProjectInterviewRestatementService.cs</code></p>
+</li>
+<li>
+<p>將模型提案轉成 bounded explicit statement options，並附 conservative escape option。</p>
+</li>
+<li>
+<p><code>packages/csharp/broker/Services/ProjectInterviewTemplateCatalogService.cs</code></p>
+</li>
+<li>
+<p>載入 template manifests，依 project scale、modules、constraints 收斂候選模板。</p>
+</li>
+<li>
+<p><code>packages/csharp/broker/Services/ProjectInterviewProjectDefinitionCompiler.cs</code></p>
+</li>
+<li>
+<p>從 confirmed assertions 編譯 canonical <code>project_instance_definition</code> JSON 與 immutable per-version DAG。</p>
+</li>
+<li>
+<p><code>packages/csharp/broker/Services/ProjectInterviewWorkflowDesignService.cs</code></p>
+</li>
+<li>
+<p>建立 deterministic workflow-design view model 與 render manifest。</p>
+</li>
+<li>
+<p><code>packages/csharp/broker/Services/ProjectInterviewPdfRenderService.cs</code></p>
+</li>
+<li>
+<p>產出 versioned PDF，並寫入 task/version/digest metadata。</p>
+</li>
+<li>
+<p><code>packages/csharp/tests/integration/Api/ProjectInterviewLifecycleTests.cs</code></p>
+</li>
+<li>
+<p><code>packages/csharp/tests/integration/Api/ProjectInterviewReviewTests.cs</code></p>
+</li>
+<li>
+<p><code>packages/javascript/browser/templates/catalog.json</code></p>
+</li>
+<li>
+<p><code>packages/javascript/browser/templates/*/template.manifest.json</code></p>
+</li>
+<li>
+<p><code>packages/javascript/browser/__tests__/templates/TemplateCatalog.test.js</code></p>
+</li>
 </ul>
 <h3>修改</h3>
 <ul>
-<li><code>packages/csharp/broker/Services/HighLevelCommandParser.cs</code></li>
-<li><code>packages/csharp/broker/Services/HighLevelCoordinator.cs</code></li>
-<li><code>packages/csharp/broker/Services/HighLevelLlmOptions.cs</code></li>
-<li><code>packages/csharp/broker/Services/LineArtifactDeliveryService.cs</code></li>
-<li><code>packages/csharp/broker/Program.cs</code></li>
-<li><code>packages/csharp/broker/appsettings.json</code></li>
-<li><code>packages/csharp/broker/appsettings.Development.example.json</code></li>
-<li><code>packages/csharp/broker/verify/Program.cs</code></li>
-<li><code>packages/javascript/browser/package.json</code></li>
+<li>
+<p><code>packages/csharp/broker/Services/HighLevelCommandParser.cs</code></p>
+</li>
+<li>
+<p><code>packages/csharp/broker/Services/HighLevelCoordinator.cs</code></p>
+</li>
+<li>
+<p><code>packages/csharp/broker/Services/HighLevelLlmOptions.cs</code></p>
+</li>
+<li>
+<p><code>packages/csharp/broker/Services/LineArtifactDeliveryService.cs</code></p>
+</li>
+<li>
+<p><code>packages/csharp/broker/Program.cs</code></p>
+</li>
+<li>
+<p><code>packages/csharp/broker/appsettings.json</code></p>
+</li>
+<li>
+<p><code>packages/csharp/broker/appsettings.Development.example.json</code></p>
+</li>
+<li>
+<p><code>packages/csharp/broker/verify/Program.cs</code></p>
+</li>
+<li>
+<p><code>packages/javascript/browser/package.json</code></p>
+</li>
 </ul>
 <h3>重用，不做結構改造</h3>
 <ul>
-<li><code>packages/csharp/broker/Services/HighLevelDocumentArtifactService.cs</code></li>
-<li><code>packages/csharp/broker/Services/HighLevelMemoryStore.cs</code></li>
-<li><code>packages/javascript/browser/page-generator/PageDefinitionAdapter.js</code></li>
-<li><code>templates/spa/frontend/runtime/page-generator/DynamicPageRenderer.js</code></li>
+<li>
+<p><code>packages/csharp/broker/Services/HighLevelDocumentArtifactService.cs</code></p>
+</li>
+<li>
+<p><code>packages/csharp/broker/Services/HighLevelMemoryStore.cs</code></p>
+</li>
+<li>
+<p><code>packages/javascript/browser/page-generator/PageDefinitionAdapter.js</code></p>
+</li>
+<li>
+<p><code>templates/spa/frontend/runtime/page-generator/DynamicPageRenderer.js</code></p>
+</li>
 </ul>
 <hr>
 <h2>任務總覽</h2>
@@ -213,14 +295,12 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 - [ ] commit：<code>feat: add project interview review artifact generation</code></p>
 <h3>Task 6: 完整驗證、文件同步、與安全檢查</h3>
 <p>目的：
-- 對齊 spec、0329 文件、與實際 verify/test 狀態
+- 對齊 spec、技術手冊、與實際 verify/test 狀態
 - 確保對使用者輸出不暴露內部路徑</p>
 <p>檔案：
 - Modify: <code>packages/csharp/broker/verify/Program.cs</code>
 - Modify: <code>docs/superpowers/specs/2026-03-30-line-project-interview-agent-design.md</code>
-- Modify: <code>docs/0329/00-overview.md</code>
-- Modify: <code>docs/0329/01-broker.md</code>
-- Modify: <code>docs/0329/07-tests.md</code></p>
+- Modify: <code>docs/manuals/current-technical-manual.zh-TW.md</code></p>
 <p>步驟：
 - [ ] 在 verify 增加 path redaction assertions
 - [ ] 跑完整驗證：
@@ -228,41 +308,81 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
   - <code>dotnet run --project packages/csharp/broker/verify/Broker.Verify.csproj</code>
   - <code>dotnet test packages/csharp/tests/integration/Integration.Tests.csproj -v minimal</code>
   - <code>npm --prefix packages/javascript/browser run test</code>
-- [ ] 更新 spec 與 <code>docs/0329</code>，反映 state machine + per-version DAG + template catalog
+- [ ] 更新 spec 與 <code>docs/manuals/current-technical-manual.zh-TW.md</code>，反映 state machine + per-version DAG + template catalog
 - [ ] commit：<code>docs: document project interview workflow and verification</code></p>
 <hr>
 <h2>執行與同步規則</h2>
 <ul>
-<li>程式碼區塊與 shell commands：以英文版為 canonical source</li>
-<li>中文版任務編號、檔案責任、驗證邏輯、commit 邏輯：必須與英文版一致</li>
-<li>若英文版有新增/刪除 task，中文版需同步</li>
-<li>若中文版審查提出設計變更，必須先回寫英文版，再保持兩份同步</li>
+<li>
+<p>程式碼區塊與 shell commands：以英文版為 canonical source</p>
+</li>
+<li>
+<p>中文版任務編號、檔案責任、驗證邏輯、commit 邏輯：必須與英文版一致</p>
+</li>
+<li>
+<p>若英文版有新增/刪除 task，中文版需同步</p>
+</li>
+<li>
+<p>若中文版審查提出設計變更，必須先回寫英文版，再保持兩份同步</p>
+</li>
 </ul>
 <h2>自檢</h2>
 <h3>規格覆蓋</h3>
 <ul>
-<li><code>/proj</code> 入口、review commands、task-scoped state machine：Task 1</li>
-<li>confirmed-restatement assertion model：Task 2</li>
-<li>scale classification、template-family narrowing、JSON template catalog：Task 3</li>
-<li>canonical project-instance JSON 與 per-version DAG：Task 4</li>
-<li>versioned PDF/JSON generation 與 review workflow：Task 5</li>
-<li>delivery safety、verification、docs sync：Task 6</li>
+<li>
+<p><code>/proj</code> 入口、review commands、task-scoped state machine：Task 1</p>
+</li>
+<li>
+<p>confirmed-restatement assertion model：Task 2</p>
+</li>
+<li>
+<p>scale classification、template-family narrowing、JSON template catalog：Task 3</p>
+</li>
+<li>
+<p>canonical project-instance JSON 與 per-version DAG：Task 4</p>
+</li>
+<li>
+<p>versioned PDF/JSON generation 與 review workflow：Task 5</p>
+</li>
+<li>
+<p>delivery safety、verification、docs sync：Task 6</p>
+</li>
 </ul>
 <h3>無 placeholder</h3>
 <ul>
-<li>不保留 <code>TODO</code>、<code>TBD</code>、<code>implement later</code></li>
-<li>中文版不重新發明新 task，只翻譯既有結構</li>
+<li>
+<p>不保留 <code>TODO</code>、<code>TBD</code>、<code>implement later</code></p>
+</li>
+<li>
+<p>中文版不重新發明新 task，只翻譯既有結構</p>
+</li>
 </ul>
 <h3>型別一致性</h3>
 <ul>
-<li><code>ProjectInterviewSessionState</code></li>
-<li><code>ProjectInterviewStateMachine</code></li>
-<li><code>ProjectInterviewTaskDocument</code></li>
-<li><code>ProjectInterviewRestatementService</code></li>
-<li><code>ProjectInterviewTemplateCatalogService</code></li>
-<li><code>ProjectInterviewProjectDefinitionCompiler</code></li>
-<li><code>ProjectInstanceDefinition</code></li>
-<li><code>ProjectInterviewVersionDag</code></li>
+<li>
+<p><code>ProjectInterviewSessionState</code></p>
+</li>
+<li>
+<p><code>ProjectInterviewStateMachine</code></p>
+</li>
+<li>
+<p><code>ProjectInterviewTaskDocument</code></p>
+</li>
+<li>
+<p><code>ProjectInterviewRestatementService</code></p>
+</li>
+<li>
+<p><code>ProjectInterviewTemplateCatalogService</code></p>
+</li>
+<li>
+<p><code>ProjectInterviewProjectDefinitionCompiler</code></p>
+</li>
+<li>
+<p><code>ProjectInstanceDefinition</code></p>
+</li>
+<li>
+<p><code>ProjectInterviewVersionDag</code></p>
+</li>
 </ul>
 <p>這些名稱必須在中英文文件中保持一致，避免後續規劃與實作對不上。</p>
 </main>

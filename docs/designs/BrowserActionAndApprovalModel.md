@@ -164,9 +164,9 @@ Current implementation direction:
 
 - reference browser specs should declare action limits alongside identity/session/site policy
 
-Not yet implemented:
+- runtime action gate enforcement is implemented: the browser worker's `GovernedBrowserActionHandler` (`browser.navigate`) calls `BrowserActionGate.Evaluate` before any browser action and returns a structured `gated` result when the intended level exceeds `max_action_level` or requires human confirmation (`packages/csharp/workers/browser-worker/Handlers/GovernedBrowserActionHandler.cs:64-76`, `packages/csharp/broker-core/Services/BrowserActionGate.cs`); the active reference spec `browser.reference.anonymous.navigate` declares `max_action_level: navigate`
 
-- runtime action gate enforcement
+Not yet implemented:
 
 - DOM-level action policy engine
 

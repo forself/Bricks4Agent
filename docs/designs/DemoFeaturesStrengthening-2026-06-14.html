@@ -24,11 +24,23 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <p>Date: 2026-06-14
 Status: <strong>三項皆已實作 + 驗證(#3 ✅ → #1 ✅ → #2 ✅)</strong>
 範圍: 三個展示用功能的「特別強化」。先三個一起規劃,再依序測試先行實作。</p>
+<blockquote>
+<p><strong>實作現況(2026-09-26 核對)</strong>:各項對照程式如下。
+- <strong>#3 已完成</strong>:主題 token 改 <code>SortedDictionary(Ordinal)</code>(<code>packages/csharp/workers/site-crawler-worker/Models/GeneratorSiteContracts.cs:41-44</code>、<code>packages/csharp/workers/site-crawler-worker/Models/SiteCrawlContracts.cs:479-482</code>);元件清單穩定排序(<code>packages/csharp/workers/site-crawler-worker/Services/StaticSitePackageGenerator.cs:48-49</code>);<code>WriteDeterministicArchive</code>(同檔 :95、:173);兩個決定性測試在 <code>packages/csharp/tests/unit/Workers/SiteCrawler/StaticSitePackageGeneratorTests.cs:1222</code>、<code>:1256</code>。<strong>未做</strong>:強化步驟 5(選)的跨行程自動化測試 —— 目前僅由 §1 補充中的 <code>reconstruct</code> CLI 兩次實跑人工驗證。
+- <strong>#1 已完成</strong>:撞名(最長優先 + span 遮罩,<code>packages/csharp/workers/transport-tdx-worker/Services/TransportQueryContextResolver.cs:282</code>)、絕對時段(:441)、相對日期(:373)、無結果情境提示(<code>packages/csharp/workers/transport-tdx-worker/Services/TdxTransportProvider.cs:349-352</code>)、<code>TransportQueryContextResolverTests</code>(14 例)。<strong>未做</strong>:站點清單擴充(仍為 curated 硬編表,:18-61,未接 TDX 站點 API)、時區說明。
+- <strong>#2 已完成</strong>:<code>WebReportSynthesisService</code> / <code>WebReportComposer</code> / <code>IWebContentProvider</code>・<code>IWebReportLlm</code>(<code>packages/csharp/broker/Services/WebReportContracts.cs</code>)/ 正式實作(<code>packages/csharp/broker/Services/WebReportProviders.cs</code>)、DI 註冊(<code>packages/csharp/broker/Program.cs:236-238</code>)、<code>POST /local-admin/web-report</code>(<code>packages/csharp/broker/Endpoints/LocalAdminEndpoints.cs:327</code>)、交付走 <code>LineArtifactDeliveryService</code>(含 Google Drive 上傳選項)、<code>WebReportTests</code>(10 例)。<strong>未做</strong>:「後續(非阻斷)」的 <code>報告 &lt;主題&gt;</code> LINE 對話指令 —— <code>HighLevelCommandParser</code> / <code>HighLevelCoordinator</code> 尚未引用此服務。</p>
+</blockquote>
 <h2>0. 三個展示功能</h2>
 <ol>
-<li><strong>交通查詢</strong> —— 日期/時間範圍、出發地、目的地、方式(rail/HSR/bus/flight)。</li>
-<li><strong>web 取指定資料 → 產生報表/報告</strong>。</li>
-<li><strong>依某網站 → 產生「基於組件庫的複製品」或「雛形」</strong>;<strong>不同次、不同台電腦的執行結果必須穩定(決定性)</strong>。</li>
+<li>
+<p><strong>交通查詢</strong> —— 日期/時間範圍、出發地、目的地、方式(rail/HSR/bus/flight)。</p>
+</li>
+<li>
+<p><strong>web 取指定資料 → 產生報表/報告</strong>。</p>
+</li>
+<li>
+<p><strong>依某網站 → 產生「基於組件庫的複製品」或「雛形」</strong>;<strong>不同次、不同台電腦的執行結果必須穩定(決定性)</strong>。</p>
+</li>
 </ol>
 <p>三者程式都在 main(<code>.worktrees/*</code> 為平行副本;關鍵檔均在 main)。</p>
 <hr>
@@ -44,12 +56,37 @@ Status: <strong>三項皆已實作 + 驗證(#3 ✅ → #1 ✅ → #2 ✅)</stron
 <blockquote>
 <p><strong>2026-06-16 補充(組件庫整併 + e2e)</strong>:#3 的「組件庫複製」詞彙已從產生器自有的取樣罐頭(<code>HeroSection</code> 等)<strong>錨定到 canonical <code>ui_components</code>(B)</strong> —— 每個產生器型別綁定 B 閉集(<code>b_component</code>)、fail-closed、<code>HeroSection</code> 已刪、靜態包新增 <code>components/b-binding.json</code>(機讀 <code>type→b_component</code>)。詳見 <a href="ComponentLibraryConsolidation-2026-06-15.html">ComponentLibraryConsolidation-2026-06-15.md</a>。位元組決定性維持。<strong>e2e</strong>:新增免-broker <code>reconstruct</code> CLI,對台北科大(<code>www.ntut.edu.tw</code>)實跑 6 頁、<strong>0 缺口</strong>、archive 位元組相同,並抓出 <code>TemplateCompiler.CloneManifest</code> 漏帶綁定的 bug(已修 + 回歸測試)。當前測試:Unit.Tests <strong>382</strong> / Broker <strong>192</strong> / Vitest <strong>168</strong> 全綠(本段落內舊述的「345」為當時數)。</p>
 </blockquote>
-<p><strong>不穩定來源(會讓輸出隨爬取順序/機器而變,須修)</strong>:
-| 嚴重度 | 來源 | 位置 | 落在輸出 |
-|--------|------|------|---------|
-| 🔴 高 | 主題 token <code>Dictionary&lt;string,string&gt;</code>(colors/typography)序列化依插入(爬取)順序 | <code>Models/SiteCrawlContracts.cs</code>、<code>Models/GeneratorSiteContracts.cs</code>;合併於 <code>SiteCrawlerService.MergeThemeTokens</code> | <code>site.json</code> |
-| 🟠 中 | 動態元件清單(manifest.Components / ComponentRequests)順序依區塊處理順序 | <code>Services/SiteGeneratorConverter.cs</code> | <code>components/manifest.json</code> |
-| 🟡 低 | zip entry 順序依檔案系統列舉 | <code>Services/StaticSitePackageGenerator.cs</code>(<code>ZipFile.CreateFromDirectory</code>) | <code>.zip</code> |</p>
+<p><strong>不穩定來源(會讓輸出隨爬取順序/機器而變,須修)</strong>:</p>
+<table>
+<thead>
+<tr>
+<th>嚴重度</th>
+<th>來源</th>
+<th>位置</th>
+<th>落在輸出</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>🔴 高</td>
+<td>主題 token <code>Dictionary&lt;string,string&gt;</code>(colors/typography)序列化依插入(爬取)順序</td>
+<td><code>Models/SiteCrawlContracts.cs</code>、<code>Models/GeneratorSiteContracts.cs</code>;合併於 <code>SiteCrawlerService.MergeThemeTokens</code></td>
+<td><code>site.json</code></td>
+</tr>
+<tr>
+<td>🟠 中</td>
+<td>動態元件清單(manifest.Components / ComponentRequests)順序依區塊處理順序</td>
+<td><code>Services/SiteGeneratorConverter.cs</code></td>
+<td><code>components/manifest.json</code></td>
+</tr>
+<tr>
+<td>🟡 低</td>
+<td>zip entry 順序依檔案系統列舉</td>
+<td><code>Services/StaticSitePackageGenerator.cs</code>(<code>ZipFile.CreateFromDirectory</code>)</td>
+<td><code>.zip</code></td>
+</tr>
+</tbody>
+</table>
 <p><strong>強化(測試先行)</strong>:
 1. 先寫<strong>決定性測試</strong>(RED):同一 crawl 結果 → 連續 <code>Convert</code> + <code>Generate</code> 兩次 → 兩次輸出(檔案集合 + 內容)位元組完全相同;對輸出做雜湊比對。
 2. 修 token 字典:改 <code>SortedDictionary&lt;string,string&gt;</code>(Ordinal)或序列化前排序;合併也用穩定排序。
@@ -97,9 +134,15 @@ Status: <strong>三項皆已實作 + 驗證(#3 ✅ → #1 ✅ → #2 ✅)</stron
 <hr>
 <h2>4. 實作順序與理由</h2>
 <ol>
-<li><strong>#3 決定性</strong> —— 最具體、有硬性可驗收標準(位元組穩定)、程式+測試都在 main。先做最扎實。</li>
-<li><strong>#1 交通</strong> —— 多為界線清楚的補強,單元可測。</li>
-<li><strong>#2 web→報表</strong> —— 串接 + LLM 綜合,較整合性。</li>
+<li>
+<p><strong>#3 決定性</strong> —— 最具體、有硬性可驗收標準(位元組穩定)、程式+測試都在 main。先做最扎實。</p>
+</li>
+<li>
+<p><strong>#1 交通</strong> —— 多為界線清楚的補強,單元可測。</p>
+</li>
+<li>
+<p><strong>#2 web→報表</strong> —— 串接 + LLM 綜合,較整合性。</p>
+</li>
 </ol>
 <p>每步測試先行、各自 commit、跑完整驗證(per CLAUDE.md)再進下一個。</p>
 </main>

@@ -30,6 +30,8 @@ Current runtime support:
 
 - this tool is the canonical active entry for that runtime path
 
+- a Playwright-based handler for the same `browser.read` capability also exists in `workers/browser-worker` (`Handlers/BrowserReadHandler.cs`)
+
 Not yet implemented:
 
 - authenticated browser sessions

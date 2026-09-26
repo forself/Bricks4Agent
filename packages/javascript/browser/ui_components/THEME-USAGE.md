@@ -17,6 +17,8 @@
 <link rel="stylesheet" href="/theme.custom.css">
 ```
 
+> 元件 CSS:TabContainer、FunctionMenu、InfoPanel 的樣式在各自目錄的 `.css`(如 `layout/TabContainer/TabContainer.css`),**不會自動載入**,使用時需自行加 `<link>`;DataTable、SideMenu、FeedCard、WebTextEditor、FormDesigner 則會在執行時自動以同源 `<link>` 載入自己的 CSS。
+
 > 路徑提醒:上例的 `/lib/...` 為**絕對路徑,假設網站部署於網域根**。若部署在子路徑(如 `/web3/`)或用 Live Server,請改為相對於頁面的路徑或加上部署前綴,否則會 404。
 
 深色主題:在 `<html>` 或容器加 `data-theme="dark"` 即切換。
@@ -25,7 +27,7 @@
 
 ## 2. Theme Studio 操作
 
-Theme Studio 路徑全為相對路徑,任何靜態伺服器/任何根都可(含 VS Code Live Server):
+Theme Studio 載入資源用相對路徑,伺服器根只要涵蓋 repo 即可(含 VS Code Live Server);但頁面上的說明連結(如 `/AGENT-UI-GUIDE.md`、`/CUSTOM-COMPONENTS.md`)是站台根絕對路徑,只有以 repo 根作為伺服器根時才能開啟:
 
 ```powershell
 # 例:任一根啟動靜態伺服器,或於 VS Code 對 index.html 按「Go Live」
@@ -33,9 +35,9 @@ python -m http.server 8124 --bind 127.0.0.1
 # 開 .../tools/theme-studio/index.html(前綴依伺服器根)
 ```
 
-- **左側**:分頁 token 編輯器(語意色 / 圓角 / 字級 / 效果·字體 / 進階 JSON)——調整即時套用到右側全部元件。
+- **左側**:分頁 token 編輯器(色彩 / 圓角 / 字級 / 效果／字體 / 個別元件 / 進階 JSON)——調整即時套用到右側全部元件。
 - **右側**:元件展示廊(隨 token 即時變化)。
-- **頂部**:深色切換、**儲存**(localStorage,供下次繼續)、**匯出 tokens.json**、**匯出 custom.css**、**匯入 tokens**、重置。
+- **頂部**:「選擇元件個別調整」下拉、深色切換、**儲存**(localStorage,供下次繼續)、**匯出 tokens.json**、**匯出 custom.css**、**匯入 tokens**、重設。
 
 ## 3. 客製化產出如何使用 ★
 
@@ -49,7 +51,7 @@ Theme Studio 產出**兩個檔**,用途不同:
 ### 3.1 套用到網站(最常用)
 
 1. 在 Theme Studio 調好 → 點「匯出 custom.css」下載 `theme.custom.css`。
-2. 放進你的網站(例:`tim-web/src/frontend/theme.custom.css`)。
+2. 放進你的網站(例:`<網站靜態資源根>/theme.custom.css`)。
 3. 在頁面 **theme.css 之後**引入(見 §1 的第三個 `<link>`)。順序錯了不會生效。
 4. 完成——覆蓋全站生效;未調整的 token 沿用 theme.css 預設。
 
@@ -73,13 +75,13 @@ node tools/theme-studio/gen-custom-css.mjs theme.tokens.json theme.custom.css
 }
 ```
 - AI 代理調主題:**改 tokens.json → 跑 gen-custom-css.mjs**,不需開 UI。
-- 也可把匯出的 tokens.json 用 Theme Studio「匯入 tokens」載回繼續編。
+- 也可把匯出的 tokens.json 用 Theme Studio「匯入 tokens」載回繼續編(含 `tokensDark` 的檔案除外,見 §3.3)。
 
 ### 3.4 個別元件覆蓋(★ 只調某個元件)
 
-除了全域 token,Theme Studio 每張**已渲染元件卡**右上角有 **⚙**:點開右側抽屜可**只調該元件**(同一套語意色/圓角/字級/效果控制項),即時預覽。
+除了全域 token,可用頂部「選擇元件個別調整」下拉選一個元件,再到左側「個別元件」分頁**只調該元件**的 `--cl-primary` / `--cl-bg` / `--cl-text` / `--cl-border` 與套用的 class 名稱,即時預覽。
 
-- **作用域 = 具名 class**,預設 `b4a-c-<元件名>`,可在抽屜內改名 → 同一元件能建立**多種變體**(例:`cta-primary`、`cta-danger`)。
+- **作用域 = 具名 class**,預設 `b4a-c-<元件名>`,可在「套用 class 名稱」欄位改名 → 同一元件能建立**多種變體**(例:`cta-primary`、`cta-danger`)。
 - 匯出時併入**同一個** `theme.custom.css`:`:root{全域}` 在前、各 `.具名class{元件覆蓋}` 在後 → CSS cascade 讓元件覆蓋贏過全域。tokens.json 也多一段 `components`。
 
 ```jsonc
@@ -108,7 +110,7 @@ node tools/theme-studio/gen-custom-css.mjs theme.tokens.json theme.custom.css
 
 ### 3.3 深色主題客製
 
-- UI:頂部「深色」切換僅預覽;要為深色另設值,填 `tokensDark`(或用 gen-custom-css 的 `tokensDark`),產出會多一段 `[data-theme="dark"]{…}`。
+- UI:頂部「深色」切換僅預覽;UI 不支援 `tokensDark`(匯出不含此欄位,匯入含 `tokensDark` 的 JSON 會被拒絕)。要為深色另設值,請在 tokens.json 填 `tokensDark` 再用 gen-custom-css.mjs 產出,會多一段 `[data-theme="dark"]{…}`。
 
 ## 4. 載入順序總表(重要)
 

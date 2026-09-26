@@ -55,19 +55,19 @@ LINE webhook -> public tunnel -> line-worker -> broker /api/v1/high-level/line/p
 | `tests/e2e` | Playwright e2e tests |
 | `docs` | architecture, manuals, reports, security, and setup docs |
 
-Approximate tracked source/doc mix, excluding `bin`, `obj`, `node_modules`, and test output:
+Approximate tracked source/doc mix (`git ls-tree -r HEAD` at `34ba862`, 2026-09-26, excluding `bin`, `obj`, `node_modules`, and test output; 2,101 tracked files in total):
 
-- C#: 423 files
+- C# (`.cs`): 521 files
 
-- JavaScript: 374 files
+- JavaScript: 495 `.js` + 72 `.mjs` files
 
-- Markdown: 146 files
+- Markdown: 197 files
 
-- JSON: 140 files
+- JSON: 195 files
 
-- HTML: 83 files
+- HTML: 287 files (includes the generated `.html` twins of Markdown docs)
 
-- C# project files: 34 files
+- C# project files (`.csproj`): 36 files
 
 ## 3. Required tools
 
@@ -79,7 +79,7 @@ Approximate tracked source/doc mix, excluding `bin`, `obj`, `node_modules`, and 
 | Windows 10/11 | canonical local LINE sidecar | Sidecar scripts are PowerShell and Windows-oriented |
 | Windows PowerShell 5.1+ | sidecar scripts | Scripts use `#Requires -Version 5.1` |
 | .NET SDK 10.0+ | C# build/test/runtime | All active control-plane projects target `net10.0` |
-| Node.js 18+ | JS tools and agent | `tools/agent/README.md` states Node 18+ |
+| Node.js 22.13+ | JS tools and agent | `tools/agent/README.md` states Node 18+, but the browser package's jsdom 29 requires `^20.19.0 \|\| ^22.13.0 \|\| >=24.0.0` and root `test:ui-components` passes globs to `node --test` (Node 21+); CI uses Node 22 |
 | npm | Node dependency install and scripts | Root package uses npm scripts |
 | Playwright browsers | browser tests and browser worker | Install Chromium for JS e2e and .NET browser-worker |
 
@@ -106,7 +106,7 @@ The checked-in `global.json` pins SDK `10.0.100` with `rollForward: latestFeatur
 | Tool | Needed when |
 |---|---|
 | ngrok | You run the LINE sidecar with an ngrok public webhook |
-| cloudflared or localhost.run | Alternative public tunnel paths supported by the sidecar stack |
+| OpenSSH client (`ssh`) for localhost.run | Fallback public tunnel when ngrok is unavailable or unconfigured (`start-sidecar-stack.ps1`); the script still contains a cloudflared branch, but it is currently unreachable |
 | Podman 5+ with compose support | You run governed agent container validations |
 | Ollama | You use local agent provider mode, local embeddings, or RAG defaults |
 | SQL Server / MySQL / PostgreSQL | You run optional live BaseOrm provider integration tests |
@@ -122,14 +122,16 @@ From the repo root:
 git clone <repo-url> Bricks4Agent
 cd Bricks4Agent
 
-npm install
 dotnet restore packages/csharp/ControlPlane.slnx
 dotnet build packages/csharp/ControlPlane.slnx
 ```
 
-If you will run the browser UI/e2e tests:
+The root `package.json` declares no dependencies (commit `9e877f3` removed `@playwright/test`), so a root `npm install` installs nothing.
+
+If you will run the browser UI/e2e tests, Playwright must be provided out of band because no manifest declares it:
 
 ```powershell
+npm install --no-save --ignore-scripts @playwright/test
 npx playwright install chromium
 ```
 
@@ -148,11 +150,11 @@ npm install
 cd ..\..\..
 ```
 
-Why two npm installs can matter:
+Why this install matters:
 
-- root `package.json` drives repo-level validation and e2e tools
+- root `package.json` drives repo-level validation scripts but declares no dependencies of its own
 
-- `packages/javascript/browser/package.json` has its own Vitest/jsdom dev dependencies for the browser package tests
+- `packages/javascript/browser/package.json` has its own Vitest/jsdom dev dependencies for the browser package tests; root `npm test` also runs `npm --prefix packages/javascript/browser run test:vitest`, so it needs this install too
 
 ## 5. Local-only secrets and config
 
@@ -422,11 +424,11 @@ Sidecar behavior:
 On Windows machines with Smart App Control / WDAC enforcement, sidecar startup can fail with `0x800711C7` or Code Integrity messages such as `did not meet the Enterprise signing level requirements`. If this happens, do not keep re-running `up`; repair the runtime trust policy from an elevated PowerShell:
 
 ```powershell
-cd D:\Bricks4Agent
+# from the repo root
 npm run signing:wdac-repair -- -Deploy
 ```
 
-This scans `D:\Bricks4Agent\.run\line-sidecar`, generates the supplemental policy under `D:\Bricks4Agent\.run\wdac\line-sidecar-runtime\`, installs it with `CiTool`, and verifies that the generated `{policy-id}.cip` appears under `C:\Windows\System32\CodeIntegrity\CiPolicies\Active`. The policy is not effective until the repair output shows it is active. See `docs/manuals/dev-code-signing-wdac.zh-TW.md` for the full flow.
+This scans `.run\line-sidecar` (relative to the repo root), generates the supplemental policy under `.run\wdac\line-sidecar-runtime\`, installs it with `CiTool`, and verifies that the generated `{policy-id}.cip` appears under `C:\Windows\System32\CodeIntegrity\CiPolicies\Active`. The policy is not effective until the repair output shows it is active. See `docs/manuals/dev-code-signing-wdac.zh-TW.md` for the full flow.
 
 If shell encoding is unreliable for Chinese text, prefer:
 
@@ -569,11 +571,14 @@ node spa-cli.js feature Product --fields "Name:string,Price:decimal,Stock:int"
 
 ## 12. Playwright and e2e tests
 
-Install Chromium:
+Both `tests/e2e/playwright.config.ts` and `tools/spa-generator/playwright.config.mjs` import `@playwright/test`, which no `package.json` in the repo installs. Install it (without saving) and Chromium first:
 
 ```powershell
+npm install --no-save --ignore-scripts @playwright/test
 npx playwright install chromium
 ```
+
+`tests/e2e/` is tracked but may be absent in a sparse checkout; check with `git ls-files tests/e2e`.
 
 Run the SPA commerce proof e2e test:
 
@@ -922,15 +927,16 @@ If the workflow does need local models, start Ollama and pull the configured mod
 ### 18.1 Minimal code contributor
 
 ```powershell
-npm install
 dotnet build packages/csharp/ControlPlane.slnx
 dotnet run --project packages/csharp/tests/broker-tests/Broker.Tests.csproj
 ```
 
+(The root `package.json` declares no dependencies, so no root `npm install` is needed.)
+
 ### 18.2 Frontend / generator contributor
 
 ```powershell
-npm install
+npm install --no-save --ignore-scripts @playwright/test   # only for browser/e2e runs
 npx playwright install chromium
 npm run validate:ui-library
 npm run validate:ui-state
@@ -959,7 +965,6 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\l
 ### 18.4 Governed agent / container contributor
 
 ```powershell
-npm install
 npm run validate:agent-governed
 npm run validate:broker-llm-proxy
 npm run validate:podman-governed-stack

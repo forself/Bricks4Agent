@@ -4,6 +4,11 @@ Date: 2026-03-30
 
 Status: 已在 `main` 落地第一階段訪談/審核範圍
 
+> **實作現況（2026-09-26 核對）**
+>
+> - 實際只寫入兩種 document：`hlm.project-interview.requirements.{channel}.{userId}`（整份 task document，含 session state）與 `hlm.project-interview.version-graph.{channel}.{userId}.{version}`（`packages/csharp/broker/Services/ProjectInterviewStateService.cs:113`、`:116`）。「Data Persistence」列出的 `.state.*`、`.review.*` 兩族並不存在。
+> - 沒有獨立的 project interview validator 類別；phase／command 的閘控在 `packages/csharp/broker/Services/ProjectInterviewStateMachine.cs`。
+
 ## Implementation Snapshot
 
 目前 `main` 已實作：

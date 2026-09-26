@@ -1,5 +1,7 @@
 # BaseLogger Governance Pipeline Implementation Plan
 
+Status: not implemented (proposal). BaseLogger still exposes the old API (`packages/csharp/logging/BaseLogger/BaseLogger.cs`); none of the planned files exist; open gaps are tracked in [docs/reports/follow-up-planning.zh-TW.md](../../reports/follow-up-planning.zh-TW.md).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Upgrade `packages/csharp/logging/BaseLogger` into a governed, pluggable logging pipeline that keeps `BaseLogger` as the package/namespace name while avoiding public API names that collide with system logging abstractions.

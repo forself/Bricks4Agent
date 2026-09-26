@@ -19,7 +19,7 @@ const msd = new MultiSelectDropdown({
     onChange: (values, items) => {}, // 變更回調
     size: 'medium',                 // 'small' | 'medium' | 'large'
     disabled: false,                // 停用
-    width: '300px',                 // 寬度
+    width: '100%',                  // 寬度（預設跟隨容器）
     emptyText: '無符合項目',         // 無結果文字
     modalTitle: '選擇項目',          // Modal 標題
     maxCount: Infinity,             // 最大可選數量
@@ -38,6 +38,9 @@ const msd = new MultiSelectDropdown({
 | `setItems(arr)` | 更新選項列表（自動清除無效已選值） |
 | `clear()` | 清除所有已選 |
 | `open()` / `close()` | 開關下拉選單 |
+| `toggle()` | 切換下拉選單開關 |
+| `setDisabled(bool)` | 設定停用狀態 |
+| `show()` / `hide()` | 顯示 / 隱藏元件 |
 
 ### 屬性
 

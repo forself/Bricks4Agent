@@ -38,13 +38,14 @@ const feed = new FeedCard(options);
 
 | 方法 | 回傳 | 說明 |
 |---|---|---|
-| `FeedCard.listHTML(items)` | `string` | 批次產生多張貼文的 HTML |
+| `FeedCard.listHTML(items)` | `string` | 批次產生多張貼文的 HTML；嵌入 DOM 後需呼叫 `FeedCard.applyStyles(container)`，且不會綁定點擊事件 |
+| `FeedCard.applyStyles(container)` | `void` | 為嵌入的 HTML 貼文（含頭像）套用樣式 |
 
 ### 實例方法
 
 | 方法 | 回傳 | 說明 |
 |---|---|---|
-| `toHTML()` | `string` | 產生 HTML 字串 |
+| `toHTML()` | `string` | 產生 HTML 字串（嵌入後同樣需 `FeedCard.applyStyles(container)`，不綁定 `onClickDetail` / `onClickAuthor`） |
 | `mount(container)` | `void` | 掛載到容器 |
 | `update(options)` | `void` | 更新配置並重新渲染 |
 | `destroy()` | `void` | 移除 DOM 元素 |
@@ -56,7 +57,7 @@ const feed = new FeedCard(options);
 ### 使用範例
 
 ```js
-import { FeedCard } from '../packages/javascript/browser/ui_components/social/FeedCard/FeedCard.js';
+import { FeedCard } from './FeedCard.js';
 
 const feed = new FeedCard({
     author: '張三',

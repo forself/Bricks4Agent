@@ -4,6 +4,12 @@
 類型：測試架構設計規格
 狀態：Draft
 
+> **實作現況（2026-09-26 核對）**
+>
+> - 基礎建設已到位：`packages/csharp/tests/unit/Unit.Tests.csproj`、`packages/csharp/tests/integration/Integration.Tests.csproj` 已加入 `packages/csharp/ControlPlane.slnx:38`、`:41`；`packages/csharp/tests/integration/Fixtures/BrokerFixture.cs`、`packages/javascript/browser/vitest.config.js`、`packages/javascript/browser/__tests__/setup.js`、`tests/e2e/playwright.config.ts` 均存在。`CacheServerFixture.cs`、`TestDatabaseFixture.cs`、`tests/e2e/fixtures/` 未建立。
+> - §2.3 具名規劃的 72 個測試檔（C# 49、前端 14、E2E 9）中，同名已存在的只有 11 個：`PolicyEngineTests`、`IdGenTests`、`EnvelopeCryptoTests`、`ScopedTokenServiceTests`、`SandboxPathTests`、`WorkerRegistryTests`、`FieldResolver`、`TriggerEngine`、`PageDefinitionAdapter`、`ThemeSwitching`、`Locale`；另有少數部分對應（如 `BasicButton.test.js`、`InboundDispatcherApprovalTests.cs`、`EncryptionBypassTests.cs`、`DynamicPageRendererTool.test.js`）。其餘實際測試多為計畫外新增（Transport、SiteCrawler、Admin 等）。
+> - 主要缺口：`BrokerServiceTests` / `PepPipelineTests`（PEP 管線）、`SessionServiceTests` / `SessionKeyStoreTests`、Data 層（`BrokerDb*`）、FunctionPool 派工（`PoolDispatcher` / `StrictPoolDispatcher` / `FallbackDispatcher` / `HealthMonitor` / `ContainerManager`）、Delivery 三項（`LineArtifactDeliveryService`、`ArtifactDownloadSignature`、`SidecarPublicUrlResolver`）、Cache 四項、多數整合 API 測試（Session / Task / Admin / Plan / Worker / ArtifactDownload / Delivery）、`WorkerIntegration/*`，以及全部 5 個 E2E 情境 spec 與規劃中的 4 個 UI spec（`tests/e2e/ui/` 目前只有 `admin-structure.spec.ts`、`spa-commerce-proof.spec.ts`）。
+
 ---
 
 ## 1. 現狀與問題

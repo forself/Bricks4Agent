@@ -87,7 +87,7 @@ standing up a broker.</p>
 <tr>
 <td><code>--json</code></td>
 <td><code>false</code></td>
-<td>Also print the full <code>SiteReconstructPackageResult</code> JSON</td>
+<td>Also print the full <code>SiteReconstructPackageResult</code> JSON. Pass a value (<code>--json true</code>): flags are read via <code>AddCommandLine</code>, so a bare trailing <code>--json</code> is ignored, and a bare <code>--json</code> followed by another flag takes that flag as its value and fails the bool conversion (<code>InvalidOperationException</code> wrapping a <code>FormatException</code>)</td>
 </tr>
 <tr>
 <td><code>--timeout-seconds</code></td>
@@ -97,7 +97,7 @@ standing up a broker.</p>
 </tbody>
 </table>
 <p>Output package: <code>index.html</code>, <code>runtime.js</code>, <code>styles.css</code>, <code>site.json</code>,
-<code>components/{manifest.json, b-binding.json}</code>, <code>README.md</code>. <code>b-binding.json</code> is the flat
+<code>components/{manifest.json, b-binding.json}</code>, <code>README.html</code>. <code>b-binding.json</code> is the flat
 <code>type -&gt; b_component</code> index proving the output's vocabulary is a closed projection of B.</p>
 <blockquote>
 <p>Visual mode launches headless Chromium via Microsoft.Playwright (browsers auto-download on

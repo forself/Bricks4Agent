@@ -24,16 +24,32 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <p>帳戶臨時鎖定與解鎖模組，提供自動鎖定、漸進式鎖定、IP 封鎖等功能。</p>
 <h2>功能特點</h2>
 <ul>
-<li><strong>自動鎖定</strong>：登入失敗、MFA 失敗自動觸發鎖定</li>
-<li><strong>漸進式鎖定</strong>：重複違規者鎖定時間遞增</li>
-<li><strong>多範圍鎖定</strong>：帳戶、登入、MFA、敏感操作獨立鎖定</li>
-<li><strong>IP 封鎖</strong>：可疑 IP 自動或手動封鎖</li>
-<li><strong>自動解鎖</strong>：到期自動解除鎖定</li>
-<li><strong>完整歷史</strong>：鎖定/解鎖歷史記錄</li>
+<li>
+<p><strong>自動鎖定</strong>：登入失敗、MFA 失敗自動觸發鎖定</p>
+</li>
+<li>
+<p><strong>漸進式鎖定</strong>：重複違規者鎖定時間遞增</p>
+</li>
+<li>
+<p><strong>多範圍鎖定</strong>：帳戶、登入、MFA、敏感操作獨立鎖定</p>
+</li>
+<li>
+<p><strong>IP 封鎖</strong>：可疑 IP 自動或手動封鎖</p>
+</li>
+<li>
+<p><strong>自動解鎖</strong>：到期自動解除鎖定</p>
+</li>
+<li>
+<p><strong>完整歷史</strong>：鎖定/解鎖歷史記錄</p>
+</li>
 </ul>
 <h2>安裝</h2>
-<pre><code class="language-bash">dotnet add package AccountLock
+<p>本 repo 不發佈此套件（<code>dotnet add package AccountLock</code> 取得的若是 nuget.org 上的同名套件，也不是這份程式碼），請以專案參考（ProjectReference）引用，於 repo 根目錄執行：</p>
+<pre><code class="language-bash">dotnet add &lt;你的專案&gt;.csproj reference packages/csharp/security/AccountLock/AccountLock.csproj
 </code></pre>
+<blockquote>
+<p>目前 repo 內沒有任何專案引用 <code>AccountLock.csproj</code>。</p>
+</blockquote>
 <h2>快速開始</h2>
 <h3>1. 註冊服務</h3>
 <pre><code class="language-csharp">// Program.cs
@@ -268,6 +284,9 @@ var config = new AccountLockConfig
 };
 </code></pre>
 <h2>API 端點</h2>
+<blockquote>
+<p>以下端點定義在未建置的參考程式碼 <code>api/AccountLock/AccountLockController.cs</code>（沒有 .csproj，且無法編譯），repo 內沒有任何主機提供這些端點；本模組本身不含 Controller。</p>
+</blockquote>
 <h3>用戶端點</h3>
 <table>
 <thead>
@@ -475,21 +494,21 @@ _lockService.LockIp(new LockIpRequest
 <pre><code class="language-csharp">var lockService = new AccountLockService(repository, config);
 
 // 訂閱鎖定事件
-lockService.OnAccountLocked += (lock) =&gt;
+lockService.OnAccountLocked += (l) =&gt;
 {
     // 發送通知、記錄日誌等
-    _notificationService.NotifyUserLocked(lock.UserId, lock.Reason);
-    _auditLog.LogAccountLocked(lock);
+    _notificationService.NotifyUserLocked(l.UserId, l.Reason);
+    _auditLog.LogAccountLocked(l);
 };
 
-lockService.OnAccountUnlocked += (lock) =&gt;
+lockService.OnAccountUnlocked += (l) =&gt;
 {
-    _notificationService.NotifyUserUnlocked(lock.UserId);
+    _notificationService.NotifyUserUnlocked(l.UserId);
 };
 
-lockService.OnIpLocked += (lock) =&gt;
+lockService.OnIpLocked += (l) =&gt;
 {
-    _alertService.SendSecurityAlert($&quot;IP blocked: {lock.IpAddress}&quot;);
+    _alertService.SendSecurityAlert($&quot;IP blocked: {l.IpAddress}&quot;);
 };
 </code></pre>
 <h2>設定選項</h2>
@@ -532,28 +551,38 @@ if (!rateLimitResult.IsAllowed)
 }
 </code></pre>
 <h3>與 AuditLog 模組整合</h3>
-<pre><code class="language-csharp">lockService.OnAccountLocked += (lock) =&gt;
+<pre><code class="language-csharp">lockService.OnAccountLocked += (l) =&gt;
 {
     _securityLogService.LogAccountEvent(
         SecurityEventType.AccountLocked,
-        lock.UserId,
-        lock.Username,
-        lock.TriggerIpAddress,
-        $&quot;Lock type: {lock.LockType}, Scope: {lock.Scope}, Duration: {lock.ExpiresAt}&quot;
+        l.UserId,
+        l.Username,
+        l.TriggerIpAddress,
+        $&quot;Lock type: {l.LockType}, Scope: {l.Scope}, Duration: {l.ExpiresAt}&quot;
     );
 };
 </code></pre>
 <h2>生產環境建議</h2>
 <ol>
-<li><strong>使用資料庫儲存</strong>：替換 InMemory 實作</li>
-<li><strong>分散式鎖定</strong>：使用 Redis 實現跨實例同步</li>
-<li><strong>通知整合</strong>：鎖定時發送 Email/SMS 通知</li>
-<li><strong>監控告警</strong>：大量鎖定時觸發告警</li>
-<li><strong>定期清理</strong>：清理過期的鎖定記錄</li>
+<li>
+<p><strong>使用資料庫儲存</strong>：替換 InMemory 實作</p>
+</li>
+<li>
+<p><strong>分散式鎖定</strong>：使用 Redis 實現跨實例同步</p>
+</li>
+<li>
+<p><strong>通知整合</strong>：鎖定時發送 Email/SMS 通知</p>
+</li>
+<li>
+<p><strong>監控告警</strong>：大量鎖定時觸發告警</p>
+</li>
+<li>
+<p><strong>定期清理</strong>：清理過期的鎖定記錄</p>
+</li>
 </ol>
 <h2>相依套件</h2>
 <ul>
-<li><code>Microsoft.AspNetCore.Http.Abstractions</code> &gt;= 2.2.0</li>
+<li>目標框架 <code>net10.0</code>，透過 <code>&lt;FrameworkReference Include="Microsoft.AspNetCore.App" /&gt;</code> 取得 ASP.NET Core API（不使用 <code>Microsoft.AspNetCore.Http.Abstractions</code> NuGet 套件）</li>
 </ul>
 <h2>授權</h2>
 <p>MIT License</p>

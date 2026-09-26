@@ -20,9 +20,13 @@
 
 ## 安裝
 
+本 repo 不發佈此套件（`dotnet add package SecurityAuditLog` 取得的若是 nuget.org 上的同名套件，也不是這份程式碼），請以專案參考（ProjectReference）引用，於 repo 根目錄執行：
+
 ```bash
-dotnet add package SecurityAuditLog
+dotnet add <你的專案>.csproj reference packages/csharp/security/AuditLog/AuditLog.csproj
 ```
+
+> 目前 repo 內沒有任何專案引用 `AuditLog.csproj`。
 
 ## 快速開始
 
@@ -179,6 +183,21 @@ var activity = _logService.GetUserActivity(userId, since: DateTime.UtcNow.AddDay
 | `RoleRevoked` | 504 | 角色撤銷 |
 | `SystemConfigChanged` | 505 | 系統設定變更 |
 
+### 資料存取事件 (6xx)
+
+| 類型 | 代碼 | 說明 |
+|---|---|---|
+| `SensitiveDataAccessed` | 600 | 存取敏感資料 |
+| `DataExported` | 601 | 資料匯出 |
+| `BulkOperation` | 602 | 大量操作 |
+
+### 其他 (9xx)
+
+| 類型 | 代碼 | 說明 |
+|---|---|---|
+| `Custom` | 900 | 自訂事件 |
+| `Unknown` | 999 | 未知 |
+
 ## 嚴重等級
 
 | 等級 | 說明 |
@@ -190,6 +209,8 @@ var activity = _logService.GetUserActivity(userId, since: DateTime.UtcNow.AddDay
 | `Critical` | 嚴重，需要立即處理 |
 
 ## API 端點
+
+> 以下端點定義在未建置的參考程式碼 `api/AuditLog/SecurityLogController.cs`（沒有 .csproj），repo 內沒有任何主機提供這些端點；本模組本身不含 Controller。
 
 ### 用戶端點（已登入用戶）
 

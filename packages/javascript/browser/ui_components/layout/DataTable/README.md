@@ -23,8 +23,8 @@ new DataTable(containerElement, config)
 | `config.pageSize` | `number` | `10` | 每頁筆數（未指定時取 `rowsPerPageOptions` 第一項） |
 | `config.pageSizeOptions` | `number[]` | `[10,20,100,500,1000]` | 每頁筆數選項（同 `rowsPerPageOptions`） |
 | `config.emptyText` | `string` | Locale 文字 | 無資料文字 |
-| `config.striped` | `boolean` | — | 斑馬紋（未設定時依主題 CSS） |
-| `config.hoverable` | `boolean` | — | 懸停效果（未設定時依主題 CSS） |
+| `config.striped` | `boolean` | — | 目前無作用：值會被保存但不會被讀取，斑馬紋一律依主題 CSS |
+| `config.hoverable` | `boolean` | — | 目前無作用：值會被保存但不會被讀取，懸停效果一律依主題 CSS |
 | `config.selectableRows` | `string` | `'multiple'` | 行選取模式：`'multiple'` / `'single'` / `'none'`（也可放在 `config.options` 內） |
 | `config.sortOrder` | `Object` | `null` | 初始排序 `{name, direction}` |
 | `config.options` | `Object` | `{}` | 進階設定：`textLabels`、`customToolbar`、`customToolbarSelect`、`rowsPerPageOptions`、`onRender(element, dt)`、`onRowSelectionChange(_, allSelected, selectedIndices)` |
@@ -33,7 +33,7 @@ new DataTable(containerElement, config)
 
 | 方法 | 回傳 | 說明 |
 |---|---|---|
-| `setData(data)` | `void` | 設定資料並重置分頁/選取，重新渲染 |
+| `setData(data)` | `this` | 設定資料並重置分頁/選取，重新渲染 |
 | `getData()` | `Array` | 取得目前資料（正規化後的 2D 陣列） |
 | `getSelectedRows()` | `Array` | 取得已選取列的 dataIndex 陣列 |
 | `setSelectedRows(indices)` | `void` | 設定已選取列並重新渲染 |
@@ -71,18 +71,20 @@ new DataTable(containerElement, config)
 
 - `Link`、`Badge` — `linkCell()` / `badgeCell()` 儲存格渲染
 
-- `utils/security.js` — `escapeHtml` / `escapeAttr` / `raw`
+- `utils/security.js` — `escapeHtml` / `isRawHtml` / `raw`
 
 ## 使用範例
 
 ```js
 import { DataTable } from './DataTable.js';
+import { raw } from '../../utils/security.js';
 
 const table = new DataTable({
     columns: [
+        { key: 'id', hidden: true },   // render 的 row 只含 columns 定義的 key
         { key: 'name', title: '姓名' },
         { key: 'age', title: '年齡' },
-        { key: 'action', title: '操作', render: (_, row) => `<button>編輯</button>` }
+        { key: 'action', title: '操作', render: (_, row) => raw(`<button>編輯</button>`) }
     ],
     data: [{ id: 1, name: '張三', age: 28 }],
     pageSize: 10,
@@ -105,6 +107,9 @@ import { raw, escapeAttr } from '../../utils/security.js';
 
 const table = new DataTable({
     columns: [
+        // 隱藏欄位 — render 收到的 row 只含 columns 定義的 key，要用 row.id 就必須宣告
+        { key: 'id', hidden: true },
+
         // 純文字 — 自動跳脫，安全
         { key: 'name', title: '姓名' },
 
@@ -119,6 +124,7 @@ const table = new DataTable({
 **規則**：
 - `render` 回傳 `string` → 自動 HTML 跳脫（safe-by-default）
 - `render` 回傳 `raw(html)` → 原樣輸出（開發者負責確保安全）
+- `render(value, row)` 的 `row` 只包含 `columns` 中宣告的 key（資料物件的其他屬性會被捨棄）；需要的欄位請以 `{ key, hidden: true }` 加入
 - 在 `raw()` 內部使用使用者資料時，務必用 `escapeHtml()` / `escapeAttr()` 跳脫
 - 只有 `raw()` 產生的物件會被認可：標記以 `Symbol.for('bricks4agent.rawHtml')` 品牌識別，手寫的 `{ __html: '...' }`（或 API 回傳的同名 JSON 欄位）一律當成一般值跳脫
 

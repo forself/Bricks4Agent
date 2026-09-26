@@ -50,7 +50,7 @@
 
 ### 1.4 JWT 實作
 
-- [ ] 使用強加密演算法 (RS256/ES256)
+- [ ] 使用強簽章演算法(現行實作一律為 HS256 對稱簽章,例如 `packages/csharp/broker-core/Services/ScopedTokenService.cs:83`、`packages/csharp/security/JWT/JwtHelper.cs:82`;審查時確認 HMAC 金鑰 ≥256 bit 且不入 repo、驗證端鎖定演算法;需第三方驗簽時再評估 RS256/ES256)
 
 - [ ] 適當的 Token 有效期
 
@@ -294,27 +294,21 @@
 
 ## 10. 各語言特定檢查
 
-### 10.1 Rust
+### 10.1 C# / .NET
 
-- [ ] 適當使用 unsafe
+- [ ] SQL 一律經 BaseOrm 參數化，不拼接字串
 
-- [ ] 記憶體安全
+- [ ] 密碼雜湊使用靜態 `Rfc2898DeriveBytes.Pbkdf2` API，且不改既有迭代次數 / 鹽 / 雜湊長度與儲存格式
 
-- [ ] 錯誤處理完整
+- [ ] 秘密值 / token / 雜湊比對使用 `CryptographicOperations.FixedTimeEquals`
 
-- [ ] 無 panic 在生產代碼
+- [ ] 無 `BinaryFormatter` 等不安全反序列化
 
-### 10.2 Python
+- [ ] 外部程序以 `UseShellExecute = false` + `ArgumentList` 啟動，不經 shell
 
-- [ ] 無 eval/exec 使用
+- [ ] `npm run test:dotnet10`(警告視為錯誤)通過
 
-- [ ] pickle 安全使用
-
-- [ ] 適當的異常處理
-
-- [ ] 類型提示完整
-
-### 10.3 Node.js/TypeScript
+### 10.2 Node.js/TypeScript
 
 - [ ] 無 eval 使用
 
@@ -324,9 +318,15 @@
 
 - [ ] 嚴格模式啟用
 
-### 10.4 前端 JavaScript
+### 10.3 前端 JavaScript
 
 - [ ] 無 innerHTML 直接賦值
+
+- [ ] 動態 HTML 一律經 `escapeHtml()`;需輸出原始 HTML 時明確用 `raw()` 標記(`isRawHtml()` 只認 `raw()` 打上的 Symbol 品牌，手寫 / `JSON.parse` 的 `{ __html }` 不算授權)—— 見 `packages/javascript/browser/ui_components/utils/security.js`
+
+- [ ] `node tools/scripts/audit-csp.mjs` 硬零通過(無 `<style>` 注入、innerHTML 模板內無 `style=` / `on*=`、無 eval / `new Function` / `javascript:` URL)
+
+- [ ] 無 SVG(`<svg`、`createElementNS`、`data:image/svg`),圖形一律 Canvas —— 同由 `audit-csp.mjs` 強制
 
 - [ ] 無 document.write
 
@@ -340,21 +340,12 @@
 
 | 模組 | 語言 | 審查日期 | 審查者 | 問題數 | 狀態 |
 |---|---|---|---|---|---|
-| MFA | Rust |  |  |  | ⏳ |
-| MFA | Python |  |  |  | ⏳ |
-| MFA | Node.js |  |  |  | ⏳ |
-| RateLimiting | Rust |  |  |  | ⏳ |
-| RateLimiting | Python |  |  |  | ⏳ |
-| RateLimiting | Node.js |  |  |  | ⏳ |
-| AuditLog | Rust |  |  |  | ⏳ |
-| AuditLog | Python |  |  |  | ⏳ |
-| AuditLog | Node.js |  |  |  | ⏳ |
-| AccountLock | Rust |  |  |  | ⏳ |
-| AccountLock | Python |  |  |  | ⏳ |
-| AccountLock | Node.js |  |  |  | ⏳ |
+| MFA (`packages/csharp/security/Mfa`) | C# |  |  |  | ⏳ |
+| RateLimiting (`packages/csharp/security/RateLimiting`) | C# |  |  |  | ⏳ |
+| AuditLog (`packages/csharp/security/AuditLog`) | C# |  |  |  | ⏳ |
+| AccountLock (`packages/csharp/security/AccountLock`) | C# |  |  |  | ⏳ |
 | Frontend | JavaScript |  |  |  | ⏳ |
 | Admin Portal | JavaScript |  |  |  | ⏳ |
-| Mobile App | Dart |  |  |  | ⏳ |
 
 ---
 

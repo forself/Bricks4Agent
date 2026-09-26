@@ -25,16 +25,28 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 and scaffolding CRUD projects.</p>
 <p>It is a self-contained generator area with:</p>
 <ul>
-<li>a Vanilla JS frontend at <code>frontend/</code></li>
-<li>a .NET 10 backend at <code>backend/</code></li>
-<li>helper launchers such as <code>server.js</code>, <code>start.bat</code>, and <code>start.sh</code></li>
+<li>
+<p>a Vanilla JS frontend at <code>frontend/</code></p>
+</li>
+<li>
+<p>a .NET 10 backend at <code>backend/</code></p>
+</li>
+<li>
+<p>helper launchers such as <code>server.js</code>, <code>start.bat</code>, and <code>start.sh</code></p>
+</li>
 </ul>
 <h2>Scope</h2>
 <p>Use this directory when you want to:</p>
 <ul>
-<li>explore the SPA generator UI</li>
-<li>test the scaffolded frontend/backend pattern</li>
-<li>generate or inspect template-style CRUD project structure</li>
+<li>
+<p>explore the SPA generator UI</p>
+</li>
+<li>
+<p>test the scaffolded frontend/backend pattern</p>
+</li>
+<li>
+<p>generate or inspect template-style CRUD project structure</p>
+</li>
 </ul>
 <p>Related: <a href="../../AGENT.html">../../AGENT.md</a> (generator manual) · <a href="../../AGENT-UI-GUIDE.html">../../AGENT-UI-GUIDE.md</a> (component calling convention) · <a href="../page-gen.README.html">../page-gen.README.md</a> (standalone CLI).</p>
 <h2>Quick Start</h2>
@@ -45,7 +57,7 @@ dotnet run
 </code></pre>
 <p>Default API URL:</p>
 <ul>
-<li><code>https://localhost:5002</code></li>
+<li><code>http://localhost:5000</code> (Kestrel's default; the backend has no <code>launchSettings.json</code> or <code>Urls</code> setting, so bare <code>dotnet run</code> does not use port 5002)</li>
 </ul>
 <h3>Frontend UI</h3>
 <p>Recommended:</p>
@@ -71,16 +83,28 @@ start.bat
 <p>If <code>SeedData:AdminPassword</code> is not set, the backend generates a development password and prints it to the backend console during startup.</p>
 <p>That means:</p>
 <ul>
-<li>the password is <strong>not</strong> a fixed checked-in secret</li>
-<li>the first usable password depends on current configuration or generated startup output</li>
+<li>
+<p>the password is <strong>not</strong> a fixed checked-in secret</p>
+</li>
+<li>
+<p>the first usable password depends on current configuration or generated startup output</p>
+</li>
 </ul>
 <h2>Current Backend Stack</h2>
 <p>The backend in this directory currently uses:</p>
 <ul>
-<li>ASP.NET Core 10 minimal API</li>
-<li>SQLite</li>
-<li><code>BaseOrm</code></li>
-<li>JWT bearer auth</li>
+<li>
+<p>ASP.NET Core 10 minimal API</p>
+</li>
+<li>
+<p>SQLite</p>
+</li>
+<li>
+<p><code>BaseOrm</code></p>
+</li>
+<li>
+<p>JWT bearer auth</p>
+</li>
 </ul>
 <p>It is not an EF Core sample.</p>
 <h2>Layout</h2>
@@ -94,12 +118,20 @@ start.bat
 </code></pre>
 <h2>Notes</h2>
 <ul>
-<li><code>server.js</code> is the preferred frontend launcher because it handles API routing and <code>/packages/</code> path behavior more completely than a bare static server.</li>
-<li>The generator frontend and backend use ports <code>3080</code> / <code>5002</code>.</li>
-<li><code>npm run test:dotnet10</code> builds this backend as part of the 35-project .NET 10
-  matrix and treats every warning as an error.</li>
-<li>Password hashing keeps the existing PBKDF2-SHA256 storage format while using
-  the current static PBKDF2 API.</li>
+<li>
+<p><code>server.js</code> is the preferred frontend launcher because it handles API routing and <code>/packages/</code> path behavior more completely than a bare static server.</p>
+</li>
+<li>
+<p>The generator frontend uses port <code>3080</code>. <code>5002</code> appears only as <code>backend.apiPort</code> metadata in <code>project.json</code>; the backend itself listens on Kestrel's default <code>http://localhost:5000</code> unless you configure a URL yourself.</p>
+</li>
+<li>
+<p><code>npm run test:dotnet10</code> builds this backend as part of the 35-project .NET 10
+ matrix and treats every warning as an error.</p>
+</li>
+<li>
+<p>Password hashing keeps the existing PBKDF2-SHA256 storage format while using
+ the current static PBKDF2 API.</p>
+</li>
 </ul>
 </main>
 </body>

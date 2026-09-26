@@ -6,6 +6,10 @@ This document is the normative specification for generator-native definition doc
 
 It replaces the previous draft-level framing that treated page-level and app-level definition work as loosely parallel concepts.
 
+### Implementation status (checked 2026-09-26)
+
+- Page types: the JS validator is looser than §Page Node Rules. `validateDefinitionTemplate()` ([tools/lib/definition-template.js:112-119](../../tools/lib/definition-template.js)) delegates each page node to `validateDefinition()` in [PageDefinition.js](../../packages/javascript/browser/page-generator/PageDefinition.js), whose `PageTypes` also includes `tool` (PageDefinition.js:152) and routes it to `validateToolPageDefinition()` (PageDefinition.js:274). A `tool` page node therefore passes JS validation, while the JSON schema enum ([DefinitionTemplate.schema.json:92-99](../../tools/spa-generator/schemas/DefinitionTemplate.schema.json)) still lists only `form` / `list` / `detail` / `dashboard`.
+
 ## Scope
 
 This specification defines:
@@ -146,7 +150,7 @@ The canonical page node shape is:
 
 For version `0.1`, page payload semantics are defined by the existing page-definition contract implemented in:
 
-- `D:\Bricks4Agent\packages\javascript\browser\page-generator\PageDefinition.js`
+- [`packages/javascript/browser/page-generator/PageDefinition.js`](../../packages/javascript/browser/page-generator/PageDefinition.js)
 
 This means `DefinitionTemplate` MUST reuse existing page semantics instead of inventing a second page DSL.
 
@@ -364,6 +368,6 @@ The topics below are reserved for later specifications:
 
 The machine-readable companion for this specification is:
 
-- `D:\Bricks4Agent\tools\spa-generator\schemas\DefinitionTemplate.schema.json`
+- [`tools/spa-generator/schemas/DefinitionTemplate.schema.json`](../../tools/spa-generator/schemas/DefinitionTemplate.schema.json)
 
 If the schema and this specification conflict, this specification is authoritative.

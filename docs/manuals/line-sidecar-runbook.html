@@ -21,82 +21,142 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <body>
 <main>
 <h1>LINE Sidecar Runbook</h1>
-<p>Date: 2026-03-26<br>
-Scope: current local Windows sidecar operation for the live LINE ingress path<br>
-Audience: operator / developer  </p>
+<p>Date: 2026-09-26</p>
+<p>Scope: current local Windows sidecar operation for the live LINE ingress path</p>
+<p>Audience: operator / developer</p>
 <h2>Purpose</h2>
 <p>This runbook describes how to start, verify, operate, and troubleshoot the current live local path:</p>
-<p><code>LINE webhook -&gt; ngrok public URL -&gt; line-worker -&gt; broker /api/v1/high-level/line/process</code></p>
+<p><code>LINE webhook -&gt; public tunnel URL (ngrok; localhost.run fallback) -&gt; line-worker -&gt; broker /api/v1/high-level/line/process</code></p>
 <p>The broker path above remains plain JSON, but it is now an authenticated worker path rather than a blind trust bypass.</p>
 <p>This is the current canonical local operator path.</p>
 <p>It does not describe:</p>
 <ul>
-<li>the legacy <code>agent --line-listen</code> route</li>
-<li>full container-only operation</li>
-<li>production-grade multi-host deployment</li>
+<li>
+<p>the legacy <code>agent --line-listen</code> route</p>
+</li>
+<li>
+<p>full container-only operation</p>
+</li>
+<li>
+<p>production-grade multi-host deployment</p>
+</li>
 </ul>
 <h2>Current Canonical Ports</h2>
 <ul>
-<li>broker: <code>127.0.0.1:5361</code></li>
-<li>line-worker webhook: <code>127.0.0.1:5357</code></li>
-<li>ngrok tunnel name: <code>line5357</code></li>
+<li>
+<p>broker: <code>127.0.0.1:5361</code></p>
+</li>
+<li>
+<p>line-worker webhook: <code>127.0.0.1:5357</code></p>
+</li>
+<li>
+<p>ngrok tunnel name (ngrok path only): <code>line5357</code></p>
+</li>
 </ul>
 <h2>Sidecar State Persistence</h2>
 <ul>
-<li>Sidecar runtime state now persists at:</li>
-<li><code>D:\Bricks4Agent\.run\line-sidecar\data\broker.db</code></li>
-<li>This database stores broker-owned local state such as:</li>
-<li>local admin credentials</li>
-<li>shared context and high-level profiles</li>
-<li>Google Drive delegated OAuth credentials</li>
-<li><code>line-sidecar.ps1 restart</code> should preserve that state.</li>
-<li>If a Google Drive authorization was created before this persistence fix and later disappeared, re-authorize once on the current sidecar instance.</li>
+<li>
+<p>Sidecar runtime state now persists at:</p>
+</li>
+<li>
+<p><code>.run\line-sidecar\data\broker.db</code> (under the repo root)</p>
+</li>
+<li>
+<p>This database stores broker-owned local state such as:</p>
+</li>
+<li>
+<p>local admin credentials</p>
+</li>
+<li>
+<p>shared context and high-level profiles</p>
+</li>
+<li>
+<p>Google Drive delegated OAuth credentials</p>
+</li>
+<li>
+<p><code>line-sidecar.ps1 restart</code> should preserve that state.</p>
+</li>
+<li>
+<p>If a Google Drive authorization was created before this persistence fix and later disappeared, re-authorize once on the current sidecar instance.</p>
+</li>
 </ul>
 <h2>Prerequisites</h2>
 <p>You need these available on the machine:</p>
 <ul>
-<li>Windows PowerShell 5.1 or newer</li>
-<li>.NET SDK/runtime sufficient to publish and run broker and line-worker</li>
-<li><code>ngrok</code> installed and authenticated</li>
-<li>valid LINE channel credentials in local worker config</li>
+<li>
+<p>Windows PowerShell 5.1 or newer</p>
+</li>
+<li>
+<p>.NET SDK/runtime sufficient to publish and run broker and line-worker</p>
+</li>
+<li>
+<p>a public tunnel: <code>ngrok</code> installed and authenticated is preferred but optional — if <code>ngrok</code> is missing or <code>%LOCALAPPDATA%\ngrok\ngrok.yml</code> does not exist, <code>up</code> warns and falls back to a localhost.run tunnel, which needs the OpenSSH client (<code>ssh</code>) on <code>PATH</code></p>
+</li>
+<li>
+<p>valid LINE channel credentials in local worker config</p>
+</li>
 </ul>
 <p>Optional but currently expected for the best live behavior:</p>
 <ul>
-<li><code>ANTHROPIC_API_KEY</code> in the current shell or Windows User environment; sidecar prefers it and configures <code>anthropic</code> / <code>claude-sonnet-4-6</code></li>
-<li><code>Api.txt</code> in <code>C:\secure\Bricks4Agent</code> (or <code>BRICKS4AGENT_SECRETS_DIR</code>; repo root is a legacy fallback) as the OpenAI-compatible fallback key when <code>ANTHROPIC_API_KEY</code> is absent</li>
-<li>Google OAuth client JSON matching <code>client_secret_*.json</code> in the same secrets directory</li>
-<li>a valid ngrok config at <code>%LOCALAPPDATA%\ngrok\ngrok.yml</code></li>
+<li>
+<p><code>ANTHROPIC_API_KEY</code> in the current shell or Windows User environment; sidecar prefers it and configures <code>anthropic</code> / <code>claude-sonnet-4-6</code></p>
+</li>
+<li>
+<p><code>Api.txt</code> in <code>C:\secure\Bricks4Agent</code> (or <code>BRICKS4AGENT_SECRETS_DIR</code>; repo root is a legacy fallback) as the OpenAI-compatible fallback key when <code>ANTHROPIC_API_KEY</code> is absent</p>
+</li>
+<li>
+<p>Google OAuth client JSON matching <code>client_secret_*.json</code> in the same secrets directory (searched first; repo root is a legacy fallback)</p>
+</li>
+<li>
+<p>a valid ngrok config at <code>%LOCALAPPDATA%\ngrok\ngrok.yml</code> (only for the ngrok path)</p>
+</li>
 </ul>
 <h2>Local-Only Files And Inputs</h2>
 <h3>1. LINE worker config</h3>
 <p>File:</p>
 <ul>
-<li><a href="/d:/Bricks4Agent/packages/csharp/workers/line-worker/appsettings.json">appsettings.json</a></li>
+<li><code>packages/csharp/workers/line-worker/appsettings.json</code></li>
 </ul>
 <p>This file is local-only and ignored by git.</p>
 <p>At minimum, it must contain working values for:</p>
 <ul>
-<li><code>Line.ChannelAccessToken</code></li>
-<li><code>Line.ChannelSecret</code></li>
-<li><code>Line.DefaultRecipientId</code></li>
-<li><code>Worker.Auth.WorkerType</code></li>
-<li><code>Worker.Auth.KeyId</code></li>
-<li><code>Worker.Auth.SharedSecret</code></li>
+<li>
+<p><code>Line.ChannelAccessToken</code></p>
+</li>
+<li>
+<p><code>Line.ChannelSecret</code></p>
+</li>
+<li>
+<p><code>Line.DefaultRecipientId</code></p>
+</li>
+<li>
+<p><code>Worker.Auth.WorkerType</code></p>
+</li>
+<li>
+<p><code>Worker.Auth.KeyId</code></p>
+</li>
+<li>
+<p><code>Worker.Auth.SharedSecret</code></p>
+</li>
 </ul>
 <h3>2. High-level model API key</h3>
 <p>File:</p>
 <ul>
-<li><code>C:\secure\Bricks4Agent\Api.txt</code> (or <code>$env:BRICKS4AGENT_SECRETS_DIR\Api.txt</code>; <code>D:\Bricks4Agent\Api.txt</code> is a legacy fallback)</li>
+<li><code>C:\secure\Bricks4Agent\Api.txt</code> (or <code>$env:BRICKS4AGENT_SECRETS_DIR\Api.txt</code>; <code>Api.txt</code> at the repo root is a legacy fallback)</li>
 </ul>
 <p>Current sidecar behavior:</p>
 <ul>
-<li><code>start-sidecar-stack.ps1</code> prefers <code>ANTHROPIC_API_KEY</code> and configures broker <code>HighLevelLlm</code> / <code>LlmProxy</code> as <code>anthropic</code> with <code>claude-sonnet-4-6</code></li>
-<li>if <code>ANTHROPIC_API_KEY</code> is absent, it reads this file and injects the key into broker <code>HighLevelLlm.ApiKey</code></li>
+<li>
+<p><code>start-sidecar-stack.ps1</code> prefers <code>ANTHROPIC_API_KEY</code> and configures broker <code>HighLevelLlm</code> / <code>LlmProxy</code> as <code>anthropic</code> with <code>claude-sonnet-4-6</code></p>
+</li>
+<li>
+<p>if <code>ANTHROPIC_API_KEY</code> is absent, it reads this file and injects the key into broker <code>HighLevelLlm.ApiKey</code></p>
+</li>
 </ul>
 <h3>3. Google Drive OAuth client</h3>
 <p>File pattern:</p>
 <ul>
-<li><code>C:\secure\Bricks4Agent\client_secret_*.json</code> (repo root is a legacy fallback)</li>
+<li><code>C:\secure\Bricks4Agent\client_secret_*.json</code> (or <code>$env:BRICKS4AGENT_SECRETS_DIR</code>; <code>start-sidecar-stack.ps1</code> searches the secrets directory first and the repo root only as a legacy fallback)</li>
 </ul>
 <h3>3.1 Worker identity credential store</h3>
 <p>File:</p>
@@ -105,10 +165,18 @@ Audience: operator / developer  </p>
 </ul>
 <p>Current sidecar behavior:</p>
 <ul>
-<li>on startup, missing per-worker-type credentials are generated and persisted (line-worker, file-worker, browser-worker, transport-tdx, site-crawler-worker)</li>
-<li>all credentials are injected into the broker runtime config with <code>WorkerAuth.Enforce = true</code></li>
-<li>the line-worker runtime config receives its matching credential</li>
-<li><code>B4A_LINE_WORKER_KEY_ID</code> / <code>B4A_LINE_WORKER_SHARED_SECRET</code> still override the line-worker entry for that run</li>
+<li>
+<p>on startup, missing per-worker-type credentials are generated and persisted (line-worker, file-worker, browser-worker, transport-tdx, site-crawler-worker)</p>
+</li>
+<li>
+<p>all credentials are injected into the broker runtime config with <code>WorkerAuth.Enforce = true</code></p>
+</li>
+<li>
+<p>the line-worker runtime config receives its matching credential</p>
+</li>
+<li>
+<p><code>B4A_LINE_WORKER_KEY_ID</code> / <code>B4A_LINE_WORKER_SHARED_SECRET</code> still override the line-worker entry for that run</p>
+</li>
 </ul>
 <p>To start any other worker against the enforcing broker, use:</p>
 <pre><code class="language-powershell">powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\run-worker.ps1 -Worker site-crawler
@@ -117,9 +185,15 @@ Audience: operator / developer  </p>
 <h3>3.2 LINE outbound rate limit</h3>
 <p>line-worker applies worker-local outbound rate limiting to <code>line.message.send</code> and <code>line.audio.send</code>, keyed by recipient + capability. Defaults live in <code>packages/csharp/workers/line-worker/appsettings*.json</code>:</p>
 <ul>
-<li><code>Line.OutboundRateLimit.PermitLimit</code>: default <code>20</code></li>
-<li><code>Line.OutboundRateLimit.WindowSeconds</code>: default <code>60</code></li>
-<li><code>Line.OutboundRateLimit.MaxTrackedKeys</code>: default <code>1024</code></li>
+<li>
+<p><code>Line.OutboundRateLimit.PermitLimit</code>: default <code>20</code></p>
+</li>
+<li>
+<p><code>Line.OutboundRateLimit.WindowSeconds</code>: default <code>60</code></p>
+</li>
+<li>
+<p><code>Line.OutboundRateLimit.MaxTrackedKeys</code>: default <code>1024</code></p>
+</li>
 </ul>
 <p>Override for sidecar/manual runs with:</p>
 <pre><code class="language-powershell">$env:WORKER_Line__OutboundRateLimit__PermitLimit = '20'
@@ -129,19 +203,35 @@ $env:WORKER_Line__OutboundRateLimit__MaxTrackedKeys = '1024'
 <p>This is not a distributed quota. Multiple line-worker instances do not share counters, and <code>line.notification.send</code> is not yet covered by this limiter.</p>
 <p>Current sidecar behavior:</p>
 <ul>
-<li>the first matching file is used</li>
-<li>delegated redirect URI is set to <code>http://127.0.0.1:5361/api/v1/google-drive/oauth/callback</code></li>
-<li>Google Drive delivery mode is configurable:</li>
-<li><code>shared_delegated</code></li>
-<li><code>user_delegated</code></li>
-<li><code>system_account</code></li>
-<li>if no override is provided and <code>Line.DefaultRecipientId</code> exists, sidecar now defaults to <code>shared_delegated</code></li>
-<li>the shared delegated owner defaults to <code>Line.DefaultRecipientId</code></li>
+<li>
+<p>the first matching file is used</p>
+</li>
+<li>
+<p>delegated redirect URI is set to <code>http://127.0.0.1:5361/api/v1/google-drive/oauth/callback</code></p>
+</li>
+<li>
+<p>Google Drive delivery mode is configurable:</p>
+</li>
+<li>
+<p><code>shared_delegated</code></p>
+</li>
+<li>
+<p><code>user_delegated</code></p>
+</li>
+<li>
+<p><code>system_account</code></p>
+</li>
+<li>
+<p>if no override is provided and <code>Line.DefaultRecipientId</code> exists, sidecar now defaults to <code>shared_delegated</code></p>
+</li>
+<li>
+<p>the shared delegated owner defaults to <code>Line.DefaultRecipientId</code></p>
+</li>
 </ul>
 <h2>Canonical Operator Commands</h2>
 <p>All normal local operation should go through:</p>
 <ul>
-<li><a href="/d:/Bricks4Agent/packages/csharp/workers/line-worker/line-sidecar.ps1">line-sidecar.ps1</a></li>
+<li><a href="../../packages/csharp/workers/line-worker/line-sidecar.ps1">line-sidecar.ps1</a></li>
 </ul>
 <h3>Start</h3>
 <pre><code class="language-powershell">powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\line-sidecar.ps1 up
@@ -166,63 +256,120 @@ $env:WORKER_Line__OutboundRateLimit__MaxTrackedKeys = '1024'
 <h2>What <code>up</code> Actually Does</h2>
 <p>The start path currently performs these actions:</p>
 <ol>
-<li>Creates <code>.run/line-sidecar</code></li>
-<li>Publishes broker into <code>.run/line-sidecar/broker</code></li>
-<li>Publishes line-worker into <code>.run/line-sidecar/line-worker</code></li>
-<li>Signs Bricks4Agent-owned sidecar runtime <code>.dll</code> / <code>.exe</code> files when the <code>Bricks4Agent Dev Code Signing</code> certificate exists</li>
-<li>Injects local production overrides for:
-   - high-level API key
-   - Google Drive OAuth settings
-   - Google Drive default identity mode and shared delegated owner</li>
-<li>Starts broker on <code>127.0.0.1:5361</code></li>
-<li>Starts line-worker on <code>*:5357</code></li>
-<li>Recreates ngrok tunnel <code>line5357</code></li>
-<li>Updates the LINE webhook endpoint unless <code>-SkipWebhookUpdate</code> is used</li>
-<li>Waits until broker and local webhook are actually reachable before considering startup successful</li>
-<li>Verifies that the named ngrok tunnel actually exists before treating startup as successful</li>
+<li>
+<p>Creates <code>.run/line-sidecar</code></p>
+</li>
+<li>
+<p>Publishes broker into <code>.run/line-sidecar/broker</code></p>
+</li>
+<li>
+<p>Publishes line-worker into <code>.run/line-sidecar/line-worker</code></p>
+</li>
+<li>
+<p>Signs Bricks4Agent-owned sidecar runtime <code>.dll</code> / <code>.exe</code> files when the <code>Bricks4Agent Dev Code Signing</code> certificate exists</p>
+</li>
+<li>
+<p>Injects local production overrides for:
+ - high-level API key
+ - Google Drive OAuth settings
+ - Google Drive default identity mode and shared delegated owner</p>
+</li>
+<li>
+<p>Starts broker on <code>127.0.0.1:5361</code></p>
+</li>
+<li>
+<p>Starts line-worker on <code>*:5357</code></p>
+</li>
+<li>
+<p>Recreates ngrok tunnel <code>line5357</code>; if ngrok is unavailable, starts a localhost.run tunnel instead (plus a webhook-sync watchdog that re-points the LINE webhook when the localhost.run URL changes)</p>
+</li>
+<li>
+<p>Updates the LINE webhook endpoint unless <code>-SkipWebhookUpdate</code> is used</p>
+</li>
+<li>
+<p>Waits until broker and local webhook are actually reachable before considering startup successful</p>
+</li>
+<li>
+<p>On the ngrok path, verifies that the named ngrok tunnel actually exists before treating startup as successful</p>
+</li>
 </ol>
 <p>Important clarification:</p>
 <ul>
-<li>if the local ngrok admin API on <code>127.0.0.1:4040</code> is not already available</li>
-<li>the script now starts an ngrok agent automatically with:</li>
-<li><code>ngrok start --none --config %LOCALAPPDATA%\ngrok\ngrok.yml</code></li>
+<li>
+<p>if the local ngrok admin API on <code>127.0.0.1:4040</code> is not already available</p>
+</li>
+<li>
+<p>the script now starts an ngrok agent automatically with:</p>
+</li>
+<li>
+<p><code>ngrok start --none --config %LOCALAPPDATA%\ngrok\ngrok.yml</code></p>
+</li>
+<li>
+<p>if <code>ngrok</code> is not on <code>PATH</code> or the config file is missing, the script warns and uses localhost.run instead (the warning text still says "cloudflared quick tunnel", but the tunnel actually started is localhost.run; the cloudflared branch in the script is currently unreachable)</p>
+</li>
 </ul>
 <p>So the startup document is now strict:</p>
 <ul>
-<li>if <code>up</code> does not work, the runbook must explain why</li>
-<li>it is no longer acceptable to assume the operator manually guessed how to bootstrap ngrok</li>
+<li>
+<p>if <code>up</code> does not work, the runbook must explain why</p>
+</li>
+<li>
+<p>it is no longer acceptable to assume the operator manually guessed how to bootstrap ngrok</p>
+</li>
 </ul>
 <p>The first start can take noticeably longer because the broker may seed local RAG data before becoming ready.</p>
 <h3>Smart App Control / WDAC Runtime DLL Blocks</h3>
 <p>If <code>up</code> fails and <code>.run/line-sidecar/logs/broker.err.log</code> or Windows Code Integrity events mention <code>0x800711C7</code>, <code>Smart App Control</code>, or <code>did not meet the Enterprise signing level requirements</code>, Windows still does not trust code loaded by the current sidecar runtime.</p>
 <p>Do not keep re-running <code>line-sidecar.ps1 up</code>. Run the runtime trust repair flow from an elevated PowerShell:</p>
-<pre><code class="language-powershell">cd D:\Bricks4Agent
+<pre><code class="language-powershell"># from the repo root
 npm run signing:wdac-repair -- -Deploy
 </code></pre>
-<p>The repair flow scans:</p>
-<pre><code class="language-text">D:\Bricks4Agent\.run\line-sidecar
+<p>The repair flow scans (relative to the repo root):</p>
+<pre><code class="language-text">.run\line-sidecar
 </code></pre>
 <p>It generates policy output under:</p>
-<pre><code class="language-text">D:\Bricks4Agent\.run\wdac\line-sidecar-runtime\
+<pre><code class="language-text">.run\wdac\line-sidecar-runtime\
 </code></pre>
 <p>After deployment, the generated <code>{policy-id}.cip</code> must appear under:</p>
 <pre><code class="language-text">C:\Windows\System32\CodeIntegrity\CiPolicies\Active
 </code></pre>
-<p>The WDAC policy is effective only after the active policy check passes. See <a href="/d:/Bricks4Agent/docs/manuals/dev-code-signing-wdac.zh-TW.html">dev-code-signing-wdac.zh-TW.md</a> for the full flow.</p>
+<p>The WDAC policy is effective only after the active policy check passes. See <a href="dev-code-signing-wdac.zh-TW.html">dev-code-signing-wdac.zh-TW.md</a> for the full flow.</p>
 <h2>Successful Start: Expected Signals</h2>
 <p>After <code>up</code>, you should expect all of these:</p>
 <ul>
-<li><code>status</code> shows broker PID and line-worker PID running</li>
-<li><code>status</code> shows ngrok PID running</li>
-<li><code>status</code> shows ngrok public URL</li>
-<li><code>status</code> shows LINE webhook endpoint and <code>active = True</code></li>
-<li>local admin page opens:</li>
-<li><code>http://127.0.0.1:5361/line-admin.html</code></li>
-<li>local broker responds:</li>
-<li><code>http://127.0.0.1:5361/api/v1/local-admin/status</code></li>
-<li>local webhook responds to signed test:</li>
-<li><code>verify</code> returns <code>Webhook status: 200</code></li>
-<li>public webhook should also be routable once the named ngrok tunnel exists</li>
+<li>
+<p><code>status</code> shows broker PID and line-worker PID running</p>
+</li>
+<li>
+<p><code>status</code> shows ngrok PID running (or, on the localhost.run fallback, the localhost.run PID)</p>
+</li>
+<li>
+<p><code>status</code> shows ngrok public URL (or the <code>latest localhost.run</code> URL)</p>
+</li>
+<li>
+<p><code>status</code> shows LINE webhook endpoint and <code>active = True</code></p>
+</li>
+<li>
+<p>local admin page opens:</p>
+</li>
+<li>
+<p><code>http://127.0.0.1:5361/line-admin.html</code></p>
+</li>
+<li>
+<p>local broker responds:</p>
+</li>
+<li>
+<p><code>http://127.0.0.1:5361/api/v1/local-admin/status</code></p>
+</li>
+<li>
+<p>local webhook responds to signed test:</p>
+</li>
+<li>
+<p><code>verify</code> returns <code>Webhook status: 200</code></p>
+</li>
+<li>
+<p>public webhook should also be routable once the tunnel (named ngrok tunnel or localhost.run) exists</p>
+</li>
 </ul>
 <p>If <code>up</code> returns without these conditions being true, treat startup as failed.</p>
 <h2>Admin Console</h2>
@@ -232,32 +379,79 @@ npm run signing:wdac-repair -- -Deploy
 </ul>
 <p>Current behavior:</p>
 <ul>
-<li>localhost-only</li>
-<li>local admin login required</li>
-<li>if no admin password exists in DB, initial password is <code>admin</code></li>
-<li>first login requires password change</li>
+<li>
+<p>localhost-only</p>
+</li>
+<li>
+<p>local admin login required</p>
+</li>
+<li>
+<p>if no admin password exists in DB, initial password is <code>admin</code></p>
+</li>
+<li>
+<p>first login requires password change</p>
+</li>
 </ul>
-<p>This console currently includes:</p>
+<p>This console currently has these tabs (each shown only when the signed-in operator has the matching permission):</p>
 <ul>
-<li>LINE user list and labels</li>
-<li>registration policy</li>
-<li>per-user permissions</li>
-<li>browser records</li>
-<li>deployment targets</li>
-<li>tool specs</li>
-<li>Google Drive OAuth and delivery actions</li>
+<li>
+<p>LINE 與使用者 — LINE user list and labels, registration policy, per-user permissions, Google Drive OAuth and delivery actions</p>
+</li>
+<li>
+<p>系統監控 — system monitoring</p>
+</li>
+<li>
+<p>Workflow</p>
+</li>
+<li>
+<p>Browser 綁定 — browser bindings</p>
+</li>
+<li>
+<p>Deployment — deployment targets</p>
+</li>
+<li>
+<p>交付記錄 — delivery records</p>
+</li>
+<li>
+<p>權限管理 — operator / permission management</p>
+</li>
+<li>
+<p>審批 — approval queue</p>
+</li>
+<li>
+<p>系統警示 — system alerts</p>
+</li>
+<li>
+<p>Tool Specs</p>
+</li>
 </ul>
 <h2>Current Google Drive Delivery Modes</h2>
 <p>The broker now supports three delivery identities:</p>
 <ul>
-<li><code>shared_delegated</code></li>
-<li>one Google account is authorized once</li>
-<li>all LINE users upload into that same Drive</li>
-<li>broker records still preserve which LINE user owns each artifact</li>
-<li><code>user_delegated</code></li>
-<li>each LINE user authorizes their own Google Drive</li>
-<li><code>system_account</code></li>
-<li>Google service account path, typically for Shared Drive scenarios</li>
+<li>
+<p><code>shared_delegated</code></p>
+</li>
+<li>
+<p>one Google account is authorized once</p>
+</li>
+<li>
+<p>all LINE users upload into that same Drive</p>
+</li>
+<li>
+<p>broker records still preserve which LINE user owns each artifact</p>
+</li>
+<li>
+<p><code>user_delegated</code></p>
+</li>
+<li>
+<p>each LINE user authorizes their own Google Drive</p>
+</li>
+<li>
+<p><code>system_account</code></p>
+</li>
+<li>
+<p>Google service account path, typically for Shared Drive scenarios</p>
+</li>
 </ul>
 <p>For the current local sidecar, the intended default is:</p>
 <ul>
@@ -267,8 +461,12 @@ npm run signing:wdac-repair -- -Deploy
 <h2>Settings Required For Downloads</h2>
 <p>Live delivery currently has two download paths:</p>
 <ul>
-<li>Google Drive remains the primary user-facing delivery path</li>
-<li>broker-owned signed download links are now the fallback path when Google Drive upload fails and the sidecar has a public URL</li>
+<li>
+<p>Google Drive remains the primary user-facing delivery path</p>
+</li>
+<li>
+<p>broker-owned signed download links are now the fallback path when Google Drive upload fails and the sidecar has a public URL</p>
+</li>
 </ul>
 <p>If you want a LINE user to actually receive a downloadable link after a document or website artifact is generated, you still need all of the following:</p>
 <ol>
@@ -279,20 +477,20 @@ npm run signing:wdac-repair -- -Deploy
 </li>
 <li>
 <p>A working Google OAuth client JSON
-- <code>C:\secure\Bricks4Agent\client_secret_*.json</code>
+- <code>C:\secure\Bricks4Agent\client_secret_*.json</code> (secrets directory first; repo root is a legacy fallback)
 - The callback URI must match:
-  - <code>http://127.0.0.1:5361/api/v1/google-drive/oauth/callback</code></p>
+ - <code>http://127.0.0.1:5361/api/v1/google-drive/oauth/callback</code></p>
 </li>
 <li>
 <p>The correct Google Drive delivery mode
 - If the requirement is "all LINE users upload into the same Google Drive":
-  - use <code>shared_delegated</code>
+ - use <code>shared_delegated</code>
 - If you switch to <code>user_delegated</code>, each LINE user must authorize their own Drive</p>
 </li>
 <li>
 <p>A valid Drive credential stored in the current sidecar DB
 - The persistent sidecar DB is now:
-  - <code>D:\Bricks4Agent\.run\line-sidecar\data\broker.db</code>
+ - <code>.run\line-sidecar\data\broker.db</code> (under the repo root)
 - If <code>google_drive_delegated_credentials</code> is empty, artifacts can still be generated locally, but cloud download links will not be available</p>
 </li>
 <li>
@@ -302,24 +500,38 @@ npm run signing:wdac-repair -- -Deploy
 </ol>
 <p>Current behavior:</p>
 <ul>
-<li>if Google Drive upload succeeds, the LINE reply uses the Drive link</li>
-<li>if Google Drive upload fails and the sidecar public URL is available, the broker returns a short-lived signed download link</li>
-<li>if both paths are unavailable, delivery degrades to a no-link notification</li>
+<li>
+<p>if Google Drive upload succeeds, the LINE reply uses the Drive link</p>
+</li>
+<li>
+<p>if Google Drive upload fails and the sidecar public URL is available, the broker returns a short-lived signed download link</p>
+</li>
+<li>
+<p>if both paths are unavailable, delivery degrades to a no-link notification</p>
+</li>
 </ul>
-<p>There is still no dedicated end-user download page. The current fallback is a direct signed broker download endpoint.</p>
+<p>End users can also sign in to the user portal (<code>http://127.0.0.1:5361/portal/index.html</code>), which lists their own artifacts with the Drive link or a signed broker download path.</p>
 <h2>Current High-Level Model</h2>
 <p>For the current live LINE path, the high-level responder uses:</p>
 <ul>
-<li>provider: <code>anthropic</code> with model <code>claude-sonnet-4-6</code> when <code>ANTHROPIC_API_KEY</code> is present (preferred)</li>
-<li>otherwise the checked-in broker defaults apply (<code>ollama</code> / <code>qwen3.6:latest</code>); <code>openai-compatible</code> / <code>gpt-5.4-mini</code> is the last-resort fallback shape</li>
+<li>
+<p>provider: <code>anthropic</code> with model <code>claude-sonnet-4-6</code> when <code>ANTHROPIC_API_KEY</code> is present (preferred)</p>
+</li>
+<li>
+<p>otherwise the checked-in broker defaults apply (<code>ollama</code> / <code>qwen3.6:latest</code>); <code>openai-compatible</code> / <code>gpt-5.4-mini</code> is the last-resort fallback shape</p>
+</li>
 </ul>
 <p>This is separate from execution-model requests recorded for downstream tasks.</p>
 <h2>Basic Live Usage</h2>
 <h3>Conversation</h3>
 <p>Send plain text in LINE:</p>
 <ul>
-<li><code>hello</code></li>
-<li><code>please help me clarify my requirements</code></li>
+<li>
+<p><code>hello</code></p>
+</li>
+<li>
+<p><code>please help me clarify my requirements</code></p>
+</li>
 </ul>
 <h3>Project interview</h3>
 <p>The current explicit project-interview entry is:</p>
@@ -328,61 +540,113 @@ npm run signing:wdac-repair -- -Deploy
 </ul>
 <p>Current happy-path sequence:</p>
 <ol>
-<li>send <code>/proj</code></li>
-<li>reply with <code>#ProjectName</code></li>
-<li>choose the closest project scope by number</li>
-<li>choose the closest site-structure direction by number</li>
-<li>review the generated PDF/JSON artifacts</li>
-<li>answer with <code>/ok</code>, <code>/revise</code>, or <code>/cancel</code></li>
+<li>
+<p>send <code>/proj</code></p>
+</li>
+<li>
+<p>reply with <code>#ProjectName</code></p>
+</li>
+<li>
+<p>choose the closest project scope by number</p>
+</li>
+<li>
+<p>choose the closest site-structure direction by number</p>
+</li>
+<li>
+<p>review the generated PDF/JSON artifacts</p>
+</li>
+<li>
+<p>answer with <code>/ok</code>, <code>/revise</code>, or <code>/cancel</code></p>
+</li>
 </ol>
 <p>Important notes:</p>
 <ul>
-<li>prompts are bilingual</li>
-<li>the copy is intentionally written for general LINE users</li>
-<li>internal identifiers such as <code>tool_page</code>, <code>mini_app</code>, <code>structured_app</code>, and <code>template family</code> are not shown to the user</li>
+<li>
+<p>prompts are bilingual</p>
+</li>
+<li>
+<p>the copy is intentionally written for general LINE users</p>
+</li>
+<li>
+<p>internal identifiers such as <code>tool_page</code>, <code>mini_app</code>, <code>structured_app</code>, and <code>template family</code> are not shown to the user</p>
+</li>
 </ul>
 <h3>Help and profile</h3>
 <ul>
-<li><code>?help</code></li>
-<li><code>?profile</code></li>
+<li>
+<p><code>?help</code></p>
+</li>
+<li>
+<p><code>?profile</code></p>
+</li>
 </ul>
 <h3>Controlled search</h3>
 <ul>
-<li><code>?search Central Weather Administration official site</code></li>
-<li><code>?s Central Weather Administration official site</code></li>
+<li>
+<p><code>?search Central Weather Administration official site</code></p>
+</li>
+<li>
+<p><code>?s Central Weather Administration official site</code></p>
+</li>
 </ul>
 <h3>Transport</h3>
 <ul>
-<li><code>?rail Taipei Taichung today 18:00</code></li>
-<li><code>?hsr Taipei Taichung today 18:00</code></li>
-<li><code>?bus Taipei Taichung today 18:00</code></li>
-<li><code>?flight TPE KIX tomorrow</code></li>
+<li>
+<p><code>?rail Taipei Taichung today 18:00</code></p>
+</li>
+<li>
+<p><code>?hsr Taipei Taichung today 18:00</code></p>
+</li>
+<li>
+<p><code>?bus Taipei Taichung today 18:00</code></p>
+</li>
+<li>
+<p><code>?flight TPE KIX tomorrow</code></p>
+</li>
 </ul>
 <h3>Production flow</h3>
 <ul>
-<li><code>/create a website prototype</code></li>
-<li><code>#MyProject</code></li>
-<li><code>confirm</code></li>
+<li>
+<p><code>/create a website prototype</code></p>
+</li>
+<li>
+<p><code>#MyProject</code></p>
+</li>
+<li>
+<p><code>confirm</code></p>
+</li>
 </ul>
 <h2>User And Workspace Behavior</h2>
 <p>Each high-level LINE user gets broker-managed paths under the configured absolute access root:</p>
 <ul>
-<li><code>conversations</code></li>
-<li><code>documents</code></li>
-<li><code>projects</code></li>
+<li>
+<p><code>conversations</code></p>
+</li>
+<li>
+<p><code>documents</code></p>
+</li>
+<li>
+<p><code>projects</code></p>
+</li>
 </ul>
-<p>The current live sidecar commonly uses:</p>
+<p>The current live sidecar uses the broker default <code>HighLevelCoordinator.AccessRoot</code> from <code>packages/csharp/broker/appsettings.json</code>:</p>
 <ul>
-<li><code>.run/line-sidecar/broker/managed-workspaces</code></li>
+<li><code>%LOCALAPPDATA%\Bricks4Agent\managed-workspaces</code></li>
 </ul>
 <p>Production broker configuration may override this with an absolute access root.</p>
 <h2>UTF-8 Verification Guidance</h2>
 <p>UTF-8 is mandatory.</p>
 <p>Use these methods when you need trustworthy multilingual verification:</p>
 <ul>
-<li><code>verify-high-level-process.ps1</code> with <code>-MessageFile</code></li>
-<li><code>verify-live-webhook.ps1</code> with <code>-MessageFile</code></li>
-<li>or <code>-MessageBase64Utf8</code></li>
+<li>
+<p><code>verify-high-level-process.ps1</code> with <code>-MessageFile</code></p>
+</li>
+<li>
+<p><code>verify-live-webhook.ps1</code> with <code>-MessageFile</code></p>
+</li>
+<li>
+<p>or <code>-MessageBase64Utf8</code></p>
+</li>
 </ul>
 <p>Do not trust shell inline text if the terminal encoding is behaving badly.</p>
 <p>For Chinese or other multilingual tests, prefer a UTF-8 message file over direct terminal typing.</p>
@@ -390,17 +654,33 @@ npm run signing:wdac-repair -- -Deploy
 <h3>1. LINE does not respond at all</h3>
 <p>Check:</p>
 <ul>
-<li><code>line-sidecar.ps1 status</code></li>
-<li>ngrok tunnel exists</li>
-<li>LINE webhook endpoint is active</li>
-<li>local worker PID is running</li>
+<li>
+<p><code>line-sidecar.ps1 status</code></p>
+</li>
+<li>
+<p>the public tunnel exists (ngrok tunnel, or the localhost.run process)</p>
+</li>
+<li>
+<p>LINE webhook endpoint is active</p>
+</li>
+<li>
+<p>local worker PID is running</p>
+</li>
 </ul>
 <p>Typical causes:</p>
 <ul>
-<li>ngrok tunnel died</li>
-<li>webhook endpoint not updated</li>
-<li>line-worker stopped</li>
-<li>ngrok agent never came up</li>
+<li>
+<p>ngrok / localhost.run tunnel died</p>
+</li>
+<li>
+<p>webhook endpoint not updated</p>
+</li>
+<li>
+<p>line-worker stopped</p>
+</li>
+<li>
+<p>ngrok agent never came up</p>
+</li>
 </ul>
 <p>Fix:</p>
 <pre><code class="language-powershell">powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\line-sidecar.ps1 restart
@@ -408,8 +688,12 @@ npm run signing:wdac-repair -- -Deploy
 <h3>2. Public webhook returns <code>404</code> or ngrok error</h3>
 <p>Symptom:</p>
 <ul>
-<li>public webhook URL returns <code>404</code></li>
-<li>response includes ngrok error such as <code>ERR_NGROK_3200</code></li>
+<li>
+<p>public webhook URL returns <code>404</code></p>
+</li>
+<li>
+<p>response includes ngrok error such as <code>ERR_NGROK_3200</code></p>
+</li>
 </ul>
 <p>Cause:</p>
 <ul>
@@ -417,61 +701,112 @@ npm run signing:wdac-repair -- -Deploy
 </ul>
 <p>Fix:</p>
 <ul>
-<li>run <code>status</code></li>
-<li>then <code>restart</code></li>
+<li>
+<p>run <code>status</code></p>
+</li>
+<li>
+<p>then <code>restart</code></p>
+</li>
 </ul>
 <p>If the tunnel still does not come back:</p>
 <ul>
-<li>check <code>.run/line-sidecar/logs/ngrok.out.log</code></li>
-<li>check <code>.run/line-sidecar/logs/ngrok.err.log</code></li>
-<li>confirm <code>%LOCALAPPDATA%\ngrok\ngrok.yml</code> exists and contains a valid authtoken</li>
+<li>
+<p>check <code>.run/line-sidecar/logs/ngrok.out.log</code></p>
+</li>
+<li>
+<p>check <code>.run/line-sidecar/logs/ngrok.err.log</code></p>
+</li>
+<li>
+<p>confirm <code>%LOCALAPPDATA%\ngrok\ngrok.yml</code> exists and contains a valid authtoken</p>
+</li>
+<li>
+<p>on the localhost.run fallback, check <code>.run/line-sidecar/logs/localhostrun.out.log</code> / <code>localhostrun.err.log</code> and <code>webhook-sync.out.log</code> / <code>webhook-sync.err.log</code></p>
+</li>
 </ul>
 <h3>3. Broker is up but LINE still says AI service unavailable</h3>
 <p>Typical causes:</p>
 <ul>
-<li><code>ANTHROPIC_API_KEY</code> is absent and <code>Api.txt</code> is missing or unreadable</li>
-<li>invalid upstream API key</li>
-<li>high-level model upstream returned <code>401</code> or <code>400</code></li>
-<li>stale sidecar publish output</li>
+<li>
+<p><code>ANTHROPIC_API_KEY</code> is absent and <code>Api.txt</code> is missing or unreadable</p>
+</li>
+<li>
+<p>invalid upstream API key</p>
+</li>
+<li>
+<p>high-level model upstream returned <code>401</code> or <code>400</code></p>
+</li>
+<li>
+<p>stale sidecar publish output</p>
+</li>
 </ul>
 <p>Check:</p>
 <ul>
-<li><code>.run/line-sidecar/logs/broker.out.log</code></li>
-<li><code>.run/line-sidecar/logs/broker.err.log</code></li>
+<li>
+<p><code>.run/line-sidecar/logs/broker.out.log</code></p>
+</li>
+<li>
+<p><code>.run/line-sidecar/logs/broker.err.log</code></p>
+</li>
 </ul>
 <p>Fix:</p>
 <ul>
-<li>confirm <code>ANTHROPIC_API_KEY</code> is a valid Anthropic key, or <code>Api.txt</code> contains a valid OpenAI-compatible fallback key</li>
-<li>restart sidecar</li>
+<li>
+<p>confirm <code>ANTHROPIC_API_KEY</code> is a valid Anthropic key, or <code>Api.txt</code> contains a valid OpenAI-compatible fallback key</p>
+</li>
+<li>
+<p>restart sidecar</p>
+</li>
 </ul>
 <h3>4. Google Drive OAuth returns <code>invalid_state</code> or <code>state_expired</code></h3>
 <p>Cause:</p>
 <ul>
-<li>old authorization URL reused</li>
-<li>state already consumed or timed out</li>
+<li>
+<p>old authorization URL reused</p>
+</li>
+<li>
+<p>state already consumed or timed out</p>
+</li>
 </ul>
 <p>Fix:</p>
 <ul>
-<li>re-initiate OAuth from the admin console</li>
-<li>use the new URL immediately</li>
+<li>
+<p>re-initiate OAuth from the admin console</p>
+</li>
+<li>
+<p>use the new URL immediately</p>
+</li>
 </ul>
 <h3>5. Google Drive OAuth callback returns <code>500</code></h3>
 <p>Typical causes:</p>
 <ul>
-<li>sidecar broker not restarted after OAuth callback changes</li>
-<li>stale publish output</li>
-<li>missing or invalid OAuth client JSON</li>
+<li>
+<p>sidecar broker not restarted after OAuth callback changes</p>
+</li>
+<li>
+<p>stale publish output</p>
+</li>
+<li>
+<p>missing or invalid OAuth client JSON</p>
+</li>
 </ul>
 <p>Fix:</p>
 <ul>
-<li>confirm <code>client_secret_*.json</code> exists at repo root</li>
-<li>run <code>line-sidecar.ps1 restart</code></li>
+<li>
+<p>confirm <code>client_secret_*.json</code> exists in the secrets directory (<code>C:\secure\Bricks4Agent</code> or <code>BRICKS4AGENT_SECRETS_DIR</code>; the repo root is only a legacy fallback)</p>
+</li>
+<li>
+<p>run <code>line-sidecar.ps1 restart</code></p>
+</li>
 </ul>
 <h3>6. Google Drive upload fails with <code>storageQuotaExceeded</code></h3>
 <p>If using service account mode:</p>
 <ul>
-<li>personal My Drive folders are not enough</li>
-<li>service account uploads require Shared Drive or a delegated-user flow</li>
+<li>
+<p>personal My Drive folders are not enough</p>
+</li>
+<li>
+<p>service account uploads require Shared Drive or a delegated-user flow</p>
+</li>
 </ul>
 <p>Current preferred path for personal Google accounts:</p>
 <ul>
@@ -480,19 +815,31 @@ npm run signing:wdac-repair -- -Deploy
 <h3>7. LINE artifact delivery succeeds in Drive but no LINE message arrives</h3>
 <p>Cause:</p>
 <ul>
-<li>uploaded user is a synthetic/test account, not a real LINE <code>U...</code> user</li>
-<li>notification queue exists, but LINE cannot deliver to a fake recipient</li>
+<li>
+<p>uploaded user is a synthetic/test account, not a real LINE <code>U...</code> user</p>
+</li>
+<li>
+<p>notification queue exists, but LINE cannot deliver to a fake recipient</p>
+</li>
 </ul>
 <p>Check:</p>
 <ul>
-<li>admin console user label</li>
-<li>whether the selected user is marked as <code>真實 LINE</code></li>
+<li>
+<p>admin console user label</p>
+</li>
+<li>
+<p>whether the selected user is marked as <code>真實 LINE</code></p>
+</li>
 </ul>
 <h3>8. Local admin page opens but login fails</h3>
 <p>Current rules:</p>
 <ul>
-<li>first boot without stored credential: password is <code>admin</code></li>
-<li>first successful login requires password reset</li>
+<li>
+<p>first boot without stored credential: password is <code>admin</code></p>
+</li>
+<li>
+<p>first successful login requires password reset</p>
+</li>
 </ul>
 <p>If this is a live sidecar with an existing DB, the password may already have been changed.</p>
 <p>If credentials are unknown, reset must be handled at the local broker DB/admin layer rather than by guessing.</p>
@@ -503,58 +850,106 @@ npm run signing:wdac-repair -- -Deploy
 </ul>
 <p>Current mitigation:</p>
 <ul>
-<li>the restart path waits for processes to stop</li>
-<li>publish output is cleared before republish</li>
+<li>
+<p>the restart path waits for processes to stop</p>
+</li>
+<li>
+<p>publish output is cleared before republish</p>
+</li>
 </ul>
 <p>If it still fails:</p>
 <ul>
-<li>stop sidecar</li>
-<li>confirm broker and worker processes are truly gone</li>
-<li>run start again</li>
+<li>
+<p>stop sidecar</p>
+</li>
+<li>
+<p>confirm broker and worker processes are truly gone</p>
+</li>
+<li>
+<p>run start again</p>
+</li>
 </ul>
 <h2>Logs And Working Paths</h2>
 <p>Current sidecar runtime directory:</p>
 <ul>
-<li><code>D:\Bricks4Agent\.run\line-sidecar</code></li>
+<li><code>.run\line-sidecar</code> (under the repo root)</li>
 </ul>
 <p>Key logs:</p>
 <ul>
-<li><code>.run/line-sidecar/logs/broker.out.log</code></li>
-<li><code>.run/line-sidecar/logs/broker.err.log</code></li>
-<li><code>.run/line-sidecar/logs/line-worker.out.log</code></li>
-<li><code>.run/line-sidecar/logs/line-worker.err.log</code></li>
-<li><code>.run/line-sidecar/logs/ngrok.out.log</code></li>
-<li><code>.run/line-sidecar/logs/ngrok.err.log</code></li>
+<li>
+<p><code>.run/line-sidecar/logs/broker.out.log</code></p>
+</li>
+<li>
+<p><code>.run/line-sidecar/logs/broker.err.log</code></p>
+</li>
+<li>
+<p><code>.run/line-sidecar/logs/line-worker.out.log</code></p>
+</li>
+<li>
+<p><code>.run/line-sidecar/logs/line-worker.err.log</code></p>
+</li>
+<li>
+<p><code>.run/line-sidecar/logs/ngrok.out.log</code></p>
+</li>
+<li>
+<p><code>.run/line-sidecar/logs/ngrok.err.log</code></p>
+</li>
+<li>
+<p><code>.run/line-sidecar/logs/localhostrun.out.log</code> / <code>localhostrun.err.log</code> (localhost.run fallback)</p>
+</li>
+<li>
+<p><code>.run/line-sidecar/logs/webhook-sync.out.log</code> / <code>webhook-sync.err.log</code> (localhost.run webhook-sync watchdog)</p>
+</li>
 </ul>
 <h2>What This Runbook Does Not Yet Cover</h2>
 <ul>
-<li>production multi-host deployment of broker and line-worker</li>
-<li>hardened remote admin auth</li>
-<li>browser worker runtime operation</li>
-<li>full Azure IIS deployment operations</li>
-<li>complete disaster recovery procedures</li>
+<li>
+<p>production multi-host deployment of broker and line-worker</p>
+</li>
+<li>
+<p>hardened remote admin auth</p>
+</li>
+<li>
+<p>browser worker runtime operation</p>
+</li>
+<li>
+<p>full Azure IIS deployment operations</p>
+</li>
+<li>
+<p>complete disaster recovery procedures</p>
+</li>
 </ul>
-<h2>Missing Frontend Capability</h2>
-<p>There is currently no end-user frontend for artifact browsing or downloading.</p>
-<p>What exists today:</p>
+<h2>End-User Frontend (User Portal)</h2>
+<p>The broker now serves an end-user portal:</p>
 <ul>
-<li>local admin console</li>
-<li>LINE messages containing delivery links</li>
-<li>broker-managed artifact records</li>
+<li>
+<p>page: <code>http://127.0.0.1:5361/portal/index.html</code> (static files from <code>packages/javascript/browser/user-portal/</code>, mapped in <code>packages/csharp/broker/Program.cs</code>)</p>
+</li>
+<li>
+<p>API: <code>/api/v1/portal/*</code> in <code>packages/csharp/broker/Endpoints/PortalEndpoints.cs</code> — <code>auth/status</code>, <code>auth/register</code>, <code>auth/login</code>, <code>auth/logout</code>, <code>auth/line-verification</code>, <code>me</code>, <code>commands</code>, <code>results</code>, <code>artifacts</code>, <code>artifacts/{documentId}</code></p>
+</li>
+<li>
+<p>signed-in users see only their own artifacts; each item carries its Drive link or a signed broker download path</p>
+</li>
 </ul>
-<p>What should exist later as a frontend feature:</p>
-<ul>
-<li>an authenticated artifact download API</li>
-<li>user-facing artifact history</li>
-<li>governed download authorization checks</li>
-</ul>
-<p>This is a recorded future frontend requirement, not a completed feature.</p>
+<p>Alongside it: the local admin console, LINE messages containing delivery links, and broker-managed artifact records.</p>
 <h2>Related Documents</h2>
 <ul>
-<li><a href="../reports/CurrentArchitectureAndProgress-2026-03-26.html">CurrentArchitectureAndProgress-2026-03-26.md</a></li>
-<li><a href="/d:/Bricks4Agent/packages/csharp/workers/line-worker/README.html">README.md</a></li>
-<li><a href="../designs/GoogleDriveDelivery.html">GoogleDriveDelivery.md</a></li>
-<li><a href="../designs/AzureVmIisDeployment.html">AzureVmIisDeployment.md</a></li>
+<li>
+<p><a href="../reports/CurrentArchitectureAndProgress-2026-06-13.html">CurrentArchitectureAndProgress-2026-06-13.md</a></p>
+</li>
+<li>
+<p><a href="current-technical-manual.zh-TW.html">current-technical-manual.zh-TW.md</a></p>
+</li>
+<li>
+<p><a href="../../packages/csharp/workers/line-worker/README.html">README.md</a></p>
+</li>
+<li>
+<p><a href="../designs/GoogleDriveDelivery.html">GoogleDriveDelivery.md</a></p>
+</li>
+<li>
+<p><a href="../designs/AzureVmIisDeployment.html">AzureVmIisDeployment.md</a></p>
+</li>
 </ul>
 </main>
 </body>

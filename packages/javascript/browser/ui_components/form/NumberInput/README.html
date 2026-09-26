@@ -38,7 +38,7 @@ const input = new NumberInput({
     placeholder: '',         // 提示文字
     width: '100%',           // 寬度
     size: 'medium',          // 'small' | 'medium' | 'large'
-    onChange: (value) =&gt; {},  // 變更回調
+    onChange: (value) =&gt; {},  // 變更回調（目前行為：只在 +/- 按鈕、方向鍵與 clear() 時觸發；直接輸入後 blur/Enter 不會觸發）
     className: ''            // 自訂 CSS 類別
 });
 </code></pre>
@@ -75,8 +75,12 @@ const input = new NumberInput({
 </table>
 <h3>屬性</h3>
 <ul>
-<li><code>element</code> — 根 DOM 元素</li>
-<li><code>value</code> — 目前數值</li>
+<li>
+<p><code>element</code> — 根 DOM 元素</p>
+</li>
+<li>
+<p><code>value</code> — 目前數值</p>
+</li>
 </ul>
 <h2>使用範例</h2>
 <pre><code class="language-javascript">import { NumberInput } from './NumberInput.js';

@@ -25,22 +25,40 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <h2>目前狀態與邊界</h2>
 <p>這個模組目前同時承擔兩條路徑：</p>
 <ul>
-<li>靜態程式碼生成</li>
-<li>執行期動態渲染</li>
+<li>
+<p>靜態程式碼生成</p>
+</li>
+<li>
+<p>執行期動態渲染</p>
+</li>
 </ul>
 <p>但兩條路徑的成熟度與行為並不完全相同。</p>
 <p>根據目前程式碼：</p>
 <ul>
-<li><code>PageGenerator.js</code> 仍以字串模板產生頁面原始碼，不是 AST-based generator</li>
-<li><code>ComponentPaths</code> 仍是明確寫在程式中的路徑映射</li>
-<li><code>FieldResolver.js</code> 在遇到未知 <code>fieldType</code> 時會 <code>console.warn</code> 並回退成 text input</li>
-<li><code>PageGenerator.js</code> 對某些未知型別則會輸出 TODO 註記</li>
+<li>
+<p><code>PageGenerator.js</code> 仍以字串模板產生頁面原始碼，不是 AST-based generator</p>
+</li>
+<li>
+<p><code>ComponentPaths</code> 仍是明確寫在程式中的路徑映射</p>
+</li>
+<li>
+<p><code>FieldResolver.js</code> 在遇到未知 <code>fieldType</code> 時會 <code>console.warn</code> 並回退成 text input</p>
+</li>
+<li>
+<p><code>PageGenerator.js</code> 對某些未知型別則會輸出 TODO 註記</p>
+</li>
 </ul>
 <p>因此比較準確的理解是：</p>
 <ul>
-<li>動態渲染路徑是目前較完整、較實際可用的執行期路徑</li>
-<li>靜態生成路徑仍是實用工具，但不是通用程式編譯器</li>
-<li>新舊格式與靜態/動態雙軌仍在同一模組內並存</li>
+<li>
+<p>動態渲染路徑是目前較完整、較實際可用的執行期路徑</p>
+</li>
+<li>
+<p>靜態生成路徑仍是實用工具，但不是通用程式編譯器</p>
+</li>
+<li>
+<p>新舊格式與靜態/動態雙軌仍在同一模組內並存</p>
+</li>
 </ul>
 <p>閱讀這份 README 時，請把它當成「目前 API 與能力清單」，不要把它誤讀成「所有路徑都已同等成熟」。</p>
 <h2>模組目錄總覽</h2>
@@ -83,6 +101,18 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <tr>
 <td><code>DynamicListRenderer.js</code></td>
 <td>動態列表渲染器，組合 SearchForm + DataTable + Pagination</td>
+</tr>
+<tr>
+<td><code>DeferredHydration.js</code></td>
+<td>掛載後才執行的非結構資料補水佇列；destroy 時統一取消</td>
+</tr>
+<tr>
+<td><code>LazyModuleLoader.js</code></td>
+<td>記憶化的非同步模組／export 載入器（<code>createLazyModuleLoader</code>、<code>resolveLazyModuleValue</code>）；失敗不快取，可重試</td>
+</tr>
+<tr>
+<td><code>QueryDefinitionAdapter.js</code></td>
+<td><code>page.view</code> 為 <code>query</code> / <code>adminList</code> 的宣告式列表定義轉換（searchFields / columns → 列表欄位、查詢 payload、下載請求）</td>
 </tr>
 <tr>
 <td><code>ToolPageDefinition.js</code></td>
@@ -132,11 +162,12 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 │  tools/page-gen.js                              │
 │  --mode static|dynamic|both                     │
 │  --def &lt;json-file&gt;                              │
+│  --page / --pages / --all                       │
 │  --validate / --list-types                      │
 └─────────────────────────────────────────────────┘
 </code></pre>
 <h2>安裝</h2>
-<p>此模組為 Bricks4Agent 的一部分，直接引用即可：</p>
+<p>此模組為 Bricks4Agent 的一部分，以相對路徑引用 <code>page-generator/index.js</code> 即可（repo 內沒有 <code>@component-library/page-generator</code> 套件別名；<code>packages/javascript/browser</code> 的 package 名稱是 <code>browser</code>）：</p>
 <pre><code class="language-javascript">// 靜態生成 API
 import {
     PageGenerator,
@@ -144,10 +175,10 @@ import {
     PageTypes,
     validateDefinition,
     createDefaultDefinition
-} from '@component-library/page-generator';
+} from '&lt;相對路徑&gt;/page-generator/index.js';
 
 // 格式轉換
-import { PageDefinitionAdapter } from '@component-library/page-generator';
+import { PageDefinitionAdapter } from '&lt;相對路徑&gt;/page-generator/index.js';
 
 // 動態渲染 API
 import {
@@ -159,8 +190,9 @@ import {
     validateToolPageDefinition,
     FieldResolver,
     TriggerEngine
-} from '@component-library/page-generator';
+} from '&lt;相對路徑&gt;/page-generator/index.js';
 </code></pre>
+<p>注意：<code>PageGenerator</code> 靜態生成的程式碼會 import <code>@component-library/ui_components/...</code> 路徑，部署時需自行提供對應的 alias 或 import map 才能解析。</p>
 <hr>
 <h2>兩種頁面定義格式</h2>
 <p>本系統支援兩種頁面定義格式，透過 <code>PageDefinitionAdapter</code> 相互轉換：</p>
@@ -283,7 +315,7 @@ import {
 </tr>
 <tr>
 <td><code>AvailableComponents</code></td>
-<td>可用元件清單（spa / packages）</td>
+<td>可用元件清單（<code>custom</code> / <code>packages</code>）</td>
 </tr>
 </tbody>
 </table>
@@ -356,12 +388,24 @@ const newDef = PageDefinitionAdapter.toNewFormat(oldDefinition);
 </table>
 <p><strong>轉換細節：</strong></p>
 <ul>
-<li><code>page.entity</code> → PascalCase + "Page" 作為 <code>name</code>（例如 employee → EmployeePage）</li>
-<li><code>page.view</code> 含 "list" → <code>type: 'list'</code>，含 "detail" → <code>type: 'detail'</code>，其餘 → <code>type: 'form'</code></li>
-<li><code>fieldType: 'multiselect'</code> 在舊格式中映射為 <code>type: 'select'</code>（舊 PageGenerator 不區分）</li>
-<li><code>optionsSource.items</code> → <code>options</code> 陣列（static 型）</li>
-<li><code>triggers</code> 從各欄位收集至 <code>behaviors.fieldTriggers</code></li>
-<li><code>defaultValue</code> 自動進行字串 ⟷ 原生型別轉換（"true" ⟷ <code>true</code>）</li>
+<li>
+<p><code>page.entity</code> 首字母大寫 + "Page" 作為 <code>name</code>（例如 employee → EmployeePage；不做 snake/kebab→PascalCase 轉換，<code>work_order</code> → <code>Work_orderPage</code>）</p>
+</li>
+<li>
+<p><code>page.view</code> 含 "list" → <code>type: 'list'</code>，含 "detail" → <code>type: 'detail'</code>，其餘 → <code>type: 'form'</code></p>
+</li>
+<li>
+<p><code>fieldType: 'multiselect'</code> 在舊格式中映射為 <code>type: 'select'</code>（舊 PageGenerator 不區分）</p>
+</li>
+<li>
+<p><code>optionsSource.items</code> → <code>options</code> 陣列（static 型）</p>
+</li>
+<li>
+<p><code>triggers</code> 從各欄位收集至 <code>behaviors.fieldTriggers</code></p>
+</li>
+<li>
+<p><code>defaultValue</code> 自動進行字串 ⟷ 原生型別轉換（"true" ⟷ <code>true</code>）</p>
+</li>
 </ul>
 <hr>
 <h3>PageGenerator</h3>
@@ -541,7 +585,7 @@ const newDef = PageDefinitionAdapter.toNewFormat(oldDefinition);
 <tr>
 <td></td>
 <td><code>textarea</code></td>
-<td>原生 textarea 包裝</td>
+<td>TextArea</td>
 </tr>
 <tr>
 <td><strong>日期時間</strong></td>
@@ -681,11 +725,12 @@ const newDef = PageDefinitionAdapter.toNewFormat(oldDefinition);
 <tr>
 <td></td>
 <td><code>memo</code> / <code>plaintext</code></td>
-<td>原生 textarea 包裝</td>
+<td>TextArea</td>
 </tr>
 </tbody>
 </table>
 <p>註：<code>tel</code>、<code>url</code>、<code>rating</code>、<code>tags</code> 存在於 FieldTypes 枚舉但尚無元件映射，動態渲染會 <code>console.warn</code> 並回退為 text。</p>
+<p>註：目前行為：<code>address</code> / <code>organization</code> 建立 AddressInput / OrganizationInput 時不帶任何資料 loader（<code>loadCities</code> / <code>loadDistricts</code>、<code>loadUnits</code>），下拉選單不會有資料（缺 loader 的錯誤由 ChainedInput 捕捉並以 <code>console.error</code> 記錄）。需要實際資料時，請以 <code>registerComponent(name, factory)</code> 註冊一個會帶入上述 loader 的 factory，在欄位定義以 <code>component: name</code> 指定，並把該 resolver 透過 <code>fieldResolver</code> 選項傳給 <code>DynamicFormRenderer</code>。</p>
 <p><strong>公開方法：</strong></p>
 <table>
 <thead>
@@ -698,10 +743,10 @@ const newDef = PageDefinitionAdapter.toNewFormat(oldDefinition);
 </thead>
 <tbody>
 <tr>
-<td><code>preload()</code></td>
-<td>-</td>
+<td><code>preload(neededTypes?)</code></td>
+<td><code>string[]</code>（可省略）</td>
 <td><code>Promise&lt;void&gt;</code></td>
-<td>預載入所有元件模組（必須在 resolve 前呼叫）</td>
+<td>預載入元件模組（必須在 resolve 前呼叫）。省略參數時載入全部模組；傳入頁面實際出現的 fieldType／component 名稱時只載入對應模組</td>
 </tr>
 <tr>
 <td><code>registerComponent(name, factory)</code></td>
@@ -723,6 +768,18 @@ const newDef = PageDefinitionAdapter.toNewFormat(oldDefinition);
 </tr>
 </tbody>
 </table>
+<p><strong>preload() 的過濾規則：</strong></p>
+<ul>
+<li>
+<p><code>neededTypes</code> 內含任一未知名稱（例如 <code>registerComponent()</code> 註冊的自訂元件）時，自動回退為全量預載，行為與省略參數相同</p>
+</li>
+<li>
+<p>多次 <code>preload()</code> 為合併式：子集預載不會清空既有快取，只會擴充可解析的元件集合</p>
+</li>
+<li>
+<p><code>DynamicFormRenderer.init()</code> 會自動從 <code>definition.fields</code> 蒐集型別後帶入；但外部以 <code>options.fieldResolver</code> 注入的 resolver 可能在此表單之外續用，仍維持全量預載</p>
+</li>
+</ul>
 <hr>
 <h3>DynamicFormRenderer</h3>
 <p>動態表單渲染器。從頁面定義 JSON 自動建構表單，含欄位解析、行列排版、聯動觸發、驗證。</p>
@@ -799,7 +856,7 @@ await form.init();
 <td><code>validate()</code></td>
 <td>-</td>
 <td><code>boolean</code></td>
-<td>驗證所有必填欄位</td>
+<td>驗證必填、<code>pattern</code> 與 <code>maxLength</code></td>
 </tr>
 <tr>
 <td><code>mount(container)</code></td>
@@ -854,6 +911,12 @@ await form.init();
 <td><code>Function</code></td>
 <td><code>null</code></td>
 <td>編輯按鈕回調</td>
+</tr>
+<tr>
+<td><code>lazyTabs</code></td>
+<td><code>boolean</code></td>
+<td><code>true</code></td>
+<td>結構化明細（<code>detail.tabs</code>）的分頁內容延後到首次啟用才產生；面板元素仍會立即存在。傳 <code>false</code> 可改回建構時就產生全部分頁內容</td>
 </tr>
 </tbody>
 </table>
@@ -1045,14 +1108,22 @@ await list.init();
 <td>-</td>
 <td>銷毀渲染器</td>
 </tr>
+<tr>
+<td><code>deferHydration(task, options?)</code></td>
+<td><code>Function, Object</code></td>
+<td><code>{ promise, cancel, signal }</code></td>
+<td>登記非結構資料補水；只在 <code>mount()</code> 後執行，<code>destroy()</code> 自動取消</td>
+</tr>
 </tbody>
 </table>
 <p><strong>欄位定義中的列表相關屬性：</strong>
 - <code>isSearchable: true</code> — 欄位出現在搜尋區
 - <code>listOrder: number</code> — 欄位在表格中的排序（&gt; 0 才顯示）</p>
+<p><strong>lookup 標籤快取：</strong> 具 <code>lookup</code> / <code>optionsSource</code> / <code>options</code> 的欄位，其 value → label 索引會依欄位定義物件快取，同一欄的所有列共用同一份索引，不再逐格重建。快取在 <code>setData()</code> 與 <code>destroy()</code> 時整批清除；渲染期間若欄位的 <code>options</code>（或 endpoint 來源的共用清單）被換成另一個陣列或長度改變，也會就地重建。因此執行期就地改寫欄位選項後，最遲在下次 <code>setData()</code> 會反映。</p>
+<p><strong>漸進補水：</strong> 子類或專案整合層若要載入選項主檔、次要摘要或自動查詢，應在 <code>init()</code> 內呼叫 <code>deferHydration()</code>，不得自行建立 <code>setTimeout</code> 或在 <code>init()</code> 阻塞首屏。B4A 會等 <code>mount()</code> 完成後再於下一個 browser task 執行；路由切換呼叫 <code>destroy()</code> 時會取消尚未開始的工作並中止 <code>signal</code>。<code>task</code> 應在可中止的 fetch 上使用收到的 <code>AbortSignal</code>。</p>
 <hr>
 <h3>DynamicPageRenderer</h3>
-<p>統一入口渲染器。依 mode 自動委派給對應的 Form / Detail / List / Tool 渲染器；當 <code>definition.type === 'tool'</code> 且未指定 mode 時會自動使用 <code>tool</code>。</p>
+<p>統一入口渲染器。依 mode 自動委派給對應的 Form / Detail / List / Tool 渲染器；未指定 mode 時，宣告式列表定義（<code>page.view</code>（或 <code>type</code>）為 <code>query</code> / <code>adminList</code>）會自動使用 <code>list</code>，<code>definition.type === 'tool'</code> 會自動使用 <code>tool</code>。</p>
 <pre><code class="language-javascript">const page = new DynamicPageRenderer(options);
 await page.init();
 </code></pre>
@@ -1128,6 +1199,48 @@ await page.init();
 <td>每頁筆數（list 模式）</td>
 </tr>
 <tr>
+<td><code>routeParams</code></td>
+<td><code>Object</code></td>
+<td><code>{}</code></td>
+<td>路由參數（detail 模式）</td>
+</tr>
+<tr>
+<td><code>lazyTabs</code></td>
+<td><code>boolean</code></td>
+<td><code>true</code></td>
+<td>分頁內容延後到首次啟用才產生（detail 模式）；傳 <code>false</code> 改回建構時產生全部</td>
+</tr>
+<tr>
+<td><code>onPermissionCheck</code></td>
+<td><code>Function</code></td>
+<td><code>null</code></td>
+<td>權限檢查 <code>(permissionKey, page, definition) =&gt; boolean | Promise&lt;boolean&gt;</code>；僅在定義有 <code>permissionKey</code> 時呼叫，回傳 <code>false</code> 或拋錯則不建立渲染器</td>
+</tr>
+<tr>
+<td><code>onDownload</code></td>
+<td><code>Function</code></td>
+<td><code>null</code></td>
+<td>下載回調（list 模式）</td>
+</tr>
+<tr>
+<td><code>confirmDownload</code></td>
+<td><code>Function</code></td>
+<td><code>null</code></td>
+<td>下載前確認回調（list 模式）</td>
+</tr>
+<tr>
+<td><code>customComponents</code></td>
+<td><code>string | Array | Object</code></td>
+<td><code>null</code></td>
+<td>自訂元件來源（folder URL、definition 陣列或 <code>{ folder, manifest, definitions }</code>）</td>
+</tr>
+<tr>
+<td><code>customComponentRegistry</code></td>
+<td><code>Object</code></td>
+<td><code>null</code></td>
+<td>既有的 CustomComponentRegistry 實例</td>
+</tr>
+<tr>
 <td><code>commandRegistry</code></td>
 <td><code>Map | Object</code></td>
 <td><code>null</code></td>
@@ -1142,8 +1255,8 @@ await page.init();
 <tr>
 <td><code>factory</code></td>
 <td><code>Object</code></td>
-<td><code>ComponentFactory</code></td>
-<td>Tool mode 使用的 factory；通常維持預設</td>
+<td><code>null</code></td>
+<td>Tool mode 使用的 factory；為 <code>null</code> 時 DynamicToolRenderer 使用 <code>LazyComponentFactory</code>，並在 <code>init()</code> 內預載 definition 用到的元件</td>
 </tr>
 <tr>
 <td><code>controlRegistry</code></td>
@@ -1232,7 +1345,7 @@ await page.init();
 await page.init();
 page.mount('#app');
 </code></pre>
-<p><code>DynamicToolRenderer</code> 提供 <code>getComponent(id)</code>、<code>getHost(id)</code>、<code>setState(path, value)</code>、<code>controlRecords</code> 與 <code>destroy()</code>。State 更新只套用到重疊 binding；有 setter 的正式元件保留 instance，沒有 setter 時只替換該 component，不重建 tabs 或整個工作區。元件 setter 若重畫內部控制，provenance 會同步更新。</p>
+<p><code>DynamicToolRenderer</code> 提供 <code>getComponent(id)</code>、<code>getHost(id)</code>、<code>setState(path, value)</code>、<code>controlRecords</code> 與 <code>destroy()</code>。State 更新只套用到重疊 binding，且值與上次推給該元件的值相同（deep compare）的 binding 會略過；有 setter 的正式元件保留 instance，沒有 setter 時只替換該 component，不重建 tabs 或整個工作區。元件 setter 若重畫內部控制，provenance 會同步更新。</p>
 <p><code>PageGenerator.generate()</code> 也接受 <code>type: "tool"</code>，輸出一個內嵌已驗證 definition、在 runtime 建立 <code>DynamicToolRenderer</code> 的靜態 wrapper class。Bricks4Agent Studio 的實際入口採 <code>DynamicPageRenderer</code> runtime 路徑，唯一頁面 JSON 位於 <code>tools/theme-studio/studio.page.json</code>；靜態 wrapper 另由 <code>ToolPageGenerator.test.js</code> 驗證。兩條路徑共用同一份 ToolPageDefinition 契約與 renderer。</p>
 <hr>
 <h2>使用範例</h2>
@@ -1350,6 +1463,8 @@ if (form.validate()) {
 <pre><code class="language-javascript">const definition = {
     fields: [
         // 地址輸入（含縣市/鄉鎮聯動）
+        // 注意：內建 address 不帶 loadCities/loadDistricts，下拉無資料；
+        // 需以 registerComponent() 註冊帶 loader 的 factory 並用 component 指定
         { fieldName: 'homeAddress', fieldType: 'address', label: '住家地址',
           formRow: 1, isRequired: true },
 
@@ -1357,7 +1472,7 @@ if (form.validate()) {
         { fieldName: 'phones', fieldType: 'phonelist', label: '聯絡電話',
           formRow: 2, validation: { maxItems: 5 } },
 
-        // 組織層級
+        // 組織層級（同上：內建不帶 loadUnits，需自行註冊帶 loader 的 factory）
         { fieldName: 'org', fieldType: 'organization', label: '所屬組織',
           formRow: 3 },
 
@@ -1378,7 +1493,7 @@ const engine = new TriggerEngine();
 
 // 註冊自訂行為
 engine.registerAction('highlight', (source, target, params) =&gt; {
-    target.formField.element.style.backgroundColor = params?.color || '#fff3cd';
+    target.formField.element.style.backgroundColor = params?.color || 'var(--cl-warning-light)';
 });
 </code></pre>
 <hr>
@@ -1396,23 +1511,78 @@ node tools/page-gen.js --def employee.json --mode dynamic --output ./output/
 # 兩者都生成
 node tools/page-gen.js --def employee.json --mode both --output ./output/
 
-# 列出所有 fieldType
+# 列出 CLI 接受的 fieldType（目前 34 種，不含 rocDate / slider / memo，CLI 驗證會拒絕這三種）
 node tools/page-gen.js --list-types
 
 # stdin 管道模式（AI 代理用）
 cat employee.json | node tools/page-gen.js --mode static --output ./output/
 </code></pre>
-<p>所有輸出皆為 JSON 格式（stdout），錯誤訊息輸出至 stderr。</p>
+<p>所有輸出皆為 JSON 格式（stdout）；錯誤同樣以 JSON <code>{ success: false, errors }</code> 輸出到 stdout 並以 exit code 1 結束。只有未提供 <code>--def</code> 也沒有 stdin 輸入時，錯誤訊息（連同說明文字）才輸出至 stderr。</p>
+<h3>DefinitionTemplate 選取與批次生成</h3>
+<p>輸入為 DefinitionTemplate（含多個 pages）時，可挑選要處理的 page：</p>
+<table>
+<thead>
+<tr>
+<th>旗標</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--page &lt;id&gt;</code></td>
+<td>選用單一 page id</td>
+</tr>
+<tr>
+<td><code>--pages &lt;ids&gt;</code></td>
+<td>批次處理逗號分隔的多個 page id（不可重複）</td>
+</tr>
+<tr>
+<td><code>--all</code></td>
+<td>批次處理 template 內所有 pages</td>
+</tr>
+</tbody>
+</table>
+<pre><code class="language-bash"># 選取單一 page
+node tools/page-gen.js --def site-definition.json --page products-list --mode static --output ./output/
+
+# 批次生成指定的多個 pages
+node tools/page-gen.js --def site-definition.json --pages products-list,orders-form --mode static --output ./output/
+
+# 批次生成全部 pages
+node tools/page-gen.js --def site-definition.json --all --mode static --output ./output/
+</code></pre>
+<p><code>--pages</code> / <code>--all</code> 僅適用於 DefinitionTemplate 輸入，輸出為彙總 JSON <code>{ success, results: [{ pageId, files }] }</code>；搭配 <code>--validate</code> 則只逐頁驗證，錯誤訊息會加上 <code>page &lt;id&gt;:</code> 前綴。</p>
 <hr>
 <h2>範例</h2>
 <p>查看 <code>examples/</code> 目錄：</p>
 <ul>
-<li><code>EmployeeDefinition.js</code> — 員工管理（新格式，完整功能展示）</li>
-<li><code>PersonnelDefinition.js</code> — 人事系統（新格式，複合輸入元件展示）</li>
-<li><code>DiaryEditorDefinition.js</code> — 日記編輯器（舊格式）</li>
-<li><code>ContactFormDefinition.js</code> — 聯絡表單（舊格式）</li>
-<li><code>test-generator.js</code> — 靜態生成測試</li>
-<li><code>test-all.js</code> — 完整測試腳本</li>
+<li>
+<p><code>EmployeeDefinition.js</code> — 員工管理（新格式，完整功能展示）</p>
+</li>
+<li>
+<p><code>PersonnelDefinition.js</code> — 人事系統（新格式，複合輸入元件展示）</p>
+</li>
+<li>
+<p><code>DiaryEditorDefinition.js</code> — 日記編輯器（舊格式）</p>
+</li>
+<li>
+<p><code>ContactFormDefinition.js</code> — 聯絡表單（舊格式）</p>
+</li>
+<li>
+<p><code>test-generator.js</code> — 靜態生成測試</p>
+</li>
+<li>
+<p><code>test-all.js</code> — 完整測試腳本</p>
+</li>
+<li>
+<p><code>test-detail-ext.js</code> — 明細渲染擴充測試</p>
+</li>
+<li>
+<p><code>test-query-ext-v1.js</code> — 查詢定義擴充測試</p>
+</li>
+<li>
+<p><code>generated/</code> — 靜態生成的輸出範例</p>
+</li>
 </ul>
 <p>執行測試：</p>
 <pre><code class="language-bash">node examples/test-all.js
@@ -1452,12 +1622,12 @@ cat employee.json | node tools/page-gen.js --mode static --output ./output/
 <tr>
 <td><code>textarea</code></td>
 <td>多行文字</td>
-<td>原生 textarea</td>
+<td>TextArea</td>
 </tr>
 <tr>
 <td><code>memo</code></td>
 <td>多行文字（textarea 別名）</td>
-<td>原生 textarea</td>
+<td>TextArea</td>
 </tr>
 <tr>
 <td><code>tel</code></td>
@@ -1627,7 +1797,7 @@ cat employee.json | node tools/page-gen.js --mode static --output ./output/
 <tbody>
 <tr>
 <td><code>address</code></td>
-<td>地址（縣市/鄉鎮/地址聯動）</td>
+<td>地址（縣市/鄉鎮/地址聯動；內建不帶 loader，見 FieldResolver 註）</td>
 <td>AddressInput</td>
 <td>← ChainedInput</td>
 </tr>
@@ -1669,7 +1839,7 @@ cat employee.json | node tools/page-gen.js --mode static --output ./output/
 </tr>
 <tr>
 <td><code>organization</code></td>
-<td>組織層級（四級下拉）</td>
+<td>組織層級（四級下拉；內建不帶 loader，見 FieldResolver 註）</td>
 <td>OrganizationInput</td>
 <td>← ChainedInput</td>
 </tr>
@@ -1763,19 +1933,34 @@ cat employee.json | node tools/page-gen.js --mode static --output ./output/
 // API 動態載入
 { &quot;type&quot;: &quot;api&quot;, &quot;endpoint&quot;: &quot;/api/data&quot;, &quot;params&quot;: { &quot;action&quot;: &quot;options&quot;, &quot;entity&quot;: &quot;department&quot; } }
 
-// API 連動載入（需搭配 dependsOn）
+// API 連動載入（父欄位值取自 parentField）
 { &quot;type&quot;: &quot;api&quot;, &quot;endpoint&quot;: &quot;/api/data&quot;, &quot;params&quot;: { &quot;action&quot;: &quot;options&quot;, &quot;entity&quot;: &quot;district&quot; }, &quot;parentField&quot;: &quot;city&quot; }
 </code></pre>
+<p>目前行為（表單）：<code>api</code> 型選項在表單初始化時不會自動載入（FieldResolver 解析為空陣列）；只有在某欄位的 <code>reloadOptions</code> trigger 觸發時，才會以 <code>POST</code> + JSON body（<code>params</code> 加上 <code>optionsSource.parentField</code> 對應欄位的值）呼叫 <code>endpoint</code>。父欄位值來自 <code>optionsSource.parentField</code>，不是 <code>dependsOn</code>。</p>
 <hr>
 <h2>注意事項</h2>
 <ol>
-<li>動態渲染的 <code>DynamicFormRenderer</code> 和 <code>DynamicListRenderer</code> 須呼叫 <code>await init()</code> 才能使用（需預載入元件模組）</li>
-<li><code>DynamicDetailRenderer</code> 為同步建構，不需 <code>init()</code></li>
-<li>生成的靜態程式碼包含 TODO 註解，表示需要手動實作的部分</li>
-<li>所有元件必須來自 Bricks4Agent</li>
-<li>使用 <code>esc()</code> 和 <code>escAttr()</code> 防止 XSS</li>
-<li><code>PageDefinitionAdapter.toOldFormat()</code> 會自動從 <code>page.entity</code> 推導 PascalCase 頁面名稱</li>
-<li>複合輸入元件（address, phonelist 等）支援 <code>validation.maxItems</code> / <code>validation.minItems</code> 限制筆數</li>
+<li>
+<p>動態渲染的 <code>DynamicFormRenderer</code> 和 <code>DynamicListRenderer</code> 須呼叫 <code>await init()</code> 才能使用（需預載入元件模組）</p>
+</li>
+<li>
+<p><code>DynamicDetailRenderer</code> 為同步建構，不需 <code>init()</code></p>
+</li>
+<li>
+<p>生成的靜態程式碼包含 TODO 註解，表示需要手動實作的部分</p>
+</li>
+<li>
+<p>所有元件必須來自 Bricks4Agent</p>
+</li>
+<li>
+<p>使用 <code>esc()</code> 和 <code>escAttr()</code> 防止 XSS</p>
+</li>
+<li>
+<p><code>PageDefinitionAdapter.toOldFormat()</code> 會自動從 <code>page.entity</code> 推導頁面名稱：entity 首字母大寫 + "Page"（不做 snake/kebab→PascalCase 轉換）</p>
+</li>
+<li>
+<p><code>validation.maxItems</code> 只會傳給 addresslist、list、personinfo、phonelist、socialmedia；<code>validation.minItems</code> 只會傳給 addresslist、list</p>
+</li>
 </ol>
 </main>
 </body>

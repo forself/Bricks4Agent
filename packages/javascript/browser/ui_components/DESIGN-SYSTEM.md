@@ -41,7 +41,7 @@ theme.custom.css (override)  :root{ --cl-primary: … }   ← Theme Studio 產�
 
 ## 5. 元件契約(摘要)
 
-`new X(options)` → `.mount(container)` → `.destroy()`;具值元件有 `getValue/setValue/setDisabled/clear`。內部狀態走 `utils/component-state.js` 的不可變狀態機。完整調用約定見 [/AGENT-UI-GUIDE.md](../../../../AGENT-UI-GUIDE.md)。
+`new X(options)` → `.mount(container)` → `.destroy()`;具值元件有 `getValue/setValue/setDisabled/clear`。部分元件(如 TextInput、DatePicker、MultiSelectDropdown)的內部狀態走 `utils/component-state.js` 的不可變狀態機,並非所有元件都採用。完整調用約定見 [/AGENT-UI-GUIDE.md](../../../../AGENT-UI-GUIDE.md)。
 
 ## 6. 權威來源與工具
 
