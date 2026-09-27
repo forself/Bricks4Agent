@@ -111,6 +111,13 @@ export function sanitizeHTML(html) {
                    return;
                 } else {
                    // 對於未知標籤 (如 custom element)，Unwrap (保留內容但移除標籤)
+                   // 先清洗子節點再拆殼：拆殼後子節點會移到本節點之前，呼叫端的迭代已越過該位置。
+                   let inner = node.firstChild;
+                   while (inner) {
+                       const nextInner = inner.nextSibling;
+                       clean(inner);
+                       inner = nextInner;
+                   }
                    while(node.firstChild) {
                        node.parentNode.insertBefore(node.firstChild, node);
                    }
@@ -148,6 +155,7 @@ export function sanitizeHTML(html) {
         }
     }
 
-    clean(doc.body);
+    // 只清洗 body 的子節點；body 本身不在允許清單，若把它也拆掉，doc.body 會變成 null
+    Array.from(doc.body.childNodes).forEach(clean);
     return doc.body.innerHTML;
 }
