@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DateRangePicker 日期範圍選擇器</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>DateRangePicker 日期範圍選擇器</h1>
+<p>以兩個 <a href="../DatePicker/README.html">DatePicker</a> 組成的日期範圍輸入元件：選擇開始日與結束日，兩端互相約束，並提供驗證、快速選擇、欄位錯誤標示與完整鍵盤操作。</p>
+<ul>
+<li>值的格式：<code>{ start: 'YYYY-MM-DD' | null, end: 'YYYY-MM-DD' | null }</code>（當地日期，不做時區換算）</li>
+<li>沿用 DatePicker 的選項名稱：<code>format</code>（<code>'western'</code> 西元 / <code>'taiwan'</code> 民國）、<code>min</code>、<code>max</code></li>
+<li>不修改 DatePicker 原始碼；鍵盤與 ARIA 由本元件從外部補上</li>
+</ul>
+<hr>
+<h2>建構選項</h2>
+<pre><code class="language-javascript">const range = new DateRangePicker({
+    value: null,               // 初始值 { start, end }；格式不合或順序顛倒時 console.warn 並以空值開始
+    min: null,                 // 最早可選日期：'YYYY-MM-DD' 或 Date；null 不限
+    max: null,                 // 最晚可選日期：'YYYY-MM-DD' 或 Date；null 不限
+    format: 'western',         // 顯示格式（同 DatePicker）：'western' 西元 / 'taiwan' 民國
+    allowSameDay: true,        // 開始與結束可為同一天；false 時結束日至少是開始日隔天
+    maxSpanDays: null,         // 最長天數，含開始與結束兩天（7 → 09-01 ~ 09-07）；null 不限
+    required: false,           // 必填；只影響 isValid() / getValidationError()
+    presets: [],               // 快速選擇：[{ label, range: () =&gt; ({ start, end }) }]，非空時顯示成小按鈕
+    startPlaceholder: '開始日期', // 預設 Locale dateRangePicker.startPlaceholder；也是開始端的無障礙名稱
+    endPlaceholder: '結束日期',   // 預設 Locale dateRangePicker.endPlaceholder；也是結束端的無障礙名稱
+    separator: '至',            // 兩端之間的文字；預設 Locale dateRangePicker.separator
+    label: '',                 // 可見標籤；有值時群組以 aria-labelledby 指向它
+    ariaLabel: '',             // 沒有可見標籤時的群組名稱；空值用 Locale dateRangePicker.groupLabel
+    clearable: true,           // 有值時顯示「清除」按鈕
+    disabled: false,           // 停用
+    width: '100%',             // 元件寬度（CSS 長度字串，或數字代表 px）
+    onChange: null             // (value) =&gt; {}：使用者確定變更時觸發一次
+});
+</code></pre>
+<hr>
+<h2>方法</h2>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>回傳</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>mount(container)</code></td>
+<td><code>this</code></td>
+<td>掛載到元素或 CSS 選擇器</td>
+</tr>
+<tr>
+<td><code>getValue()</code></td>
+<td><code>{ start, end }</code></td>
+<td>目前的值（每次回傳新物件）</td>
+</tr>
+<tr>
+<td><code>setValue(value)</code></td>
+<td><code>this</code></td>
+<td>設定值，<strong>不觸發</strong> <code>onChange</code>；<code>null</code> / <code>undefined</code> / <code>''</code> 代表清空。格式不合或結束早於開始時 <code>console.warn</code> 並保持原值</td>
+</tr>
+<tr>
+<td><code>clear()</code></td>
+<td><code>this</code></td>
+<td>清空兩端；值真的改變時才觸發 <code>onChange</code></td>
+</tr>
+<tr>
+<td><code>setDisabled(disabled)</code></td>
+<td><code>this</code></td>
+<td>停用／啟用兩端、清除按鈕與快速選擇</td>
+</tr>
+<tr>
+<td><code>isValid()</code></td>
+<td><code>boolean</code></td>
+<td>目前的值是否通過驗證</td>
+</tr>
+<tr>
+<td><code>getValidationError()</code></td>
+<td><code>string</code></td>
+<td>驗證失敗的原因（依目前語系）；通過時為空字串</td>
+</tr>
+<tr>
+<td><code>setError(message, { display = true })</code></td>
+<td><code>this</code></td>
+<td>兩端都標示紅框與 <code>aria-invalid</code>，訊息只顯示一則、位於範圍列下方；空訊息等同 <code>clearError()</code>；<code>display: false</code> 只標示狀態</td>
+</tr>
+<tr>
+<td><code>clearError()</code></td>
+<td><code>this</code></td>
+<td>清除 <code>setError</code> 的標示與文字</td>
+</tr>
+<tr>
+<td><code>snapshot()</code></td>
+<td><code>object</code></td>
+<td>內部狀態快照（<code>lifecycle</code>、<code>availability</code>、<code>start</code>、<code>end</code>）</td>
+</tr>
+<tr>
+<td><code>destroy()</code></td>
+<td>—</td>
+<td>銷毀兩個 DatePicker（含浮在 <code>document.body</code> 的日曆）、移除所有監聽與 DOM；可重複呼叫</td>
+</tr>
+</tbody>
+</table>
+<p><code>startPicker</code> / <code>endPicker</code> 屬性是內部的 DatePicker 實例，僅供檢查，請勿直接呼叫它們的 <code>setValue</code>。</p>
+<hr>
+<h2>事件</h2>
+<p><code>onChange(value)</code>：使用者在日曆選定日期、按下快速選擇、按「清除」或呼叫 <code>clear()</code> 而<strong>值真的改變</strong>時觸發一次；<code>setValue()</code> 與建構時的 <code>value</code> 不會觸發。</p>
+<hr>
+<h2>規則與設計取捨</h2>
+<p><strong>兩端互相約束。</strong> 選了開始日後，結束端日曆只開放「開始日（<code>allowSameDay: false</code> 時為隔天）之後、且不超過 <code>maxSpanDays</code>」的日期；選了結束日後，開始端也反向受限；兩端都再與 <code>min</code> / <code>max</code> 取交集。一端有值、另一端空白時，空白端的日曆會自動跳到同一個月份。</p>
+<p><strong>順序顛倒一律拒絕，不自動對調。</strong> 介面上選不到早於開始日的結束日；<code>setValue()</code> 或快速選擇回傳結束早於開始的值時，<code>console.warn</code> 並保持原值。自動對調會讓使用者看到的欄位內容與自己輸入的不同，因此不採用。</p>
+<p><strong><code>setValue()</code> 對限制條件不設防。</strong> 只要格式正確、順序正確，即使違反 <code>min</code> / <code>max</code> / <code>maxSpanDays</code> / <code>allowSameDay</code> 也會顯示（保留既有資料），由 <code>isValid()</code> / <code>getValidationError()</code> 回報原因。快速選擇則必須完全通過驗證，否則 <code>console.warn</code> 並忽略。</p>
+<p><strong>必填與半開區間。</strong> <code>required: false</code> 時只填一端視為有效（例如「某日之後」）；<code>required: true</code> 時兩端都要填。</p>
+<p><strong>驗證順序與訊息</strong>（<code>dateRangePicker.errors.*</code>）：<code>required</code> 請選擇日期範圍 → <code>startRequired</code> / <code>endRequired</code> → <code>order</code> 結束日期不可早於開始日期 → <code>sameDay</code> 結束日期必須晚於開始日期 → <code>beforeMin</code> 日期不可早於 {min} → <code>afterMax</code> 日期不可晚於 {max} → <code>maxSpan</code> 日期範圍不可超過 {days} 天。<code>{min}</code> / <code>{max}</code> 依 <code>format</code> 顯示（民國格式為 <code>115/03/01</code>）。</p>
+<hr>
+<h2>鍵盤與無障礙</h2>
+<table>
+<thead>
+<tr>
+<th>位置</th>
+<th>按鍵</th>
+<th>行為</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>觸發框</td>
+<td><code>Tab</code></td>
+<td>依序到達開始端、結束端、清除按鈕、快速選擇按鈕</td>
+</tr>
+<tr>
+<td>觸發框</td>
+<td><code>Enter</code> / <code>Space</code> / <code>↓</code></td>
+<td>開啟日曆並把焦點移到已選日期（或今天、或第一個可選日期）</td>
+</tr>
+<tr>
+<td>觸發框</td>
+<td><code>Esc</code></td>
+<td>關閉日曆</td>
+</tr>
+<tr>
+<td>日曆</td>
+<td><code>←</code> <code>→</code> / <code>↑</code> <code>↓</code></td>
+<td>前後一天 / 前後一週（跨月時自動換月）</td>
+</tr>
+<tr>
+<td>日曆</td>
+<td><code>Home</code> / <code>End</code></td>
+<td>當月第一天 / 最後一天</td>
+</tr>
+<tr>
+<td>日曆</td>
+<td><code>PageUp</code> / <code>PageDown</code></td>
+<td>上個月 / 下個月（加 <code>Shift</code> 為上一年 / 下一年）</td>
+</tr>
+<tr>
+<td>日曆</td>
+<td><code>Enter</code> / <code>Space</code></td>
+<td>選取日期（不可選的日期不動作），關閉後焦點回到觸發框</td>
+</tr>
+<tr>
+<td>日曆</td>
+<td><code>Esc</code></td>
+<td>關閉日曆，焦點回到觸發框</td>
+</tr>
+<tr>
+<td>日曆</td>
+<td><code>Tab</code> / <code>Shift+Tab</code></td>
+<td>在「上個月、年、月、下個月、目前日期」之間循環</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>外層 <code>role="group"</code>，以 <code>aria-labelledby</code>（有 <code>label</code> 時）或 <code>aria-label</code> 命名。</li>
+<li>觸發框：<code>role="combobox"</code>、<code>aria-haspopup="dialog"</code>、<code>aria-expanded</code>、<code>aria-controls</code>、<code>aria-label</code>（= 提示文字）、必填時 <code>aria-required</code>，停用時 <code>tabindex="-1"</code> 與 <code>aria-disabled</code>；取得焦點時以 box-shadow 顯示外框（不會蓋掉 <code>setError</code> 使用的 outline）。</li>
+<li>日曆：<code>role="dialog"</code>；日期按鈕補上完整日期的 <code>aria-label</code>（依語系，民國格式用民國曆）、不可選日期 <code>aria-disabled="true"</code>、已選日期 <code>aria-pressed="true"</code>。</li>
+<li>以 <code>Tab</code> 從觸發框移到其他元素時，已開啟的日曆會自動關閉；以滑鼠選好日期後焦點也回到觸發框。</li>
+</ul>
+<hr>
+<h2>範例</h2>
+<pre><code class="language-html">&lt;!DOCTYPE html&gt;
+&lt;html lang=&quot;zh-TW&quot; data-theme=&quot;light&quot;&gt;
+&lt;head&gt;
+    &lt;meta charset=&quot;UTF-8&quot;&gt;
+    &lt;title&gt;DateRangePicker 範例&lt;/title&gt;
+    &lt;link rel=&quot;stylesheet&quot; href=&quot;../../theme.css&quot;&gt;
+&lt;/head&gt;
+&lt;body&gt;
+    &lt;div id=&quot;booking&quot;&gt;&lt;/div&gt;
+    &lt;button type=&quot;button&quot; id=&quot;check&quot;&gt;檢查&lt;/button&gt;
+    &lt;p id=&quot;result&quot;&gt;&lt;/p&gt;
+
+    &lt;script type=&quot;module&quot;&gt;
+        import { DateRangePicker } from './DateRangePicker.js';
+
+        const toIso = (date) =&gt; [
+            date.getFullYear(),
+            String(date.getMonth() + 1).padStart(2, '0'),
+            String(date.getDate()).padStart(2, '0')
+        ].join('-');
+        const daysFromToday = (offset) =&gt; {
+            const date = new Date();
+            date.setDate(date.getDate() + offset);
+            return toIso(date);
+        };
+
+        const result = document.getElementById('result');
+        const range = new DateRangePicker({
+            label: '會議室借用期間',
+            required: true,
+            min: new Date(),
+            maxSpanDays: 14,
+            presets: [
+                { label: '今天', range: () =&gt; ({ start: daysFromToday(0), end: daysFromToday(0) }) },
+                { label: '未來 7 天', range: () =&gt; ({ start: daysFromToday(0), end: daysFromToday(6) }) }
+            ],
+            onChange: (value) =&gt; {
+                range.clearError();
+                result.textContent = `${value.start ?? '—'} ~ ${value.end ?? '—'}`;
+            }
+        }).mount('#booking');
+
+        // 送出前驗證：不通過時兩端標紅框，範圍下方顯示原因
+        document.getElementById('check').addEventListener('click', () =&gt; {
+            if (range.isValid()) range.clearError();
+            else range.setError(range.getValidationError());
+        });
+    &lt;/script&gt;
+&lt;/body&gt;
+&lt;/html&gt;
+</code></pre>
+</main>
+</body>
+</html>

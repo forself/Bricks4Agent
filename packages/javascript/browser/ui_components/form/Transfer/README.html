@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Transfer 雙清單選擇器</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Transfer 雙清單選擇器</h1>
+<p>左側列出可選項目、右側列出已選項目，勾選後用中間的按鈕、Enter 或雙擊在兩側之間移動。適合從大量主檔資料（人員、會議室、設備、專案）中挑選一組值，並可選擇性地排列已選順序。</p>
+<ul>
+<li>兩側清單都是 <code>role="listbox"</code> + <code>aria-multiselectable="true"</code>，以 roving tabindex 管理焦點。</li>
+<li>已選清單維持 <code>value</code> 的順序；新移入的項目依可選清單的順序附加在最後。</li>
+<li>每側都有獨立的搜尋框：不分大小寫、不分重音（<code>normalize('NFKD')</code> 後去掉變音符號，全形字母也能比對）。</li>
+<li>值元件：提供 <code>getValue</code> / <code>setValue</code> / <code>setDisabled</code> / <code>clear</code> 與欄位錯誤契約 <code>setError</code> / <code>clearError</code>。</li>
+</ul>
+<h2>建構</h2>
+<pre><code class="language-javascript">import { Transfer } from './Transfer.js';
+
+const transfer = new Transfer({
+    items: [],              // [{ value, label, description?, disabled? }]；value 以 SameValueZero 比對
+    value: [],              // 已選值（依序）；不存在於 items 的值與重複值會被略過
+    titles: null,           // [可選清單標題, 已選清單標題]；null 用語系預設（可選項目／已選項目）
+    searchable: true,       // 每側清單上方的搜尋框
+    showSelectAll: true,    // 標題列的全選核取方塊（只作用於目前顯示的項目）
+    maxSelected: null,      // 已選上限；null 不限（只限制使用者操作，不截斷 setValue）
+    sortable: false,        // 已選清單可用上移／下移按鈕與 Alt+↑／↓ 排序
+    height: '280px',        // 清單高度（CSS 長度字串，或數字視為 px）
+    renderItem: null,       // (item) =&gt; Node；自訂每列內容，預設顯示 label 與 description
+    disabled: false,        // 停用
+    onChange: null          // (values, { moved, direction }) =&gt; void
+});
+transfer.mount('#host');
+</code></pre>
+<h2>方法</h2>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>mount(container)</code></td>
+<td>掛載到容器（元素或選擇器），回傳 <code>this</code></td>
+</tr>
+<tr>
+<td><code>destroy()</code></td>
+<td>移除 DOM 與 <code>window</code> 上的語系監聽；可重複呼叫，之後呼叫其他方法不會拋錯</td>
+</tr>
+<tr>
+<td><code>getValue()</code></td>
+<td>回傳已選值陣列（依序，為複本）</td>
+</tr>
+<tr>
+<td><code>setValue(values, { emit = false })</code></td>
+<td>設定已選值；預設不觸發 <code>onChange</code>，<code>emit: true</code> 時以 <code>{ moved: [], direction: null }</code> 觸發</td>
+</tr>
+<tr>
+<td><code>setItems(items)</code></td>
+<td>替換 <code>items</code>；已選值中不存在的項目會被移除</td>
+</tr>
+<tr>
+<td><code>clear()</code></td>
+<td>清空已選值、勾選與搜尋字；不觸發 <code>onChange</code></td>
+</tr>
+<tr>
+<td><code>setDisabled(bool)</code></td>
+<td>停用／啟用整個元件</td>
+</tr>
+<tr>
+<td><code>setError(message, { display = true })</code></td>
+<td>標示欄位錯誤：兩個清單加上 <code>aria-invalid</code> 與 <code>aria-describedby</code>、清單外框標紅、元件下方顯示 <code>role="alert"</code> 文字；<code>display: false</code> 只標示狀態</td>
+</tr>
+<tr>
+<td><code>clearError()</code></td>
+<td>清除 <code>setError</code> 的標示與文字</td>
+</tr>
+<tr>
+<td><code>show()</code> / <code>hide()</code></td>
+<td>顯示／隱藏</td>
+</tr>
+<tr>
+<td><code>snapshot()</code></td>
+<td>回傳內部狀態的複本（lifecycle、availability、value、checked、query）</td>
+</tr>
+</tbody>
+</table>
+<h2>事件</h2>
+<p><code>onChange(values, { moved, direction })</code>：使用者移動或排序後觸發。</p>
+<table>
+<thead>
+<tr>
+<th>direction</th>
+<th>時機</th>
+<th>moved</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>'right'</code></td>
+<td>移到已選清單</td>
+<td>被移入的值（依可選清單順序）</td>
+</tr>
+<tr>
+<td><code>'left'</code></td>
+<td>移回可選清單</td>
+<td>被移出的值（依原已選順序）</td>
+</tr>
+<tr>
+<td><code>'up'</code> / <code>'down'</code></td>
+<td>排序（<code>sortable</code>）</td>
+<td>實際改變位置的值</td>
+</tr>
+</tbody>
+</table>
+<p><code>values</code> 永遠是移動後完整的已選值陣列（複本）。</p>
+<h2>鍵盤與無障礙</h2>
+<p>焦點在清單項目上時：</p>
+<table>
+<thead>
+<tr>
+<th>按鍵</th>
+<th>動作</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>↑ / ↓、Home / End、PageUp / PageDown</td>
+<td>移動焦點（每側只有一個 Tab 停駐點）</td>
+</tr>
+<tr>
+<td>空白鍵</td>
+<td>切換目前項目的勾選</td>
+</tr>
+<tr>
+<td>Shift＋↑ / ↓（Home / End / PageUp / PageDown）</td>
+<td>從錨點延伸勾選到新位置</td>
+</tr>
+<tr>
+<td>Shift＋空白鍵</td>
+<td>勾選錨點到目前項目的範圍</td>
+</tr>
+<tr>
+<td>Ctrl / Cmd＋A</td>
+<td>勾選目前顯示的所有可用項目；已全部勾選時改為全部取消</td>
+</tr>
+<tr>
+<td>Enter</td>
+<td>移動勾選的項目；沒有勾選時移動目前項目</td>
+</tr>
+<tr>
+<td>Alt＋↑ / ↓</td>
+<td>（<code>sortable</code>，已選清單）上移／下移勾選的項目，沒有勾選時移動目前項目</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>搜尋框：↓ 進入清單、Escape 清除搜尋字、Enter 不會送出外層表單。</li>
+<li>滑鼠：點擊切換勾選、Shift＋點擊勾選範圍、雙擊只移動被雙擊的那一項。</li>
+<li>中間的 → / ← 按鈕與排序的 ↑ / ↓ 按鈕都有 <code>aria-label</code>，沒有可操作的項目時為 <code>disabled</code>；按鈕因移動而變成停用時，焦點會移回清單而不會遺失。</li>
+<li>清單以 <code>aria-labelledby</code> 連到標題、以 <code>aria-describedby</code> 連到操作說明；每列帶 <code>aria-selected</code>（勾選）、<code>aria-disabled</code>、<code>aria-setsize</code>、<code>aria-posinset</code>。</li>
+<li>移動、排序與達到上限時，以 <code>role="status"</code> 的隱藏區域播報結果。</li>
+<li>語系切換（<code>Locale.setLang</code>）時會即時更新所有文字。</li>
+</ul>
+<h2>大量資料</h2>
+<p>採<strong>分段渲染</strong>：每側先建立前 100 列；捲動接近底部，或以鍵盤移到尚未建立的位置（例如 End）時才附加下一段。勾選只重繪有變化的列，搜尋與全選為 O(n)，2,000 筆資料可流暢操作。由於不是虛擬捲動，捲到底後所有列都會留在 DOM 中；資料量遠大於數千筆時，建議先以後端查詢縮小範圍。</p>
+<h2>範例</h2>
+<pre><code class="language-javascript">import { Transfer } from './Transfer.js';
+
+const rooms = Array.from({ length: 30 }, (_, index) =&gt; ({
+    value: `room-${index + 1}`,
+    label: `會議室 ${index + 1}`,
+    description: index % 2 ? '可視訊' : '一般',
+    disabled: index === 3
+}));
+
+const transfer = new Transfer({
+    items: rooms,
+    value: ['room-2'],
+    maxSelected: 5,
+    sortable: true,
+    titles: ['可預約的會議室', '本次使用'],
+    onChange: (values, { moved, direction }) =&gt; {
+        console.log('已選', values, '本次移動', moved, direction);
+        if (values.length) transfer.clearError();
+    }
+});
+transfer.mount('#host');
+
+document.querySelector('#save').addEventListener('click', () =&gt; {
+    if (!transfer.getValue().length) transfer.setError('請至少選擇一間會議室');
+});
+</code></pre>
+</main>
+</body>
+</html>

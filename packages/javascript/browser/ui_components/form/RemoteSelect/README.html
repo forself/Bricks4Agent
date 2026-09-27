@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RemoteSelect 遠端搜尋下拉選單</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>RemoteSelect 遠端搜尋下拉選單</h1>
+<p>選項來自非同步來源（API）的可搜尋下拉選單，實作 WAI-ARIA combobox 模式。適合選項太多、無法一次載入的情境，例如從人員名單或會議室清單中挑選。</p>
+<ul>
+<li>輸入後防抖查詢；新查詢會中止舊請求，晚到的過期回應一律丟棄</li>
+<li>載入中、查無資料、載入失敗（可重試）三種狀態</li>
+<li>分頁：捲到清單底部，或以鍵盤選取「載入更多」</li>
+<li>同一查詢字串的結果在元件存活期間快取</li>
+<li>單選 / 多選（標籤呈現、可設上限）</li>
+<li>欄位錯誤標示契約（<code>setError</code> / <code>clearError</code>）</li>
+</ul>
+<h2>建構子</h2>
+<pre><code class="language-javascript">import { RemoteSelect } from './RemoteSelect.js';
+
+const select = new RemoteSelect({
+    fetchOptions: async (query, { page, pageSize, signal }) =&gt; ({ items: [], hasMore: false }), // 必填：非同步取得選項
+    debounce: 300,               // 停止輸入多少毫秒後才查詢
+    minQueryLength: 1,           // 查詢字串（去除頭尾空白後）最少字元數；0 表示展開即以空字串查詢
+    pageSize: 20,                // 每頁筆數，原樣傳給 fetchOptions
+    multiple: false,             // 多選模式
+    value: null,                 // 單選初始值
+    values: [],                  // 多選初始值
+    initialItems: [],            // 初始值的標籤來源 [{ value, label, description? }]
+    resolveLabels: null,         // async (values) =&gt; items；已選值查不到標籤時呼叫
+    placeholder: '輸入關鍵字搜尋', // 預設取自語系 remoteSelect.placeholder
+    clearable: true,             // 有選取值時顯示清除按鈕
+    disabled: false,             // 停用
+    width: '100%',               // 元件寬度（數字視為 px）
+    maxSelected: null,           // 多選上限；null 表示不限
+    cacheResults: true,          // 依查詢字串快取結果，存活到 destroy()
+    ariaLabel: '',               // 沒有可見標籤時給輸入框與清單的無障礙名稱
+    onChange: null,              // 單選 (value, item)；多選 (values, items)
+    onError: null                // (error) 查詢或標籤解析失敗
+});
+</code></pre>
+<h3>fetchOptions 合約</h3>
+<ul>
+<li>參數：<code>query</code>（已去除頭尾空白）與 <code>{ page, pageSize, signal }</code>，<code>page</code> 從 1 開始。</li>
+<li>回傳 <code>{ items, hasMore }</code>；也接受直接回傳陣列（視為沒有下一頁）。<code>items</code> 每筆至少要有 <code>value</code>；缺少 <code>label</code> 時以 <code>String(value)</code> 顯示；可另帶 <code>description</code>（第二行說明）與 <code>disabled</code>。</li>
+<li><code>signal</code> 是 <code>AbortSignal</code>：查詢被新字串取代、查詢字串被重設、元件停用或銷毀時會中止。交給 <code>fetch(url, { signal })</code> 即可省下多餘的網路流量；就算來源忽略 signal，過期回應也不會蓋掉新結果（請求序號守衛）。</li>
+<li>拋錯或 reject 時顯示「載入失敗」與「重試」按鈕，並呼叫 <code>onError(error)</code>。</li>
+<li>所有文字都以 <code>textContent</code> 呈現，不解析 HTML。</li>
+</ul>
+<h2>方法</h2>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>mount(container)</code></td>
+<td>掛載到容器（元素或選擇器），回傳 <code>this</code></td>
+</tr>
+<tr>
+<td><code>getValue()</code></td>
+<td>單選回傳值或 <code>null</code>；多選回傳值陣列（副本）</td>
+</tr>
+<tr>
+<td><code>setValue(value, item?)</code></td>
+<td>設定選取值，不觸發 <code>onChange</code>。單選傳值與選用的項目物件（提供標籤）；多選傳值陣列與選用的項目陣列；多選超過 <code>maxSelected</code> 的部分捨棄。查不到標籤且有 <code>resolveLabels</code> 時會非同步解析</td>
+</tr>
+<tr>
+<td><code>getSelectedItems()</code></td>
+<td>已選項目陣列（單選也回傳陣列）；查不到的項目以 <code>{ value, label: String(value) }</code> 代替</td>
+</tr>
+<tr>
+<td><code>setDisabled(bool)</code></td>
+<td>設定停用狀態；停用時收合清單並中止進行中的請求</td>
+</tr>
+<tr>
+<td><code>clear()</code></td>
+<td>清除選取值與查詢字串，不觸發 <code>onChange</code></td>
+</tr>
+<tr>
+<td><code>setError(msg, { display })</code> / <code>clearError()</code></td>
+<td>標示 / 清除欄位錯誤：紅框、<code>aria-invalid</code> 與錯誤文字；<code>display: false</code> 只標示狀態、不顯示文字</td>
+</tr>
+<tr>
+<td><code>refresh()</code></td>
+<td>清空快取並重新執行目前的查詢，回傳查詢完成的 Promise</td>
+</tr>
+<tr>
+<td><code>focus()</code></td>
+<td>聚焦輸入框</td>
+</tr>
+<tr>
+<td><code>open()</code> / <code>close()</code></td>
+<td>展開 / 收合清單；<code>close()</code> 保留查詢字串（同第一次 Escape）</td>
+</tr>
+<tr>
+<td><code>snapshot()</code></td>
+<td>目前內部狀態的快照（除錯用）</td>
+</tr>
+<tr>
+<td><code>destroy()</code></td>
+<td>中止進行中的請求、清除計時器與監聽並移除 DOM；可重複呼叫，之後呼叫其他方法不會拋錯</td>
+</tr>
+</tbody>
+</table>
+<h2>事件回呼</h2>
+<table>
+<thead>
+<tr>
+<th>回呼</th>
+<th>時機</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>onChange(value, item)</code></td>
+<td>單選：使用者選取項目（值有改變時），或按清除按鈕（<code>(null, null)</code>）</td>
+</tr>
+<tr>
+<td><code>onChange(values, items)</code></td>
+<td>多選：使用者新增、取消或移除標籤</td>
+</tr>
+<tr>
+<td><code>onError(error)</code></td>
+<td><code>fetchOptions</code> 失敗，或 <code>resolveLabels</code> 失敗</td>
+</tr>
+</tbody>
+</table>
+<p><code>setValue()</code> 與 <code>clear()</code> 不觸發 <code>onChange</code>。</p>
+<h2>行為細節</h2>
+<ul>
+<li><strong>單選</strong>：選取後清單收合，輸入框顯示選取項目的標籤；聚焦時全選文字，直接輸入即開始新查詢。焦點離開元件時放棄未確認的查詢字串，輸入框回到已選標籤。</li>
+<li><strong>多選</strong>：選取後清單保持展開並保留查詢字串，方便連續挑選；再選一次已選項目即取消。達到 <code>maxSelected</code> 時其餘項目標示為停用，並顯示「最多可選 N 項」。</li>
+<li><strong>載入中</strong>：防抖期間與請求進行中顯示「載入中…」，清單標示 <code>aria-busy="true"</code>，控制框右側顯示轉動圖示。</li>
+<li><strong>分頁</strong>：<code>hasMore</code> 為 true 時清單末端出現「載入更多」項目；捲到底部自動載入下一頁（載入失敗後不因捲動自動重試）。以鍵盤載入更多時，高亮移到第一筆新項目。</li>
+<li><strong>快取</strong>：每個查詢字串（含已載入的分頁）快取到 <code>destroy()</code>；<code>cacheResults: false</code> 關閉快取；<code>refresh()</code> 清空快取並重查。</li>
+<li><strong>標籤解析</strong>：預設值的標籤依序取自 <code>initialItems</code>、已查到的結果；都沒有時呼叫 <code>resolveLabels(values)</code>，解析期間顯示「載入中…」，失敗時顯示原始值並呼叫 <code>onError</code>。</li>
+<li><strong>浮層</strong>：清單展開時留在元件內，改以 <code>position: fixed</code> 依控制框座標定位（上層有 transform / filter 時自動補償），下方空間不足時翻到上方。<code>document</code> / <code>window</code> 監聽只在展開期間掛載。</li>
+</ul>
+<h2>鍵盤與無障礙</h2>
+<table>
+<thead>
+<tr>
+<th>按鍵</th>
+<th>行為</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>輸入文字</td>
+<td>展開清單並（防抖後）查詢</td>
+</tr>
+<tr>
+<td><code>ArrowDown</code> / <code>ArrowUp</code></td>
+<td>收合時展開，並在有結果時高亮第一 / 最後一項；展開時移動高亮（略過停用項目）</td>
+</tr>
+<tr>
+<td><code>Home</code> / <code>End</code></td>
+<td>清單展開時高亮第一 / 最後一項</td>
+</tr>
+<tr>
+<td><code>Enter</code></td>
+<td>選取高亮項目；高亮「載入更多」時載入下一頁；載入失敗且沒有高亮項目時重試。清單收合時不攔截，表單照常送出</td>
+</tr>
+<tr>
+<td><code>Escape</code></td>
+<td>第一次收合清單並保留字串，第二次清除查詢字串。有處理時停止事件傳遞，不會連帶關閉外層對話框</td>
+</tr>
+<tr>
+<td><code>Backspace</code></td>
+<td>多選且輸入框為空時移除最後一個標籤</td>
+</tr>
+<tr>
+<td><code>Tab</code></td>
+<td>可到達每個標籤的移除按鈕（<code>&lt;button&gt;</code>，Enter / Space 移除，移除後焦點回到輸入框）</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>輸入框：<code>role="combobox"</code>、<code>aria-autocomplete="list"</code>、<code>aria-haspopup="listbox"</code>、<code>aria-expanded</code>、<code>aria-controls</code>（指向清單）、<code>aria-activedescendant</code>（高亮項目）。</li>
+<li>清單：<code>role="listbox"</code>；多選時 <code>aria-multiselectable="true"</code>；載入中 <code>aria-busy="true"</code>。選項為 <code>role="option"</code>，帶 <code>aria-selected</code>，停用項目帶 <code>aria-disabled="true"</code>；已選項目除了底色，另有 ✓ 符號與粗體。</li>
+<li>狀態列為 <code>role="status"</code>：載入中、查無資料、錯誤、字數提示直接顯示；有結果時只給螢幕閱讀器「共 N 筆結果」。</li>
+<li>已選標籤清單為 <code>role="list"</code>，移除按鈕的 <code>aria-label</code> 為「移除 {標籤}」。</li>
+<li>聚焦時控制框顯示主色邊框與外光暈；錯誤狀態以 outline 紅框標示，不與聚焦樣式互相覆蓋。</li>
+<li>所有文字走 <code>Locale.t('remoteSelect.*')</code>，提供 zh-TW 與 en。</li>
+</ul>
+<h2>範例</h2>
+<pre><code class="language-javascript">import { RemoteSelect } from './ui_components/form/RemoteSelect/index.js';
+
+// 模擬的人員資料來源：依關鍵字過濾、分頁，並尊重 AbortSignal。
+// 實際使用時改成 fetch(`/api/staff?q=...&amp;page=...`, { signal })。
+const staff = Array.from({ length: 120 }, (_, i) =&gt; ({
+    value: i + 1,
+    label: `人員 ${i + 1}`,
+    description: `分機 ${1000 + i}`
+}));
+
+function searchStaff(query, { page, pageSize, signal }) {
+    return new Promise((resolve, reject) =&gt; {
+        const timer = setTimeout(() =&gt; {
+            const matches = staff.filter((item) =&gt; item.label.includes(query));
+            const start = (page - 1) * pageSize;
+            resolve({ items: matches.slice(start, start + pageSize), hasMore: start + pageSize &lt; matches.length });
+        }, 200);
+        signal?.addEventListener('abort', () =&gt; {
+            clearTimeout(timer);
+            reject(new DOMException('Aborted', 'AbortError'));
+        });
+    });
+}
+
+const select = new RemoteSelect({
+    fetchOptions: searchStaff,
+    multiple: true,
+    maxSelected: 3,
+    values: [5],
+    initialItems: [{ value: 5, label: '人員 5' }],
+    ariaLabel: '與會人員',
+    onChange: (values, items) =&gt; console.log('已選', values, items)
+}).mount('#host');
+
+// 送出前驗證
+document.querySelector('#submit').addEventListener('click', () =&gt; {
+    if (select.getValue().length === 0) select.setError('請至少選擇一位與會人員');
+    else select.clearError();
+});
+</code></pre>
+</main>
+</body>
+</html>

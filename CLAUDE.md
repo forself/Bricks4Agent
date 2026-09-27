@@ -5,7 +5,7 @@
 A zero-runtime-dependency Vanilla JS **UI component library** plus a **page/SPA generator**
 that turns a JSON `PageDefinition` into working pages (static code generation or dynamic runtime rendering).
 
-- Authoritative component list: [component-catalog.json](packages/javascript/browser/ui_components/metadata/component-catalog.json) (116 components)
+- Authoritative component list: [component-catalog.json](packages/javascript/browser/ui_components/metadata/component-catalog.json) (132 components)
 
 - Component calling convention (read this before building): [AGENT-UI-GUIDE.md](AGENT-UI-GUIDE.md)
 
@@ -66,7 +66,7 @@ When adding tests that produce files: add the pattern to this table, ensure it i
 
 - i18n: user-facing strings go through `Locale.t()` (see [i18n/index.js](packages/javascript/browser/ui_components/i18n/index.js)).
 
-- Component contract: `new X(options)` → `.mount(container)` → `.destroy()`; value components expose `getValue/setValue/setDisabled/clear` (form ones also `setError(msg, { display })/clearError`, delegating to `utils/field-error.js`; `display: false` marks the control invalid without rendering text, and `FormField` `markControl` / `SearchForm` `markInvalidFields` forward errors to inner components only when opted in). `destroy()` is mandatory, not optional. `ModalPanel.confirm/alert/prompt` pass `destroyOnClose: true` so the dialog self-destructs after `close()`; a direct `new ModalPanel` keeps `destroyOnClose: false` and stays reusable across `close()`/`open()`.
+- Component contract: `new X(options)` → `.mount(container)` → `.destroy()`; value components expose `getValue/setValue/setDisabled/clear` (form ones also `setError(msg, { display })/clearError`, delegating to `utils/field-error.js`; `display: false` marks the control invalid without rendering text, and `FormField` `markControl` / `SearchForm` `markInvalidFields` forward errors to inner components only when opted in). `destroy()` is mandatory, not optional. `ModalPanel.confirm/alert/prompt` pass `destroyOnClose: true` so the dialog self-destructs after `close()`; a direct `new ModalPanel` keeps `destroyOnClose: false` and stays reusable across `close()`/`open()`. ModalPanel carries `role="dialog"`/`aria-modal`, and one Escape closes only the topmost modal (an Escape an inner control already handled is ignored); focus trapping/restoring is off by default for compatibility — new projects should set `ModalPanel.defaults.manageFocus = true` at startup.
 
 - Generator definitions: `definition.name`, `field.name` and `behaviors.*` (`onInit`/`onSave`/`onDelete`/`fieldTriggers` values, all handler-method names) are emitted as bare JavaScript identifiers, so `PageGenerator` validates them as real `IdentifierName` — CJK names such as `姓名` pass; reserved words are rejected only in binding positions (`definition.name`). Failures come back through the normal `{ code: null, errors: [...] }` contract.
 
@@ -82,13 +82,13 @@ When adding tests that produce files: add the pattern to this table, ensure it i
 
 ## Adding a Component
 
-1. Create `ui_components/<category>/<Name>/` with `<Name>.js`, `index.js`, and `<Name>.manifest.json` (schema: [manifest-schema.js](packages/javascript/browser/ui_components/metadata/manifest-schema.js)).
+1. Create `ui_components/<category>/<Name>/` with `<Name>.js`, `index.js` and, for new components, a self-registering `locale.js` (`Locale.register(lang, namespace, strings)`). Other components import it only through its `index.js` (`validate-ui-library` rejects cross-component implementation imports). Its `component.manifest.json` is generated in step 4 (schema: [manifest-schema.js](packages/javascript/browser/ui_components/metadata/manifest-schema.js)); do not hand-edit it — adjust inferred kind/role/maturity through the override tables in `metadata/renderer.js`.
 
 2. Export it from the category `index.js`.
 
 3. Register it in [ComponentFactory.js](packages/javascript/browser/ui_components/binding/ComponentFactory.js) if it should be usable by name/generator.
 
-4. Rebuild metadata: `node packages/javascript/browser/ui_components/metadata/build-metadata.mjs --check`.
+4. Rebuild metadata: `node packages/javascript/browser/ui_components/metadata/build-metadata.mjs`, then verify with `--check` (read-only; it fails when a manifest exists without a ComponentFactory registration).
 
 Full details: [AGENT-UI-GUIDE.md](AGENT-UI-GUIDE.md) §8.
 

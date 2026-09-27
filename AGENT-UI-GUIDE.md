@@ -90,6 +90,8 @@ c.destroy();          // 卸載並移除 DOM
 
 **對話框**：`ModalPanel.confirm/alert/prompt` 這三個捷徑帶 `destroyOnClose: true`，關閉後（延後一個 microtask，讓 `onClose` 有機會否決關閉）自行 `destroy()`，呼叫端不必也不該再持有它；已銷毀的面板再 `open()`/`mount()` 只會 warn。直接 `new ModalPanel` 預設 `destroyOnClose: false`，可 `close()` 後重複 `open()`，但生命週期由你負責——這是「越用越慢」的常見來源。兩邊都可用 options 明示覆寫。
 
+對話框的無障礙行為：面板帶 `role="dialog"`、`aria-modal="true"`，以標題命名（沒有標題時用 `ariaLabel` 選項）。疊加多層時，一次 Escape 只關最上層；內部元件已處理的 Escape（例如先關掉展開中的下拉選單）不會連帶關閉對話框。焦點管理預設關閉以維持既有行為，新專案建議在啟動時設定 `ModalPanel.defaults.manageFocus = true`：開啟時把焦點移入（可用 `initialFocus` 指定），Tab 限制在對話框內，關閉時還原到開啟前的元素。
+
 ### 用字串名動態建立（重製時很常用）
 
 ```js
@@ -109,17 +111,17 @@ const dt = LazyComponentFactory.create('DataTable', { columns, data });
 
 ---
 
-## 3. 元件清單（116 個，權威來源＝catalog）
+## 3. 元件清單（132 個，權威來源＝catalog）
 
 `*` = `generator.usable=false`（`manual_only`：不能靠生成器欄位自動映射，需**手動組合**；仍可正常 `new` 使用）。
 
-- **form (18)**：`BatchUploader, Checkbox, DatePicker, Dropdown, FormField*, MultiSelectDropdown, NumberInput, Radio, SearchForm*, Slider, TextArea, TextInput, TimePicker, ToggleSwitch` + 0626 併入:`CommandComposer*, Form*, Rating*, TagInput*`(Textarea 已併入 TextArea,單一實作雙名稱)
+- **form (23)**：`BatchUploader, Checkbox, DatePicker, Dropdown, FormField*, MultiSelectDropdown, NumberInput, Radio, SearchForm*, Slider, TextArea, TextInput, TimePicker, ToggleSwitch` + 0626 併入:`CommandComposer*, Form*, Rating*, TagInput*`(Textarea 已併入 TextArea,單一實作雙名稱) + 2026-09 新增:`ConditionBuilder*, DateRangePicker*, RemoteSelect*, TimeRangePicker*, Transfer*`
 
-- **common (40)**：`ActionButton*, AuthButton*, Badge*, BasicButton, Breadcrumb*, ButtonGroup, ColorPicker, Divider*, DownloadButton*, EditorButton, FeatureCard*, Icon*, ImageViewer, LoadingSpinner*, Notification*, Pagination*, PhotoCard*, Progress*, SimpleDialog*, SortButton*, Tag*, Tooltip*, TreeList*, UploadButton*` + 0626 併入的 atoms/composites:`Alert*, CardGrid*, CodeBlock*, DescriptionList*, DropdownMenu*, EmptyState*, FilterBar*, Heading*, Link*, List*, MediaPlayer*, ResultList*, Skeleton*, StatGrid*, StepIndicator*, Text*`
+- **common (46)**：`ActionButton*, AuthButton*, Badge*, BasicButton, Breadcrumb*, ButtonGroup, ColorPicker, Divider*, DownloadButton*, EditorButton, FeatureCard*, Icon*, ImageViewer, LoadingSpinner*, Notification*, Pagination*, PhotoCard*, Progress*, SimpleDialog*, SortButton*, Tag*, Tooltip*, TreeList*, UploadButton*` + 0626 併入的 atoms/composites:`Alert*, CardGrid*, CodeBlock*, DescriptionList*, DropdownMenu*, EmptyState*, FilterBar*, Heading*, Link*, List*, MediaPlayer*, ResultList*, Skeleton*, StatGrid*, StepIndicator*, Text*` + 2026-09 新增:`ApprovalTimeline*, ConflictNotice*, Countdown*, IssueList*, NotificationCenter*, Popover*`
 
-- **layout (13)**：`DataTable*, DocumentWall*, FormRow*, FunctionMenu*, InfoPanel*, PanelManager*, PhotoWall*, SideMenu*, Stepper*, TabContainer*, WorkflowPanel*, EditableTable*, FormDesigner`（12 欄表單設計畫布；拖拉、縮放、換元件、改欄位）
+- **layout (17)**：`DataTable*, DocumentWall*, FormRow*, FunctionMenu*, InfoPanel*, PanelManager*, PhotoWall*, SideMenu*, Stepper*, TabContainer*, WorkflowPanel*, EditableTable*, FormDesigner`（12 欄表單設計畫布；拖拉、縮放、換元件、改欄位） + 2026-09 新增:`DataGrid*, ImportWizard*, PrintLayout*, TimeGrid*`
 
-- **input (10, 複合輸入)**：`AddressInput, AddressListInput, ChainedInput, DateTimeInput, ListInput, OrganizationInput, PersonInfoList, PhoneListInput, SocialMediaList, StudentInput`
+- **input (11, 複合輸入)**：`AddressInput, AddressListInput, ChainedInput, DateTimeInput, ListInput, OrganizationInput, PersonInfoList, PhoneListInput, SocialMediaList, StudentInput` + 2026-09 新增:`DateTimeRangePicker*`
 
 - **viz (23)**：`BarChart*, CanvasMap*, ClusterGraph*, DrawingBoard, FlameChart*, HeatmapChart*, HierarchyChart*, LeafletMap*, LineChart*, MapEditor*, MapEditorV2*, OrgChart*, OSMMapEditor*, PieChart*, RelationChart*, RoseChart*, SankeyChart*, ScatterChart*, Sparkline*, SunburstChart*, TGOSMapEditor*, TimelineChart*, WebPainter`（全數 Canvas 渲染；共同基底 `viz/CanvasChart.js` 非目錄元件、不在 catalog。舊 SVG 基底 BaseChart 已刪除）
 
@@ -134,6 +136,37 @@ const dt = LazyComponentFactory.create('DataTable', { columns, data });
 - **analytics (1)**:`DataExplorer*`(統計探索複合件:繫結表單/資料 → ChartSpec → 聚合引擎 → 8 種圖型 2D~4D + 聚合表/明細分頁/CSV/PNG 匯出;spec 白名單 fail-closed)
 
 > 想查某元件能不能被生成器直接吃、支援哪些 field type、可綁哪些事件/動作 → 查它在 catalog 的 `generator` / `binding` 區塊，或它資料夾內的 `*.manifest.json`。
+
+### 3.1 2026-09 新增元件與補強（摘要，詳細選項看各元件 README）
+
+2026-09 新增的 16 個元件在 catalog 中標為 `beta`，全部預設不接生成器（`manual_only`），手動 `new` 使用。
+
+| 元件 | 用途 |
+|---|---|
+| `TimeGrid` | 時段格線：列為時段、欄為日期或資源，項目可跨格、重疊並排，支援點選、拖放與鍵盤搬移 |
+| `DataGrid` | 試算表式資料格：逐格編輯與驗證、方向鍵導覽、貼上 TSV、未存標記、`getChanges()`；`EditableTable` 保持原樣 |
+| `RemoteSelect` | 遠端查找選擇器：輸入即查、防抖、分頁載入、過期回應自動丟棄 |
+| `DateRangePicker`、`TimeRangePicker`、`DateTimeRangePicker` | 日期、時間、日期時間區間，兩端互相限制並提供 `isValid()` |
+| `Transfer` | 穿梭框：左右清單搬移、搜尋、排序、上限 |
+| `ConditionBuilder` | 條件編輯器：欄位、運算子、值與且或巢狀群組，輸出純資料，不執行程式碼 |
+| `ImportWizard` | 匯入精靈：CSV/TSV 上傳或貼上、欄位對應、逐列驗證、確認匯入 |
+| `Popover` | 可互動浮層：可放按鈕與連結，支援點擊、滑過、聚焦開啟 |
+| `Countdown` | 倒數計時：可注入時鐘與伺服器時差，門檻變色，完成只觸發一次 |
+| `IssueList` | 問題清單：依嚴重度排列、篩選，點擊回傳來源供定位 |
+| `ApprovalTimeline` | 審核歷程：各關卡狀態、處理人、時間、意見與附件 |
+| `NotificationCenter` | 通知中心：未讀徽章、浮動清單、全部已讀、載入更多 |
+| `PrintLayout` | 列印版面：只列印指定區塊，紙張大小、方向、邊界 |
+| `ConflictNotice` | 版本衝突提示：列出差異，讓使用者選重新載入、覆寫或取消 |
+
+工具（`utils/index.js` 匯出）：`createPermissionGate` 依權限隱藏或停用元素與元件（僅改善介面，權限仍必須由伺服器把關）；`createDirtyGuard` 追蹤未存變更、離開前確認。
+
+既有元件的補強全部預設關閉，不傳新選項時行為不變：
+
+- `DataTable`：`serverSide` + `dataSource` 伺服器端排序分頁搜尋、`stickyHeader`、欄位 `sticky`、`columnToggle`、`expandable` 列展開、`rowKey` 跨頁勾選。
+- `TreeList`：`checkable` 勾選多選（含半選）、`loadChildren` 延遲載入。
+- `WorkflowPanel`：`stages`、`fieldMap` 自訂階段與資料欄位；內建 13 階段只為相容保留，新專案請自行傳入。
+- `Progress`：`segments` 分段堆疊。
+- Canvas 圖表：`accessibleTable` 產生輔助科技可讀的資料表，見 [viz/ACCESSIBILITY.md](packages/javascript/browser/ui_components/viz/ACCESSIBILITY.md)。
 
 ---
 
@@ -297,9 +330,11 @@ node templates/spa/scripts/spa-cli.js feature Article --fields "Title:string,Con
 
 - 文案走 i18n：`import Locale from '../../i18n/index.js'`。
 
-- **`index.js`**：`export { <Name> } from './<Name>.js';`
+- **`index.js`**：`export { <Name>, default } from './<Name>.js';`。其他元件要用它時一律從這個 `index.js` 匯入，不可直接匯入 `<Name>.js`（`validate-ui-library` 會擋）。
 
-- **`<Name>.manifest.json`**：機器可讀 metadata（見 8.2）。
+- **`locale.js`**（新元件建議）：在元件資料夾內以 `Locale.register('zh-TW', '<namespace>', {...})`、`Locale.register('en', '<namespace>', {...})` 自行註冊字串，`<Name>.js` 以 `import './locale.js';` 載入。修改既有元件時沿用它原本在 `i18n/locales/*.js` 的命名空間。
+
+- **`component.manifest.json`**：機器可讀 metadata（見 8.2），由 `build-metadata.mjs` 產生。
 
 ### 8.2 manifest.json 必填格式
 
@@ -335,6 +370,8 @@ node templates/spa/scripts/spa-cli.js feature Article --fields "Title:string,Con
 
 > 若只是純手動組合的展示/動作元件（如按鈕、卡片），設 `generator.usable=false`、`usage_mode="manual_only"`、`supported_field_types=[]`。
 
+> manifest 由 `build-metadata.mjs` 依元件原始碼推導後覆寫，手動修改會在下次重建時消失。推導結果不對時，改 [metadata/renderer.js](packages/javascript/browser/ui_components/metadata/renderer.js) 的 `KIND_OVERRIDES`、`ROLE_OVERRIDES` 或 `BETA_COMPONENTS`。監聽事件是從原始碼中的 `onChange`、`onClick` 等字樣推得，內部函式請避開這些名稱，以免誤列事件。
+
 ### 8.3 註冊與收尾（缺一不可）
 
 1. 在該 category 的 `index.js` 加 `export`。
@@ -347,7 +384,7 @@ node templates/spa/scripts/spa-cli.js feature Article --fields "Title:string,Con
    ```bash
    node packages/javascript/browser/ui_components/metadata/build-metadata.mjs
    ```
-   CI/驗證用 `--check`（會校驗每個 registry 元件都有合法 manifest，且 manifest.registry_name 存在於 ComponentFactory）。
+   CI/驗證用 `--check`（唯讀：校驗每個 registry 元件都有合法 manifest，且 manifest.registry_name 存在於 ComponentFactory；有 manifest 卻沒註冊的元件會讓檢查失敗）。先完成第 2 步註冊，再執行不帶 `--check` 的重建。
 
    Metadata 的 `value_io` 與 `target_actions` 只會依元件類別本身公開的方法推導；呼叫子元件的同名方法不算公開能力。宣告 `clear`、`reload`、`setValue` 或 `reloadOptions` 時，manifest 驗證會要求對應公開方法確實存在。
 

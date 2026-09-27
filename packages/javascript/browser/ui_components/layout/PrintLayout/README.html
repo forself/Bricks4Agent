@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PrintLayout</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>PrintLayout</h1>
+<p>列印版面（容器元件）。把頁面中的一個區塊整理成可列印的版面：標題、副標題、自訂頁首／頁尾、列印時間，並提供 <code>print()</code>——<strong>只印這個區塊</strong>，不破壞、不搬動宿主頁面的 DOM。適用報表、清單、單據、會議紀錄等需要列印的畫面。</p>
+<h2>建構</h2>
+<pre><code class="language-js">import { PrintLayout } from './index.js';
+
+const layout = new PrintLayout({
+    title: '',               // 標題（&lt;h2&gt;）
+    subtitle: '',            // 副標題
+    header: null,            // 標題下方的自訂頁首：Node、B4A 元件（有 .element）或文字
+    footer: null,            // 頁尾：Node、B4A 元件或文字
+    content: null,           // 主要內容：Node、B4A 元件或文字；也可自行掛到 getContentElement()
+    pageSize: 'A4',          // 'A4' | 'A3' | 'Letter' | 'Legal'（不分大小寫）
+    orientation: 'portrait', // 'portrait' | 'landscape'
+    margin: '15mm',          // '0' | '10mm' | '15mm' | '20mm' | '25mm'（PrintLayout.css 的固定組合）
+    showPrintedAt: true,     // 顯示列印時間（依 Locale 格式；每次 print() 時更新；只出現在紙本與預覽畫面）
+    preview: false,          // 螢幕上以實際紙張寬度、邊界內距與陰影預覽列印結果
+    printButton: false,      // 顯示「列印」按鈕（呼叫 print()）
+    beforePrint: null,       // (layout) =&gt; void | false；回傳 false 取消這次列印
+    afterPrint: null         // (layout) =&gt; void；列印結束（afterprint 或備援計時器）後呼叫
+});
+layout.mount('#report');
+</code></pre>
+<ul>
+<li>文字型的 <code>header</code>／<code>footer</code>／<code>content</code> 一律當純文字輸出，不解析 HTML。</li>
+<li>列印時間在尚未列印的一般螢幕畫面沒有意義，所以 <code>preview: false</code> 時只在紙本上出現（<code>PrintLayout.css</code> 的 <code>@media screen</code> 規則隱藏）；<code>preview: true</code> 時螢幕上也顯示，方便預覽。</li>
+<li>不支援的 <code>pageSize</code>／<code>orientation</code>／<code>margin</code> 會 <code>console.warn</code> 並退回預設值（A4、portrait、15mm）。</li>
+<li>靜態屬性：<code>PrintLayout.PAGE_SIZES</code>、<code>PrintLayout.ORIENTATIONS</code>、<code>PrintLayout.MARGINS</code>、<code>PrintLayout.CLEANUP_FALLBACK_MS</code>（預設 60000）。</li>
+</ul>
+<h2>方法</h2>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>回傳</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>print()</code></td>
+<td><code>this</code></td>
+<td>只列印這個版面。需要先 <code>mount</code> 到文件中（未掛載時警告並略過）</td>
+</tr>
+<tr>
+<td><code>setContent(node)</code></td>
+<td><code>this</code></td>
+<td>以 Node、B4A 元件或文字取代主要內容；<code>null</code> 清空</td>
+</tr>
+<tr>
+<td><code>getContentElement()</code></td>
+<td><code>HTMLElement</code></td>
+<td>主要內容容器，可直接把其他元件 <code>mount</code> 進來</td>
+</tr>
+<tr>
+<td><code>setTitle(title)</code></td>
+<td><code>this</code></td>
+<td>更新標題；空字串移除標題</td>
+</tr>
+<tr>
+<td><code>mount(container)</code></td>
+<td><code>this</code></td>
+<td>掛載到元素或 CSS 選擇器</td>
+</tr>
+<tr>
+<td><code>destroy()</code></td>
+<td><code>void</code></td>
+<td>移除 DOM、Icon、監聽與計時器；列印中呼叫會立即收掉列印標記（不呼叫 <code>afterPrint</code>）；樣式表 link 在最後一個實例 destroy 時才移除。可重複呼叫，之後呼叫其他方法不會拋錯</td>
+</tr>
+</tbody>
+</table>
+<h2>事件（callback）</h2>
+<table>
+<thead>
+<tr>
+<th>Callback</th>
+<th>參數</th>
+<th>觸發時機</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>beforePrint</code></td>
+<td><code>(layout)</code></td>
+<td><code>print()</code> 開始、標記頁面之前；回傳 <code>false</code> 取消列印。可在這裡展開收合區塊、載入完整資料</td>
+</tr>
+<tr>
+<td><code>afterPrint</code></td>
+<td><code>(layout)</code></td>
+<td>列印結束：收到 <code>afterprint</code>、備援計時器到期、或另一個 PrintLayout 開始列印時。<code>destroy()</code> 中斷列印時不呼叫</td>
+</tr>
+</tbody>
+</table>
+<h2>print() 如何只印這個區塊</h2>
+<p>整個流程不注入 <code>&lt;style&gt;</code>，符合嚴格 CSP：</p>
+<ol>
+<li>在 <code>&lt;html&gt;</code> 加 <code>data-b4a-printing</code>，版面根元素加 <code>data-b4a-print-target</code>（另有 <code>data-b4a-page</code>，例如 <code>a4-portrait-15mm</code>），祖先鏈（含 <code>&lt;body&gt;</code>）加 <code>data-b4a-print-ancestor</code>。</li>
+<li>同目錄 <code>PrintLayout.css</code> 的 <code>@media print</code> 規則依這些標記：隱藏祖先鏈上的其他兄弟節點（頁首、側欄、portal 到 body 的浮層），祖先鏈改 <code>display: contents</code>（捲動容器、固定高度、<code>transform</code> 都不再裁切內容），並解除 SPA 常見的 <code>html, body { height: 100%; overflow: hidden }</code>。</li>
+<li>呼叫 <code>window.print()</code>。</li>
+<li>收到 <code>afterprint</code> 時移除所有標記；瀏覽器沒送 <code>afterprint</code> 時，<code>print()</code> 返回 <code>CLEANUP_FALLBACK_MS</code> 毫秒後由備援計時器移除。標記只影響列印樣式，螢幕畫面不受影響。</li>
+</ol>
+<p>同一時間只會有一個版面在列印：另一個實例呼叫 <code>print()</code> 時，前一個的標記會先被收掉。</p>
+<h3>紙張大小、方向與邊界</h3>
+<p>嚴格 CSP 不能動態產生 <code>@page</code>，所以 <code>PrintLayout.css</code> 內預先寫好固定組合的具名頁面（4 種紙張 × 2 種方向 × 5 種邊界 = 40 個 <code>@page b4a-print-…</code>），列印期間以 <code>data-b4a-page</code> 選擇其一。只有經過 <code>print()</code> 的列印會套用這些頁面設定，使用者直接按 Ctrl+P 時不受影響。</p>
+<p>限制：</p>
+<ul>
+<li>邊界只支援 <code>0</code>、<code>10mm</code>、<code>15mm</code>、<code>20mm</code>、<code>25mm</code>；其他值退回 <code>15mm</code>。需要別的邊界時可設 <code>margin: '0'</code>，再自行在內容加內距。</li>
+<li>具名頁面（CSS <code>page</code> 屬性）需要瀏覽器支援（Chromium 系、Firefox 110+）；不支援時紙張與邊界改由列印對話框決定，但仍然只印這個區塊。</li>
+<li>頁首、頁尾各印一次（在第一頁頂端與最後一頁底端），不會在每一頁重複。</li>
+<li>樣式表以 <code>&lt;link&gt;</code> 非同步載入；在樣式表載入前呼叫 <code>print()</code> 會印出整頁。一般由使用者點擊觸發時早已載入完成。</li>
+<li>深色主題下，列印與預覽的紙張內會把文字、背景、框線 token 換成淺色紙張上可讀的值。</li>
+</ul>
+<h3>樣式表載入</h3>
+<p><code>PrintLayout.css</code> 以同源 <code>&lt;link rel="stylesheet" id="b4a-print-layout-styles"&gt;</code> 載入（做法同 <code>layout/DataTable</code>）。所有實例共用一個 link 並引用計數，最後一個實例 <code>destroy()</code> 才移除；宿主頁面自行放置的同 id link 不會被移除。link 被宿主移除時，下一次 <code>print()</code> 會補回。</p>
+<h2>鍵盤與無障礙</h2>
+<ul>
+<li>沒有浮出層，不掛 <code>document</code> 監聽；<code>window</code> 上只有 <code>locale-changed</code>（掛載期間）與 <code>afterprint</code>（列印期間）。</li>
+<li>「列印」按鈕是原生 <code>&lt;button type="button"&gt;</code>，Tab 可到達、Enter／Space 觸發；文字標籤取自 Locale，印表機圖示（Canvas）為 <code>aria-hidden="true"</code>。工具列在任何列印中都不會印出。</li>
+<li>標題為 <code>&lt;h2&gt;</code>，頁首／頁尾使用 <code>&lt;header&gt;</code>／<code>&lt;footer&gt;</code>。</li>
+<li><code>Locale.setLang()</code> 會即時更新按鈕文字與列印時間格式。</li>
+</ul>
+<h2>Locale（namespace：<code>printLayout</code>）</h2>
+<p><code>print</code>、<code>printedAt</code>（<code>{time}</code>）。字串由同目錄 <code>locale.js</code> 註冊 zh-TW 與 en。</p>
+<h2>可執行範例</h2>
+<p>把下列內容存成本目錄的 <code>example.html</code>，以 HTTP 伺服器開啟（例如在 repo 根目錄執行 <code>python -m http.server 8124</code>；ES module 與樣式表 link 不能用 <code>file://</code>）。</p>
+<pre><code class="language-html">&lt;!DOCTYPE html&gt;
+&lt;html lang=&quot;zh-TW&quot; data-theme=&quot;light&quot;&gt;
+&lt;head&gt;
+    &lt;meta charset=&quot;UTF-8&quot;&gt;
+    &lt;title&gt;PrintLayout 範例&lt;/title&gt;
+    &lt;link rel=&quot;stylesheet&quot; href=&quot;../../theme.css&quot;&gt;
+&lt;/head&gt;
+&lt;body&gt;
+    &lt;nav&gt;這段導覽列不會被印出&lt;/nav&gt;
+    &lt;main&gt;
+        &lt;div id=&quot;report&quot;&gt;&lt;/div&gt;
+    &lt;/main&gt;
+    &lt;script type=&quot;module&quot;&gt;
+        import { PrintLayout } from './index.js';
+
+        const layout = new PrintLayout({
+            title: '會議室使用月報',
+            subtitle: '2026 年 9 月',
+            header: '資料來源：預約系統',
+            footer: '總務組 製表',
+            orientation: 'landscape',
+            margin: '10mm',
+            preview: true,
+            printButton: true,
+            beforePrint: () =&gt; console.log('準備列印'),
+            afterPrint: () =&gt; console.log('列印結束')
+        }).mount('#report');
+
+        const table = document.createElement('table');
+        for (const [room, hours] of [['A 室', 42], ['B 室', 35], ['C 室', 18]]) {
+            const row = table.insertRow();
+            row.insertCell().textContent = room;
+            row.insertCell().textContent = `${hours} 小時`;
+        }
+        layout.getContentElement().appendChild(table);
+    &lt;/script&gt;
+&lt;/body&gt;
+&lt;/html&gt;
+</code></pre>
+</main>
+</body>
+</html>

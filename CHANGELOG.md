@@ -10,6 +10,63 @@ B4A 只收通用元件與通用能力；任何業務系統的專屬元件都不�
 
 ## 未發行
 
+### 新增：16 個通用元件與兩個工具（2026-09-27）
+
+新元件在 catalog 中標為 `beta`、`manual_only`，以手動 `new` 使用；字串由各元件資料夾內的 `locale.js` 自行註冊，提供 zh-TW 與 en。元件數由 116 增為 132。
+
+**新增**
+
+- 排程與資料：`TimeGrid`（時段格線，項目跨格、重疊並排、點選與拖放、鍵盤搬移）、`DataGrid`（試算表式資料格，逐格驗證、方向鍵導覽、貼上 TSV、未存標記與 `getChanges()`；`EditableTable` 不變）。
+- 輸入：`RemoteSelect`（遠端查找）、`DateRangePicker`、`TimeRangePicker`、`DateTimeRangePicker`（區間輸入）、`Transfer`（穿梭框）、`ConditionBuilder`（條件編輯器，輸出純資料）。以上都實作欄位錯誤契約 `setError` / `clearError`。
+- 流程與回饋：`ImportWizard`（CSV/TSV 匯入精靈）、`IssueList`（問題清單）、`ApprovalTimeline`（審核歷程）、`NotificationCenter`（通知中心）、`Countdown`（倒數計時）、`ConflictNotice`（版本衝突提示）。
+- 版面：`Popover`（可放按鈕與連結的浮層）、`PrintLayout`（只列印指定區塊）。
+- 工具：`createPermissionGate`／`PermissionGate` 依權限隱藏或停用元素與元件，只改善介面，權限仍須由伺服器把關；`createDirtyGuard`／`DirtyGuard` 追蹤未存變更並在離開前確認。由 `utils/index.js` 匯出。
+
+**已知限制**
+
+- `DateRangePicker`、`TimeRangePicker`、`DateTimeRangePicker` 從外部替內部的 DatePicker、TimePicker 補上鍵盤與 ARIA，依賴它們的 DOM 結構；日後應內建到 DatePicker、TimePicker 本身。
+- `PrintLayout` 的紙張大小與邊界需要 Chromium 或 Firefox 110 以上；頁首頁尾只印一次。
+
+### 補強：既有元件的選配能力與無障礙（2026-09-27）
+
+**新增**
+
+- DataTable：
+  - 伺服器端模式 `serverSide` + `dataSource(query)`，排序、分頁、快速篩選交給伺服器，過期回應會被丟棄；另有 `searchDebounce`、`onQueryChange`、`reload()`、`getQuery()`、`setData(rows, total)`。
+  - 固定表頭 `stickyHeader` + `maxHeight`；欄位可設 `sticky: 'left' | 'right'`。
+  - 欄位切換 `columnToggle`，方法 `setColumnVisible()`、`getColumnVisibility()`，回呼 `onColumnVisibilityChange`；欄位可設 `hideable: false`。
+  - 列展開 `expandable`，方法 `expandRow()`、`collapseRow()`、`toggleRow()`、`getExpandedKeys()`。
+  - 跨頁勾選：設 `rowKey` 後依鍵值追蹤勾選，新增 `getSelectedKeys()`、`setSelectedKeys()`、`clearSelection()` 與 `selectAllScope`。
+- TreeList：勾選多選 `checkable`（含半選、`checkStrictly`、`checkedKeys`、`onCheck`、`getCheckedKeys()`、`setCheckedKeys()`、`checkAll()`、`uncheckAll()`）與延遲載入 `loadChildren`（含 `reloadNode()`）。
+- WorkflowPanel：`stages`、`replaceStages`、`fieldMap` 與 `WorkflowPanel.DEFAULT_FIELD_MAP`。內建 13 個階段只為相容保留，新專案請傳入自己的階段。
+- Progress：分段堆疊 `segments`、`showLegend`、`setSegments()`，另有 `mount()` 別名。
+- Canvas 圖表（14 種）：`accessibleTable` 產生輔助科技可讀的資料表（`true` 視覺隱藏、`'visible'` 顯示在圖下），`accessibleTableMaxRows` 限制列數，子類以 `getDataTable()` 提供內容。說明見 `viz/ACCESSIBILITY.md`。
+- ModalPanel：`ModalPanel.defaults.manageFocus` 與 `manageFocus`、`initialFocus`、`ariaLabel` 選項。開啟焦點管理後，開啟時焦點移入、Tab 限制在對話框內、關閉時還原焦點。預設關閉，新專案建議在啟動時開啟。
+
+**預設行為變更**
+
+- ModalPanel 帶 `role="dialog"`、`aria-modal="true"`，以標題命名；關閉鈕的 `aria-label` 改走語系（zh-TW 仍為「關閉」）。疊加多層時一次 Escape 只關最上層；內部元件已處理（`preventDefault`）的 Escape 不再連帶關閉對話框。
+- Dropdown 選單展開時按 Escape 只關閉選單，不再同時關閉外層對話框；MultiSelectDropdown 選單已收合時不再攔下 Escape，外層對話框可正常關閉。
+- TreeList 預設帶樹狀結構的 ARIA 角色與鍵盤操作（方向鍵、Home、End、Enter、Space），每棵樹成為一個 Tab 停駐點。
+- DataTable 的 `rowKey` 原本不起作用，現在會改為依鍵值追蹤勾選。只影響可勾選的表格；Tim2026 傳入 `rowKey` 的表格都不可勾選，行為不變。
+- WorkflowPanel 下一階段的「(待處理)」提示改走語系，英文介面顯示「(To do)」。
+- Progress 圓形模式掛載後立即以主題色重繪，不再先以灰色顯示。
+- Dropdown、MultiSelectDropdown 的輸入框文字改用主題文字色 `var(--cl-text)`。
+- BasicButton 停用時不再顯示滑過效果。
+
+**修正**
+
+- BasicButton 以 `disabled: true` 建立後，`setDisabled(false)` 仍無法點擊；現在事件一律綁定，執行時才檢查停用狀態。
+- Dropdown、MultiSelectDropdown 的輸入框在深色主題下是黑字、難以閱讀。
+- InfoPanel、FunctionMenu、WorkflowPanel 的 CommonJS 相容段在唯讀的 ESM 環境（例如 Vitest）會在載入時拋錯。
+- Progress 在 `destroy()` 後呼叫 `setValue`、`setVariant` 會拋錯；TreeList 在 `destroy()` 後呼叫 `setData` 會重新繪製並殘留圖示訂閱。
+- Metadata 工具：`build-metadata.mjs --check` 改為唯讀，原本會刪除沒有註冊的 manifest；方法擷取不再把 `if`、`for` 等控制敘述當成方法，也不再漏掉預設參數含括號的方法；文件路徑優先選與元件同名的 README。
+
+**相容性驗證**
+
+- B4A：`npm test`（Vitest 61 個檔案、1102 項）、`audit-csp`、`audit-ui-style-rules`、`validate-ui-library`、`build-metadata --check`、`test-audit-csp-hard-zero`、`studio-self-host-audit` 全部通過；`validate:ui-state` 只剩 main 既有的 Badge 一項失敗。
+- Tim2026：以包含本節與上一節全部變更的版本取代其內嵌副本，執行 Tim2026 的 2846 個單元與安全測試，結果與內嵌副本基準完全相同，沒有退步。
+
 ### 補強：輸入元件的欄位錯誤標示（2026-09-27）
 
 **新增**

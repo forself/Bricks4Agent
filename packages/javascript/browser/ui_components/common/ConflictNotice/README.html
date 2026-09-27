@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ConflictNotice</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>ConflictNotice</h1>
+<p>樂觀並行控制（optimistic concurrency）衝突提示。儲存時伺服器回報「這筆資料在你編輯期間已被別人更新」（例如 HTTP 409、版本號或 ETag 不符），用 ConflictNotice 告訴使用者哪些欄位不同，並讓使用者選擇下一步：</p>
+<table>
+<thead>
+<tr>
+<th>動作</th>
+<th>意義</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>'reload'</code></td>
+<td>放棄自己的變更，載入伺服器上的最新資料</td>
+</tr>
+<tr>
+<td><code>'overwrite'</code></td>
+<td>以自己的版本覆寫伺服器資料（預設需要再確認一次）</td>
+</tr>
+<tr>
+<td><code>'cancel'</code></td>
+<td>先不處理，回到編輯畫面</td>
+</tr>
+</tbody>
+</table>
+<p>提供兩種呈現方式：</p>
+<ul>
+<li><strong>對話框</strong>：<code>ConflictNotice.show(options)</code> 以 <code>ModalPanel</code>（<code>destroyOnClose: true</code>）顯示，回傳 <code>Promise&lt;'reload' | 'overwrite' | 'cancel'&gt;</code>。</li>
+<li><strong>行內</strong>：<code>new ConflictNotice(options).mount(container)</code>，Alert 風格的 <code>role="alert"</code> 區塊，透過 <code>onResolve(action)</code> 或 <code>notice.result</code> 取得選擇。</li>
+</ul>
+<blockquote>
+<p>ConflictNotice 只負責「告知與取得選擇」。實際的重新載入、覆寫（通常是帶上 <code>force</code> 或新版本號重送）都由呼叫端執行；伺服器仍須自行檢查版本與權限。</p>
+</blockquote>
+<h2>建構子</h2>
+<pre><code class="language-js">new ConflictNotice({
+    title: null,               // 標題；null 時用 Locale（conflictNotice.title）
+    message: null,             // 說明文字；null 時用 Locale（conflictNotice.message），'' 表示不顯示
+    diffs: [],                 // 差異列：[{ field, label, local, server }]，一律以純文字顯示
+    serverUpdatedBy: null,     // 伺服器端最後修改者（純文字）
+    serverUpdatedAt: null,     // 伺服器端最後修改時間：Date、ISO 字串或毫秒數；無法解析時原樣顯示
+    dateTimeFormat: { dateStyle: 'medium', timeStyle: 'short' }, // Intl.DateTimeFormat 選項（時間與 Date 值共用）
+    actions: ['reload', 'overwrite', 'cancel'], // 顯示哪些選項與順序；未知值忽略，空陣列回到預設
+    confirmOverwrite: true,    // 選擇覆寫時先在同一區塊內要求再確認一次
+    danger: true,              // 覆寫按鈕（與確認覆寫按鈕）使用 danger 樣式
+    labels: {},                // 覆寫 conflictNotice 命名空間的任一字串，例如 { reload: '重新整理' }
+    formatValue: null,         // (value, { diff, side }) =&gt; string；回傳 undefined 改用預設格式
+    onResolve: null            // (action) =&gt; void：使用者做出選擇時呼叫
+});
+</code></pre>
+<h3>diffs</h3>
+<table>
+<thead>
+<tr>
+<th>屬性</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>field</code></td>
+<td>欄位代碼；未給 <code>label</code> 時顯示它，也會寫到該列的 <code>data-field</code></td>
+</tr>
+<tr>
+<td><code>label</code></td>
+<td>顯示用欄位名稱</td>
+</tr>
+<tr>
+<td><code>local</code></td>
+<td>使用者這邊的值（「您的值」欄）</td>
+</tr>
+<tr>
+<td><code>server</code></td>
+<td>伺服器目前的值（「目前的值」欄）</td>
+</tr>
+</tbody>
+</table>
+<p>預設值格式：<code>null</code>、<code>undefined</code>、<code>''</code> 顯示 Locale 的 <code>conflictNotice.empty</code>（—）；布林值顯示「是／否」；<code>Date</code> 依目前語系以 <code>Intl.DateTimeFormat</code> 格式化；陣列以「, 」串接；其他物件以 <code>JSON.stringify</code> 顯示。代碼類的值（狀態碼、選項值）請用 <code>formatValue</code> 轉成顯示文字。</p>
+<p>所有文字（欄位名稱、值、修改者名稱）都以 <code>textContent</code> 寫入，資料中的 HTML 不會被解析。</p>
+<h2>靜態方法與屬性</h2>
+<table>
+<thead>
+<tr>
+<th>名稱</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ConflictNotice.show(options)</code></td>
+<td>開啟對話框，回傳 <code>Promise&lt;'reload' | 'overwrite' | 'cancel'&gt;</code>。Esc 與右上角關閉鈕一律視為 <code>'cancel'</code>（即使 <code>actions</code> 不含 <code>'cancel'</code>），點遮罩不會關閉。<code>options.onResolve</code> 也會收到同一個結果</td>
+</tr>
+<tr>
+<td><code>ConflictNotice.ACTIONS</code></td>
+<td><code>{ RELOAD: 'reload', OVERWRITE: 'overwrite', CANCEL: 'cancel' }</code></td>
+</tr>
+</tbody>
+</table>
+<h2>實例方法與屬性</h2>
+<table>
+<thead>
+<tr>
+<th>名稱</th>
+<th>回傳</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>mount(containerOrSelector)</code></td>
+<td><code>this</code></td>
+<td>掛到容器（Element 或選擇器）；找不到容器時 <code>console.warn</code></td>
+</tr>
+<tr>
+<td><code>focus()</code></td>
+<td><code>this</code></td>
+<td>聚焦最安全的選項（第一個不是覆寫的按鈕）；確認步驟中聚焦「返回」</td>
+</tr>
+<tr>
+<td><code>snapshot()</code></td>
+<td><code>object</code></td>
+<td><code>{ lifecycle, step: 'choose' | 'confirm' | 'done', resolved }</code></td>
+</tr>
+<tr>
+<td><code>destroy()</code></td>
+<td><code>void</code></td>
+<td>移除 DOM 與監聽；可重複呼叫。尚未選擇就銷毀時，<code>result</code> 以 <code>'cancel'</code> 結束（不呼叫 <code>onResolve</code>）</td>
+</tr>
+<tr>
+<td><code>result</code></td>
+<td><code>Promise&lt;string&gt;</code></td>
+<td>使用者的選擇</td>
+</tr>
+<tr>
+<td><code>element</code></td>
+<td><code>HTMLElement</code></td>
+<td>根元素（銷毀後為 <code>null</code>）</td>
+</tr>
+</tbody>
+</table>
+<h2>事件／回呼</h2>
+<ul>
+<li><code>onResolve(action)</code>：使用者選擇 <code>reload</code>、<code>cancel</code>，或完成覆寫確認時呼叫一次。之後所有按鈕停用，避免重複送出（例如連點兩次覆寫）。要再次詢問請建立新的 ConflictNotice。</li>
+<li>回呼丟出的例外會被攔下並 <code>console.error</code>，不影響元件狀態。</li>
+</ul>
+<h2>鍵盤與無障礙</h2>
+<ul>
+<li>所有選項都是原生 <code>&lt;button type="button"&gt;</code>：Tab 移動、Enter／Space 觸發，保留瀏覽器的焦點外框。</li>
+<li>選擇覆寫且 <code>confirmOverwrite</code> 為 true 時，選項列隱藏、改顯示確認區塊（<code>role="group"</code>，以確認訊息作為 <code>aria-labelledby</code>），焦點移到「返回」；Esc 或「返回」回到選項列並把焦點放回覆寫按鈕。</li>
+<li>對話框：面板設定 <code>role="alertdialog"</code>、<code>aria-modal="true"</code>、<code>aria-labelledby</code>（標題）與 <code>aria-describedby</code>（說明文字）；開啟時焦點放在最安全的選項，Tab／Shift+Tab 在對話框內循環；在選項列按 Esc 由 ModalPanel 關閉並得到 <code>'cancel'</code>，確認步驟中的 Esc 只會回到上一步；關閉後焦點回到開啟前的元素。</li>
+<li>行內：根元素 <code>role="alert"</code>（插入時由螢幕報讀器朗讀），<code>aria-labelledby</code> 指向標題、<code>aria-describedby</code> 指向說明文字。行內版本不會自動搶走焦點，需要時呼叫 <code>focus()</code>。</li>
+<li>差異表格有 <code>&lt;caption&gt;</code>，欄標題為 <code>&lt;th scope="col"&gt;</code>、欄位名稱為 <code>&lt;th scope="row"&gt;</code>。</li>
+</ul>
+<h2>樣式</h2>
+<p>只使用主題 token：行內區塊為 <code>--cl-warning</code> 邊框與 <code>--cl-warning-light</code> 底色，確認區塊為 <code>--cl-danger</code> 邊框與 <code>--cl-bg-danger-light</code> 底色；深色主題由 <code>[data-theme="dark"]</code> 的 token 值處理。</p>
+<h2>範例</h2>
+<pre><code class="language-js">import { ConflictNotice } from './ui_components/common/ConflictNotice/index.js';
+
+async function saveMeetingRoom(form, draft) {
+    const response = await fetch(`/api/rooms/${draft.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'If-Match': draft.version },
+        body: JSON.stringify(draft)
+    });
+    if (response.status !== 409) return response;
+
+    const current = await response.json();
+    const action = await ConflictNotice.show({
+        diffs: [
+            { field: 'name', label: '會議室名稱', local: draft.name, server: current.name },
+            { field: 'capacity', label: '容納人數', local: draft.capacity, server: current.capacity },
+            { field: 'projector', label: '投影機', local: draft.projector, server: current.projector }
+        ],
+        serverUpdatedBy: current.updatedBy,
+        serverUpdatedAt: current.updatedAt
+    });
+
+    if (action === 'reload') form.load(current);
+    if (action === 'overwrite') return saveMeetingRoom(form, { ...draft, version: current.version });
+    return null;
+}
+
+// 行內版本：顯示在表單上方
+const notice = new ConflictNotice({
+    diffs: [{ field: 'status', label: '狀態', local: 1, server: 2 }],
+    formatValue: (value, { diff }) =&gt; (diff.field === 'status' ? ['草稿', '已送出', '已完成'][value] : undefined),
+    onResolve: (action) =&gt; {
+        notice.destroy();
+        if (action === 'reload') location.reload();
+    }
+}).mount('#form-messages');
+notice.focus();
+</code></pre>
+</main>
+</body>
+</html>

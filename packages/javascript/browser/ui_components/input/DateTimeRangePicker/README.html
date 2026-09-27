@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DateTimeRangePicker 日期時間範圍選擇器</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>DateTimeRangePicker 日期時間範圍選擇器</h1>
+<p>選擇「開始日期時間」與「結束日期時間」的範圍輸入元件。每一端由一個 <a href="../../form/DatePicker/README.html">DatePicker</a> 與一個 <a href="../../form/TimePicker/README.html">TimePicker</a> 組成，兩端互相約束，並提供驗證、欄位錯誤標示與完整鍵盤操作。</p>
+<ul>
+<li>值的格式：<code>{ start: 'YYYY-MM-DDTHH:mm' | null, end: 'YYYY-MM-DDTHH:mm' | null }</code>（當地時間，不做時區換算，不含秒與時區）</li>
+<li>沿用既有選項名稱：<code>format</code>（DatePicker，<code>'western'</code> / <code>'taiwan'</code> 民國）、<code>minuteStep</code>（TimePicker）、<code>min</code> / <code>max</code></li>
+<li>不修改 DatePicker / TimePicker / DateTimeInput 原始碼</li>
+</ul>
+<p><strong>為什麼不組合 DateTimeInput？</strong> DateTimeInput 沒有 <code>min</code> / <code>max</code> 選項，內部 DatePicker 建立時不帶可選範圍，也沒有表達「結束必須晚於開始」「最長 N 分鐘」這類跨端限制的方式；它的預設是民國曆（<code>useROC: true</code>），日期正規化也不是嚴格解析。因此本元件直接組合 DatePicker ＋ TimePicker，並與 <a href="../../form/DateRangePicker/README.html">DateRangePicker</a>、<a href="../../form/TimeRangePicker/README.html">TimeRangePicker</a> 共用鍵盤與約束的輔助函式。</p>
+<hr>
+<h2>建構選項</h2>
+<pre><code class="language-javascript">const picker = new DateTimeRangePicker({
+    value: null,               // 初始值 { start, end }；格式不合或結束不晚於開始時 console.warn 並以空值開始
+    min: null,                 // 最早時間：'YYYY-MM-DDTHH:mm' 或 Date；null 不限
+    max: null,                 // 最晚時間：'YYYY-MM-DDTHH:mm' 或 Date；null 不限
+    format: 'western',         // 日期顯示格式（同 DatePicker）：'western' 西元 / 'taiwan' 民國
+    minuteStep: 15,            // 分鐘欄間隔（同 TimePicker；預設與 DateTimeInput 相同為 15），須為 1–60 的整數
+    maxSpanMinutes: null,      // 最長時間長度（分鐘，結束 − 開始）；null 不限
+    required: false,           // 必填；只影響 isValid() / getValidationError()
+    separator: '至',            // 兩端之間的文字；預設 Locale dateTimeRangePicker.separator
+    label: '',                 // 可見標籤；有值時群組以 aria-labelledby 指向它
+    ariaLabel: '',             // 沒有可見標籤時的群組名稱；空值用 Locale dateTimeRangePicker.groupLabel
+    clearable: true,           // 有任何部分已填時顯示「清除」按鈕
+    disabled: false,           // 停用
+    width: '100%',             // 元件寬度（CSS 長度字串，或數字代表 px）
+    onChange: null             // (value) =&gt; {}：值真的改變時觸發一次
+});
+</code></pre>
+<p>四個欄位的提示文字（也是無障礙名稱）來自 Locale：<code>dateTimeRangePicker.startDate</code> / <code>startTime</code> / <code>endDate</code> / <code>endTime</code>，可用 <code>Locale.register()</code> 覆寫。</p>
+<hr>
+<h2>方法</h2>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>回傳</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>mount(container)</code></td>
+<td><code>this</code></td>
+<td>掛載到元素或 CSS 選擇器</td>
+</tr>
+<tr>
+<td><code>getValue()</code></td>
+<td><code>{ start, end }</code></td>
+<td>目前的值（每次回傳新物件）；只選了日期或只選了時間的一端為 <code>null</code></td>
+</tr>
+<tr>
+<td><code>setValue(value)</code></td>
+<td><code>this</code></td>
+<td>設定值，<strong>不觸發</strong> <code>onChange</code>；<code>null</code> / <code>undefined</code> / <code>''</code> 代表清空。格式不合（非 <code>YYYY-MM-DDTHH:mm</code>、日期不存在、含秒或時區）或結束不晚於開始時 <code>console.warn</code> 並保持原值</td>
+</tr>
+<tr>
+<td><code>clear()</code></td>
+<td><code>this</code></td>
+<td>清空四個欄位（含只填一半的部分）；值真的改變時才觸發 <code>onChange</code></td>
+</tr>
+<tr>
+<td><code>setDisabled(disabled)</code></td>
+<td><code>this</code></td>
+<td>停用／啟用四個欄位與清除按鈕</td>
+</tr>
+<tr>
+<td><code>isValid()</code></td>
+<td><code>boolean</code></td>
+<td>目前的值是否通過驗證</td>
+</tr>
+<tr>
+<td><code>getValidationError()</code></td>
+<td><code>string</code></td>
+<td>驗證失敗的原因（依目前語系）；通過時為空字串</td>
+</tr>
+<tr>
+<td><code>setError(message, { display = true })</code></td>
+<td><code>this</code></td>
+<td>兩端的日期與時間欄都標示紅框與 <code>aria-invalid</code>，訊息只顯示一則、位於範圍列下方；空訊息等同 <code>clearError()</code>；<code>display: false</code> 只標示狀態</td>
+</tr>
+<tr>
+<td><code>clearError()</code></td>
+<td><code>this</code></td>
+<td>清除 <code>setError</code> 的標示與文字</td>
+</tr>
+<tr>
+<td><code>snapshot()</code></td>
+<td><code>object</code></td>
+<td>內部狀態快照（<code>lifecycle</code>、<code>availability</code>、<code>startDate</code>、<code>startTime</code>、<code>endDate</code>、<code>endTime</code>）</td>
+</tr>
+<tr>
+<td><code>destroy()</code></td>
+<td>—</td>
+<td>銷毀四個內部元件（含浮在 <code>document.body</code> 的日曆與面板）、移除所有監聽與 DOM；可重複呼叫</td>
+</tr>
+</tbody>
+</table>
+<p><code>startDatePicker</code> / <code>startTimePicker</code> / <code>endDatePicker</code> / <code>endTimePicker</code> 屬性是內部元件實例，僅供檢查，請勿直接呼叫它們的 <code>setValue</code>。</p>
+<hr>
+<h2>事件</h2>
+<p><code>onChange(value)</code>：使用者選定日期或確認時間、按「清除」或呼叫 <code>clear()</code>，而<strong>值真的改變</strong>時觸發一次。只選了一端的日期（時間尚未選）時該端仍是 <code>null</code>，值沒有改變，所以不觸發；補上時間後才觸發。<code>setValue()</code> 與建構時的 <code>value</code> 不會觸發。</p>
+<hr>
+<h2>規則與設計取捨</h2>
+<p><strong>兩端互相約束，已選的部分也納入計算。</strong> 每一端可接受的時間區間由另一端、<code>min</code> / <code>max</code>、<code>maxSpanMinutes</code> 決定（結束必須<strong>晚於</strong>開始，不可相等）：</p>
+<ul>
+<li>日期欄：該端已選時間時，只開放「搭配這個時間會落在區間內」的日期（例如開始是 03-10 22:00、結束時間已選 08:00，結束日期最早只能選 03-11）；還沒選時間時，開放區間涵蓋到的日期。</li>
+<li>時間欄：該端已選日期時，只開放該日期上落在區間內的時間（小時全部不可選時變淡且點不了）；還沒選日期時不限制。</li>
+<li>另一端只選了日期時，以該日的 00:00 ～ 23:59 估算。</li>
+</ul>
+<p><strong>順序錯誤一律拒絕，不自動對調。</strong> 介面上選不到會讓結束不晚於開始的日期或時間；時間面板中的草稿時間不合規則時「確認」會被擋下，面板內以 <code>role="alert"</code> 說明原因。<code>setValue()</code> 收到結束不晚於開始的值時 <code>console.warn</code> 並保持原值。</p>
+<p><strong><code>setValue()</code> 對 <code>min</code> / <code>max</code> / <code>maxSpanMinutes</code> 不設防。</strong> 格式與順序正確的既有資料會照樣顯示，由 <code>isValid()</code> / <code>getValidationError()</code> 回報。</p>
+<p><strong>未完成的一端。</strong> 只選了日期或只選了時間的一端，<code>getValue()</code> 回傳 <code>null</code>，驗證回報缺少的部分（例如「請選擇開始時間」）。<code>required: false</code> 時兩端全空或只有一端完整都視為有效。</p>
+<p><strong>驗證順序與訊息</strong>（<code>dateTimeRangePicker.errors.*</code>）：<code>required</code> → <code>startDateRequired</code> / <code>startTimeRequired</code> / <code>endDateRequired</code> / <code>endTimeRequired</code>（一端只填一半）→ <code>startRequired</code> / <code>endRequired</code>（必填時整端空白）→ <code>order</code> 結束必須晚於開始 → <code>beforeMin</code> 不可早於 {min} → <code>afterMax</code> 不可晚於 {max} → <code>maxSpan</code> 範圍不可超過 {duration}。<code>{min}</code> / <code>{max}</code> 依 <code>format</code> 顯示（例 <code>2026/03/10 08:00</code>、民國 <code>115/03/10 08:00</code>），<code>{duration}</code> 以「1 天 2 小時 30 分鐘」（英文 <code>1 d 2 h 30 min</code>）顯示。</p>
+<hr>
+<h2>鍵盤與無障礙</h2>
+<table>
+<thead>
+<tr>
+<th>位置</th>
+<th>按鍵</th>
+<th>行為</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>觸發框</td>
+<td><code>Tab</code></td>
+<td>依序到達開始日期、開始時間、結束日期、結束時間、清除按鈕</td>
+</tr>
+<tr>
+<td>觸發框</td>
+<td><code>Enter</code> / <code>Space</code> / <code>↓</code></td>
+<td>開啟日曆或時間面板，焦點移入</td>
+</tr>
+<tr>
+<td>觸發框</td>
+<td><code>Esc</code></td>
+<td>關閉已開啟的日曆或面板（不讓外層對話框一起關閉）</td>
+</tr>
+<tr>
+<td>日曆</td>
+<td><code>←</code> <code>→</code> <code>↑</code> <code>↓</code> / <code>Home</code> <code>End</code> / <code>PageUp</code> <code>PageDown</code></td>
+<td>移動日期／月初月底／換月（加 <code>Shift</code> 換年）</td>
+</tr>
+<tr>
+<td>日曆</td>
+<td><code>Enter</code> / <code>Space</code></td>
+<td>選取日期，焦點回到觸發框</td>
+</tr>
+<tr>
+<td>時間面板</td>
+<td><code>↑</code> <code>↓</code> / <code>Home</code> <code>End</code> / <code>PageUp</code> <code>PageDown</code></td>
+<td>在可選的小時或分鐘間移動（跳過不可選的時間）</td>
+</tr>
+<tr>
+<td>時間面板</td>
+<td><code>←</code> / <code>→</code></td>
+<td>切換小時欄／分鐘欄</td>
+</tr>
+<tr>
+<td>時間面板</td>
+<td><code>Enter</code></td>
+<td>確認，焦點回到觸發框</td>
+</tr>
+<tr>
+<td>日曆／時間面板</td>
+<td><code>Esc</code></td>
+<td>關閉並回到觸發框</td>
+</tr>
+<tr>
+<td>日曆／時間面板</td>
+<td><code>Tab</code> / <code>Shift+Tab</code></td>
+<td>在面板內的控制項間循環</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>外層 <code>role="group"</code>，以 <code>aria-labelledby</code>（有 <code>label</code> 時）或 <code>aria-label</code> 命名。</li>
+<li>四個觸發框皆為 <code>role="combobox"</code>、<code>aria-haspopup="dialog"</code>、<code>aria-expanded</code>、<code>aria-controls</code>、<code>aria-label</code>，必填時 <code>aria-required</code>，停用時 <code>tabindex="-1"</code> 與 <code>aria-disabled</code>。</li>
+<li>日曆與時間面板為 <code>role="dialog"</code>；日期按鈕有完整日期的 <code>aria-label</code>、<code>aria-disabled</code>、<code>aria-pressed</code>；時間欄為 <code>role="listbox"</code>，項目為 <code>role="option"</code>，以 <code>aria-selected</code>、<code>aria-activedescendant</code>、<code>aria-disabled</code> 表示狀態。細節見 <a href="../../form/DateRangePicker/README.html">DateRangePicker</a> 與 <a href="../../form/TimeRangePicker/README.html">TimeRangePicker</a>。</li>
+</ul>
+<hr>
+<h2>範例</h2>
+<pre><code class="language-html">&lt;!DOCTYPE html&gt;
+&lt;html lang=&quot;zh-TW&quot; data-theme=&quot;light&quot;&gt;
+&lt;head&gt;
+    &lt;meta charset=&quot;UTF-8&quot;&gt;
+    &lt;title&gt;DateTimeRangePicker 範例&lt;/title&gt;
+    &lt;link rel=&quot;stylesheet&quot; href=&quot;../../theme.css&quot;&gt;
+&lt;/head&gt;
+&lt;body&gt;
+    &lt;div id=&quot;maintenance&quot;&gt;&lt;/div&gt;
+    &lt;button type=&quot;button&quot; id=&quot;check&quot;&gt;檢查&lt;/button&gt;
+    &lt;p id=&quot;result&quot;&gt;&lt;/p&gt;
+
+    &lt;script type=&quot;module&quot;&gt;
+        import { DateTimeRangePicker } from './DateTimeRangePicker.js';
+
+        const result = document.getElementById('result');
+        const picker = new DateTimeRangePicker({
+            label: '系統維護時段',
+            required: true,
+            min: new Date(),
+            maxSpanMinutes: 8 * 60,
+            minuteStep: 30,
+            onChange: (value) =&gt; {
+                picker.clearError();
+                result.textContent = `${value.start ?? '—'} ~ ${value.end ?? '—'}`;
+            }
+        }).mount('#maintenance');
+
+        document.getElementById('check').addEventListener('click', () =&gt; {
+            if (picker.isValid()) picker.clearError();
+            else picker.setError(picker.getValidationError());
+        });
+    &lt;/script&gt;
+&lt;/body&gt;
+&lt;/html&gt;
+</code></pre>
+</main>
+</body>
+</html>

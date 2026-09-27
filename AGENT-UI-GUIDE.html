@@ -130,6 +130,7 @@ c.destroy();          // 卸載並移除 DOM
 </blockquote>
 <p><code>destroy()</code> 是契約的必要項而非選配：每個元件（含 <code>viz/MapEditor</code>、<code>viz/MapEditorV2</code> 這類重量級畫布元件）都要能被卸載乾淨，換頁不留 DOM／監聽／計時器。</p>
 <p><strong>對話框</strong>：<code>ModalPanel.confirm/alert/prompt</code> 這三個捷徑帶 <code>destroyOnClose: true</code>，關閉後（延後一個 microtask，讓 <code>onClose</code> 有機會否決關閉）自行 <code>destroy()</code>，呼叫端不必也不該再持有它；已銷毀的面板再 <code>open()</code>/<code>mount()</code> 只會 warn。直接 <code>new ModalPanel</code> 預設 <code>destroyOnClose: false</code>，可 <code>close()</code> 後重複 <code>open()</code>，但生命週期由你負責——這是「越用越慢」的常見來源。兩邊都可用 options 明示覆寫。</p>
+<p>對話框的無障礙行為：面板帶 <code>role="dialog"</code>、<code>aria-modal="true"</code>，以標題命名（沒有標題時用 <code>ariaLabel</code> 選項）。疊加多層時，一次 Escape 只關最上層；內部元件已處理的 Escape（例如先關掉展開中的下拉選單）不會連帶關閉對話框。焦點管理預設關閉以維持既有行為，新專案建議在啟動時設定 <code>ModalPanel.defaults.manageFocus = true</code>：開啟時把焦點移入（可用 <code>initialFocus</code> 指定），Tab 限制在對話框內，關閉時還原到開啟前的元素。</p>
 <h3>用字串名動態建立（重製時很常用）</h3>
 <pre><code class="language-js">import { ComponentFactory } from '.../ui_components/index.js';
 const dt = ComponentFactory.create('DataTable', { columns, data });   // 查不到回傳 null 並 warn
@@ -141,20 +142,20 @@ const dt = LazyComponentFactory.create('DataTable', { columns, data });
 </code></pre>
 <p>工具頁（<code>DynamicToolRenderer</code>）預設就是它，<code>preload()</code> 在 <code>init()</code> 內自動執行；名稱不在延遲註冊表時會回退到 eager <code>ComponentFactory</code> 的即時 registry，<code>ComponentFactory.register()</code> 註冊的元件照樣看得到。</p>
 <hr>
-<h2>3. 元件清單（116 個，權威來源＝catalog）</h2>
+<h2>3. 元件清單（132 個，權威來源＝catalog）</h2>
 <p><code>*</code> = <code>generator.usable=false</code>（<code>manual_only</code>：不能靠生成器欄位自動映射，需<strong>手動組合</strong>；仍可正常 <code>new</code> 使用）。</p>
 <ul>
 <li>
-<p><strong>form (18)</strong>：<code>BatchUploader, Checkbox, DatePicker, Dropdown, FormField*, MultiSelectDropdown, NumberInput, Radio, SearchForm*, Slider, TextArea, TextInput, TimePicker, ToggleSwitch</code> + 0626 併入:<code>CommandComposer*, Form*, Rating*, TagInput*</code>(Textarea 已併入 TextArea,單一實作雙名稱)</p>
+<p><strong>form (23)</strong>：<code>BatchUploader, Checkbox, DatePicker, Dropdown, FormField*, MultiSelectDropdown, NumberInput, Radio, SearchForm*, Slider, TextArea, TextInput, TimePicker, ToggleSwitch</code> + 0626 併入:<code>CommandComposer*, Form*, Rating*, TagInput*</code>(Textarea 已併入 TextArea,單一實作雙名稱) + 2026-09 新增:<code>ConditionBuilder*, DateRangePicker*, RemoteSelect*, TimeRangePicker*, Transfer*</code></p>
 </li>
 <li>
-<p><strong>common (40)</strong>：<code>ActionButton*, AuthButton*, Badge*, BasicButton, Breadcrumb*, ButtonGroup, ColorPicker, Divider*, DownloadButton*, EditorButton, FeatureCard*, Icon*, ImageViewer, LoadingSpinner*, Notification*, Pagination*, PhotoCard*, Progress*, SimpleDialog*, SortButton*, Tag*, Tooltip*, TreeList*, UploadButton*</code> + 0626 併入的 atoms/composites:<code>Alert*, CardGrid*, CodeBlock*, DescriptionList*, DropdownMenu*, EmptyState*, FilterBar*, Heading*, Link*, List*, MediaPlayer*, ResultList*, Skeleton*, StatGrid*, StepIndicator*, Text*</code></p>
+<p><strong>common (46)</strong>：<code>ActionButton*, AuthButton*, Badge*, BasicButton, Breadcrumb*, ButtonGroup, ColorPicker, Divider*, DownloadButton*, EditorButton, FeatureCard*, Icon*, ImageViewer, LoadingSpinner*, Notification*, Pagination*, PhotoCard*, Progress*, SimpleDialog*, SortButton*, Tag*, Tooltip*, TreeList*, UploadButton*</code> + 0626 併入的 atoms/composites:<code>Alert*, CardGrid*, CodeBlock*, DescriptionList*, DropdownMenu*, EmptyState*, FilterBar*, Heading*, Link*, List*, MediaPlayer*, ResultList*, Skeleton*, StatGrid*, StepIndicator*, Text*</code> + 2026-09 新增:<code>ApprovalTimeline*, ConflictNotice*, Countdown*, IssueList*, NotificationCenter*, Popover*</code></p>
 </li>
 <li>
-<p><strong>layout (13)</strong>：<code>DataTable*, DocumentWall*, FormRow*, FunctionMenu*, InfoPanel*, PanelManager*, PhotoWall*, SideMenu*, Stepper*, TabContainer*, WorkflowPanel*, EditableTable*, FormDesigner</code>（12 欄表單設計畫布；拖拉、縮放、換元件、改欄位）</p>
+<p><strong>layout (17)</strong>：<code>DataTable*, DocumentWall*, FormRow*, FunctionMenu*, InfoPanel*, PanelManager*, PhotoWall*, SideMenu*, Stepper*, TabContainer*, WorkflowPanel*, EditableTable*, FormDesigner</code>（12 欄表單設計畫布；拖拉、縮放、換元件、改欄位） + 2026-09 新增:<code>DataGrid*, ImportWizard*, PrintLayout*, TimeGrid*</code></p>
 </li>
 <li>
-<p><strong>input (10, 複合輸入)</strong>：<code>AddressInput, AddressListInput, ChainedInput, DateTimeInput, ListInput, OrganizationInput, PersonInfoList, PhoneListInput, SocialMediaList, StudentInput</code></p>
+<p><strong>input (11, 複合輸入)</strong>：<code>AddressInput, AddressListInput, ChainedInput, DateTimeInput, ListInput, OrganizationInput, PersonInfoList, PhoneListInput, SocialMediaList, StudentInput</code> + 2026-09 新增:<code>DateTimeRangePicker*</code></p>
 </li>
 <li>
 <p><strong>viz (23)</strong>：<code>BarChart*, CanvasMap*, ClusterGraph*, DrawingBoard, FlameChart*, HeatmapChart*, HierarchyChart*, LeafletMap*, LineChart*, MapEditor*, MapEditorV2*, OrgChart*, OSMMapEditor*, PieChart*, RelationChart*, RoseChart*, SankeyChart*, ScatterChart*, Sparkline*, SunburstChart*, TGOSMapEditor*, TimelineChart*, WebPainter</code>（全數 Canvas 渲染；共同基底 <code>viz/CanvasChart.js</code> 非目錄元件、不在 catalog。舊 SVG 基底 BaseChart 已刪除）</p>
@@ -178,6 +179,83 @@ const dt = LazyComponentFactory.create('DataTable', { columns, data });
 <blockquote>
 <p>想查某元件能不能被生成器直接吃、支援哪些 field type、可綁哪些事件/動作 → 查它在 catalog 的 <code>generator</code> / <code>binding</code> 區塊，或它資料夾內的 <code>*.manifest.json</code>。</p>
 </blockquote>
+<h3>3.1 2026-09 新增元件與補強（摘要，詳細選項看各元件 README）</h3>
+<p>2026-09 新增的 16 個元件在 catalog 中標為 <code>beta</code>，全部預設不接生成器（<code>manual_only</code>），手動 <code>new</code> 使用。</p>
+<table>
+<thead>
+<tr>
+<th>元件</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>TimeGrid</code></td>
+<td>時段格線：列為時段、欄為日期或資源，項目可跨格、重疊並排，支援點選、拖放與鍵盤搬移</td>
+</tr>
+<tr>
+<td><code>DataGrid</code></td>
+<td>試算表式資料格：逐格編輯與驗證、方向鍵導覽、貼上 TSV、未存標記、<code>getChanges()</code>；<code>EditableTable</code> 保持原樣</td>
+</tr>
+<tr>
+<td><code>RemoteSelect</code></td>
+<td>遠端查找選擇器：輸入即查、防抖、分頁載入、過期回應自動丟棄</td>
+</tr>
+<tr>
+<td><code>DateRangePicker</code>、<code>TimeRangePicker</code>、<code>DateTimeRangePicker</code></td>
+<td>日期、時間、日期時間區間，兩端互相限制並提供 <code>isValid()</code></td>
+</tr>
+<tr>
+<td><code>Transfer</code></td>
+<td>穿梭框：左右清單搬移、搜尋、排序、上限</td>
+</tr>
+<tr>
+<td><code>ConditionBuilder</code></td>
+<td>條件編輯器：欄位、運算子、值與且或巢狀群組，輸出純資料，不執行程式碼</td>
+</tr>
+<tr>
+<td><code>ImportWizard</code></td>
+<td>匯入精靈：CSV/TSV 上傳或貼上、欄位對應、逐列驗證、確認匯入</td>
+</tr>
+<tr>
+<td><code>Popover</code></td>
+<td>可互動浮層：可放按鈕與連結，支援點擊、滑過、聚焦開啟</td>
+</tr>
+<tr>
+<td><code>Countdown</code></td>
+<td>倒數計時：可注入時鐘與伺服器時差，門檻變色，完成只觸發一次</td>
+</tr>
+<tr>
+<td><code>IssueList</code></td>
+<td>問題清單：依嚴重度排列、篩選，點擊回傳來源供定位</td>
+</tr>
+<tr>
+<td><code>ApprovalTimeline</code></td>
+<td>審核歷程：各關卡狀態、處理人、時間、意見與附件</td>
+</tr>
+<tr>
+<td><code>NotificationCenter</code></td>
+<td>通知中心：未讀徽章、浮動清單、全部已讀、載入更多</td>
+</tr>
+<tr>
+<td><code>PrintLayout</code></td>
+<td>列印版面：只列印指定區塊，紙張大小、方向、邊界</td>
+</tr>
+<tr>
+<td><code>ConflictNotice</code></td>
+<td>版本衝突提示：列出差異，讓使用者選重新載入、覆寫或取消</td>
+</tr>
+</tbody>
+</table>
+<p>工具（<code>utils/index.js</code> 匯出）：<code>createPermissionGate</code> 依權限隱藏或停用元素與元件（僅改善介面，權限仍必須由伺服器把關）；<code>createDirtyGuard</code> 追蹤未存變更、離開前確認。</p>
+<p>既有元件的補強全部預設關閉，不傳新選項時行為不變：</p>
+<ul>
+<li><code>DataTable</code>：<code>serverSide</code> + <code>dataSource</code> 伺服器端排序分頁搜尋、<code>stickyHeader</code>、欄位 <code>sticky</code>、<code>columnToggle</code>、<code>expandable</code> 列展開、<code>rowKey</code> 跨頁勾選。</li>
+<li><code>TreeList</code>：<code>checkable</code> 勾選多選（含半選）、<code>loadChildren</code> 延遲載入。</li>
+<li><code>WorkflowPanel</code>：<code>stages</code>、<code>fieldMap</code> 自訂階段與資料欄位；內建 13 階段只為相容保留，新專案請自行傳入。</li>
+<li><code>Progress</code>：<code>segments</code> 分段堆疊。</li>
+<li>Canvas 圖表：<code>accessibleTable</code> 產生輔助科技可讀的資料表，見 <a href="packages/javascript/browser/ui_components/viz/ACCESSIBILITY.html">viz/ACCESSIBILITY.md</a>。</li>
+</ul>
 <hr>
 <h2>4. 建頁面的三種方式（依情境選）</h2>
 <blockquote>
@@ -386,10 +464,13 @@ node tools/page-gen.js --def site-definition.json --all --mode static --output .
 <p>文案走 i18n：<code>import Locale from '../../i18n/index.js'</code>。</p>
 </li>
 <li>
-<p><strong><code>index.js</code></strong>：<code>export { &lt;Name&gt; } from './&lt;Name&gt;.js';</code></p>
+<p><strong><code>index.js</code></strong>：<code>export { &lt;Name&gt;, default } from './&lt;Name&gt;.js';</code>。其他元件要用它時一律從這個 <code>index.js</code> 匯入，不可直接匯入 <code>&lt;Name&gt;.js</code>（<code>validate-ui-library</code> 會擋）。</p>
 </li>
 <li>
-<p><strong><code>&lt;Name&gt;.manifest.json</code></strong>：機器可讀 metadata（見 8.2）。</p>
+<p><strong><code>locale.js</code></strong>（新元件建議）：在元件資料夾內以 <code>Locale.register('zh-TW', '&lt;namespace&gt;', {...})</code>、<code>Locale.register('en', '&lt;namespace&gt;', {...})</code> 自行註冊字串，<code>&lt;Name&gt;.js</code> 以 <code>import './locale.js';</code> 載入。修改既有元件時沿用它原本在 <code>i18n/locales/*.js</code> 的命名空間。</p>
+</li>
+<li>
+<p><strong><code>component.manifest.json</code></strong>：機器可讀 metadata（見 8.2），由 <code>build-metadata.mjs</code> 產生。</p>
 </li>
 </ul>
 <h3>8.2 manifest.json 必填格式</h3>
@@ -422,6 +503,7 @@ node tools/page-gen.js --def site-definition.json --all --mode static --output .
 </code></pre>
 <blockquote>
 <p>若只是純手動組合的展示/動作元件（如按鈕、卡片），設 <code>generator.usable=false</code>、<code>usage_mode="manual_only"</code>、<code>supported_field_types=[]</code>。</p>
+<p>manifest 由 <code>build-metadata.mjs</code> 依元件原始碼推導後覆寫，手動修改會在下次重建時消失。推導結果不對時，改 <a href="packages/javascript/browser/ui_components/metadata/renderer.js">metadata/renderer.js</a> 的 <code>KIND_OVERRIDES</code>、<code>ROLE_OVERRIDES</code> 或 <code>BETA_COMPONENTS</code>。監聽事件是從原始碼中的 <code>onChange</code>、<code>onClick</code> 等字樣推得，內部函式請避開這些名稱，以免誤列事件。</p>
 </blockquote>
 <h3>8.3 註冊與收尾（缺一不可）</h3>
 <ol>
@@ -438,7 +520,7 @@ node tools/page-gen.js --def site-definition.json --all --mode static --output .
 <p><strong>重建 catalog</strong>：
    <code>bash
    node packages/javascript/browser/ui_components/metadata/build-metadata.mjs</code>
-   CI/驗證用 <code>--check</code>（會校驗每個 registry 元件都有合法 manifest，且 manifest.registry_name 存在於 ComponentFactory）。</p>
+   CI/驗證用 <code>--check</code>（唯讀：校驗每個 registry 元件都有合法 manifest，且 manifest.registry_name 存在於 ComponentFactory；有 manifest 卻沒註冊的元件會讓檢查失敗）。先完成第 2 步註冊，再執行不帶 <code>--check</code> 的重建。</p>
 </li>
 </ol>
 <p>Metadata 的 <code>value_io</code> 與 <code>target_actions</code> 只會依元件類別本身公開的方法推導；呼叫子元件的同名方法不算公開能力。宣告 <code>clear</code>、<code>reload</code>、<code>setValue</code> 或 <code>reloadOptions</code> 時，manifest 驗證會要求對應公開方法確實存在。</p>

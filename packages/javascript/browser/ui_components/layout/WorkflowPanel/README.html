@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WorkflowPanel</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>WorkflowPanel</h1>
+<p>流程歷程時間軸。把一串「某個階段、何時、由哪個單位／人員處理」的紀錄依時間排序，畫成 S 形的節點列；最後一筆標示為「目前」，可再附上一個半透明的「下一階段」節點。版面依容器寬度自動決定每列節點數（ResizeObserver），極窄時改為垂直單欄。</p>
+<blockquote>
+<p><strong>內建 13 個階段是舊版預設值。</strong> <code>WorkflowPanel.STAGES</code> 與固定欄位名（<code>StageName</code>、<code>DateTime</code>、<code>UnitName</code>、<code>UserName</code>、<code>nextStage.NextUnit</code>）是為了相容既有系統而保留，行為不會再改動。<strong>新專案請傳入自己的 <code>stages</code>（通常搭配 <code>replaceStages: true</code>）與 <code>fieldMap</code></strong>，不要依賴內建階段的名稱與顏色。兩個選項都沒給時，輸出與舊版逐字相同。</p>
+</blockquote>
+<h2>建構</h2>
+<pre><code class="language-js">import { WorkflowPanel } from './WorkflowPanel.js';
+
+const panel = new WorkflowPanel({
+    data: [],              // 歷程紀錄陣列；依時間欄位由舊到新排序後顯示
+    itemsPerRow: 5,        // 每列節點數上限，夾在 3–7；實際數量依容器寬度自動縮減
+    nextStage: null,       // 下一階段 { StageName, NextUnit }（鍵名可由 fieldMap 改）；null 不顯示
+    showDetails: true,     // 保留欄位，目前未使用
+    onNodeClick: null,     // (item, stage) =&gt; void；點擊歷程節點時呼叫，下一階段節點不可點
+    stages: null,          // 自訂階段 { [階段鍵]: { name, icon, color } }，逐階段合併在內建階段之上（只影響本實例）
+    replaceStages: false,  // 只有 true 生效：只用 stages，內建 13 階段不參與
+    fieldMap: null         // 邏輯欄位 → 資料屬性名 { stageName, dateTime, unitName, userName, nextUnit }
+});
+panel.mount('#workflow-host');
+</code></pre>
+<h3>資料欄位與 <code>fieldMap</code></h3>
+<p>元件從每筆資料讀取下列邏輯欄位；<code>fieldMap</code> 用同樣的鍵指定你的屬性名，沒給的鍵沿用預設（舊版）名稱。只接受非空字串，其他值會被忽略。</p>
+<table>
+<thead>
+<tr>
+<th>邏輯鍵</th>
+<th>預設屬性名</th>
+<th>讀取位置</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>stageName</code></td>
+<td><code>StageName</code></td>
+<td>data 項目<strong>與</strong> <code>nextStage</code></td>
+<td>階段鍵，用來查 <code>stages</code> / 內建階段</td>
+</tr>
+<tr>
+<td><code>dateTime</code></td>
+<td><code>DateTime</code></td>
+<td>data 項目</td>
+<td>排序（<code>new Date(值)</code>）與顯示（<code>YYYY/MM/DD HH:mm</code>）</td>
+</tr>
+<tr>
+<td><code>unitName</code></td>
+<td><code>UnitName</code></td>
+<td>data 項目</td>
+<td>單位，與人員以 <code>/</code> 串接顯示</td>
+</tr>
+<tr>
+<td><code>userName</code></td>
+<td><code>UserName</code></td>
+<td>data 項目</td>
+<td>人員</td>
+</tr>
+<tr>
+<td><code>nextUnit</code></td>
+<td><code>NextUnit</code></td>
+<td><code>nextStage</code></td>
+<td>下一階段的處理單位；沒有值時顯示 Locale 的 <code>pending</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>WorkflowPanel.DEFAULT_FIELD_MAP</code> 是上表預設值的凍結物件。資料項目若帶有 truthy 的 <code>isNext</code>，會被當成「下一階段」樣式（舊版行為，不受 <code>fieldMap</code> 影響）。</p>
+<h3>自訂階段 <code>stages</code></h3>
+<ul>
+<li>形狀：<code>{ [階段鍵]: { name?, icon?, color? } }</code>，階段鍵就是資料上 <code>stageName</code> 欄位的值。</li>
+<li><strong>合併（預設）</strong>：逐階段、逐欄位合併在 <code>WorkflowPanel.STAGES</code> 之上。例如 <code>{ Create: { name: 'Draft' } }</code> 只改名稱，圖示與顏色沿用內建值；未列出的內建階段不受影響。</li>
+<li><strong>取代</strong>（<code>replaceStages: true</code>）：只使用 <code>stages</code>；內建階段與未列出的階段一律走回退外觀。</li>
+<li><strong>回退外觀</strong>（舊版行為）：未知階段顯示 <code>📋</code>、<code>var(--cl-grey)</code>，名稱為資料上的階段值；自訂階段缺 <code>name</code> 時顯示階段鍵，缺 <code>icon</code> / <code>color</code> 時用回退值（合併模式下先沿用同名內建階段的值）。</li>
+<li><code>name</code>、<code>icon</code> 是呼叫端提供的文字，以 <code>textContent</code> 呈現，不會被當成 HTML。語系由呼叫端自行決定（內建階段名稱只有中文）。</li>
+<li><strong><code>color</code> 必須是主題 token</strong>（<code>var(--cl-*)</code>），這是元件庫的樣式規範。元件不會強制檢查是否為 token，但會拒絕任何可能跳出單一 CSS 宣告或載入外部資源的字串（分號、大括號、引號、反斜線、<code>/* */</code>、<code>!</code>、括號不成對、<code>url()</code> 等非色彩函式）；被拒絕時改用預設色並 <code>console.warn</code>。顏色只透過 <code>style</code> 寫入，從不進入 <code>innerHTML</code>。</li>
+<li>正規化在建構時做一次；<strong>永不修改 <code>WorkflowPanel.STAGES</code></strong>，不同實例互不影響。需要改階段時請重建實例。</li>
+</ul>
+<h2>靜態成員</h2>
+<table>
+<thead>
+<tr>
+<th>成員</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>WorkflowPanel.STAGES</code></td>
+<td>內建 13 階段（舊版預設，勿修改；請改用實例的 <code>stages</code>）</td>
+</tr>
+<tr>
+<td><code>WorkflowPanel.DEFAULT_FIELD_MAP</code></td>
+<td>預設欄位名（凍結）</td>
+</tr>
+<tr>
+<td><code>NODE_MIN_WIDTH</code> / <code>NODE_MAX_WIDTH</code></td>
+<td>節點寬度下限 72px／上限 100px</td>
+</tr>
+<tr>
+<td><code>CONNECTOR_MIN_TOTAL</code> / <code>CONNECTOR_MAX_TOTAL</code></td>
+<td>連接線含左右邊距的最小 40px／最大 76px</td>
+</tr>
+</tbody>
+</table>
+<h2>方法</h2>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>回傳</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>mount(container)</code></td>
+<td><code>this</code></td>
+<td>掛到元素或 CSS 選擇器對應的容器</td>
+</tr>
+<tr>
+<td><code>setData(data)</code></td>
+<td><code>this</code></td>
+<td>更換歷程資料並重繪</td>
+</tr>
+<tr>
+<td><code>setNextStage(nextStage)</code></td>
+<td><code>this</code></td>
+<td>更換（或以 <code>null</code> 移除）下一階段並重繪</td>
+</tr>
+<tr>
+<td><code>destroy()</code></td>
+<td><code>void</code></td>
+<td>斷開 ResizeObserver、取消待執行的重排並移除 DOM；可重複呼叫，之後呼叫其他方法不會拋錯</td>
+</tr>
+</tbody>
+</table>
+<h2>回呼</h2>
+<p><code>onNodeClick(item, stage)</code></p>
+<ul>
+<li><code>item</code>：呼叫端傳入的<strong>原始資料物件</strong>（不是元件內部的正規化結果）。</li>
+<li><code>stage</code>：該節點使用的 <code>{ name, icon, color }</code>。未使用 <code>stages</code> 時就是 <code>WorkflowPanel.STAGES</code> 內的同一個物件（未知階段為臨時的回退物件）；使用 <code>stages</code> 時為合併後的物件，同一實例內重繪也維持同一個物件。</li>
+<li>下一階段節點不綁定點擊。</li>
+</ul>
+<h2>版面與語系</h2>
+<ul>
+<li>依時間欄位由舊到新排序；奇數列反向排列形成 S 形，列與列之間以向下連接線銜接。</li>
+<li>每列節點數 = <code>floor((面板內容寬 + 40) / 112)</code>（ResizeObserver 的 <code>contentRect.width</code>，不含面板 20px 內距），上限 <code>itemsPerRow</code>；少於 2 時改為垂直單欄（<code>.workflow-column</code>）。沒有 ResizeObserver 的環境固定使用 <code>itemsPerRow</code>。</li>
+<li>最後一筆歷程顯示「目前」徽章；下一階段節點半透明，顯示「(待處理)」提示與下一單位。</li>
+<li>介面文字走 <code>Locale</code>（命名空間 <code>workflowPanel</code>）：<code>currentBadge</code>（目前）、<code>pending</code>（下一單位未提供時）、<code>nextStageHint</code>（下一階段提示）。元件不監聽 <code>locale-changed</code>，切換語系後於下一次重繪（<code>setData</code>、<code>setNextStage</code> 或寬度變化）生效。</li>
+<li>顏色全部來自主題 token，深色模式由 <code>[data-theme="dark"]</code> 的 token 值提供。</li>
+</ul>
+<h2>鍵盤與 ARIA</h2>
+<p>WorkflowPanel 是唯讀的顯示元件：沒有 ARIA 角色、沒有可聚焦元素，節點的 <code>onNodeClick</code> 只支援滑鼠／觸控點擊（舊版行為，為了維持既有 DOM 不變而未加入鍵盤操作）。若流程節點需要鍵盤操作，請在頁面上另外提供等效的按鈕或連結。所有文字（階段名稱、時間、單位、人員）都是一般文字節點，可被輔助技術讀取。</p>
+<h2>DOM 結構（class）</h2>
+<p><code>.workflow-panel</code> › <code>.workflow-row</code> › <code>.workflow-node</code> + <code>.workflow-connector</code>；列間的 <code>.workflow-vertical-connector</code>；垂直單欄時為 <code>.workflow-column</code> › <code>.workflow-node</code> + <code>.workflow-down-connector</code>。</p>
+<h2>範例</h2>
+<pre><code class="language-html">&lt;!DOCTYPE html&gt;
+&lt;html lang=&quot;zh-TW&quot;&gt;
+&lt;head&gt;
+    &lt;meta charset=&quot;UTF-8&quot;&gt;
+    &lt;link rel=&quot;stylesheet&quot; href=&quot;../../theme.css&quot;&gt;
+&lt;/head&gt;
+&lt;body&gt;
+    &lt;div id=&quot;workflow-host&quot;&gt;&lt;/div&gt;
+    &lt;p id=&quot;detail&quot;&gt;&lt;/p&gt;
+
+    &lt;script type=&quot;module&quot;&gt;
+        import { WorkflowPanel } from './WorkflowPanel.js';
+
+        // 任務流程：自訂階段與欄位名，不依賴內建 13 階段
+        const stages = {
+            queued:    { name: '排入佇列', icon: '📥', color: 'var(--cl-grey)' },
+            drafting:  { name: '撰寫中',   icon: '✏️', color: 'var(--cl-primary)' },
+            reviewing: { name: '審閱中',   icon: '🔍', color: 'var(--cl-warning)' },
+            done:      { name: '完成',     icon: '✅', color: 'var(--cl-success)' }
+        };
+
+        const panel = new WorkflowPanel({
+            data: [
+                { step: 'queued',    at: '2026-09-01T09:00:00', team: '設計組', owner: '王小明' },
+                { step: 'drafting',  at: '2026-09-01T10:30:00', team: '設計組', owner: '王小明' },
+                { step: 'reviewing', at: '2026-09-02T14:00:00', team: '品保組', owner: '陳美玲' }
+            ],
+            nextStage: { step: 'done', assignee: '營運組' },
+            stages,
+            replaceStages: true,
+            fieldMap: { stageName: 'step', dateTime: 'at', unitName: 'team', userName: 'owner', nextUnit: 'assignee' },
+            onNodeClick: (item, stage) =&gt; {
+                document.getElementById('detail').textContent = `${stage.name}：${item.team} / ${item.owner}`;
+            }
+        }).mount('#workflow-host');
+
+        // 離開頁面前
+        // panel.destroy();
+    &lt;/script&gt;
+&lt;/body&gt;
+&lt;/html&gt;
+</code></pre>
+</main>
+</body>
+</html>

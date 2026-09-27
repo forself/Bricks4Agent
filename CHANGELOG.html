@@ -29,6 +29,60 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 </ul>
 <p>B4A 只收通用元件與通用能力；任何業務系統的專屬元件都不寫入 B4A。</p>
 <h2>未發行</h2>
+<h3>新增：16 個通用元件與兩個工具（2026-09-27）</h3>
+<p>新元件在 catalog 中標為 <code>beta</code>、<code>manual_only</code>，以手動 <code>new</code> 使用；字串由各元件資料夾內的 <code>locale.js</code> 自行註冊，提供 zh-TW 與 en。元件數由 116 增為 132。</p>
+<p><strong>新增</strong></p>
+<ul>
+<li>排程與資料：<code>TimeGrid</code>（時段格線，項目跨格、重疊並排、點選與拖放、鍵盤搬移）、<code>DataGrid</code>（試算表式資料格，逐格驗證、方向鍵導覽、貼上 TSV、未存標記與 <code>getChanges()</code>；<code>EditableTable</code> 不變）。</li>
+<li>輸入：<code>RemoteSelect</code>（遠端查找）、<code>DateRangePicker</code>、<code>TimeRangePicker</code>、<code>DateTimeRangePicker</code>（區間輸入）、<code>Transfer</code>（穿梭框）、<code>ConditionBuilder</code>（條件編輯器，輸出純資料）。以上都實作欄位錯誤契約 <code>setError</code> / <code>clearError</code>。</li>
+<li>流程與回饋：<code>ImportWizard</code>（CSV/TSV 匯入精靈）、<code>IssueList</code>（問題清單）、<code>ApprovalTimeline</code>（審核歷程）、<code>NotificationCenter</code>（通知中心）、<code>Countdown</code>（倒數計時）、<code>ConflictNotice</code>（版本衝突提示）。</li>
+<li>版面：<code>Popover</code>（可放按鈕與連結的浮層）、<code>PrintLayout</code>（只列印指定區塊）。</li>
+<li>工具：<code>createPermissionGate</code>／<code>PermissionGate</code> 依權限隱藏或停用元素與元件，只改善介面，權限仍須由伺服器把關；<code>createDirtyGuard</code>／<code>DirtyGuard</code> 追蹤未存變更並在離開前確認。由 <code>utils/index.js</code> 匯出。</li>
+</ul>
+<p><strong>已知限制</strong></p>
+<ul>
+<li><code>DateRangePicker</code>、<code>TimeRangePicker</code>、<code>DateTimeRangePicker</code> 從外部替內部的 DatePicker、TimePicker 補上鍵盤與 ARIA，依賴它們的 DOM 結構；日後應內建到 DatePicker、TimePicker 本身。</li>
+<li><code>PrintLayout</code> 的紙張大小與邊界需要 Chromium 或 Firefox 110 以上；頁首頁尾只印一次。</li>
+</ul>
+<h3>補強：既有元件的選配能力與無障礙（2026-09-27）</h3>
+<p><strong>新增</strong></p>
+<ul>
+<li>DataTable：</li>
+<li>伺服器端模式 <code>serverSide</code> + <code>dataSource(query)</code>，排序、分頁、快速篩選交給伺服器，過期回應會被丟棄；另有 <code>searchDebounce</code>、<code>onQueryChange</code>、<code>reload()</code>、<code>getQuery()</code>、<code>setData(rows, total)</code>。</li>
+<li>固定表頭 <code>stickyHeader</code> + <code>maxHeight</code>；欄位可設 <code>sticky: 'left' | 'right'</code>。</li>
+<li>欄位切換 <code>columnToggle</code>，方法 <code>setColumnVisible()</code>、<code>getColumnVisibility()</code>，回呼 <code>onColumnVisibilityChange</code>；欄位可設 <code>hideable: false</code>。</li>
+<li>列展開 <code>expandable</code>，方法 <code>expandRow()</code>、<code>collapseRow()</code>、<code>toggleRow()</code>、<code>getExpandedKeys()</code>。</li>
+<li>跨頁勾選：設 <code>rowKey</code> 後依鍵值追蹤勾選，新增 <code>getSelectedKeys()</code>、<code>setSelectedKeys()</code>、<code>clearSelection()</code> 與 <code>selectAllScope</code>。</li>
+<li>TreeList：勾選多選 <code>checkable</code>（含半選、<code>checkStrictly</code>、<code>checkedKeys</code>、<code>onCheck</code>、<code>getCheckedKeys()</code>、<code>setCheckedKeys()</code>、<code>checkAll()</code>、<code>uncheckAll()</code>）與延遲載入 <code>loadChildren</code>（含 <code>reloadNode()</code>）。</li>
+<li>WorkflowPanel：<code>stages</code>、<code>replaceStages</code>、<code>fieldMap</code> 與 <code>WorkflowPanel.DEFAULT_FIELD_MAP</code>。內建 13 個階段只為相容保留，新專案請傳入自己的階段。</li>
+<li>Progress：分段堆疊 <code>segments</code>、<code>showLegend</code>、<code>setSegments()</code>，另有 <code>mount()</code> 別名。</li>
+<li>Canvas 圖表（14 種）：<code>accessibleTable</code> 產生輔助科技可讀的資料表（<code>true</code> 視覺隱藏、<code>'visible'</code> 顯示在圖下），<code>accessibleTableMaxRows</code> 限制列數，子類以 <code>getDataTable()</code> 提供內容。說明見 <code>viz/ACCESSIBILITY.md</code>。</li>
+<li>ModalPanel：<code>ModalPanel.defaults.manageFocus</code> 與 <code>manageFocus</code>、<code>initialFocus</code>、<code>ariaLabel</code> 選項。開啟焦點管理後，開啟時焦點移入、Tab 限制在對話框內、關閉時還原焦點。預設關閉，新專案建議在啟動時開啟。</li>
+</ul>
+<p><strong>預設行為變更</strong></p>
+<ul>
+<li>ModalPanel 帶 <code>role="dialog"</code>、<code>aria-modal="true"</code>，以標題命名；關閉鈕的 <code>aria-label</code> 改走語系（zh-TW 仍為「關閉」）。疊加多層時一次 Escape 只關最上層；內部元件已處理（<code>preventDefault</code>）的 Escape 不再連帶關閉對話框。</li>
+<li>Dropdown 選單展開時按 Escape 只關閉選單，不再同時關閉外層對話框；MultiSelectDropdown 選單已收合時不再攔下 Escape，外層對話框可正常關閉。</li>
+<li>TreeList 預設帶樹狀結構的 ARIA 角色與鍵盤操作（方向鍵、Home、End、Enter、Space），每棵樹成為一個 Tab 停駐點。</li>
+<li>DataTable 的 <code>rowKey</code> 原本不起作用，現在會改為依鍵值追蹤勾選。只影響可勾選的表格；Tim2026 傳入 <code>rowKey</code> 的表格都不可勾選，行為不變。</li>
+<li>WorkflowPanel 下一階段的「(待處理)」提示改走語系，英文介面顯示「(To do)」。</li>
+<li>Progress 圓形模式掛載後立即以主題色重繪，不再先以灰色顯示。</li>
+<li>Dropdown、MultiSelectDropdown 的輸入框文字改用主題文字色 <code>var(--cl-text)</code>。</li>
+<li>BasicButton 停用時不再顯示滑過效果。</li>
+</ul>
+<p><strong>修正</strong></p>
+<ul>
+<li>BasicButton 以 <code>disabled: true</code> 建立後，<code>setDisabled(false)</code> 仍無法點擊；現在事件一律綁定，執行時才檢查停用狀態。</li>
+<li>Dropdown、MultiSelectDropdown 的輸入框在深色主題下是黑字、難以閱讀。</li>
+<li>InfoPanel、FunctionMenu、WorkflowPanel 的 CommonJS 相容段在唯讀的 ESM 環境（例如 Vitest）會在載入時拋錯。</li>
+<li>Progress 在 <code>destroy()</code> 後呼叫 <code>setValue</code>、<code>setVariant</code> 會拋錯；TreeList 在 <code>destroy()</code> 後呼叫 <code>setData</code> 會重新繪製並殘留圖示訂閱。</li>
+<li>Metadata 工具：<code>build-metadata.mjs --check</code> 改為唯讀，原本會刪除沒有註冊的 manifest；方法擷取不再把 <code>if</code>、<code>for</code> 等控制敘述當成方法，也不再漏掉預設參數含括號的方法；文件路徑優先選與元件同名的 README。</li>
+</ul>
+<p><strong>相容性驗證</strong></p>
+<ul>
+<li>B4A：<code>npm test</code>（Vitest 61 個檔案、1102 項）、<code>audit-csp</code>、<code>audit-ui-style-rules</code>、<code>validate-ui-library</code>、<code>build-metadata --check</code>、<code>test-audit-csp-hard-zero</code>、<code>studio-self-host-audit</code> 全部通過；<code>validate:ui-state</code> 只剩 main 既有的 Badge 一項失敗。</li>
+<li>Tim2026：以包含本節與上一節全部變更的版本取代其內嵌副本，執行 Tim2026 的 2846 個單元與安全測試，結果與內嵌副本基準完全相同，沒有退步。</li>
+</ul>
 <h3>補強：輸入元件的欄位錯誤標示（2026-09-27）</h3>
 <p><strong>新增</strong></p>
 <ul>

@@ -1,0 +1,479 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DataGrid 可編輯資料格</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>DataGrid 可編輯資料格</h1>
+<p>試算表式的可編輯資料格，用於大量資料輸入：以鍵盤在儲存格之間移動、直接輸入即編輯、從試算表貼上整塊資料、逐格驗證，並與基準資料比對標示修改。大量資料可開啟 <code>virtual</code> 只渲染可視範圍的列。</p>
+<ul>
+<li>通用元件：只處理「列、欄、儲存格」，不含任何業務語意。</li>
+<li>零相依、符合嚴格 CSP：儲存格內容一律以 <code>textContent</code> 寫入，樣式只用 CSSOM 與 <code>--cl-*</code> token，不注入 <code>&lt;style&gt;</code>、不需要額外的 CSS 檔。</li>
+<li>深色主題由 <code>[data-theme="dark"]</code> 的 token 值自動套用。</li>
+</ul>
+<p>既有的 <code>layout/EditableTable</code>（排序＋逐格 TextInput）維持不變；需要鍵盤導覽、剪貼簿、驗證與修改追蹤的大量輸入情境改用 DataGrid。</p>
+<h2>建立</h2>
+<pre><code class="language-javascript">import { DataGrid } from './index.js';
+
+const grid = new DataGrid({
+    columns: [],                  // 欄位定義陣列（見下方「欄位定義」）
+    rows: [],                     // 初始資料列；元件會複製，不改動呼叫端物件
+    rowKey: 'id',                 // 列鍵欄位名稱，或 (row) =&gt; key；缺少或重複列鍵的列改用內部產生的鍵
+    height: null,                 // CSS 長度（數字視為 px）；設定後在內部捲動並固定表頭
+    virtual: false,               // true 時只渲染可視範圍的列（大量資料）；未設 height 時使用 400px
+    rowHeight: 34,                // 列高（px，限 20–200）；virtual 以此計算列的位置
+    disabled: false,              // 停用：不可編輯、貼上、清除，仍可瀏覽與複製
+    showRowNumbers: false,        // 在最左側顯示列號欄（role=&quot;rowheader&quot;，水平捲動時固定）
+    allowAddRowsOnPaste: false,   // 貼上超過最後一列時自動新增列；false 時截斷並回報
+    ariaLabel: '',                // 表格的無障礙名稱；空字串時使用語系預設（「資料表格」）
+    onCellChange: null,           // ({ rowKey, key, value, oldValue, row }) =&gt; void，使用者變更儲存格時逐格觸發
+    onChange: null,               // (rows) =&gt; void，使用者操作造成資料變更後觸發一次，rows 為全部資料列的複本
+    onValidationChange: null,     // (errors) =&gt; void，錯誤清單內容改變時觸發，errors 同 getErrors()
+    onPaste: null,                // (info) =&gt; void，貼上完成後觸發（見下方「回呼」）
+});
+grid.mount('#container');        // 也可傳入元素；回傳 this
+</code></pre>
+<h3>欄位定義</h3>
+<table>
+<thead>
+<tr>
+<th>屬性</th>
+<th>型別</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>key</code></td>
+<td>string</td>
+<td>欄位鍵，對應資料列的屬性名稱（必填，不可重複）</td>
+</tr>
+<tr>
+<td><code>label</code></td>
+<td>string</td>
+<td>表頭文字；省略時使用 <code>key</code></td>
+</tr>
+<tr>
+<td><code>type</code></td>
+<td><code>'text'</code> | <code>'number'</code> | <code>'select'</code> | <code>'date'</code> | <code>'checkbox'</code></td>
+<td>欄位型別，預設 <code>'text'</code></td>
+</tr>
+<tr>
+<td><code>width</code></td>
+<td>number | string</td>
+<td>欄寬；數字為 px，字串可用 <code>px</code>、<code>rem</code>、<code>em</code>、<code>%</code>、<code>ch</code>、<code>fr</code>、<code>vw</code>。省略時為「最小寬度＋平分剩餘寬度」</td>
+</tr>
+<tr>
+<td><code>align</code></td>
+<td><code>'left'</code> | <code>'center'</code> | <code>'right'</code></td>
+<td>對齊；預設 number 靠右、checkbox 置中、其餘靠左</td>
+</tr>
+<tr>
+<td><code>required</code></td>
+<td>boolean</td>
+<td>必填（checkbox 必須勾選）；表頭顯示 <code>*</code> 並附螢幕閱讀器文字「必填」</td>
+</tr>
+<tr>
+<td><code>readonly</code></td>
+<td>boolean | <code>(row) =&gt; boolean</code></td>
+<td>唯讀；函式形式可依列決定</td>
+</tr>
+<tr>
+<td><code>min</code> / <code>max</code></td>
+<td>number | string</td>
+<td>number 欄的數值範圍；date 欄的日期範圍（<code>YYYY-MM-DD</code>）</td>
+</tr>
+<tr>
+<td><code>precision</code></td>
+<td>number</td>
+<td>number 欄的小數位數（0–10）：顯示、編輯與貼上都依此四捨五入</td>
+</tr>
+<tr>
+<td><code>maxLength</code></td>
+<td>number</td>
+<td>text 欄的長度上限（編輯器限制輸入；貼上或程式寫入的過長值標示錯誤）</td>
+</tr>
+<tr>
+<td><code>options</code></td>
+<td><code>[{ value, label }]</code></td>
+<td>select 欄的選項；也接受純值陣列</td>
+</tr>
+<tr>
+<td><code>validate</code></td>
+<td><code>(value, row) =&gt; string | null</code></td>
+<td>自訂驗證，回傳錯誤訊息或 <code>null</code></td>
+</tr>
+<tr>
+<td><code>format</code></td>
+<td><code>(value, row) =&gt; string</code></td>
+<td>只影響顯示的格式化；輸出一律當純文字</td>
+</tr>
+<tr>
+<td><code>compute</code></td>
+<td><code>(row) =&gt; value</code></td>
+<td>計算欄：唯讀，每次該列有變動後重算，結果寫入資料列</td>
+</tr>
+</tbody>
+</table>
+<h2>方法</h2>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>mount(container)</code></td>
+<td>掛載到元素或選擇器，回傳 <code>this</code></td>
+</tr>
+<tr>
+<td><code>destroy()</code></td>
+<td>移除 DOM、事件、計時器與 observer；可重複呼叫，之後呼叫其他方法不會丟錯</td>
+</tr>
+<tr>
+<td><code>getValue()</code></td>
+<td>同 <code>getRows()</code></td>
+</tr>
+<tr>
+<td><code>setValue(rows)</code></td>
+<td>同 <code>setRows(rows)</code>；不觸發 <code>onChange</code></td>
+</tr>
+<tr>
+<td><code>clear()</code></td>
+<td>清空所有資料列（同 <code>setRows([])</code>）</td>
+</tr>
+<tr>
+<td><code>setDisabled(disabled)</code></td>
+<td>切換停用；停用時若正在編輯會放棄未提交的輸入</td>
+</tr>
+<tr>
+<td><code>setError(message, { display = true } = {})</code></td>
+<td>整個表格的欄位錯誤：訊息（<code>role="alert"</code>）顯示在表格下方，表格標示 <code>aria-invalid</code> 並以 <code>aria-describedby</code> 連到訊息、外框改為 danger 色；<code>display: false</code> 只標示狀態不顯示文字；空訊息等同 <code>clearError()</code></td>
+</tr>
+<tr>
+<td><code>clearError()</code></td>
+<td>清除 <code>setError()</code> 的標示與文字</td>
+</tr>
+<tr>
+<td><code>getRows()</code></td>
+<td>全部資料列的淺層複本（含計算欄的值，不含內部欄位）</td>
+</tr>
+<tr>
+<td><code>setRows(rows)</code></td>
+<td>取代全部資料列並作為新的基準（清除修改標記與驗證錯誤）</td>
+</tr>
+<tr>
+<td><code>getRow(key)</code></td>
+<td>依列鍵取得一列的複本；找不到回傳 <code>null</code></td>
+</tr>
+<tr>
+<td><code>updateRow(key, patch)</code></td>
+<td>以 <code>patch</code> 合併更新一列並重新驗證被改動的儲存格；回傳是否找到該列</td>
+</tr>
+<tr>
+<td><code>addRow(row = {}, { index } = {})</code></td>
+<td>新增一列（預設加在最後），回傳列鍵；新列在呼叫 <code>validate()</code> 或被編輯前不驗證</td>
+</tr>
+<tr>
+<td><code>removeRows(keys)</code></td>
+<td>依列鍵移除一或多列，回傳實際移除的列數</td>
+</tr>
+<tr>
+<td><code>validate()</code></td>
+<td>驗證所有儲存格，全部通過回傳 <code>true</code></td>
+</tr>
+<tr>
+<td><code>getErrors()</code></td>
+<td><code>[{ rowKey, key, message }]</code>，依列與欄的順序</td>
+</tr>
+<tr>
+<td><code>isDirty()</code></td>
+<td>與基準相比是否有新增、修改或移除</td>
+</tr>
+<tr>
+<td><code>getChanges()</code></td>
+<td><code>{ added: [row], updated: [{ rowKey, changes: { [key]: { from, to } } }], removed: [row] }</code></td>
+</tr>
+<tr>
+<td><code>acceptChanges()</code></td>
+<td>以目前資料作為新的基準（編輯中的內容先提交）</td>
+</tr>
+<tr>
+<td><code>revertChanges()</code></td>
+<td>還原為基準資料並清除驗證錯誤</td>
+</tr>
+<tr>
+<td><code>focusCell(rowKey, key)</code></td>
+<td>將指定儲存格設為作用中並取得焦點；找不到回傳 <code>false</code></td>
+</tr>
+<tr>
+<td><code>getActiveCell()</code></td>
+<td>目前作用中的儲存格 <code>{ rowKey, key }</code> 或 <code>null</code></td>
+</tr>
+<tr>
+<td><code>snapshot()</code></td>
+<td>狀態快照：<code>lifecycle</code>、<code>availability</code>、<code>active</code>、<code>anchor</code>、<code>editing</code></td>
+</tr>
+<tr>
+<td><code>DataGrid.parseTSV(text)</code></td>
+<td>靜態方法：把試算表複製的 TSV 解析成二維字串陣列</td>
+</tr>
+<tr>
+<td><code>DataGrid.toTSV(matrix)</code></td>
+<td>靜態方法：把二維陣列轉成 TSV（含 tab、換行、雙引號的值以雙引號包住）</td>
+</tr>
+</tbody>
+</table>
+<p>程式呼叫的 <code>setRows</code>、<code>setValue</code>、<code>clear</code>、<code>updateRow</code>、<code>addRow</code>、<code>removeRows</code> 不觸發 <code>onCellChange</code> / <code>onChange</code>；<code>onValidationChange</code> 則在錯誤清單內容改變時一律觸發（包含 <code>validate()</code>、<code>updateRow()</code>、<code>setRows()</code>）。</p>
+<h2>回呼</h2>
+<table>
+<thead>
+<tr>
+<th>回呼</th>
+<th>參數</th>
+<th>觸發時機</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>onCellChange</code></td>
+<td><code>{ rowKey, key, value, oldValue, row }</code></td>
+<td>使用者編輯提交、切換 checkbox、貼上、清除、剪下造成儲存格值改變時，逐格觸發；<code>row</code> 為該列（含重算後計算欄）的複本。計算欄的連動變化不另外觸發</td>
+</tr>
+<tr>
+<td><code>onChange</code></td>
+<td><code>rows</code></td>
+<td>同一次使用者操作結束後觸發一次（例如一次貼上多格只觸發一次）</td>
+</tr>
+<tr>
+<td><code>onValidationChange</code></td>
+<td><code>errors</code></td>
+<td>錯誤清單內容改變時</td>
+</tr>
+<tr>
+<td><code>onPaste</code></td>
+<td><code>{ startRowKey, startKey, rows, cols, appliedRows, appliedCols, addedRows, truncatedRows, data }</code></td>
+<td>貼上完成後。<code>rows</code>／<code>cols</code> 為剪貼簿資料的列數與最大欄數，<code>appliedRows</code>／<code>appliedCols</code> 為實際寫入的範圍，<code>addedRows</code> 為自動新增的列數，<code>truncatedRows</code> 為超出表格未貼上的列數，<code>data</code> 為解析後的字串陣列</td>
+</tr>
+</tbody>
+</table>
+<h2>鍵盤操作</h2>
+<p>焦點在儲存格上（非編輯中）：</p>
+<table>
+<thead>
+<tr>
+<th>按鍵</th>
+<th>動作</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>↑ ↓ ← →</td>
+<td>移動一格（在邊界停住）</td>
+</tr>
+<tr>
+<td>Home / End</td>
+<td>移到該列第一格 / 最後一格</td>
+</tr>
+<tr>
+<td>Ctrl+Home / Ctrl+End</td>
+<td>移到第一列第一格 / 最後一列最後一格</td>
+</tr>
+<tr>
+<td>PageUp / PageDown</td>
+<td>上下移動一頁（依可視高度；未設定 height 時為 10 列）</td>
+</tr>
+<tr>
+<td>Tab / Shift+Tab</td>
+<td>往後 / 往前一格，列尾換到下一列；已在最後一格（或第一格）時不攔截，焦點離開表格</td>
+</tr>
+<tr>
+<td>Shift + 上述移動鍵</td>
+<td>以起點為錨點擴大矩形選取；Shift+點擊也可擴大</td>
+</tr>
+<tr>
+<td>Ctrl+A</td>
+<td>選取全部儲存格</td>
+</tr>
+<tr>
+<td>Escape</td>
+<td>取消多格選取（沒有多格選取時不攔截，外層對話框可照常關閉）</td>
+</tr>
+<tr>
+<td>Enter / F2</td>
+<td>開始編輯作用中儲存格</td>
+</tr>
+<tr>
+<td>可列印字元</td>
+<td>開始編輯並以該字元取代原值（select 欄會選到開頭相符的選項；date 欄開啟空白的日期輸入）</td>
+</tr>
+<tr>
+<td>空白鍵</td>
+<td>checkbox 欄切換勾選；多格選取時，範圍內可編輯的 checkbox 一律設為作用中格切換後的值</td>
+</tr>
+<tr>
+<td>Delete / Backspace</td>
+<td>清除選取範圍內可編輯的儲存格（checkbox 設為 false，其餘設為 null）</td>
+</tr>
+<tr>
+<td>Ctrl+C / Ctrl+X / Ctrl+V</td>
+<td>複製 / 剪下 / 貼上（TSV）</td>
+</tr>
+</tbody>
+</table>
+<p>編輯中：</p>
+<table>
+<thead>
+<tr>
+<th>按鍵</th>
+<th>動作</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Enter / Shift+Enter</td>
+<td>提交並往下 / 往上移動</td>
+</tr>
+<tr>
+<td>Tab / Shift+Tab</td>
+<td>提交並移到下一格 / 上一格（列尾換列；在最後一格或第一格時提交後焦點離開表格）</td>
+</tr>
+<tr>
+<td>Escape</td>
+<td>取消編輯，焦點回到儲存格</td>
+</tr>
+<tr>
+<td>點擊其他位置</td>
+<td>提交（編輯器失去焦點即提交）</td>
+</tr>
+</tbody>
+</table>
+<p>輸入法組字（例如注音）期間的 Enter 與 Escape 交給輸入法處理，不會提交或取消。</p>
+<p>滑鼠：點擊設為作用中；拖曳選取矩形範圍；Shift+點擊擴大選取；雙擊開始編輯；點擊 checkbox 方塊切換勾選。</p>
+<h2>無障礙</h2>
+<ul>
+<li>表格為 <code>role="grid"</code>，帶 <code>aria-rowcount</code>、<code>aria-colcount</code>、<code>aria-multiselectable="true"</code> 與 <code>aria-label</code>；表頭列 <code>aria-rowindex="1"</code>，資料列從 2 起算，儲存格帶 <code>aria-colindex</code>（顯示列號時列號欄為第 1 欄）。<code>virtual</code> 模式下未渲染的列不在 DOM 中，已渲染列的 <code>aria-rowindex</code> 仍是其在全部資料中的位置。</li>
+<li>同一時間只有作用中儲存格 <code>tabindex="0"</code>（roving tabindex），其餘為 <code>-1</code>；Tab 進入表格時落在作用中儲存格。沒有資料列時，表格本身可取得焦點（搭配 <code>allowAddRowsOnPaste: true</code> 可直接貼上建立資料列）。</li>
+<li>多格選取的儲存格帶 <code>aria-selected="true"</code>；唯讀與計算欄帶 <code>aria-readonly="true"</code>；停用時表格帶 <code>aria-disabled="true"</code>。</li>
+<li>checkbox 欄以 <code>role="checkbox"</code> 與 <code>aria-checked</code> 呈現勾選狀態。</li>
+<li><strong>驗證訊息的提供方式：<code>aria-describedby</code>。</strong> 無效的儲存格帶 <code>aria-invalid="true"</code>，並以 <code>aria-describedby</code> 指向儲存格內一個帶 <code>hidden</code> 屬性的訊息元素（不計入儲存格名稱，但會作為描述朗讀）；不使用 <code>title</code>。同一訊息也以文字顯示在表格下方（作用中儲存格有錯時），該視覺文字標示 <code>aria-hidden="true"</code> 以免重複朗讀。</li>
+<li>修改標記不只靠顏色：右上角的三角標記（<code>aria-hidden</code>）搭配視覺隱藏文字「已修改」，螢幕閱讀器朗讀儲存格時一併讀出。</li>
+<li>貼上、複製、清除與全選的結果透過 <code>role="status"</code>（<code>aria-live="polite"</code>）朗讀。</li>
+<li>編輯器帶 <code>aria-label</code>（例如「數量，第 3 列」）。作用中儲存格在表格取得焦點時有 2px 外框（無效儲存格改用 danger 色）。</li>
+</ul>
+<h2>驗證</h2>
+<ul>
+<li>順序：必填 → 型別（number 可解析、date 為有效日期、select 為現有選項、checkbox 為布林）→ <code>min</code>／<code>max</code> → <code>maxLength</code> → 自訂 <code>validate</code>。</li>
+<li>使用者編輯、貼上、清除、切換，以及 <code>updateRow()</code> 修改到的儲存格會立即驗證；同一列已被驗證過的儲存格與計算欄也會一併重驗（跨欄位規則可正確更新）。從未動過的儲存格（例如剛新增的空白列）只在呼叫 <code>validate()</code> 時驗證。</li>
+<li>無法轉換的值不會被丟棄：例如數字欄輸入 <code>abc</code>，會保留原文並標示「請輸入數字」。</li>
+<li>number 編輯器提交時會解析（容許千分位逗號與全形數字）、依 <code>precision</code> 四捨五入並夾在 <code>min</code>／<code>max</code> 內；貼上與程式寫入只四捨五入、不夾住，超出範圍的值標示錯誤。</li>
+<li><code>setRows()</code> 與 <code>revertChanges()</code> 會清除所有驗證錯誤。</li>
+</ul>
+<h2>修改追蹤</h2>
+<ul>
+<li>基準資料在建構、<code>setRows()</code>、<code>acceptChanges()</code> 時擷取。</li>
+<li>與基準不同的儲存格顯示修改標記並帶 <code>data-modified="true"</code>；新增的列帶 <code>data-row-state="added"</code>，其中有值的儲存格顯示修改標記。計算欄不顯示標記（來源欄已標示），但 <code>getChanges()</code> 會列出其值變化。</li>
+<li>比較方式：空值（<code>null</code>、<code>undefined</code>、空白字串）彼此相等；其餘以字串比較（<code>1</code> 與 <code>'1'</code> 視為相同）；checkbox 以布林比較。</li>
+</ul>
+<h2>剪貼簿</h2>
+<ul>
+<li>貼上（非編輯中）：解析 TSV（tab 分欄、換行分列；支援雙引號欄位內含 tab、換行與 <code>""</code>；結尾換行不會多出一列），從作用中儲存格（或選取範圍左上角）開始寫入。只貼上一個值且選取了多格時，填滿整個選取範圍。貼上的範圍會被選取。</li>
+<li>型別轉換：number 解析並依 <code>precision</code> 四捨五入；date 接受 <code>YYYY-MM-DD</code>、<code>YYYY/M/D</code>、<code>YYYY.M.D</code>、<code>YYYYMMDD</code>；select 先比對 value、再不分大小寫比對顯示文字；checkbox 接受 <code>TRUE/FALSE</code>、<code>1/0</code>、<code>yes/no</code>、<code>y/n</code>、<code>on/off</code>、<code>是/否</code>、<code>✓</code>、<code>x</code>、<code>v</code>。無法轉換的值保留原文並標示錯誤。</li>
+<li>唯讀與計算欄會被跳過（貼上資料的欄位位置不變）；超出最後一欄的資料捨棄；超出最後一列時依 <code>allowAddRowsOnPaste</code> 新增列或截斷。</li>
+<li>編輯中的貼上交給編輯器原生處理。</li>
+<li>複製：作用中儲存格或選取範圍轉成 TSV（select 取顯示文字、checkbox 為 <code>TRUE</code>／<code>FALSE</code>、number 依 <code>precision</code>，不套用 <code>format</code>），因此可原樣貼回。瀏覽器沒有觸發 copy 事件時，改用 Clipboard API 寫入。剪下 = 複製後清除可編輯的儲存格。</li>
+</ul>
+<h2>效能</h2>
+<ul>
+<li>未開啟 <code>virtual</code>：建構時一次渲染全部列；之後每次變更只比對並更新有變動的儲存格，不整表重繪。</li>
+<li><code>virtual: true</code>：只渲染可視範圍（上下各多 6 列緩衝），捲動時以 <code>requestAnimationFrame</code> 更新；作用中列永遠保留在 DOM，焦點與編輯器不會因捲動消失。所有列使用相同的 <code>rowHeight</code>，儲存格內容單行顯示並以省略號截斷。</li>
+<li>實測（Chrome，2,000 列 × 10 欄、<code>virtual: true</code>、高度 320px、<code>rowHeight: 32</code>）：建構約 11 毫秒，DOM 中約 16 列；Ctrl+End 跳到最後一列同樣只保留約 15 列。</li>
+</ul>
+<h2>樣式掛鉤</h2>
+<p>根元素 <code>.b4a-datagrid</code>；捲動容器 <code>.b4a-datagrid__frame</code>；表格 <code>.b4a-datagrid__grid</code>；資料列 <code>.b4a-datagrid__row</code>（<code>data-row-key</code>、<code>data-row-state</code>）；儲存格 <code>.b4a-datagrid__cell</code> 與 <code>.b4a-datagrid__cell--&lt;type&gt;</code>（<code>data-col-key</code>、<code>data-modified</code>）；編輯器 <code>.b4a-datagrid__editor</code>；空資料 <code>.b4a-datagrid__empty</code>；作用中儲存格的錯誤文字 <code>.b4a-datagrid__status</code>。顏色、圓角與字級全部來自 <code>--cl-*</code> token。</p>
+<h2>範例</h2>
+<p>以下程式放在 <code>packages/javascript/browser/</code> 目錄下的同源 <code>.js</code> 檔（頁面需載入 <code>ui_components/theme.css</code>，嚴格 CSP 下請勿使用行內 script）：</p>
+<pre><code class="language-javascript">import { DataGrid } from './ui_components/layout/DataGrid/index.js';
+
+const rooms = [
+    { value: 'r1', label: '會議室 A' },
+    { value: 'r2', label: '會議室 B' },
+];
+
+const grid = new DataGrid({
+    ariaLabel: '訂購明細',
+    columns: [
+        { key: 'item', label: '品項', required: true, maxLength: 40 },
+        { key: 'qty', label: '數量', type: 'number', min: 1, max: 999, precision: 0, width: 90 },
+        { key: 'price', label: '單價', type: 'number', min: 0, precision: 2, width: 110 },
+        { key: 'room', label: '送達地點', type: 'select', options: rooms },
+        { key: 'due', label: '到貨日', type: 'date', min: '2026-01-01' },
+        { key: 'urgent', label: '急件', type: 'checkbox' },
+        {
+            key: 'amount', label: '小計', type: 'number', precision: 2,
+            compute: (row) =&gt; (Number(row.qty) || 0) * (Number(row.price) || 0),
+        },
+    ],
+    rows: [
+        { id: 101, item: '白板筆', qty: 12, price: 25, room: 'r1', due: '2026-03-02', urgent: false },
+        { id: 102, item: '投影機燈泡', qty: 1, price: 3200, room: 'r2', due: '2026-03-05', urgent: true },
+    ],
+    height: 360,
+    showRowNumbers: true,
+    allowAddRowsOnPaste: true,
+    onValidationChange: (errors) =&gt; {
+        document.querySelector('#save').disabled = errors.length &gt; 0;
+    },
+}).mount('#order-lines');
+
+document.querySelector('#add').addEventListener('click', () =&gt; {
+    const key = grid.addRow({ qty: 1 });
+    grid.focusCell(key, 'item');
+});
+
+document.querySelector('#save').addEventListener('click', () =&gt; {
+    if (!grid.validate()) {
+        const [first] = grid.getErrors();
+        grid.focusCell(first.rowKey, first.key);
+        return;
+    }
+    const { added, updated, removed } = grid.getChanges();
+    console.log('送出變更', { added, updated, removed });
+    grid.acceptChanges();
+});
+</code></pre>
+<p>對應的 HTML：</p>
+<pre><code class="language-html">&lt;div id=&quot;order-lines&quot;&gt;&lt;/div&gt;
+&lt;button id=&quot;add&quot; type=&quot;button&quot;&gt;新增一列&lt;/button&gt;
+&lt;button id=&quot;save&quot; type=&quot;button&quot;&gt;儲存&lt;/button&gt;
+</code></pre>
+<h2>已知限制</h2>
+<ul>
+<li>列鍵在資料列進入表格時決定；之後修改列鍵欄位的值不會改變列鍵。缺少或重複列鍵的列使用內部產生的字串鍵（格式不保證，請以回傳值或 <code>getActiveCell()</code> 取得）。</li>
+<li>以輸入法輸入中日韓文字時，請先按 Enter 或 F2（或雙擊）開啟編輯器再輸入；直接在儲存格上打字時，第一個按鍵會以原始字元送出。</li>
+<li>date 欄使用原生 <code>&lt;input type="date"&gt;</code>：直接打字開始編輯時只會清空並開啟日期輸入，該字元是否帶入由瀏覽器決定。</li>
+<li>編輯器內的方向鍵只移動游標，不會提交並移動儲存格。</li>
+<li>不提供排序、篩選、欄寬拖曳、復原（undo）與凍結欄（列號欄除外）。</li>
+<li>複製的內容是原始值；以 <code>=</code> 開頭的文字貼到試算表軟體時可能被當成公式，匯出給外部使用時請自行處理。</li>
+</ul>
+</main>
+</body>
+</html>
