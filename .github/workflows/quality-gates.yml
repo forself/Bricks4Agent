@@ -17,6 +17,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22.16.0
+      - name: Install browser test dependencies (vitest, jsdom)
+        run: npm --prefix packages/javascript/browser ci
       - name: Generator regression suite
         run: npm test
       - name: UI and snapshot unit suites
