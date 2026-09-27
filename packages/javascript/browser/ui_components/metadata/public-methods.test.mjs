@@ -88,3 +88,20 @@ test('manifest validation rejects binding capabilities absent from the component
     assert(result.errors.includes('binding.target_actions clear has no matching public method'));
     assert(result.errors.includes('binding.target_actions setValue has no matching public method'));
 });
+
+test('public method extraction ignores control-flow statements at class indentation', () => {
+    const source = `function helper(items) {
+    if (items.length) {
+        return items;
+    }
+    for (const item of items) {
+        void item;
+    }
+}
+
+export class Example {
+    render(container) { return container; }
+}`;
+
+    assert.deepEqual(extractPublicMethodNames(source), ['render']);
+});

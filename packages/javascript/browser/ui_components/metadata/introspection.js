@@ -187,13 +187,20 @@ function extractListenerEvents(sourceText) {
  * `input.setValue(value)` and `map.clear()` out of the public capability
  * catalog. The metadata contract intentionally covers ordinary public
  * methods; computed/generator members are not binding targets today.
+ * Control-flow statements at the same indentation (for example `    if (x) {`
+ * inside a module-level helper) have the same shape and are excluded.
  */
+const NON_METHOD_KEYWORDS = new Set([
+    'if', 'for', 'while', 'switch', 'catch', 'with', 'function', 'return', 'do', 'else',
+    'try', 'finally', 'new', 'typeof', 'delete', 'void', 'await', 'yield', 'super', 'this',
+]);
+
 export function extractPublicMethodNames(sourceText) {
     const methodPattern = /^ {4}(?:(?:static|async)\s+)*([A-Za-z_$][\w$]*)\s*\([^)]*\)\s*\{/gm;
     return [...new Set(
         [...sourceText.matchAll(methodPattern)]
             .map((match) => match[1])
-            .filter((name) => name !== 'constructor' && !name.startsWith('_')),
+            .filter((name) => name !== 'constructor' && !name.startsWith('_') && !NON_METHOD_KEYWORDS.has(name)),
     )].sort();
 }
 

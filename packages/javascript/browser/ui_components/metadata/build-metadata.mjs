@@ -68,10 +68,17 @@ function ensureManifestFiles(introspection) {
         }
     }
 
-    for (const manifestPath of existingManifestPaths) {
-        if (!expectedManifestPaths.has(manifestPath)) {
-            fs.rmSync(manifestPath);
+    const orphanManifestPaths = existingManifestPaths.filter((manifestPath) => !expectedManifestPaths.has(manifestPath));
+    if (checkOnly) {
+        // --check 必須唯讀：未登錄元件的 manifest 只回報，不刪除
+        if (orphanManifestPaths.length > 0) {
+            throw new Error(`Component manifest without a ComponentFactory registration (register the component, or rebuild without --check to remove the manifest): ${orphanManifestPaths.join(', ')}`);
         }
+        return;
+    }
+
+    for (const manifestPath of orphanManifestPaths) {
+        fs.rmSync(manifestPath);
     }
 }
 
