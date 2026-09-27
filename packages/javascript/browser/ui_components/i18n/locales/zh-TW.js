@@ -277,7 +277,16 @@ export default {
         firstPage: '第一頁',
         prevPage: '上一頁',
         nextPage: '下一頁',
-        lastPage: '最後一頁'
+        lastPage: '最後一頁',
+        serverSearchPlaceholder: '搜尋',
+        serverResultCount: '共 {total} 筆',
+        loading: '載入中…',
+        loadError: '資料載入失敗',
+        retry: '重試',
+        columnToggle: '欄位',
+        columnMenuLabel: '顯示欄位',
+        expandColumn: '明細',
+        toggleRowDetails: '列明細'
     },
 
     /** DynamicDetailRenderer — 定義驅動明細頁 */

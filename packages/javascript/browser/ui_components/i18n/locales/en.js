@@ -276,7 +276,16 @@ export default {
         firstPage: 'First Page',
         prevPage: 'Previous',
         nextPage: 'Next',
-        lastPage: 'Last Page'
+        lastPage: 'Last Page',
+        serverSearchPlaceholder: 'Search',
+        serverResultCount: '{total} rows',
+        loading: 'Loading…',
+        loadError: 'Failed to load data',
+        retry: 'Retry',
+        columnToggle: 'Columns',
+        columnMenuLabel: 'Show columns',
+        expandColumn: 'Details',
+        toggleRowDetails: 'Row details'
     },
 
     /** DynamicDetailRenderer */

@@ -194,3 +194,205 @@
     cursor: default;
     color: var(--cl-text-placeholder);
 }
+
+/* ══════════════════════════════════════════════════════════════
+ * 選用進階功能（僅在對應選項啟用時出現這些 class，預設外觀不受影響）
+ * ══════════════════════════════════════════════════════════════ */
+
+/* ── 螢幕閱讀器專用文字 ── */
+.b4a-dt__sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* ── stickyHeader：表頭固定（捲動區高度由 JS 以 maxHeight 設定） ── */
+.b4a-dt--sticky-header .b4a-dt__table > thead > tr > th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+}
+
+/* ── 固定欄：left/right 偏移由 JS 量測後以 CSSOM 設定 ── */
+.b4a-dt .b4a-dt__cell--sticky-left,
+.b4a-dt .b4a-dt__cell--sticky-right {
+    position: sticky;
+    z-index: 1;
+}
+/* 儲存格沿用所屬列的底色（奇偶/選取/hover），捲動時下方內容不會透出 */
+.b4a-dt td.b4a-dt__cell--sticky-left,
+.b4a-dt td.b4a-dt__cell--sticky-right {
+    background-color: inherit;
+}
+.b4a-dt .b4a-dt__table > thead > tr > th.b4a-dt__cell--sticky-left,
+.b4a-dt .b4a-dt__table > thead > tr > th.b4a-dt__cell--sticky-right {
+    z-index: 3;
+}
+.b4a-dt .b4a-dt__cell--sticky-left-edge::after,
+.b4a-dt .b4a-dt__cell--sticky-right-edge::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    box-shadow: var(--cl-shadow-sm);
+    pointer-events: none;
+}
+.b4a-dt .b4a-dt__cell--sticky-left-edge::after { right: 0; }
+.b4a-dt .b4a-dt__cell--sticky-right-edge::before { left: 0; }
+
+/* ── 伺服器端模式：載入狀態列、載入中淡化、錯誤與重試 ── */
+.b4a-dt__status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 28px;
+    padding: 2px 0;
+    color: var(--cl-text-secondary);
+    font-size: var(--cl-font-size-sm);
+}
+.b4a-dt__spinner-host {
+    display: inline-flex;
+    align-items: center;
+}
+.b4a-dt--loading .b4a-dt__table > tbody > tr > td {
+    opacity: 0.55;
+    transition: opacity 0.15s;
+}
+.b4a-dt__td--error {
+    color: var(--cl-danger);
+}
+.b4a-dt__error {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+.b4a-dt__retry {
+    min-height: 32px;
+    padding: 4px 14px;
+    border: 1px solid var(--cl-primary);
+    border-radius: var(--cl-radius-sm);
+    background: var(--cl-bg);
+    color: var(--cl-primary);
+    cursor: pointer;
+    font: inherit;
+}
+.b4a-dt__retry:hover {
+    background: var(--cl-bg-hover);
+}
+.b4a-dt__retry:focus-visible {
+    outline: 2px solid var(--cl-primary-light);
+    outline-offset: 1px;
+}
+
+/* ── columnToggle：工具列「欄位」按鈕與浮動選單（選單掛在 document.body） ── */
+.b4a-dt__column-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 36px;
+    padding: 6px 12px;
+    border: 1px solid var(--cl-border-dark);
+    border-radius: var(--cl-radius-sm);
+    background: var(--cl-bg);
+    color: var(--cl-text);
+    cursor: pointer;
+    font: inherit;
+}
+.b4a-dt__column-toggle:hover,
+.b4a-dt__column-toggle[aria-expanded="true"] {
+    background: var(--cl-bg-hover);
+}
+.b4a-dt__column-toggle:focus-visible {
+    outline: 2px solid var(--cl-primary-light);
+    outline-offset: 1px;
+}
+.b4a-dt__column-toggle-caret {
+    font-size: var(--cl-font-size-xs);
+    color: var(--cl-text-secondary);
+}
+.b4a-dt__column-menu {
+    box-sizing: border-box;
+    min-width: 180px;
+    max-width: min(320px, calc(100vw - 16px));
+    padding: 4px 0;
+    overflow-y: auto;
+    border: 1px solid var(--cl-border);
+    border-radius: var(--cl-radius-sm);
+    background: var(--cl-bg);
+    color: var(--cl-text);
+    box-shadow: var(--cl-shadow-md);
+    font-family: var(--cl-font-family);
+    font-size: var(--cl-font-size-sm);
+}
+.b4a-dt__column-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    cursor: pointer;
+    outline: none;
+    user-select: none;
+}
+.b4a-dt__column-menu-item:hover,
+.b4a-dt__column-menu-item:focus {
+    background: var(--cl-bg-hover);
+}
+.b4a-dt__column-menu-item:focus-visible {
+    outline: 2px solid var(--cl-primary-light);
+    outline-offset: -2px;
+}
+.b4a-dt__column-menu-item[aria-disabled="true"] {
+    cursor: default;
+    color: var(--cl-text-placeholder);
+}
+.b4a-dt__column-menu-check {
+    display: inline-block;
+    width: 1em;
+    text-align: center;
+    color: var(--cl-primary);
+}
+
+/* ── expandable：展開鈕欄與明細列 ── */
+.b4a-dt__th--expand,
+.b4a-dt__td--expand {
+    width: 40px;
+    padding: 4px;
+}
+.b4a-dt__expand-btn {
+    min-width: 28px;
+    min-height: 28px;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: var(--cl-radius-sm);
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    font: inherit;
+    line-height: 1;
+}
+.b4a-dt__expand-btn:hover {
+    background: var(--cl-bg-hover);
+}
+.b4a-dt__expand-btn:focus-visible {
+    outline: 2px solid var(--cl-primary);
+    outline-offset: 1px;
+}
+.b4a-dt--row-expand .b4a-dt__tr {
+    cursor: pointer;
+}
+.b4a-dt__detail-row {
+    background-color: var(--cl-bg);
+}
+.b4a-dt__detail-cell {
+    padding: 12px 16px;
+    text-align: left;
+}
