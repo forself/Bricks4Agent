@@ -130,7 +130,12 @@ try {
         inputs: document.querySelectorAll('.ccs-preview input').length,
         svg: document.querySelectorAll('svg').length,
     }));
-    check('Studio loads the built-in catalog and custom folder', initial.catalogCount === 116 && initial.registryCount === 4, JSON.stringify(initial));
+    // 以 component-catalog.json 的實際元件數為準，新增元件時不必改這裡
+    const expectedCatalogCount = JSON.parse(readFileSync(
+        path.join(repoRoot, 'packages/javascript/browser/ui_components/metadata/component-catalog.json'),
+        'utf8',
+    )).components.length;
+    check('Studio loads the built-in catalog and custom folder', initial.catalogCount === expectedCatalogCount && initial.registryCount === 4, JSON.stringify({ ...initial, expectedCatalogCount }));
     check('Default draft is a valid atomic component with a live preview', initial.kind === 'atomic' && initial.valid && initial.inputs >= 1, JSON.stringify(initial));
     check('Studio and preview keep the SVG hard-zero rule', initial.svg === 0, `svg=${initial.svg}`);
 
