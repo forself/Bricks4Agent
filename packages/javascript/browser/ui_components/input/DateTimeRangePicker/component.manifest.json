@@ -27,6 +27,8 @@
     ],
     "target_actions": [
       "clear",
+      "setReadonly",
+      "setRequired",
       "setValue"
     ]
   },
@@ -34,6 +36,7 @@
     "theme_token_only": true,
     "style_knobs": [
       "disabled",
+      "readonly",
       "required",
       "width"
     ]

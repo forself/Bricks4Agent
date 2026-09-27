@@ -13,7 +13,7 @@
  */
 import Locale from '../../i18n/index.js';
 import './locale.js';
-import { TimePicker } from '../TimePicker/TimePicker.js';
+import { TimePicker } from '../TimePicker/index.js';
 import { createComponentState } from '../../utils/component-state.js';
 import { setFieldError, clearFieldError, FIELD_ERROR_CONTRACT } from '../../utils/field-error.js';
 import { nextUid } from '../../utils/uid.js';

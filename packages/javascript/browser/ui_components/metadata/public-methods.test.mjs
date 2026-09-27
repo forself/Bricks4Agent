@@ -105,3 +105,16 @@ export class Example {
 
     assert.deepEqual(extractPublicMethodNames(source), ['render']);
 });
+
+test('public method extraction keeps methods whose default parameters call functions', () => {
+    const source = `export class Example {
+    describe(value = this.getValue()) {
+        return value;
+    }
+    reset(options = { at: Date.parse('2026-01-01') }) {
+        return options;
+    }
+}`;
+
+    assert.deepEqual(extractPublicMethodNames(source), ['describe', 'reset']);
+});

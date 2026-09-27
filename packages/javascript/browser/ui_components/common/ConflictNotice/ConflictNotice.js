@@ -15,7 +15,7 @@
  * 所有顯示內容（欄位名稱、值、修改者）一律以 textContent 寫入，資料中的 HTML 不會被解析。
  */
 import Locale from '../../i18n/index.js';
-import { ModalPanel } from '../../layout/Panel/ModalPanel.js';
+import { ModalPanel } from '../../layout/Panel/index.js';
 import { createComponentState } from '../../utils/component-state.js';
 import { nextUid } from '../../utils/uid.js';
 import './locale.js';
@@ -250,7 +250,7 @@ export class ConflictNotice {
             }
         );
 
-        this._onClick = (event) => this._handleClick(event);
+        this._rootClickHandler = (event) => this._handleClick(event);
         this._onKeydown = (event) => this._handleKeydown(event);
         this._create();
     }
@@ -289,7 +289,7 @@ export class ConflictNotice {
         if (this._destroyed) return;
         this._destroyed = true;
         if (this.element) {
-            this.element.removeEventListener('click', this._onClick);
+            this.element.removeEventListener('click', this._rootClickHandler);
             this.element.removeEventListener('keydown', this._onKeydown);
             this.element.remove();
         }
@@ -390,7 +390,7 @@ export class ConflictNotice {
             root.appendChild(this._buildConfirm(strings));
         }
 
-        root.addEventListener('click', this._onClick);
+        root.addEventListener('click', this._rootClickHandler);
         root.addEventListener('keydown', this._onKeydown);
         this.element = root;
     }

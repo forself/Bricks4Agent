@@ -662,7 +662,7 @@ export class ImportWizard {
     /**
      * busy：以 aria-disabled 表示「進行中、暫不可按」，按鈕仍可聚焦，焦點不會在忙碌期間遺失。
      */
-    _button(label, { key, primary = false, disabled = false, busy = false, onClick, describedBy = null }) {
+    _button(label, { key, primary = false, disabled = false, busy = false, onActivate, describedBy = null }) {
         const button = document.createElement('button');
         button.type = 'button';
         button.className = `cl-import-wizard__button cl-import-wizard__button--${key}`;
@@ -682,7 +682,7 @@ export class ImportWizard {
         }
         if (describedBy) button.setAttribute('aria-describedby', describedBy);
         button.addEventListener('click', () => {
-            if (!button.disabled && button.getAttribute('aria-disabled') !== 'true') onClick();
+            if (!button.disabled && button.getAttribute('aria-disabled') !== 'true') onActivate();
         });
         return button;
     }
@@ -692,7 +692,7 @@ export class ImportWizard {
         const button = this._button(Locale.t('importWizard.buttons.cancel'), {
             key: 'cancel',
             disabled: state.status === 'importing',
-            onClick: () => this._cancel()
+            onActivate: () => this._cancel()
         });
         button.style.marginRight = 'auto';
         return [button];
@@ -702,7 +702,7 @@ export class ImportWizard {
         return this._button(Locale.t('importWizard.buttons.back'), {
             key: 'back',
             disabled: state.status === 'importing',
-            onClick: () => this._navigate(step)
+            onActivate: () => this._navigate(step)
         });
     }
 
@@ -786,7 +786,7 @@ export class ImportWizard {
             const usePaste = this._button(Locale.t('importWizard.upload.usePaste'), {
                 key: 'use-paste',
                 busy,
-                onClick: () => this._loadPasted()
+                onActivate: () => this._loadPasted()
             });
             pasteWrap.append(pasteLabel, textarea, usePaste);
             content.push(pasteWrap);
@@ -807,7 +807,7 @@ export class ImportWizard {
                     key: 'next',
                     primary: true,
                     disabled: !(state.status === 'ready' && this._data),
-                    onClick: () => this._navigate(1)
+                    onActivate: () => this._navigate(1)
                 })
             ]
         };
@@ -883,7 +883,7 @@ export class ImportWizard {
                 this._button(Locale.t('importWizard.buttons.next'), {
                     key: 'next',
                     primary: true,
-                    onClick: () => this._submitMapping()
+                    onActivate: () => this._submitMapping()
                 })
             ]
         };
@@ -966,7 +966,7 @@ export class ImportWizard {
                     primary: true,
                     disabled: Boolean(blockedText),
                     describedBy: blockedText ? blockedId : null,
-                    onClick: () => this._navigate(3)
+                    onActivate: () => this._navigate(3)
                 })
             ]
         };
@@ -1048,7 +1048,7 @@ export class ImportWizard {
                 buttons: [this._button(Locale.t('importWizard.confirm.startOver'), {
                     key: 'restart',
                     primary: true,
-                    onClick: () => this.reset()
+                    onActivate: () => this.reset()
                 })]
             };
         }
@@ -1075,7 +1075,7 @@ export class ImportWizard {
                     key: failed ? 'retry' : 'import',
                     primary: true,
                     busy: importing,
-                    onClick: () => this._runImport()
+                    onActivate: () => this._runImport()
                 })
             ]
         };

@@ -22,7 +22,9 @@
   },
   "binding": {
     "value_io": false,
-    "listener_events": [],
+    "listener_events": [
+      "change"
+    ],
     "target_actions": []
   },
   "styling": {

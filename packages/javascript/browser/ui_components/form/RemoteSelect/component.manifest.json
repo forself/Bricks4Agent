@@ -28,6 +28,8 @@
     "target_actions": [
       "clear",
       "reload",
+      "setReadonly",
+      "setRequired",
       "setValue"
     ]
   },
@@ -35,6 +37,9 @@
     "theme_token_only": true,
     "style_knobs": [
       "disabled",
+      "pageSize",
+      "readonly",
+      "required",
       "width"
     ]
   }

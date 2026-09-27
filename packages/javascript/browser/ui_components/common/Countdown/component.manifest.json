@@ -16,7 +16,7 @@
     "definition_runtime": false
   },
   "composition": {
-    "role": "display",
+    "role": "feedback",
     "requires_form_field_wrapper": false,
     "manual_only": true
   },

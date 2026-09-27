@@ -6,8 +6,8 @@
   "category": "layout",
   "kind": "container",
   "source_path": "ui_components/layout/WorkflowPanel/WorkflowPanel.js",
-  "docs_path": "",
-  "maturity": "beta",
+  "docs_path": "ui_components/layout/WorkflowPanel/README.md",
+  "maturity": "stable",
   "generator": {
     "usable": false,
     "usage_mode": "manual_only",

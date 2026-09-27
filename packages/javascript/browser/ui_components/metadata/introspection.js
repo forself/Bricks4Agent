@@ -149,12 +149,22 @@ function resolveDocsPath(browserRoot, sourceEntry) {
     }
 
     const sourceDir = path.dirname(sourceEntry.absolutePath);
-    const candidates = fs.readdirSync(sourceDir, { withFileTypes: true })
+    const componentName = path.basename(sourceEntry.absolutePath, '.js').toLowerCase();
+    const names = fs.readdirSync(sourceDir, { withFileTypes: true })
         .filter((entry) => entry.isFile() && /^README.*\.md$/i.test(entry.name))
-        .map((entry) => normalizeRelative(browserRoot, path.join(sourceDir, entry.name)))
+        .map((entry) => entry.name)
         .sort();
 
-    return candidates[0] ?? '';
+    // 多個元件共用資料夾（例如 viz/）時，優先選與元件同名的 README_<Name>.md，
+    // 其次是資料夾自己的 README.md，再來是名稱為元件名前綴者（MapEditorV2 → README_MapEditor.md），
+    // 最後才退回排序第一的 README。
+    const suffix = (name) => name.replace(/^README_?/i, '').replace(/\.md$/i, '').toLowerCase();
+    const chosen = names.find((name) => suffix(name) === componentName)
+        ?? names.find((name) => /^README\.md$/i.test(name))
+        ?? names.find((name) => suffix(name) && componentName.startsWith(suffix(name)))
+        ?? names[0];
+
+    return chosen ? normalizeRelative(browserRoot, path.join(sourceDir, chosen)) : '';
 }
 
 function extractOptionKeys(sourceText) {
@@ -196,7 +206,8 @@ const NON_METHOD_KEYWORDS = new Set([
 ]);
 
 export function extractPublicMethodNames(sourceText) {
-    const methodPattern = /^ {4}(?:(?:static|async)\s+)*([A-Za-z_$][\w$]*)\s*\([^)]*\)\s*\{/gm;
+    // 參數列允許一層巢狀括號，例如 `describe(value = this.getValue()) {`
+    const methodPattern = /^ {4}(?:(?:static|async)\s+)*([A-Za-z_$][\w$]*)\s*\((?:[^()]|\([^()]*\))*\)\s*\{/gm;
     return [...new Set(
         [...sourceText.matchAll(methodPattern)]
             .map((match) => match[1])

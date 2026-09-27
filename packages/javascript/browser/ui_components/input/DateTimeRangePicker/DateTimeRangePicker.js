@@ -16,8 +16,8 @@
  */
 import Locale from '../../i18n/index.js';
 import './locale.js';
-import { DatePicker } from '../../form/DatePicker/DatePicker.js';
-import { TimePicker } from '../../form/TimePicker/TimePicker.js';
+import { DatePicker } from '../../form/DatePicker/index.js';
+import { TimePicker } from '../../form/TimePicker/index.js';
 import { createComponentState } from '../../utils/component-state.js';
 import { setFieldError, clearFieldError, FIELD_ERROR_CONTRACT } from '../../utils/field-error.js';
 import { nextUid } from '../../utils/uid.js';
@@ -31,7 +31,7 @@ import {
     partsOfDayNumber,
     formatDayNumber,
     toggleAttr
-} from '../../form/DateRangePicker/DateRangePicker.js';
+} from '../../form/DateRangePicker/index.js';
 import {
     enhanceTimePicker,
     setTimePickerValue,
@@ -40,7 +40,7 @@ import {
     formatDuration,
     normalizeMinuteStep,
     DAY_MINUTES
-} from '../../form/TimeRangePicker/TimeRangePicker.js';
+} from '../../form/TimeRangePicker/index.js';
 
 const ISO_DATETIME = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})$/;
 const INVALID = Symbol('invalid');

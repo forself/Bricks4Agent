@@ -14,7 +14,7 @@
  *   - debug:true 時描出所有 hit-region 外框
  *   - 無障礙資料表(accessibleTable,預設關閉):true=視覺隱藏 <table>、'visible'=圖下可見表格;
  *     內容來自 getDataTable()(子類覆寫),資料變更時以微任務合併重建(不隨動畫幀),
- *     詳見 README_Accessibility.md
+ *     詳見 ACCESSIBILITY.md
  *
  * 子類契約:
  *   class MyChart extends CanvasChart {

@@ -329,14 +329,14 @@ export class Transfer {
         return view;
     }
 
-    _createButton(className, text, onClick) {
+    _createButton(className, text, onActivate) {
         const button = document.createElement('button');
         button.type = 'button';
         button.className = className;
         button.textContent = text;
         button.style.cssText = 'min-width:36px;height:32px;padding:0 10px;border:1px solid var(--cl-border);border-radius:var(--cl-radius-md);background:var(--cl-bg);color:var(--cl-text);font-size:var(--cl-font-size-lg);font-family:inherit;line-height:1;cursor:pointer;';
         button.addEventListener('click', () => {
-            if (!button.disabled) onClick();
+            if (!button.disabled) onActivate();
         });
         return button;
     }

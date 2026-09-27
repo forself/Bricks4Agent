@@ -17,7 +17,7 @@
   },
   "composition": {
     "role": "input",
-    "requires_form_field_wrapper": false,
+    "requires_form_field_wrapper": true,
     "manual_only": true
   },
   "binding": {
@@ -28,6 +28,8 @@
     "target_actions": [
       "clear",
       "reloadOptions",
+      "setReadonly",
+      "setRequired",
       "setValue"
     ]
   },
@@ -35,7 +37,9 @@
     "theme_token_only": true,
     "style_knobs": [
       "disabled",
-      "height"
+      "height",
+      "readonly",
+      "required"
     ]
   }
 }

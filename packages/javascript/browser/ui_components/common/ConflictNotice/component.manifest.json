@@ -27,8 +27,6 @@
   },
   "styling": {
     "theme_token_only": true,
-    "style_knobs": [
-      "danger"
-    ]
+    "style_knobs": []
   }
 }

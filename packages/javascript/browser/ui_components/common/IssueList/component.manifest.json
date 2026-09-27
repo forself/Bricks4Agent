@@ -29,11 +29,6 @@
   },
   "styling": {
     "theme_token_only": true,
-    "style_knobs": [
-      "groupBy",
-      "maxHeight",
-      "showSummary",
-      "sort"
-    ]
+    "style_knobs": []
   }
 }

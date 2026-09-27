@@ -16,7 +16,7 @@
     "definition_runtime": false
   },
   "composition": {
-    "role": "container",
+    "role": "layout",
     "requires_form_field_wrapper": false,
     "manual_only": true
   },
@@ -28,10 +28,7 @@
   "styling": {
     "theme_token_only": true,
     "style_knobs": [
-      "margin",
-      "orientation",
-      "pageSize",
-      "preview"
+      "pageSize"
     ]
   }
 }

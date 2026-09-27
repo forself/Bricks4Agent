@@ -24,7 +24,7 @@
  * 沒有這類來源時不掛這些監聽。程式化改值請呼叫 guard.check()。
  */
 import Locale from '../i18n/index.js';
-import { ModalPanel } from '../layout/Panel/ModalPanel.js';
+import { ModalPanel } from '../layout/Panel/index.js';
 import { nextUid } from './uid.js';
 import './dirty-guard.locale.js';
 

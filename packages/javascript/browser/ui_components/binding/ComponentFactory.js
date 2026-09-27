@@ -163,6 +163,32 @@ import {
     PageHeader
 } from '../sections/index.js';
 
+// 13. 通用元件擴充（2026-09）
+import {
+    TimeGrid,
+    DataGrid,
+    ImportWizard,
+    PrintLayout,
+} from '../layout/index.js';
+import {
+    RemoteSelect,
+    DateRangePicker,
+    TimeRangePicker,
+    Transfer,
+    ConditionBuilder,
+} from '../form/index.js';
+import {
+    DateTimeRangePicker,
+} from '../input/index.js';
+import {
+    Popover,
+    Countdown,
+    IssueList,
+    ApprovalTimeline,
+    NotificationCenter,
+    ConflictNotice,
+} from '../common/index.js';
+
 export class ComponentFactory {
     static registry = {
         // Viz
@@ -309,6 +335,24 @@ export class ComponentFactory {
         'PageFooter': PageFooter,
         'BannerSection': BannerSection,
         'ContentSection': ContentSection,
+
+        // 通用元件擴充（2026-09）
+        'TimeGrid': TimeGrid,
+        'DataGrid': DataGrid,
+        'ImportWizard': ImportWizard,
+        'PrintLayout': PrintLayout,
+        'RemoteSelect': RemoteSelect,
+        'DateRangePicker': DateRangePicker,
+        'TimeRangePicker': TimeRangePicker,
+        'Transfer': Transfer,
+        'ConditionBuilder': ConditionBuilder,
+        'DateTimeRangePicker': DateTimeRangePicker,
+        'Popover': Popover,
+        'Countdown': Countdown,
+        'IssueList': IssueList,
+        'ApprovalTimeline': ApprovalTimeline,
+        'NotificationCenter': NotificationCenter,
+        'ConflictNotice': ConflictNotice,
     };
 
     /**

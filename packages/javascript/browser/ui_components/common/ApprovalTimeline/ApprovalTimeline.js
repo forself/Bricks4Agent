@@ -122,13 +122,13 @@ export class ApprovalTimeline {
         this._localeListening = false;
         this._steps = Array.isArray(this.options.steps) ? this.options.steps.slice() : [];
 
-        this._onClick = (event) => this._handleClick(event);
+        this._rootClickHandler = (event) => this._handleClick(event);
         this._onLocaleChange = () => this._render();
 
         this.element = document.createElement('div');
         this.element.className = 'cl-approval-timeline';
         this.element.style.cssText = ROOT_CSS;
-        this.element.addEventListener('click', this._onClick);
+        this.element.addEventListener('click', this._rootClickHandler);
         this._render();
     }
 
@@ -390,7 +390,7 @@ export class ApprovalTimeline {
             window.removeEventListener('locale-changed', this._onLocaleChange);
             this._localeListening = false;
         }
-        this.element?.removeEventListener('click', this._onClick);
+        this.element?.removeEventListener('click', this._rootClickHandler);
         this.element?.remove();
         this._steps = [];
     }

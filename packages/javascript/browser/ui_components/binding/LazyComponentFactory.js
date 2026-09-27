@@ -147,6 +147,24 @@ const loaders = new Map(Object.entries({
     'PageFooter': () => import('../sections/PageFooter/index.js').then((m) => m.PageFooter),
     'BannerSection': () => import('../sections/BannerSection/index.js').then((m) => m.BannerSection),
     'ContentSection': () => import('../sections/ContentSection/index.js').then((m) => m.ContentSection),
+
+    // 通用元件擴充（2026-09）
+    'TimeGrid': () => import('../layout/TimeGrid/index.js').then((m) => m.TimeGrid),
+    'DataGrid': () => import('../layout/DataGrid/index.js').then((m) => m.DataGrid),
+    'ImportWizard': () => import('../layout/ImportWizard/index.js').then((m) => m.ImportWizard),
+    'PrintLayout': () => import('../layout/PrintLayout/index.js').then((m) => m.PrintLayout),
+    'RemoteSelect': () => import('../form/RemoteSelect/index.js').then((m) => m.RemoteSelect),
+    'DateRangePicker': () => import('../form/DateRangePicker/index.js').then((m) => m.DateRangePicker),
+    'TimeRangePicker': () => import('../form/TimeRangePicker/index.js').then((m) => m.TimeRangePicker),
+    'Transfer': () => import('../form/Transfer/index.js').then((m) => m.Transfer),
+    'ConditionBuilder': () => import('../form/ConditionBuilder/index.js').then((m) => m.ConditionBuilder),
+    'DateTimeRangePicker': () => import('../input/DateTimeRangePicker/index.js').then((m) => m.DateTimeRangePicker),
+    'Popover': () => import('../common/Popover/index.js').then((m) => m.Popover),
+    'Countdown': () => import('../common/Countdown/index.js').then((m) => m.Countdown),
+    'IssueList': () => import('../common/IssueList/index.js').then((m) => m.IssueList),
+    'ApprovalTimeline': () => import('../common/ApprovalTimeline/index.js').then((m) => m.ApprovalTimeline),
+    'NotificationCenter': () => import('../common/NotificationCenter/index.js').then((m) => m.NotificationCenter),
+    'ConflictNotice': () => import('../common/ConflictNotice/index.js').then((m) => m.ConflictNotice),
 }));
 
 // 一旦 fallback 匯入過 eager ComponentFactory，之後名稱解析優先讀其「即時」registry，

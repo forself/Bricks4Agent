@@ -11,3 +11,4 @@ export { PersonInfoList } from './PersonInfoList/index.js';
 export { PhoneListInput } from './PhoneListInput/index.js';
 export { SocialMediaList } from './SocialMediaList/index.js';
 export { StudentInput } from './StudentInput/index.js';
+export { DateTimeRangePicker } from './DateTimeRangePicker/index.js';

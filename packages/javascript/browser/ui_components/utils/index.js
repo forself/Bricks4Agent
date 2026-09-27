@@ -22,3 +22,5 @@ export { sequentialScale, divergingScale, categoricalColor, hierarchicalColor, C
 export { aggregate, groupBy, summarize, pivot, binNumeric, bucketTime, topN, AGGS } from './aggregation-engine.js';
 export { buildQuadtree, bhAccumulate, nearestBody } from './quadtree.js';
 export { createSimulation, createRng } from './force-engine.js';
+export { createPermissionGate, PermissionGate } from './permission-gate.js';
+export { createDirtyGuard, DirtyGuard } from './dirty-guard.js';
