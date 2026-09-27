@@ -571,6 +571,8 @@ export class Dropdown {
                 }
                 break;
             case 'Escape':
+                // 選單開啟時這次 Escape 只關閉選單，外層（例如對話框）不再跟著關閉
+                if (this.isOpen) event.preventDefault?.();
                 this.close();
                 break;
         }

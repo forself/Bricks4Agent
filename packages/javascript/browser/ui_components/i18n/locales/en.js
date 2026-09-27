@@ -303,6 +303,11 @@ export default {
         emptyValue: '-'
     },
 
+    /** BasePanel */
+    basePanel: {
+        close: 'Close'
+    },
+
     /** ModalPanel */
     modalPanel: {
         confirmTitle: 'Confirm',

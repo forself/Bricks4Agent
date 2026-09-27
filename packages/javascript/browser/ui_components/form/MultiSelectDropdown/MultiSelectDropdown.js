@@ -399,8 +399,11 @@ export class MultiSelectDropdown {
                 }
                 break;
             case 'Escape':
-                event.preventDefault?.();
-                this.close();
+                // 只在選單開啟時攔下 Escape（關閉選單）；已關閉時交給外層（例如對話框）處理
+                if (this.isOpen) {
+                    event.preventDefault?.();
+                    this.close();
+                }
                 break;
             case 'Backspace':
                 if (state.filterQuery === '' && state.selectedValues.length > this.options.minCount) {

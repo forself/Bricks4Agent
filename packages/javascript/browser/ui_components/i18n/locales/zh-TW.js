@@ -304,6 +304,11 @@ export default {
         emptyValue: '—'
     },
 
+    /** BasePanel — 面板共用 */
+    basePanel: {
+        close: '關閉'
+    },
+
     /** ModalPanel — 模態面板 */
     modalPanel: {
         confirmTitle: '確認',
