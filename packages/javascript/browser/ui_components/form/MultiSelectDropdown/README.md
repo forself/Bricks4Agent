@@ -40,6 +40,7 @@ const msd = new MultiSelectDropdown({
 | `open()` / `close()` | 開關下拉選單 |
 | `toggle()` | 切換下拉選單開關 |
 | `setDisabled(bool)` | 設定停用狀態 |
+| `setError(msg, { display })` / `clearError()` | 標示 / 清除欄位錯誤：紅框、`aria-invalid` 與錯誤文字；`display: false` 只標示狀態、不顯示文字 |
 | `show()` / `hide()` | 顯示 / 隱藏元件 |
 
 ### 屬性

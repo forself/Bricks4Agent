@@ -89,13 +89,77 @@ class FakeElement {
         }
     }
 
+    // 以下為元件會用到的標準 DOM API（瀏覽器與 jsdom 都有），行為對齊規格的最小子集
+    insertBefore(child, reference) {
+        if (!reference) return this.appendChild(child);
+        if (child.parentNode) {
+            child.parentNode.removeChild(child);
+        }
+        const index = this.children.indexOf(reference);
+        if (index < 0) throw new Error('insertBefore: reference is not a child of this node');
+        child.parentNode = this;
+        this.children.splice(index, 0, child);
+        return child;
+    }
+
+    replaceChildren(...nodes) {
+        for (const child of this.children) child.parentNode = null;
+        this.children = [];
+        for (const node of nodes) {
+            if (typeof node === 'string') {
+                const text = new FakeElement('#text', this.ownerDocument);
+                text.textContent = node;
+                this.appendChild(text);
+            } else {
+                this.appendChild(node);
+            }
+        }
+    }
+
+    get firstChild() {
+        return this.children[0] || null;
+    }
+
+    get lastChild() {
+        return this.children[this.children.length - 1] || null;
+    }
+
+    get nextSibling() {
+        if (!this.parentNode) return null;
+        const siblings = this.parentNode.children;
+        return siblings[siblings.indexOf(this) + 1] || null;
+    }
+
+    get parentElement() {
+        return this.parentNode instanceof FakeElement ? this.parentNode : null;
+    }
+
+    get isConnected() {
+        let node = this;
+        while (node.parentNode) node = node.parentNode;
+        return node === this.ownerDocument?.body || node === this.ownerDocument?.head;
+    }
+
+    getBoundingClientRect() {
+        return { x: 0, y: 0, top: 0, left: 0, right: 0, bottom: 0, width: 0, height: 0 };
+    }
+
     setAttribute(name, value) {
         this.attributes.set(name, String(value));
         if (name === 'id') this.id = String(value);
     }
 
     getAttribute(name) {
-        return this.attributes.get(name);
+        return this.attributes.has(name) ? this.attributes.get(name) : null;
+    }
+
+    hasAttribute(name) {
+        return this.attributes.has(name);
+    }
+
+    removeAttribute(name) {
+        this.attributes.delete(name);
+        if (name === 'id') this.id = '';
     }
 
     addEventListener(type, handler) {
@@ -216,7 +280,25 @@ export function installFakeDom() {
     };
 
     const document = new FakeDocument();
-    const window = { document };
+    const windowListeners = new Map();
+    const window = {
+        document,
+        innerWidth: 1024,
+        innerHeight: 768,
+        devicePixelRatio: 1,
+        getComputedStyle: (element) => element.style,
+        addEventListener(type, handler) {
+            if (!windowListeners.has(type)) windowListeners.set(type, []);
+            windowListeners.get(type).push(handler);
+        },
+        removeEventListener(type, handler) {
+            const handlers = windowListeners.get(type) || [];
+            windowListeners.set(type, handlers.filter((entry) => entry !== handler));
+        },
+        dispatchEvent(event) {
+            for (const handler of windowListeners.get(event.type) || []) handler(event);
+        }
+    };
 
     globalThis.document = document;
     globalThis.window = window;

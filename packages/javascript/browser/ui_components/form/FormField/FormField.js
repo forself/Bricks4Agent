@@ -14,6 +14,7 @@ export class FormField {
      * @param {string} options.hint - 提示文字
      * @param {Object} options.component - 內部元件實例（需有 mount/destroy 方法）
      * @param {number} options.col - 欄寬 1-12（CSS grid span），null = 不設定
+     * @param {boolean} options.markControl - setError 時一併標示內部元件的錯誤狀態（預設 false）
      */
     constructor(options = {}) {
         this.options = {
@@ -24,6 +25,7 @@ export class FormField {
             hint: '',
             component: null,
             col: null,
+            markControl: false,
             ...options
         };
 
@@ -115,6 +117,8 @@ export class FormField {
         this.options.error = msg;
         if (msg) {
             this._showError(msg);
+            // 文字由 FormField 顯示；內部元件只標示錯誤狀態（紅框、aria-invalid）
+            if (this.options.markControl) this.options.component?.setError?.(msg, { display: false });
         } else {
             this.clearError();
         }
@@ -123,6 +127,7 @@ export class FormField {
     /** 清除錯誤 */
     clearError() {
         this.options.error = '';
+        if (this.options.markControl) this.options.component?.clearError?.();
         if (this.options.hint) {
             this._showHint(this.options.hint);
         } else {

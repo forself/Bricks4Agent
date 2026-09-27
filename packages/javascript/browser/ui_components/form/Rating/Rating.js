@@ -1,5 +1,6 @@
 import { createComponentState } from '../../utils/component-state.js';
 import { onThemeChange, resolveTokens, FALLBACK_PAINT } from '../../utils/theme-bus.js';
+import { setFieldError, clearFieldError, FIELD_ERROR_CONTRACT } from '../../utils/field-error.js';
 
 /**
  * Rating — 星等輸入 / 顯示原子。葉子:Canvas 自繪星形(SVG 禁用政策)。
@@ -200,7 +201,27 @@ export class Rating {
     show()          { this.send('SHOW'); return this; }
     hide()          { this.send('HIDE'); return this; }
 
+    /**
+     * 標示欄位錯誤；空訊息等同 clearError()。錯誤文字顯示在元件正下方（元件外），元件需已掛載。
+     * display:false 只標示錯誤狀態、不顯示文字，給自行顯示錯誤文字的外層（FormField、SearchForm）使用。
+     */
+    setError(message, { display = true } = {}) {
+        setFieldError(this, message, { target: this._canvas, after: this.element, display });
+        return this;
+    }
+
+    /** 清除 setError 的標示與文字。 */
+    clearError() {
+        clearFieldError(this);
+        return this;
+    }
+
+    get [FIELD_ERROR_CONTRACT]() {
+        return true;
+    }
+
     destroy() {
+        clearFieldError(this);
         this._destroyed = true;
         if (this._offTheme) this._offTheme();
         this.send('DESTROY');

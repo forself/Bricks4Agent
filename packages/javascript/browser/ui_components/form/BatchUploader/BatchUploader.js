@@ -4,6 +4,7 @@
  */
 import { nextUid } from '../../utils/uid.js';
 import { Icon } from '../../common/Icon/index.js';
+import { setFieldError, clearFieldError, FIELD_ERROR_CONTRACT } from '../../utils/field-error.js';
 
 export class BatchUploader {
     /**
@@ -939,6 +940,25 @@ export class BatchUploader {
      */
     setOptions(options) {
         this.options = { ...this.options, ...options };
+    }
+
+    /**
+     * 標示欄位錯誤；空訊息等同 clearError()。
+     * display:false 只標示錯誤狀態、不顯示文字，給自行顯示錯誤文字的外層（FormField、SearchForm）使用。
+     */
+    setError(message, { display = true } = {}) {
+        setFieldError(this, message, { target: this.dropzone, after: this.dropzone, display });
+        return this;
+    }
+
+    /** 清除 setError 的標示與文字。 */
+    clearError() {
+        clearFieldError(this);
+        return this;
+    }
+
+    get [FIELD_ERROR_CONTRACT]() {
+        return true;
     }
 
     /**

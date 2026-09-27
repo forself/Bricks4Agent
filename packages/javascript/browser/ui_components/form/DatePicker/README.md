@@ -244,6 +244,17 @@ picker.setDisabled(true);
 
 ---
 
+#### `setError(message, { display })` / `clearError()`
+
+標示或清除欄位錯誤：輸入框紅框、`aria-invalid`，錯誤文字顯示在輸入框下方。`display: false` 只標示狀態、不顯示文字，給自行顯示錯誤文字的外層使用。
+
+```javascript
+picker.setError('請選擇日期');
+picker.clearError();
+```
+
+---
+
 #### `show()` / `hide()`
 
 顯示 / 隱藏組件。

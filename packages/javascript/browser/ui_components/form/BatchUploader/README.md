@@ -43,6 +43,7 @@ const uploader = new BatchUploader({
 | `upload()` | 開始上傳所有待傳檔案，並重試狀態為 `error` 的檔案（async） |
 | `removeFile(fileId)` | 移除指定檔案 |
 | `clear()` | 清除所有檔案 |
+| `setError(msg, { display })` / `clearError()` | 標示 / 清除欄位錯誤：拖放區紅框、`aria-invalid` 與錯誤文字；`display: false` 只標示狀態、不顯示文字 |
 | `getFiles()` | 取得所有檔案陣列 |
 | `getPendingFiles()` | 取得待傳檔案 |
 | `getUploadedFiles()` | 取得已上傳檔案 |

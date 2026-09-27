@@ -72,10 +72,17 @@ c.destroy();          // 卸載並移除 DOM
 | `.getValue()` / `.setValue(v)` | 讀/寫值 |
 | `.setDisabled(bool)` / `.clear()` | 停用 / 清空 |
 | `.show()` / `.hide()` | 顯示 / 隱藏 |
-| `.setError(msg)` / `.clearError()` | 表單元件的錯誤狀態 |
+| `.setError(msg, { display })` / `.clearError()` | 表單元件的錯誤狀態：紅框、`aria-invalid` 與錯誤文字；`display: false` 只標示狀態、不顯示文字 |
 | `.snapshot()` / `.send(event, payload)` | 直接操作內部狀態機（進階，見 §7） |
 
 **事件走 callback**，透過 `options` 傳入：`onChange`、`onClick`、`onBlur`、`onFocus` 等（各元件不同，看該元件建構子）。
+
+**欄位錯誤**：所有輸入元件（含 `Checkbox.createGroup`、`Radio.createGroup` 回傳的群組）都有 `setError(msg, { display })` / `clearError()`，外觀一致：控制項紅框、`aria-invalid="true"`，錯誤文字以 `role="alert"` 顯示在元件下方並用 `aria-describedby` 連回控制項。`Checkbox`、`ToggleSwitch`、`ColorPicker`、`Rating` 的根元素是橫排，文字改插在元件正後方（元件外），所以要先掛載才看得到文字；`ChainedInput` 只在整組下方顯示文字，不替個別欄位畫紅框。
+
+- 自己顯示錯誤文字的外層改傳 `display: false`，避免同一個錯誤出現兩次。
+- `FormField` 預設只顯示自己的錯誤文字；設 `markControl: true` 才會一併標示內部元件。
+- `SearchForm` 預設維持原本的畫面；設 `markInvalidFields: true` 才會在驗證失敗時標示欄位元件。
+- 自訂元件可直接委派 [utils/field-error.js](packages/javascript/browser/ui_components/utils/field-error.js) 的 `setFieldError` / `clearFieldError`，外觀與無障礙標示就會一致。
 
 > ⚠️ 元件建構子的 `options` 欄位**各不相同**。動手用某元件前，先開它的原始碼看 `constructor(options = {...})` 的預設物件，那就是完整可用參數表。例如 [DataTable.js](packages/javascript/browser/ui_components/layout/DataTable/DataTable.js) 支援三種 columns 格式與三種呼叫簽章。
 
@@ -282,7 +289,7 @@ node templates/spa/scripts/spa-cli.js feature Article --fields "Title:string,Con
 
 - **`<Name>.js`**：`export class <Name> { constructor(options={}){...} mount(c){...return this} destroy(){...} }`。
 
-- 具值元件請實作 `getValue/setValue/setDisabled/clear`（＋表單類的 `setError/clearError`）。
+- 具值元件請實作 `getValue/setValue/setDisabled/clear`（＋表單類的 `setError(msg, { display })/clearError`，直接委派 `utils/field-error.js` 的 `setFieldError` / `clearFieldError` 即可）。
 
 - 內部狀態建議走 `createComponentState`（與既有元件一致）。
 

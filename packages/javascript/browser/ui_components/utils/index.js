@@ -5,6 +5,7 @@ export { GeolocationService, GeolocationError } from './GeolocationService.js';
 export { WeatherService, WeatherError } from './WeatherService.js';
 export { default as SimpleZip } from './SimpleZip.js';
 export { nextUid, resetUid } from './uid.js';
+export { setFieldError, clearFieldError, getFieldError, hasFieldError, FIELD_ERROR_CONTRACT } from './field-error.js';
 export {
     escapeHtml,
     escapeAttr,

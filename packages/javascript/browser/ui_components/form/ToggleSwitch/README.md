@@ -30,6 +30,7 @@ const toggle = new ToggleSwitch({
 | `getValue()` | 同 `isChecked()` |
 | `setValue(value)` | 同 `setChecked()` |
 | `clear()` | 重置為 false |
+| `setError(msg, { display })` / `clearError()` | 標示 / 清除欄位錯誤：紅框、`aria-invalid` 與錯誤文字（插在元件正後方，需已掛載）；`display: false` 只標示狀態、不顯示文字 |
 
 ### 屬性
 

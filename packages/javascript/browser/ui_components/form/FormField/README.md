@@ -16,7 +16,8 @@ const field = new FormField({
     error: '',                  // 錯誤訊息
     hint: '請輸入 3-20 字元',    // 提示文字
     component: textInputInstance, // 內部元件實例（需有 mount/destroy）
-    col: 6                      // CSS grid span 欄寬 1-12，null=不設定
+    col: 6,                     // CSS grid span 欄寬 1-12，null=不設定
+    markControl: false          // true 時 setError 也標示內部元件（紅框、aria-invalid），文字仍只由 FormField 顯示
 });
 ```
 
@@ -26,7 +27,7 @@ const field = new FormField({
 |---|---|
 | `mount(container)` | 掛載至容器（selector 或 DOM） |
 | `destroy()` | 銷毀元件（含內部 component） |
-| `setError(msg)` | 設定錯誤訊息，空字串清除 |
+| `setError(msg)` | 設定錯誤訊息，空字串清除；`markControl: true` 時一併呼叫內部元件的 `setError(msg, { display: false })` |
 | `clearError()` | 清除錯誤，恢復 hint |
 | `setRequired(bool)` | 設定必填狀態 |
 | `setLabel(text)` | 設定標籤文字 |

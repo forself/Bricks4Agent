@@ -3,6 +3,8 @@
  * 單選按鈕元件
  */
 
+import { setFieldError, clearFieldError, FIELD_ERROR_CONTRACT } from '../../utils/field-error.js';
+
 export class Radio {
     /**
      * @param {Object} options
@@ -238,7 +240,27 @@ export class Radio {
             return group;
         };
 
+        // 群組錯誤：每個選項標示錯誤狀態，文字顯示在群組末端
+        group.setError = (message, { display = true } = {}) => {
+            setFieldError(group, message, {
+                target: radios.map(radio => radio.input),
+                visual: radios.map(radio => radio.circle),
+                container: group,
+                fullRow: direction !== 'vertical',
+                display
+            });
+            return group;
+        };
+
+        group.clearError = () => {
+            clearFieldError(group);
+            return group;
+        };
+
+        group[FIELD_ERROR_CONTRACT] = true;
+
         group.destroy = () => {
+            clearFieldError(group);
             radios.forEach(radio => radio.destroy());
             group.remove();
         };

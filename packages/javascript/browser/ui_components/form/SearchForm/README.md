@@ -31,9 +31,12 @@ const form = new SearchForm({
     onSearch: (values) => {},       // 搜尋回調
     onReset: () => {},              // 重設回調
     onChange: (key, val, all) => {}, // 值變更回調
-    onValidationError: (field) => {} // 必填驗證失敗時回調（收到該欄位定義）
+    onValidationError: (field) => {}, // 必填驗證失敗時回調（收到該欄位定義）
+    markInvalidFields: false        // true 時驗證失敗也標示欄位元件（紅框、aria-invalid）
 });
 ```
+
+必填驗證失敗時，錯誤文字固定顯示在欄位下方。預設只有原本就有 `setError` 的元件（文字欄位的 TextInput）會收到錯誤，畫面與先前版本相同；設 `markInvalidFields: true` 時，每個欄位元件都以 `setError(msg, { display: false })` 標示錯誤狀態，文字不重複顯示。
 
 ### 欄位類型常數
 

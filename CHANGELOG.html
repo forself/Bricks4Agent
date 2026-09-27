@@ -29,6 +29,46 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 </ul>
 <p>B4A 只收通用元件與通用能力；任何業務系統的專屬元件都不寫入 B4A。</p>
 <h2>未發行</h2>
+<h3>補強：輸入元件的欄位錯誤標示（2026-09-27）</h3>
+<p><strong>新增</strong></p>
+<ul>
+<li>所有輸入元件都有 <code>setError(message, { display })</code> 與 <code>clearError()</code>，錯誤外觀一致：控制項紅框、<code>aria-invalid="true"</code>，錯誤文字以 <code>role="alert"</code> 顯示並用 <code>aria-describedby</code> 連回控制項。<code>display: false</code> 只標示錯誤狀態、不顯示文字，給自行顯示錯誤文字的外層使用。</li>
+<li>新增此方法的元件：Checkbox、ToggleSwitch、ColorPicker、Rating、Slider、TextArea、NumberInput、Dropdown、MultiSelectDropdown、DatePicker、TimePicker、DateTimeInput、TagInput、BatchUploader、CommandComposer、ChainedInput、ListInput，以及 <code>Checkbox.createGroup</code>、<code>Radio.createGroup</code> 回傳的群組。</li>
+<li>Checkbox、ToggleSwitch、ColorPicker、Rating 的錯誤文字插在元件正後方，元件需已掛載；ChainedInput 只在整組下方顯示文字，不替個別欄位畫紅框。</li>
+<li>TextInput 的 <code>setError</code> 新增第二個參數 <code>{ display }</code>，預設行為不變。</li>
+<li>FormField 新增 <code>markControl</code> 選項，預設 <code>false</code>。設為 <code>true</code> 時，<code>setError</code> 也會標示內部元件的錯誤狀態。</li>
+<li>SearchForm 新增 <code>markInvalidFields</code> 選項，預設 <code>false</code>。設為 <code>true</code> 時，必填驗證失敗會標示欄位元件的錯誤狀態，錯誤文字仍只顯示一次。</li>
+<li><code>utils/field-error.js</code> 提供 <code>setFieldError</code>、<code>clearFieldError</code>、<code>getFieldError</code>、<code>hasFieldError</code> 與 <code>FIELD_ERROR_CONTRACT</code>，也由 <code>utils/index.js</code> 匯出，自訂元件可直接沿用同一套外觀與無障礙標示。</li>
+<li><code>Checkbox.createGroup</code> 回傳的群組新增 <code>destroy()</code>。</li>
+</ul>
+<p><strong>修正</strong></p>
+<ul>
+<li>NumberInput：使用者直接輸入後按 Enter 或離開欄位，數值確實改變時會觸發 <code>onChange</code> 一次。原本只有 +/- 按鈕、方向鍵與 <code>clear()</code> 會觸發，直接輸入的數值不會通知呼叫端。程式呼叫的 <code>setValue()</code> 仍預設不觸發。</li>
+<li>TextInput 處於錯誤狀態時，輸入框會加上 <code>aria-invalid="true"</code>，讓螢幕報讀器能辨識錯誤欄位；畫面不變。</li>
+<li>SearchForm 銷毀時會一併銷毀 Checkbox 群組，釋放勾選圖示。</li>
+</ul>
+<p><strong>相容性</strong></p>
+<ul>
+<li>SearchForm 預設只呼叫原本就有 <code>setError</code> 的元件，畫面與前一版相同。Tim2026 的查詢表單使用 TimePicker、Checkbox 群組與 Radio 群組，這些元件新增了 <code>setError</code>，但在預設設定下不會被標示。</li>
+<li>FormField 預設不轉呼叫內部元件，既有以 FormField 顯示錯誤的畫面不變。</li>
+</ul>
+<p><strong>相容性驗證</strong></p>
+<ul>
+<li>B4A：<code>npm test</code>、<code>audit-csp</code>、<code>audit-ui-style-rules</code>、<code>validate-ui-library</code>、<code>build-metadata --check</code> 全部通過。</li>
+<li><code>validate:ui-state</code>：測試用假 DOM 補上元件實際使用的標準 DOM API 後，除了 Badge 一項以外全部通過。Badge 一項在 main 上就已失敗，原因是假 DOM 不會把 <code>style.cssText</code> 反映到個別樣式屬性。上一版寫回後，Dropdown、TimePicker、MultiSelectDropdown、ChainedInput、PhoneListInput 五項曾因假 DOM 缺少 API 而失敗，已一併恢復。</li>
+<li>Tim2026：以本版本取代其內嵌副本，執行 Tim2026 的 2846 個單元與安全測試，結果與內嵌副本基準完全相同，沒有退步。</li>
+</ul>
+<h3>安全修正：sanitizeHTML（2026-09-27）</h3>
+<p><strong>修正</strong></p>
+<ul>
+<li><code>sanitizeHTML</code>：拆掉不在允許清單的包裝元素時，會先清洗其子節點。原本子節點移出後不再經過清洗，<code>&lt;section&gt;&lt;img src=x onerror=...&gt;&lt;/section&gt;</code> 這類內容會保留事件屬性，造成 XSS。</li>
+<li>SPA 範本前端的 <code>sanitizeHTML</code> 修正同一個拆殼繞過。它原本連 <code>&lt;body&gt;</code> 本身也當成不允許的標籤拆掉，任何非空輸入都會丟出例外；改為只清洗 <code>&lt;body&gt;</code> 的子節點。</li>
+</ul>
+<p><strong>相容性驗證</strong></p>
+<ul>
+<li>新增 26 項測試，涵蓋包裝元素繞過樣本、允許清單內容不變、重複清洗結果不變，以及 SPA 範本版本。</li>
+<li>Tim2026 沒有直接呼叫 <code>sanitizeHTML</code>。以包含本修正的 B4A 工作樹執行 Tim2026 的 2846 個單元與安全測試，結果與內嵌副本基準相同。</li>
+</ul>
 <h3>安全修正：sanitizeHTML（2026-09-27）</h3>
 <p><strong>修正</strong></p>
 <ul>

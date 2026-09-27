@@ -259,6 +259,12 @@ console.log(formatted); // &quot;2026/01/24&quot; 或 &quot;115/01/24&quot;
 <pre><code class="language-javascript">picker.setDisabled(true);
 </code></pre>
 <hr>
+<h4><code>setError(message, { display })</code> / <code>clearError()</code></h4>
+<p>標示或清除欄位錯誤：輸入框紅框、<code>aria-invalid</code>，錯誤文字顯示在輸入框下方。<code>display: false</code> 只標示狀態、不顯示文字，給自行顯示錯誤文字的外層使用。</p>
+<pre><code class="language-javascript">picker.setError('請選擇日期');
+picker.clearError();
+</code></pre>
+<hr>
 <h4><code>show()</code> / <code>hide()</code></h4>
 <p>顯示 / 隱藏組件。</p>
 <pre><code class="language-javascript">picker.hide();

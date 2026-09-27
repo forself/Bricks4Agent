@@ -108,8 +108,8 @@ c.destroy();          // 卸載並移除 DOM
 <td>顯示 / 隱藏</td>
 </tr>
 <tr>
-<td><code>.setError(msg)</code> / <code>.clearError()</code></td>
-<td>表單元件的錯誤狀態</td>
+<td><code>.setError(msg, { display })</code> / <code>.clearError()</code></td>
+<td>表單元件的錯誤狀態：紅框、<code>aria-invalid</code> 與錯誤文字；<code>display: false</code> 只標示狀態、不顯示文字</td>
 </tr>
 <tr>
 <td><code>.snapshot()</code> / <code>.send(event, payload)</code></td>
@@ -118,6 +118,13 @@ c.destroy();          // 卸載並移除 DOM
 </tbody>
 </table>
 <p><strong>事件走 callback</strong>，透過 <code>options</code> 傳入：<code>onChange</code>、<code>onClick</code>、<code>onBlur</code>、<code>onFocus</code> 等（各元件不同，看該元件建構子）。</p>
+<p><strong>欄位錯誤</strong>：所有輸入元件（含 <code>Checkbox.createGroup</code>、<code>Radio.createGroup</code> 回傳的群組）都有 <code>setError(msg, { display })</code> / <code>clearError()</code>，外觀一致：控制項紅框、<code>aria-invalid="true"</code>，錯誤文字以 <code>role="alert"</code> 顯示在元件下方並用 <code>aria-describedby</code> 連回控制項。<code>Checkbox</code>、<code>ToggleSwitch</code>、<code>ColorPicker</code>、<code>Rating</code> 的根元素是橫排，文字改插在元件正後方（元件外），所以要先掛載才看得到文字；<code>ChainedInput</code> 只在整組下方顯示文字，不替個別欄位畫紅框。</p>
+<ul>
+<li>自己顯示錯誤文字的外層改傳 <code>display: false</code>，避免同一個錯誤出現兩次。</li>
+<li><code>FormField</code> 預設只顯示自己的錯誤文字；設 <code>markControl: true</code> 才會一併標示內部元件。</li>
+<li><code>SearchForm</code> 預設維持原本的畫面；設 <code>markInvalidFields: true</code> 才會在驗證失敗時標示欄位元件。</li>
+<li>自訂元件可直接委派 <a href="packages/javascript/browser/ui_components/utils/field-error.js">utils/field-error.js</a> 的 <code>setFieldError</code> / <code>clearFieldError</code>，外觀與無障礙標示就會一致。</li>
+</ul>
 <blockquote>
 <p>⚠️ 元件建構子的 <code>options</code> 欄位<strong>各不相同</strong>。動手用某元件前，先開它的原始碼看 <code>constructor(options = {...})</code> 的預設物件，那就是完整可用參數表。例如 <a href="packages/javascript/browser/ui_components/layout/DataTable/DataTable.js">DataTable.js</a> 支援三種 columns 格式與三種呼叫簽章。</p>
 </blockquote>
@@ -367,7 +374,7 @@ node tools/page-gen.js --def site-definition.json --all --mode static --output .
 <p><strong><code>&lt;Name&gt;.js</code></strong>：<code>export class &lt;Name&gt; { constructor(options={}){...} mount(c){...return this} destroy(){...} }</code>。</p>
 </li>
 <li>
-<p>具值元件請實作 <code>getValue/setValue/setDisabled/clear</code>（＋表單類的 <code>setError/clearError</code>）。</p>
+<p>具值元件請實作 <code>getValue/setValue/setDisabled/clear</code>（＋表單類的 <code>setError(msg, { display })/clearError</code>，直接委派 <code>utils/field-error.js</code> 的 <code>setFieldError</code> / <code>clearFieldError</code> 即可）。</p>
 </li>
 <li>
 <p>內部狀態建議走 <code>createComponentState</code>（與既有元件一致）。</p>

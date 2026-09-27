@@ -48,9 +48,11 @@ const form = new SearchForm({
     onSearch: (values) =&gt; {},       // 搜尋回調
     onReset: () =&gt; {},              // 重設回調
     onChange: (key, val, all) =&gt; {}, // 值變更回調
-    onValidationError: (field) =&gt; {} // 必填驗證失敗時回調（收到該欄位定義）
+    onValidationError: (field) =&gt; {}, // 必填驗證失敗時回調（收到該欄位定義）
+    markInvalidFields: false        // true 時驗證失敗也標示欄位元件（紅框、aria-invalid）
 });
 </code></pre>
+<p>必填驗證失敗時，錯誤文字固定顯示在欄位下方。預設只有原本就有 <code>setError</code> 的元件（文字欄位的 TextInput）會收到錯誤，畫面與先前版本相同；設 <code>markInvalidFields: true</code> 時，每個欄位元件都以 <code>setError(msg, { display: false })</code> 標示錯誤狀態，文字不重複顯示。</p>
 <h3>欄位類型常數</h3>
 <p><code>SearchForm.FIELD_TYPES</code>: <code>TEXT</code>, <code>NUMBER</code>, <code>SELECT</code>, <code>MULTISELECT</code>, <code>DATE</code>, <code>DATE_RANGE</code>, <code>CHECKBOX</code></p>
 <p><code>dateRange</code> 欄位不會產生 <code>&lt;key&gt;</code> 本身的值，而是 <code>&lt;key&gt;_start</code> 與 <code>&lt;key&gt;_end</code> 兩個值。</p>

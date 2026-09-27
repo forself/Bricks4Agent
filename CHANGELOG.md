@@ -10,6 +10,48 @@ B4A 只收通用元件與通用能力；任何業務系統的專屬元件都不�
 
 ## 未發行
 
+### 補強：輸入元件的欄位錯誤標示（2026-09-27）
+
+**新增**
+
+- 所有輸入元件都有 `setError(message, { display })` 與 `clearError()`，錯誤外觀一致：控制項紅框、`aria-invalid="true"`，錯誤文字以 `role="alert"` 顯示並用 `aria-describedby` 連回控制項。`display: false` 只標示錯誤狀態、不顯示文字，給自行顯示錯誤文字的外層使用。
+  - 新增此方法的元件：Checkbox、ToggleSwitch、ColorPicker、Rating、Slider、TextArea、NumberInput、Dropdown、MultiSelectDropdown、DatePicker、TimePicker、DateTimeInput、TagInput、BatchUploader、CommandComposer、ChainedInput、ListInput，以及 `Checkbox.createGroup`、`Radio.createGroup` 回傳的群組。
+  - Checkbox、ToggleSwitch、ColorPicker、Rating 的錯誤文字插在元件正後方，元件需已掛載；ChainedInput 只在整組下方顯示文字，不替個別欄位畫紅框。
+- TextInput 的 `setError` 新增第二個參數 `{ display }`，預設行為不變。
+- FormField 新增 `markControl` 選項，預設 `false`。設為 `true` 時，`setError` 也會標示內部元件的錯誤狀態。
+- SearchForm 新增 `markInvalidFields` 選項，預設 `false`。設為 `true` 時，必填驗證失敗會標示欄位元件的錯誤狀態，錯誤文字仍只顯示一次。
+- `utils/field-error.js` 提供 `setFieldError`、`clearFieldError`、`getFieldError`、`hasFieldError` 與 `FIELD_ERROR_CONTRACT`，也由 `utils/index.js` 匯出，自訂元件可直接沿用同一套外觀與無障礙標示。
+- `Checkbox.createGroup` 回傳的群組新增 `destroy()`。
+
+**修正**
+
+- NumberInput：使用者直接輸入後按 Enter 或離開欄位，數值確實改變時會觸發 `onChange` 一次。原本只有 +/- 按鈕、方向鍵與 `clear()` 會觸發，直接輸入的數值不會通知呼叫端。程式呼叫的 `setValue()` 仍預設不觸發。
+- TextInput 處於錯誤狀態時，輸入框會加上 `aria-invalid="true"`，讓螢幕報讀器能辨識錯誤欄位；畫面不變。
+- SearchForm 銷毀時會一併銷毀 Checkbox 群組，釋放勾選圖示。
+
+**相容性**
+
+- SearchForm 預設只呼叫原本就有 `setError` 的元件，畫面與前一版相同。Tim2026 的查詢表單使用 TimePicker、Checkbox 群組與 Radio 群組，這些元件新增了 `setError`，但在預設設定下不會被標示。
+- FormField 預設不轉呼叫內部元件，既有以 FormField 顯示錯誤的畫面不變。
+
+**相容性驗證**
+
+- B4A：`npm test`、`audit-csp`、`audit-ui-style-rules`、`validate-ui-library`、`build-metadata --check` 全部通過。
+- `validate:ui-state`：測試用假 DOM 補上元件實際使用的標準 DOM API 後，除了 Badge 一項以外全部通過。Badge 一項在 main 上就已失敗，原因是假 DOM 不會把 `style.cssText` 反映到個別樣式屬性。上一版寫回後，Dropdown、TimePicker、MultiSelectDropdown、ChainedInput、PhoneListInput 五項曾因假 DOM 缺少 API 而失敗，已一併恢復。
+- Tim2026：以本版本取代其內嵌副本，執行 Tim2026 的 2846 個單元與安全測試，結果與內嵌副本基準完全相同，沒有退步。
+
+### 安全修正：sanitizeHTML（2026-09-27）
+
+**修正**
+
+- `sanitizeHTML`：拆掉不在允許清單的包裝元素時，會先清洗其子節點。原本子節點移出後不再經過清洗，`<section><img src=x onerror=...></section>` 這類內容會保留事件屬性，造成 XSS。
+- SPA 範本前端的 `sanitizeHTML` 修正同一個拆殼繞過。它原本連 `<body>` 本身也當成不允許的標籤拆掉，任何非空輸入都會丟出例外；改為只清洗 `<body>` 的子節點。
+
+**相容性驗證**
+
+- 新增 26 項測試，涵蓋包裝元素繞過樣本、允許清單內容不變、重複清洗結果不變，以及 SPA 範本版本。
+- Tim2026 沒有直接呼叫 `sanitizeHTML`。以包含本修正的 B4A 工作樹執行 Tim2026 的 2846 個單元與安全測試，結果與內嵌副本基準相同。
+
 ### 安全修正：sanitizeHTML（2026-09-27）
 
 **修正**

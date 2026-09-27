@@ -1,5 +1,6 @@
 import { createComponentState } from '../../utils/component-state.js';
 import { Icon } from '../../common/Icon/index.js';
+import { setFieldError, clearFieldError, FIELD_ERROR_CONTRACT } from '../../utils/field-error.js';
 
 export class Checkbox {
     constructor(options = {}) {
@@ -198,6 +199,25 @@ export class Checkbox {
         this.send('SET_CHECKED', { checked: false });
     }
 
+    /**
+     * 標示欄位錯誤；空訊息等同 clearError()。錯誤文字顯示在元件正下方（元件外），元件需已掛載。
+     * display:false 只標示錯誤狀態、不顯示文字，給自行顯示錯誤文字的外層（FormField、SearchForm）使用。
+     */
+    setError(message, { display = true } = {}) {
+        setFieldError(this, message, { target: this.input, visual: this.box, after: this.element, display });
+        return this;
+    }
+
+    /** 清除 setError 的標示與文字。 */
+    clearError() {
+        clearFieldError(this);
+        return this;
+    }
+
+    get [FIELD_ERROR_CONTRACT]() {
+        return true;
+    }
+
     toggle() {
         this.send('TOGGLE');
     }
@@ -220,6 +240,7 @@ export class Checkbox {
     }
 
     destroy() {
+        clearFieldError(this);
         this.send('DESTROY');
         this._checkIcon?.destroy();
         this._checkIcon = null;
@@ -304,6 +325,31 @@ export class Checkbox {
                 target.appendChild(group);
             }
             return group;
+        };
+
+        // 群組錯誤：每個選項標示錯誤狀態，文字顯示在群組末端
+        group.setError = (message, { display = true } = {}) => {
+            setFieldError(group, message, {
+                target: checkboxes.map((entry) => entry.input),
+                visual: checkboxes.map((entry) => entry.box),
+                container: group,
+                fullRow: direction !== 'vertical',
+                display
+            });
+            return group;
+        };
+
+        group.clearError = () => {
+            clearFieldError(group);
+            return group;
+        };
+
+        group[FIELD_ERROR_CONTRACT] = true;
+
+        group.destroy = () => {
+            clearFieldError(group);
+            checkboxes.forEach((entry) => entry.destroy());
+            group.remove();
         };
 
         return group;
