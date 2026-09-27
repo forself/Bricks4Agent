@@ -14,6 +14,7 @@
 import { CanvasChart } from './CanvasChart.js';
 import { ModalPanel } from '../layout/Panel/index.js';
 import { nextUid } from '../utils/uid.js';
+import Locale from '../i18n/index.js';
 
 const px = (v, d) => typeof v === 'number' ? v + 'px' : (v || d);
 
@@ -54,6 +55,29 @@ export class OrgChart extends CanvasChart {
         if (this.root) this.expandedNodes.add(this.root.id);
         this.render();
     }
+
+    /**
+     * 無障礙資料表(accessibleTable):路徑(title 串接,缺則 label/id)/ 說明(label)。
+     * 列出完整樹(不受收合狀態影響:+/- 鈕無法以鍵盤操作,資料表是輔助科技唯一的完整入口)。
+     */
+    getDataTable() {
+        const text = (v) => (v != null && v !== '' ? String(v) : '');
+        const rows = [];
+        this._a11yWalkTree(
+            this.root,
+            (n) => text(n.title) || text(n.label) || text(n.id),
+            (node, path) => rows.push({ path, description: node.label })
+        );
+        return {
+            columns: [
+                { key: 'path', label: Locale.t('canvasChart.path'), rowHeader: true },
+                { key: 'description', label: Locale.t('canvasChart.description') }
+            ],
+            rows
+        };
+    }
+
+    _a11ySources() { return [this.root]; }
 
     _computeLayout() {
         // Reset positions

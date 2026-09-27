@@ -24,6 +24,7 @@ import { CanvasChart } from './CanvasChart.js';
 import { createSimulation } from '../utils/force-engine.js';
 import { buildQuadtree, nearestBody } from '../utils/quadtree.js';
 import { hierarchicalColor } from '../utils/color-scale.js';
+import Locale from '../i18n/index.js';
 
 export class ClusterGraph extends CanvasChart {
     constructor(options = {}) {
@@ -90,7 +91,42 @@ export class ClusterGraph extends CanvasChart {
         for (const g of groups) count(g.id);
         if (!keepView) { this._view = { tx: 0, ty: 0, scale: 1 }; this._expanded.clear(); }
         this._rebuildSim(prev);
+        this._a11yMarkDirty();          // 本路徑不經 render()(模擬迴圈直繪),資料表需明確標記重建
     }
+
+    /**
+     * 無障礙資料表(accessibleTable):起點 / 終點 / 權重,以人員層級列出關聯邊;
+     * 同一對(不分方向)的多條邊合併、權重=邊數(同 overview 模式聚合),略過端點不存在或自環的邊。
+     * 列出完整資料,不受鑽取展開狀態影響。
+     */
+    getDataTable() {
+        const people = (Array.isArray(this._people) ? this._people : []).filter((p) => p && typeof p === 'object');
+        const byId = new Map(people.map((p) => [p.id, p]));
+        const labelOf = (p) => String(p.label || p.id || '');
+        const agg = new Map();
+        for (const e of Array.isArray(this._edges) ? this._edges : []) {
+            if (!e || typeof e !== 'object') continue;
+            const a = byId.get(e.source);
+            const b = byId.get(e.target);
+            if (!a || !b || a === b) continue;
+            const ka = String(e.source);
+            const kb = String(e.target);
+            const key = ka < kb ? `${ka}\u0000${kb}` : `${kb}\u0000${ka}`;
+            const cur = agg.get(key);
+            if (cur) cur.weight++;
+            else agg.set(key, { from: labelOf(a), to: labelOf(b), weight: 1 });
+        }
+        return {
+            columns: [
+                { key: 'from', label: Locale.t('canvasChart.from') },
+                { key: 'to', label: Locale.t('canvasChart.to') },
+                { key: 'weight', label: Locale.t('canvasChart.weight'), format: 'number' }
+            ],
+            rows: [...agg.values()]
+        };
+    }
+
+    _a11ySources() { return [this._people, this._groups, this._edges]; }
 
     /** 依模式/展開狀態導出可見圖(聚合節點 or 人員),邊映射到可見代表並加權。 */
     _visibleGraph() {

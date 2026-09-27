@@ -522,6 +522,34 @@ export default {
         hoverTooltip: 'Show details (Hover)'
     },
 
+    /** CanvasChart — accessible data table (accessibleTable) */
+    canvasChart: {
+        tableCaption: 'Chart data',
+        empty: 'No data',
+        truncated: 'Rows not shown: {count}',
+        category: 'Category',
+        series: 'Series {index}',
+        name: 'Name',
+        value: 'Value',
+        percent: 'Percentage',
+        row: 'Row',
+        column: 'Column',
+        source: 'Source',
+        target: 'Target',
+        from: 'From',
+        to: 'To',
+        weight: 'Weight',
+        path: 'Path',
+        description: 'Description',
+        group: 'Group',
+        start: 'Start',
+        end: 'End',
+        index: 'Index',
+        xValue: 'X value',
+        yValue: 'Y value',
+        size: 'Size'
+    },
+
     // ===== editor/ =====
 
     /** WebTextEditor */

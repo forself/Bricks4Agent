@@ -523,6 +523,34 @@ export default {
         hoverTooltip: '顯示詳細資訊 (Hover)'
     },
 
+    /** CanvasChart — 圖表無障礙資料表(accessibleTable) */
+    canvasChart: {
+        tableCaption: '圖表資料',
+        empty: '無資料',
+        truncated: '另有 {count} 筆資料未列出',
+        category: '類別',
+        series: '系列 {index}',
+        name: '名稱',
+        value: '數值',
+        percent: '占比',
+        row: '列',
+        column: '欄',
+        source: '來源',
+        target: '目標',
+        from: '起點',
+        to: '終點',
+        weight: '權重',
+        path: '路徑',
+        description: '說明',
+        group: '群組',
+        start: '開始',
+        end: '結束',
+        index: '序號',
+        xValue: 'X 值',
+        yValue: 'Y 值',
+        size: '大小'
+    },
+
     // ===== editor/ =====
 
     /** WebTextEditor — 文字編輯器 */

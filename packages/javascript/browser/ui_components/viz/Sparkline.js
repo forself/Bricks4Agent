@@ -11,6 +11,7 @@
  */
 import { CanvasChart } from './CanvasChart.js';
 import { FALLBACK_PAINT } from '../utils/theme-bus.js';
+import Locale from '../i18n/index.js';
 
 const px = (v, d) => typeof v === 'number' ? v + 'px' : (v || d);
 
@@ -26,6 +27,8 @@ export class Sparkline extends CanvasChart {
      * @param {boolean} options.showLast - 是否標記最後一點(預設 true)
      * @param {number} [options.min] - 固定最小值(預設取資料 min)
      * @param {number} [options.max] - 固定最大值(預設取資料 max)
+     * @param {boolean|string} [options.accessibleTable] - 無障礙資料表(預設 false;見 CanvasChart)
+     * @param {number} [options.accessibleTableMaxRows] - 資料表列數上限(預設 500)
      */
     constructor(options = {}) {
         super({
@@ -41,8 +44,12 @@ export class Sparkline extends CanvasChart {
             fill: options.fill !== undefined ? options.fill : true,
             showLast: options.showLast !== undefined ? options.showLast : true,
             min: options.min,
-            max: options.max
+            max: options.max,
+            // 無障礙資料表:僅在呼叫端有給時轉交,未給則沿用基底預設(關閉 / 500)
+            ...(options.accessibleTable !== undefined ? { accessibleTable: options.accessibleTable } : {}),
+            ...(options.accessibleTableMaxRows !== undefined ? { accessibleTableMaxRows: options.accessibleTableMaxRows } : {})
         });
+        this._explicitAriaLabel = options.ariaLabel || '';   // 資料表標題用(預設 'sparkline' 不當標題)
         // 讓容器本身輕量行內呈現(不改 CanvasChart 的 element div)
         this.element.style.cssText =
             'display: inline-block; line-height: 0; vertical-align: middle;' +
@@ -141,6 +148,19 @@ export class Sparkline extends CanvasChart {
     setColor(color) {
         this.options.color = color;
         this.render();
+    }
+
+    /** 無障礙資料表(accessibleTable):序號(自 1 起)/ 數值;標題取呼叫端 ariaLabel,未給用 Locale 預設。 */
+    getDataTable() {
+        const data = Array.isArray(this.options.data) ? this.options.data : [];
+        return {
+            caption: this._explicitAriaLabel || Locale.t('canvasChart.tableCaption'),
+            columns: [
+                { key: 'index', label: Locale.t('canvasChart.index') },
+                { key: 'value', label: Locale.t('canvasChart.value'), format: 'number' }
+            ],
+            rows: data.map((value, i) => ({ index: i + 1, value }))
+        };
     }
 
     show() { this.element.style.display = 'inline-block'; }

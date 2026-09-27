@@ -7,6 +7,7 @@
 import { CanvasChart } from './CanvasChart.js';
 import { ModalPanel } from '../layout/Panel/index.js';
 import { categoricalColor } from '../utils/color-scale.js';
+import Locale from '../i18n/index.js';
 
 const px = (v, d) => typeof v === 'number' ? v + 'px' : (v || d);
 
@@ -246,6 +247,34 @@ export class SankeyChart extends CanvasChart {
     setData(data) {
         this.options.data = data;
         this.render();
+    }
+
+    /**
+     * 無障礙資料表(accessibleTable):來源 / 目標 / 數值,每條流一列。
+     * source/target 解析規則同佈局(數字索引;物件取其 id 當索引),查無節點時退回原值。
+     */
+    getDataTable() {
+        const raw = this.options.data || {};
+        const nodes = Array.isArray(raw.nodes) ? raw.nodes : [];
+        const links = Array.isArray(raw.links) ? raw.links : [];
+        const nameOf = (ref) => {
+            const idx = ref && typeof ref === 'object' ? ref.id : Number(ref);
+            const node = nodes[idx];
+            if (node && node.name != null) return String(node.name);
+            if (ref && typeof ref === 'object') return String(ref.name ?? ref.id ?? '');
+            return String(ref ?? '');
+        };
+        return {
+            columns: [
+                { key: 'source', label: Locale.t('canvasChart.source') },
+                { key: 'target', label: Locale.t('canvasChart.target') },
+                { key: 'value', label: Locale.t('canvasChart.value'), format: 'number' }
+            ],
+            rows: nodes.length
+                ? links.filter((l) => l && typeof l === 'object')
+                    .map((l) => ({ source: nameOf(l.source), target: nameOf(l.target), value: l.value }))
+                : []
+        };
     }
 
     /** 覆寫 CanvasChart 的 click 派送,插入 node 點擊語意。 */

@@ -126,6 +126,11 @@ export class LineChart extends CanvasChart {
         return rows;
     }
 
+    /** 無障礙資料表(accessibleTable):類別欄 + 每系列一欄(null 斷點呈現為空白格)。 */
+    getDataTable() {
+        return this._a11ySeriesTable(this.options.data, { unit: this.options.unit });
+    }
+
     /** 更新資料並重繪(舊 API 相容)。 */
     setData(data) { this.options.data = data; this.render(); }
 }
