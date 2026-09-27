@@ -161,6 +161,14 @@ export default {
         jump: '跳轉'
     },
 
+    /** TreeList — 樹狀列表(延遲載入) */
+    treeList: {
+        loading: '載入中...',
+        loadError: '子項目載入失敗',
+        retry: '重試',
+        retryLabel: '重試載入「{label}」的子項目'
+    },
+
     /** LoadingSpinner — 載入中 */
     loadingSpinner: {
         text: '載入中...'

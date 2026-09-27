@@ -160,6 +160,14 @@ export default {
         jump: 'Go'
     },
 
+    /** TreeList (lazy loading) */
+    treeList: {
+        loading: 'Loading...',
+        loadError: 'Failed to load child items',
+        retry: 'Retry',
+        retryLabel: 'Retry loading child items of {label}'
+    },
+
     /** LoadingSpinner */
     loadingSpinner: {
         text: 'Loading...'
