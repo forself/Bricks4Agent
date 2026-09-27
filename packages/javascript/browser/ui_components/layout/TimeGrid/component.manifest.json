@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "component_id": "layout.time_grid",
+  "registry_name": "TimeGrid",
+  "display_name": "TimeGrid",
+  "category": "layout",
+  "kind": "composite",
+  "source_path": "ui_components/layout/TimeGrid/TimeGrid.js",
+  "docs_path": "ui_components/layout/TimeGrid/README.md",
+  "maturity": "beta",
+  "generator": {
+    "usable": false,
+    "usage_mode": "manual_only",
+    "supported_field_types": [],
+    "supported_page_types": [],
+    "definition_runtime": false
+  },
+  "composition": {
+    "role": "data_view",
+    "requires_form_field_wrapper": false,
+    "manual_only": true
+  },
+  "binding": {
+    "value_io": false,
+    "listener_events": [],
+    "target_actions": []
+  },
+  "styling": {
+    "theme_token_only": true,
+    "style_knobs": [
+      "height",
+      "readonly",
+      "selectable"
+    ]
+  }
+}
