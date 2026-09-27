@@ -1,0 +1,66 @@
+{
+  "_comment": "Golden DOM (outerHTML) and canvas draw log produced by the UNMODIFIED Progress.js at commit 4f1caa3. ProgressSegments.test.js rebuilds the same inputs and requires identical output while segments are not used. Never regenerate these from modified component code.",
+  "barDefault": "<div class=\"cl-progress-wrapper\" style=\"display: inline-flex; align-items: center; gap: 8px; width: 100%;\"><div class=\"cl-progress-bar-track\" style=\"width: 100%; background: var(--cl-bg-subtle); border-radius: var(--cl-radius-pill); overflow: hidden; position: relative; height: 8px;\" role=\"progressbar\" aria-valuemin=\"0\" aria-valuemax=\"100\" aria-valuenow=\"60\"><div class=\"cl-progress-bar-fill\" style=\"height: 100%; border-radius: var(--cl-radius-pill); transition: width var(--cl-transition); background: var(--cl-primary); width: 60%;\"></div></div></div>",
+  "barRich": "<div class=\"cl-progress-wrapper\" style=\"display: inline-flex; align-items: center; gap: 8px; width: 100%;\"><div class=\"cl-progress-bar-track\" style=\"width: 100%; background: var(--cl-bg-subtle); border-radius: var(--cl-radius-pill); overflow: hidden; position: relative; height: 12px;\" role=\"progressbar\" aria-valuemin=\"0\" aria-valuemax=\"200\" aria-valuenow=\"45\"><div class=\"cl-progress-bar-fill\" style=\"height: 100%; border-radius: var(--cl-radius-pill); transition: width var(--cl-transition); background: var(--cl-warning); width: 22.5%;\"></div></div><span class=\"cl-progress-text\" style=\"font-size: var(--cl-font-size-xs); color: var(--cl-text-secondary); white-space: nowrap; font-family: var(--cl-font-family);\">23%</span></div>",
+  "barInd": "<div class=\"cl-progress-wrapper\" style=\"display: inline-flex; align-items: center; gap: 8px; width: 100%;\"><div class=\"cl-progress-bar-track\" style=\"width: 100%; background: var(--cl-bg-subtle); border-radius: var(--cl-radius-pill); overflow: hidden; position: relative; height: 8px;\" role=\"progressbar\" aria-valuemin=\"0\" aria-valuemax=\"100\"><div class=\"cl-progress-bar-fill cl-progress-bar-fill--indeterminate\" style=\"height: 100%; border-radius: var(--cl-radius-pill); transition: none; background: var(--cl-primary); position: absolute; top: 0px; left: -35%; width: 35%;\"></div></div></div>",
+  "barSetters": "<div class=\"cl-progress-wrapper\" style=\"display: inline-flex; align-items: center; gap: 8px; width: 100%;\"><div class=\"cl-progress-bar-track\" style=\"width: 100%; background: var(--cl-bg-subtle); border-radius: var(--cl-radius-pill); overflow: hidden; position: relative; height: 12px;\" role=\"progressbar\" aria-valuemin=\"0\" aria-valuemax=\"200\" aria-valuenow=\"200\"><div class=\"cl-progress-bar-fill\" style=\"height: 100%; border-radius: var(--cl-radius-pill); transition: width var(--cl-transition); background: var(--cl-danger); width: 100%;\"></div></div><span class=\"cl-progress-text\" style=\"font-size: var(--cl-font-size-xs); color: var(--cl-text-secondary); white-space: nowrap; font-family: var(--cl-font-family);\">100%</span></div>",
+  "barBadVariant": "<div class=\"cl-progress-wrapper\" style=\"display: inline-flex; align-items: center; gap: 8px; width: 100%;\"><div class=\"cl-progress-bar-track\" style=\"width: 100%; background: var(--cl-bg-subtle); border-radius: var(--cl-radius-pill); overflow: hidden; position: relative; height: 8px;\" role=\"progressbar\" aria-valuemin=\"0\" aria-valuemax=\"100\" aria-valuenow=\"10\"><div class=\"cl-progress-bar-fill\" style=\"height: 100%; border-radius: var(--cl-radius-pill); transition: width var(--cl-transition); background: var(--cl-primary); width: 10%;\"></div></div></div>",
+  "circle": "<div class=\"cl-progress-circle-wrapper\" style=\"display: inline-flex; align-items: center; justify-content: center; position: relative; width: 120px; height: 120px;\" role=\"progressbar\" aria-valuemin=\"0\" aria-valuemax=\"100\" aria-valuenow=\"75\"><canvas width=\"120\" height=\"120\" style=\"width: 120px; height: 120px; display: block;\"></canvas><span class=\"cl-progress-circle-text\" style=\"position: absolute; font-size: var(--cl-font-size-lg); color: var(--cl-text-secondary); font-family: var(--cl-font-family); font-weight: 600;\">75%</span></div>",
+  "circleSmall": "<div class=\"cl-progress-circle-wrapper\" style=\"display: inline-flex; align-items: center; justify-content: center; position: relative; width: 48px; height: 48px;\" role=\"progressbar\" aria-valuemin=\"0\" aria-valuemax=\"100\" aria-valuenow=\"20\"><canvas width=\"48\" height=\"48\" style=\"width: 48px; height: 48px; display: block;\"></canvas><span class=\"cl-progress-circle-text\" style=\"position: absolute; font-size: var(--cl-font-size-2xs); color: var(--cl-text-secondary); font-family: var(--cl-font-family); font-weight: 600;\">20%</span></div>",
+  "circleInd": "<div class=\"cl-progress-circle-wrapper\" style=\"display: inline-flex; align-items: center; justify-content: center; position: relative; width: 80px; height: 80px;\" role=\"progressbar\" aria-valuemin=\"0\" aria-valuemax=\"100\"><canvas width=\"80\" height=\"80\" style=\"width: 80px; height: 80px; display: block;\"></canvas></div>",
+  "circleSetters": "<div class=\"cl-progress-circle-wrapper\" style=\"display: inline-flex; align-items: center; justify-content: center; position: relative; width: 80px; height: 80px;\" role=\"progressbar\" aria-valuemin=\"0\" aria-valuemax=\"100\" aria-valuenow=\"55\"><canvas width=\"80\" height=\"80\" style=\"width: 80px; height: 80px; display: block;\"></canvas><span class=\"cl-progress-circle-text\" style=\"position: absolute; font-size: var(--cl-font-size-xs); color: var(--cl-text-secondary); font-family: var(--cl-font-family); font-weight: 600;\">55%</span></div>",
+  "circleDrawLog": [
+    [
+      "setTransform",
+      1,
+      0,
+      0,
+      1,
+      0,
+      0,
+      ""
+    ],
+    [
+      "clearRect",
+      0,
+      0,
+      80,
+      80,
+      ""
+    ],
+    [
+      "beginPath",
+      ""
+    ],
+    [
+      "arc",
+      40,
+      40,
+      37,
+      0,
+      6.2832,
+      ""
+    ],
+    [
+      "stroke",
+      "rgb(40, 50, 60)|6|butt"
+    ],
+    [
+      "beginPath",
+      ""
+    ],
+    [
+      "arc",
+      40,
+      40,
+      37,
+      -1.5708,
+      0.9425,
+      ""
+    ],
+    [
+      "stroke",
+      "rgb(10, 20, 30)|6|round"
+    ]
+  ]
+}

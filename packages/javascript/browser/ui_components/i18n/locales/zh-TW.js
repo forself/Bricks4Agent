@@ -297,6 +297,15 @@ export default {
         okText: '確定'
     },
 
+    /** Progress — 進度指示器（分段模式） */
+    progress: {
+        segmentSummary: '{label}：{percent}%',
+        segmentSeparator: '，',
+        segmentFallbackLabel: '區段 {index}',
+        noSegments: '無資料',
+        legendValue: '{value}（{percent}%）'
+    },
+
     /** PhotoWall — 照片牆 */
     photoWall: {
         downloadSelected: '下載選取 ({count})',
@@ -349,7 +358,8 @@ export default {
     /** WorkflowPanel — 流程面板（流程階段名稱為領域特定，但 UI 文字需要） */
     workflowPanel: {
         currentBadge: '目前',
-        pending: '待定'
+        pending: '待定',
+        nextStageHint: '(待處理)'
     },
 
     // ===== input/ =====

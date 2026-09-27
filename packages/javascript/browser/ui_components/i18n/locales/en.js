@@ -296,6 +296,15 @@ export default {
         okText: 'OK'
     },
 
+    /** Progress (segment mode) */
+    progress: {
+        segmentSummary: '{label}: {percent}%',
+        segmentSeparator: ', ',
+        segmentFallbackLabel: 'Segment {index}',
+        noSegments: 'No data',
+        legendValue: '{value} ({percent}%)'
+    },
+
     /** PhotoWall */
     photoWall: {
         downloadSelected: 'Download Selected ({count})',
@@ -348,7 +357,8 @@ export default {
     /** WorkflowPanel */
     workflowPanel: {
         currentBadge: 'Current',
-        pending: 'Pending'
+        pending: 'Pending',
+        nextStageHint: '(To do)'
     },
 
     // ===== input/ =====
