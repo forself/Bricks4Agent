@@ -254,11 +254,18 @@ export default {
     // ===== layout/ =====
 
     /** DataTable — 資料表格 */
+    textArea: {
+        sizingFixedTitle: '固定 {rows} 行並顯示捲軸；點一下改為依內容自動加高',
+        sizingAutoTitle: '超過 {rows} 行依內容自動加高；點一下改回固定 {rows} 行',
+    },
     dataTable: {
         rowsPerPage: '每頁筆數:',
         displayRows: '共',
         noMatch: '無查詢結果',
         selectedUnit: '筆',
+        searchPlaceholder: '篩選已載入結果',
+        searchResultCount: '顯示 {count} / 共 {total} 筆',
+        searchButtonLabel: '套用篩選',
         firstPage: '第一頁',
         prevPage: '上一頁',
         nextPage: '下一頁',

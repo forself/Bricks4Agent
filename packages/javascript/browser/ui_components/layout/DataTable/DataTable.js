@@ -71,6 +71,11 @@ const DEFAULT_TEXT_LABELS = {
     pagination: { rowsPerPage: Locale.t('dataTable.rowsPerPage'), displayRows: Locale.t('dataTable.displayRows') },
     body: { noMatch: Locale.t('dataTable.noMatch') },
     selectedRows: { text: Locale.t('dataTable.selectedUnit') },
+    search: {
+        placeholder: Locale.t('dataTable.searchPlaceholder'),
+        resultCount: Locale.t('dataTable.searchResultCount'),
+        buttonLabel: Locale.t('dataTable.searchButtonLabel'),
+    },
 };
 
 export function linkCell(text, href, options = {}) {
@@ -83,6 +88,36 @@ export function badgeCell(text, options = {}) {
     const variant = Object.values(Badge.VARIANTS).includes(options.variant) ? options.variant : Badge.VARIANTS.DEFAULT;
     const className = String(options.className || '').replace(/[^A-Za-z0-9_-]/g, ' ');
     return raw(`<span data-b4a-badge-cell="" data-badge-text="${escapeHtml(String(text ?? ''))}" data-badge-variant="${variant}" data-badge-class="${escapeHtml(className)}"></span>`);
+}
+
+function normalizeSearchText(value) {
+    return String(value ?? '')
+        .normalize('NFKC')
+        .trim()
+        .toLocaleLowerCase('zh-Hant');
+}
+
+function renderedSearchText(value) {
+    if (value == null) return '';
+    if (isRawHtml(value)) {
+        const template = document.createElement('template');
+        template.innerHTML = value.__html;
+        const visibleText = template.content.textContent?.trim();
+        if (visibleText) return visibleText;
+
+        // Some controlled cells are hydrated after the table HTML is mounted.
+        // Their user-facing labels are carried in data attributes until then.
+        return Array.from(template.content.querySelectorAll(
+            '[data-link-text],[data-link-label],[data-badge-text]'
+        )).map(node => node.dataset.linkText
+            || node.dataset.linkLabel
+            || node.dataset.badgeText
+            || '').join(' ');
+    }
+    if (value && typeof value === 'object' && value.nodeType) {
+        return value.textContent || '';
+    }
+    return String(value);
 }
 
 export class DataTable {
@@ -111,7 +146,7 @@ export class DataTable {
         this.variant = config.variant || 'default';
 
         // 相容兩種呼叫方式：從 top-level config 合併到 options
-        for (const key of ['selectableRows', 'customToolbar', 'customToolbarSelect', 'rowsPerPageOptions', 'sortOrder']) {
+        for (const key of ['selectableRows', 'customToolbar', 'customToolbarSelect', 'rowsPerPageOptions', 'sortOrder', 'search']) {
             if (config[key] !== undefined && this.options[key] === undefined) {
                 this.options[key] = config[key];
             }
@@ -152,6 +187,10 @@ export class DataTable {
         this._hoveredRow = null;
         this._cellComponents = [];
         this._sortedCache = null;
+        this._searchText = '';
+        this._searchDraft = '';
+        this._searchIndex = null;
+        this._quickSearchComposing = false;
 
         // 合併 textLabels
         const tl = this.options.textLabels || {};
@@ -159,6 +198,7 @@ export class DataTable {
             pagination: { ...DEFAULT_TEXT_LABELS.pagination, ...(tl.pagination) },
             body: { ...DEFAULT_TEXT_LABELS.body, ...(tl.body) },
             selectedRows: { ...DEFAULT_TEXT_LABELS.selectedRows, ...(tl.selectedRows) },
+            search: { ...DEFAULT_TEXT_LABELS.search, ...(tl.search) },
         };
 
         // 初始排序
@@ -203,6 +243,7 @@ export class DataTable {
                 if (col.hidden) opts.display = false;
                 if (col.width) opts.setCellProps = () => ({ style: { width: col.width } });
                 if (col.sortable === false) opts.sort = false;
+                if (col.searchable === false || col.action) opts.searchable = false;
                 if (col.render) {
                     const renderFn = col.render;
                     const colKeys = keys;
@@ -241,6 +282,7 @@ export class DataTable {
                 if (col.visible === false) opts.display = false;
                 if (col.hidden) opts.display = false;
                 if (col.width) opts.setCellProps = () => ({ style: { width: col.width } });
+                if (col.searchable === false || col.action) opts.searchable = false;
                 if (col.render) {
                     opts.customBodyRender = col.render;
                 } else {
@@ -268,6 +310,7 @@ export class DataTable {
         } else {
             this.data = data || [];
         }
+        this._searchIndex = null;
         this._page = 0;
         this._selectedRows = [];
         if (this.container) {
@@ -318,6 +361,26 @@ export class DataTable {
         return this.data;
     }
 
+    getSearchText() {
+        return this._searchText;
+    }
+
+    getSearchDraft() {
+        return this._searchDraft;
+    }
+
+    setSearchText(value) {
+        this._searchDraft = String(value ?? '');
+        this._applySearchDraft();
+        if (this.container) this.render();
+        else this._renderToElement();
+        return this;
+    }
+
+    clearSearch() {
+        return this.setSearchText('');
+    }
+
     /**
      * 渲染到 container
      */
@@ -351,7 +414,7 @@ export class DataTable {
             let html = `<div class="b4a-dt b4a-dt--${variantClass}">`;
 
             // 工具列
-            html += this._renderToolbar(isAnySelected);
+            html += this._renderToolbar(isAnySelected, sorted.length);
 
             // 表格
             html += '<div class="b4a-dt__scroll">';
@@ -480,9 +543,71 @@ export class DataTable {
 
     // ── 內部方法 ──
 
+    _getSearchableColumnIndices() {
+        return this._getVisibleColumns().filter(colIdx =>
+            this.columns[colIdx]?.options?.searchable !== false
+        );
+    }
+
+    _getSearchCellText(row, colIdx, dataIndex) {
+        const col = this.columns[colIdx];
+        let rendered = row[colIdx];
+        try {
+            if (col.options?.customBodyRenderLite) {
+                rendered = col.options.customBodyRenderLite(dataIndex, dataIndex);
+            } else if (col.options?.customBodyRender) {
+                rendered = col.options.customBodyRender(row[colIdx], {
+                    rowData: row,
+                    rowIndex: dataIndex,
+                    columnIndex: colIdx,
+                    dataIndex,
+                });
+            }
+        } catch {
+            // Searching must never make an otherwise renderable result list unusable.
+            rendered = row[colIdx];
+        }
+        return renderedSearchText(rendered);
+    }
+
+    _getSearchIndex() {
+        if (this._searchIndex) return this._searchIndex;
+        const searchableColumns = this._getSearchableColumnIndices();
+        this._searchIndex = this.data.map((row, dataIndex) => searchableColumns.map(colIdx =>
+            normalizeSearchText(this._getSearchCellText(row, colIdx, dataIndex))
+        ));
+        return this._searchIndex;
+    }
+
+    _getFilteredData() {
+        const indexed = this.data.map((row, dataIndex) => ({ row, dataIndex }));
+        if (this.options.search !== true) return indexed;
+        const query = normalizeSearchText(this._searchText);
+        if (!query) return indexed;
+        const searchIndex = this._getSearchIndex();
+        return indexed.filter(({ dataIndex }) =>
+            searchIndex[dataIndex].some(cellText => cellText.includes(query))
+        );
+    }
+
+    _applySearchDraft() {
+        const changed = normalizeSearchText(this._searchDraft) !== normalizeSearchText(this._searchText);
+        this._searchText = this._searchDraft;
+        this._page = 0;
+
+        // A submitted filter must never leave a previously selected, now-hidden
+        // row available to a bulk action. Re-submitting the same effective query
+        // preserves selection; draft input alone never touches it.
+        if (changed && this._selectedRows.length > 0) {
+            this._selectedRows = [];
+            this._fireSelectionChange();
+        }
+        return changed;
+    }
+
     _getSortedData() {
         if (this._sortedCache) return this._sortedCache;
-        const indexed = this.data.map((row, i) => ({ row, dataIndex: i }));
+        const indexed = this._getFilteredData();
         if (this._sortCol === null || !this._sortDir) return indexed;
 
         const colIdx = this._sortCol;
@@ -537,8 +662,22 @@ export class DataTable {
         return escapeHtml(String(val));
     }
 
-    _renderToolbar(isAnySelected) {
+    _renderToolbar(isAnySelected, filteredCount = this.data.length) {
         const { customToolbar, customToolbarSelect } = this.options;
+        const searchEnabled = this.options.search === true;
+        const totalCount = this.data.length;
+        const searchPlaceholder = this._textLabels.search.placeholder;
+        const searchButtonLabel = this._textLabels.search.buttonLabel;
+        const searchResultCount = String(this._textLabels.search.resultCount)
+            .replaceAll('{count}', String(filteredCount))
+            .replaceAll('{total}', String(totalCount));
+        const searchHtml = searchEnabled
+            ? `<div class="b4a-dt__quick-search">
+                <input class="b4a-dt__quick-search-input" type="search" data-action="quick-search" aria-label="${escapeHtml(searchPlaceholder)}" placeholder="${escapeHtml(searchPlaceholder)}" value="${escapeHtml(this._searchDraft)}">
+                <button class="b4a-dt__quick-search-submit" type="button" data-action="quick-search-submit" aria-label="${escapeHtml(searchButtonLabel)}" title="${escapeHtml(searchButtonLabel)}"><span aria-hidden="true">🔍</span></button>
+                <span class="b4a-dt__quick-search-count" aria-live="polite">${escapeHtml(searchResultCount)}</span>
+            </div>`
+            : '';
 
         if (isAnySelected && customToolbarSelect) {
             const sorted = this._getSortedData();
@@ -555,7 +694,7 @@ export class DataTable {
 
             return `<div class="b4a-dt__toolbar--select">
                 <span class="b4a-dt__toolbar-text">${this._selectedRows.length} ${escapeHtml(this._textLabels.selectedRows.text)}已選擇</span>
-                <div>${toolbarContent}</div>
+                <div class="b4a-dt__toolbar-actions">${searchHtml}${toolbarContent}</div>
             </div>`;
         }
 
@@ -570,7 +709,7 @@ export class DataTable {
 
         return `<div class="b4a-dt__toolbar">
             <div>${titleHtml}</div>
-            <div>${toolbarHtml}</div>
+            <div class="b4a-dt__toolbar-actions">${searchHtml}${toolbarHtml}</div>
         </div>`;
     }
 
@@ -610,6 +749,46 @@ export class DataTable {
 
     _bindEvents(root) {
         if (!root) return;
+
+        const quickSearch = root.querySelector('[data-action="quick-search"]');
+        const quickSearchSubmit = root.querySelector('[data-action="quick-search-submit"]');
+        const submitQuickSearch = focusTarget => {
+            const input = this.element.querySelector('[data-action="quick-search"]');
+            const selectionStart = input.selectionStart;
+            const selectionEnd = input.selectionEnd;
+            this._searchDraft = input.value;
+            this._applySearchDraft();
+            if (this.container) this.render();
+            else this._renderToElement();
+
+            const nextFocus = this.element.querySelector(
+                focusTarget === 'input' ? '[data-action="quick-search"]' : '[data-action="quick-search-submit"]'
+            );
+            nextFocus?.focus?.({ preventScroll: true });
+            if (focusTarget === 'input') {
+                try {
+                    nextFocus?.setSelectionRange?.(selectionStart, selectionEnd);
+                } catch {
+                    // Some input implementations do not expose a selection range.
+                }
+            }
+        };
+        quickSearch?.addEventListener('compositionstart', () => {
+            this._quickSearchComposing = true;
+        });
+        quickSearch?.addEventListener('compositionend', event => {
+            this._quickSearchComposing = false;
+            this._searchDraft = event.currentTarget.value;
+        });
+        quickSearch?.addEventListener('input', event => {
+            this._searchDraft = event.currentTarget.value;
+        });
+        quickSearch?.addEventListener('keydown', event => {
+            if (event.key !== 'Enter' || event.isComposing || this._quickSearchComposing) return;
+            event.preventDefault();
+            submitQuickSearch('input');
+        });
+        quickSearchSubmit?.addEventListener('click', () => submitQuickSearch('button'));
 
         // 排序
         root.querySelectorAll('[data-action="sort"]').forEach(th => {
@@ -719,8 +898,9 @@ export class DataTable {
             ':scope > .b4a-dt > .b4a-dt__scroll > .b4a-dt__table > thead [data-action="select-all"]'
         );
         if (selectAll) {
-            // 與 _renderToElement 的 allSelected 判定等價（sorted 僅是全資料的重排，免排序）
-            const allSelected = this.data.length > 0 && this.data.every((_, i) => this._selectedRows.includes(i));
+            // 與 _renderToElement 的 allSelected 判定等價：以快速篩選後的資料列判斷（成員相同，免排序）
+            const visibleRows = this._getFilteredData();
+            const allSelected = visibleRows.length > 0 && visibleRows.every(d => this._selectedRows.includes(d.dataIndex));
             selectAll.checked = allSelected;
             if (allSelected) selectAll.setAttribute('checked', '');
             else selectAll.removeAttribute('checked');

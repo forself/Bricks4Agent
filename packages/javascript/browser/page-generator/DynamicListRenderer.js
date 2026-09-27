@@ -376,6 +376,7 @@ export class DynamicListRenderer {
             width: def.width || undefined,
             hidden: def.hidden === true,
             sortable: def.sortable === false ? false : true,
+            searchable: !def.action,
             render: (value, row) => this._formatCellValue(def, value, row)
         }));
 
@@ -386,6 +387,7 @@ export class DynamicListRenderer {
                 title: table.actionColumnTitle || '操作',
                 width: table.actionColumnWidth || '140px',
                 sortable: false,
+                searchable: false,
                 // DataTable escapes ordinary strings by design. Row actions are
                 // renderer-owned, fully escaped markup, so opt in explicitly;
                 // otherwise every row button is displayed as literal HTML text.
@@ -403,6 +405,10 @@ export class DynamicListRenderer {
             rowsPerPageOptions: table.rowsPerPageOptions,
             tableBodyHeight: table.tableBodyHeight,
             textLabels: normalizeTableTextLabels(table),
+            // Top-level generated result lists opt in by default. Embedded/modal
+            // DataTable instances remain unchanged unless their direct caller
+            // explicitly sets options.search.
+            search: table.search !== false,
         };
         if (this._isDeclarativeList || selectionActions.length > 0) {
             dataTableOptions.selectableRows = table.selectableRows || (selectionActions.length > 0 ? 'multiple' : 'none');

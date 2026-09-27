@@ -103,8 +103,8 @@ export class Dropdown {
                 highlightIndex: payload?.disabled ? -1 : state.highlightIndex
             }),
             FILTER: (state, payload) => {
-                const query = String(payload?.query ?? '').trim();
-                const normalizedQuery = query.toLocaleLowerCase();
+                const query = String(payload?.query ?? '');
+                const normalizedQuery = query.trim().toLocaleLowerCase();
                 const filteredItems = !normalizedQuery
                     ? [...this.options.items]
                     : this.options.items.filter((item) =>
@@ -318,17 +318,35 @@ export class Dropdown {
         }
 
         if (this.menu) {
+            this._portalMenu(state.open);
             this.menu.style.display = state.open ? 'block' : 'none';
+            if (state.open) this._positionMenu();
         }
 
         // destroy 後不得再掛回全域監聽（reducer 不檢查 lifecycle，這裡把關）
         this._syncGlobalListeners(state.open && state.lifecycle !== 'destroyed');
 
-        this._renderItems();
+        // 可搜尋的清單可能有上千筆主檔資料。關閉時就建立全部選項節點，頁面上每個
+        // Dropdown 都會各自多一份（表單重複出現上百張卡片時尤其明顯）。已選值保存在
+        // state 裡，選項節點只在展開時才建立，收合時釋放。
+        if (state.open) {
+            this._renderItems();
+        } else if (this.menu) {
+            this._itemIcons?.forEach((icon) => icon.destroy());
+            this._itemIcons = [];
+            this.menu.replaceChildren();
+        }
+    }
+
+    _valuesEqual(left, right) {
+        if (left === null || left === undefined || right === null || right === undefined) {
+            return left === right;
+        }
+        return String(left) === String(right);
     }
 
     _findItem(value) {
-        return this.options.items.find((item) => item.value === value) || null;
+        return this.options.items.find((item) => this._valuesEqual(item.value, value)) || null;
     }
 
     _renderItems(menu = this.menu) {
@@ -394,7 +412,7 @@ export class Dropdown {
             option.dataset.value = item.value;
             option.dataset.index = String(index);
 
-            const isSelected = item.value === state.selectedValue;
+            const isSelected = this._valuesEqual(item.value, state.selectedValue);
             const isDisabled = !!item.disabled;
             const isHighlighted = index === state.highlightIndex;
 
@@ -405,6 +423,8 @@ export class Dropdown {
                 display: flex;
                 align-items: center;
                 justify-content: space-between;
+                gap: 8px;
+                white-space: nowrap;
                 font-size: var(--cl-font-size-lg);
                 color: ${isDisabled ? 'var(--cl-text-light)' : 'var(--cl-text)'};
                 background: ${isSelected ? 'var(--cl-primary-light)' : isHighlighted ? 'var(--cl-bg-secondary)' : 'transparent'};
@@ -485,9 +505,13 @@ export class Dropdown {
         }
 
         this._onDocumentClick = (event) => {
-            if (!this.container.contains(event.target)) {
+            // 清單展開時以 fixed 定位浮出；點在清單內不算外部點擊。
+            if (!this.container.contains(event.target) && !this.menu?.contains(event.target)) {
                 this.close();
             }
+        };
+        this._onViewportChange = () => {
+            if (this.snapshot().open) this._positionMenu();
         };
         this._globalListenersAttached = false;
 
@@ -504,14 +528,19 @@ export class Dropdown {
         });
     }
 
-    // 全域 click 監聽只在選單展開期間掛載;開啟點擊 dispatch 中同步掛上(contains 守衛使其對本次點擊 no-op)
+    // 全域監聽只在選單展開期間掛載;開啟點擊 dispatch 中同步掛上(contains 守衛使其對本次點擊 no-op)。
+    // 視窗縮放與捲動時重新定位浮出的清單。
     _syncGlobalListeners(open) {
         if (open === this._globalListenersAttached) return;
         this._globalListenersAttached = open;
         if (open) {
             document.addEventListener('click', this._onDocumentClick);
+            window.addEventListener('resize', this._onViewportChange);
+            window.addEventListener('scroll', this._onViewportChange, true);
         } else {
             document.removeEventListener('click', this._onDocumentClick);
+            window.removeEventListener('resize', this._onViewportChange);
+            window.removeEventListener('scroll', this._onViewportChange, true);
         }
     }
 
@@ -578,7 +607,7 @@ export class Dropdown {
 
         if (event === 'SET_ITEMS') {
             this.options.items = [...(payload?.items ?? [])];
-            if (!this.options.items.some((item) => item.value === nextState.selectedValue)) {
+            if (!this._findItem(nextState.selectedValue)) {
                 this._state.replace({
                     ...nextState,
                     selectedValue: null,
@@ -651,10 +680,96 @@ export class Dropdown {
         if (this._onDocumentClick) {
             document.removeEventListener('click', this._onDocumentClick);
         }
+        if (this._onViewportChange) {
+            window.removeEventListener('resize', this._onViewportChange);
+            window.removeEventListener('scroll', this._onViewportChange, true);
+        }
         if (this.element?.parentNode) {
             this.element.remove();
         }
     }
+
+    /**
+     * 選項清單浮到最上層:打開時留在元件內(維持 DOM 契約),但改用 position:fixed 依選擇器
+     * 座標定位,所以不受欄位寬度與上層容器 overflow/高度裁切、也不必調整上層元件高度;
+     * 最小等於選擇器寬、依內容加寬(最多 560px 或視窗寬),視窗下方空間不足時翻到選擇器上方。
+     * 若某個上層有 transform/filter(Modal、Drawer),fixed 的參考框是該元素,座標依其位置補償。
+     */
+    _portalMenu(open) {
+        const menu = this.menu;
+        if (!menu) return;
+        if (open) {
+            menu.dataset.floating = 'fixed';
+        } else {
+            delete menu.dataset.floating;
+            delete menu.dataset.placement;
+            menu.style.position = 'absolute';
+            menu.style.top = '100%';
+            menu.style.left = '0';
+            menu.style.right = '0';
+            menu.style.bottom = 'auto';
+            menu.style.width = '';
+            menu.style.minWidth = '';
+            menu.style.maxWidth = '';
+            menu.style.marginTop = '4px';
+            menu.style.zIndex = '1000';
+        }
+    }
+
+    _fixedContainingBlockOffset() {
+        let ancestor = this.container?.parentElement;
+        while (ancestor && ancestor !== document.body && ancestor !== document.documentElement) {
+            const style = window.getComputedStyle(ancestor);
+            const createsBlock = (style.transform && style.transform !== 'none')
+                || (style.perspective && style.perspective !== 'none')
+                || (style.filter && style.filter !== 'none')
+                || /transform|perspective|filter/.test(style.willChange || '')
+                || /paint|layout|strict|content/.test(style.contain || '');
+            if (createsBlock) {
+                const rect = ancestor.getBoundingClientRect();
+                return {
+                    top: rect.top + (parseFloat(style.borderTopWidth) || 0),
+                    left: rect.left + (parseFloat(style.borderLeftWidth) || 0),
+                };
+            }
+            ancestor = ancestor.parentElement;
+        }
+        return { top: 0, left: 0 };
+    }
+
+    _positionMenu() {
+        const menu = this.menu;
+        const anchor = this.selector;
+        if (!menu || !anchor || !this.snapshot().open) return;
+        const margin = 4;
+        const viewportTop = 8;
+        const viewportBottom = Math.max(viewportTop, window.innerHeight - 8);
+        const viewportRight = Math.max(0, window.innerWidth - 8);
+        const anchorRect = anchor.getBoundingClientRect();
+
+        menu.style.position = 'fixed';
+        menu.style.right = 'auto';
+        menu.style.bottom = 'auto';
+        menu.style.marginTop = '0';
+        menu.style.zIndex = '10050';
+        menu.style.width = 'max-content';
+        menu.style.minWidth = `${Math.round(anchorRect.width)}px`;
+        menu.style.maxWidth = `${Math.max(120, Math.min(560, viewportRight - 8))}px`;
+
+        const rect = menu.getBoundingClientRect();
+        const height = rect.height || menu.scrollHeight || 0;
+        const width = rect.width || menu.scrollWidth || anchorRect.width;
+        const spaceBelow = viewportBottom - anchorRect.bottom - margin;
+        const spaceAbove = anchorRect.top - viewportTop - margin;
+        const placeAbove = height > spaceBelow && spaceAbove > spaceBelow;
+        const top = placeAbove ? Math.max(viewportTop, anchorRect.top - margin - height) : anchorRect.bottom + margin;
+        const left = Math.max(8, Math.min(anchorRect.left, viewportRight - width));
+        const offset = this._fixedContainingBlockOffset();
+        menu.style.top = `${Math.round(top - offset.top)}px`;
+        menu.style.left = `${Math.round(left - offset.left)}px`;
+        menu.dataset.placement = placeAbove ? 'top' : 'bottom';
+    }
+
 }
 
 export default Dropdown;

@@ -286,10 +286,12 @@ export class ModalPanel extends BasePanel {
             document.body.style.overflow = '';
         }
 
-        // 不可將 this.backdrop 置 null:mount()/_applyVisibility() 仍會讀取
         if (this.backdrop?.parentNode) {
             this.backdrop.remove();
         }
+        // 銷毀後 backdrop 為 null（既有公開契約，呼叫端以此判斷面板已拆除）。
+        // mount() 已由 _destroyed 擋下，_applyVisibility() 對 null backdrop 會改走 BasePanel 路徑。
+        this.backdrop = null;
     }
 
     static confirm(options = {}) {

@@ -72,6 +72,19 @@ export class Link {
         }
     }
 
+    static _browserHref(href, scope, documentRef = globalThis.document) {
+        if (scope !== Link.SCOPES.EXTERNAL || !String(href).startsWith('#/')) return href;
+        const rawPathBase = documentRef
+            ?.querySelector?.('meta[name="app-path-base"]')
+            ?.getAttribute?.('content')
+            ?.trim();
+        if (!rawPathBase) return href;
+        const pathBase = rawPathBase === '/'
+            ? ''
+            : '/' + rawPathBase.replace(/^\/+|\/+$/g, '');
+        return `${pathBase}${String(href).slice(1)}`;
+    }
+
     // CSP 合規:樣式全走元素層 CSSOM(style.cssText),不注入 <style>。
     _composeCssText(content, visibility) {
         const decl = [
@@ -107,8 +120,9 @@ export class Link {
         this.element.textContent = content.text;
 
         const safe = content.scope === Link.SCOPES.NONE ? '' : Link._sanitizeHref(content.href);
+        const browserHref = Link._browserHref(safe, content.scope);
         if (safe && !content.disabled) {
-            this.element.setAttribute('href', safe);
+            this.element.setAttribute('href', browserHref);
             if (content.scope === Link.SCOPES.EXTERNAL) {
                 this.element.setAttribute('target', '_blank');
                 this.element.setAttribute('rel', 'noopener noreferrer');

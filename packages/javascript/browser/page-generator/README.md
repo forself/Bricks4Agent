@@ -457,6 +457,20 @@ const detail = new DynamicDetailRenderer(options);
 | `student` | 學生/非學生 + 學校名 |
 | `chained` / `list` | 編號列表 |
 
+**子表格（`detail.subtables`）：** 每個子表格以 DataTable 呈現，資料依 `data.subtables[id]`、`data.detailSubtables[id]`、`data[id]` 或 `source` 路徑取得。
+
+| 設定 | 說明 |
+|---|---|
+| `fields[].hidden` | `true` 時該欄不顯示 |
+| `fields[].width` | 欄寬 |
+| `fields[].link.route` | 連結樣板，例如 `'#/items/{row.id}'`；`{row.x}` 與 `{x}` 都取自該列。任一佔位值為空、`null` 或 `'0'` 時該格改顯示純文字 |
+| `fields[].link.target` | 預設另開視窗；設 `'_self'` 在原頁開啟 |
+| `table.titleTemplate` | 表格標題，`{count}` 會換成列數 |
+| `table.pagination`、`table.pageSize`、`table.rowsPerPageOptions` | 分頁設定，預設不分頁 |
+| `table.search` | `true` 時顯示 DataTable 快速篩選 |
+
+子表格資料載入失敗時，把錯誤訊息放在 `data.subtableErrors[子表格 id]`，該子表格會改顯示 `role="alert"` 的錯誤訊息而不是空表。
+
 ---
 
 ### DynamicListRenderer
@@ -490,6 +504,8 @@ await list.init();
 **欄位定義中的列表相關屬性：**
 - `isSearchable: true` — 欄位出現在搜尋區
 - `listOrder: number` — 欄位在表格中的排序（> 0 才顯示）
+
+**快速篩選：** 宣告式列表（query 定義）的結果表預設開啟 DataTable 快速篩選，只篩選目前已載入的結果；在定義的 `table.search` 設 `false` 可關閉。動作欄位不列入比對。篩選框文字可用 `table.textLabels.search` 的 `placeholder`、`resultCount`（`{count}`、`{total}`）、`buttonLabel` 覆寫。
 
 **lookup 標籤快取：** 具 `lookup` / `optionsSource` / `options` 的欄位，其 value → label 索引會依欄位定義物件快取，同一欄的所有列共用同一份索引，不再逐格重建。快取在 `setData()` 與 `destroy()` 時整批清除；渲染期間若欄位的 `options`（或 endpoint 來源的共用清單）被換成另一個陣列或長度改變，也會就地重建。因此執行期就地改寫欄位選項後，最遲在下次 `setData()` 會反映。
 

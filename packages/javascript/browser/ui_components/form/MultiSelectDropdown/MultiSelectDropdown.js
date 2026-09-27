@@ -202,7 +202,11 @@ export class MultiSelectDropdown {
         });
         this._input.addEventListener('keydown', (event) => this._handleKeydown(event));
         this._boundHandleOutsideClick = (event) => {
-            if (!this._container.contains(event.target)) this.close();
+            // 清單展開時以 fixed 定位浮出；點在清單內不算外部點擊。
+            if (!this._container.contains(event.target) && !this._menu?.contains(event.target)) this.close();
+        };
+        this._onViewportChange = () => {
+            if (this.snapshot().open) this._positionMenu();
         };
         this._globalListenersAttached = false;
         this._expandBtn.addEventListener('click', (event) => {
@@ -217,12 +221,20 @@ export class MultiSelectDropdown {
         });
     }
 
-    // 全域 click 監聽只在選單展開期間掛載;開啟點擊 dispatch 中同步掛上(contains 守衛使其對本次點擊 no-op)
+    // 全域監聽只在選單展開期間掛載;開啟點擊 dispatch 中同步掛上(contains 守衛使其對本次點擊 no-op)。
+    // 視窗縮放與捲動時重新定位浮出的清單。
     _syncGlobalListeners(open) {
         if (open === this._globalListenersAttached) return;
         this._globalListenersAttached = open;
-        if (open) document.addEventListener('click', this._boundHandleOutsideClick);
-        else document.removeEventListener('click', this._boundHandleOutsideClick);
+        if (open) {
+            document.addEventListener('click', this._boundHandleOutsideClick);
+            window.addEventListener('resize', this._onViewportChange);
+            window.addEventListener('scroll', this._onViewportChange, true);
+        } else {
+            document.removeEventListener('click', this._boundHandleOutsideClick);
+            window.removeEventListener('resize', this._onViewportChange);
+            window.removeEventListener('scroll', this._onViewportChange, true);
+        }
     }
 
     _syncLegacyFields(state) {
@@ -303,7 +315,7 @@ export class MultiSelectDropdown {
             }
             const label = document.createElement('span');
             label.textContent = item.label;
-            label.style.cssText = 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+            label.style.cssText = 'flex:1;white-space:nowrap;';
             option.appendChild(checkbox);
             option.appendChild(label);
             if (!isItemDisabled) {
@@ -337,10 +349,12 @@ export class MultiSelectDropdown {
         this._expandBtn.style.cursor = state.availability === 'disabled' ? 'not-allowed' : 'pointer';
         this._expandBtn.style.opacity = state.availability === 'disabled' ? '0.5' : '1';
         this._arrow.style.transform = state.open ? 'rotate(180deg)' : 'rotate(0deg)';
+        this._portalMenu(state.open);
         this._menu.style.display = state.open ? 'block' : 'none';
         this._syncGlobalListeners(state.open);
         this._renderTags();
         this._renderMenuItems();
+        if (state.open) this._positionMenu();
     }
 
     _fireChange(values = this.getValues()) {
@@ -625,8 +639,94 @@ export class MultiSelectDropdown {
         this._menuIcons = [];
         this._destroyModal();
         document.removeEventListener('click', this._boundHandleOutsideClick);
+        if (this._onViewportChange) {
+            window.removeEventListener('resize', this._onViewportChange);
+            window.removeEventListener('scroll', this._onViewportChange, true);
+        }
         if (this.element?.parentNode) this.element.remove();
     }
+
+    /**
+     * 選項清單浮到最上層:打開時留在元件內(維持 DOM 契約),但改用 position:fixed 依選擇器
+     * 座標定位,所以不受欄位寬度與上層容器 overflow/高度裁切、也不必調整上層元件高度;
+     * 最小等於選擇器寬、依內容加寬(最多 560px 或視窗寬),視窗下方空間不足時翻到選擇器上方。
+     * 若某個上層有 transform/filter(Modal、Drawer),fixed 的參考框是該元素,座標依其位置補償。
+     */
+    _portalMenu(open) {
+        const menu = this._menu;
+        if (!menu) return;
+        if (open) {
+            menu.dataset.floating = 'fixed';
+        } else {
+            delete menu.dataset.floating;
+            delete menu.dataset.placement;
+            menu.style.position = 'absolute';
+            menu.style.top = '100%';
+            menu.style.left = '0';
+            menu.style.right = '0';
+            menu.style.bottom = 'auto';
+            menu.style.width = '';
+            menu.style.minWidth = '';
+            menu.style.maxWidth = '';
+            menu.style.marginTop = '4px';
+            menu.style.zIndex = '1000';
+        }
+    }
+
+    _fixedContainingBlockOffset() {
+        let ancestor = this._container?.parentElement;
+        while (ancestor && ancestor !== document.body && ancestor !== document.documentElement) {
+            const style = window.getComputedStyle(ancestor);
+            const createsBlock = (style.transform && style.transform !== 'none')
+                || (style.perspective && style.perspective !== 'none')
+                || (style.filter && style.filter !== 'none')
+                || /transform|perspective|filter/.test(style.willChange || '')
+                || /paint|layout|strict|content/.test(style.contain || '');
+            if (createsBlock) {
+                const rect = ancestor.getBoundingClientRect();
+                return {
+                    top: rect.top + (parseFloat(style.borderTopWidth) || 0),
+                    left: rect.left + (parseFloat(style.borderLeftWidth) || 0),
+                };
+            }
+            ancestor = ancestor.parentElement;
+        }
+        return { top: 0, left: 0 };
+    }
+
+    _positionMenu() {
+        const menu = this._menu;
+        const anchor = this._selector;
+        if (!menu || !anchor || !this.snapshot().open) return;
+        const margin = 4;
+        const viewportTop = 8;
+        const viewportBottom = Math.max(viewportTop, window.innerHeight - 8);
+        const viewportRight = Math.max(0, window.innerWidth - 8);
+        const anchorRect = anchor.getBoundingClientRect();
+
+        menu.style.position = 'fixed';
+        menu.style.right = 'auto';
+        menu.style.bottom = 'auto';
+        menu.style.marginTop = '0';
+        menu.style.zIndex = '10050';
+        menu.style.width = 'max-content';
+        menu.style.minWidth = `${Math.round(anchorRect.width)}px`;
+        menu.style.maxWidth = `${Math.max(120, Math.min(560, viewportRight - 8))}px`;
+
+        const rect = menu.getBoundingClientRect();
+        const height = rect.height || menu.scrollHeight || 0;
+        const width = rect.width || menu.scrollWidth || anchorRect.width;
+        const spaceBelow = viewportBottom - anchorRect.bottom - margin;
+        const spaceAbove = anchorRect.top - viewportTop - margin;
+        const placeAbove = height > spaceBelow && spaceAbove > spaceBelow;
+        const top = placeAbove ? Math.max(viewportTop, anchorRect.top - margin - height) : anchorRect.bottom + margin;
+        const left = Math.max(8, Math.min(anchorRect.left, viewportRight - width));
+        const offset = this._fixedContainingBlockOffset();
+        menu.style.top = `${Math.round(top - offset.top)}px`;
+        menu.style.left = `${Math.round(left - offset.left)}px`;
+        menu.dataset.placement = placeAbove ? 'top' : 'bottom';
+    }
+
 }
 
 export default MultiSelectDropdown;

@@ -93,6 +93,61 @@
 
 .b4a-dt__title { font-weight: bold; }
 
+.b4a-dt__toolbar-actions,
+.b4a-dt__quick-search {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.b4a-dt__quick-search-input {
+    width: min(280px, 42vw);
+    min-width: 160px;
+    padding: 7px 10px;
+    border: 1px solid var(--cl-border-dark);
+    border-radius: var(--cl-radius-sm);
+    background: var(--cl-bg);
+    color: var(--cl-text);
+    font: inherit;
+}
+
+.b4a-dt__quick-search-input:focus {
+    border-color: var(--cl-primary);
+    outline: 2px solid var(--cl-primary-light);
+    outline-offset: 1px;
+}
+
+.b4a-dt__quick-search-submit {
+    min-width: 36px;
+    min-height: 36px;
+    padding: 6px 9px;
+    border: 1px solid var(--cl-primary);
+    border-radius: var(--cl-radius-sm);
+    background: var(--cl-primary);
+    color: var(--cl-text-inverse);
+    cursor: pointer;
+    font: inherit;
+}
+
+.b4a-dt__quick-search-submit:hover,
+.b4a-dt__quick-search-submit:focus-visible {
+    background: var(--cl-primary-dark);
+    border-color: var(--cl-primary-dark);
+}
+
+.b4a-dt__quick-search-submit:focus-visible {
+    outline: 2px solid var(--cl-primary-light);
+    outline-offset: 1px;
+}
+
+.b4a-dt__quick-search-count {
+    color: var(--cl-text-secondary);
+    font-size: var(--cl-font-size-sm);
+    white-space: nowrap;
+}
+
 /* ── 分頁 ── */
 .b4a-dt__pagination {
     display: flex;

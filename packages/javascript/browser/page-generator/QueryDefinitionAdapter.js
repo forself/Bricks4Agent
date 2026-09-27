@@ -348,7 +348,9 @@ export function buildActionRequest(definition, actionOrId, options = {}) {
     const resolvedPayload = resolvePayloadTemplate(payloadTemplate, context);
     const payload = { ...(resolvedDefaults || {}) };
     for (const [key, value] of Object.entries(resolvedPayload || {})) {
-        if (!isEmptyValue(value)) payload[key] = value;
+        // 空值只在該鍵已有預設值時略過（保留 payloadDefaults）；沒有預設值的鍵照樣板輸出，
+        // 例如介面契約要求欄位存在的明確 null。
+        if (!isEmptyValue(value) || !Object.prototype.hasOwnProperty.call(payload, key)) payload[key] = value;
     }
 
     return {
@@ -378,6 +380,9 @@ export function normalizeTableTextLabels(table = {}) {
     const displayRows = labels.displayRows ?? labels.pagination?.displayRows;
     const noMatch = labels.noMatch ?? labels.body?.noMatch;
     const selectedUnit = labels.selectedUnit ?? labels.selectedRows?.text;
+    const searchPlaceholder = labels.search?.placeholder;
+    const searchResultCount = labels.search?.resultCount;
+    const searchButtonLabel = labels.search?.buttonLabel;
 
     if (rowsPerPage !== undefined || displayRows !== undefined) {
         result.pagination = {};
@@ -386,6 +391,12 @@ export function normalizeTableTextLabels(table = {}) {
     }
     if (noMatch !== undefined) result.body = { noMatch };
     if (selectedUnit !== undefined) result.selectedRows = { text: selectedUnit };
+    if (searchPlaceholder !== undefined || searchResultCount !== undefined || searchButtonLabel !== undefined) {
+        result.search = {};
+        if (searchPlaceholder !== undefined) result.search.placeholder = searchPlaceholder;
+        if (searchResultCount !== undefined) result.search.resultCount = searchResultCount;
+        if (searchButtonLabel !== undefined) result.search.buttonLabel = searchButtonLabel;
+    }
 
     return result;
 }

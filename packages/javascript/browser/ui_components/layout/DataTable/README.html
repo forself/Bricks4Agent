@@ -117,10 +117,16 @@ new DataTable(containerElement, config)
 <td>初始排序 <code>{name, direction}</code></td>
 </tr>
 <tr>
+<td><code>config.search</code></td>
+<td><code>boolean</code></td>
+<td><code>false</code></td>
+<td>設為 <code>true</code> 在工具列顯示快速篩選，只篩選目前已載入的資料列，詳見下方「快速篩選」</td>
+</tr>
+<tr>
 <td><code>config.options</code></td>
 <td><code>Object</code></td>
 <td><code>{}</code></td>
-<td>進階設定：<code>textLabels</code>、<code>customToolbar</code>、<code>customToolbarSelect</code>、<code>rowsPerPageOptions</code>、<code>onRender(element, dt)</code>、<code>onRowSelectionChange(_, allSelected, selectedIndices)</code></td>
+<td>進階設定：<code>textLabels</code>（含 <code>search.placeholder</code>、<code>search.resultCount</code>、<code>search.buttonLabel</code>）、<code>customToolbar</code>、<code>customToolbarSelect</code>、<code>rowsPerPageOptions</code>、<code>onRender(element, dt)</code>、<code>onRowSelectionChange(_, allSelected, selectedIndices)</code></td>
 </tr>
 </tbody>
 </table>
@@ -160,6 +166,26 @@ new DataTable(containerElement, config)
 <td>重新渲染表格至 container</td>
 </tr>
 <tr>
+<td><code>getSearchText()</code></td>
+<td><code>string</code></td>
+<td>目前套用中的快速篩選文字</td>
+</tr>
+<tr>
+<td><code>getSearchDraft()</code></td>
+<td><code>string</code></td>
+<td>篩選框內尚未套用的文字</td>
+</tr>
+<tr>
+<td><code>setSearchText(text)</code></td>
+<td><code>this</code></td>
+<td>設定並立即套用快速篩選，回到第一頁</td>
+</tr>
+<tr>
+<td><code>clearSearch()</code></td>
+<td><code>this</code></td>
+<td>清除快速篩選</td>
+</tr>
+<tr>
 <td><code>mount(container)</code></td>
 <td><code>this</code></td>
 <td>掛載至容器（CSS 選擇器或 DOM 元素）</td>
@@ -197,6 +223,25 @@ new DataTable(containerElement, config)
 </li>
 </ul>
 <p>排序結果在單次渲染流程內共用（工具列、事件綁定重複取用時免重算），流程結束即清除；渲染流程外的呼叫維持即時重算。</p>
+<h3>快速篩選</h3>
+<p><code>search: true</code> 時工具列會出現篩選框、套用按鈕與「顯示 N / 共 M 筆」計數。規則如下：</p>
+<ul>
+<li>
+<p>只比對目前已載入的資料，不會發出查詢；伺服器端查詢請改用 SearchForm。</p>
+</li>
+<li>
+<p>比對的是儲存格實際顯示的文字：<code>render</code>、<code>customBodyRender</code> 的結果與 <code>raw()</code> 內容的可見文字都納入；比對前做 NFKC 正規化並忽略大小寫，所以全形、半形視為相同。</p>
+</li>
+<li>
+<p>欄位設 <code>searchable: false</code>、或是動作欄位，不列入比對。</p>
+</li>
+<li>
+<p>按 Enter 或套用按鈕才生效；中文輸入法組字期間的 Enter 不會觸發。</p>
+</li>
+<li>
+<p>篩選文字改變時會清除既有選取，表頭全選只涵蓋篩選後的資料列。</p>
+</li>
+</ul>
 <h3>具名匯出</h3>
 <ul>
 <li>

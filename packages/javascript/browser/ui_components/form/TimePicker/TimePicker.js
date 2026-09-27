@@ -432,9 +432,13 @@ export class TimePicker {
         this.inputWrapper.addEventListener('click', () => this.toggle());
 
         this._onDocumentClick = (event) => {
-            if (!this.container.contains(event.target)) {
+            // 面板展開時暫時掛在 document.body(浮出上層容器),點在面板內不算外部點擊。
+            if (!this.container.contains(event.target) && !this.panel?.contains(event.target)) {
                 this.close();
             }
+        };
+        this._onViewportChange = () => {
+            if (this.snapshot().open) this._positionPanel();
         };
         this._globalListenersAttached = false;
 
@@ -449,14 +453,19 @@ export class TimePicker {
         });
     }
 
-    // 全域 click 監聽只在面板展開期間掛載;開啟點擊 dispatch 中同步掛上(contains 守衛使其對本次點擊 no-op)
+    // 全域監聽只在面板展開期間掛載;開啟點擊 dispatch 中同步掛上(contains 守衛使其對本次點擊 no-op)。
+    // 視窗縮放與捲動時重新定位浮出的面板。
     _syncGlobalListeners(open) {
         if (open === this._globalListenersAttached) return;
         this._globalListenersAttached = open;
         if (open) {
             document.addEventListener('click', this._onDocumentClick);
+            window.addEventListener('resize', this._onViewportChange);
+            window.addEventListener('scroll', this._onViewportChange, true);
         } else {
             document.removeEventListener('click', this._onDocumentClick);
+            window.removeEventListener('resize', this._onViewportChange);
+            window.removeEventListener('scroll', this._onViewportChange, true);
         }
     }
 
@@ -502,7 +511,9 @@ export class TimePicker {
         }
 
         if (this.panel) {
+            this._portalPanel(state.open);
             this.panel.style.display = state.open ? 'block' : 'none';
+            if (state.open) this._positionPanel();
         }
 
         // destroy 後不得再掛回全域監聽（reducer 不檢查 lifecycle，這裡把關）
@@ -593,9 +604,61 @@ export class TimePicker {
         if (this._onDocumentClick) {
             document.removeEventListener('click', this._onDocumentClick);
         }
+        if (this._onViewportChange) {
+            window.removeEventListener('resize', this._onViewportChange);
+            window.removeEventListener('scroll', this._onViewportChange, true);
+        }
+        if (this.panel?.parentNode === document.body) this.panel.remove();
         if (this.element?.parentNode) {
             this.element.remove();
         }
+    }
+
+    /**
+     * 時間面板浮到最上層:打開時掛到 document.body 並以 position:fixed 依輸入框座標定位,
+     * 不受上層容器 overflow/高度裁切;空間不足時翻到輸入框上方。關閉時移回元件內。
+     */
+    _portalPanel(open) {
+        const panel = this.panel;
+        if (!panel || !this.container) return;
+        if (open) {
+            if (panel.parentNode !== document.body) document.body.appendChild(panel);
+            panel.dataset.portal = 'body';
+        } else if (panel.parentNode !== this.container) {
+            this.container.appendChild(panel);
+            delete panel.dataset.portal;
+            panel.style.position = 'absolute';
+            panel.style.top = '100%';
+            panel.style.left = '0';
+            panel.style.bottom = 'auto';
+            panel.style.marginTop = '4px';
+            panel.style.zIndex = '1000';
+        }
+    }
+
+    _positionPanel() {
+        if (!this.panel || !this.inputWrapper || !this.snapshot().open) return;
+        const panel = this.panel;
+        const margin = 4;
+        const viewportTop = 8;
+        const viewportBottom = Math.max(viewportTop, window.innerHeight - 8);
+        const viewportRight = Math.max(0, window.innerWidth - 8);
+        panel.style.position = 'fixed';
+        panel.style.marginTop = '0';
+        panel.style.bottom = 'auto';
+        panel.style.zIndex = '10050';
+        const inputRect = this.inputWrapper.getBoundingClientRect();
+        const rect = panel.getBoundingClientRect();
+        const height = rect.height || panel.scrollHeight || 0;
+        const width = rect.width || panel.scrollWidth || 0;
+        const spaceBelow = viewportBottom - inputRect.bottom - margin;
+        const spaceAbove = inputRect.top - viewportTop - margin;
+        const placeAbove = height > spaceBelow && spaceAbove > spaceBelow;
+        const top = placeAbove ? Math.max(viewportTop, inputRect.top - margin - height) : inputRect.bottom + margin;
+        const left = Math.max(8, Math.min(inputRect.left, viewportRight - width));
+        panel.style.top = `${Math.round(top)}px`;
+        panel.style.left = `${Math.round(left)}px`;
+        panel.dataset.placement = placeAbove ? 'top' : 'bottom';
     }
 }
 

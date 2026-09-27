@@ -1030,6 +1030,46 @@ await form.init();
 </tr>
 </tbody>
 </table>
+<p><strong>子表格（<code>detail.subtables</code>）：</strong> 每個子表格以 DataTable 呈現，資料依 <code>data.subtables[id]</code>、<code>data.detailSubtables[id]</code>、<code>data[id]</code> 或 <code>source</code> 路徑取得。</p>
+<table>
+<thead>
+<tr>
+<th>設定</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>fields[].hidden</code></td>
+<td><code>true</code> 時該欄不顯示</td>
+</tr>
+<tr>
+<td><code>fields[].width</code></td>
+<td>欄寬</td>
+</tr>
+<tr>
+<td><code>fields[].link.route</code></td>
+<td>連結樣板，例如 <code>'#/items/{row.id}'</code>；<code>{row.x}</code> 與 <code>{x}</code> 都取自該列。任一佔位值為空、<code>null</code> 或 <code>'0'</code> 時該格改顯示純文字</td>
+</tr>
+<tr>
+<td><code>fields[].link.target</code></td>
+<td>預設另開視窗；設 <code>'_self'</code> 在原頁開啟</td>
+</tr>
+<tr>
+<td><code>table.titleTemplate</code></td>
+<td>表格標題，<code>{count}</code> 會換成列數</td>
+</tr>
+<tr>
+<td><code>table.pagination</code>、<code>table.pageSize</code>、<code>table.rowsPerPageOptions</code></td>
+<td>分頁設定，預設不分頁</td>
+</tr>
+<tr>
+<td><code>table.search</code></td>
+<td><code>true</code> 時顯示 DataTable 快速篩選</td>
+</tr>
+</tbody>
+</table>
+<p>子表格資料載入失敗時，把錯誤訊息放在 <code>data.subtableErrors[子表格 id]</code>，該子表格會改顯示 <code>role="alert"</code> 的錯誤訊息而不是空表。</p>
 <hr>
 <h3>DynamicListRenderer</h3>
 <p>動態列表渲染器。從頁面定義 JSON 組合 SearchForm + DataTable + Pagination 三件元件。</p>
@@ -1119,6 +1159,7 @@ await list.init();
 <p><strong>欄位定義中的列表相關屬性：</strong>
 - <code>isSearchable: true</code> — 欄位出現在搜尋區
 - <code>listOrder: number</code> — 欄位在表格中的排序（&gt; 0 才顯示）</p>
+<p><strong>快速篩選：</strong> 宣告式列表（query 定義）的結果表預設開啟 DataTable 快速篩選，只篩選目前已載入的結果；在定義的 <code>table.search</code> 設 <code>false</code> 可關閉。動作欄位不列入比對。篩選框文字可用 <code>table.textLabels.search</code> 的 <code>placeholder</code>、<code>resultCount</code>（<code>{count}</code>、<code>{total}</code>）、<code>buttonLabel</code> 覆寫。</p>
 <p><strong>lookup 標籤快取：</strong> 具 <code>lookup</code> / <code>optionsSource</code> / <code>options</code> 的欄位，其 value → label 索引會依欄位定義物件快取，同一欄的所有列共用同一份索引，不再逐格重建。快取在 <code>setData()</code> 與 <code>destroy()</code> 時整批清除；渲染期間若欄位的 <code>options</code>（或 endpoint 來源的共用清單）被換成另一個陣列或長度改變，也會就地重建。因此執行期就地改寫欄位選項後，最遲在下次 <code>setData()</code> 會反映。</p>
 <p><strong>漸進補水：</strong> 子類或專案整合層若要載入選項主檔、次要摘要或自動查詢，應在 <code>init()</code> 內呼叫 <code>deferHydration()</code>，不得自行建立 <code>setTimeout</code> 或在 <code>init()</code> 阻塞首屏。B4A 會等 <code>mount()</code> 完成後再於下一個 browser task 執行；路由切換呼叫 <code>destroy()</code> 時會取消尚未開始的工作並中止 <code>signal</code>。<code>task</code> 應在可中止的 fetch 上使用收到的 <code>AbortSignal</code>。</p>
 <hr>

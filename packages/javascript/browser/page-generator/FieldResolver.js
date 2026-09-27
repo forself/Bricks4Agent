@@ -312,14 +312,13 @@ export class FieldResolver {
         const opts = {
             label: '',
             placeholder: def.placeholder || '',
-            rows: Number(def.rows || def.componentOptions?.rows || 4),
+            // 高度是 TextArea 的共通行為(預設 5 行 + 捲軸 + 切換鈕);定義檔明示 rows 才覆寫。
+            ...(Number(def.rows || def.componentOptions?.rows) > 0 ? { rows: Number(def.rows || def.componentOptions?.rows) } : {}),
             required: def.isRequired,
             disabled: def.isReadonly,
             readonly: def.isReadonly,
         };
         if (def.validation && def.validation.maxLength != null) opts.maxLength = def.validation.maxLength;
-        const maxLength = Number(def.validation?.maxLength ?? def.maxLength);
-        opts.autoResize = !Number.isFinite(maxLength) || maxLength > 200;
         if (def.defaultValue != null) opts.value = String(def.defaultValue);
         return new TextArea(opts);
     }

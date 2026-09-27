@@ -75,7 +75,10 @@ describe('Icon', () => {
 describe('Link', () => {
     let container;
     beforeEach(() => { container = document.createElement('div'); document.body.appendChild(container); });
-    afterEach(() => { container.remove(); });
+    afterEach(() => {
+        container.remove();
+        document.querySelectorAll('meta[name="app-path-base"]').forEach(node => node.remove());
+    });
 
     it('internal 安全 href 照常設定', () => {
         const l = new Link({ text: 'go', href: '/about', scope: 'internal' }).mount(container);
@@ -87,6 +90,21 @@ describe('Link', () => {
         const a = container.querySelector('a.cl-link');
         expect(a.getAttribute('target')).toBe('_blank');
         expect(a.getAttribute('rel')).toBe('noopener noreferrer');
+    });
+
+    it('history mode 外開 hash route 會加上部署 PathBase', () => {
+        const meta = document.createElement('meta');
+        meta.name = 'app-path-base';
+        meta.content = '/web';
+        document.head.appendChild(meta);
+        const link = new Link({ text: '項目', href: '#/items/8', scope: 'external' }).mount(container);
+        expect(link.getHref()).toBe('/web/items/8');
+        expect(link.element.getAttribute('target')).toBe('_blank');
+    });
+
+    it('沒有 PathBase meta 時外開 hash route 保留開發模式', () => {
+        const link = new Link({ text: '項目', href: '#/items/8', scope: 'external' }).mount(container);
+        expect(link.getHref()).toBe('#/items/8');
     });
 
     it('scope=none 無 href(純文字)', () => {

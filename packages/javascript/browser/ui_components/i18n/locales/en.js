@@ -253,11 +253,18 @@ export default {
     // ===== layout/ =====
 
     /** DataTable */
+    textArea: {
+        sizingFixedTitle: 'Fixed at {rows} rows with a scrollbar; click to grow with content',
+        sizingAutoTitle: 'Grows with content beyond {rows} rows; click to return to {rows} fixed rows',
+    },
     dataTable: {
         rowsPerPage: 'Rows per page:',
         displayRows: 'Total',
         noMatch: 'No matching records',
         selectedUnit: 'rows',
+        searchPlaceholder: 'Filter loaded results',
+        searchResultCount: 'Showing {count} of {total}',
+        searchButtonLabel: 'Apply filter',
         firstPage: 'First Page',
         prevPage: 'Previous',
         nextPage: 'Next',

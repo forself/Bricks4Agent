@@ -11,7 +11,7 @@
 import Locale from '../ui_components/i18n/index.js';
 import { sanitizeHTML, sanitizeUrl } from '../ui_components/utils/security.js';
 import { BasicButton } from '../ui_components/common/BasicButton/BasicButton.js';
-import { DataTable } from '../ui_components/layout/DataTable/DataTable.js';
+import { DataTable, linkCell } from '../ui_components/layout/DataTable/DataTable.js';
 import { DrawerPanel } from '../ui_components/layout/Panel/DrawerPanel.js';
 
 function isObject(value) {
@@ -588,22 +588,62 @@ export class DynamicDetailRenderer {
 
         section.appendChild(this._createSectionTitle(subtable.title || subtable.id || this._label('subtable')));
 
+        const loadError = this.options.data?.subtableErrors?.[subtable.id];
+        if (loadError) {
+            const alert = document.createElement('div');
+            alert.className = 'dynamic-detail__subtable-error';
+            alert.dataset.subtableError = subtable.id || '';
+            alert.setAttribute('role', 'alert');
+            alert.style.cssText = 'padding:12px;border:1px solid var(--cl-danger);border-radius:var(--cl-radius-md);color:var(--cl-danger);background:var(--cl-bg);';
+            alert.textContent = String(loadError);
+            section.appendChild(alert);
+            return section;
+        }
+
         const tableWrap = document.createElement('div');
         tableWrap.className = 'dynamic-detail__subtable-wrap';
         tableWrap.style.cssText = 'overflow:auto;border:1px solid var(--cl-border-light);border-radius:var(--cl-radius-md);background:var(--cl-bg);';
         const rows = this._resolveSubtableRows(subtable);
         const fields = subtable.fields || [];
+        const visibleFields = fields.filter(field => field?.hidden !== true);
+        const renderFieldValue = (row, field) => {
+            const text = this._stringifyValue(this._resolvePath(row, field.source)) || this._emptyText();
+            const link = field?.link;
+            const template = String(link?.route || link?.to || '').trim();
+            if (!template) return text;
+            let unresolved = false;
+            const href = template.replace(/\{([A-Za-z0-9_.-]+)\}/g, (_match, token) => {
+                const path = token.startsWith('row.') ? token.slice(4) : token;
+                const value = this._resolvePath(row, path);
+                if (value === undefined || value === null || String(value).trim() === '' || String(value) === '0') {
+                    unresolved = true;
+                    return '';
+                }
+                return encodeURIComponent(String(value));
+            });
+            if (unresolved) return text;
+            return linkCell(text, href, { external: link.target !== '_self' });
+        };
         const data = rows.map(row => Object.fromEntries(fields.map((field, index) => [
             `field${index}`,
-            this._stringifyValue(this._resolvePath(row, field.source)) || this._emptyText(),
+            renderFieldValue(row, field),
         ])));
+        const tableDefinition = subtable.table || {};
+        const title = String(tableDefinition.titleTemplate || '').replaceAll('{count}', String(rows.length));
         const table = this._rememberControl(new DataTable(tableWrap, {
             columns: fields.map((field, index) => ({
                 key: `field${index}`,
                 title: field.label || field.source || '',
+                hidden: field.hidden === true,
+                width: field.width,
+                render: value => value,
             })),
             data,
-            pagination: false,
+            title,
+            pagination: tableDefinition.pagination === true,
+            pageSize: tableDefinition.pageSize,
+            rowsPerPageOptions: tableDefinition.rowsPerPageOptions,
+            search: tableDefinition.search === true,
             selectableRows: 'none',
             emptyText: this._label('emptyTable'),
             bordered: true,
@@ -611,12 +651,12 @@ export class DynamicDetailRenderer {
         table.element?.classList.add('dynamic-detail__subtable-table');
         tableWrap.querySelectorAll('thead th').forEach((header, index) => {
             header.classList.add('dynamic-detail__subtable-header');
-            header.dataset.fieldSource = fields[index]?.source || '';
+            header.dataset.fieldSource = visibleFields[index]?.source || '';
         });
         tableWrap.querySelectorAll('tbody tr').forEach(row => row.classList.add('dynamic-detail__subtable-row'));
         tableWrap.querySelectorAll('tbody tr').forEach(row => row.querySelectorAll('td').forEach((cell, index) => {
             cell.classList.add('dynamic-detail__subtable-cell');
-            cell.dataset.fieldSource = fields[index]?.source || '';
+            cell.dataset.fieldSource = visibleFields[index]?.source || '';
         }));
         section.appendChild(tableWrap);
         return section;

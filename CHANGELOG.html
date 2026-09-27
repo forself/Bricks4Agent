@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>變更紀錄</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>變更紀錄</h1>
+<p>本檔記錄 Bricks4Agent（B4A）對使用者可見的變更，依相容性分類：</p>
+<ul>
+<li><strong>新增</strong>：新的選項、方法或匯出，預設不改變既有行為。</li>
+<li><strong>預設行為變更</strong>：不改呼叫方式，但預設畫面或互動與前一版不同。</li>
+<li><strong>修正</strong>：缺陷修正；若修正會改變可觀察行為，會在條目中寫明。</li>
+</ul>
+<p>B4A 只收通用元件與通用能力；任何業務系統的專屬元件都不寫入 B4A。</p>
+<h2>未發行</h2>
+<h3>寫回 Tim2026 內嵌副本的通用改進（2026-09-27）</h3>
+<p>Tim2026 以 <code>packages/Bricks4Agent</code> 內嵌 B4A，並在正式環境中做了一批通用改進。本次把其中屬於通用能力的部分寫回 B4A，預設值對齊 Tim2026 正式環境的行為；Tim 專屬的業務內容不寫回。</p>
+<p><strong>新增</strong></p>
+<ul>
+<li>DataTable 快速篩選：<code>search: true</code> 時在工具列顯示篩選框，只篩選已載入的資料列。新增 <code>getSearchText()</code>、<code>getSearchDraft()</code>、<code>setSearchText()</code>、<code>clearSearch()</code>，欄位可設 <code>searchable: false</code>，文字可用 <code>options.textLabels.search</code> 覆寫。預設關閉。</li>
+<li>DynamicDetailRenderer 子表格：欄位支援 <code>hidden</code>、<code>width</code>、<code>link.route</code> 連結樣板與 <code>link.target</code>；表格支援 <code>titleTemplate</code>、<code>pagination</code>、<code>pageSize</code>、<code>rowsPerPageOptions</code>、<code>search</code>；資料中的 <code>subtableErrors[id]</code> 會以錯誤訊息取代空表。</li>
+<li>查詢定義的 <code>table.textLabels.search</code> 會傳給 DataTable 快速篩選。</li>
+<li>Link：頁面有 <code>&lt;meta name="app-path-base"&gt;</code> 時，外開的 hash 路由會補上部署路徑前綴；沒有該 meta 時行為不變。</li>
+<li>TextArea：新增 <code>sizing</code>、<code>sizingToggle</code>、<code>onSizingChange</code> 選項，<code>getSizing()</code>、<code>setSizing()</code> 方法，以及 <code>preferredTextAreaSizing()</code>、<code>TEXTAREA_SIZING_MODES</code>、<code>TEXTAREA_SIZING_STORAGE_KEY</code> 匯出。舊的 <code>autoResize: true</code> 等同 <code>sizing: 'auto'</code>。</li>
+</ul>
+<p><strong>預設行為變更</strong></p>
+<ul>
+<li>TextArea 預設改為固定 5 行並顯示捲軸，框內右下角有「固定／依內容加高」切換鈕，使用者的選擇記在瀏覽器儲存空間，成為之後 TextArea 的預設。預設 <code>resize</code> 由 <code>vertical</code> 改為 <code>none</code>。原本預設為 4 行、可拖拉。</li>
+<li>Dropdown、MultiSelectDropdown 的選項清單展開時改用固定定位浮在最上層，不再被上層容器裁切，寬度依內容加寬。清單仍留在元件的 DOM 內。</li>
+<li>DatePicker 的月曆、TimePicker 的時間面板展開時暫時移到 <code>document.body</code> 並以固定定位顯示，收合後移回元件內。</li>
+<li>Dropdown 的選項節點只在展開時建立，收合時釋放。</li>
+<li>Dropdown 的值比對改為字串相等，例如 <code>1</code> 與 <code>'1'</code> 視為同一個選項。</li>
+<li>宣告式列表（query 定義）的結果表預設開啟快速篩選；定義中設 <code>table.search: false</code> 可關閉。</li>
+<li>FieldResolver 產生的多行欄位不再依 <code>maxLength</code> 自動加高，一律由 TextArea 的共通行為決定；只有定義中明確指定 <code>rows</code> 時才傳入。</li>
+</ul>
+<p><strong>修正</strong></p>
+<ul>
+<li>ModalPanel：<code>destroy()</code> 之後 <code>backdrop</code> 重新回到 <code>null</code>，恢復既有公開契約；在 <code>onClose</code> 內銷毀面板也能完整拆除遮罩。</li>
+<li>TgosMap：瀏覽器取不到 2D Canvas 時改用 TGOS 預設標記，不再導致地圖初始化失敗。</li>
+<li>QueryDefinitionAdapter：酬載樣板中沒有預設值的明確 <code>null</code> 會保留；空的動態綁定仍不會覆蓋 <code>payloadDefaults</code>。這同時修正了 <code>npm test</code> 中原本失敗的查詢酬載測試。</li>
+<li>Dropdown、MultiSelectDropdown、DatePicker、TimePicker 的 document 點擊與視窗捲動、縮放監聽，只在展開期間掛載，元件數量多時不再常駐。</li>
+</ul>
+<p><strong>未寫回</strong></p>
+<ul>
+<li>Tim2026 版 TgosMap 以 SVG 圖片作為地圖標記，違反 B4A 禁用 SVG 的規則；保留 B4A 以 Canvas 繪製的標記。</li>
+<li>其餘差異經比對為格式或註解差異，程式行為與 B4A 相同，保留 B4A 版本。</li>
+</ul>
+<p><strong>相容性驗證</strong></p>
+<ul>
+<li>B4A：<code>npm test</code>、<code>audit-csp</code>、<code>audit-ui-style-rules</code>、<code>validate-ui-library</code>、<code>build-metadata --check</code> 全部通過。</li>
+<li>Tim2026：以本版本取代其內嵌副本，執行 Tim2026 的 2846 個單元與安全測試，結果與內嵌副本基準完全相同，沒有退步。</li>
+</ul>
+</main>
+</body>
+</html>

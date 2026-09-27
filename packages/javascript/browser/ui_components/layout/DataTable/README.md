@@ -27,7 +27,8 @@ new DataTable(containerElement, config)
 | `config.hoverable` | `boolean` | — | 目前無作用：值會被保存但不會被讀取，懸停效果一律依主題 CSS |
 | `config.selectableRows` | `string` | `'multiple'` | 行選取模式：`'multiple'` / `'single'` / `'none'`（也可放在 `config.options` 內） |
 | `config.sortOrder` | `Object` | `null` | 初始排序 `{name, direction}` |
-| `config.options` | `Object` | `{}` | 進階設定：`textLabels`、`customToolbar`、`customToolbarSelect`、`rowsPerPageOptions`、`onRender(element, dt)`、`onRowSelectionChange(_, allSelected, selectedIndices)` |
+| `config.search` | `boolean` | `false` | 設為 `true` 在工具列顯示快速篩選，只篩選目前已載入的資料列，詳見下方「快速篩選」 |
+| `config.options` | `Object` | `{}` | 進階設定：`textLabels`（含 `search.placeholder`、`search.resultCount`、`search.buttonLabel`）、`customToolbar`、`customToolbarSelect`、`rowsPerPageOptions`、`onRender(element, dt)`、`onRowSelectionChange(_, allSelected, selectedIndices)` |
 
 ### 方法
 
@@ -38,6 +39,10 @@ new DataTable(containerElement, config)
 | `getSelectedRows()` | `Array` | 取得已選取列的 dataIndex 陣列 |
 | `setSelectedRows(indices)` | `void` | 設定已選取列並重新渲染 |
 | `render()` | `void` | 重新渲染表格至 container |
+| `getSearchText()` | `string` | 目前套用中的快速篩選文字 |
+| `getSearchDraft()` | `string` | 篩選框內尚未套用的文字 |
+| `setSearchText(text)` | `this` | 設定並立即套用快速篩選，回到第一頁 |
+| `clearSearch()` | `this` | 清除快速篩選 |
 | `mount(container)` | `this` | 掛載至容器（CSS 選擇器或 DOM 元素） |
 | `destroy()` | `void` | 銷毀元件 |
 
@@ -60,6 +65,20 @@ new DataTable(containerElement, config)
 - 由程式呼叫 `setSelectedRows(indices)`
 
 排序結果在單次渲染流程內共用（工具列、事件綁定重複取用時免重算），流程結束即清除；渲染流程外的呼叫維持即時重算。
+
+### 快速篩選
+
+`search: true` 時工具列會出現篩選框、套用按鈕與「顯示 N / 共 M 筆」計數。規則如下：
+
+- 只比對目前已載入的資料，不會發出查詢；伺服器端查詢請改用 SearchForm。
+
+- 比對的是儲存格實際顯示的文字：`render`、`customBodyRender` 的結果與 `raw()` 內容的可見文字都納入；比對前做 NFKC 正規化並忽略大小寫，所以全形、半形視為相同。
+
+- 欄位設 `searchable: false`、或是動作欄位，不列入比對。
+
+- 按 Enter 或套用按鈕才生效；中文輸入法組字期間的 Enter 不會觸發。
+
+- 篩選文字改變時會清除既有選取，表頭全選只涵蓋篩選後的資料列。
 
 ### 具名匯出
 
