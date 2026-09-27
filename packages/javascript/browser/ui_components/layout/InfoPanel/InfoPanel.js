@@ -411,6 +411,12 @@ export class InfoPanel {
 
 // 導出供外部使用
 export default InfoPanel;
+// 舊版 CommonJS 相容：module.exports 可寫時照舊指定；ESM 命名空間唯讀（如 Vitest 注入的 module）
+// 時指定會拋錯，略過即可，ES 匯出已生效。
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = InfoPanel;
+    try {
+        module.exports = InfoPanel;
+    } catch {
+        // read-only ESM namespace: keep the ES exports
+    }
 }
