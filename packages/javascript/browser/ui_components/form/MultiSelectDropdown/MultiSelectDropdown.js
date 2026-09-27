@@ -135,7 +135,7 @@ export class MultiSelectDropdown {
         input.className = 'msd__input';
         input.type = 'text';
         input.placeholder = this.options.placeholder;
-        input.style.cssText = `border:none;outline:none;background:transparent;font-size:${ss.fontSize};min-width:60px;flex:1;cursor:text;`;
+        input.style.cssText = `border:none;outline:none;background:transparent;color:var(--cl-text);font-size:${ss.fontSize};min-width:60px;flex:1;cursor:text;`;
         tagsWrap.appendChild(input);
 
         const actions = document.createElement('div');

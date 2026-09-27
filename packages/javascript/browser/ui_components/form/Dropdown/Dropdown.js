@@ -201,6 +201,7 @@ export class Dropdown {
                 border: none;
                 outline: none;
                 font-size: ${sizeStyles.fontSize};
+                color: var(--cl-text);
                 background: transparent;
                 cursor: ${disabled ? 'not-allowed' : 'text'};
             `;
