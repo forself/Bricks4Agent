@@ -62,13 +62,15 @@ export function hasPathTraversalRisk(str) {
  * @returns {string} - 安全的 URL，若不安全則返回空字串
  */
 export function sanitizeUrl(url) {
-    if (!url) return '';
-    const lower = url.toLowerCase().trim();
-    // 禁止 javascript: 和 vbscript:
-    if (lower.startsWith('javascript:') || lower.startsWith('vbscript:')) {
-        return '';
-    }
-    return url;
+    if (typeof url !== 'string') return '';
+    // Browsers ignore ASCII tabs/newlines inside schemes. Validate the same
+    // normalized value that is returned, not just an unnormalised prefix.
+    const cleaned = url.replace(/[\x00-\x1f\u200b-\u200f\u2028-\u202f\ufeff]/g, '').trim();
+    if (!cleaned || /^[\\/]{2}/.test(cleaned)) return '';
+    if (/^[/#?]/.test(cleaned)) return cleaned;
+    const colon = cleaned.indexOf(':');
+    if (colon >= 0 && !['http:', 'https:', 'mailto:', 'tel:'].includes(cleaned.slice(0, colon + 1).toLowerCase())) return '';
+    return cleaned;
 }
 
 /**
@@ -78,7 +80,7 @@ export function sanitizeUrl(url) {
  */
 export function sanitizeHTML(html) {
     if (!html) return '';
-    if (globalThis.window === undefined || !globalThis.DOMParser) return html; // Non-browser safeguard
+    if (globalThis.window === undefined || !globalThis.DOMParser) return escapeHtml(String(html));
 
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
@@ -90,6 +92,11 @@ export function sanitizeHTML(html) {
         'blockquote', 'pre', 'code', 'font', 'table', 'thead', 'tbody', 'tr', 'th', 'td',
         'hr', 'strong', 'em'
     ]);
+    // Attribute allowlist: no event handlers, inline styles, srcdoc, srcset or
+    // other active attributes. Preserve template formatting and anchors.
+    const allowedAttrs = new Set(['class', 'id', 'title', 'href', 'src', 'alt', 'width', 'height', 'colspan', 'rowspan', 'span']);
+    const dropWithContent = new Set(['script', 'style', 'iframe', 'object', 'embed', 'link', 'meta', 'form', 'input', 'button', 'base', 'svg', 'math', 'template', 'noscript']);
+    const rasterData = /^data:image\/(png|jpe?g|gif|webp);base64,/i;
 
     // 遞迴清理
     function clean(node) {
@@ -106,7 +113,7 @@ export function sanitizeHTML(html) {
             // 移除危險標籤
             if (!allowedTags.has(tagName)) {
                 // 如果是 script/style/iframe，直接移除節點
-                if (['script', 'style', 'iframe', 'object', 'embed', 'link', 'meta'].includes(tagName)) {
+                if (dropWithContent.has(tagName)) {
                    node.remove();
                    return;
                 } else {
@@ -129,19 +136,17 @@ export function sanitizeHTML(html) {
             // 檢查屬性
             Array.from(node.attributes).forEach(attr => {
                 const name = attr.name.toLowerCase();
-                const value = attr.value.toLowerCase();
-
-                // 移除 Event Handlers (on*)
-                if (name.startsWith('on')) {
-                    node.removeAttribute(name);
+                if (!allowedAttrs.has(name)) {
+                    node.removeAttribute(attr.name);
+                    return;
                 }
                 
                 // 檢查 URL (href, src)
                 if (['href', 'src'].includes(name)) {
-                    // 禁止 javascript:
-                    if (value.trim().startsWith('javascript:') || value.trim().startsWith('vbscript:')) {
-                         node.removeAttribute(name);
-                    }
+                    if (name === 'src' && tagName === 'img' && rasterData.test(attr.value.trim())) return;
+                    const safe = sanitizeUrl(attr.value);
+                    if (safe) node.setAttribute(attr.name, safe);
+                    else node.removeAttribute(attr.name);
                 }
             });
         }

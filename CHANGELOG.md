@@ -10,6 +10,15 @@ B4A 只收通用元件與通用能力；任何業務系統的專屬元件都不�
 
 ## 未發行
 
+### 修正：SPA 範本清理器邊界（2026-09-29）
+
+- 保留 f905b2f 的「先清洗子節點再拆殼」修正；追加瀏覽器無 CSP 回歸，直接驗證清理器及 WebTextEditor 儲存／載入。
+- SPA 範本的 URL 檢查先移除控制字元，阻擋被 Tab／換行切開的危險協定、協定相對 URL 與非白名單協定。
+- 範本 HTML 改用屬性白名單，不再保留 inline style、srcset、ping、contenteditable 等主動屬性；圖片 data URL 僅保留點陣格式。無 DOMParser 時跳脫文字，不回傳原始 HTML。
+- 一般格式文字、表格與本機相對連結保留；這是安全性收斂，依賴上述移除屬性的消費端需調整。TIM 使用元件庫清理器與專案防護包裝，不使用 SPA 範本清理器。
+
+驗證入口：`npm --prefix packages/javascript/browser run test:vitest -- __tests__/security/SanitizeHtml.test.js`、`npm run test:sanitizer:browser`（需測試用 Playwright 與 Edge）。
+
 ### 新增：16 個通用元件與兩個工具（2026-09-27）
 
 新元件在 catalog 中標為 `beta`、`manual_only`，以手動 `new` 使用；字串由各元件資料夾內的 `locale.js` 自行註冊，提供 zh-TW 與 en。元件數由 116 增為 132。

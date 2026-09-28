@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { sanitizeHTML } from '../../ui_components/utils/security.js';
 import { sanitizeHTML as sanitizeTemplateHTML } from '../../../../../templates/spa/frontend/components/utils/security.js';
 
@@ -103,5 +103,33 @@ describe('SPA template sanitizeHTML', () => {
     it('keeps the text of unwrapped wrappers', () => {
         expect(sanitizeTemplateHTML('<section><p>hello</p></section>')).toBe('<p>hello</p>');
         expect(sanitizeTemplateHTML('<main><section><span onmouseover=1>deep</span></section></main>')).toBe('<span>deep</span>');
+    });
+});
+
+describe.each([
+    ['component library', sanitizeHTML],
+    ['SPA template', sanitizeTemplateHTML],
+])('%s sanitizer boundaries', (_name, sanitize) => {
+    it.each(['&#9;', '&#10;', '&#13;'])('rejects browser-normalized script URLs (%s)', (separator) => {
+        const output = parse(sanitize(`<section><a href="java${separator}script:alert(1)">link</a></section>`));
+        expect(output.querySelector('a').hasAttribute('href')).toBe(false);
+    });
+
+    it('rejects active attributes and non-raster data URLs', () => {
+        const output = parse(sanitize('<section><p style="color:red" contenteditable="true">text</p>'
+            + '<a href="data:text/html,active" ping="https://invalid.example">link</a>'
+            + '<img src="data:image/svg+xml;base64,PHN2Zz4=" srcset="https://invalid.example/x 1x"></section>'));
+        expect(output.querySelector('[style],[contenteditable],[ping],[srcset]')).toBeNull();
+        expect(output.querySelector('a').hasAttribute('href')).toBe(false);
+        expect(output.querySelector('img').hasAttribute('src')).toBe(false);
+    });
+
+    it('escapes markup when no DOM parser is available instead of failing open', () => {
+        vi.stubGlobal('DOMParser', undefined);
+        try {
+            expect(sanitize('<img src=x onerror=alert(1)>')).toBe('&lt;img src=x onerror=alert(1)&gt;');
+        } finally {
+            vi.unstubAllGlobals();
+        }
     });
 });

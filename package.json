@@ -46,6 +46,7 @@
     "audit:csp": "node tools/scripts/audit-csp.mjs",
     "test:audit-csp-hard-zero": "node tools/scripts/test-audit-csp-hard-zero.mjs",
     "test:spa-template:browser": "node tools/scripts/spa-template-smoke.mjs",
+    "test:sanitizer:browser": "node tools/scripts/sanitizer-browser-smoke.mjs",
     "verify:consumer-snapshots": "node tools/scripts/verify-consumer-snapshots.mjs",
     "custom-components:build": "node packages/javascript/browser/custom_components/build-registry.mjs",
     "custom-components:check": "node packages/javascript/browser/custom_components/build-registry.mjs --check",
