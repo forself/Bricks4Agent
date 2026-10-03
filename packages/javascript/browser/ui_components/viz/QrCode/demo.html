@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QrCode 與 Barcode Demo</title>
+    <link rel="stylesheet" href="../../theme.css">
+    <style>
+        body { font-family: var(--cl-font-family); padding: 24px; background: var(--cl-bg-secondary); color: var(--cl-text); }
+        .demo-section { background: var(--cl-bg); padding: 24px; border-radius: var(--cl-radius-lg); margin-bottom: 16px; box-shadow: var(--cl-shadow-sm); }
+        .demo-section h2 { margin-top: 0; color: var(--cl-text-secondary); font-size: var(--cl-font-size-xl); }
+        .demo-row { display: flex; gap: 24px; align-items: flex-start; flex-wrap: wrap; }
+        .demo-item { display: flex; flex-direction: column; gap: 8px; align-items: center; }
+        .demo-caption { font-size: var(--cl-font-size-sm); color: var(--cl-text-secondary); max-width: 240px; text-align: center; word-break: break-all; }
+        .demo-controls { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+        .demo-controls input { flex: 1 1 320px; padding: 6px 10px; border: 1px solid var(--cl-border); border-radius: var(--cl-radius-md); background: var(--cl-bg); color: var(--cl-text); }
+        .demo-controls button { padding: 6px 14px; border: 1px solid var(--cl-border); border-radius: var(--cl-radius-md); background: var(--cl-bg); color: var(--cl-text); cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>QrCode 與 Barcode</h1>
+
+    <div class="demo-section">
+        <h2>即時產生</h2>
+        <div class="demo-controls">
+            <input id="live-input" value="https://example.edu.tw/verify/7F3A9C21" aria-label="內容">
+            <button id="theme-toggle" type="button">切換深淺色</button>
+        </div>
+        <div class="demo-row">
+            <div class="demo-item"><div id="live-qr"></div><div class="demo-caption" id="live-qr-info"></div></div>
+            <div class="demo-item"><div id="live-128"></div><div class="demo-caption">Code 128</div></div>
+        </div>
+    </div>
+
+    <div class="demo-section">
+        <h2>QR Code：錯誤修正等級與中文</h2>
+        <div class="demo-row" id="qr-levels"></div>
+    </div>
+
+    <div class="demo-section">
+        <h2>一維條碼</h2>
+        <div class="demo-row" id="barcodes"></div>
+    </div>
+
+    <div class="demo-section">
+        <h2>錯誤狀態</h2>
+        <div class="demo-row" id="errors"></div>
+    </div>
+
+    <script type="module">
+        import { QrCode } from './index.js';
+        import { Barcode } from '../Barcode/index.js';
+
+        function item(host, component, caption) {
+            const wrap = document.createElement('div');
+            wrap.className = 'demo-item';
+            const slot = document.createElement('div');
+            wrap.appendChild(slot);
+            const label = document.createElement('div');
+            label.className = 'demo-caption';
+            label.textContent = caption;
+            wrap.appendChild(label);
+            host.appendChild(wrap);
+            component.mount(slot);
+            return component;
+        }
+
+        const input = document.getElementById('live-input');
+        const liveQr = new QrCode({ value: input.value, size: 200, ecLevel: 'M' }).mount(document.getElementById('live-qr'));
+        const live128 = new Barcode({ value: input.value, format: 'code128', moduleWidth: 1, height: 70 }).mount(document.getElementById('live-128'));
+        const info = document.getElementById('live-qr-info');
+
+        function refresh() {
+            liveQr.setValue(input.value);
+            live128.setValue(input.value);
+            const meta = liveQr.getInfo();
+            const err = liveQr.getError();
+            info.textContent = err ? err.message : meta ? `版本 ${meta.version}、等級 ${meta.ecLevel}、遮罩 ${meta.mask}、${meta.mode}` : '';
+        }
+        input.addEventListener('input', refresh);
+        refresh();
+
+        document.getElementById('theme-toggle').addEventListener('click', () => {
+            const root = document.documentElement;
+            root.setAttribute('data-theme', root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+        });
+
+        const levels = document.getElementById('qr-levels');
+        for (const ecLevel of ['L', 'M', 'Q', 'H']) {
+            item(levels, new QrCode({ value: '學分費繳費單 115 學年度第 1 學期', ecLevel, boostEcl: false, size: 150 }), `等級 ${ecLevel}`);
+        }
+
+        const barcodes = document.getElementById('barcodes');
+        item(barcodes, new Barcode({ value: '1150930ABC', format: 'code39', height: 60 }), 'Code 39（繳費單）');
+        item(barcodes, new Barcode({ value: 'S1141CS1001', format: 'code128', height: 60 }), 'Code 128');
+        item(barcodes, new Barcode({ value: '471986500000', format: 'ean13', height: 70 }), 'EAN-13（自動補檢查碼）');
+        item(barcodes, new Barcode({ value: '9638507', format: 'ean8', height: 70 }), 'EAN-8');
+
+        const errors = document.getElementById('errors');
+        item(errors, new QrCode({ value: '1'.repeat(8000), size: 150 }), '內容太長');
+        item(errors, new Barcode({ value: 'abc', format: 'code39', height: 60 }), 'Code 39 不支援小寫');
+        item(errors, new Barcode({ value: '4006381333932', format: 'ean13', height: 60 }), 'EAN-13 檢查碼錯誤');
+    </script>
+</body>
+</html>

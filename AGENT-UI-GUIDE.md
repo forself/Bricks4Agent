@@ -111,7 +111,7 @@ const dt = LazyComponentFactory.create('DataTable', { columns, data });
 
 ---
 
-## 3. 元件清單（132 個，權威來源＝catalog）
+## 3. 元件清單（134 個，權威來源＝catalog）
 
 `*` = `generator.usable=false`（`manual_only`：不能靠生成器欄位自動映射，需**手動組合**；仍可正常 `new` 使用）。
 
@@ -123,7 +123,7 @@ const dt = LazyComponentFactory.create('DataTable', { columns, data });
 
 - **input (11, 複合輸入)**：`AddressInput, AddressListInput, ChainedInput, DateTimeInput, ListInput, OrganizationInput, PersonInfoList, PhoneListInput, SocialMediaList, StudentInput` + 2026-09 新增:`DateTimeRangePicker*`
 
-- **viz (23)**：`BarChart*, CanvasMap*, ClusterGraph*, DrawingBoard, FlameChart*, HeatmapChart*, HierarchyChart*, LeafletMap*, LineChart*, MapEditor*, MapEditorV2*, OrgChart*, OSMMapEditor*, PieChart*, RelationChart*, RoseChart*, SankeyChart*, ScatterChart*, Sparkline*, SunburstChart*, TGOSMapEditor*, TimelineChart*, WebPainter`（全數 Canvas 渲染；共同基底 `viz/CanvasChart.js` 非目錄元件、不在 catalog。舊 SVG 基底 BaseChart 已刪除）
+- **viz (25)**：`BarChart*, CanvasMap*, ClusterGraph*, DrawingBoard, FlameChart*, HeatmapChart*, HierarchyChart*, LeafletMap*, LineChart*, MapEditor*, MapEditorV2*, OrgChart*, OSMMapEditor*, PieChart*, RelationChart*, RoseChart*, SankeyChart*, ScatterChart*, Sparkline*, SunburstChart*, TGOSMapEditor*, TimelineChart*, WebPainter` + 2026-10 新增:`QrCode*, Barcode*`（全數 Canvas 渲染；共同基底 `viz/CanvasChart.js` 非目錄元件、不在 catalog。舊 SVG 基底 BaseChart 已刪除）
 
 - **social (5)**：`Avatar*, ConnectionCard*, FeedCard*, StatCard*, Timeline*`
 
@@ -167,6 +167,17 @@ const dt = LazyComponentFactory.create('DataTable', { columns, data });
 - `WorkflowPanel`：`stages`、`fieldMap` 自訂階段與資料欄位；內建 13 階段只為相容保留，新專案請自行傳入。
 - `Progress`：`segments` 分段堆疊。
 - Canvas 圖表：`accessibleTable` 產生輔助科技可讀的資料表，見 [viz/ACCESSIBILITY.md](packages/javascript/browser/ui_components/viz/ACCESSIBILITY.md)。
+
+### 3.2 2026-10 新增：QR Code 與條碼產生器
+
+兩個元件都是純 Canvas、零依賴，編碼器自行實作並可單獨匯入（不需要畫面時直接取得模組矩陣或條寬）。catalog 中標為 `beta`、`manual_only`。
+
+| 元件 | 用途 |
+|---|---|
+| `QrCode` | QR Code：版本 1～40、錯誤修正 L/M/Q/H、UTF-8 中文；`exportPNG(scale)` 供列印；編碼器 `encodeQr` |
+| `Barcode` | 一維條碼：Code 128、Code 39（台灣超商代收與郵局劃撥的繳費單）、EAN-13、EAN-8；編碼器 `encodeBarcode` |
+
+顏色預設取主題 token，深色主題下自動對調，模組或條永遠比底色暗；內容不合格式時不擲錯，改在畫面上顯示訊息並由 `getError()` 取得原因。詳見 [QrCode](packages/javascript/browser/ui_components/viz/QrCode/README.md)、[Barcode](packages/javascript/browser/ui_components/viz/Barcode/README.md)。
 
 ---
 

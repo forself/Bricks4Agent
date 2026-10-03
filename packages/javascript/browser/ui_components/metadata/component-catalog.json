@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "component_count": 132,
+  "component_count": 134,
   "components": [
     {
       "schema_version": 1,
@@ -4249,6 +4249,41 @@
     },
     {
       "schema_version": 1,
+      "component_id": "viz.barcode",
+      "registry_name": "Barcode",
+      "display_name": "Barcode",
+      "category": "viz",
+      "kind": "visualizer",
+      "source_path": "ui_components/viz/Barcode/Barcode.js",
+      "docs_path": "ui_components/viz/Barcode/README.md",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "visualizer",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": true,
+        "listener_events": [],
+        "target_actions": [
+          "clear",
+          "setValue"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    {
+      "schema_version": 1,
       "component_id": "viz.canvas_map",
       "registry_name": "CanvasMap",
       "display_name": "CanvasMap",
@@ -4697,6 +4732,41 @@
     },
     {
       "schema_version": 1,
+      "component_id": "viz.qr_code",
+      "registry_name": "QrCode",
+      "display_name": "QrCode",
+      "category": "viz",
+      "kind": "visualizer",
+      "source_path": "ui_components/viz/QrCode/QrCode.js",
+      "docs_path": "ui_components/viz/QrCode/README.md",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "visualizer",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": true,
+        "listener_events": [],
+        "target_actions": [
+          "clear",
+          "setValue"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    {
+      "schema_version": 1,
       "component_id": "viz.relation_chart",
       "registry_name": "RelationChart",
       "display_name": "RelationChart",
@@ -5105,28 +5175,30 @@
     "StatCard": 107,
     "Timeline": 108,
     "BarChart": 109,
-    "CanvasMap": 110,
-    "ClusterGraph": 111,
-    "DrawingBoard": 112,
-    "FlameChart": 113,
-    "HeatmapChart": 114,
-    "HierarchyChart": 115,
-    "LeafletMap": 116,
-    "LineChart": 117,
-    "MapEditor": 118,
-    "MapEditorV2": 119,
-    "OrgChart": 120,
-    "OSMMapEditor": 121,
-    "PieChart": 122,
-    "RelationChart": 123,
-    "RoseChart": 124,
-    "SankeyChart": 125,
-    "ScatterChart": 126,
-    "Sparkline": 127,
-    "SunburstChart": 128,
-    "TGOSMapEditor": 129,
-    "TimelineChart": 130,
-    "WebPainter": 131
+    "Barcode": 110,
+    "CanvasMap": 111,
+    "ClusterGraph": 112,
+    "DrawingBoard": 113,
+    "FlameChart": 114,
+    "HeatmapChart": 115,
+    "HierarchyChart": 116,
+    "LeafletMap": 117,
+    "LineChart": 118,
+    "MapEditor": 119,
+    "MapEditorV2": 120,
+    "OrgChart": 121,
+    "OSMMapEditor": 122,
+    "PieChart": 123,
+    "QrCode": 124,
+    "RelationChart": 125,
+    "RoseChart": 126,
+    "SankeyChart": 127,
+    "ScatterChart": 128,
+    "Sparkline": 129,
+    "SunburstChart": 130,
+    "TGOSMapEditor": 131,
+    "TimelineChart": 132,
+    "WebPainter": 133
   },
   "by_category": {
     "analytics": [
@@ -5258,6 +5330,7 @@
     ],
     "viz": [
       "BarChart",
+      "Barcode",
       "CanvasMap",
       "ClusterGraph",
       "DrawingBoard",
@@ -5271,6 +5344,7 @@
       "OSMMapEditor",
       "OrgChart",
       "PieChart",
+      "QrCode",
       "RelationChart",
       "RoseChart",
       "SankeyChart",
@@ -5399,6 +5473,7 @@
     ],
     "visualizer": [
       "BarChart",
+      "Barcode",
       "CanvasMap",
       "ClusterGraph",
       "DrawingBoard",
@@ -5412,6 +5487,7 @@
       "OSMMapEditor",
       "OrgChart",
       "PieChart",
+      "QrCode",
       "RegionMap",
       "RelationChart",
       "RoseChart",
@@ -5432,6 +5508,7 @@
       "AuthButton",
       "Badge",
       "BannerSection",
+      "Barcode",
       "BasicButton",
       "CardGrid",
       "Checkbox",
@@ -5475,6 +5552,7 @@
       "PhotoWall",
       "Popover",
       "PrintLayout",
+      "QrCode",
       "Rating",
       "RegionMap",
       "RemoteSelect",
@@ -5572,6 +5650,7 @@
       "Badge",
       "BannerSection",
       "BarChart",
+      "Barcode",
       "Breadcrumb",
       "CanvasMap",
       "CardGrid",
@@ -5631,6 +5710,7 @@
       "Popover",
       "PrintLayout",
       "Progress",
+      "QrCode",
       "Rating",
       "RegionMap",
       "RelationChart",

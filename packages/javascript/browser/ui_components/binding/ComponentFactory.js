@@ -27,7 +27,9 @@ import {
     ScatterChart,
     ClusterGraph,
     DrawingBoard,
-    WebPainter
+    WebPainter,
+    QrCode,
+    Barcode
 } from '../viz/index.js';
 
 // 2. Layout Components
@@ -215,6 +217,8 @@ export class ComponentFactory {
         'ClusterGraph': ClusterGraph,
         'DrawingBoard': DrawingBoard,
         'WebPainter': WebPainter,
+        'QrCode': QrCode,
+        'Barcode': Barcode,
 
         // Layout
         'DataTable': DataTable,

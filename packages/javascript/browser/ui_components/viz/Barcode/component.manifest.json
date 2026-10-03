@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "component_id": "viz.barcode",
+  "registry_name": "Barcode",
+  "display_name": "Barcode",
+  "category": "viz",
+  "kind": "visualizer",
+  "source_path": "ui_components/viz/Barcode/Barcode.js",
+  "docs_path": "ui_components/viz/Barcode/README.md",
+  "maturity": "beta",
+  "generator": {
+    "usable": false,
+    "usage_mode": "manual_only",
+    "supported_field_types": [],
+    "supported_page_types": [],
+    "definition_runtime": false
+  },
+  "composition": {
+    "role": "visualizer",
+    "requires_form_field_wrapper": false,
+    "manual_only": true
+  },
+  "binding": {
+    "value_io": true,
+    "listener_events": [],
+    "target_actions": [
+      "clear",
+      "setValue"
+    ]
+  },
+  "styling": {
+    "theme_token_only": true,
+    "style_knobs": []
+  }
+}

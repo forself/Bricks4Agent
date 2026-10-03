@@ -142,7 +142,7 @@ const dt = LazyComponentFactory.create('DataTable', { columns, data });
 </code></pre>
 <p>工具頁（<code>DynamicToolRenderer</code>）預設就是它，<code>preload()</code> 在 <code>init()</code> 內自動執行；名稱不在延遲註冊表時會回退到 eager <code>ComponentFactory</code> 的即時 registry，<code>ComponentFactory.register()</code> 註冊的元件照樣看得到。</p>
 <hr>
-<h2>3. 元件清單（132 個，權威來源＝catalog）</h2>
+<h2>3. 元件清單（134 個，權威來源＝catalog）</h2>
 <p><code>*</code> = <code>generator.usable=false</code>（<code>manual_only</code>：不能靠生成器欄位自動映射，需<strong>手動組合</strong>；仍可正常 <code>new</code> 使用）。</p>
 <ul>
 <li>
@@ -158,7 +158,7 @@ const dt = LazyComponentFactory.create('DataTable', { columns, data });
 <p><strong>input (11, 複合輸入)</strong>：<code>AddressInput, AddressListInput, ChainedInput, DateTimeInput, ListInput, OrganizationInput, PersonInfoList, PhoneListInput, SocialMediaList, StudentInput</code> + 2026-09 新增:<code>DateTimeRangePicker*</code></p>
 </li>
 <li>
-<p><strong>viz (23)</strong>：<code>BarChart*, CanvasMap*, ClusterGraph*, DrawingBoard, FlameChart*, HeatmapChart*, HierarchyChart*, LeafletMap*, LineChart*, MapEditor*, MapEditorV2*, OrgChart*, OSMMapEditor*, PieChart*, RelationChart*, RoseChart*, SankeyChart*, ScatterChart*, Sparkline*, SunburstChart*, TGOSMapEditor*, TimelineChart*, WebPainter</code>（全數 Canvas 渲染；共同基底 <code>viz/CanvasChart.js</code> 非目錄元件、不在 catalog。舊 SVG 基底 BaseChart 已刪除）</p>
+<p><strong>viz (25)</strong>：<code>BarChart*, CanvasMap*, ClusterGraph*, DrawingBoard, FlameChart*, HeatmapChart*, HierarchyChart*, LeafletMap*, LineChart*, MapEditor*, MapEditorV2*, OrgChart*, OSMMapEditor*, PieChart*, RelationChart*, RoseChart*, SankeyChart*, ScatterChart*, Sparkline*, SunburstChart*, TGOSMapEditor*, TimelineChart*, WebPainter</code> + 2026-10 新增:<code>QrCode*, Barcode*</code>（全數 Canvas 渲染；共同基底 <code>viz/CanvasChart.js</code> 非目錄元件、不在 catalog。舊 SVG 基底 BaseChart 已刪除）</p>
 </li>
 <li>
 <p><strong>social (5)</strong>：<code>Avatar*, ConnectionCard*, FeedCard*, StatCard*, Timeline*</code></p>
@@ -256,6 +256,18 @@ const dt = LazyComponentFactory.create('DataTable', { columns, data });
 <li><code>Progress</code>：<code>segments</code> 分段堆疊。</li>
 <li>Canvas 圖表：<code>accessibleTable</code> 產生輔助科技可讀的資料表，見 <a href="packages/javascript/browser/ui_components/viz/ACCESSIBILITY.html">viz/ACCESSIBILITY.md</a>。</li>
 </ul>
+<h3>3.2 2026-10 新增：QR Code 與條碼產生器</h3>
+<p>兩個元件都是純 Canvas、零依賴，編碼器自行實作並可單獨匯入（不需要畫面時直接取得模組矩陣或條寬）。catalog 中標為 <code>beta</code>、<code>manual_only</code>。</p>
+<table>
+<thead>
+<tr><th>元件</th><th>用途</th></tr>
+</thead>
+<tbody>
+<tr><td><code>QrCode</code></td><td>QR Code：版本 1～40、錯誤修正 L/M/Q/H、UTF-8 中文；<code>exportPNG(scale)</code> 供列印；編碼器 <code>encodeQr</code></td></tr>
+<tr><td><code>Barcode</code></td><td>一維條碼：Code 128、Code 39（台灣超商代收與郵局劃撥的繳費單）、EAN-13、EAN-8；編碼器 <code>encodeBarcode</code></td></tr>
+</tbody>
+</table>
+<p>顏色預設取主題 token，深色主題下自動對調，模組或條永遠比底色暗；內容不合格式時不擲錯，改在畫面上顯示訊息並由 <code>getError()</code> 取得原因。詳見 <a href="packages/javascript/browser/ui_components/viz/QrCode/README.html">QrCode</a>、<a href="packages/javascript/browser/ui_components/viz/Barcode/README.html">Barcode</a>。</p>
 <hr>
 <h2>4. 建頁面的三種方式（依情境選）</h2>
 <blockquote>

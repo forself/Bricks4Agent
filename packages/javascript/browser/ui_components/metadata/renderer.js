@@ -189,6 +189,8 @@ const BETA_COMPONENTS = new Set([
     'ApprovalTimeline',
     'NotificationCenter',
     'ConflictNotice',
+    'QrCode',
+    'Barcode',
 ]);
 
 const RUNTIME_ONLY_COMPONENTS = new Set(['PanelManager']);

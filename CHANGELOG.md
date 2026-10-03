@@ -10,6 +10,18 @@ B4A 只收通用元件與通用能力；任何業務系統的專屬元件都不�
 
 ## 未發行
 
+### 新增：QR Code 與條碼產生器（2026-10-03）
+
+元件數由 132 增為 134。兩個元件在 catalog 中標為 `beta`、`manual_only`；字串由元件資料夾內的 `locale.js` 註冊 zh-TW 與 en。
+
+**新增**
+
+- `QrCode`：QR Code（ISO/IEC 18004），版本 1～40、錯誤修正 L/M/Q/H，自動選數字、英數或位元組（UTF-8）模式，八種遮罩依罰分選最小；可選 UTF-8 的 ECI 宣告。編碼器 `encodeQr` 可單獨匯入。
+- `Barcode`：一維條碼 Code 128（自動切換 A/B/C 字集）、Code 39（可附 mod 43 檢查字元，台灣超商代收與郵局劃撥的繳費單即此格式）、EAN-13、EAN-8（自動補或驗證檢查碼，護線延伸、數字分組）。編碼器 `encodeBarcode` 可單獨匯入。
+- 兩者都是純 Canvas、零依賴；模組與條邊對齊整數像素，`exportPNG(scale)` 輸出高倍率圖檔供列印；顏色取主題 token，深色主題下自動對調，模組或條永遠比底色暗；內容不合格式時在畫面上顯示訊息，`getError()` 取得原因。
+
+驗證入口：`node --test packages/javascript/browser/ui_components/viz/QrCode/qr-encoder.test.mjs packages/javascript/browser/ui_components/viz/Barcode/barcode-encoder.test.mjs`（含標準已知數值與獨立解碼器的往返比對）。
+
 ### 修正：SPA 範本清理器邊界（2026-09-29）
 
 - 保留 f905b2f 的「先清洗子節點再拆殼」修正；追加瀏覽器無 CSP 回歸，直接驗證清理器及 WebTextEditor 儲存／載入。

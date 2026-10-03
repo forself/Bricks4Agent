@@ -210,7 +210,8 @@
         "data_view",
         "feedback",
         "input",
-        "search"
+        "search",
+        "visualizer"
       ],
       "usage_modes": [
         "definition_explicit",
@@ -283,6 +284,7 @@
     "Badge",
     "BannerSection",
     "BarChart",
+    "Barcode",
     "Breadcrumb",
     "CanvasMap",
     "CardGrid",
@@ -342,6 +344,7 @@
     "Popover",
     "PrintLayout",
     "Progress",
+    "QrCode",
     "Rating",
     "RegionMap",
     "RelationChart",
