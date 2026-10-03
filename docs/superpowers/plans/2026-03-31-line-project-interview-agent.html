@@ -29,11 +29,21 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <p>This plan has already been executed for the phase-1 interview/review scope and is kept as the historical implementation plan.</p>
 <p>Current <code>main</code> status:</p>
 <ul>
-<li><code>/proj</code>, <code>#ProjectName</code>, scope narrowing, structure-direction narrowing, and review artifact generation are live</li>
-<li><code>/ok</code>, <code>/revise</code>, and <code>/cancel</code> are live</li>
-<li>prompts are bilingual and written for general LINE users</li>
-<li>internal scale/template identifiers remain broker-internal and are not shown in user-facing copy</li>
-<li>deeper requirement collection and autonomous implementation handoff remain future work</li>
+<li>
+<p><code>/proj</code>, <code>#ProjectName</code>, scope narrowing, structure-direction narrowing, and review artifact generation are live</p>
+</li>
+<li>
+<p><code>/ok</code>, <code>/revise</code>, and <code>/cancel</code> are live</p>
+</li>
+<li>
+<p>prompts are bilingual and written for general LINE users</p>
+</li>
+<li>
+<p>internal scale/template identifiers remain broker-internal and are not shown in user-facing copy</p>
+</li>
+<li>
+<p>deeper requirement collection and autonomous implementation handoff remain future work</p>
+</li>
 </ul>
 <p><strong>Architecture:</strong> Extend the broker high-level path with a dedicated <code>project_interview</code> state machine and per-version DAG model. Keep truth in broker-owned persisted assertion and version-graph documents, use the LLM only to propose interpretations and restatement options, and compile confirmed assertions into a canonical project-instance JSON that drives PDF review generation and artifact delivery. Template selection is driven by a JSON catalog layered above the existing browser page-generator and UI component runtime.</p>
 <p><strong>Tech Stack:</strong> C# /.NET 8 minimal API broker, existing <code>HighLevelCoordinator</code> and artifact services, broker verify program, integration tests under <code>packages/csharp/tests</code>, JSON template catalog under <code>packages/javascript/browser</code>, existing SPA runtime and page-generator</p>
@@ -53,78 +63,198 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <p>This feature touches both implementation and design review. Maintaining English and Traditional Chinese planning artifacts improves review accessibility while keeping execution precise. The English plan remains the source of exact code snippets and shell commands; the Chinese companion preserves the same task structure and rationale to support architectural discussion and review.</p>
 <h2>Language Versions</h2>
 <ul>
-<li>English source plan: <code>docs/superpowers/plans/2026-03-31-line-project-interview-agent.md</code></li>
-<li>Traditional Chinese companion: <code>docs/superpowers/plans/2026-03-31-line-project-interview-agent.zh-TW.md</code></li>
+<li>
+<p>English source plan: <code>docs/superpowers/plans/2026-03-31-line-project-interview-agent.md</code></p>
+</li>
+<li>
+<p>Traditional Chinese companion: <code>docs/superpowers/plans/2026-03-31-line-project-interview-agent.zh-TW.md</code></p>
+</li>
 </ul>
 <p>The English plan is the canonical execution document for exact code blocks and commands. The Chinese companion must stay structurally aligned with it.</p>
 <hr>
 <h2>File Map</h2>
 <h3>Create</h3>
 <ul>
-<li><code>packages/csharp/broker/Services/ProjectInterviewModels.cs</code></li>
-<li>Session state, assertion, restatement option, version-graph node/edge, and project-definition DTOs for the new workflow.</li>
-<li><code>packages/csharp/broker/Services/ProjectInterviewStateService.cs</code></li>
-<li>Loads and persists <code>hlm.project-interview.*</code> documents and provides the broker-owned canonical task state API.</li>
-<li><code>packages/csharp/broker/Services/ProjectInterviewStateMachine.cs</code></li>
-<li>Central state transition validator for <code>/proj</code>, <code>/ok</code>, <code>/revise</code>, <code>/cancel</code>, and phase progression.</li>
-<li><code>packages/csharp/broker/Services/ProjectInterviewRestatementService.cs</code></li>
-<li>Converts model proposals into bounded explicit statement options plus the conservative escape option.</li>
-<li><code>packages/csharp/broker/Services/ProjectInterviewTemplateCatalogService.cs</code></li>
-<li>Loads template manifests and narrows candidates by project scale, required modules, and constraints.</li>
-<li><code>packages/csharp/broker/Services/ProjectInterviewProjectDefinitionCompiler.cs</code></li>
-<li>Builds the canonical <code>project_instance_definition</code> JSON and immutable per-version DAG from confirmed assertions.</li>
-<li><code>packages/csharp/broker/Services/ProjectInterviewWorkflowDesignService.cs</code></li>
-<li>Builds the deterministic workflow-design view model, intermediate markdown/html, and render manifest.</li>
-<li><code>packages/csharp/broker/Services/ProjectInterviewPdfRenderService.cs</code></li>
-<li>Renders the workflow-design PDF and embeds task/version/digest metadata.</li>
-<li><code>packages/csharp/tests/integration/Api/ProjectInterviewLifecycleTests.cs</code></li>
-<li>End-to-end broker lifecycle tests for <code>/proj</code>, scale classification, template selection, document generation gating, and cancellation.</li>
-<li><code>packages/csharp/tests/integration/Api/ProjectInterviewReviewTests.cs</code></li>
-<li>Review command and revision tests for <code>/ok</code>, <code>/revise</code>, artifact regeneration, and immutable version history.</li>
-<li><code>packages/javascript/browser/templates/catalog.json</code></li>
-<li>Top-level template catalog for the interview workflow.</li>
-<li><code>packages/javascript/browser/templates/content_showcase/template.manifest.json</code></li>
-<li><code>packages/javascript/browser/templates/form_collection/template.manifest.json</code></li>
-<li><code>packages/javascript/browser/templates/member_portal/template.manifest.json</code></li>
-<li><code>packages/javascript/browser/templates/list_search/template.manifest.json</code></li>
-<li><code>packages/javascript/browser/templates/crud_admin/template.manifest.json</code></li>
-<li><code>packages/javascript/browser/templates/dashboard/template.manifest.json</code></li>
-<li><code>packages/javascript/browser/templates/multi_step_flow/template.manifest.json</code></li>
-<li><code>packages/javascript/browser/templates/transaction_flow/template.manifest.json</code></li>
-<li><code>packages/javascript/browser/__tests__/templates/TemplateCatalog.test.js</code></li>
-<li>Validates manifest shape, supported scales, and conservative narrowing behavior.</li>
+<li>
+<p><code>packages/csharp/broker/Services/ProjectInterviewModels.cs</code></p>
+</li>
+<li>
+<p>Session state, assertion, restatement option, version-graph node/edge, and project-definition DTOs for the new workflow.</p>
+</li>
+<li>
+<p><code>packages/csharp/broker/Services/ProjectInterviewStateService.cs</code></p>
+</li>
+<li>
+<p>Loads and persists <code>hlm.project-interview.*</code> documents and provides the broker-owned canonical task state API.</p>
+</li>
+<li>
+<p><code>packages/csharp/broker/Services/ProjectInterviewStateMachine.cs</code></p>
+</li>
+<li>
+<p>Central state transition validator for <code>/proj</code>, <code>/ok</code>, <code>/revise</code>, <code>/cancel</code>, and phase progression.</p>
+</li>
+<li>
+<p><code>packages/csharp/broker/Services/ProjectInterviewRestatementService.cs</code></p>
+</li>
+<li>
+<p>Converts model proposals into bounded explicit statement options plus the conservative escape option.</p>
+</li>
+<li>
+<p><code>packages/csharp/broker/Services/ProjectInterviewTemplateCatalogService.cs</code></p>
+</li>
+<li>
+<p>Loads template manifests and narrows candidates by project scale, required modules, and constraints.</p>
+</li>
+<li>
+<p><code>packages/csharp/broker/Services/ProjectInterviewProjectDefinitionCompiler.cs</code></p>
+</li>
+<li>
+<p>Builds the canonical <code>project_instance_definition</code> JSON and immutable per-version DAG from confirmed assertions.</p>
+</li>
+<li>
+<p><code>packages/csharp/broker/Services/ProjectInterviewWorkflowDesignService.cs</code></p>
+</li>
+<li>
+<p>Builds the deterministic workflow-design view model, intermediate markdown/html, and render manifest.</p>
+</li>
+<li>
+<p><code>packages/csharp/broker/Services/ProjectInterviewPdfRenderService.cs</code></p>
+</li>
+<li>
+<p>Renders the workflow-design PDF and embeds task/version/digest metadata.</p>
+</li>
+<li>
+<p><code>packages/csharp/tests/integration/Api/ProjectInterviewLifecycleTests.cs</code></p>
+</li>
+<li>
+<p>End-to-end broker lifecycle tests for <code>/proj</code>, scale classification, template selection, document generation gating, and cancellation.</p>
+</li>
+<li>
+<p><code>packages/csharp/tests/integration/Api/ProjectInterviewReviewTests.cs</code></p>
+</li>
+<li>
+<p>Review command and revision tests for <code>/ok</code>, <code>/revise</code>, artifact regeneration, and immutable version history.</p>
+</li>
+<li>
+<p><code>packages/javascript/browser/templates/catalog.json</code></p>
+</li>
+<li>
+<p>Top-level template catalog for the interview workflow.</p>
+</li>
+<li>
+<p><code>packages/javascript/browser/templates/content_showcase/template.manifest.json</code></p>
+</li>
+<li>
+<p><code>packages/javascript/browser/templates/form_collection/template.manifest.json</code></p>
+</li>
+<li>
+<p><code>packages/javascript/browser/templates/member_portal/template.manifest.json</code></p>
+</li>
+<li>
+<p><code>packages/javascript/browser/templates/list_search/template.manifest.json</code></p>
+</li>
+<li>
+<p><code>packages/javascript/browser/templates/crud_admin/template.manifest.json</code></p>
+</li>
+<li>
+<p><code>packages/javascript/browser/templates/dashboard/template.manifest.json</code></p>
+</li>
+<li>
+<p><code>packages/javascript/browser/templates/multi_step_flow/template.manifest.json</code></p>
+</li>
+<li>
+<p><code>packages/javascript/browser/templates/transaction_flow/template.manifest.json</code></p>
+</li>
+<li>
+<p><code>packages/javascript/browser/__tests__/templates/TemplateCatalog.test.js</code></p>
+</li>
+<li>
+<p>Validates manifest shape, supported scales, and conservative narrowing behavior.</p>
+</li>
 </ul>
 <h3>Modify</h3>
 <ul>
-<li><code>packages/csharp/broker/Services/HighLevelCommandParser.cs</code></li>
-<li>Add <code>/proj</code>, <code>/ok</code>, <code>/revise</code>, and <code>/cancel</code> parsing for the project interview path.</li>
-<li><code>packages/csharp/broker/Services/HighLevelCoordinator.cs</code></li>
-<li>Route project-interview commands and user turns into the new state service, state machine, restatement service, and compiler.</li>
-<li><code>packages/csharp/broker/Services/HighLevelLlmOptions.cs</code></li>
-<li>Add prompt/config fields for the high-grade interview model if needed.</li>
-<li><code>packages/csharp/broker/Services/LineArtifactDeliveryService.cs</code></li>
-<li>Reuse the existing artifact-delivery path for PDF/JSON/zip output.</li>
-<li><code>packages/csharp/broker/Program.cs</code></li>
-<li>Register the new services and any config sections.</li>
-<li><code>packages/csharp/broker/appsettings.json</code></li>
-<li>Add project interview config such as document TTL, template catalog path, and PDF defaults.</li>
-<li><code>packages/csharp/broker/appsettings.Development.example.json</code></li>
-<li>Add development example values for the same settings.</li>
-<li><code>packages/csharp/broker/verify/Program.cs</code></li>
-<li>Add deterministic verification coverage for state transitions, restatement promotion, template narrowing, DAG construction, and artifact metadata.</li>
-<li><code>packages/javascript/browser/package.json</code></li>
-<li>Ensure any JSON-template test command or fixtures are reachable from the existing test setup if needed.</li>
+<li>
+<p><code>packages/csharp/broker/Services/HighLevelCommandParser.cs</code></p>
+</li>
+<li>
+<p>Add <code>/proj</code>, <code>/ok</code>, <code>/revise</code>, and <code>/cancel</code> parsing for the project interview path.</p>
+</li>
+<li>
+<p><code>packages/csharp/broker/Services/HighLevelCoordinator.cs</code></p>
+</li>
+<li>
+<p>Route project-interview commands and user turns into the new state service, state machine, restatement service, and compiler.</p>
+</li>
+<li>
+<p><code>packages/csharp/broker/Services/HighLevelLlmOptions.cs</code></p>
+</li>
+<li>
+<p>Add prompt/config fields for the high-grade interview model if needed.</p>
+</li>
+<li>
+<p><code>packages/csharp/broker/Services/LineArtifactDeliveryService.cs</code></p>
+</li>
+<li>
+<p>Reuse the existing artifact-delivery path for PDF/JSON/zip output.</p>
+</li>
+<li>
+<p><code>packages/csharp/broker/Program.cs</code></p>
+</li>
+<li>
+<p>Register the new services and any config sections.</p>
+</li>
+<li>
+<p><code>packages/csharp/broker/appsettings.json</code></p>
+</li>
+<li>
+<p>Add project interview config such as document TTL, template catalog path, and PDF defaults.</p>
+</li>
+<li>
+<p><code>packages/csharp/broker/appsettings.Development.example.json</code></p>
+</li>
+<li>
+<p>Add development example values for the same settings.</p>
+</li>
+<li>
+<p><code>packages/csharp/broker/verify/Program.cs</code></p>
+</li>
+<li>
+<p>Add deterministic verification coverage for state transitions, restatement promotion, template narrowing, DAG construction, and artifact metadata.</p>
+</li>
+<li>
+<p><code>packages/javascript/browser/package.json</code></p>
+</li>
+<li>
+<p>Ensure any JSON-template test command or fixtures are reachable from the existing test setup if needed.</p>
+</li>
 </ul>
 <h3>Reuse Without Structural Change</h3>
 <ul>
-<li><code>packages/csharp/broker/Services/HighLevelDocumentArtifactService.cs</code></li>
-<li>Reuse for artifact recording.</li>
-<li><code>packages/csharp/broker/Services/HighLevelMemoryStore.cs</code></li>
-<li>Reuse as the storage substrate for <code>hlm.project-interview.*</code> documents.</li>
-<li><code>packages/javascript/browser/page-generator/PageDefinitionAdapter.js</code></li>
-<li>Reuse as the downstream execution substrate for JSON-defined programs.</li>
-<li><code>templates/spa/frontend/runtime/page-generator/DynamicPageRenderer.js</code></li>
-<li>Reuse as the browser-side render substrate; do not redesign runtime in this feature.</li>
+<li>
+<p><code>packages/csharp/broker/Services/HighLevelDocumentArtifactService.cs</code></p>
+</li>
+<li>
+<p>Reuse for artifact recording.</p>
+</li>
+<li>
+<p><code>packages/csharp/broker/Services/HighLevelMemoryStore.cs</code></p>
+</li>
+<li>
+<p>Reuse as the storage substrate for <code>hlm.project-interview.*</code> documents.</p>
+</li>
+<li>
+<p><code>packages/javascript/browser/page-generator/PageDefinitionAdapter.js</code></p>
+</li>
+<li>
+<p>Reuse as the downstream execution substrate for JSON-defined programs.</p>
+</li>
+<li>
+<p><code>templates/spa/frontend/runtime/page-generator/DynamicPageRenderer.js</code></p>
+</li>
+<li>
+<p>Reuse as the browser-side render substrate; do not redesign runtime in this feature.</p>
+</li>
 </ul>
 <hr>
 <h3>Task 1: Add Command Routing and Session State Machine</h3>
@@ -296,7 +426,9 @@ if (text.Equals(&quot;/cancel&quot;, StringComparison.OrdinalIgnoreCase))
 </code></pre>
 <p>Expected:</p>
 <ul>
-<li>PASS for the new <code>/proj</code> and transition assertions</li>
+<li>
+<p>PASS for the new <code>/proj</code> and transition assertions</p>
+</li>
 <li>
 <p>overall suite may still fail later because persistence, restatement, and artifact services are not implemented</p>
 </li>
@@ -458,7 +590,9 @@ dotnet test packages/csharp/tests/integration/Integration.Tests.csproj --filter 
 </code></pre>
 <p>Expected:</p>
 <ul>
-<li>verify passes for the new restatement assertions</li>
+<li>
+<p>verify passes for the new restatement assertions</p>
+</li>
 <li>
 <p>integration test passes for explicit confirmation gating</p>
 </li>
@@ -577,7 +711,9 @@ dotnet run --project packages/csharp/broker/verify/Broker.Verify.csproj
 </code></pre>
 <p>Expected:</p>
 <ul>
-<li>JS template catalog tests PASS</li>
+<li>
+<p>JS template catalog tests PASS</p>
+</li>
 <li>
 <p>broker verify passes for scale-based narrowing assertions</p>
 </li>
@@ -779,7 +915,9 @@ dotnet test packages/csharp/tests/integration/Integration.Tests.csproj --filter 
 </code></pre>
 <p>Expected:</p>
 <ul>
-<li>verify passes for PDF/JSON metadata assertions</li>
+<li>
+<p>verify passes for PDF/JSON metadata assertions</p>
+</li>
 <li>
 <p>review tests pass for <code>/ok</code>, <code>/revise</code>, and immutable prior-version behavior</p>
 </li>
@@ -794,9 +932,7 @@ git commit -m &quot;feat: add project interview review artifact generation&quot;
 <p><strong>Files:</strong>
 - Modify: <code>packages/csharp/broker/verify/Program.cs</code>
 - Modify: <code>docs/superpowers/specs/2026-03-30-line-project-interview-agent-design.md</code>
-- Modify: <code>docs/0329/00-overview.md</code>
-- Modify: <code>docs/0329/01-broker.md</code>
-- Modify: <code>docs/0329/07-tests.md</code></p>
+- Modify: <code>docs/manuals/current-technical-manual.zh-TW.md</code></p>
 <ul>
 <li>[ ] <strong>Step 1: Add the final verify assertions for path redaction and delivery safety</strong></li>
 </ul>
@@ -816,9 +952,15 @@ npm --prefix packages/javascript/browser run test
 </code></pre>
 <p>Expected:</p>
 <ul>
-<li>build succeeds with <code>0</code> warnings / <code>0</code> errors</li>
-<li>verify prints a passing result</li>
-<li>integration tests pass</li>
+<li>
+<p>build succeeds with <code>0</code> warnings / <code>0</code> errors</p>
+</li>
+<li>
+<p>verify prints a passing result</p>
+</li>
+<li>
+<p>integration tests pass</p>
+</li>
 <li>
 <p>JS tests pass including template-catalog coverage</p>
 </li>
@@ -834,30 +976,45 @@ npm --prefix packages/javascript/browser run test
 <ul>
 <li>[ ] <strong>Step 4: Commit</strong></li>
 </ul>
-<pre><code class="language-powershell">git add packages/csharp/broker/verify/Program.cs docs/superpowers/specs/2026-03-30-line-project-interview-agent-design.md docs/0329/00-overview.md docs/0329/01-broker.md docs/0329/07-tests.md
+<pre><code class="language-powershell">git add packages/csharp/broker/verify/Program.cs docs/superpowers/specs/2026-03-30-line-project-interview-agent-design.md docs/manuals/current-technical-manual.zh-TW.md
 git commit -m &quot;docs: document project interview workflow and verification&quot;
 </code></pre>
 <hr>
 <h2>Self-Review</h2>
 <h3>Spec coverage</h3>
 <ul>
-<li><code>/proj</code> explicit entry, review commands, and task-scoped state machine: covered by Task 1.</li>
-<li>Confirmed-restatement assertion model and conservative option handling: covered by Task 2.</li>
-<li>Project scale classification, template-family narrowing, and JSON template catalog: covered by Task 3.</li>
-<li>Canonical project-instance JSON and per-version DAG: covered by Task 4.</li>
-<li>Versioned PDF/JSON generation and review workflow: covered by Task 5.</li>
-<li>Delivery safety, verification, and docs sync: covered by Task 6.</li>
+<li>
+<p><code>/proj</code> explicit entry, review commands, and task-scoped state machine: covered by Task 1.</p>
+</li>
+<li>
+<p>Confirmed-restatement assertion model and conservative option handling: covered by Task 2.</p>
+</li>
+<li>
+<p>Project scale classification, template-family narrowing, and JSON template catalog: covered by Task 3.</p>
+</li>
+<li>
+<p>Canonical project-instance JSON and per-version DAG: covered by Task 4.</p>
+</li>
+<li>
+<p>Versioned PDF/JSON generation and review workflow: covered by Task 5.</p>
+</li>
+<li>
+<p>Delivery safety, verification, and docs sync: covered by Task 6.</p>
+</li>
 </ul>
 <h3>Placeholder scan</h3>
 <ul>
-<li>No <code>TODO</code>, <code>TBD</code>, or “implement later” placeholders remain.</li>
-<li>Each task has exact files, commands, and code snippets.</li>
+<li>
+<p>No <code>TODO</code>, <code>TBD</code>, or “implement later” placeholders remain.</p>
+</li>
+<li>
+<p>Each task has exact files, commands, and code snippets.</p>
+</li>
 </ul>
 <h3>Type consistency</h3>
 <ul>
 <li><code>ProjectInterviewSessionState</code>, <code>ProjectInterviewStateMachine</code>, <code>ProjectInterviewTaskDocument</code>, <code>ProjectInterviewRestatementService</code>, <code>ProjectInterviewTemplateCatalogService</code>, <code>ProjectInterviewProjectDefinitionCompiler</code>, <code>ProjectInstanceDefinition</code>, and <code>ProjectInterviewVersionDag</code> are introduced in order and reused consistently.</li>
 </ul>
-<p>```</p>
 </main>
 </body>
 </html>

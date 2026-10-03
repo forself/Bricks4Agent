@@ -30,7 +30,11 @@ templates/spa/
 │   │   ├── ApiService.js
 │   │   ├── Layout.js
 │   │   ├── BasePage.js
-│   │   └── NestedPage.js
+│   │   ├── DefinedPage.js
+│   │   ├── NestedPage.js
+│   │   └── Security.js
+│   ├── definition/
+│   ├── runtime/
 │   ├── pages/
 │   ├── components/
 │   └── styles/
@@ -39,7 +43,11 @@ templates/spa/
     ├── SpaApi.csproj
     ├── appsettings.json
     ├── Data/
-    │   └── AppDbContext.cs   # BaseOrm-backed AppDb
+    │   ├── AppDbContext.cs   # BaseOrm-backed AppDb
+    │   ├── BaseOrm.cs
+    │   └── DbInitializer.cs
+    ├── Generated/
+    ├── definition/
     ├── Models/
     └── Services/
 ```
@@ -52,7 +60,7 @@ Any static server works, but the built-in helper is the simplest repo-local opti
 
 ```bash
 cd templates/spa/frontend
-dotnet run --project ../../tools/static-server -- . 3000
+dotnet run --project ../../../tools/static-server -- . 3000
 ```
 
 Then open:

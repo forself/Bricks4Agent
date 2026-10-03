@@ -22,17 +22,39 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <main>
 <h1>LINE Portal Verification Design</h1>
 <p>Date: 2026-07-01</p>
+<blockquote>
+<p><strong>Implementation status (checked 2026-09-26)</strong></p>
+<ul>
+<li>Code generation and verification live in <code>PortalLineVerificationService</code> (<code>packages/csharp/broker/Services/PortalLineVerificationService.cs:21</code>, <code>:64</code>), not in <code>PortalAuthService</code>: <code>PortalAuthService</code> only delegates code issuance to it (<code>packages/csharp/broker/Services/PortalAuthService.cs:83</code>, <code>:147</code>), and <code>HighLevelCoordinator</code> calls <code>Verify</code> directly (<code>packages/csharp/broker/Services/HighLevelCoordinator.cs:570</code>).</li>
+<li>A signed-in Portal user can reissue a code via <code>POST /api/v1/portal/auth/line-verification</code> (<code>packages/csharp/broker/Endpoints/PortalEndpoints.cs:65</code>); the code is not only returned once at registration.</li>
+<li>LINE also accepts <code>/v &lt;user_id&gt; &lt;code&gt;</code> as an alias of <code>/verify</code> (<code>packages/csharp/broker/Services/HighLevelCoordinator.cs:620</code>).</li>
+</ul>
+</blockquote>
 <h2>Goal</h2>
 <p>Change LINE onboarding so a new LINE user cannot self-register only by sending a message. A user must first register on the user Portal, receive a one-time verification code, then send the Portal account id and code in LINE to bind that LINE account.</p>
 <h2>Flow</h2>
 <ol>
-<li>User registers in the Portal with <code>user_id</code>, password, and optional display name.</li>
-<li>Portal registration creates the Portal credential and returns a short-lived one-time LINE verification code.</li>
-<li>The user sends <code>/verify &lt;user_id&gt; &lt;code&gt;</code> or <code>/驗證 &lt;user_id&gt; &lt;code&gt;</code> in LINE.</li>
-<li>Broker checks the Portal credential and code.</li>
-<li>If the code is invalid, expired, already used, or for another account, Broker returns a rejection message and does not create an approved LINE profile.</li>
-<li>If the code is valid, Broker binds the current LINE <code>userId</code> to the Portal account, marks the verification code used, and creates or updates the high-level profile as approved Basic.</li>
-<li>Normal LINE commands are allowed only after this binding exists.</li>
+<li>
+<p>User registers in the Portal with <code>user_id</code>, password, and optional display name.</p>
+</li>
+<li>
+<p>Portal registration creates the Portal credential and returns a short-lived one-time LINE verification code.</p>
+</li>
+<li>
+<p>The user sends <code>/verify &lt;user_id&gt; &lt;code&gt;</code> or <code>/驗證 &lt;user_id&gt; &lt;code&gt;</code> in LINE.</p>
+</li>
+<li>
+<p>Broker checks the Portal credential and code.</p>
+</li>
+<li>
+<p>If the code is invalid, expired, already used, or for another account, Broker returns a rejection message and does not create an approved LINE profile.</p>
+</li>
+<li>
+<p>If the code is valid, Broker binds the current LINE <code>userId</code> to the Portal account, marks the verification code used, and creates or updates the high-level profile as approved Basic.</p>
+</li>
+<li>
+<p>Normal LINE commands are allowed only after this binding exists.</p>
+</li>
 </ol>
 <h2>Architecture</h2>
 <p>Use <code>PortalUserCredential</code> as the account-level source of truth and add LINE binding metadata plus a hashed verification code. The clear verification code is returned only once in the Portal registration response. <code>PortalAuthService</code> owns code generation and verification because it owns Portal credentials. <code>HighLevelCoordinator</code> owns LINE message gating and profile creation.</p>
@@ -40,17 +62,33 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <h2>Data Model</h2>
 <p>Add columns to <code>portal_user_credentials</code>:</p>
 <ul>
-<li><code>line_user_id</code>: raw LINE user id after successful binding.</li>
-<li><code>line_verification_code_hash</code>: SHA-256 hash of the current verification code.</li>
-<li><code>line_verification_code_expires_at</code>: expiration timestamp.</li>
-<li><code>line_verified_at</code>: timestamp of successful LINE verification.</li>
+<li>
+<p><code>line_user_id</code>: raw LINE user id after successful binding.</p>
+</li>
+<li>
+<p><code>line_verification_code_hash</code>: SHA-256 hash of the current verification code.</p>
+</li>
+<li>
+<p><code>line_verification_code_expires_at</code>: expiration timestamp.</p>
+</li>
+<li>
+<p><code>line_verified_at</code>: timestamp of successful LINE verification.</p>
+</li>
 </ul>
 <p>Verification code:</p>
 <ul>
-<li>Generated as a random 6-digit numeric code.</li>
-<li>Valid for 10 minutes.</li>
-<li>Hashed before persistence.</li>
-<li>Cleared after success.</li>
+<li>
+<p>Generated as a random 6-digit numeric code.</p>
+</li>
+<li>
+<p>Valid for 10 minutes.</p>
+</li>
+<li>
+<p>Hashed before persistence.</p>
+</li>
+<li>
+<p>Cleared after success.</p>
+</li>
 </ul>
 <h2>Commands</h2>
 <p>Supported LINE commands:</p>
@@ -59,32 +97,62 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 </code></pre>
 <p>Failure messages are user-facing and concise:</p>
 <ul>
-<li>Account not found.</li>
-<li>Verification code is invalid or expired.</li>
-<li>This Portal account is already linked to another LINE user.</li>
+<li>
+<p>Account not found.</p>
+</li>
+<li>
+<p>Verification code is invalid or expired.</p>
+</li>
+<li>
+<p>This Portal account is already linked to another LINE user.</p>
+</li>
 </ul>
 <h2>Tests</h2>
 <p>Unit tests cover:</p>
 <ul>
-<li>Portal registration returns a verification code and stores only a hash.</li>
-<li>LINE messages before verification are denied.</li>
-<li>Wrong verification code is rejected.</li>
-<li>Correct verification code binds LINE to the Portal account.</li>
-<li>After binding, LINE messages use the Portal account workspace.</li>
+<li>
+<p>Portal registration returns a verification code and stores only a hash.</p>
+</li>
+<li>
+<p>LINE messages before verification are denied.</p>
+</li>
+<li>
+<p>Wrong verification code is rejected.</p>
+</li>
+<li>
+<p>Correct verification code binds LINE to the Portal account.</p>
+</li>
+<li>
+<p>After binding, LINE messages use the Portal account workspace.</p>
+</li>
 </ul>
 <p>Integration tests cover:</p>
 <ul>
-<li><code>/api/v1/portal/auth/register</code> returns <code>line_verification</code>.</li>
-<li><code>/api/v1/high-level/line/process</code> rejects unverified LINE users.</li>
-<li><code>/verify &lt;user_id&gt; &lt;code&gt;</code> succeeds only with the Portal-issued code.</li>
+<li>
+<p><code>/api/v1/portal/auth/register</code> returns <code>line_verification</code>.</p>
+</li>
+<li>
+<p><code>/api/v1/high-level/line/process</code> rejects unverified LINE users.</p>
+</li>
+<li>
+<p><code>/verify &lt;user_id&gt; &lt;code&gt;</code> succeeds only with the Portal-issued code.</p>
+</li>
 </ul>
 <h2>Documentation</h2>
 <p>Update the current user and technical manuals to describe:</p>
 <ul>
-<li>Website-first registration.</li>
-<li>One-time verification code.</li>
-<li>LINE <code>/verify</code> command.</li>
-<li>Admin/user expectations for Basic vs Member permissions.</li>
+<li>
+<p>Website-first registration.</p>
+</li>
+<li>
+<p>One-time verification code.</p>
+</li>
+<li>
+<p>LINE <code>/verify</code> command.</p>
+</li>
+<li>
+<p>Admin/user expectations for Basic vs Member permissions.</p>
+</li>
 </ul>
 </main>
 </body>

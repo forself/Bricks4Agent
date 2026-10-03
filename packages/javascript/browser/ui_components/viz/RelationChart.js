@@ -544,6 +544,34 @@ export class RelationChart extends CanvasChart {
         super.update(patch);
     }
 
+    /**
+     * 無障礙資料表(accessibleTable):起點 / 終點 / 權重(link.value),每條邊一列;
+     * 端點以節點 label(缺則 id)呈現,略過端點不存在或自環的邊(與繪圖一致)。
+     */
+    getDataTable() {
+        const nodes = (Array.isArray(this.nodes) ? this.nodes : []).filter((n) => n && typeof n === 'object');
+        const byId = new Map(nodes.map((n) => [n.id, n]));
+        const labelOf = (n) => String(n.label || n.id || '');
+        const rows = [];
+        for (const link of Array.isArray(this.links) ? this.links : []) {
+            if (!link || typeof link !== 'object') continue;
+            const s = byId.get(link.source);
+            const t = byId.get(link.target);
+            if (!s || !t || s === t) continue;
+            rows.push({ from: labelOf(s), to: labelOf(t), weight: link.value });
+        }
+        return {
+            columns: [
+                { key: 'from', label: Locale.t('canvasChart.from') },
+                { key: 'to', label: Locale.t('canvasChart.to') },
+                { key: 'weight', label: Locale.t('canvasChart.weight'), format: 'number' }
+            ],
+            rows
+        };
+    }
+
+    _a11ySources() { return [this.nodes, this.links]; }
+
     zoomBy(factor, centerX = this.width / 2, centerY = this.height / 2) {
         const oldScale = this.viewport.scale;
         const nextScale = Math.max(0.25, Math.min(4, oldScale * Number(factor || 1)));

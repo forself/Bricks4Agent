@@ -12,6 +12,38 @@ This document captures the current convergence gaps between:
 
 It is based on the repository state as of 2026-03-15.
 
+### Implementation status (checked 2026-09-26)
+
+- **Gap 1 — closed.** The agent CRUD pipeline no longer has the LLM author the
+  backend: its `generate-backend` state calls `generate-api.js` functions
+  deterministically
+  ([tools/agent/lib/pipelines/crud-pipeline.js:528-566](../../tools/agent/lib/pipelines/crud-pipeline.js)).
+
+- **Gap 2 — closed for the agent path.** The agent frontend state now builds a
+  page definition and invokes `tools/page-gen.js` (crud-pipeline.js:634-741)
+  instead of writing page files. `templates/spa/scripts/generate-page.js`
+  still emits `BasePage` subclasses directly as a separate CLI path.
+
+- **Gap 3 — open.** The agent pipeline feeds `page-gen.js` the legacy
+  `{ page, fields, api }` shape (crud-pipeline.js:660-664, :679-683), which
+  `page-gen.js` classifies as `legacy-page-definition`
+  ([tools/page-gen.js:466-475](../../tools/page-gen.js)) — not a
+  `DefinitionTemplate`.
+
+- **Gap 4 — closed.** `generate-api.js` now patches `AppDbContext.cs` and
+  `Program.cs` idempotently at guarded `// --- BRICKS:* ---` markers by default
+  (`--no-patch` opts out;
+  [templates/spa/scripts/generate-api.js:431-545, :640](../../templates/spa/scripts/generate-api.js)).
+  The CLI logs a missing marker instead of aborting; the agent pipeline's
+  `patchProjectFile` throws (crud-pipeline.js:140-149).
+
+- **Gap 5 — closed.** Built-in and generated services are registered
+  `AddScoped` in both the template and the SPA Generator backend
+  (`templates/spa/backend/Program.cs:116-117`,
+  `tools/spa-generator/backend/Program.cs:123-124`, generate-api.js:477), and
+  `BaseDb` opens a connection per operation outside transactions
+  (`packages/csharp/database/BaseOrm/net10/BaseOrm.cs:201-207, :262-269`).
+
 ## Goal
 
 The goal is not to replace the current architecture.

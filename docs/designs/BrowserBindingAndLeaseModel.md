@@ -14,8 +14,8 @@ The browser request builder now validates against real broker data for:
 
 - `BrowserSystemBinding`
 
-Current implementation only actively validates site bindings.
-Session leases are introduced now so future runtime/session pooling work has a canonical record shape to target.
+Current implementation validates site bindings, user grants, system bindings and session leases (`packages/csharp/broker/Services/BrowserExecutionRequestBuilder.cs:65-157`).
+Session leases give future runtime/session pooling work a canonical record shape to target.
 
 ## BrowserSiteBinding
 
@@ -85,7 +85,7 @@ Current fields:
 
 ### Intended meaning
 
-This is not yet used by runtime dispatch.
+The request builder validates a referenced lease (active, same principal, same identity mode, not expired, same site binding), and the broker runtime echoes the lease id in the result and touches `last_used_at` after execution (`packages/csharp/broker/Services/BrowserExecutionRuntimeService.cs:83,93,134-140`); no runtime reuses a leased browser session yet.
 It exists so future browser workers do not invent their own lease identifiers and lifecycle rules outside the broker.
 
 ## BrowserUserGrant
@@ -146,6 +146,8 @@ Current fields:
 
 - referenced system binding exists, is active, and matches the site binding when pinned
 
+- referenced session lease exists, is active, belongs to the requesting principal, matches the tool identity mode, is not expired, and matches the site binding when pinned
+
 It still also validates:
 
 - action level ceiling
@@ -170,11 +172,13 @@ Implemented:
 
 - builder validation against `BrowserSystemBinding`
 
+- builder validation against `BrowserSessionLease`
+
+- site-binding / user-grant / system-binding catalog management API (`/api/v1/browser-admin/*/list|get|upsert`, `packages/csharp/broker/Endpoints/BrowserBindingEndpoints.cs:14-137`; local-admin mirror under `/api/v1/local-admin/browser/*`)
+
+- session lease issuance and revocation (`/api/v1/browser-admin/leases/issue|revoke`, `BrowserBindingEndpoints.cs:160-188`)
+
 Not yet implemented:
-
-- site-binding catalog management API
-
-- session lease issuance and revocation flow
 
 - browser worker reuse of lease records
 

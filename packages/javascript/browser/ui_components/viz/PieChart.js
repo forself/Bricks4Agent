@@ -5,6 +5,7 @@
  */
 import { CanvasChart } from './CanvasChart.js';
 import { categoricalColor } from '../utils/color-scale.js';
+import Locale from '../i18n/index.js';
 
 const px = (v, d) => typeof v === 'number' ? v + 'px' : (v || d);
 
@@ -109,6 +110,25 @@ export class PieChart extends CanvasChart {
             { label: '值', value: this.fmt(d.value) + u },
             { label: '占比', value: d.pct.toFixed(1) + '%' }
         ];
+    }
+
+    /** 無障礙資料表(accessibleTable):名稱 / 數值 / 占比(與圖相同,只列 value > 0 的扇區)。 */
+    getDataTable() {
+        const items = (Array.isArray(this.options.data) ? this.options.data : [])
+            .filter((d) => d && Number(d.value) > 0);
+        const total = items.reduce((s, d) => s + Number(d.value), 0);
+        return {
+            columns: [
+                { key: 'name', label: Locale.t('canvasChart.name'), rowHeader: true },
+                { key: 'value', label: Locale.t('canvasChart.value'), format: 'number', unit: this.options.unit },
+                { key: 'percent', label: Locale.t('canvasChart.percent'), format: 'percent' }
+            ],
+            rows: items.map((d) => ({
+                name: d.name,
+                value: Number(d.value),
+                percent: total > 0 ? Number(d.value) / total : null
+            }))
+        };
     }
 
     /** 更新資料並重繪(舊 API 相容)。 */

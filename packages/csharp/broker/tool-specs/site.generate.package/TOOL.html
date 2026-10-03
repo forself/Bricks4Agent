@@ -27,18 +27,32 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <p>Every generated package includes a <code>verification_report</code>. The verifier checks the required package files, re-reads <code>site.json</code>, confirms component-library renderability through the quality analyzer, and verifies zip entries when an archive is requested.</p>
 <h2>Capability</h2>
 <ul>
-<li>Tool ID: <code>site.generate.package</code></li>
-<li>Capability ID: <code>site.generate_package</code></li>
-<li>Route: <code>site_generate_package</code></li>
-<li>Status: <code>beta</code></li>
-<li>Risk: medium</li>
+<li>
+<p>Tool ID: <code>site.generate.package</code></p>
+</li>
+<li>
+<p>Capability ID: <code>site.generate_package</code></p>
+</li>
+<li>
+<p>Route: <code>site_generate_package</code></p>
+</li>
+<li>
+<p>Status: <code>beta</code></p>
+</li>
+<li>
+<p>Risk: medium</p>
+</li>
 </ul>
 <h2>Package Contract</h2>
 <p>The package entry point is <code>index.html</code>. The HTML file is only a shell containing <code>#app</code> and loading <code>runtime.js</code>.</p>
 <p>The runtime loads:</p>
 <ul>
-<li><code>site.json</code></li>
-<li><code>components/manifest.json</code></li>
+<li>
+<p><code>site.json</code></p>
+</li>
+<li>
+<p><code>components/manifest.json</code></p>
+</li>
 </ul>
 <p>It then renders the site from the component tree in <code>site.json</code>.</p>
 <p>The worker loads the component library manifest from <code>Generator:ComponentLibraryPath</code> when configured. If it is empty, the bundled default manifest at <code>component-libraries/bricks4agent.default/manifest.json</code> is used.</p>
@@ -51,32 +65,72 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <h2>Package Verification</h2>
 <p>The verifier must pass for normal delivery. It checks:</p>
 <ul>
-<li><code>index.html</code></li>
-<li><code>runtime.js</code></li>
-<li><code>styles.css</code></li>
-<li><code>site.json</code></li>
-<li><code>components/manifest.json</code></li>
-<li><code>README.md</code></li>
-<li><code>index.html</code> declares <code>#app</code> and loads <code>./runtime.js</code></li>
-<li><code>runtime.js</code> loads <code>./site.json</code> and <code>./components/manifest.json</code></li>
-<li><code>components/manifest.json</code> declares every component type used by <code>site.json</code></li>
-<li>every non-generated component type used by <code>site.json</code> has a <code>runtime.js</code> renderer</li>
-<li>generated component types have local <code>components/generated/&lt;Type&gt;.js</code> and <code>.json</code> assets</li>
-<li>zip archive entries when <code>create_archive = true</code></li>
+<li>
+<p><code>index.html</code></p>
+</li>
+<li>
+<p><code>runtime.js</code></p>
+</li>
+<li>
+<p><code>styles.css</code></p>
+</li>
+<li>
+<p><code>site.json</code></p>
+</li>
+<li>
+<p><code>components/manifest.json</code></p>
+</li>
+<li>
+<p><code>README.html</code></p>
+</li>
+<li>
+<p><code>index.html</code> declares <code>#app</code> and loads <code>./runtime.js</code></p>
+</li>
+<li>
+<p><code>runtime.js</code> loads <code>./site.json</code> and <code>./components/manifest.json</code></p>
+</li>
+<li>
+<p><code>components/manifest.json</code> declares every component type used by <code>site.json</code></p>
+</li>
+<li>
+<p>every non-generated component type used by <code>site.json</code> has a <code>runtime.js</code> renderer</p>
+</li>
+<li>
+<p>generated component types have local <code>components/generated/&lt;Type&gt;.js</code> and <code>.json</code> assets</p>
+</li>
+<li>
+<p>zip archive entries when <code>create_archive = true</code></p>
+</li>
 </ul>
 <p>The <code>verification_report.runtime_renderer_types</code> field lists renderer keys parsed from <code>runtime.js</code>.</p>
 <p>If <code>enforce_quality_gate = false</code>, diagnostic packages may still be written with a failing <code>quality_report</code> and <code>verification_report</code>. Such output is for component-library gap analysis, not user delivery.</p>
 <h2>Output</h2>
 <p>The result includes:</p>
 <ul>
-<li><code>output_directory</code></li>
-<li><code>entry_point</code></li>
-<li><code>site_json_path</code></li>
-<li><code>manifest_path</code></li>
-<li><code>archive_path</code></li>
-<li><code>files</code></li>
-<li><code>quality_report</code></li>
-<li><code>verification_report</code></li>
+<li>
+<p><code>output_directory</code></p>
+</li>
+<li>
+<p><code>entry_point</code></p>
+</li>
+<li>
+<p><code>site_json_path</code></p>
+</li>
+<li>
+<p><code>manifest_path</code></p>
+</li>
+<li>
+<p><code>archive_path</code></p>
+</li>
+<li>
+<p><code>files</code></p>
+</li>
+<li>
+<p><code>quality_report</code></p>
+</li>
+<li>
+<p><code>verification_report</code></p>
+</li>
 </ul>
 </main>
 </body>

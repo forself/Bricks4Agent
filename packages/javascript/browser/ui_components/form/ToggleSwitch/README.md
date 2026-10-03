@@ -1,6 +1,6 @@
 # ToggleSwitch 開關滑桿
 
-布林值輸入元件，滑桿式外觀，API 對齊 Checkbox 可互換使用。
+布林值輸入元件，滑桿式外觀。提供與 Checkbox 相似的 `isChecked` / `setChecked` / `getValue` / `setValue` / `clear`，但並非完全對齊：沒有 `setDisabled()` / `show()` / `hide()`，且 `onChange` 只收到 `(checked)` 一個參數。
 
 ## API
 
@@ -24,12 +24,13 @@ const toggle = new ToggleSwitch({
 |---|---|
 | `mount(container)` | 掛載至容器 |
 | `destroy()` | 銷毀元件 |
-| `toggle()` | 切換開關狀態 |
+| `toggle()` | 切換開關狀態（會觸發 onChange；不檢查 disabled，停用時呼叫仍會切換） |
 | `isChecked()` | 回傳目前狀態 |
 | `setChecked(bool)` | 設定狀態（不觸發 onChange） |
 | `getValue()` | 同 `isChecked()` |
 | `setValue(value)` | 同 `setChecked()` |
 | `clear()` | 重置為 false |
+| `setError(msg, { display })` / `clearError()` | 標示 / 清除欄位錯誤：紅框、`aria-invalid` 與錯誤文字（插在元件正後方，需已掛載）；`display: false` 只標示狀態、不顯示文字 |
 
 ### 屬性
 

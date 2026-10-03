@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ImportWizard 資料匯入精靈</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>ImportWizard 資料匯入精靈</h1>
+<p>內嵌在頁面中（不是對話框）的四步驟匯入流程：</p>
+<ol>
+<li><strong>上傳檔案</strong>：原生檔案選擇器（可拖放），或直接貼上文字。</li>
+<li><strong>欄位對應</strong>：每個目標欄位用一個 Dropdown 選擇來源欄位，依標題自動比對。</li>
+<li><strong>預覽與驗證</strong>：型別轉換、必填與自訂驗證，顯示錯誤清單與前 100 列預覽。</li>
+<li><strong>確認匯入</strong>：呼叫 <code>onImport</code>，顯示忙碌狀態與結果（成功／失敗筆數），可重新開始。</li>
+</ol>
+<p>所有來源值都當作文字處理，畫面一律以 <code>textContent</code> 呈現，不解讀任何標記。上方以 Stepper 顯示進度。</p>
+<h2>建構</h2>
+<pre><code class="language-javascript">import { ImportWizard } from './ImportWizard.js';
+
+const wizard = new ImportWizard({
+    fields: [],                     // 目標欄位定義，見下表
+    accept: '.csv,.tsv,.txt',       // 檔案選擇器的 accept，也用來檢查拖放的檔案（副檔名或 MIME）
+    maxFileSize: 5 * 1024 * 1024,   // 檔案大小上限（位元組）；貼上的文字以 UTF-8 位元組數計算
+    maxRows: 10000,                 // 資料列上限（不含標題列），超過時不載入
+    encoding: 'utf-8',              // TextDecoder 編碼標籤，例如 'big5'；UTF-8 的 BOM 會移除
+    delimiter: 'auto',              // 'auto'（在 , Tab ; 之間判斷）或固定的單一字元
+    hasHeader: true,                // 第一列是否為標題；false 時依欄位順序對應，欄名顯示為「第 N 欄」
+    allowPaste: true,               // 顯示貼上文字的輸入區
+    allowPartial: false,            // false：有任何無效列時不能進入確認步驟
+    onImport: null,                 // async (validRows, { invalidRows, mapping, headers, rowNumbers }) =&gt; result
+    onCancel: null                  // () =&gt; void；提供時各步驟顯示「取消」按鈕（按下後先 reset；匯入完成後不顯示）
+});
+wizard.mount('#host');
+</code></pre>
+<p>欄位定義 <code>fields[]</code>：</p>
+<table>
+<thead>
+<tr>
+<th>屬性</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>key</code></td>
+<td>輸出資料列的屬性名稱（必填、不可重複）</td>
+</tr>
+<tr>
+<td><code>label</code></td>
+<td>顯示名稱，預設同 <code>key</code></td>
+</tr>
+<tr>
+<td><code>required</code></td>
+<td>必須對應到來源欄位，且每列的值不可為空</td>
+</tr>
+<tr>
+<td><code>type</code></td>
+<td><code>'text'</code>（預設）| <code>'number'</code> | <code>'date'</code> | <code>'boolean'</code></td>
+</tr>
+<tr>
+<td><code>aliases</code></td>
+<td>自動對應時可接受的其他標題，例如 <code>['full name', '電子郵件']</code></td>
+</tr>
+<tr>
+<td><code>validate(value, row)</code></td>
+<td>回傳錯誤訊息字串或 <code>null</code>；<code>value</code> 為轉換後的值，<code>row</code> 為該列所有欄位轉換後的值；空白且非必填時不呼叫</td>
+</tr>
+<tr>
+<td><code>transform(value)</code></td>
+<td>驗證通過後把值轉成輸出值；空白（<code>null</code>）時不呼叫</td>
+</tr>
+</tbody>
+</table>
+<h2>處理規則</h2>
+<ul>
+<li><strong>解碼</strong>：以 <code>TextDecoder(encoding)</code> 解碼；不支援的編碼顯示錯誤，出現無法解碼的字元時顯示警告（通常代表編碼選錯）。</li>
+<li><strong>解析</strong>：同目錄的 <code>csv-parser.js</code>，支援 RFC 4180 引號、<code>""</code> 跳脫、引號內的換行與分隔字元、CRLF／LF、檔尾換行與 BOM；空白行及只有分隔字元的行會略過。欄位數與標題列不同的列（ragged row）、引號未關閉或格式錯誤的列都列為無效列。</li>
+<li><strong>自動對應</strong>：標題經全形轉半形、轉小寫、去除空白與常見標點後，與欄位的 <code>key</code>、<code>label</code>、<code>aliases</code> 比對，每個來源欄位只對應一次。</li>
+<li><strong>轉換</strong>：值先去除前後空白。<code>number</code> 接受全形數字、千分位逗號與科學記號；<code>date</code> 接受 <code>YYYY-MM-DD</code>、<code>YYYY/MM/DD</code>、<code>YYYY.MM.DD</code>（月日可一位數），輸出 <code>YYYY-MM-DD</code>，不存在的日期視為錯誤；<code>boolean</code> 接受 true/t/yes/y/1/on/是/真 與 false/f/no/n/0/off/否/假。</li>
+<li><strong>列號</strong>：錯誤清單與 <code>invalid[].row</code> 使用來源中的行號（標題列為第 1 行），跨行的引號欄位以起始行計算。</li>
+</ul>
+<h2>方法</h2>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>mount(container)</code></td>
+<td>掛載到容器（元素或選擇器），回傳 <code>this</code></td>
+</tr>
+<tr>
+<td><code>destroy()</code></td>
+<td>銷毀子元件、移除 DOM 與 <code>window</code> 上的語系監聽；讀檔或匯入中的結果會被忽略；可重複呼叫</td>
+</tr>
+<tr>
+<td><code>goTo(step)</code></td>
+<td>前往 <code>0</code>–<code>3</code> 或 <code>'upload'</code>／<code>'mapping'</code>／<code>'preview'</code>／<code>'confirm'</code>；只能前往可到達的步驟（要先載入資料、必填欄位都對應、可確認匯入），讀檔中、匯入中或完成後回傳 <code>false</code></td>
+</tr>
+<tr>
+<td><code>reset()</code></td>
+<td>清除資料、對應與結果並回到第一步</td>
+</tr>
+<tr>
+<td><code>getMapping()</code></td>
+<td>回傳 <code>{ [fieldKey]: 來源欄位索引（0 起算）| null }</code></td>
+</tr>
+<tr>
+<td><code>getRows()</code></td>
+<td>回傳 <code>{ valid, invalid }</code>：<code>valid</code> 為轉換後的資料列；<code>invalid</code> 為 <code>{ row, values, errors: [{ field, message }] }</code>，<code>field</code> 為 <code>null</code> 表示整列的問題</td>
+</tr>
+<tr>
+<td><code>show()</code> / <code>hide()</code></td>
+<td>顯示／隱藏</td>
+</tr>
+<tr>
+<td><code>snapshot()</code></td>
+<td>回傳內部狀態（step、status、source、mapping…）</td>
+</tr>
+</tbody>
+</table>
+<p><code>ImportWizard.STEPS</code> 為步驟代碼陣列 <code>['upload', 'mapping', 'preview', 'confirm']</code>。</p>
+<h2>回呼</h2>
+<ul>
+<li><code>onImport(validRows, { invalidRows, mapping, headers, rowNumbers })</code>：在確認步驟按下「開始匯入」時呼叫，可回傳 Promise。執行期間畫面為忙碌狀態（<code>aria-busy</code>、按鈕停用、狀態播報）。</li>
+<li>回傳 <code>{ imported, failed }</code>（數字）時直接顯示；否則以有效列數與無效列數作為成功／失敗筆數。</li>
+<li>拋出錯誤或 Promise 被拒時顯示失敗訊息（錯誤的 <code>message</code> 以純文字附在後面），可「重試」或回上一步。</li>
+<li><code>rowNumbers</code> 與 <code>validRows</code> 一一對應，是每列在來源中的行號，方便回報後端的逐列錯誤。</li>
+<li><code>onCancel()</code>：按下「取消」時先 <code>reset()</code> 再呼叫。</li>
+</ul>
+<h2>鍵盤與無障礙</h2>
+<ul>
+<li>全部使用原生控制項：檔案選擇器（以 <code>&lt;label for&gt;</code> 標示）、<code>&lt;textarea&gt;</code>、按鈕；欄位對應使用可搜尋的 Dropdown（↑／↓、Enter、Escape），每個都有「{欄位} 的來源欄位」的 <code>aria-label</code>，必填者加上 <code>aria-required</code>。</li>
+<li>以按鈕換步驟時，焦點移到該步驟的標題（<code>role="heading"</code>，<code>tabindex="-1"</code>），並以 <code>role="status"</code> 播報「第 N 步，共 4 步」；以 <code>goTo()</code> 換步驟時，只有焦點原本就在元件內才會移到標題。錯誤以 <code>role="alert"</code> 顯示。</li>
+<li>欄位對應未完成時按「下一步」：列出缺少的必填欄位、在對應的 Dropdown 標示錯誤，並把焦點移到第一個缺少的欄位。</li>
+<li>預覽表格含 <code>&lt;caption&gt;</code> 與 <code>scope</code> 標頭，外框可 Tab 聚焦（<code>role="region"</code>）以便鍵盤捲動；「下一步」被擋住時以 <code>aria-describedby</code> 指向原因。</li>
+<li>匯入中的按鈕以 <code>aria-disabled</code> 表示（仍可聚焦），完成後焦點移到「重新開始」，失敗時移到「重試」。</li>
+<li>語系切換時會即時重繪文字。</li>
+</ul>
+<h2>CSV 解析器</h2>
+<p><code>csv-parser.js</code> 可單獨使用：</p>
+<pre><code class="language-javascript">import { parseCsv, detectDelimiter, stripBom } from './csv-parser.js';
+
+const text = stripBom(rawText);
+const { rows, lines, errors, truncated } = parseCsv(text, {
+    delimiter: detectDelimiter(text),   // ',' '\t' ';' 中欄位數最一致者
+    skipEmptyLines: 'greedy',           // true 略過空白行；'greedy' 連只有空白或分隔字元的行也略過
+    maxRecords: 1000                    // 達上限即停止，truncated 為 true
+});
+// rows：string[][]；lines：每筆記錄起始行號；errors：[{ code: 'unterminatedQuote'|'malformedQuote', line, record }]
+</code></pre>
+<h2>範例</h2>
+<pre><code class="language-javascript">import { ImportWizard } from './ImportWizard.js';
+
+const wizard = new ImportWizard({
+    fields: [
+        { key: 'name', label: '姓名', required: true, aliases: ['full name', 'name'] },
+        {
+            key: 'email',
+            label: 'Email',
+            required: true,
+            aliases: ['e-mail', '電子郵件'],
+            validate: (value) =&gt; (/^[^@\s]+@[^@\s]+$/.test(value) ? null : 'Email 格式錯誤')
+        },
+        { key: 'room', label: '會議室' },
+        { key: 'seats', label: '座位數', type: 'number', validate: (value) =&gt; (value &gt; 0 ? null : '必須大於 0') },
+        { key: 'startDate', label: '開始日期', type: 'date' },
+        { key: 'remote', label: '可視訊', type: 'boolean' }
+    ],
+    encoding: 'utf-8',
+    allowPartial: true,
+    onImport: async (rows, { invalidRows }) =&gt; {
+        const response = await fetch('/api/bookings/import', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(rows)
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const body = await response.json();
+        return { imported: body.imported, failed: body.failed + invalidRows.length };
+    },
+    onCancel: () =&gt; wizard.hide()
+});
+wizard.mount('#import-host');
+</code></pre>
+</main>
+</body>
+</html>

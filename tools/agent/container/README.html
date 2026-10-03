@@ -24,39 +24,81 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <p>This directory contains a narrow Podman stack for the governed agent execution path, not the whole Bricks4Agent system.</p>
 <p>Included services:</p>
 <ul>
-<li><code>mock-ollama</code>: deterministic Ollama-style upstream stub</li>
-<li><code>mock-openai</code>: deterministic OpenAI-compatible upstream stub</li>
-<li><code>broker</code>: scoped-session issuer, capability/scope policy engine, and LLM proxy</li>
-<li><code>agent</code>: governed agent container that only talks to the broker</li>
-<li><code>file-worker</code> and <code>line-worker</code>: optional worker containers in the default stack</li>
+<li>
+<p><code>mock-ollama</code>: deterministic Ollama-style upstream stub</p>
+</li>
+<li>
+<p><code>mock-openai</code>: deterministic OpenAI-compatible upstream stub</p>
+</li>
+<li>
+<p><code>broker</code>: scoped-session issuer, capability/scope policy engine, and LLM proxy</p>
+</li>
+<li>
+<p><code>agent</code>: governed agent container that only talks to the broker</p>
+</li>
+<li>
+<p><code>file-worker</code> and <code>line-worker</code>: optional worker containers in the default stack</p>
+</li>
 </ul>
 <h2>Scope</h2>
 <p>This stack proves the broker-mediated agent path. It does not prove the full production system.</p>
 <p>What it proves:</p>
 <ul>
-<li>the agent container does not need a direct provider API key</li>
-<li>runtime spec and model traffic are fetched through the broker</li>
-<li>the broker forwards model traffic to an upstream service</li>
-<li>the agent only operates with the broker-issued session, role, capability, and scope</li>
-<li>the broker can issue task-specific runtime defaults and capability grants from <code>runtime_descriptor</code></li>
-<li>worker containers can connect to the broker function pool in local container development</li>
-<li>the default smoke test can force a broker-mediated <code>read_file</code> tool call through the file worker</li>
+<li>
+<p>the agent container does not need a direct provider API key</p>
+</li>
+<li>
+<p>runtime spec and model traffic are fetched through the broker</p>
+</li>
+<li>
+<p>the broker forwards model traffic to an upstream service</p>
+</li>
+<li>
+<p>the agent only operates with the broker-issued session, role, capability, and scope</p>
+</li>
+<li>
+<p>the broker can issue task-specific runtime defaults and capability grants from <code>runtime_descriptor</code></p>
+</li>
+<li>
+<p>worker containers can connect to the broker function pool in local container development</p>
+</li>
+<li>
+<p>the default smoke test can force a broker-mediated <code>read_file</code> tool call through the file worker</p>
+</li>
 </ul>
 <p>What it does not prove:</p>
 <ul>
-<li>the canonical LINE ingress path</li>
-<li>the local admin console at <code>line-admin.html</code></li>
-<li>Google Drive delivery</li>
-<li>Azure VM IIS deployment</li>
-<li>browser-governed execution</li>
-<li>the full high-level conversation/query/production routing flow</li>
+<li>
+<p>the canonical LINE ingress path</p>
+</li>
+<li>
+<p>the local admin console at <code>line-admin.html</code></p>
+</li>
+<li>
+<p>Google Drive delivery</p>
+</li>
+<li>
+<p>Azure VM IIS deployment</p>
+</li>
+<li>
+<p>browser-governed execution</p>
+</li>
+<li>
+<p>the full high-level conversation/query/production routing flow</p>
+</li>
 </ul>
 <p>Those parts currently live in the Windows sidecar path under <a href="../../../packages/csharp/workers/line-worker/README.html"><code>packages/csharp/workers/line-worker/README.md</code></a> and the broker runtime itself.</p>
 <h2>Stack Variants</h2>
 <ul>
-<li><code>compose.yml</code>: mock Ollama protocol stack with broker, governed agent, file worker, and LINE worker</li>
-<li><code>compose.openai-compatible.yml</code>: mock OpenAI-compatible stack</li>
-<li><code>compose.ollama-host.yml</code>: broker + governed agent against a host-side Ollama server</li>
+<li>
+<p><code>compose.yml</code>: mock Ollama protocol stack with broker, governed agent, file worker, and LINE worker</p>
+</li>
+<li>
+<p><code>compose.openai-compatible.yml</code>: mock OpenAI-compatible stack</p>
+</li>
+<li>
+<p><code>compose.ollama-host.yml</code>: broker + governed agent against a host-side Ollama server</p>
+</li>
 </ul>
 <h2>Canonical Local Use</h2>
 <p>From the repo root:</p>
@@ -82,9 +124,15 @@ podman compose -f tools/agent/container/compose.ollama-host.yml up --build --abo
 <h2>Port Notes</h2>
 <p>Default exposed broker ports:</p>
 <ul>
-<li><code>compose.yml</code>: <code>5000</code></li>
-<li><code>compose.openai-compatible.yml</code>: <code>5361</code></li>
-<li><code>compose.ollama-host.yml</code>: <code>5002</code></li>
+<li>
+<p><code>compose.yml</code>: <code>5000</code></p>
+</li>
+<li>
+<p><code>compose.openai-compatible.yml</code>: <code>5361</code></p>
+</li>
+<li>
+<p><code>compose.ollama-host.yml</code>: <code>5002</code></p>
+</li>
 </ul>
 <p>The <code>5361</code> default in <code>compose.openai-compatible.yml</code> collides with the Windows LINE sidecar broker default. If the sidecar is running, override the compose broker port before starting:</p>
 <pre><code class="language-bash">set BROKER_PORT=5601
@@ -94,18 +142,32 @@ podman compose -f tools/agent/container/compose.openai-compatible.yml up --build
 <h2>Default Development Identity</h2>
 <p>The compose stacks seed development principals and tasks into the broker. The default stack uses:</p>
 <ul>
-<li><code>principal_id</code>: <code>prn_podman_dev</code></li>
-<li><code>task_id</code>: <code>task_podman_dev</code></li>
-<li><code>role_id</code>: <code>role_reader</code></li>
+<li>
+<p><code>principal_id</code>: <code>prn_podman_dev</code></p>
+</li>
+<li>
+<p><code>task_id</code>: <code>task_podman_dev</code></p>
+</li>
+<li>
+<p><code>role_id</code>: <code>role_reader</code></p>
+</li>
 </ul>
 <p>The other compose files seed their own development principal/task pairs.</p>
 <p>The ECDH keypair, broker token secret, and master key embedded in the compose files are development-only values. Do not reuse them outside local testing.</p>
 <p>Each compose file also seeds a <code>runtime_descriptor</code> onto the task. That descriptor is the task architecture hook used by the broker to issue:</p>
 <ul>
-<li>task-bound default model</li>
-<li><code>allow_model_override</code> policy</li>
-<li>explicit capability grants</li>
-<li>per-grant scope overrides</li>
+<li>
+<p>task-bound default model</p>
+</li>
+<li>
+<p><code>allow_model_override</code> policy</p>
+</li>
+<li>
+<p>explicit capability grants</p>
+</li>
+<li>
+<p>per-grant scope overrides</p>
+</li>
 </ul>
 <h2>Overrides</h2>
 <p>You can override the defaults with environment variables before starting the stack:</p>
@@ -116,78 +178,183 @@ podman compose -f tools/agent/container/compose.yml up --build --abort-on-contai
 </code></pre>
 <p>Supported overrides:</p>
 <ul>
-<li><code>BROKER_PORT</code></li>
-<li><code>STACK_LLM_PORT</code></li>
-<li><code>STACK_MODEL</code></li>
-<li><code>STACK_RESPONSE_TEXT</code></li>
-<li><code>STACK_TOOL_CALL</code></li>
-<li><code>STACK_TOOL_PATH</code></li>
-<li><code>BROKER_PRINCIPAL_ID</code></li>
-<li><code>BROKER_TASK_ID</code></li>
-<li><code>BROKER_ROLE_ID</code></li>
-<li><code>BROKER_TASK_TYPE</code></li>
-<li><code>OPENAI_API_KEY</code></li>
-<li><code>OPENAI_API_FORMAT</code></li>
-<li><code>OLLAMA_BASE_URL</code></li>
-<li><code>LINE_CHANNEL_ACCESS_TOKEN</code></li>
-<li><code>LINE_CHANNEL_SECRET</code></li>
-<li><code>LINE_DEFAULT_RECIPIENT_ID</code></li>
-<li><code>LINE_ALLOWED_USER_IDS</code></li>
-<li><code>LINE_WEBHOOK_PORT</code></li>
-<li><code>LINE_WORKER_AUTH_KEY_ID</code></li>
-<li><code>LINE_WORKER_AUTH_SHARED_SECRET</code></li>
-<li><code>FILE_WORKER_AUTH_KEY_ID</code></li>
-<li><code>FILE_WORKER_AUTH_SHARED_SECRET</code></li>
-<li><code>WORKER_AUTH_ENFORCE</code></li>
-<li><code>AGENT_BROKER_URL</code></li>
-<li><code>AGENT_RUN</code></li>
-<li><code>AGENT_VERBOSE</code></li>
-<li><code>AGENT_LINE_LISTEN</code></li>
-<li><code>AGENT_LINE_POLL_INTERVAL</code></li>
+<li>
+<p><code>BROKER_PORT</code></p>
+</li>
+<li>
+<p><code>STACK_LLM_PORT</code></p>
+</li>
+<li>
+<p><code>STACK_MODEL</code></p>
+</li>
+<li>
+<p><code>STACK_RESPONSE_TEXT</code></p>
+</li>
+<li>
+<p><code>STACK_TOOL_CALL</code></p>
+</li>
+<li>
+<p><code>STACK_TOOL_PATH</code></p>
+</li>
+<li>
+<p><code>BROKER_PRINCIPAL_ID</code></p>
+</li>
+<li>
+<p><code>BROKER_TASK_ID</code></p>
+</li>
+<li>
+<p><code>BROKER_ROLE_ID</code></p>
+</li>
+<li>
+<p><code>BROKER_TASK_TYPE</code></p>
+</li>
+<li>
+<p><code>OPENAI_API_KEY</code></p>
+</li>
+<li>
+<p><code>OPENAI_API_FORMAT</code></p>
+</li>
+<li>
+<p><code>OLLAMA_BASE_URL</code></p>
+</li>
+<li>
+<p><code>LINE_CHANNEL_ACCESS_TOKEN</code></p>
+</li>
+<li>
+<p><code>LINE_CHANNEL_SECRET</code></p>
+</li>
+<li>
+<p><code>LINE_DEFAULT_RECIPIENT_ID</code></p>
+</li>
+<li>
+<p><code>LINE_ALLOWED_USER_IDS</code></p>
+</li>
+<li>
+<p><code>LINE_WEBHOOK_PORT</code></p>
+</li>
+<li>
+<p><code>LINE_WORKER_AUTH_KEY_ID</code></p>
+</li>
+<li>
+<p><code>LINE_WORKER_AUTH_SHARED_SECRET</code></p>
+</li>
+<li>
+<p><code>FILE_WORKER_AUTH_KEY_ID</code></p>
+</li>
+<li>
+<p><code>FILE_WORKER_AUTH_SHARED_SECRET</code></p>
+</li>
+<li>
+<p><code>WORKER_AUTH_ENFORCE</code></p>
+</li>
+<li>
+<p><code>AGENT_BROKER_URL</code></p>
+</li>
+<li>
+<p><code>AGENT_RUN</code></p>
+</li>
+<li>
+<p><code>AGENT_VERBOSE</code></p>
+</li>
+<li>
+<p><code>AGENT_LINE_LISTEN</code></p>
+</li>
+<li>
+<p><code>AGENT_LINE_POLL_INTERVAL</code></p>
+</li>
 </ul>
 <p><code>AGENT_BROKER_URL</code> controls the HTTP broker URL injected into dynamically spawned agent containers through <code>/api/v1/agents/spawn</code>. In the compose stack the default is <code>http://broker:5000</code>; for a host-side broker, point it at the broker address reachable from the container, such as <code>http://host.containers.internal:5361</code> on Podman Desktop.</p>
 <h2>Switching To A Real Upstream</h2>
 <p>The broker is already wired to use the upstream through <code>LlmProxy__BaseUrl</code>.</p>
 <p>For a real provider:</p>
 <ul>
-<li>replace <code>mock-ollama</code> or <code>mock-openai</code></li>
-<li>point <code>LlmProxy__BaseUrl</code> to the actual upstream</li>
-<li>provide the required provider key through environment variables</li>
-<li>use <code>Provider=anthropic</code>, <code>LlmProxy__ApiFormat=messages</code>, and <code>claude-sonnet-4-6</code> for Claude Messages API paths</li>
+<li>
+<p>replace <code>mock-ollama</code> or <code>mock-openai</code></p>
+</li>
+<li>
+<p>point <code>LlmProxy__BaseUrl</code> to the actual upstream</p>
+</li>
+<li>
+<p>provide the required provider key through environment variables</p>
+</li>
+<li>
+<p>use <code>Provider=anthropic</code>, <code>LlmProxy__ApiFormat=messages</code>, and <code>claude-sonnet-4-6</code> for Claude Messages API paths</p>
+</li>
+<li>
+<p>use <code>Provider=anthropic</code>, <code>LlmProxy__ApiFormat=messages</code>, and <code>claude-sonnet-4-6</code> for Claude Messages API paths</p>
+</li>
 </ul>
 <p>The governed agent container does not change. It still only knows about:</p>
 <ul>
-<li><code>BROKER_URL</code></li>
-<li><code>BROKER_PUB_KEY</code></li>
-<li><code>BROKER_PRINCIPAL_ID</code></li>
-<li><code>BROKER_TASK_ID</code></li>
-<li><code>BROKER_ROLE_ID</code></li>
+<li>
+<p><code>BROKER_URL</code></p>
+</li>
+<li>
+<p><code>BROKER_PUB_KEY</code></p>
+</li>
+<li>
+<p><code>BROKER_PRINCIPAL_ID</code></p>
+</li>
+<li>
+<p><code>BROKER_TASK_ID</code></p>
+</li>
+<li>
+<p><code>BROKER_ROLE_ID</code></p>
+</li>
 </ul>
 <h2>Relationship To The Current LINE Architecture</h2>
 <p>The canonical LINE production path is:</p>
 <ul>
-<li><code>line-worker</code> receives webhook traffic</li>
-<li><code>line-worker</code> forwards user messages to the broker high-level coordinator</li>
-<li>the broker decides <code>conversation</code>, <code>query</code>, or <code>production</code></li>
-<li>only confirmed production work becomes task/plan/handoff state</li>
+<li>
+<p><code>line-worker</code> receives webhook traffic</p>
+</li>
+<li>
+<p><code>line-worker</code> forwards user messages to the broker high-level coordinator</p>
+</li>
+<li>
+<p>the broker decides <code>conversation</code>, <code>query</code>, or <code>production</code></p>
+</li>
+<li>
+<p>only confirmed production work becomes task/plan/handoff state</p>
+</li>
 </ul>
 <p>That production path is currently exercised through the Windows sidecar scripts, not through this Podman stack. The agent's <code>--line-listen</code> mode is kept only as a legacy development path. It is not the primary production integration model.</p>
 <h2>Practical Reading</h2>
 <p>Use this Podman stack when you want to verify:</p>
 <ul>
-<li>governed agent bootstrap</li>
-<li>broker-issued runtime descriptors</li>
-<li>capability/scope-gated execution</li>
-<li>upstream model proxying</li>
-<li>worker container attachment</li>
+<li>
+<p>governed agent bootstrap</p>
+</li>
+<li>
+<p>broker-issued runtime descriptors</p>
+</li>
+<li>
+<p>capability/scope-gated execution</p>
+</li>
+<li>
+<p>upstream model proxying</p>
+</li>
+<li>
+<p>worker container attachment</p>
+</li>
 </ul>
 <p>Do not read a passing Podman run here as proof that:</p>
 <ul>
-<li>the admin console is healthy</li>
-<li>LINE is reachable from the public internet</li>
-<li>deployment targets are configured</li>
-<li>Google Drive delegated delivery is working</li>
-<li>browser-governed tools are production-ready</li>
+<li>
+<p>the admin console is healthy</p>
+</li>
+<li>
+<p>LINE is reachable from the public internet</p>
+</li>
+<li>
+<p>deployment targets are configured</p>
+</li>
+<li>
+<p>Google Drive delegated delivery is working</p>
+</li>
+<li>
+<p>browser-governed tools are production-ready</p>
+</li>
 </ul>
 </main>
 </body>

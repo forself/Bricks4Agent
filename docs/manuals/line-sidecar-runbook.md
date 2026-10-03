@@ -1,6 +1,6 @@
 # LINE Sidecar Runbook
 
-Date: 2026-03-26
+Date: 2026-09-26
 
 Scope: current local Windows sidecar operation for the live LINE ingress path
 
@@ -10,7 +10,7 @@ Audience: operator / developer
 
 This runbook describes how to start, verify, operate, and troubleshoot the current live local path:
 
-`LINE webhook -> ngrok public URL -> line-worker -> broker /api/v1/high-level/line/process`
+`LINE webhook -> public tunnel URL (ngrok; localhost.run fallback) -> line-worker -> broker /api/v1/high-level/line/process`
 
 The broker path above remains plain JSON, but it is now an authenticated worker path rather than a blind trust bypass.
 
@@ -30,13 +30,13 @@ It does not describe:
 
 - line-worker webhook: `127.0.0.1:5357`
 
-- ngrok tunnel name: `line5357`
+- ngrok tunnel name (ngrok path only): `line5357`
 
 ## Sidecar State Persistence
 
 - Sidecar runtime state now persists at:
 
-- `D:\Bricks4Agent\.run\line-sidecar\data\broker.db`
+- `.run\line-sidecar\data\broker.db` (under the repo root)
 
 - This database stores broker-owned local state such as:
 
@@ -58,7 +58,7 @@ You need these available on the machine:
 
 - .NET SDK/runtime sufficient to publish and run broker and line-worker
 
-- `ngrok` installed and authenticated
+- a public tunnel: `ngrok` installed and authenticated is preferred but optional — if `ngrok` is missing or `%LOCALAPPDATA%\ngrok\ngrok.yml` does not exist, `up` warns and falls back to a localhost.run tunnel, which needs the OpenSSH client (`ssh`) on `PATH`
 
 - valid LINE channel credentials in local worker config
 
@@ -68,9 +68,9 @@ Optional but currently expected for the best live behavior:
 
 - `Api.txt` in `C:\secure\Bricks4Agent` (or `BRICKS4AGENT_SECRETS_DIR`; repo root is a legacy fallback) as the OpenAI-compatible fallback key when `ANTHROPIC_API_KEY` is absent
 
-- Google OAuth client JSON matching `client_secret_*.json` in the same secrets directory
+- Google OAuth client JSON matching `client_secret_*.json` in the same secrets directory (searched first; repo root is a legacy fallback)
 
-- a valid ngrok config at `%LOCALAPPDATA%\ngrok\ngrok.yml`
+- a valid ngrok config at `%LOCALAPPDATA%\ngrok\ngrok.yml` (only for the ngrok path)
 
 ## Local-Only Files And Inputs
 
@@ -78,7 +78,7 @@ Optional but currently expected for the best live behavior:
 
 File:
 
-- [appsettings.json](/d:/Bricks4Agent/packages/csharp/workers/line-worker/appsettings.json)
+- `packages/csharp/workers/line-worker/appsettings.json`
 
 This file is local-only and ignored by git.
 
@@ -100,7 +100,7 @@ At minimum, it must contain working values for:
 
 File:
 
-- `C:\secure\Bricks4Agent\Api.txt` (or `$env:BRICKS4AGENT_SECRETS_DIR\Api.txt`; `D:\Bricks4Agent\Api.txt` is a legacy fallback)
+- `C:\secure\Bricks4Agent\Api.txt` (or `$env:BRICKS4AGENT_SECRETS_DIR\Api.txt`; `Api.txt` at the repo root is a legacy fallback)
 
 Current sidecar behavior:
 
@@ -112,7 +112,7 @@ Current sidecar behavior:
 
 File pattern:
 
-- `C:\secure\Bricks4Agent\client_secret_*.json` (repo root is a legacy fallback)
+- `C:\secure\Bricks4Agent\client_secret_*.json` (or `$env:BRICKS4AGENT_SECRETS_DIR`; `start-sidecar-stack.ps1` searches the secrets directory first and the repo root only as a legacy fallback)
 
 ### 3.1 Worker identity credential store
 
@@ -180,7 +180,7 @@ Current sidecar behavior:
 
 All normal local operation should go through:
 
-- [line-sidecar.ps1](/d:/Bricks4Agent/packages/csharp/workers/line-worker/line-sidecar.ps1)
+- [line-sidecar.ps1](../../packages/csharp/workers/line-worker/line-sidecar.ps1)
 
 ### Start
 
@@ -243,13 +243,13 @@ The start path currently performs these actions:
 
 7. Starts line-worker on `*:5357`
 
-8. Recreates ngrok tunnel `line5357`
+8. Recreates ngrok tunnel `line5357`; if ngrok is unavailable, starts a localhost.run tunnel instead (plus a webhook-sync watchdog that re-points the LINE webhook when the localhost.run URL changes)
 
 9. Updates the LINE webhook endpoint unless `-SkipWebhookUpdate` is used
 
 10. Waits until broker and local webhook are actually reachable before considering startup successful
 
-11. Verifies that the named ngrok tunnel actually exists before treating startup as successful
+11. On the ngrok path, verifies that the named ngrok tunnel actually exists before treating startup as successful
 
 Important clarification:
 
@@ -258,6 +258,8 @@ Important clarification:
 - the script now starts an ngrok agent automatically with:
 
 - `ngrok start --none --config %LOCALAPPDATA%\ngrok\ngrok.yml`
+
+- if `ngrok` is not on `PATH` or the config file is missing, the script warns and uses localhost.run instead (the warning text still says "cloudflared quick tunnel", but the tunnel actually started is localhost.run; the cloudflared branch in the script is currently unreachable)
 
 So the startup document is now strict:
 
@@ -274,20 +276,20 @@ If `up` fails and `.run/line-sidecar/logs/broker.err.log` or Windows Code Integr
 Do not keep re-running `line-sidecar.ps1 up`. Run the runtime trust repair flow from an elevated PowerShell:
 
 ```powershell
-cd D:\Bricks4Agent
+# from the repo root
 npm run signing:wdac-repair -- -Deploy
 ```
 
-The repair flow scans:
+The repair flow scans (relative to the repo root):
 
 ```text
-D:\Bricks4Agent\.run\line-sidecar
+.run\line-sidecar
 ```
 
 It generates policy output under:
 
 ```text
-D:\Bricks4Agent\.run\wdac\line-sidecar-runtime\
+.run\wdac\line-sidecar-runtime\
 ```
 
 After deployment, the generated `{policy-id}.cip` must appear under:
@@ -296,7 +298,7 @@ After deployment, the generated `{policy-id}.cip` must appear under:
 C:\Windows\System32\CodeIntegrity\CiPolicies\Active
 ```
 
-The WDAC policy is effective only after the active policy check passes. See [dev-code-signing-wdac.zh-TW.md](/d:/Bricks4Agent/docs/manuals/dev-code-signing-wdac.zh-TW.html) for the full flow.
+The WDAC policy is effective only after the active policy check passes. See [dev-code-signing-wdac.zh-TW.md](dev-code-signing-wdac.zh-TW.md) for the full flow.
 
 ## Successful Start: Expected Signals
 
@@ -304,9 +306,9 @@ After `up`, you should expect all of these:
 
 - `status` shows broker PID and line-worker PID running
 
-- `status` shows ngrok PID running
+- `status` shows ngrok PID running (or, on the localhost.run fallback, the localhost.run PID)
 
-- `status` shows ngrok public URL
+- `status` shows ngrok public URL (or the `latest localhost.run` URL)
 
 - `status` shows LINE webhook endpoint and `active = True`
 
@@ -322,7 +324,7 @@ After `up`, you should expect all of these:
 
 - `verify` returns `Webhook status: 200`
 
-- public webhook should also be routable once the named ngrok tunnel exists
+- public webhook should also be routable once the tunnel (named ngrok tunnel or localhost.run) exists
 
 If `up` returns without these conditions being true, treat startup as failed.
 
@@ -342,21 +344,27 @@ Current behavior:
 
 - first login requires password change
 
-This console currently includes:
+This console currently has these tabs (each shown only when the signed-in operator has the matching permission):
 
-- LINE user list and labels
+- LINE 與使用者 — LINE user list and labels, registration policy, per-user permissions, Google Drive OAuth and delivery actions
 
-- registration policy
+- 系統監控 — system monitoring
 
-- per-user permissions
+- Workflow
 
-- browser records
+- Browser 綁定 — browser bindings
 
-- deployment targets
+- Deployment — deployment targets
 
-- tool specs
+- 交付記錄 — delivery records
 
-- Google Drive OAuth and delivery actions
+- 權限管理 — operator / permission management
+
+- 審批 — approval queue
+
+- 系統警示 — system alerts
+
+- Tool Specs
 
 ## Current Google Drive Delivery Modes
 
@@ -399,7 +407,7 @@ If you want a LINE user to actually receive a downloadable link after a document
 - This is required before the broker can generate the artifact itself
 
 2. A working Google OAuth client JSON
-- `C:\secure\Bricks4Agent\client_secret_*.json`
+- `C:\secure\Bricks4Agent\client_secret_*.json` (secrets directory first; repo root is a legacy fallback)
 - The callback URI must match:
  - `http://127.0.0.1:5361/api/v1/google-drive/oauth/callback`
 
@@ -410,7 +418,7 @@ If you want a LINE user to actually receive a downloadable link after a document
 
 4. A valid Drive credential stored in the current sidecar DB
 - The persistent sidecar DB is now:
- - `D:\Bricks4Agent\.run\line-sidecar\data\broker.db`
+ - `.run\line-sidecar\data\broker.db` (under the repo root)
 - If `google_drive_delegated_credentials` is empty, artifacts can still be generated locally, but cloud download links will not be available
 
 5. The sidecar must be running the latest published build
@@ -424,7 +432,7 @@ Current behavior:
 
 - if both paths are unavailable, delivery degrades to a no-link notification
 
-There is still no dedicated end-user download page. The current fallback is a direct signed broker download endpoint.
+End users can also sign in to the user portal (`http://127.0.0.1:5361/portal/index.html`), which lists their own artifacts with the Drive link or a signed broker download path.
 
 ## Current High-Level Model
 
@@ -514,9 +522,9 @@ Each high-level LINE user gets broker-managed paths under the configured absolut
 
 - `projects`
 
-The current live sidecar commonly uses:
+The current live sidecar uses the broker default `HighLevelCoordinator.AccessRoot` from `packages/csharp/broker/appsettings.json`:
 
-- `.run/line-sidecar/broker/managed-workspaces`
+- `%LOCALAPPDATA%\Bricks4Agent\managed-workspaces`
 
 Production broker configuration may override this with an absolute access root.
 
@@ -544,7 +552,7 @@ Check:
 
 - `line-sidecar.ps1 status`
 
-- ngrok tunnel exists
+- the public tunnel exists (ngrok tunnel, or the localhost.run process)
 
 - LINE webhook endpoint is active
 
@@ -552,7 +560,7 @@ Check:
 
 Typical causes:
 
-- ngrok tunnel died
+- ngrok / localhost.run tunnel died
 
 - webhook endpoint not updated
 
@@ -591,6 +599,8 @@ If the tunnel still does not come back:
 - check `.run/line-sidecar/logs/ngrok.err.log`
 
 - confirm `%LOCALAPPDATA%\ngrok\ngrok.yml` exists and contains a valid authtoken
+
+- on the localhost.run fallback, check `.run/line-sidecar/logs/localhostrun.out.log` / `localhostrun.err.log` and `webhook-sync.out.log` / `webhook-sync.err.log`
 
 ### 3. Broker is up but LINE still says AI service unavailable
 
@@ -642,7 +652,7 @@ Typical causes:
 
 Fix:
 
-- confirm `client_secret_*.json` exists at repo root
+- confirm `client_secret_*.json` exists in the secrets directory (`C:\secure\Bricks4Agent` or `BRICKS4AGENT_SECRETS_DIR`; the repo root is only a legacy fallback)
 
 - run `line-sidecar.ps1 restart`
 
@@ -708,7 +718,7 @@ If it still fails:
 
 Current sidecar runtime directory:
 
-- `D:\Bricks4Agent\.run\line-sidecar`
+- `.run\line-sidecar` (under the repo root)
 
 Key logs:
 
@@ -724,6 +734,10 @@ Key logs:
 
 - `.run/line-sidecar/logs/ngrok.err.log`
 
+- `.run/line-sidecar/logs/localhostrun.out.log` / `localhostrun.err.log` (localhost.run fallback)
+
+- `.run/line-sidecar/logs/webhook-sync.out.log` / `webhook-sync.err.log` (localhost.run webhook-sync watchdog)
+
 ## What This Runbook Does Not Yet Cover
 
 - production multi-host deployment of broker and line-worker
@@ -736,33 +750,25 @@ Key logs:
 
 - complete disaster recovery procedures
 
-## Missing Frontend Capability
+## End-User Frontend (User Portal)
 
-There is currently no end-user frontend for artifact browsing or downloading.
+The broker now serves an end-user portal:
 
-What exists today:
+- page: `http://127.0.0.1:5361/portal/index.html` (static files from `packages/javascript/browser/user-portal/`, mapped in `packages/csharp/broker/Program.cs`)
 
-- local admin console
+- API: `/api/v1/portal/*` in `packages/csharp/broker/Endpoints/PortalEndpoints.cs` — `auth/status`, `auth/register`, `auth/login`, `auth/logout`, `auth/line-verification`, `me`, `commands`, `results`, `artifacts`, `artifacts/{documentId}`
 
-- LINE messages containing delivery links
+- signed-in users see only their own artifacts; each item carries its Drive link or a signed broker download path
 
-- broker-managed artifact records
-
-What should exist later as a frontend feature:
-
-- an authenticated artifact download API
-
-- user-facing artifact history
-
-- governed download authorization checks
-
-This is a recorded future frontend requirement, not a completed feature.
+Alongside it: the local admin console, LINE messages containing delivery links, and broker-managed artifact records.
 
 ## Related Documents
 
-- [CurrentArchitectureAndProgress-2026-03-26.md](../reports/CurrentArchitectureAndProgress-2026-03-26.md)
+- [CurrentArchitectureAndProgress-2026-06-13.md](../reports/CurrentArchitectureAndProgress-2026-06-13.md)
 
-- [README.md](/d:/Bricks4Agent/packages/csharp/workers/line-worker/README.html)
+- [current-technical-manual.zh-TW.md](current-technical-manual.zh-TW.md)
+
+- [README.md](../../packages/csharp/workers/line-worker/README.md)
 
 - [GoogleDriveDelivery.md](../designs/GoogleDriveDelivery.md)
 

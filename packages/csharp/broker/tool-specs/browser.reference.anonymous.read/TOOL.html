@@ -24,8 +24,12 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <p>Status: <code>active</code></p>
 <p>Purpose:</p>
 <ul>
-<li>define the broker-governed anonymous browser-read capability</li>
-<li>provide the active capability contract for public-web read/navigation under broker control</li>
+<li>
+<p>define the broker-governed anonymous browser-read capability</p>
+</li>
+<li>
+<p>provide the active capability contract for public-web read/navigation under broker control</p>
+</li>
 </ul>
 <p>Identity mode:</p>
 <ul>
@@ -33,22 +37,45 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 </ul>
 <p>Rules:</p>
 <ul>
-<li>no login</li>
-<li>no user-delegated session</li>
-<li>no system account session</li>
-<li>allowed actions are limited to public read/navigation semantics</li>
+<li>
+<p>no login</p>
+</li>
+<li>
+<p>no user-delegated session</p>
+</li>
+<li>
+<p>no system account session</p>
+</li>
+<li>
+<p>allowed actions are limited to public read/navigation semantics</p>
+</li>
 </ul>
 <p>Current runtime support:</p>
 <ul>
-<li>broker in-process runtime is implemented for anonymous <code>public_open</code> read/navigation</li>
-<li>persisted evidence is recorded under <code>browser.execution.*</code></li>
-<li>this tool is the canonical active entry for that runtime path</li>
+<li>
+<p>broker in-process runtime is implemented for anonymous <code>public_open</code> read/navigation</p>
+</li>
+<li>
+<p>persisted evidence is recorded under <code>browser.execution.*</code></p>
+</li>
+<li>
+<p>this tool is the canonical active entry for that runtime path</p>
+</li>
+<li>
+<p>a Playwright-based handler for the same <code>browser.read</code> capability also exists in <code>workers/browser-worker</code> (<code>Handlers/BrowserReadHandler.cs</code>)</p>
+</li>
 </ul>
 <p>Not yet implemented:</p>
 <ul>
-<li>authenticated browser sessions</li>
-<li>delegated write/submit actions</li>
-<li>long-lived browser worker/session orchestration</li>
+<li>
+<p>authenticated browser sessions</p>
+</li>
+<li>
+<p>delegated write/submit actions</p>
+</li>
+<li>
+<p>long-lived browser worker/session orchestration</p>
+</li>
 </ul>
 </main>
 </body>

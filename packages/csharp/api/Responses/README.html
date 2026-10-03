@@ -21,15 +21,31 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <body>
 <main>
 <h1>ApiResponse - Unified API Response Format</h1>
+<blockquote>
+<p>⚠ Reference code: this folder has no .csproj, is not compiled or referenced by any project, and is not built by CI; the content below is not build-verified.</p>
+<p>The broker does not use this type: it defines its own, different <code>ApiResponse&lt;T&gt;</code> in <code>broker/Helpers/ApiResponseHelper.cs</code>.</p>
+</blockquote>
 <p>A generic response wrapper for consistent API responses across your application.</p>
 <h2>Features</h2>
 <ul>
-<li>Generic and non-generic versions</li>
-<li>Built-in factory methods for common response types</li>
-<li>Automatic timestamp tracking</li>
-<li>Support for multiple error messages</li>
-<li>Trace ID support for debugging</li>
-<li>Standard HTTP status codes</li>
+<li>
+<p>Generic and non-generic versions</p>
+</li>
+<li>
+<p>Built-in factory methods for common response types</p>
+</li>
+<li>
+<p>Automatic timestamp tracking</p>
+</li>
+<li>
+<p>Support for multiple error messages</p>
+</li>
+<li>
+<p>Trace ID support for debugging</p>
+</li>
+<li>
+<p>Standard HTTP status codes</p>
+</li>
 </ul>
 <h2>Usage</h2>
 <h3>Basic Success Response</h3>
@@ -116,16 +132,30 @@ return Ok(response);
 </code></pre>
 <h2>Benefits</h2>
 <ol>
-<li><strong>Consistency</strong> - All API responses follow the same format</li>
-<li><strong>Error Handling</strong> - Standardized error response structure</li>
-<li><strong>Debugging</strong> - Built-in timestamp and trace ID</li>
-<li><strong>Client-Friendly</strong> - Easy to parse and handle on client side</li>
-<li><strong>Type Safety</strong> - Generic type support for strongly-typed data</li>
+<li>
+<p><strong>Consistency</strong> - All API responses follow the same format</p>
+</li>
+<li>
+<p><strong>Error Handling</strong> - Standardized error response structure</p>
+</li>
+<li>
+<p><strong>Debugging</strong> - Built-in timestamp and trace ID</p>
+</li>
+<li>
+<p><strong>Client-Friendly</strong> - Easy to parse and handle on client side</p>
+</li>
+<li>
+<p><strong>Type Safety</strong> - Generic type support for strongly-typed data</p>
+</li>
 </ol>
 <h2>Dependencies</h2>
 <ul>
-<li>.NET 6.0 or higher</li>
-<li>No external NuGet packages required</li>
+<li>
+<p>.NET 10 (<code>net10.0</code>, the repo's target framework)</p>
+</li>
+<li>
+<p>No external NuGet packages required</p>
+</li>
 </ul>
 </main>
 </body>

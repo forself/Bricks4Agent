@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ConditionBuilder 條件建構器</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>ConditionBuilder 條件建構器</h1>
+<p>以「欄位＋運算子＋值」的規則與可巢狀的 且／或 群組，編輯布林篩選條件。產出的是<strong>純資料</strong>：元件不執行任何程式碼、不組 SQL 或查詢字串；把條件轉成查詢時，後端必須以白名單比對欄位與運算子，並以參數化方式帶入每個值。</p>
+<p>值的形狀：</p>
+<pre><code class="language-javascript">{
+    combinator: 'and',            // 'and' | 'or'
+    not: false,                   // 只在 allowNot: true（或原值就是 true）時出現
+    rules: [
+        { field: 'status', operator: 'eq', value: 'open' },
+        { combinator: 'or', rules: [ /* 巢狀群組 */ ] }
+    ]
+}
+</code></pre>
+<p>值編輯器沿用本庫既有元件：TextInput、NumberInput、DatePicker、Dropdown（searchable）、MultiSelectDropdown；<code>between</code> 使用兩個輸入框。</p>
+<h2>建構</h2>
+<pre><code class="language-javascript">import { ConditionBuilder } from './ConditionBuilder.js';
+
+const builder = new ConditionBuilder({
+    fields: [],         // 欄位定義，見下表
+    value: null,        // 初始條件；null 視為 { combinator: 'and', rules: [] }
+    maxDepth: 3,        // 群組巢狀層數上限（根群組為第 1 層；到上限時不再顯示「新增群組」）
+    maxRules: 50,       // 整棵樹的條件（葉節點）數上限；到上限時停用新增按鈕
+    allowNot: false,    // 每個群組可勾選 NOT（反轉）
+    disabled: false,    // 停用
+    onChange: null      // (value) =&gt; void，使用者每次修改後觸發
+});
+builder.mount('#host');
+</code></pre>
+<p>欄位定義 <code>fields[]</code>：</p>
+<table>
+<thead>
+<tr>
+<th>屬性</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>key</code></td>
+<td>欄位代碼（必填、不可重複），寫入規則的 <code>field</code></td>
+</tr>
+<tr>
+<td><code>label</code></td>
+<td>顯示名稱，預設同 <code>key</code></td>
+</tr>
+<tr>
+<td><code>type</code></td>
+<td><code>'text'</code>（預設）| <code>'number'</code> | <code>'date'</code> | <code>'select'</code> | <code>'multiselect'</code> | <code>'boolean'</code></td>
+</tr>
+<tr>
+<td><code>options</code></td>
+<td><code>select</code> / <code>multiselect</code> 的選項 <code>[{ value, label }]</code></td>
+</tr>
+<tr>
+<td><code>operators</code></td>
+<td>覆寫可用運算子：只能是該型別預設清單的子集，可調整順序；無效項目會被略過</td>
+</tr>
+<tr>
+<td><code>editorOptions</code></td>
+<td>轉交給值編輯器的選項，例如 NumberInput 的 <code>precision</code>、<code>min</code>、<code>max</code>，DatePicker 的 <code>format</code>，TextInput 的 <code>enableSecurity</code>；<code>value</code>、<code>items</code>、<code>disabled</code>、<code>onChange</code> 由本元件控制</td>
+</tr>
+</tbody>
+</table>
+<h2>運算子</h2>
+<table>
+<thead>
+<tr>
+<th>型別</th>
+<th>預設運算子（第一個為新規則的預設值）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>text</td>
+<td><code>eq</code> <code>ne</code> <code>contains</code> <code>notContains</code> <code>startsWith</code> <code>endsWith</code> <code>isEmpty</code> <code>isNotEmpty</code></td>
+</tr>
+<tr>
+<td>number</td>
+<td><code>eq</code> <code>ne</code> <code>gt</code> <code>gte</code> <code>lt</code> <code>lte</code> <code>between</code> <code>isEmpty</code> <code>isNotEmpty</code></td>
+</tr>
+<tr>
+<td>date</td>
+<td><code>eq</code> <code>before</code> <code>after</code> <code>between</code> <code>isEmpty</code> <code>isNotEmpty</code></td>
+</tr>
+<tr>
+<td>select</td>
+<td><code>eq</code> <code>ne</code> <code>in</code> <code>notIn</code></td>
+</tr>
+<tr>
+<td>multiselect</td>
+<td><code>containsAny</code> <code>containsAll</code></td>
+</tr>
+<tr>
+<td>boolean</td>
+<td><code>isTrue</code> <code>isFalse</code></td>
+</tr>
+</tbody>
+</table>
+<p>值的形狀依運算子而定：<code>isEmpty</code> / <code>isNotEmpty</code> / <code>isTrue</code> / <code>isFalse</code> 為 <code>null</code>；<code>between</code> 為 <code>[起, 迄]</code>；<code>in</code> / <code>notIn</code> / <code>containsAny</code> / <code>containsAll</code> 為陣列；其餘為單一值。數字存成 number，日期存成 <code>'YYYY-MM-DD'</code> 字串，選項存選項的 <code>value</code>。尚未填寫的值為 <code>null</code>。</p>
+<p><code>ConditionBuilder.DEFAULT_OPERATORS</code> 與 <code>ConditionBuilder.OPERATOR_ARITY</code> 提供上述對照表。</p>
+<h2>方法</h2>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>mount(container)</code></td>
+<td>掛載到容器（元素或選擇器），回傳 <code>this</code></td>
+</tr>
+<tr>
+<td><code>destroy()</code></td>
+<td>銷毀所有值編輯器（含浮出的月曆與下拉清單）、移除 DOM 與 <code>window</code> 上的語系監聽；可重複呼叫</td>
+</tr>
+<tr>
+<td><code>getValue()</code></td>
+<td>回傳條件資料（深拷貝）</td>
+</tr>
+<tr>
+<td><code>setValue(value, { emit = false })</code></td>
+<td>設定條件並檢查形狀：無法辨識的節點略過並 <code>console.warn</code>；未知欄位或運算子的規則會保留、在畫面上標示，由 <code>validate()</code> 回報；規則與群組上的額外屬性（例如 <code>id</code>）會原樣保留。預設不觸發 <code>onChange</code></td>
+</tr>
+<tr>
+<td><code>clear()</code></td>
+<td>清成空的根群組；不觸發 <code>onChange</code></td>
+</tr>
+<tr>
+<td><code>setDisabled(bool)</code></td>
+<td>停用／啟用所有控制項</td>
+</tr>
+<tr>
+<td><code>validate(value?)</code></td>
+<td>回傳 <code>[{ path, code, message }]</code>，沒有問題時為空陣列；未傳入時檢查目前的值</td>
+</tr>
+<tr>
+<td><code>describe(value?)</code></td>
+<td>以目前語系把條件轉成可讀文字；未傳入時描述目前的值</td>
+</tr>
+<tr>
+<td><code>setError(message, { display = true })</code></td>
+<td>標示欄位錯誤（<code>aria-invalid</code>、外框、<code>role="alert"</code> 文字）；<code>display: false</code> 只標示狀態</td>
+</tr>
+<tr>
+<td><code>clearError()</code></td>
+<td>清除 <code>setError</code> 的標示與文字</td>
+</tr>
+<tr>
+<td><code>show()</code> / <code>hide()</code></td>
+<td>顯示／隱藏</td>
+</tr>
+<tr>
+<td><code>snapshot()</code></td>
+<td>回傳 lifecycle／visibility／availability 狀態</td>
+</tr>
+</tbody>
+</table>
+<h3>validate()</h3>
+<p><code>path</code> 描述節點位置，根群組為 <code>''</code>，其餘如 <code>'rules[1].rules[0]'</code>。<code>code</code> 為：</p>
+<table>
+<thead>
+<tr>
+<th>code</th>
+<th>情況</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>missingValue</code></td>
+<td>需要值卻沒有填（空字串、只含空白、<code>between</code> 缺一端、清單為空）</td>
+</tr>
+<tr>
+<td><code>invalidValue</code></td>
+<td>值不符欄位型別（例如不存在的日期、不在選項內的值）</td>
+</tr>
+<tr>
+<td><code>badRange</code></td>
+<td><code>between</code> 的起始值大於結束值</td>
+</tr>
+<tr>
+<td><code>unknownField</code> / <code>unknownOperator</code></td>
+<td>欄位或運算子不在定義中</td>
+</tr>
+<tr>
+<td><code>emptyGroup</code></td>
+<td>巢狀群組內沒有任何條件</td>
+</tr>
+<tr>
+<td><code>maxDepth</code> / <code>maxRules</code></td>
+<td>超過層數或條件數上限（多半來自 <code>setValue</code>）</td>
+</tr>
+</tbody>
+</table>
+<p><code>message</code> 是目前語系的說明文字，例如「優先度：起始值不可大於結束值」。</p>
+<h3>describe()</h3>
+<pre><code class="language-text">狀態 等於 進行中 且 (優先度 大於 3 或 主旨 包含 「會議」)
+Status equals Open AND (Priority is greater than 3 OR Title contains &quot;Meeting&quot;)
+</code></pre>
+<p>巢狀群組加上括號，<code>not: true</code> 的群組以「非 (…)」/「NOT (…)」表示；沒有任何條件時回傳「（無條件）」/「(no conditions)」。</p>
+<h2>事件</h2>
+<p><code>onChange(value)</code>：新增、移除、切換且／或、切換 NOT、變更欄位、運算子或值時觸發，參數為完整的條件資料。變更欄位時，若新欄位不支援原運算子會改用第一個運算子並清空值；型別不同或值不符新欄位時也會清空值。變更運算子時，值會轉成新形狀（例如 <code>eq</code> 的值變成 <code>in</code> 的一元陣列）。</p>
+<h2>鍵盤與無障礙</h2>
+<ul>
+<li>所有控制項都能以 Tab 到達：欄位與運算子為原生 <code>&lt;select&gt;</code>，且／或為兩個 <code>aria-pressed</code> 按鈕，NOT 為核取方塊，新增／移除為按鈕。每個控制項都有描述位置的 <code>aria-label</code>（例如「條件 2 的運算子」「移除第 2 層群組」）。</li>
+<li>根元素、每個群組與每條規則都是 <code>role="group"</code>；巢狀群組以 <code>--cl-space-*</code> token 縮排，並以 token 色的導引線與底色區分層級。</li>
+<li>新增規則或群組後，焦點移到新規則的欄位選單；移除後移到相鄰的規則，沒有相鄰規則時移到該群組的「新增條件」。新增／移除會以 <code>role="status"</code> 播報。</li>
+<li>未知欄位或運算子：選單加上 <code>aria-invalid</code> 並以 <code>aria-describedby</code> 連到提示文字，原值以唯讀文字顯示。</li>
+<li>日期：本版 DatePicker 只支援滑鼠操作，ConditionBuilder 另外補上鍵盤操作：觸發區可 Tab 聚焦（<code>role="button"</code>），Enter／空白鍵／↓ 開啟月曆並聚焦日期，方向鍵在日期間移動，Escape 或 Tab 移出月曆時關閉並回到觸發區。</li>
+<li>單選值使用可搜尋的 Dropdown（可輸入篩選、↑／↓、Enter、Escape）；多選值使用 MultiSelectDropdown（↑／↓、Enter／空白鍵切換、Escape）。</li>
+<li>語系切換時會即時重繪文字，值不變。</li>
+</ul>
+<h2>注意事項</h2>
+<ul>
+<li>NumberInput 依 <code>precision</code> 顯示並在失焦時四捨五入，預設 <code>precision: 0</code>；需要小數的欄位請設定 <code>editorOptions: { precision: 2 }</code>。預設不限範圍（±<code>Number.MAX_SAFE_INTEGER</code>），空白時按 ↑／↓ 從 0 開始。</li>
+<li>TextInput 預設開啟 <code>enableSecurity</code>，輸入看起來像 SQL 或路徑的字時會顯示安全提醒；本元件只產生資料，若這個提醒在篩選情境造成困擾，可用 <code>editorOptions: { enableSecurity: false }</code> 關閉。</li>
+</ul>
+<h2>範例</h2>
+<pre><code class="language-javascript">import { ConditionBuilder } from './ConditionBuilder.js';
+
+const builder = new ConditionBuilder({
+    fields: [
+        { key: 'title', label: '主旨', type: 'text' },
+        { key: 'priority', label: '優先度', type: 'number' },
+        { key: 'due', label: '到期日', type: 'date' },
+        { key: 'status', label: '狀態', type: 'select', options: [
+            { value: 'open', label: '進行中' },
+            { value: 'done', label: '已完成' }
+        ] },
+        { key: 'tags', label: '標籤', type: 'multiselect', options: [
+            { value: 'urgent', label: '急件' },
+            { value: 'review', label: '待審閱' }
+        ] },
+        { key: 'archived', label: '已封存', type: 'boolean' }
+    ],
+    value: {
+        combinator: 'and',
+        rules: [
+            { field: 'status', operator: 'eq', value: 'open' },
+            { combinator: 'or', rules: [
+                { field: 'priority', operator: 'gt', value: 3 },
+                { field: 'title', operator: 'contains', value: '會議' }
+            ] }
+        ]
+    },
+    allowNot: true,
+    onChange: (value) =&gt; {
+        document.querySelector('#summary').textContent = builder.describe(value);
+    }
+});
+builder.mount('#host');
+
+document.querySelector('#apply').addEventListener('click', () =&gt; {
+    const errors = builder.validate();
+    if (errors.length) {
+        builder.setError(errors.map((error) =&gt; error.message).join('；'));
+        return;
+    }
+    builder.clearError();
+    fetch('/api/tasks/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(builder.getValue())
+    });
+});
+</code></pre>
+</main>
+</body>
+</html>

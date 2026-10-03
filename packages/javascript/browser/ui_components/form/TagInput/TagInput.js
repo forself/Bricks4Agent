@@ -2,6 +2,7 @@ import { createComponentState } from '../../utils/component-state.js';
 import { TextInput } from '../TextInput/index.js';
 import { Tag } from '../../common/Tag/index.js';
 import { Icon } from '../../common/Icon/index.js';
+import { setFieldError, clearFieldError, FIELD_ERROR_CONTRACT } from '../../utils/field-error.js';
 
 /**
  * TagInput — 多標籤輸入(複合)。TextInput + 每標籤一個 Tag(可移除)。確定性展開。
@@ -85,6 +86,25 @@ export class TagInput {
     getTags() { return [...this.snapshot().tags]; }
     addTag(tag) { this.send('ADD_TAG', { tag: String(tag) }); return this; }
     removeTag(tag) { this.send('REMOVE_TAG', { tag: String(tag) }); return this; }
+
+    /**
+     * 標示欄位錯誤；空訊息等同 clearError()。
+     * display:false 只標示錯誤狀態、不顯示文字，給自行顯示錯誤文字的外層（FormField、SearchForm）使用。
+     */
+    setError(message, { display = true } = {}) {
+        setFieldError(this, message, { target: this.input?.input, visual: this.element, container: this.element, fullRow: true, display });
+        return this;
+    }
+
+    /** 清除 setError 的標示與文字。 */
+    clearError() {
+        clearFieldError(this);
+        return this;
+    }
+
+    get [FIELD_ERROR_CONTRACT]() {
+        return true;
+    }
     destroy() {
         this._tagChildren.forEach((t) => t.destroy?.());
         this.input?.destroy?.();

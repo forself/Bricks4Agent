@@ -1,0 +1,234 @@
+/*
+ * PrintLayout.css — PrintLayout 的列印樣式
+ *
+ * CSP 合規：由 PrintLayout.js 以同源 <link rel="stylesheet"> 載入（所有實例共用一個 link，
+ * 引用計數，最後一個實例 destroy 才移除），不注入 <style>。畫面樣式由元件以 CSSOM 指派；
+ * 本檔只放 inline 樣式無法表達的規則：
+ *   1. @media print：PrintLayout.print() 期間只印目標區塊，不破壞宿主頁面。
+ *   2. 具名頁面 @page：紙張大小 × 方向 × 邊界的固定組合（靜態、可逐條檢查，不需要動態 <style>）。
+ *   3. 深色主題的列印與預覽：文字、背景、框線 token 換成淺色紙張上可讀的值
+ *      （取自不隨主題變動的 palette 灰階 token）。
+ *
+ * print() 期間的標記（afterprint 或備援計時器觸發時全部移除）：
+ *   html[data-b4a-printing]     正在透過 PrintLayout.print() 列印
+ *   [data-b4a-print-target]     要印的 PrintLayout 根元素（另帶 data-b4a-page，例如 "a4-portrait-15mm"）
+ *   [data-b4a-print-ancestor]   目標的祖先鏈（含 body，不含 html）
+ */
+
+/* ── 列印時間只對紙本有意義：非預覽模式的螢幕畫面不顯示（紙本與預覽照常顯示） ── */
+@media screen {
+    .b4a-print-layout[data-preview="false"] .b4a-print-layout__printed-at {
+        display: none;
+    }
+}
+
+/* ── 深色主題的預覽紙張：比照列印結果顯示淺色紙張 ── */
+[data-theme="dark"] .b4a-print-layout[data-preview="true"] .b4a-print-layout__sheet {
+    --cl-text: var(--cl-grey-900);
+    --cl-text-heading: var(--cl-grey-800);
+    --cl-text-dark: var(--cl-grey-900);
+    --cl-text-secondary: var(--cl-grey-700);
+    --cl-text-muted: var(--cl-grey-600);
+    --cl-text-dim: var(--cl-grey-600);
+    --cl-text-placeholder: var(--cl-grey-500);
+    --cl-text-light: var(--cl-grey-400);
+    --cl-bg: var(--cl-grey-50);
+    --cl-bg-secondary: var(--cl-grey-100);
+    --cl-bg-tertiary: var(--cl-grey-50);
+    --cl-bg-hover: var(--cl-grey-100);
+    --cl-bg-subtle: var(--cl-grey-100);
+    --cl-border: var(--cl-grey-300);
+    --cl-border-light: var(--cl-grey-200);
+    --cl-border-dark: var(--cl-grey-400);
+    --cl-border-medium: var(--cl-grey-300);
+    --cl-border-subtle: var(--cl-grey-200);
+    color: var(--cl-text);
+}
+
+@media print {
+    /* 任何列印（含使用者直接 Ctrl+P）都不印工具列與列印按鈕 */
+    .b4a-print-layout__toolbar {
+        display: none !important;
+    }
+
+    .b4a-print-layout__header {
+        break-inside: avoid;
+        break-after: avoid;
+    }
+
+    .b4a-print-layout__footer {
+        break-inside: avoid;
+    }
+
+    /* 深色主題下列印：紙是白的，文字與框線改用深色 */
+    [data-theme="dark"] .b4a-print-layout {
+        --cl-text: var(--cl-grey-900);
+        --cl-text-heading: var(--cl-grey-800);
+        --cl-text-dark: var(--cl-grey-900);
+        --cl-text-secondary: var(--cl-grey-700);
+        --cl-text-muted: var(--cl-grey-600);
+        --cl-text-dim: var(--cl-grey-600);
+        --cl-text-placeholder: var(--cl-grey-500);
+        --cl-text-light: var(--cl-grey-400);
+        --cl-bg: var(--cl-grey-50);
+        --cl-bg-secondary: var(--cl-grey-100);
+        --cl-bg-tertiary: var(--cl-grey-50);
+        --cl-bg-hover: var(--cl-grey-100);
+        --cl-bg-subtle: var(--cl-grey-100);
+        --cl-border: var(--cl-grey-300);
+        --cl-border-light: var(--cl-grey-200);
+        --cl-border-dark: var(--cl-grey-400);
+        --cl-border-medium: var(--cl-grey-300);
+        --cl-border-subtle: var(--cl-grey-200);
+        color: var(--cl-text);
+    }
+
+    /* ── 以下只在 PrintLayout.print() 期間生效 ── */
+
+    /* SPA 常見的 html, body { height: 100%; overflow: hidden } 會把列印裁成一頁 */
+    html[data-b4a-printing],
+    html[data-b4a-printing] body {
+        height: auto !important;
+        min-height: 0 !important;
+        max-height: none !important;
+        overflow: visible !important;
+        background: none !important;
+    }
+
+    html[data-b4a-printing] body {
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+
+    /* 祖先鏈上不屬於目標的兄弟節點（頁首、側欄、portal 到 body 的浮層…）一律不印 */
+    html[data-b4a-printing] [data-b4a-print-ancestor] > :not([data-b4a-print-ancestor]):not([data-b4a-print-target]) {
+        display: none !important;
+    }
+
+    /* 祖先鏈不產生盒子：捲動容器、固定高度、定位、transform、padding 都不再裁切或位移列印內容 */
+    html[data-b4a-printing] [data-b4a-print-ancestor]:not(body) {
+        display: contents !important;
+    }
+
+    html[data-b4a-printing] [data-b4a-print-ancestor]::before,
+    html[data-b4a-printing] [data-b4a-print-ancestor]::after {
+        display: none !important;
+    }
+
+    /* 目標本身：去掉預覽用的底色、內距與捲動，由 @page 邊界決定留白 */
+    html[data-b4a-printing] [data-b4a-print-target] {
+        display: block !important;
+        position: static !important;
+        float: none !important;
+        width: auto !important;
+        min-width: 0 !important;
+        max-width: none !important;
+        height: auto !important;
+        min-height: 0 !important;
+        max-height: none !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow: visible !important;
+        transform: none !important;
+        box-shadow: none !important;
+        background: none !important;
+    }
+
+    html[data-b4a-printing] [data-b4a-print-target] .b4a-print-layout__sheet {
+        width: auto !important;
+        min-height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        border: 0 !important;
+        box-shadow: none !important;
+        background: none !important;
+    }
+
+    /* 具名頁面：紙張大小 × 方向 × 邊界（對應 PrintLayout.js 的 data-b4a-page） */
+    html[data-b4a-printing] [data-b4a-print-target][data-b4a-page="a4-portrait-0"] { page: b4a-print-a4-portrait-0; }
+    html[data-b4a-printing] [data-b4a-print-target][data-b4a-page="a4-portrait-10mm"] { page: b4a-print-a4-portrait-10mm; }
+    html[data-b4a-printing] [data-b4a-print-target][data-b4a-page="a4-portrait-15mm"] { page: b4a-print-a4-portrait-15mm; }
+    html[data-b4a-printing] [data-b4a-print-target][data-b4a-page="a4-portrait-20mm"] { page: b4a-print-a4-portrait-20mm; }
+    html[data-b4a-printing] [data-b4a-print-target][data-b4a-page="a4-portrait-25mm"] { page: b4a-print-a4-portrait-25mm; }
+    html[data-b4a-printing] [data-b4a-print-target][data-b4a-page="a4-landscape-0"] { page: b4a-print-a4-landscape-0; }
+    html[data-b4a-printing] [data-b4a-print-target][data-b4a-page="a4-landscape-10mm"] { page: b4a-print-a4-landscape-10mm; }
+    html[data-b4a-printing] [data-b4a-print-target][data-b4a-page="a4-landscape-15mm"] { page: b4a-print-a4-landscape-15mm; }
+    html[data-b4a-printing] [data-b4a-print-target][data-b4a-page="a4-landscape-20mm"] { page: b4a-print-a4-landscape-20mm; }
+    html[data-b4a-printing] [data-b4a-print-target][data-b4a-page="a4-landscape-25mm"] { page: b4a-print-a4-landscape-25mm; }
+    html[data-b4a-printing] [data-b4a-print-target][data-b4a-page="a3-portrait-0"] { page: b4a-print-a3-portrait-0; }
+    html[data-b4a-printing] [data-b4a-print-target][data-b4a-page="a3-portrait-10mm"] { page: b4a-print-a3-portrait-10mm; }
+    html[data-b4a-printing] [data-b4a-print-target][data-b4a-page="a3-portrait-15mm"] { page: b4a-print-a3-portrait-15mm; }
+    html[data-b4a-printing] [data-b4a-print-target][data-b4a-page="a3-portrait-20mm"] { page: b4a-print-a3-portrait-20mm; }
+    html[data-b4a-printing] [data-b4a-print-target][data-b4a-page="a3-portrait-25mm"] { page: b4a-print-a3-portrait-25mm; }
+    html[data-b4a-printing] [data-b4a-print-target][data-b4a-page="a3-landscape-0"] { page: b4a-print-a3-landscape-0; }
+    html[data-b4a-printing] [data-b4a-print-target][data-b4a-page="a3-landscape-10mm"] { page: b4a-print-a3-landscape-10mm; }
+    html[data-b4a-printing] [data-b4a-print-target][data-b4a-page="a3-landscape-15mm"] { page: b4a-print-a3-landscape-15mm; }
+    html[data-b4a-printing] [data-b4a-print-target][data-b4a-page="a3-landscape-20mm"] { page: b4a-print-a3-landscape-20mm; }
+    html[data-b4a-printing] [data-b4a-print-target][data-b4a-page="a3-landscape-25mm"] { page: b4a-print-a3-landscape-25mm; }
+    html[data-b4a-printing] [data-b4a-print-target][data-b4a-page="letter-portrait-0"] { page: b4a-print-letter-portrait-0; }
+    html[data-b4a-printing] [data-b4a-print-target][data-b4a-page="letter-portrait-10mm"] { page: b4a-print-letter-portrait-10mm; }
+    html[data-b4a-printing] [data-b4a-print-target][data-b4a-page="letter-portrait-15mm"] { page: b4a-print-letter-portrait-15mm; }
+    html[data-b4a-printing] [data-b4a-print-target][data-b4a-page="letter-portrait-20mm"] { page: b4a-print-letter-portrait-20mm; }
+    html[data-b4a-printing] [data-b4a-print-target][data-b4a-page="letter-portrait-25mm"] { page: b4a-print-letter-portrait-25mm; }
+    html[data-b4a-printing] [data-b4a-print-target][data-b4a-page="letter-landscape-0"] { page: b4a-print-letter-landscape-0; }
+    html[data-b4a-printing] [data-b4a-print-target][data-b4a-page="letter-landscape-10mm"] { page: b4a-print-letter-landscape-10mm; }
+    html[data-b4a-printing] [data-b4a-print-target][data-b4a-page="letter-landscape-15mm"] { page: b4a-print-letter-landscape-15mm; }
+    html[data-b4a-printing] [data-b4a-print-target][data-b4a-page="letter-landscape-20mm"] { page: b4a-print-letter-landscape-20mm; }
+    html[data-b4a-printing] [data-b4a-print-target][data-b4a-page="letter-landscape-25mm"] { page: b4a-print-letter-landscape-25mm; }
+    html[data-b4a-printing] [data-b4a-print-target][data-b4a-page="legal-portrait-0"] { page: b4a-print-legal-portrait-0; }
+    html[data-b4a-printing] [data-b4a-print-target][data-b4a-page="legal-portrait-10mm"] { page: b4a-print-legal-portrait-10mm; }
+    html[data-b4a-printing] [data-b4a-print-target][data-b4a-page="legal-portrait-15mm"] { page: b4a-print-legal-portrait-15mm; }
+    html[data-b4a-printing] [data-b4a-print-target][data-b4a-page="legal-portrait-20mm"] { page: b4a-print-legal-portrait-20mm; }
+    html[data-b4a-printing] [data-b4a-print-target][data-b4a-page="legal-portrait-25mm"] { page: b4a-print-legal-portrait-25mm; }
+    html[data-b4a-printing] [data-b4a-print-target][data-b4a-page="legal-landscape-0"] { page: b4a-print-legal-landscape-0; }
+    html[data-b4a-printing] [data-b4a-print-target][data-b4a-page="legal-landscape-10mm"] { page: b4a-print-legal-landscape-10mm; }
+    html[data-b4a-printing] [data-b4a-print-target][data-b4a-page="legal-landscape-15mm"] { page: b4a-print-legal-landscape-15mm; }
+    html[data-b4a-printing] [data-b4a-print-target][data-b4a-page="legal-landscape-20mm"] { page: b4a-print-legal-landscape-20mm; }
+    html[data-b4a-printing] [data-b4a-print-target][data-b4a-page="legal-landscape-25mm"] { page: b4a-print-legal-landscape-25mm; }
+}
+
+/*
+ * 具名頁面定義。只有上面 print() 期間的選擇器會把目標指到這些頁面，
+ * 所以一般列印（未經 PrintLayout.print()）不受影響。不支援具名頁面的瀏覽器
+ * 會退回列印對話框的紙張設定，內容照樣只印目標區塊。
+ */
+@page b4a-print-a4-portrait-0 { size: A4 portrait; margin: 0; }
+@page b4a-print-a4-portrait-10mm { size: A4 portrait; margin: 10mm; }
+@page b4a-print-a4-portrait-15mm { size: A4 portrait; margin: 15mm; }
+@page b4a-print-a4-portrait-20mm { size: A4 portrait; margin: 20mm; }
+@page b4a-print-a4-portrait-25mm { size: A4 portrait; margin: 25mm; }
+@page b4a-print-a4-landscape-0 { size: A4 landscape; margin: 0; }
+@page b4a-print-a4-landscape-10mm { size: A4 landscape; margin: 10mm; }
+@page b4a-print-a4-landscape-15mm { size: A4 landscape; margin: 15mm; }
+@page b4a-print-a4-landscape-20mm { size: A4 landscape; margin: 20mm; }
+@page b4a-print-a4-landscape-25mm { size: A4 landscape; margin: 25mm; }
+@page b4a-print-a3-portrait-0 { size: A3 portrait; margin: 0; }
+@page b4a-print-a3-portrait-10mm { size: A3 portrait; margin: 10mm; }
+@page b4a-print-a3-portrait-15mm { size: A3 portrait; margin: 15mm; }
+@page b4a-print-a3-portrait-20mm { size: A3 portrait; margin: 20mm; }
+@page b4a-print-a3-portrait-25mm { size: A3 portrait; margin: 25mm; }
+@page b4a-print-a3-landscape-0 { size: A3 landscape; margin: 0; }
+@page b4a-print-a3-landscape-10mm { size: A3 landscape; margin: 10mm; }
+@page b4a-print-a3-landscape-15mm { size: A3 landscape; margin: 15mm; }
+@page b4a-print-a3-landscape-20mm { size: A3 landscape; margin: 20mm; }
+@page b4a-print-a3-landscape-25mm { size: A3 landscape; margin: 25mm; }
+@page b4a-print-letter-portrait-0 { size: letter portrait; margin: 0; }
+@page b4a-print-letter-portrait-10mm { size: letter portrait; margin: 10mm; }
+@page b4a-print-letter-portrait-15mm { size: letter portrait; margin: 15mm; }
+@page b4a-print-letter-portrait-20mm { size: letter portrait; margin: 20mm; }
+@page b4a-print-letter-portrait-25mm { size: letter portrait; margin: 25mm; }
+@page b4a-print-letter-landscape-0 { size: letter landscape; margin: 0; }
+@page b4a-print-letter-landscape-10mm { size: letter landscape; margin: 10mm; }
+@page b4a-print-letter-landscape-15mm { size: letter landscape; margin: 15mm; }
+@page b4a-print-letter-landscape-20mm { size: letter landscape; margin: 20mm; }
+@page b4a-print-letter-landscape-25mm { size: letter landscape; margin: 25mm; }
+@page b4a-print-legal-portrait-0 { size: legal portrait; margin: 0; }
+@page b4a-print-legal-portrait-10mm { size: legal portrait; margin: 10mm; }
+@page b4a-print-legal-portrait-15mm { size: legal portrait; margin: 15mm; }
+@page b4a-print-legal-portrait-20mm { size: legal portrait; margin: 20mm; }
+@page b4a-print-legal-portrait-25mm { size: legal portrait; margin: 25mm; }
+@page b4a-print-legal-landscape-0 { size: legal landscape; margin: 0; }
+@page b4a-print-legal-landscape-10mm { size: legal landscape; margin: 10mm; }
+@page b4a-print-legal-landscape-15mm { size: legal landscape; margin: 15mm; }
+@page b4a-print-legal-landscape-20mm { size: legal landscape; margin: 20mm; }
+@page b4a-print-legal-landscape-25mm { size: legal landscape; margin: 25mm; }

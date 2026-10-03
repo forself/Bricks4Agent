@@ -177,15 +177,15 @@ Current implementation direction:
 
 - reference browser specs should declare identity, session policy, and site policy together
 
+- broker site-binding catalog (implemented: `BrowserSiteBinding` records with list/get/upsert, `packages/csharp/broker/Endpoints/BrowserBindingEndpoints.cs:14-57`)
+
+- user-authorized site registry (implemented as `BrowserUserGrant` records bound to a site binding, `BrowserBindingEndpoints.cs:59-99`)
+
 Not yet implemented:
 
-- broker site-binding catalog
+- runtime origin enforcement (`requires_exact_origin_match` / `allows_cross_origin_navigation` are surfaced by the registry but not enforced at runtime)
 
-- user-authorized site registry
-
-- runtime origin enforcement
-
-- browser worker navigation guards
+- browser worker navigation guards (partial: `browser.navigate` only follows links on the current host or an `allowed_host_suffixes` entry, at most 5 steps — `packages/csharp/workers/browser-worker/PlaywrightBrowserService.cs:231-272`, `Handlers/GovernedBrowserActionHandler.cs`; not driven by site policy)
 
 ## Rule
 

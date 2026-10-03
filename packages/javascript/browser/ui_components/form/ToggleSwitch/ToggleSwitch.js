@@ -4,6 +4,8 @@
  * API 對齊 Checkbox，可互換使用
  */
 
+import { setFieldError, clearFieldError, FIELD_ERROR_CONTRACT } from '../../utils/field-error.js';
+
 export class ToggleSwitch {
     /**
      * @param {Object} options
@@ -133,6 +135,25 @@ export class ToggleSwitch {
         this.setChecked(false);
     }
 
+    /**
+     * 標示欄位錯誤；空訊息等同 clearError()。錯誤文字顯示在元件正下方（元件外），元件需已掛載。
+     * display:false 只標示錯誤狀態、不顯示文字，給自行顯示錯誤文字的外層（FormField、SearchForm）使用。
+     */
+    setError(message, { display = true } = {}) {
+        setFieldError(this, message, { target: this.element, visual: this._track, after: this.element, display });
+        return this;
+    }
+
+    /** 清除 setError 的標示與文字。 */
+    clearError() {
+        clearFieldError(this);
+        return this;
+    }
+
+    get [FIELD_ERROR_CONTRACT]() {
+        return true;
+    }
+
     mount(container) {
         const target = typeof container === 'string' ? document.querySelector(container) : container;
         if (target) target.appendChild(this.element);
@@ -140,6 +161,7 @@ export class ToggleSwitch {
     }
 
     destroy() {
+        clearFieldError(this);
         if (this.element?.parentNode) {
             this.element.remove();
         }

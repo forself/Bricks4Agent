@@ -21,16 +21,35 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <body>
 <main>
 <h1>PasswordHasher - Secure Password Hashing</h1>
+<blockquote>
+<p>⚠ Reference code: this folder has no .csproj, is not compiled or referenced by any project, and is not built by CI; the content below is not build-verified.</p>
+<p>Known not to compile: <code>PasswordHasher.cs</code> calls <code>BCrypt.Net.BCrypt</code>, but no project in this repo provides the BCrypt package.</p>
+<p><strong>Deprecated.</strong> BCrypt contradicts the repo password-hashing policy, which is PBKDF2 through the static <code>Rfc2898DeriveBytes.Pbkdf2</code> API with the existing iteration/salt/hash sizes and stored formats kept unchanged (see the repo <code>CLAUDE.md</code>; implementations in <code>broker/Services/LocalAdminAuthService.cs</code> and <code>security/Mfa/MfaAuthService.cs</code>). <code>BCrypt.Net-Next</code> is not in the .NET dependency policy (<code>tools/scripts/dotnet-dependency-policy.json</code>). Do not use this helper for new code.</p>
+</blockquote>
 <p>Secure password hashing utility using BCrypt algorithm with built-in password strength validation.</p>
 <h2>Features</h2>
 <ul>
-<li>BCrypt password hashing (industry-standard)</li>
-<li>Password verification</li>
-<li>Automatic salt generation</li>
-<li>Password strength validation</li>
-<li>Password strength scoring</li>
-<li>Random password generation</li>
-<li>Rehash detection for security upgrades</li>
+<li>
+<p>BCrypt password hashing (industry-standard)</p>
+</li>
+<li>
+<p>Password verification</p>
+</li>
+<li>
+<p>Automatic salt generation</p>
+</li>
+<li>
+<p>Password strength validation</p>
+</li>
+<li>
+<p>Password strength scoring</p>
+</li>
+<li>
+<p>Random password generation</p>
+</li>
+<li>
+<p>Rehash detection for security upgrades</p>
+</li>
 </ul>
 <h2>Setup</h2>
 <h3>Install Required NuGet Package</h3>
@@ -275,30 +294,66 @@ public async Task&lt;IActionResult&gt; ChangePassword([FromBody] ChangePasswordD
 - 16: Very high security, very slow</p>
 <h2>Security Best Practices</h2>
 <ol>
-<li><strong>Never Store Plain Passwords</strong> - Always hash before storing</li>
-<li><strong>Use BCrypt</strong> - Industry-standard, designed for password hashing</li>
-<li><strong>Automatic Salting</strong> - BCrypt includes unique salt for each hash</li>
-<li><strong>Work Factor</strong> - Adjust based on security requirements</li>
-<li><strong>Rehashing</strong> - Update old hashes when work factor increases</li>
-<li><strong>Password Policy</strong> - Enforce minimum strength requirements</li>
-<li><strong>Rate Limiting</strong> - Prevent brute-force attacks on login</li>
-<li><strong>Secure Transport</strong> - Always use HTTPS</li>
-<li><strong>No Password Hints</strong> - Don't store or display password hints</li>
+<li>
+<p><strong>Never Store Plain Passwords</strong> - Always hash before storing</p>
+</li>
+<li>
+<p><strong>Use BCrypt</strong> - Industry-standard, designed for password hashing</p>
+</li>
+<li>
+<p><strong>Automatic Salting</strong> - BCrypt includes unique salt for each hash</p>
+</li>
+<li>
+<p><strong>Work Factor</strong> - Adjust based on security requirements</p>
+</li>
+<li>
+<p><strong>Rehashing</strong> - Update old hashes when work factor increases</p>
+</li>
+<li>
+<p><strong>Password Policy</strong> - Enforce minimum strength requirements</p>
+</li>
+<li>
+<p><strong>Rate Limiting</strong> - Prevent brute-force attacks on login</p>
+</li>
+<li>
+<p><strong>Secure Transport</strong> - Always use HTTPS</p>
+</li>
+<li>
+<p><strong>No Password Hints</strong> - Don't store or display password hints</p>
+</li>
 </ol>
 <h2>Benefits</h2>
 <ol>
-<li><strong>BCrypt Algorithm</strong> - Designed specifically for password hashing</li>
-<li><strong>Automatic Salting</strong> - Unique salt generated for each password</li>
-<li><strong>Slow by Design</strong> - Resistant to brute-force attacks</li>
-<li><strong>Future-Proof</strong> - Work factor can be increased as hardware improves</li>
-<li><strong>Strength Validation</strong> - Built-in password policy enforcement</li>
-<li><strong>Random Generation</strong> - Generate secure temporary passwords</li>
-<li><strong>Rehash Detection</strong> - Automatically upgrade old hashes</li>
+<li>
+<p><strong>BCrypt Algorithm</strong> - Designed specifically for password hashing</p>
+</li>
+<li>
+<p><strong>Automatic Salting</strong> - Unique salt generated for each password</p>
+</li>
+<li>
+<p><strong>Slow by Design</strong> - Resistant to brute-force attacks</p>
+</li>
+<li>
+<p><strong>Future-Proof</strong> - Work factor can be increased as hardware improves</p>
+</li>
+<li>
+<p><strong>Strength Validation</strong> - Built-in password policy enforcement</p>
+</li>
+<li>
+<p><strong>Random Generation</strong> - Generate secure temporary passwords</p>
+</li>
+<li>
+<p><strong>Rehash Detection</strong> - Automatically upgrade old hashes</p>
+</li>
 </ol>
 <h2>Dependencies</h2>
 <ul>
-<li>BCrypt.Net-Next (NuGet package)</li>
-<li>.NET 6.0 or higher</li>
+<li>
+<p>BCrypt.Net-Next (NuGet package; not referenced by any project and not allowed by the repo dependency policy)</p>
+</li>
+<li>
+<p>.NET 10 (<code>net10.0</code>, the repo's target framework)</p>
+</li>
 </ul>
 <h2>Example DTOs</h2>
 <pre><code class="language-csharp">public class RegisterDto

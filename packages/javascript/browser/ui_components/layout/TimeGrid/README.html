@@ -1,0 +1,455 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TimeGrid 時段格</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>TimeGrid 時段格</h1>
+<p>以「列＝時段（slot）、欄＝日期或資源（column）」呈現排程的格狀檢視。項目（item）佔同一欄內一或多個連續時段，可用於會議室預約、人員排班或任何時間表；元件只處理時段、欄與項目，不帶任何業務語意。</p>
+<ul>
+<li>DOM + CSS grid 版面，樣式全部走 CSSOM 與 <code>var(--cl-*)</code> token，嚴格 CSP（<code>style-src 'self'</code>）下可直接使用，不注入 <code>&lt;style&gt;</code>、不用 SVG。</li>
+<li>項目位置以時段索引算術求得，整張表在離線片段中一次建好再掛上；1,000 個項目、7 欄 × 30 時段一次渲染完成，渲染過程不讀取版面。</li>
+<li>同一欄重疊的項目依「重疊群組」分道並排；<code>ghost</code> 項目另成一層半透明虛線預覽，疊在一般項目上方、不擠壓它們。</li>
+<li>可選取（點擊或拖曳空白格）、可拖放移動（指標或鍵盤），移動一律先經 <code>onItemMove</code> 同意（可非同步），同意後元件才更新自己的狀態。</li>
+<li>欄頭與時段標籤在捲動容器內黏附；可選的目前時間線每分鐘更新一次。</li>
+<li>完整鍵盤操作與 ARIA grid 語意，操作結果透過 polite live region 播報（有節流）。</li>
+</ul>
+<h2>匯入</h2>
+<pre><code class="language-js">import { TimeGrid } from './ui_components/layout/TimeGrid/index.js';
+</code></pre>
+<p>頁面需載入 <code>ui_components/theme.css</code> 取得 <code>--cl-*</code> token；深色模式由 <code>[data-theme="dark"]</code> 切換，元件不需額外處理。</p>
+<h2>建構選項</h2>
+<pre><code class="language-js">const grid = new TimeGrid({
+    columns: [],                // 欄定義 [{ key, label, sublabel?, date?: 'YYYY-MM-DD' }]；label 預設為 key
+    slots: null,                // 明確時段 [{ key, label?, start: 'HH:mm', end: 'HH:mm' }]；null 時改用 timeRange 產生
+    timeRange: { start: '08:00', end: '18:00', step: 30 }, // slots 為 null 時產生等長時段（step 單位：分鐘，最後一段可較短）
+    items: [],                  // 項目 [{ id, column, start, end?, title, subtitle?, variant?, ghost?, draggable?, data? }]
+    selectable: false,          // 允許點擊或拖曳同一欄的空白格選取連續時段 → onSelect
+    editable: false,            // 允許以指標或鍵盤把項目拖放到其他欄／時段 → onItemMove
+    readonly: false,            // true 時停用選取與移動（不論 selectable / editable），點擊回呼照常觸發
+    slotHeight: 40,             // 每個時段列的高度（px）
+    height: null,               // 捲動容器高度：數字＝px，或 CSS 長度字串（如 '70vh'）；null＝不限高（只做水平捲動）
+    columnMinWidth: 120,        // 每欄最小寬度（px）；總寬不足時水平捲動
+    slotLabelWidth: 72,         // 左側時段標籤欄寬度（px）
+    nowIndicator: false,        // 在 date 等於今天的欄畫出目前時間線，每分鐘更新
+    now: () =&gt; new Date(),      // 取得目前時間的函式（可注入，方便測試或對時）
+    ariaLabel: '',              // 表格的無障礙名稱；空字串時用 Locale 的 timeGrid.gridLabel
+    onSelect: null,             // (range) =&gt; void；range 見下方「時段範圍物件」
+    onItemMove: null,           // ({ item, from, to }) =&gt; boolean | Promise&lt;boolean&gt;；回傳 false 表示拒絕
+    onItemClick: null,          // (item, event) =&gt; void
+    onCellClick: null           // ({ column, slot, startTime, endTime }, event) =&gt; void
+});
+</code></pre>
+<h3>欄（columns）</h3>
+<table>
+<thead>
+<tr>
+<th>屬性</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>key</code></td>
+<td>必填，欄的唯一識別（字串或數字；比對時轉成字串，回呼中回傳原值）</td>
+</tr>
+<tr>
+<td><code>label</code></td>
+<td>欄頭文字，預設為 <code>key</code></td>
+</tr>
+<tr>
+<td><code>sublabel</code></td>
+<td>欄頭第二行（例如日期）</td>
+</tr>
+<tr>
+<td><code>date</code></td>
+<td><code>'YYYY-MM-DD'</code>，只用於 <code>nowIndicator</code> 判斷「今天」</td>
+</tr>
+</tbody>
+</table>
+<h3>時段（slots / timeRange）</h3>
+<ul>
+<li><code>timeRange</code> 以 <code>start</code>～<code>end</code> 每 <code>step</code> 分鐘切一段，key 為每段的開始時間 <code>'HH:mm'</code>，標籤預設 <code>'HH:mm–HH:mm'</code>。</li>
+<li>明確的 <code>slots</code> 可以長短不一、中間留空檔（例如休息時間）；會依開始時間排序。<code>key</code> 省略時用開始時間。</li>
+<li>無效的時段（時間格式錯、結束不晚於開始、key 重複、與前一段重疊）會略過並以 <code>console.warn</code> 回報一次。</li>
+</ul>
+<h3>項目（items）</h3>
+<table>
+<thead>
+<tr>
+<th>屬性</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>id</code></td>
+<td>唯一識別；省略時自動產生。重複的 id 會略過並警告</td>
+</tr>
+<tr>
+<td><code>column</code></td>
+<td>所在欄的 key</td>
+</tr>
+<tr>
+<td><code>start</code></td>
+<td>開始：時段 key 或 <code>'HH:mm'</code></td>
+</tr>
+<tr>
+<td><code>end</code></td>
+<td>結束（<strong>不含</strong>）：時段 key 或 <code>'HH:mm'</code>；省略時只佔 <code>start</code> 所在的一個時段</td>
+</tr>
+<tr>
+<td><code>title</code> / <code>subtitle</code></td>
+<td>顯示文字（一律以 <code>textContent</code> 寫入）</td>
+</tr>
+<tr>
+<td><code>variant</code></td>
+<td><code>'primary'</code>（預設）、<code>'success'</code>、<code>'warning'</code>、<code>'danger'</code>、<code>'info'</code>、<code>'neutral'</code>（也可由 <code>TimeGrid.VARIANTS</code> 取得）</td>
+</tr>
+<tr>
+<td><code>ghost</code></td>
+<td><code>true</code> 時畫成半透明虛線的預覽，另成一層疊在一般項目上方，不參與一般項目的分道，也不阻擋選取</td>
+</tr>
+<tr>
+<td><code>draggable</code></td>
+<td><code>false</code> 時此項目不可移動（<code>editable</code> 為 true 也一樣）</td>
+</tr>
+<tr>
+<td><code>data</code></td>
+<td>任意附加資料，原樣隨回呼傳回</td>
+</tr>
+</tbody>
+</table>
+<p><code>start</code> / <code>end</code> 的判讀規則：</p>
+<ul>
+<li>字串先比對時段 key，找不到才當作 <code>'HH:mm'</code> 時間。</li>
+<li><code>end</code> 為時段 key 時代表「到該時段開始為止」，所以 <code>{ start: 's1', end: 's3' }</code> 佔 <code>s1</code>、<code>s2</code>；<code>start</code> 與 <code>end</code> 相同時佔一個時段。</li>
+<li>時間形式取所有與 <code>[start, end)</code> 重疊的時段；超出可見範圍的部分會被裁切，但無障礙標籤仍顯示原本的起訖時間。</li>
+<li>找不到的欄、時段，或完全落在範圍外／空檔內的項目不會畫出，並以一則 <code>console.warn</code> 彙整回報；同一個問題只回報一次。這些項目仍保留在 <code>getItems()</code> 的結果中，之後補上欄或時段就會出現。</li>
+</ul>
+<h3>時段範圍物件</h3>
+<p><code>onSelect</code>、<code>getSelection()</code>、<code>onItemMove</code> 的 <code>from</code> / <code>to</code> 都用同一種形狀：</p>
+<pre><code class="language-js">{
+    column: 'roomB',            // 欄 key（原值）
+    start: '09:00',             // 第一個時段的 key
+    end: '10:30',               // 結束邊界（不含）：下一個時段的 key；範圍到最後一個時段時為其結束時間 'HH:mm'
+    startTime: '09:00',         // 第一個時段的開始時間
+    endTime: '10:30',           // 最後一個時段的結束時間
+    slots: ['09:00', '09:30', '10:00'] // 範圍內每個時段的 key
+}
+</code></pre>
+<p><code>start</code> / <code>end</code> 的語意與項目相同，所以選取結果可以直接拿來新增項目：<code>grid.addItem({ id, title, column: range.column, start: range.start, end: range.end })</code>。<code>getSelection()</code> 另外多一個 <code>confirmed</code>（鍵盤選取尚未按 Enter 確認時為 <code>false</code>）。</p>
+<h2>方法</h2>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>mount(containerOrSelector)</code></td>
+<td>掛載到容器（元素或 CSS 選擇器），回傳 <code>this</code>；開始監聽語系切換並啟動目前時間線計時器</td>
+</tr>
+<tr>
+<td><code>destroy()</code></td>
+<td>移除 DOM、所有 document/window 監聽、計時器與 requestAnimationFrame；可重複呼叫，之後呼叫其他方法不會丟錯</td>
+</tr>
+<tr>
+<td><code>setItems(items)</code></td>
+<td>以新陣列取代全部項目</td>
+</tr>
+<tr>
+<td><code>addItem(item)</code></td>
+<td>新增一個項目（id 已存在時略過並警告，修改請用 <code>updateItem</code>）</td>
+</tr>
+<tr>
+<td><code>updateItem(id, patch)</code></td>
+<td>以淺層合併更新項目（<code>patch.id</code> 會被忽略），只重排受影響的欄</td>
+</tr>
+<tr>
+<td><code>removeItem(id)</code></td>
+<td>移除項目</td>
+</tr>
+<tr>
+<td><code>getItems()</code></td>
+<td>回傳所有項目的淺拷貝陣列（含未能放置的項目；<code>data</code> 為同一參考）</td>
+</tr>
+<tr>
+<td><code>setColumns(columns)</code></td>
+<td>更換欄定義並重建表格，焦點與選取盡量依 key 保留</td>
+</tr>
+<tr>
+<td><code>setSlots(slots)</code></td>
+<td>更換明確時段；傳 <code>null</code> 改回使用 <code>timeRange</code></td>
+</tr>
+<tr>
+<td><code>setTimeRange(range)</code></td>
+<td>改用 <code>{ start, end, step }</code> 產生時段（同時清除明確時段）</td>
+</tr>
+<tr>
+<td><code>getSelection()</code></td>
+<td>目前的選取範圍（含 <code>confirmed</code>），沒有時為 <code>null</code></td>
+</tr>
+<tr>
+<td><code>clearSelection()</code></td>
+<td>清除選取（不觸發回呼）</td>
+</tr>
+<tr>
+<td><code>focusCell(column, slot)</code></td>
+<td>把焦點移到指定欄 key、時段 key 的儲存格並捲入可視範圍</td>
+</tr>
+<tr>
+<td><code>scrollToSlot(slotKey)</code></td>
+<td>捲動使該時段位於最上方（未設定 <code>height</code> 時改捲動頁面）</td>
+</tr>
+<tr>
+<td><code>snapshot()</code></td>
+<td>取得內部互動狀態的深拷貝：<code>{ lifecycle, mode, selection, move }</code>，<code>mode</code> 為 <code>idle</code>／<code>dragging</code>／<code>grabbed</code>／<code>pending</code></td>
+</tr>
+</tbody>
+</table>
+<p>除了 <code>getItems()</code>、<code>getSelection()</code>、<code>snapshot()</code> 回傳資料、<code>destroy()</code> 沒有回傳值以外，其餘方法都回傳 <code>this</code>，可串接。</p>
+<h2>回呼</h2>
+<table>
+<thead>
+<tr>
+<th>回呼</th>
+<th>觸發時機</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>onSelect(range)</code></td>
+<td>指標在空白格按下、拖曳（限同一欄，遇到被一般項目佔用的格子就停）後放開；或鍵盤選取按 Enter 確認時</td>
+</tr>
+<tr>
+<td><code>onItemMove({ item, from, to })</code></td>
+<td>拖放或鍵盤放下到<strong>不同</strong>位置時。回傳 <code>false</code>、<code>Promise&lt;false&gt;</code>、丟出錯誤或 Promise 被拒絕，都視為拒絕，項目放回原位；其他值（含 <code>undefined</code>）視為同意，元件才更新該項目的 <code>column</code> / <code>start</code> / <code>end</code>。未提供此回呼時一律同意</td>
+</tr>
+<tr>
+<td><code>onItemClick(item, event)</code></td>
+<td>點擊項目，或項目取得焦點時按 Enter（不可移動的項目按 Space 也會觸發）。<code>item</code> 為淺拷貝</td>
+</tr>
+<tr>
+<td><code>onCellClick({ column, slot, startTime, endTime }, event)</code></td>
+<td>點擊儲存格的空白處（不在項目上），或在空白格按 Enter</td>
+</tr>
+</tbody>
+</table>
+<p>補充：</p>
+<ul>
+<li>可選取時，單擊空白格會先觸發 <code>onSelect</code>（一個時段）再觸發 <code>onCellClick</code>；拖曳跨越多格時只觸發 <code>onSelect</code>。</li>
+<li>移動期間（等待 <code>onItemMove</code> 的 Promise）表格標上 <code>aria-busy="true"</code>，仍可瀏覽與選取，但不能再拿起其他項目；若期間呼叫端自己用 <code>setItems</code> / <code>updateItem</code> / <code>removeItem</code> 改了該項目，元件不會再套用這次移動，以呼叫端的資料為準。</li>
+<li>移動後項目保留原本的寫法：用時段 key 的仍寫 key；用時間的會整段平移（保留長度與非整點的起訖），平移後對不上目標時段時才對齊時段邊界。</li>
+<li>拖放結束後瀏覽器送出的那一次 click 會被忽略，不會誤觸 <code>onItemClick</code> / <code>onCellClick</code>。</li>
+</ul>
+<h2>鍵盤操作</h2>
+<p>表格使用 roving tabindex：整張表只有一個 Tab 停駐點（目前的儲存格），項目按鈕為 <code>tabindex="-1"</code>。</p>
+<p>在儲存格上：</p>
+<table>
+<thead>
+<tr>
+<th>按鍵</th>
+<th>動作</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>↑ ↓ ← →</td>
+<td>移到相鄰儲存格</td>
+</tr>
+<tr>
+<td>Home / End</td>
+<td>同一列的第一欄／最後一欄</td>
+</tr>
+<tr>
+<td>Ctrl + Home / Ctrl + End</td>
+<td>整張表的第一格／最後一格</td>
+</tr>
+<tr>
+<td>PageUp / PageDown</td>
+<td>上／下移 5 個時段</td>
+</tr>
+<tr>
+<td>Enter</td>
+<td>格子被項目覆蓋時：焦點移到第一個項目。空白格：觸發 <code>onCellClick</code>；可選取時同時開始選取這一格</td>
+</tr>
+<tr>
+<td>Shift + ↑ ↓ / Shift + PageUp PageDown</td>
+<td>可選取時：從目前格子開始或延伸選取（限同一欄，遇到被佔用的格子就停）</td>
+</tr>
+<tr>
+<td>Enter（選取中）</td>
+<td>確認選取 → <code>onSelect</code></td>
+</tr>
+<tr>
+<td>Escape</td>
+<td>取消選取</td>
+</tr>
+</tbody>
+</table>
+<p>未確認的鍵盤選取在一般方向鍵移動時會自動放棄。</p>
+<p>在項目上：</p>
+<table>
+<thead>
+<tr>
+<th>按鍵</th>
+<th>動作</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Enter</td>
+<td><code>onItemClick</code></td>
+</tr>
+<tr>
+<td>Space</td>
+<td>可移動時拿起項目（進入移動模式）；不可移動時為按鈕原生行為（觸發 <code>onItemClick</code>）</td>
+</tr>
+<tr>
+<td>← →</td>
+<td>同一格內有多個並排項目時切換到左／右一個；已在最邊時移到相鄰儲存格</td>
+</tr>
+<tr>
+<td>↑ ↓ Home End PageUp PageDown</td>
+<td>以進入項目時的儲存格為起點移動到其他儲存格</td>
+</tr>
+<tr>
+<td>Escape</td>
+<td>回到進入項目時的儲存格</td>
+</tr>
+</tbody>
+</table>
+<p>移動模式（拿起後）：</p>
+<table>
+<thead>
+<tr>
+<th>按鍵</th>
+<th>動作</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>↑ ↓</td>
+<td>落點上／下移一個時段</td>
+</tr>
+<tr>
+<td>← →</td>
+<td>落點移到左／右一欄</td>
+</tr>
+<tr>
+<td>PageUp / PageDown</td>
+<td>落點上／下移 5 個時段</td>
+</tr>
+<tr>
+<td>Home / End</td>
+<td>落點移到第一欄／最後一欄</td>
+</tr>
+<tr>
+<td>Enter</td>
+<td>放下 → <code>onItemMove</code>（落點與原位相同時視為取消）</td>
+</tr>
+<tr>
+<td>Escape、Tab 或焦點離開表格</td>
+<td>取消移動</td>
+</tr>
+</tbody>
+</table>
+<p>指標拖曳中按 Escape 或發生 <code>pointercancel</code> 也會取消；拖曳到捲動容器邊緣會自動捲動。</p>
+<h2>無障礙（ARIA）</h2>
+<ul>
+<li>表格為 <code>role="grid"</code>，帶 <code>aria-label</code>、<code>aria-rowcount</code>（時段數 + 1）、<code>aria-colcount</code>（欄數 + 1）；可選取時加 <code>aria-multiselectable="true"</code>，<code>readonly</code> 時加 <code>aria-readonly="true"</code>，等待 <code>onItemMove</code> 時加 <code>aria-busy="true"</code>。</li>
+<li>第一列為欄頭（<code>role="columnheader"</code>，左上角為時段欄的欄頭），每一列開頭是時段標籤（<code>role="rowheader"</code>），其餘為 <code>role="gridcell"</code>；列與格帶 <code>aria-rowindex</code> / <code>aria-colindex</code>。可選取時每格帶 <code>aria-selected</code>。</li>
+<li>項目是格子裡的 <code>&lt;button type="button"&gt;</code>，<code>aria-label</code> 由 Locale 組成「標題（副標），欄，時間」，ghost 項目另加「（預覽）」。可移動的項目帶 <code>aria-grabbed</code>（拿起時為 <code>true</code>）；此屬性在 ARIA 1.1 已不建議使用，實際的操作回饋以 live region 播報為主。</li>
+<li><code>nowIndicator</code> 開啟時，今天的欄頭加 <code>aria-current="date"</code>；時間線、落點預覽與焦點框皆為 <code>aria-hidden</code>。</li>
+<li>選取開始／變更／確認／取消、拿起、落點變更、移動中、移動成功／被拒絕／取消，都寫入表格外的 <code>aria-live="polite"</code> 區域；連續快速的變更會節流（約 250ms 內只播最後一則）。</li>
+<li>焦點可見：儲存格取得焦點時畫出 <code>--cl-border-focus</code> 框；項目取得焦點時加外框並提到最上層。</li>
+</ul>
+<h2>樣式與版面</h2>
+<ul>
+<li>所有顏色、圓角、字級皆為 <code>--cl-*</code> token；變化色對應 <code>--cl-{variant}</code> 與 <code>--cl-{variant}-light</code>，<code>neutral</code> 用 <code>--cl-grey</code> / <code>--cl-bg-secondary</code>。</li>
+<li>可用的 class（供外部選取，勿依賴其內部樣式）：<code>b4a-timegrid</code>、<code>__scroller</code>、<code>__grid</code>、<code>__header</code>、<code>__corner</code>、<code>__colheader</code>、<code>__row</code>、<code>__slot</code>、<code>__cell</code>、<code>__item</code>、<code>__item--ghost</code>、<code>__drop</code>、<code>__now</code>、<code>__focus</code>、<code>__live</code>。儲存格帶 <code>data-column</code> / <code>data-slot</code>，項目帶 <code>data-item-id</code> / <code>data-variant</code>，ghost 項目帶 <code>data-ghost="true"</code>。</li>
+<li>每個時段列高為 <code>slotHeight</code>（不依時段長短伸縮）；欄寬平均分配且不小於 <code>columnMinWidth</code>。</li>
+</ul>
+<h2>範例：會議室單日預約</h2>
+<pre><code class="language-html">&lt;!DOCTYPE html&gt;
+&lt;html lang=&quot;zh-TW&quot; data-theme=&quot;light&quot;&gt;
+&lt;head&gt;
+    &lt;meta charset=&quot;utf-8&quot;&gt;
+    &lt;link rel=&quot;stylesheet&quot; href=&quot;../../theme.css&quot;&gt;
+&lt;/head&gt;
+&lt;body&gt;
+    &lt;div id=&quot;booking&quot;&gt;&lt;/div&gt;
+    &lt;script type=&quot;module&quot;&gt;
+        import { TimeGrid } from './index.js';
+
+        const today = new Date();
+        const date = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+        const grid = new TimeGrid({
+            columns: [
+                { key: 'roomA', label: '會議室 A', sublabel: '8 人', date },
+                { key: 'roomB', label: '會議室 B', sublabel: '12 人', date },
+                { key: 'roomC', label: '會議室 C', sublabel: '4 人', date }
+            ],
+            timeRange: { start: '08:00', end: '18:00', step: 30 },
+            height: 480,
+            selectable: true,
+            editable: true,
+            nowIndicator: true,
+            items: [
+                { id: 'b1', column: 'roomA', start: '09:00', end: '10:30', title: '專案週會', subtitle: '王小明', variant: 'primary' },
+                { id: 'b2', column: 'roomA', start: '10:00', end: '11:00', title: '供應商來訪', variant: 'warning' },
+                { id: 'b3', column: 'roomB', start: '13:00', end: '15:00', title: '客戶簡報', variant: 'success', draggable: false }
+            ],
+            onSelect: (range) =&gt; {
+                // 以 ghost 預覽新的預約，實際存檔後再改成一般項目
+                grid.removeItem('draft');
+                grid.addItem({ id: 'draft', title: '新預約', ghost: true, column: range.column, start: range.start, end: range.end });
+            },
+            onItemMove: async ({ item, to }) =&gt; {
+                const response = await fetch(`/api/bookings/${encodeURIComponent(item.id)}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ room: to.column, start: to.startTime, end: to.endTime })
+                });
+                return response.ok; // false → 放回原位
+            },
+            onItemClick: (item) =&gt; console.log('開啟預約', item.id)
+        }).mount('#booking');
+
+        grid.scrollToSlot('09:00');
+    &lt;/script&gt;
+&lt;/body&gt;
+&lt;/html&gt;
+</code></pre>
+<h2>限制與注意事項</h2>
+<ul>
+<li>不支援跨午夜的時段（時間範圍為 <code>00:00</code>～<code>24:00</code>）與拖曳改變項目長度。</li>
+<li>列高固定為 <code>slotHeight</code>，不依時段長短比例伸縮；空檔（明確時段之間的間隔）不佔列。</li>
+<li>同一格重疊的項目很多時每道會很窄，元件不會收合成「+N」。</li>
+<li><code>height</code> 為 <code>null</code> 時捲動容器只做水平捲動，欄頭的黏附只在設定 <code>height</code> 時有效。</li>
+<li>觸控裝置上，可移動的項目設有 <code>touch-action: none</code> 以便拖放；在空白格上拖曳會捲動頁面（點一下仍可選取一個時段）。</li>
+<li>目前時間線每分鐘更新，最多落後 1 分鐘；只在 <code>columns[].date</code> 等於 <code>now()</code> 當天的欄出現。</li>
+</ul>
+</main>
+</body>
+</html>

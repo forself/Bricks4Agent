@@ -5,6 +5,7 @@ export { GeolocationService, GeolocationError } from './GeolocationService.js';
 export { WeatherService, WeatherError } from './WeatherService.js';
 export { default as SimpleZip } from './SimpleZip.js';
 export { nextUid, resetUid } from './uid.js';
+export { setFieldError, clearFieldError, getFieldError, hasFieldError, FIELD_ERROR_CONTRACT } from './field-error.js';
 export {
     escapeHtml,
     escapeAttr,
@@ -21,3 +22,5 @@ export { sequentialScale, divergingScale, categoricalColor, hierarchicalColor, C
 export { aggregate, groupBy, summarize, pivot, binNumeric, bucketTime, topN, AGGS } from './aggregation-engine.js';
 export { buildQuadtree, bhAccumulate, nearestBody } from './quadtree.js';
 export { createSimulation, createRng } from './force-engine.js';
+export { createPermissionGate, PermissionGate } from './permission-gate.js';
+export { createDirtyGuard, DirtyGuard } from './dirty-guard.js';

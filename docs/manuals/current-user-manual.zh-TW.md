@@ -104,7 +104,7 @@ Sidecar 啟動時會建立這個目錄，並掛載給受控 worker container 使
 | Windows 10/11 | canonical local LINE sidecar |
 | Windows PowerShell 5.1+ | sidecar 腳本 |
 | .NET SDK 10.0+ | broker / worker 建置與測試 |
-| Node.js 18+ 與 npm | agent、JS tools、UI tests |
+| Node.js 22.13+ 與 npm | agent、JS tools、UI tests（`packages/javascript/browser` 的 jsdom 29 要求 `^20.19.0 \|\| ^22.13.0 \|\| >=24.0.0`，根目錄 `test:ui-components` 以 `node --test` glob 參數執行需 Node 21+；CI 使用 Node 22） |
 | Git | repo 操作 |
 | ngrok | LINE webhook public tunnel；未安裝或未設定 `ngrok.yml` 時，sidecar 會警告並改用 localhost.run ssh tunnel |
 | Podman | governed agent container stack |
@@ -132,20 +132,22 @@ dotnet restore packages/csharp/ControlPlane.slnx
 dotnet build packages/csharp/ControlPlane.slnx
 ```
 
-repo 的 npm 套件沒有宣告任何 dependencies / devDependencies，所以 `npm install` 不會安裝任何東西；JS 工具與測試都只用 Node 內建模組。
+repo 根目錄的 `package.json` 沒有宣告任何 dependencies / devDependencies，所以在根目錄 `npm install` 不會安裝任何東西；根目錄的 JS 工具只用 Node 內建模組。例外是 `packages/javascript/browser`：它宣告了 `vitest` 與 `jsdom` 兩個 devDependencies（附 `package-lock.json`），根目錄 `npm test` 也會透過 `npm --prefix packages/javascript/browser run test:vitest` 用到它們。
 
-browser/e2e 類驗證（`npm run validate:ui-library:browser`、`npm run validate:user-portal` 等）需要另外準備 Playwright，因為 repo 不宣告這個相依：
+browser/e2e 類驗證（`npm run validate:ui-library:browser`、`npm run validate:user-portal` 等）需要另外準備 Playwright，因為 repo 不宣告這個相依：腳本要能 `import` 到 Playwright 模組（`validate:user-portal` 只認 `@playwright/test` 或 `playwright`），另外需要瀏覽器：
 
 ```powershell
+npm install --no-save --ignore-scripts @playwright/test
 npx playwright install chromium
 ```
 
-`validate:ui-library` 找不到 Playwright 時會跳過 browser smoke（除非加 `--require-browser`），並且在 Playwright 沒有自帶瀏覽器時會退回本機已安裝的 Chrome / Edge。
+一般的 `npm run validate:ui-library` 不會跑 browser smoke（輸出 `Browser smoke: skipped (Browser smoke not requested.)`）。`npm run validate:ui-library:browser` 會帶 `--browser --require-browser`，找不到 Playwright 時直接失敗；只給 `--browser` 時則跳過。Playwright 沒有自帶瀏覽器時會退回本機已安裝的 Chrome / Edge。
 
-`packages/javascript/browser` 的測試同樣不需要安裝步驟：
+`packages/javascript/browser` 的測試需要先安裝它的 devDependencies：
 
 ```powershell
 cd packages/javascript/browser
+npm ci
 npm test
 cd ..\..\..
 ```
@@ -651,11 +653,13 @@ node server.js
 http://localhost:3080
 ```
 
-Backend 預設：
+Backend（`tools/spa-generator/backend`，`dotnet run`）沒有 `launchSettings.json` 或 `urls` 設定，因此使用 Kestrel 預設：
 
 ```text
-https://localhost:5002
+http://localhost:5000
 ```
+
+`tools/spa-generator/project.json` 的 `apiPort: 5002` 只是紀錄值，不會套用；要用 5002 請自行指定，例如 `dotnet run --urls https://localhost:5002`。
 
 ### 14.2 Page Generator CLI
 

@@ -1,6 +1,7 @@
 import { Textarea } from '../TextArea/index.js';
 import { createComponentState } from '../../utils/component-state.js';
 import { Icon } from '../../common/Icon/index.js';
+import { FIELD_ERROR_CONTRACT } from '../../utils/field-error.js';
 
 export class CommandComposer {
     constructor(options = {}) {
@@ -232,6 +233,25 @@ export class CommandComposer {
     setLoading(loading) {
         this.send('SET_LOADING', { loading });
         return this;
+    }
+
+    /**
+     * 標示欄位錯誤；空訊息等同 clearError()。
+     * display:false 只標示錯誤狀態、不顯示文字，給自行顯示錯誤文字的外層（FormField、SearchForm）使用。
+     */
+    setError(message, { display = true } = {}) {
+        this.textarea?.setError(message, { display });
+        return this;
+    }
+
+    /** 清除 setError 的標示與文字。 */
+    clearError() {
+        this.textarea?.clearError();
+        return this;
+    }
+
+    get [FIELD_ERROR_CONTRACT]() {
+        return true;
     }
 
     focus() {

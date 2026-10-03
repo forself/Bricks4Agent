@@ -3,6 +3,11 @@
 Date: 2026-03-30
 Status: implemented on `main` for the phase-1 interview/review scope
 
+> **Implementation status (checked 2026-09-26)**
+>
+> - Only two document families are persisted: `hlm.project-interview.requirements.{channel}.{userId}` (the whole task document, including session state) and `hlm.project-interview.version-graph.{channel}.{userId}.{version}` (`packages/csharp/broker/Services/ProjectInterviewStateService.cs:113`, `:116`). The separate `.state.*` and `.review.*` families listed under "Data Persistence" do not exist.
+> - No dedicated project interview validator class exists (see "Recommended File-Level Change Direction"); phase/command gating lives in `packages/csharp/broker/Services/ProjectInterviewStateMachine.cs`.
+
 ## Implementation Snapshot
 
 Implemented on `main`:

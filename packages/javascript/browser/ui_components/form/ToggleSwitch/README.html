@@ -21,7 +21,7 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <body>
 <main>
 <h1>ToggleSwitch 開關滑桿</h1>
-<p>布林值輸入元件，滑桿式外觀，API 對齊 Checkbox 可互換使用。</p>
+<p>布林值輸入元件，滑桿式外觀。提供與 Checkbox 相似的 <code>isChecked</code> / <code>setChecked</code> / <code>getValue</code> / <code>setValue</code> / <code>clear</code>，但並非完全對齊：沒有 <code>setDisabled()</code> / <code>show()</code> / <code>hide()</code>，且 <code>onChange</code> 只收到 <code>(checked)</code> 一個參數。</p>
 <h2>API</h2>
 <h3>Constructor</h3>
 <pre><code class="language-javascript">import { ToggleSwitch } from './ToggleSwitch.js';
@@ -53,7 +53,7 @@ const toggle = new ToggleSwitch({
 </tr>
 <tr>
 <td><code>toggle()</code></td>
-<td>切換開關狀態</td>
+<td>切換開關狀態（會觸發 onChange；不檢查 disabled，停用時呼叫仍會切換）</td>
 </tr>
 <tr>
 <td><code>isChecked()</code></td>
@@ -75,12 +75,20 @@ const toggle = new ToggleSwitch({
 <td><code>clear()</code></td>
 <td>重置為 false</td>
 </tr>
+<tr>
+<td><code>setError(msg, { display })</code> / <code>clearError()</code></td>
+<td>標示 / 清除欄位錯誤：紅框、<code>aria-invalid</code> 與錯誤文字（插在元件正後方，需已掛載）；<code>display: false</code> 只標示狀態、不顯示文字</td>
+</tr>
 </tbody>
 </table>
 <h3>屬性</h3>
 <ul>
-<li><code>element</code> — 根 DOM 元素</li>
-<li><code>checked</code> — 目前布林值</li>
+<li>
+<p><code>element</code> — 根 DOM 元素</p>
+</li>
+<li>
+<p><code>checked</code> — 目前布林值</p>
+</li>
 </ul>
 <h2>使用範例</h2>
 <pre><code class="language-javascript">import { ToggleSwitch } from './ToggleSwitch.js';

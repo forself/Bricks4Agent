@@ -2,6 +2,7 @@ import { DatePicker } from '../../form/DatePicker/index.js';
 import { TimePicker } from '../../form/TimePicker/index.js';
 import Locale from '../../i18n/index.js';
 import { createComponentState } from '../../utils/component-state.js';
+import { setFieldError, clearFieldError, FIELD_ERROR_CONTRACT } from '../../utils/field-error.js';
 
 function toIsoDate(value) {
     if (!value) return '';
@@ -175,6 +176,25 @@ export class DateTimeInput {
 
     setDisabled(disabled) {
         this.send('SET_DISABLED', { disabled });
+    }
+
+    /**
+     * 標示欄位錯誤；空訊息等同 clearError()。
+     * display:false 只標示錯誤狀態、不顯示文字，給自行顯示錯誤文字的外層（FormField、SearchForm）使用。
+     */
+    setError(message, { display = true } = {}) {
+        setFieldError(this, message, { target: [this.datePicker?.inputWrapper, this.timePicker?.inputWrapper], container: this.element, display });
+        return this;
+    }
+
+    /** 清除 setError 的標示與文字。 */
+    clearError() {
+        clearFieldError(this);
+        return this;
+    }
+
+    get [FIELD_ERROR_CONTRACT]() {
+        return true;
     }
 
     clear() {

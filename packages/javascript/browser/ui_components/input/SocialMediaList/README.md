@@ -33,7 +33,7 @@ new SocialMediaList(options?)
 ## 使用範例
 
 ```js
-import { SocialMediaList } from './input/SocialMediaList/index.js';
+import { SocialMediaList } from './index.js';
 
 const social = new SocialMediaList({
     onChange: (items) => console.log(items)

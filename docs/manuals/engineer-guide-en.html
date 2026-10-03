@@ -27,56 +27,138 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <h2>Verified Status (2026-03-22)</h2>
 <p>The list below records a repository-wide validation run carried out on 2026-03-22. It is a historical snapshot of that run, not a statement about the tree as it stands today; the pinned tool versions in particular have moved on. Re-run the checks in <code>CLAUDE.md</code> before relying on it.</p>
 <ul>
-<li>Verified environment:</li>
-<li>Node.js <code>v22.17.1</code></li>
-<li>npm <code>11.5.1</code></li>
-<li>.NET SDK <code>10.0.104</code></li>
-<li>Podman <code>5.5.2</code></li>
-<li>Verified passing checks:</li>
-<li>solution build</li>
-<li>page-generator examples</li>
-<li>UI library validation</li>
-<li>browser smoke</li>
-<li>UI state contract validation</li>
-<li>broker scope and governed-agent validation</li>
-<li>broker LLM proxy integration</li>
-<li>BaseOrm verification</li>
-<li>governed Podman stacks</li>
-<li>LINE sidecar webhook ingress and high-level broker routing</li>
-<li>Verified high-level query behavior:</li>
-<li>explicit <code>?search &lt;keywords&gt;</code> now executes broker-mediated DuckDuckGo search</li>
-<li>plain <code>?query</code> still routes to the high-level dialogue path</li>
-<li>Important current limit:</li>
-<li>real-time broker-mediated search is currently explicit rather than automatic; if the user wants controlled live search, use <code>?search &lt;keywords&gt;</code></li>
-<li>Important backend note:</li>
-<li>the solution builds successfully, but it still emits <code>207</code> existing warnings, mostly in <code>Mfa</code>, <code>AuditLog</code>, and <code>AccountLock</code></li>
+<li>
+<p>Verified environment:</p>
+</li>
+<li>
+<p>Node.js <code>v22.17.1</code></p>
+</li>
+<li>
+<p>npm <code>11.5.1</code></p>
+</li>
+<li>
+<p>.NET SDK <code>10.0.104</code></p>
+</li>
+<li>
+<p>Podman <code>5.5.2</code></p>
+</li>
+<li>
+<p>Verified passing checks:</p>
+</li>
+<li>
+<p>solution build</p>
+</li>
+<li>
+<p>page-generator examples</p>
+</li>
+<li>
+<p>UI library validation</p>
+</li>
+<li>
+<p>browser smoke</p>
+</li>
+<li>
+<p>UI state contract validation</p>
+</li>
+<li>
+<p>broker scope and governed-agent validation</p>
+</li>
+<li>
+<p>broker LLM proxy integration</p>
+</li>
+<li>
+<p>BaseOrm verification</p>
+</li>
+<li>
+<p>governed Podman stacks</p>
+</li>
+<li>
+<p>LINE sidecar webhook ingress and high-level broker routing</p>
+</li>
+<li>
+<p>Verified high-level query behavior:</p>
+</li>
+<li>
+<p>explicit <code>?search &lt;keywords&gt;</code> now executes broker-mediated DuckDuckGo search</p>
+</li>
+<li>
+<p>plain <code>?query</code> still routes to the high-level dialogue path</p>
+</li>
+<li>
+<p>Important current limit:</p>
+</li>
+<li>
+<p>real-time broker-mediated search is currently explicit rather than automatic; if the user wants controlled live search, use <code>?search &lt;keywords&gt;</code></p>
+</li>
+<li>
+<p>Important backend note:</p>
+</li>
+<li>
+<p>the solution builds successfully, but it still emits <code>207</code> existing warnings, mostly in <code>Mfa</code>, <code>AuditLog</code>, and <code>AccountLock</code></p>
+</li>
 </ul>
 <hr>
 <h2>Table of Contents</h2>
 <ol>
-<li><a href="#1-getting-started">Getting Started</a></li>
-<li><a href="#2-component-overview">Component Overview</a></li>
-<li><a href="#3-theme--styling-system">Theme &amp; Styling System</a></li>
-<li><a href="#4-form-components">Form Components</a></li>
-<li><a href="#5-common-components">Common Components</a></li>
-<li><a href="#6-layout-components">Layout Components</a></li>
-<li><a href="#7-advanced-input-components">Advanced Input Components</a></li>
-<li><a href="#8-social-components">Social Components</a></li>
-<li><a href="#9-visualization-components">Visualization Components</a></li>
-<li><a href="#10-behavior-modules--utilities">Behavior Modules &amp; Utilities</a></li>
-<li><a href="#11-page-generator">Page Generator</a></li>
-<li><a href="#12-spa-generator">SPA Generator</a></li>
-<li><a href="#13-c-backend-packages">C# Backend Packages</a></li>
-<li><a href="#14-security-guidelines">Security Guidelines</a></li>
+<li>
+<p><a href="#1-getting-started">Getting Started</a></p>
+</li>
+<li>
+<p><a href="#2-component-overview">Component Overview</a></p>
+</li>
+<li>
+<p><a href="#3-theme--styling-system">Theme &amp; Styling System</a></p>
+</li>
+<li>
+<p><a href="#4-form-components">Form Components</a></p>
+</li>
+<li>
+<p><a href="#5-common-components">Common Components</a></p>
+</li>
+<li>
+<p><a href="#6-layout-components">Layout Components</a></p>
+</li>
+<li>
+<p><a href="#7-advanced-input-components">Advanced Input Components</a></p>
+</li>
+<li>
+<p><a href="#8-social-components">Social Components</a></p>
+</li>
+<li>
+<p><a href="#9-visualization-components">Visualization Components</a></p>
+</li>
+<li>
+<p><a href="#10-behavior-modules--utilities">Behavior Modules &amp; Utilities</a></p>
+</li>
+<li>
+<p><a href="#11-page-generator">Page Generator</a></p>
+</li>
+<li>
+<p><a href="#12-spa-generator">SPA Generator</a></p>
+</li>
+<li>
+<p><a href="#13-c-backend-packages">C# Backend Packages</a></p>
+</li>
+<li>
+<p><a href="#14-security-guidelines">Security Guidelines</a></p>
+</li>
 </ol>
 <hr>
 <h2>1. Getting Started</h2>
 <h3>1.1 Prerequisites</h3>
 <ul>
-<li>Node.js 18+</li>
-<li>.NET 10 SDK or newer</li>
-<li>Git</li>
-<li>Podman 5+ for the full governed-stack validation matrix</li>
+<li>
+<p>Node.js 18+</p>
+</li>
+<li>
+<p>.NET 10 SDK or newer</p>
+</li>
+<li>
+<p>Git</p>
+</li>
+<li>
+<p>Podman 5+ for the full governed-stack validation matrix</p>
+</li>
 </ul>
 <h3>1.2 Installation &amp; Startup</h3>
 <pre><code class="language-bash"># 1. Clone the project
@@ -137,8 +219,12 @@ npm run serve
 <h3>1.4 Creating Your First Project</h3>
 <p>The SPA toolchain is split into two parts:</p>
 <ul>
-<li><code>tools/spa-generator/</code>: Web UI</li>
-<li><code>templates/spa/scripts/</code>: template CLI</li>
+<li>
+<p><code>tools/spa-generator/</code>: Web UI</p>
+</li>
+<li>
+<p><code>templates/spa/scripts/</code>: template CLI</p>
+</li>
 </ul>
 <pre><code class="language-bash"># Start the Web UI
 npm run serve
@@ -316,7 +402,10 @@ input.destroy();
 <h3>3.1 theme.css Overview</h3>
 <p>Bricks4Agent uses CSS Custom Properties for its theme system. All variables use the <code>--cl-</code> prefix.</p>
 <h3>3.2 Variable Categories</h3>
-<p>The values below are the <em>effective</em> light-theme values. In <code>theme.css</code> the brand and semantic colours are defined indirectly against the palette layer it imports (<code>@import './palette.css'</code>), e.g. <code>--cl-primary: var(--cl-blue-500)</code> where <code>--cl-blue-500: #2196F3</code>.</p>
+<p>The values below are the <em>effective</em> light-theme values. In <code>theme.css</code> the brand and
+semantic colours are defined indirectly against the palette layer it imports
+(<code>@import './palette.css'</code>), e.g. <code>--cl-primary: var(--cl-blue-500)</code> where
+<code>--cl-blue-500: #2196F3</code>.</p>
 <pre><code class="language-css">:root {
   /* Brand colors */
   --cl-primary: #2196F3;
@@ -385,7 +474,7 @@ input.destroy();
   --cl-font-size-2xl: 18px;
   --cl-font-size-3xl: 24px;
 
-  /* Material palette ??button variants / icon colors */
+  /* Material palette — button variants / icon colors */
   --cl-purple: #9C27B0;
   --cl-teal: #009688;
   --cl-pink: #E91E63;
@@ -404,7 +493,7 @@ input.destroy();
 </blockquote>
 <h3>3.3 Custom Themes</h3>
 <p>Override <code>:root</code> variables to customize your brand theme:</p>
-<pre><code class="language-css">/* my-theme.css ??Override brand colors to customize the theme */
+<pre><code class="language-css">/* my-theme.css — Override brand colors to customize the theme */
 :root {
   --cl-primary: #E74C3C;
   --cl-primary-dark: #C0392B;
@@ -470,7 +559,7 @@ node tools/fix-named-colors.js --apply
 <hr>
 <h2>4. Form Components</h2>
 <p>Form components are located in <code>packages/javascript/browser/ui_components/form/</code>, with 18 components total. The six not covered below are <code>Form</code>, <code>TextArea</code>, <code>Slider</code>, <code>Rating</code>, <code>TagInput</code> and <code>CommandComposer</code>.</p>
-<h3>4.1 TextInput ??Text Input</h3>
+<h3>4.1 TextInput — Text Input</h3>
 <p><img alt="TextInput Component" src="screenshots/after/form-TextInput.png"></p>
 <pre><code class="language-javascript">import { TextInput } from './ui_components/form/TextInput/TextInput.js';
 
@@ -490,7 +579,7 @@ const name = nameInput.getValue();
 // Set value
 nameInput.setValue('John Doe');
 </code></pre>
-<h3>4.2 NumberInput ??Number Input</h3>
+<h3>4.2 NumberInput — Number Input</h3>
 <p><img alt="NumberInput Component" src="screenshots/after/form-NumberInput.png"></p>
 <pre><code class="language-javascript">import { NumberInput } from './ui_components/form/NumberInput/NumberInput.js';
 
@@ -504,7 +593,7 @@ const ageInput = new NumberInput({
 
 ageInput.mount(document.getElementById('age-field'));
 </code></pre>
-<h3>4.3 DatePicker ??Date Picker</h3>
+<h3>4.3 DatePicker — Date Picker</h3>
 <p><img alt="DatePicker Component" src="screenshots/after/form-DatePicker.png"></p>
 <pre><code class="language-javascript">import { DatePicker } from './ui_components/form/DatePicker/DatePicker.js';
 
@@ -518,7 +607,7 @@ const datePicker = new DatePicker({
 
 datePicker.mount(document.getElementById('date-field'));
 </code></pre>
-<h3>4.4 TimePicker ??Time Picker</h3>
+<h3>4.4 TimePicker — Time Picker</h3>
 <p><img alt="TimePicker Component" src="screenshots/after/form-TimePicker.png"></p>
 <pre><code class="language-javascript">import { TimePicker } from './ui_components/form/TimePicker/TimePicker.js';
 
@@ -529,7 +618,7 @@ const timePicker = new TimePicker({
 
 timePicker.mount(document.getElementById('time-field'));
 </code></pre>
-<h3>4.5 Dropdown ??Dropdown Select</h3>
+<h3>4.5 Dropdown — Dropdown Select</h3>
 <p><img alt="Dropdown Component" src="screenshots/after/form-Dropdown.png"></p>
 <pre><code class="language-javascript">import { Dropdown } from './ui_components/form/Dropdown/Dropdown.js';
 
@@ -547,7 +636,7 @@ const cityDropdown = new Dropdown({
 
 cityDropdown.mount(document.getElementById('city-field'));
 </code></pre>
-<h3>4.6 MultiSelectDropdown ??Multi-Select Dropdown</h3>
+<h3>4.6 MultiSelectDropdown — Multi-Select Dropdown</h3>
 <p><img alt="MultiSelectDropdown Component" src="screenshots/after/form-MultiSelectDropdown.png"></p>
 <pre><code class="language-javascript">import { MultiSelectDropdown } from './ui_components/form/MultiSelectDropdown/MultiSelectDropdown.js';
 
@@ -567,7 +656,7 @@ tagSelect.mount(document.getElementById('tag-field'));
 // Get selected values (array)
 const selected = tagSelect.getValues(); // ['js', 'css']
 </code></pre>
-<h3>4.7 Checkbox ??Checkbox</h3>
+<h3>4.7 Checkbox — Checkbox</h3>
 <p><img alt="Checkbox Component" src="screenshots/after/form-Checkbox.png"></p>
 <pre><code class="language-javascript">import { Checkbox } from './ui_components/form/Checkbox/Checkbox.js';
 
@@ -579,7 +668,7 @@ const agreeCheckbox = new Checkbox({
 
 agreeCheckbox.mount(document.getElementById('agree-field'));
 </code></pre>
-<h3>4.8 Radio ??Radio Button</h3>
+<h3>4.8 Radio — Radio Button</h3>
 <p><img alt="Radio Component" src="screenshots/after/form-Radio.png"></p>
 <pre><code class="language-javascript">import { Radio } from './ui_components/form/Radio/Radio.js';
 
@@ -615,7 +704,7 @@ const selectedGender = genderGroup.getValue();
 // Programmatically set selected value
 genderGroup.setValue('female');
 </code></pre>
-<h3>4.9 ToggleSwitch ??Toggle Switch</h3>
+<h3>4.9 ToggleSwitch — Toggle Switch</h3>
 <pre><code class="language-javascript">import { ToggleSwitch } from './ui_components/form/ToggleSwitch/ToggleSwitch.js';
 
 const toggle = new ToggleSwitch({
@@ -626,7 +715,7 @@ const toggle = new ToggleSwitch({
 
 toggle.mount(document.getElementById('toggle-field'));
 </code></pre>
-<h3>4.10 FormField ??Form Field Wrapper</h3>
+<h3>4.10 FormField — Form Field Wrapper</h3>
 <p><img alt="FormField Component" src="screenshots/after/form-FormField.png"></p>
 <pre><code class="language-javascript">import { FormField } from './ui_components/form/FormField/FormField.js';
 
@@ -639,7 +728,7 @@ const field = new FormField({
 
 field.mount(document.getElementById('email-field'));
 </code></pre>
-<h3>4.11 SearchForm ??Search Form</h3>
+<h3>4.11 SearchForm — Search Form</h3>
 <p><img alt="SearchForm Component" src="screenshots/after/form-SearchForm.png"></p>
 <pre><code class="language-javascript">import { SearchForm } from './ui_components/form/SearchForm/SearchForm.js';
 
@@ -663,7 +752,7 @@ const searchForm = new SearchForm({
 
 searchForm.mount(document.getElementById('search-area'));
 </code></pre>
-<h3>4.12 BatchUploader ??Batch Uploader</h3>
+<h3>4.12 BatchUploader — Batch Uploader</h3>
 <p><img alt="BatchUploader Component" src="screenshots/after/form-BatchUploader.png"></p>
 <pre><code class="language-javascript">import { BatchUploader } from './ui_components/form/BatchUploader/BatchUploader.js';
 
@@ -683,7 +772,7 @@ const uploader = new BatchUploader({
 <h2>5. Common Components</h2>
 <p>Common components are located in <code>packages/javascript/browser/ui_components/common/</code>, with 40 components total. See <code>component-catalog.json</code> for the ones not covered below (<code>Alert</code>, <code>Badge</code>, <code>CardGrid</code>, <code>CodeBlock</code>, <code>DescriptionList</code>, <code>Divider</code>, <code>DropdownMenu</code>, <code>EmptyState</code>, <code>FilterBar</code>, <code>Heading</code>, <code>Icon</code>, <code>Link</code>, <code>List</code>, <code>MediaPlayer</code>, <code>Progress</code>, <code>ResultList</code>, <code>Skeleton</code>, <code>StatGrid</code>, <code>StepIndicator</code>, <code>Tag</code>, <code>Text</code>, <code>Tooltip</code>).</p>
 <h3>5.1 Button Series</h3>
-<h4>BasicButton ??Basic Button</h4>
+<h4>BasicButton — Basic Button</h4>
 <p><img alt="BasicButton" src="screenshots/after/common-BasicButton.png"></p>
 <pre><code class="language-javascript">import { BasicButton } from './ui_components/common/BasicButton/BasicButton.js';
 
@@ -699,7 +788,7 @@ const btn = new BasicButton({
 
 btn.mount(document.getElementById('btn-container'));
 </code></pre>
-<h4>ActionButton ??Action Button</h4>
+<h4>ActionButton — Action Button</h4>
 <p><img alt="ActionButton" src="screenshots/after/common-ActionButton.png"></p>
 <pre><code class="language-javascript">import { ActionButton } from './ui_components/common/ActionButton/ActionButton.js';
 
@@ -751,7 +840,7 @@ const uploadBtn = new UploadButton({
   onSelect: (files) =&gt; processFile(files[0])
 });
 </code></pre>
-<h4>ButtonGroup ??Button Group</h4>
+<h4>ButtonGroup — Button Group</h4>
 <p><img alt="ButtonGroup" src="screenshots/after/common-ButtonGroup.png"></p>
 <pre><code class="language-javascript">import { ButtonGroup } from './ui_components/common/ButtonGroup/ButtonGroup.js';
 
@@ -765,7 +854,7 @@ const group = new ButtonGroup({
 
 group.mount(document.getElementById('button-area'));
 </code></pre>
-<h3>5.2 ColorPicker ??Color Picker</h3>
+<h3>5.2 ColorPicker — Color Picker</h3>
 <p><img alt="ColorPicker" src="screenshots/after/common-ColorPicker.png"></p>
 <pre><code class="language-javascript">import { ColorPicker } from './ui_components/common/ColorPicker/ColorPicker.js';
 
@@ -777,7 +866,7 @@ const colorPicker = new ColorPicker({
 
 colorPicker.mount(document.getElementById('color-field'));
 </code></pre>
-<h3>5.3 Dialog / SimpleDialog ??Dialog</h3>
+<h3>5.3 Dialog / SimpleDialog — Dialog</h3>
 <p><img alt="Dialog Component" src="screenshots/after/common-Dialog.png"></p>
 <pre><code class="language-javascript">import { SimpleDialog } from './ui_components/common/Dialog/SimpleDialog.js';
 
@@ -793,7 +882,7 @@ await SimpleDialog.alert('Data saved successfully.');
 // Prompt dialog (returns Promise&lt;string|null&gt;)
 const name = await SimpleDialog.prompt('Enter a name', 'default value');
 </code></pre>
-<h3>5.4 Notification ??Notification</h3>
+<h3>5.4 Notification — Notification</h3>
 <p><img alt="Notification Component" src="screenshots/after/common-Notification.png"></p>
 <pre><code class="language-javascript">import { Notification } from './ui_components/common/Notification/Notification.js';
 
@@ -820,7 +909,7 @@ new Notification({
 // Close every open notification
 Notification.closeAll();
 </code></pre>
-<h3>5.5 LoadingSpinner ??Loading Spinner</h3>
+<h3>5.5 LoadingSpinner — Loading Spinner</h3>
 <p><img alt="LoadingSpinner Component" src="screenshots/after/common-LoadingSpinner.png"></p>
 <pre><code class="language-javascript">import { LoadingSpinner } from './ui_components/common/LoadingSpinner/LoadingSpinner.js';
 
@@ -835,7 +924,7 @@ spinner.mount(document.getElementById('content-area'));
 // Remove when done
 spinner.destroy();
 </code></pre>
-<h3>5.6 Pagination ??Pagination</h3>
+<h3>5.6 Pagination — Pagination</h3>
 <p><img alt="Pagination Component" src="screenshots/after/common-Pagination.png"></p>
 <pre><code class="language-javascript">import { Pagination } from './ui_components/common/Pagination/Pagination.js';
 
@@ -848,7 +937,7 @@ const pagination = new Pagination({
 
 pagination.mount(document.getElementById('pagination-area'));
 </code></pre>
-<h3>5.7 Breadcrumb ??Breadcrumb Navigation</h3>
+<h3>5.7 Breadcrumb — Breadcrumb Navigation</h3>
 <p><img alt="Breadcrumb Component" src="screenshots/after/common-Breadcrumb.png"></p>
 <pre><code class="language-javascript">import { Breadcrumb } from './ui_components/common/Breadcrumb/Breadcrumb.js';
 
@@ -862,7 +951,7 @@ const breadcrumb = new Breadcrumb({
 
 breadcrumb.mount(document.getElementById('breadcrumb-area'));
 </code></pre>
-<h3>5.8 TreeList ??Tree List</h3>
+<h3>5.8 TreeList — Tree List</h3>
 <p><img alt="TreeList Component" src="screenshots/after/common-TreeList.png"></p>
 <pre><code class="language-javascript">import { TreeList } from './ui_components/common/TreeList/TreeList.js';
 
@@ -883,7 +972,7 @@ const tree = new TreeList({
 
 tree.mount(document.getElementById('tree-area'));
 </code></pre>
-<h3>5.9 PhotoCard / FeatureCard ??Card Components</h3>
+<h3>5.9 PhotoCard / FeatureCard — Card Components</h3>
 <p><img alt="PhotoCard Component" src="screenshots/after/common-PhotoCard.png"></p>
 <p><img alt="FeatureCard Component" src="screenshots/after/common-FeatureCard.png"></p>
 <pre><code class="language-javascript">import { PhotoCard } from './ui_components/common/PhotoCard/PhotoCard.js';
@@ -907,7 +996,7 @@ const featureCard = new FeatureCard({
   onClick: () =&gt; openDetail()
 });
 </code></pre>
-<h3>5.10 ImageViewer ??Image Viewer</h3>
+<h3>5.10 ImageViewer — Image Viewer</h3>
 <p><img alt="ImageViewer Component" src="screenshots/after/common-ImageViewer.png"></p>
 <pre><code class="language-javascript">import { ImageViewer } from './ui_components/common/ImageViewer/ImageViewer.js';
 
@@ -923,8 +1012,8 @@ ImageViewer.open('/photos/1.jpg', {
 
 ImageViewer.close();
 </code></pre>
-<h3>5.11 SortButton ??Sort Button</h3>
-<p>Used for table column sorting, cycling through none ??desc ??asc states.</p>
+<h3>5.11 SortButton — Sort Button</h3>
+<p>Used for table column sorting, cycling through none → desc → asc states.</p>
 <pre><code class="language-javascript">import { SortButton } from './ui_components/common/SortButton/SortButton.js';
 
 const sortBtn = new SortButton({
@@ -941,7 +1030,7 @@ sortBtn.mount(headerCell);
 sortBtn.setState('asc');  // Programmatic control
 sortBtn.reset();          // Reset to none
 </code></pre>
-<h3>5.12 EditorButton ??Editor Toolbar Button</h3>
+<h3>5.12 EditorButton — Editor Toolbar Button</h3>
 <p>Provides 70 predefined button types (bold, italic, link, image, etc.) for rich text editor toolbars.</p>
 <pre><code class="language-javascript">import { EditorButton } from './ui_components/common/EditorButton/EditorButton.js';
 
@@ -1010,7 +1099,7 @@ PanelManager.register(modal);
 PanelManager.getChildren(modal);
 PanelManager.unregister(modal);
 </code></pre>
-<h3>6.2 DataTable ??Data Table</h3>
+<h3>6.2 DataTable — Data Table</h3>
 <p><img alt="DataTable Component" src="screenshots/after/layout-DataTable.png"></p>
 <pre><code class="language-javascript">import { DataTable } from './ui_components/layout/DataTable/DataTable.js';
 import { escapeHtml, raw } from './ui_components/utils/security.js';
@@ -1043,7 +1132,7 @@ const table = new DataTable({
   pageSize: 20
 });
 
-// Alternative format ??Object array + key/title columns (audit mode)
+// Alternative format — Object array + key/title columns (audit mode)
 const auditTable = new DataTable({
   container: document.getElementById('audit-area'),
   columns: [
@@ -1059,7 +1148,7 @@ const auditTable = new DataTable({
   ]
 });
 </code></pre>
-<h3>6.3 SideMenu ??Side Menu</h3>
+<h3>6.3 SideMenu — Side Menu</h3>
 <p><img alt="SideMenu Component" src="screenshots/after/layout-SideMenu.png"></p>
 <pre><code class="language-javascript">import { SideMenu } from './ui_components/layout/SideMenu/SideMenu.js';
 
@@ -1083,7 +1172,7 @@ const menu = new SideMenu({
 
 menu.mount(document.getElementById('sidebar'));
 </code></pre>
-<h3>6.4 TabContainer ??Tab Container</h3>
+<h3>6.4 TabContainer — Tab Container</h3>
 <p><img alt="TabContainer Component" src="screenshots/after/layout-TabContainer.png"></p>
 <pre><code class="language-javascript">import { TabContainer } from './ui_components/layout/TabContainer/TabContainer.js';
 
@@ -1101,7 +1190,7 @@ const tabs = new TabContainer({
   onTabClose: (tabId) =&gt; console.log('Closed:', tabId)
 });
 </code></pre>
-<h3>6.5 FormRow ??Form Row</h3>
+<h3>6.5 FormRow — Form Row</h3>
 <p><img alt="FormRow Component" src="screenshots/after/layout-FormRow.png"></p>
 <pre><code class="language-javascript">import { FormRow } from './ui_components/layout/FormRow/FormRow.js';
 
@@ -1119,7 +1208,7 @@ const row = new FormRow({
 
 row.mount(document.getElementById('form-area'));
 </code></pre>
-<h3>6.6 InfoPanel ??Info Panel</h3>
+<h3>6.6 InfoPanel — Info Panel</h3>
 <p><img alt="InfoPanel Component" src="screenshots/after/layout-InfoPanel.png"></p>
 <pre><code class="language-javascript">import { InfoPanel } from './ui_components/layout/InfoPanel/InfoPanel.js';
 
@@ -1140,7 +1229,7 @@ const infoPanel = new InfoPanel({
 });
 </code></pre>
 <h3>6.7 Other Layout Components</h3>
-<h4>FunctionMenu ??Function Menu</h4>
+<h4>FunctionMenu — Function Menu</h4>
 <p><img alt="FunctionMenu Component" src="screenshots/after/layout-FunctionMenu.png"></p>
 <pre><code class="language-javascript">import { FunctionMenu } from './ui_components/layout/FunctionMenu/FunctionMenu.js';
 
@@ -1157,7 +1246,7 @@ const funcMenu = new FunctionMenu({
   onItemClick: (item) =&gt; console.log('Clicked:', item.id)
 });
 </code></pre>
-<h4>WorkflowPanel ??Workflow Panel</h4>
+<h4>WorkflowPanel — Workflow Panel</h4>
 <p><img alt="WorkflowPanel Component" src="screenshots/after/layout-WorkflowPanel.png"></p>
 <pre><code class="language-javascript">import { WorkflowPanel } from './ui_components/layout/WorkflowPanel/WorkflowPanel.js';
 
@@ -1176,7 +1265,7 @@ const workflow = new WorkflowPanel({
 
 workflow.mount(document.getElementById('workflow-area'));
 </code></pre>
-<h3>6.8 DocumentWall ??Document Wall</h3>
+<h3>6.8 DocumentWall — Document Wall</h3>
 <p>Displays documents in a card grid, supports multi-select, batch ZIP download, description editing, and deletion.</p>
 <pre><code class="language-javascript">import { DocumentWall } from './ui_components/layout/DocumentWall/DocumentWall.js';
 
@@ -1194,7 +1283,7 @@ const wall = new DocumentWall({
 wall.mount(document.getElementById('doc-area'));
 wall.removeDocument(0);
 </code></pre>
-<h3>6.9 PhotoWall ??Photo Wall</h3>
+<h3>6.9 PhotoWall — Photo Wall</h3>
 <p>Image gallery component, supports preview browsing, multi-select, and batch ZIP download.</p>
 <pre><code class="language-javascript">import { PhotoWall } from './ui_components/layout/PhotoWall/PhotoWall.js';
 
@@ -1216,7 +1305,7 @@ const allPhotos = photos.getPhotos();
 <h2>7. Advanced Input Components</h2>
 <p>Advanced input components are located in <code>packages/javascript/browser/ui_components/input/</code>, with 10 components total. These components handle complex input scenarios such as addresses, phone lists, organization info, etc.</p>
 <p><img alt="Advanced Input Overview" src="screenshots/after/input-CompositeInputs.png"></p>
-<h3>7.1 ChainedInput ??Chained Input</h3>
+<h3>7.1 ChainedInput — Chained Input</h3>
 <p>Multi-level cascading dropdown selects, suitable for hierarchical data like country/state/city.</p>
 <pre><code class="language-javascript">import { ChainedInput } from './ui_components/input/ChainedInput/ChainedInput.js';
 
@@ -1247,7 +1336,7 @@ regionInput.mount(document.getElementById('region-field'));
 const region = regionInput.getValues();  // { city, district, village }
 await regionInput.setValues({ city: 'TPE' });
 </code></pre>
-<h3>7.2 AddressInput ??Address Input</h3>
+<h3>7.2 AddressInput — Address Input</h3>
 <p>Composite component integrating region cascading and detailed address.</p>
 <pre><code class="language-javascript">import { AddressInput } from './ui_components/input/AddressInput/AddressInput.js';
 
@@ -1265,7 +1354,7 @@ addressInput.mount(document.getElementById('address-field'));
 const address = addressInput.getValues();
 // { city: 'Taipei', district: 'Zhongzheng', address: '122 Chongqing South Rd.' }
 </code></pre>
-<h3>7.3 AddressListInput ??Multiple Address Input</h3>
+<h3>7.3 AddressListInput — Multiple Address Input</h3>
 <p>Add/remove multiple addresses, suitable for scenarios with multiple mailing addresses.</p>
 <pre><code class="language-javascript">import { AddressListInput } from './ui_components/input/AddressListInput/AddressListInput.js';
 
@@ -1279,7 +1368,7 @@ const addressList = new AddressListInput({
 addressList.mount(document.getElementById('address-list-field'));
 const addresses = addressList.getValues();   // array of address objects
 </code></pre>
-<h3>7.4 PersonInfoList ??Person Info List</h3>
+<h3>7.4 PersonInfoList — Person Info List</h3>
 <pre><code class="language-javascript">import { PersonInfoList } from './ui_components/input/PersonInfoList/PersonInfoList.js';
 
 // The per-row fields are fixed (name, gender, age, id, otherId); there is no
@@ -1292,7 +1381,7 @@ const personList = new PersonInfoList({
 
 personList.mount(document.getElementById('person-list'));
 </code></pre>
-<h3>7.5 PhoneListInput ??Phone List</h3>
+<h3>7.5 PhoneListInput — Phone List</h3>
 <pre><code class="language-javascript">import { PhoneListInput } from './ui_components/input/PhoneListInput/PhoneListInput.js';
 
 // The phone-type list comes from the active locale, not from a `types` option.
@@ -1304,7 +1393,7 @@ const phoneList = new PhoneListInput({
 phoneList.mount(document.getElementById('phone-list'));
 const phones = phoneList.getValues();   // [{ type, number }, ...]
 </code></pre>
-<h3>7.6 OrganizationInput ??Organization Input</h3>
+<h3>7.6 OrganizationInput — Organization Input</h3>
 <pre><code class="language-javascript">import { OrganizationInput } from './ui_components/input/OrganizationInput/OrganizationInput.js';
 
 // OrganizationInput extends ChainedInput with three fixed org levels
@@ -1319,16 +1408,24 @@ const org = orgInput.getValues();   // { level1, level2, level3 }
 </code></pre>
 <h3>7.7 Other Advanced Inputs</h3>
 <ul>
-<li><strong>DateTimeInput</strong> ??DateTime composite input</li>
-<li><strong>ListInput</strong> ??Generic list input (add/remove/reorder items)</li>
-<li><strong>SocialMediaList</strong> ??Social media account list</li>
-<li><strong>StudentInput</strong> ??Student information input</li>
+<li>
+<p><strong>DateTimeInput</strong> — DateTime composite input</p>
+</li>
+<li>
+<p><strong>ListInput</strong> — Generic list input (add/remove/reorder items)</p>
+</li>
+<li>
+<p><strong>SocialMediaList</strong> — Social media account list</p>
+</li>
+<li>
+<p><strong>StudentInput</strong> — Student information input</p>
+</li>
 </ul>
 <p>These composite inputs expose <code>mount</code>, <code>getValues</code>, <code>setValues</code> and <code>destroy</code>. They are multi-field containers, so they use the plural <code>getValues()</code> / <code>setValues()</code> accessors rather than the single-value <code>getValue()</code> / <code>setValue()</code> of the plain form components; on <code>ChainedInput</code> and its subclasses <code>setValues()</code> is async because it may have to reload dependent option lists.</p>
 <hr>
 <h2>8. Social Components</h2>
 <p>Social components (<code>social/</code>) provide UI elements for social networking features including profiles, feeds, and network graphs.</p>
-<h3>8.1 Avatar ??Avatar</h3>
+<h3>8.1 Avatar — Avatar</h3>
 <pre><code class="language-javascript">import { Avatar } from './ui_components/social/Avatar/Avatar.js';
 
 const avatar = new Avatar({
@@ -1342,7 +1439,7 @@ const avatar = new Avatar({
 avatar.mount(document.getElementById('avatar-container'));
 avatar.update({ badge: 5 });
 </code></pre>
-<h3>8.2 FeedCard ??Feed Card</h3>
+<h3>8.2 FeedCard — Feed Card</h3>
 <pre><code class="language-javascript">import { FeedCard } from './ui_components/social/FeedCard/FeedCard.js';
 
 const feed = new FeedCard({
@@ -1365,7 +1462,7 @@ feed.mount(document.getElementById('feed'));
 // Batch generate feed list
 const listHTML = FeedCard.listHTML(feedItems);
 </code></pre>
-<h3>8.3 ConnectionCard ??Connection Card</h3>
+<h3>8.3 ConnectionCard — Connection Card</h3>
 <pre><code class="language-javascript">import { ConnectionCard } from './ui_components/social/ConnectionCard/ConnectionCard.js';
 
 const card = new ConnectionCard({
@@ -1381,11 +1478,11 @@ card.mount(container);
 // Batch generate connection grid
 const gridHTML = ConnectionCard.gridHTML(contacts);
 </code></pre>
-<h3>8.4 StatCard ??Stat Card</h3>
+<h3>8.4 StatCard — Stat Card</h3>
 <pre><code class="language-javascript">import { StatCard } from './ui_components/social/StatCard/StatCard.js';
 
 const stat = new StatCard({
-  icon: '??',
+  icon: '📊',
   label: 'Monthly Revenue',
   value: '$120,000',
   trend: 'up',           // 'up'|'down'|null
@@ -1396,7 +1493,7 @@ const stat = new StatCard({
 
 stat.mount(container);
 </code></pre>
-<h3>8.5 Timeline ??Timeline</h3>
+<h3>8.5 Timeline — Timeline</h3>
 <pre><code class="language-javascript">import { Timeline } from './ui_components/social/Timeline/Timeline.js';
 
 const timeline = new Timeline({
@@ -1405,7 +1502,7 @@ const timeline = new Timeline({
       timestamp: '2026-03-01T10:00:00',
       type: 'Created',
       color: 'var(--cl-success)',
-      icon: '??,
+      icon: '✅',
       title: 'Account Created',
       description: 'Account automatically created by the system',
       onClick: () =&gt; {}
@@ -1421,6 +1518,9 @@ timeline.mount(container);
 <h2>9. Visualization Components</h2>
 <p>Visualization components are located in <code>packages/javascript/browser/ui_components/viz/</code>, with 23 components total. They are built on Canvas 2D plus native DOM: SVG is banned library-wide and enforced at hard zero by <code>node tools/scripts/audit-csp.mjs</code>. The only third-party code involved is the copy of Leaflet vendored under <code>ui_components/vendor/</code>, which the map components load from the same origin.</p>
 <p><img alt="Visualization Overview" src="screenshots/after/viz-Charts.png"></p>
+<blockquote>
+<p>This screenshot predates the Canvas migration. SVG is now banned in the component library; charts and icons render with Canvas, so current output may look different.</p>
+</blockquote>
 <h3>9.1 Chart Series</h3>
 <p>All charts inherit from <code>CanvasChart</code> (<code>viz/CanvasChart.js</code>), which supplies DPR-aware sizing, hit regions, tooltips and <code>exportPNG()</code>. The old SVG <code>BaseChart</code> has been deleted. Mount with <code>mount(container)</code> and release with <code>destroy()</code>.</p>
 <pre><code class="language-javascript">import { BarChart } from './ui_components/viz/BarChart.js';
@@ -1514,17 +1614,39 @@ relationChart.mount(document.getElementById('relation-chart'));
 </code></pre>
 <h3>9.3 Other Visualization Components</h3>
 <ul>
-<li><strong>TimelineChart</strong> — Timeline chart</li>
-<li><strong>SankeyChart</strong> — Sankey diagram (flow visualization)</li>
-<li><strong>SunburstChart</strong> — Sunburst chart (hierarchical proportions)</li>
-<li><strong>FlameChart</strong> — Flame chart (performance analysis)</li>
-<li><strong>HierarchyChart</strong> — Hierarchy structure chart</li>
-<li><strong>HeatmapChart</strong> — Heatmap</li>
-<li><strong>ScatterChart</strong> — Scatter plot</li>
-<li><strong>RoseChart</strong> — Rose / polar-area chart</li>
-<li><strong>Sparkline</strong> — Inline mini chart</li>
-<li><strong>ClusterGraph</strong> — Clustered force-directed graph</li>
-<li><strong>WebPainter</strong> — Canvas painter/annotator (base class of the map editors)</li>
+<li>
+<p><strong>TimelineChart</strong> — Timeline chart</p>
+</li>
+<li>
+<p><strong>SankeyChart</strong> — Sankey diagram (flow visualization)</p>
+</li>
+<li>
+<p><strong>SunburstChart</strong> — Sunburst chart (hierarchical proportions)</p>
+</li>
+<li>
+<p><strong>FlameChart</strong> — Flame chart (performance analysis)</p>
+</li>
+<li>
+<p><strong>HierarchyChart</strong> — Hierarchy structure chart</p>
+</li>
+<li>
+<p><strong>HeatmapChart</strong> — Heatmap</p>
+</li>
+<li>
+<p><strong>ScatterChart</strong> — Scatter plot</p>
+</li>
+<li>
+<p><strong>RoseChart</strong> — Rose / polar-area chart</p>
+</li>
+<li>
+<p><strong>Sparkline</strong> — Inline mini chart</p>
+</li>
+<li>
+<p><strong>ClusterGraph</strong> — Clustered force-directed graph</p>
+</li>
+<li>
+<p><strong>WebPainter</strong> — Canvas painter/annotator (base class of the map editors)</p>
+</li>
 </ul>
 <h3>9.4 Map Components</h3>
 <p><img alt="Map Component" src="screenshots/after/data-RegionMap.png"></p>
@@ -1550,7 +1672,7 @@ map.switchLayer('osm');
 map.destroy();
 </code></pre>
 <p>Other map components: MapEditor, MapEditorV2, CanvasMap, TGOSMapEditor. <code>MapEditor</code> and <code>MapEditorV2</code> both implement <code>destroy()</code>; call it when tearing a page down so their listeners and child components are released.</p>
-<h4>OSMMapEditor ??OSM Map Editor</h4>
+<h4>OSMMapEditor — OSM Map Editor</h4>
 <p>A map editor extending WebPainter, using OpenStreetMap tiles with integrated drawing tools and geographic features.</p>
 <pre><code class="language-javascript">import { OSMMapEditor } from './ui_components/viz/OSMMapEditor/OSMMapEditor.js';
 
@@ -1596,7 +1718,7 @@ const board = new DrawingBoard({
 board.exportPNG('drawing.png');
 board.destroy();
 </code></pre>
-<h3>9.6 WebTextEditor ??Rich Text Editor</h3>
+<h3>9.6 WebTextEditor — Rich Text Editor</h3>
 <p>Located in <code>editor/WebTextEditor/</code>, a full WYSIWYG editor.</p>
 <pre><code class="language-javascript">import { WebTextEditor } from './ui_components/editor/WebTextEditor/WebTextEditor.js';
 
@@ -1614,12 +1736,14 @@ const html = editor.getHTML();
 editor.setContent('&lt;p&gt;New content&lt;/p&gt;');
 </code></pre>
 <p><strong>Features</strong>: Toolbar, Find/Replace (Ctrl+F/H), Export (PDF/Word/Markdown), Auto-save, History (Undo/Redo), Table editing, Image resize, Fullscreen, Word count.</p>
-<h3>9.7 RegionMap ??Taiwan Administrative Region Map</h3>
+<h3>9.7 RegionMap — Taiwan Administrative Region Map</h3>
 <p>Canvas map component supporting data visualization and interaction for the 22 administrative regions of Taiwan. The region outlines are SVG path strings fed to <code>Path2D</code> and painted on a canvas; no SVG element is created.</p>
 <pre><code class="language-javascript">import { RegionMap } from './ui_components/data/RegionMap/RegionMap.js';
 
 const map = new RegionMap({
   data: {
+    // A per-region `color` is assigned to the canvas fillStyle as-is, so it must be
+    // a concrete color value; var(--cl-*) is not resolved here
     'TPE': { value: 2700000, label: 'Taipei', color: '#FF5722' },
     'NWT': { value: 4000000, label: 'New Taipei', color: '#4CAF50' }
   },
@@ -1627,7 +1751,7 @@ const map = new RegionMap({
   height: '400px',
   showLabels: true,
   showValues: true,
-  colorScale: RegionMap.createColorScale(0, 5000000, ['#e3f2fd', '#1565c0']),
+  colorScale: RegionMap.createColorScale(0, 5000000, ['var(--cl-primary-light)', 'var(--cl-primary-dark)']),
   onClick: (regionCode) =&gt; console.log(regionCode),
   onChange: ({ code, name }) =&gt; console.log(code, name)
 });
@@ -1638,7 +1762,7 @@ map.setData(updatedData);
 </code></pre>
 <hr>
 <h2>10. Behavior Modules &amp; Utilities</h2>
-<h3>10.1 TriggerEngine ??Trigger Engine</h3>
+<h3>10.1 TriggerEngine — Trigger Engine</h3>
 <p>TriggerEngine provides 8 built-in atomic behaviors for field-to-field cascading logic. Triggers are declared on the source field definition and bound to live component instances; unknown actions and unknown trigger events are ignored with a <code>console.warn</code>.</p>
 <pre><code class="language-javascript">import { TriggerEngine } from './page-generator/TriggerEngine.js';
 
@@ -1732,8 +1856,8 @@ engine.destroy();
 </tr>
 </tbody>
 </table>
-<h3>10.2 BehaviorDef ??Behavior Definition</h3>
-<p>BehaviorDef is the <code>behaviors</code> block of a PageDefinition. Every value is a **method name string**, not a function: PageGenerator emits <code>this._&lt;name&gt;()</code> call sites and generates matching stub methods on the page class. Because these names are written into the generated file as bare identifiers, <code>generate()</code> rejects any that is not a valid JavaScript IdentifierName.</p>
+<h3>10.2 BehaviorDef — Behavior Definition</h3>
+<p>BehaviorDef is the <code>behaviors</code> block of a PageDefinition. Every value is a <strong>method name string</strong>, not a function: PageGenerator emits <code>this._&lt;name&gt;()</code> call sites and generates matching stub methods on the page class. Because these names are written into the generated file as bare identifiers, <code>generate()</code> rejects any that is not a valid JavaScript IdentifierName.</p>
 <pre><code class="language-javascript">const definition = {
   name: 'OrderPage',
   type: 'form',
@@ -1798,7 +1922,7 @@ router.navigate('/users/123');
 router.navigate('/users', { query: { page: 2 }, replace: true });
 router.back();
 </code></pre>
-<h4>Store ??State Management</h4>
+<h4>Store — State Management</h4>
 <pre><code class="language-javascript">import { Store } from './core/Store.js';
 
 const store = new Store({
@@ -1818,7 +1942,7 @@ store.set('user', { id: 1, name: 'John Doe' });
 // Get state
 const user = store.get('user');
 </code></pre>
-<h4>ApiService ??RESTful API Service</h4>
+<h4>ApiService — RESTful API Service</h4>
 <pre><code class="language-javascript">import { ApiService } from './core/ApiService.js';
 
 const api = new ApiService({
@@ -1842,7 +1966,7 @@ await api.download('/reports/1', 'report.xlsx');
 api.setToken(accessToken, refreshToken);
 api.clearToken();
 </code></pre>
-<h4>BasePage ??Page Lifecycle</h4>
+<h4>BasePage — Page Lifecycle</h4>
 <pre><code class="language-javascript">import { BasePage } from './core/BasePage.js';
 
 // The lifecycle is onInit() -&gt; template() -&gt; _bindEvents() -&gt; onMounted(),
@@ -1877,7 +2001,7 @@ class UserListPage extends BasePage {
 }
 </code></pre>
 <h3>10.4 ComponentBinder / ComponentFactory</h3>
-<h4>ComponentBinder ??Component Data Binding</h4>
+<h4>ComponentBinder — Component Data Binding</h4>
 <pre><code class="language-javascript">import { ComponentBinder } from './ui_components/binding/ComponentBinder.js';
 
 // ComponentBinder renders components from a JSON config list; it has no
@@ -1897,7 +2021,7 @@ binder.render([
 const nameInput = binder.getComponent('name');
 const name = nameInput.getValue();
 </code></pre>
-<h4>ComponentFactory ??Component Factory</h4>
+<h4>ComponentFactory — Component Factory</h4>
 <pre><code class="language-javascript">import { ComponentFactory } from './ui_components/binding/ComponentFactory.js';
 
 // create(name, options): the first argument is the registry name of the
@@ -1923,7 +2047,7 @@ await LazyComponentFactory.preload(['DataTable', 'BarChart']);
 const table = LazyComponentFactory.create('DataTable', { columns, data });
 </code></pre>
 <h3>10.5 Utilities &amp; Services (utils/)</h3>
-<h4>security.js ??XSS Protection</h4>
+<h4>security.js — XSS Protection</h4>
 <pre><code class="language-javascript">import { escapeHtml, sanitizeUrl, sanitizeHTML } from './utils/security.js';
 
 // HTML content escaping
@@ -1948,7 +2072,7 @@ isRawHtml({ __html: '&lt;b&gt;x&lt;/b&gt;' });  // false
 <blockquote>
 <p><strong>Important</strong>: All user input must be escaped using <code>escapeHtml()</code> when rendered to HTML, and URLs must be sanitized with <code>sanitizeUrl()</code> to prevent XSS attacks.</p>
 </blockquote>
-<h4>GeolocationService ??Geolocation Service</h4>
+<h4>GeolocationService — Geolocation Service</h4>
 <pre><code class="language-javascript">import { GeolocationService } from './utils/GeolocationService.js';
 
 const geo = new GeolocationService();
@@ -1960,7 +2084,7 @@ console.log('Lat:', position.coords.latitude, 'Lng:', position.coords.longitude)
 // Or get coordinates plus a reverse-geocoded address in one call
 const info = await geo.getLocationInfo();
 </code></pre>
-<h4>WeatherService ??Weather Service</h4>
+<h4>WeatherService — Weather Service</h4>
 <pre><code class="language-javascript">import { WeatherService } from './utils/WeatherService.js';
 
 // No API key: the service calls Open-Meteo. Point `baseUrl` at your own
@@ -2270,8 +2394,12 @@ const newDefinition = PageDefinitionAdapter.toNewFormat(oldDefinition);
 <h2>12. SPA Generator</h2>
 <p>The SPA tooling is split into two parts:</p>
 <ul>
-<li><code>tools/spa-generator/</code>: Web UI</li>
-<li><code>templates/spa/scripts/</code>: template CLI</li>
+<li>
+<p><code>tools/spa-generator/</code>: Web UI</p>
+</li>
+<li>
+<p><code>templates/spa/scripts/</code>: template CLI</p>
+</li>
 </ul>
 <h3>12.1 Web UI (port 3080)</h3>
 <p>Startup:</p>
@@ -2280,12 +2408,24 @@ const newDefinition = PageDefinitionAdapter.toNewFormat(oldDefinition);
 </code></pre>
 <p>The Web UI provides:</p>
 <ul>
-<li><strong>Project creation</strong>: <code>ProjectCreatePage</code> for project name, output path, ports, and admin settings</li>
-<li><strong>Page generation</strong>: <code>PageGeneratorPage</code> for frontend page scaffolding</li>
-<li><strong>API generation</strong>: <code>ApiGeneratorPage</code> for Model / Service / API route generation</li>
-<li><strong>Feature generation</strong>: <code>FeatureGeneratorPage</code> for full CRUD skeletons</li>
-<li><strong>Page Builder</strong>: <code>PageBuilderPage</code> for JSON-driven form / detail / list preview</li>
-<li><strong>Page Definition Editor</strong>: <code>PageDefinitionEditorPage</code> for GUI editing of PageDefinition</li>
+<li>
+<p><strong>Project creation</strong>: <code>ProjectCreatePage</code> for project name, output path, ports, and admin settings</p>
+</li>
+<li>
+<p><strong>Page generation</strong>: <code>PageGeneratorPage</code> for frontend page scaffolding</p>
+</li>
+<li>
+<p><strong>API generation</strong>: <code>ApiGeneratorPage</code> for Model / Service / API route generation</p>
+</li>
+<li>
+<p><strong>Feature generation</strong>: <code>FeatureGeneratorPage</code> for full CRUD skeletons</p>
+</li>
+<li>
+<p><strong>Page Builder</strong>: <code>PageBuilderPage</code> for JSON-driven form / detail / list preview</p>
+</li>
+<li>
+<p><strong>Page Definition Editor</strong>: <code>PageDefinitionEditorPage</code> for GUI editing of PageDefinition</p>
+</li>
 </ul>
 <h3>12.2 CLI Commands</h3>
 <pre><code class="language-bash"># Create a new project (interactive). --name and --output only preset the
@@ -2423,7 +2563,7 @@ var token = jwtHelper.GenerateToken(
 ClaimsPrincipal principal = jwtHelper.ValidateToken(token);
 </code></pre>
 <h3>13.4 BaseController + Middleware</h3>
-<pre><code class="language-csharp">// Program.cs ??.NET 10 Minimal API
+<pre><code class="language-csharp">// Program.cs — .NET 10 Minimal API
 var builder = WebApplication.CreateBuilder(args);
 var app = builder.Build();
 
@@ -2491,7 +2631,7 @@ return ApiResponse.SuccessResponse();                            // no payload
 var paged = await db.QueryPagedAsync&lt;User&gt;(&quot;SELECT * FROM Users ORDER BY Id&quot;, 1, 20);
 return ApiResponse&lt;PagedResult&lt;User&gt;&gt;.SuccessResponse(paged);
 </code></pre>
-<h3>13.6 BaseCache ??In-Memory Cache</h3>
+<h3>13.6 BaseCache — In-Memory Cache</h3>
 <p>Redis-style in-memory cache supporting Key-Value, Queue, Stack, List, Hash, Set, and Pub/Sub.</p>
 <pre><code class="language-csharp">using BaseCache;
 
@@ -2504,7 +2644,7 @@ var cache = new BaseCache(new CachOptions {
 cache.Set(&quot;user:1&quot;, userData, ttl: TimeSpan.FromMinutes(30));
 var user = cache.Get&lt;User&gt;(&quot;user:1&quot;);
 
-// GetOrSet ??Cache penetration protection
+// GetOrSet — Cache penetration protection
 var data = cache.GetOrSet(&quot;report:daily&quot;, () =&gt; {
     return GenerateReport(); // Only executes on cache miss
 }, ttl: TimeSpan.FromHours(1));
@@ -2539,7 +2679,7 @@ var stats = cache.Stats; // Hits, Misses, HitRate
 element.innerHTML = `&lt;p&gt;${escapeHtml(userInput)}&lt;/p&gt;`;
 element.innerHTML = `&lt;a href=&quot;${sanitizeUrl(url)}&quot; title=&quot;${escapeHtml(title)}&quot;&gt;Link&lt;/a&gt;`;
 
-// Wrong approach ??NEVER do this!
+// Wrong approach — NEVER do this!
 element.innerHTML = `&lt;p&gt;${userInput}&lt;/p&gt;`;         // XSS vulnerability!
 element.innerHTML = `&lt;a href=&quot;${url}&quot;&gt;Link&lt;/a&gt;`;   // XSS vulnerability!
 </code></pre>
@@ -2560,8 +2700,18 @@ bool isMatch = BCryptHelper.VerifyPassword(plainPassword, storedHash);
 </blockquote>
 <h3>14.3 JWT Authentication</h3>
 <pre><code class="language-csharp">// Configure JWT (in Program.cs)
-var jwtKey = builder.Configuration[&quot;Jwt:Key&quot;]
-    ?? throw new InvalidOperationException(&quot;Jwt:Key is required&quot;);
+var jwtKey = builder.Configuration[&quot;Jwt:Key&quot;];
+if (string.IsNullOrEmpty(jwtKey) || jwtKey.Length &lt; 32)
+{
+    // Outside Development, a missing or short key stops startup
+    if (!builder.Environment.IsDevelopment())
+        throw new InvalidOperationException(&quot;JWT key must be configured with at least 32 characters.&quot;);
+
+    // Development only: a random key is generated per process (a warning is logged),
+    // so every issued token becomes invalid when the process restarts
+    jwtKey = Convert.ToBase64String(RandomNumberGenerator.GetBytes(48));
+    builder.Configuration[&quot;Jwt:Key&quot;] = jwtKey;
+}
 var jwtIssuer = builder.Configuration[&quot;Jwt:Issuer&quot;] ?? &quot;SpaApi&quot;;
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -2613,66 +2763,117 @@ app.UseRateLimiter();
 </code></pre>
 <h3>14.6 Input Validation</h3>
 <pre><code class="language-csharp">// Backend validation example
-app.MapPost(&quot;/api/users&quot;, async (CreateUserDto dto) =&gt;
+app.MapPost(&quot;/api/users&quot;, async (UserService service, CreateUserDto dto) =&gt;
 {
     // Validate required fields
     if (string.IsNullOrWhiteSpace(dto.Name))
-        return ApiResponse.Error(&quot;Name is required&quot;, 400);
+        return ApiResponse&lt;User&gt;.ErrorResponse(&quot;Name is required&quot;, 400);
 
     // Validate format
     if (!IsValidEmail(dto.Email))
-        return ApiResponse.Error(&quot;Invalid email format&quot;, 400);
+        return ApiResponse&lt;User&gt;.ErrorResponse(&quot;Invalid email format&quot;, 400);
 
     // Validate length
     if (dto.Name.Length &gt; 100)
-        return ApiResponse.Error(&quot;Name must not exceed 100 characters&quot;, 400);
+        return ApiResponse&lt;User&gt;.ErrorResponse(&quot;Name must not exceed 100 characters&quot;, 400);
 
     // Process after validation
     var user = await service.CreateAsync(dto);
-    return ApiResponse.Created(user);
+    return ApiResponse&lt;User&gt;.SuccessResponse(user, &quot;Created&quot;, 201);
 });
 </code></pre>
+<blockquote>
+<p><code>ApiResponse</code> has no <code>Error()</code> / <code>Created()</code> methods; see §13.5 for the real factory methods. Note that <code>packages/csharp/api</code> (including <code>ApiResponse.cs</code>) has no <code>.csproj</code> and is not built or referenced by any project in the repository, so copy the source files you need into your own project.</p>
+</blockquote>
 <h3>14.7 Security Checklist</h3>
 <p>Before deployment, verify the following:</p>
 <ul>
-<li>[ ] All user input is escaped with <code>escapeHtml()</code> / <code>sanitizeUrl()</code></li>
-<li>[ ] Passwords are hashed with the project helper, unchanged (generated backend: PBKDF2-SHA256, 100K iterations; shared <code>Security</code> library: BCrypt, work factor 12)</li>
-<li>[ ] JWT transport and storage are reviewed (default: Bearer header; if cookies are used, <code>HttpOnly</code> / <code>Secure</code> / <code>SameSite</code> are enabled)</li>
-<li>[ ] CORS has explicitly configured allowed origins (not <code>*</code>)</li>
-<li>[ ] API endpoints have rate limiting enabled</li>
-<li>[ ] All input is validated on the backend</li>
-<li>[ ] Sensitive settings (keys, connection strings) are not hardcoded</li>
-<li>[ ] HTTPS is enabled</li>
+<li>
+<p>[ ] All user input is escaped with <code>escapeHtml()</code> / <code>sanitizeUrl()</code></p>
+</li>
+<li>
+<p>[ ] Passwords are hashed with the project helper, unchanged (generated backend: PBKDF2-SHA256, 100K iterations; shared <code>Security</code> library: BCrypt, work factor 12)</p>
+</li>
+<li>
+<p>[ ] JWT transport and storage are reviewed (default: Bearer header; if cookies are used, <code>HttpOnly</code> / <code>Secure</code> / <code>SameSite</code> are enabled)</p>
+</li>
+<li>
+<p>[ ] CORS has explicitly configured allowed origins (not <code>*</code>)</p>
+</li>
+<li>
+<p>[ ] API endpoints have rate limiting enabled</p>
+</li>
+<li>
+<p>[ ] All input is validated on the backend</p>
+</li>
+<li>
+<p>[ ] Sensitive settings (keys, connection strings) are not hardcoded</p>
+</li>
+<li>
+<p>[ ] HTTPS is enabled</p>
+</li>
 </ul>
 <h3>14.8 Azure VM IIS Deployment</h3>
 <p>The broker now includes a governed deployment path for Azure virtual machines that host IIS.</p>
 <p>What exists now:</p>
 <ul>
-<li>broker-managed Azure IIS deployment targets</li>
-<li>dry-run request build and preview</li>
-<li>execution path that runs <code>dotnet publish</code>, packages the output, and invokes PowerShell remoting</li>
-<li>child-application deployment mode under a parent IIS site via <code>deployment_mode=iis_application</code></li>
-<li>broker route: <code>deploy_azure_vm_iis</code></li>
+<li>
+<p>broker-managed Azure IIS deployment targets</p>
+</li>
+<li>
+<p>dry-run request build and preview</p>
+</li>
+<li>
+<p>execution path that runs <code>dotnet publish</code>, packages the output, and invokes PowerShell remoting</p>
+</li>
+<li>
+<p>child-application deployment mode under a parent IIS site via <code>deployment_mode=iis_application</code></p>
+</li>
+<li>
+<p>broker route: <code>deploy_azure_vm_iis</code></p>
+</li>
 </ul>
 <p>Configuration:</p>
 <ul>
-<li>define deployment credentials in <code>DeploymentSecrets:Mappings</code></li>
-<li>or expose them through environment variables derived from <code>secret_ref</code></li>
+<li>
+<p>define deployment credentials in <code>DeploymentSecrets:Mappings</code></p>
+</li>
+<li>
+<p>or expose them through environment variables derived from <code>secret_ref</code></p>
+</li>
 </ul>
 <p>Limits:</p>
 <ul>
-<li>only <code>winrm_powershell</code> transport is implemented</li>
-<li>target project paths must be absolute</li>
-<li>a directory input must resolve to exactly one <code>.csproj</code></li>
-<li><code>iis_application</code> targets must define <code>application_path</code></li>
-<li>the current implementation creates or updates the IIS application, but app-specific path-base handling is still application-dependent</li>
-<li>the target VM must already expose PowerShell remoting and IIS management modules</li>
+<li>
+<p>only <code>winrm_powershell</code> transport is implemented</p>
+</li>
+<li>
+<p>target project paths must be absolute</p>
+</li>
+<li>
+<p>a directory input must resolve to exactly one <code>.csproj</code></p>
+</li>
+<li>
+<p><code>iis_application</code> targets must define <code>application_path</code></p>
+</li>
+<li>
+<p>the current implementation creates or updates the IIS application, but app-specific path-base handling is still application-dependent</p>
+</li>
+<li>
+<p>the target VM must already expose PowerShell remoting and IIS management modules</p>
+</li>
 </ul>
 <p>See:</p>
 <ul>
-<li><a href="../designs/AzureVmIisDeployment.html">AzureVmIisDeployment.md</a></li>
-<li><a href="../../packages/csharp/broker/tool-specs/deploy.azure-vm-iis/tool.json">tool.json</a></li>
-<li><a href="../../packages/csharp/broker/tool-specs/deploy.azure-vm-iis/TOOL.html">TOOL.md</a></li>
+<li>
+<p><a href="../designs/AzureVmIisDeployment.html">AzureVmIisDeployment.md</a></p>
+</li>
+<li>
+<p><a href="../../packages/csharp/broker/tool-specs/deploy.azure-vm-iis/tool.json">tool.json</a></p>
+</li>
+<li>
+<p><a href="../../packages/csharp/broker/tool-specs/deploy.azure-vm-iis/TOOL.html">TOOL.md</a></p>
+</li>
 </ul>
 <hr>
 <blockquote>

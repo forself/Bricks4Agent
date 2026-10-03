@@ -1,7 +1,7 @@
 # 受控代理容器啟用計畫與驗證
 
 Date: 2026-06-13
-Status: in progress
+Status: **已完成** —— V1–V7 全數通過(見「最終 e2e 驗證」)。結論段所列後續項目的現況(網路隔離、OS hardening、執行配接器、審批已實作;客製 seccomp 仍未做)與操作方式見 [agent-container-runbook.md](../manuals/agent-container-runbook.md)。
 依據規格: [ControlledAutonomousAISystemTechnicalDesign.md](../designs/ControlledAutonomousAISystemTechnicalDesign.md)
 
 ## 1. 目的與「完成」的定義
@@ -76,19 +76,19 @@ Status: in progress
 
 ## 5. 驗收條件(依此驗證)
 
-- [ ] V1:五個容器映像(broker/mock-ollama/file-worker/line-worker/agent)全部 build 成功
+- [x] V1:五個容器映像(broker/mock-ollama/file-worker/line-worker/agent)全部 build 成功
 
-- [ ] V2:`podman compose up` 整個受控 stack 起來,broker 健康
+- [x] V2:`podman compose up` 整個受控 stack 起來,broker 健康
 
-- [ ] V3:agent 容器註冊 session、領 capability、產生結構化執行請求(STACK_OK)
+- [x] V3:agent 容器註冊 session、領 capability、產生結構化執行請求(STACK_OK)
 
-- [ ] V4:agent 透過 broker 裁決執行 governed `read_file`(`[governed] read_file`)——對應 §21「AI 走同一授權路徑、不直連工具」
+- [x] V4:agent 透過 broker 裁決執行 governed `read_file`(`[governed] read_file`)——對應 §21「AI 走同一授權路徑、不直連工具」
 
-- [ ] V5:`test-podman-governed-stack.js` 整體綠燈
+- [x] V5:`test-podman-governed-stack.js` 整體綠燈
 
-- [ ] V6:既有單元測試(337)不被修復破壞;solution build 0 錯誤
+- [x] V6:既有單元測試(337)不被修復破壞;solution build 0 錯誤
 
-- [ ] V7:compose down 清理乾淨,無殘留容器/測試 db
+- [x] V7:compose down 清理乾淨,無殘留容器/測試 db
 
 ## 6. 明確劃為「後續」的(本次不做,記錄以免誤判完成)
 

@@ -21,104 +21,209 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <body>
 <main>
 <h1>Browser Capability Identity Model</h1>
+<blockquote>
+<p><strong>Implementation status (checked 2026-09-26)</strong></p>
+<ul>
+<li>The implemented action-level ladder is <code>read</code> / <code>navigate</code> / <code>authenticate</code> / <code>draft_action</code> / <code>committed_action</code> (<code>packages/csharp/broker-core/Services/BrowserActionGate.cs:7-14</code>); there is no <code>submit</code> level as listed under Secondary Axes. See <a href="BrowserActionAndApprovalModel.html">BrowserActionAndApprovalModel.md</a>.</li>
+<li><code>browser.reference.anonymous.read</code> and <code>browser.reference.anonymous.navigate</code> are <code>active</code>; the system-account and user-delegated reference specs remain <code>planned</code> (<code>packages/csharp/broker/tool-specs/*/tool.json</code>).</li>
+</ul>
+</blockquote>
 <h2>Goal</h2>
 <p>Define the first-level identity split for broker-governed browser tools.</p>
 <p>Browser tools must not be modeled only by function (<code>search</code>, <code>fetch</code>, <code>submit</code>).
 The first classification must be:</p>
 <ul>
-<li>whose identity is used</li>
-<li>whose credentials are used</li>
-<li>whose session is being created or reused</li>
+<li>
+<p>whose identity is used</p>
+</li>
+<li>
+<p>whose credentials are used</p>
+</li>
+<li>
+<p>whose session is being created or reused</p>
+</li>
 </ul>
 <p>This is the primary trust boundary for future assistant behavior.</p>
 <h2>Primary Identity Modes</h2>
 <h3>1. <code>anonymous</code></h3>
 <p>Meaning:</p>
 <ul>
-<li>the system does not log in</li>
-<li>no user account session is established</li>
-<li>no delegated personal identity is represented</li>
+<li>
+<p>the system does not log in</p>
+</li>
+<li>
+<p>no user account session is established</p>
+</li>
+<li>
+<p>no delegated personal identity is represented</p>
+</li>
 </ul>
 <p>Typical use:</p>
 <ul>
-<li>public search</li>
-<li>public page fetch</li>
-<li>public comparison</li>
+<li>
+<p>public search</p>
+</li>
+<li>
+<p>public page fetch</p>
+</li>
+<li>
+<p>public comparison</p>
+</li>
 </ul>
 <p>Properties:</p>
 <ul>
-<li>credential source: <code>none</code></li>
-<li>session owner: <code>none</code></li>
-<li>default risk: lowest of the browser classes</li>
+<li>
+<p>credential source: <code>none</code></p>
+</li>
+<li>
+<p>session owner: <code>none</code></p>
+</li>
+<li>
+<p>default risk: lowest of the browser classes</p>
+</li>
 </ul>
 <h3>2. <code>system_account</code></h3>
 <p>Meaning:</p>
 <ul>
-<li>the platform logs in with a broker-owned or service-owned account</li>
-<li>the identity is not the end user</li>
-<li>credentials are never exposed to the user or to the model</li>
+<li>
+<p>the platform logs in with a broker-owned or service-owned account</p>
+</li>
+<li>
+<p>the identity is not the end user</p>
+</li>
+<li>
+<p>credentials are never exposed to the user or to the model</p>
+</li>
 </ul>
 <p>Typical use:</p>
 <ul>
-<li>platform integration accounts</li>
-<li>service-side dashboards</li>
-<li>broker-owned synchronization and collection jobs</li>
+<li>
+<p>platform integration accounts</p>
+</li>
+<li>
+<p>service-side dashboards</p>
+</li>
+<li>
+<p>broker-owned synchronization and collection jobs</p>
+</li>
 </ul>
 <p>Properties:</p>
 <ul>
-<li>credential source: <code>system_vault</code></li>
-<li>session owner: <code>system</code></li>
-<li>audit must record which system principal or vault binding was used</li>
+<li>
+<p>credential source: <code>system_vault</code></p>
+</li>
+<li>
+<p>session owner: <code>system</code></p>
+</li>
+<li>
+<p>audit must record which system principal or vault binding was used</p>
+</li>
 </ul>
 <h3>3. <code>user_delegated</code></h3>
 <p>Meaning:</p>
 <ul>
-<li>the broker uses credentials, tokens, or session material explicitly granted by the user</li>
-<li>actions are performed as that user</li>
-<li>this is the basis for personal-assistant behavior</li>
+<li>
+<p>the broker uses credentials, tokens, or session material explicitly granted by the user</p>
+</li>
+<li>
+<p>actions are performed as that user</p>
+</li>
+<li>
+<p>this is the basis for personal-assistant behavior</p>
+</li>
 </ul>
 <p>Typical use:</p>
 <ul>
-<li>reading a user’s own tickets, bookings, or account history</li>
-<li>filling forms on behalf of the user</li>
-<li>delegated browsing of authenticated portals</li>
+<li>
+<p>reading a user’s own tickets, bookings, or account history</p>
+</li>
+<li>
+<p>filling forms on behalf of the user</p>
+</li>
+<li>
+<p>delegated browsing of authenticated portals</p>
+</li>
 </ul>
 <p>Properties:</p>
 <ul>
-<li>credential source: <code>user_grant</code></li>
-<li>session owner: <code>user</code></li>
-<li>audit and consent requirements are highest</li>
+<li>
+<p>credential source: <code>user_grant</code></p>
+</li>
+<li>
+<p>session owner: <code>user</code></p>
+</li>
+<li>
+<p>audit and consent requirements are highest</p>
+</li>
 </ul>
 <h2>Why Identity Comes Before Function</h2>
 <p>These actions may look similar at the DOM level:</p>
 <ul>
-<li>read a page</li>
-<li>click a result</li>
-<li>submit a form</li>
+<li>
+<p>read a page</p>
+</li>
+<li>
+<p>click a result</p>
+</li>
+<li>
+<p>submit a form</p>
+</li>
 </ul>
 <p>But they have completely different governance implications depending on identity mode:</p>
 <ul>
-<li>anonymous public fetch</li>
-<li>system-account authenticated read</li>
-<li>user-delegated authenticated write</li>
+<li>
+<p>anonymous public fetch</p>
+</li>
+<li>
+<p>system-account authenticated read</p>
+</li>
+<li>
+<p>user-delegated authenticated write</p>
+</li>
 </ul>
 <p>Therefore identity mode must be the first classification, before action level.</p>
 <h2>Secondary Axes</h2>
 <p>After identity mode, a browser tool may further classify:</p>
 <ul>
-<li>action level</li>
-<li><code>read</code></li>
-<li><code>navigate</code></li>
-<li><code>authenticate</code></li>
-<li><code>submit</code></li>
-<li>session lifetime</li>
-<li><code>ephemeral</code></li>
-<li><code>broker_managed</code></li>
-<li><code>user_bound</code></li>
-<li>confirmation policy</li>
-<li><code>not_required</code></li>
-<li><code>broker_policy</code></li>
-<li><code>user_required</code></li>
+<li>
+<p>action level</p>
+</li>
+<li>
+<p><code>read</code></p>
+</li>
+<li>
+<p><code>navigate</code></p>
+</li>
+<li>
+<p><code>authenticate</code></p>
+</li>
+<li>
+<p><code>submit</code></p>
+</li>
+<li>
+<p>session lifetime</p>
+</li>
+<li>
+<p><code>ephemeral</code></p>
+</li>
+<li>
+<p><code>broker_managed</code></p>
+</li>
+<li>
+<p><code>user_bound</code></p>
+</li>
+<li>
+<p>confirmation policy</p>
+</li>
+<li>
+<p><code>not_required</code></p>
+</li>
+<li>
+<p><code>broker_policy</code></p>
+</li>
+<li>
+<p><code>user_required</code></p>
+</li>
 </ul>
 <p>These are secondary to identity.</p>
 <h2>Tool Spec Representation</h2>
@@ -138,36 +243,73 @@ It only means the registry can now carry the required governance metadata.</p>
 <h2>Governance Expectations By Identity Mode</h2>
 <h3>Anonymous</h3>
 <ul>
-<li>may read public content</li>
-<li>must not silently escalate into authenticated access</li>
-<li>should default to ephemeral browser state</li>
+<li>
+<p>may read public content</p>
+</li>
+<li>
+<p>must not silently escalate into authenticated access</p>
+</li>
+<li>
+<p>should default to ephemeral browser state</p>
+</li>
 </ul>
 <h3>System Account</h3>
 <ul>
-<li>credentials must come from broker-owned secret storage</li>
-<li>the model never sees the raw credentials</li>
-<li>audit must record which system account binding was used</li>
+<li>
+<p>credentials must come from broker-owned secret storage</p>
+</li>
+<li>
+<p>the model never sees the raw credentials</p>
+</li>
+<li>
+<p>audit must record which system account binding was used</p>
+</li>
 </ul>
 <h3>User Delegated</h3>
 <ul>
-<li>explicit user authorization is required</li>
-<li>session binding must be user-specific</li>
-<li>actions that change external state should normally require stronger confirmation</li>
+<li>
+<p>explicit user authorization is required</p>
+</li>
+<li>
+<p>session binding must be user-specific</p>
+</li>
+<li>
+<p>actions that change external state should normally require stronger confirmation</p>
+</li>
 </ul>
 <h2>Current Implementation Direction</h2>
 <p>Current phase:</p>
 <ul>
-<li>define the identity model</li>
-<li>make the tool registry able to read and surface <code>browser_profile</code></li>
-<li>keep browser tools in <code>planned</code> state until execution/runtime policy is ready</li>
+<li>
+<p>define the identity model</p>
+</li>
+<li>
+<p>make the tool registry able to read and surface <code>browser_profile</code></p>
+</li>
+<li>
+<p>keep browser tools in <code>planned</code> state until execution/runtime policy is ready (anonymous <code>read</code> / <code>navigate</code> reference tools are now <code>active</code>; system-account and user-delegated remain <code>planned</code>)</p>
+</li>
+<li>
+<p>browser worker runtime (implemented: <code>packages/csharp/workers/browser-worker</code>, handlers for <code>browser.read</code> and <code>browser.navigate</code>)</p>
+</li>
+<li>
+<p>broker-owned session leasing records with issue/revoke (implemented: <code>packages/csharp/broker/Endpoints/BrowserBindingEndpoints.cs:160-188</code>)</p>
+</li>
 </ul>
 <p>Not yet implemented:</p>
 <ul>
-<li>browser worker runtime</li>
-<li>credential vault integration</li>
-<li>session replay or session leasing</li>
-<li>delegated write flows</li>
-<li>DOM action policy engine</li>
+<li>
+<p>credential vault integration</p>
+</li>
+<li>
+<p>session replay (browser worker reuse of leased sessions)</p>
+</li>
+<li>
+<p>delegated write flows</p>
+</li>
+<li>
+<p>DOM action policy engine</p>
+</li>
 </ul>
 <h2>Rule</h2>
 <p>From this point onward, any browser tool proposal should answer this question first:</p>

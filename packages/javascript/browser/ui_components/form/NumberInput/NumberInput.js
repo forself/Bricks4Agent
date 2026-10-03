@@ -1,5 +1,6 @@
 import { escapeHtml } from '../../utils/security.js';
 import { createComponentState } from '../../utils/component-state.js';
+import { setFieldError, clearFieldError, FIELD_ERROR_CONTRACT } from '../../utils/field-error.js';
 
 export class NumberInput {
     constructor(options = {}) {
@@ -247,16 +248,20 @@ export class NumberInput {
     }
 
     _validateAndUpdate(inputValue) {
+        const previous = this.value;
         let num = Number.parseFloat(inputValue);
 
+        // 使用者輸入後 blur 或按 Enter 屬於一次提交：數值真的改變才觸發 onChange；
+        // 程式呼叫的 setValue() 仍維持預設不觸發。
         if (Number.isNaN(num)) {
             if (inputValue.trim() === '') {
-                this.setValue(null);
+                this.setValue(null, { emit: previous !== null });
             } else if (this.input) {
                 this.input.value = this._formatValue(this.value);
             }
         } else {
-            this.setValue(this._clampValue(num));
+            const next = this._clampValue(num);
+            this.setValue(next, { emit: next !== previous });
         }
     }
 
@@ -355,6 +360,25 @@ export class NumberInput {
 
     setDisabled(disabled) {
         this.send('SET_DISABLED', { disabled });
+    }
+
+    /**
+     * 標示欄位錯誤；空訊息等同 clearError()。
+     * display:false 只標示錯誤狀態、不顯示文字，給自行顯示錯誤文字的外層（FormField、SearchForm）使用。
+     */
+    setError(message, { display = true } = {}) {
+        setFieldError(this, message, { target: this.input, visual: this.wrapper, container: this.element, display });
+        return this;
+    }
+
+    /** 清除 setError 的標示與文字。 */
+    clearError() {
+        clearFieldError(this);
+        return this;
+    }
+
+    get [FIELD_ERROR_CONTRACT]() {
+        return true;
     }
 
     show() {

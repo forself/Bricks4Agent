@@ -258,6 +258,16 @@ The current broker entrypoints for the high-level LINE coordinator are:
 
 - returns the current pending production draft, if any
 
+Additional endpoints on the same `/api/v1/high-level/line` group (`packages/csharp/broker/Endpoints/HighLevelEndpoints.cs:79-193`):
+
+- `GET /users`, `POST /users/permissions` (body `{ "user_id", "allow_query", "allow_transport", "allow_production", "allow_browser_delegated", "allow_deployment" }`)
+
+- `GET /registration-policy`, `POST /registration-policy` (body `{ "policy": "..." }`)
+
+- `POST /users/registration/review` (body `{ "user_id", "action", "note"? }`)
+
+- `GET /notifications/pending?limit=`, `POST /notifications/complete` (body `{ "notification_id", "status", "error"? }`)
+
 The line conversation gateway remains the direct conversation/query executor.
 The high-level coordinator is the routing and confirmation layer above it.
 
@@ -273,7 +283,7 @@ Current behavior:
 
 - the broker routes it through `HighLevelQueryToolMediator`
 
-- the mediator resolves `web.search.duckduckgo` from the tool-spec registry
+- the mediator resolves `web.search.google` from the tool-spec registry first and falls back to `web.search.duckduckgo` when the Google path fails (`packages/csharp/broker/Services/HighLevelQueryToolMediator.cs:46-74`)
 
 - execution goes through the broker-owned dispatcher route, not through unrestricted model-side web access
 
@@ -289,6 +299,14 @@ It does not own unrestricted external access.
 
 Current documented query-tool state:
 
+- `web.search.google`
+
+- active
+
+- broker-registered
+
+- primary path for `?search`
+
 - `web.search.duckduckgo`
 
 - active
@@ -297,12 +315,6 @@ Current documented query-tool state:
 
 - backed by a broker-owned execution route
 
-- `web.search.google`
+- fallback when the Google search path fails
 
-- planned
-
-- kept in the tool registry
-
-- not currently activated because the observed public Google response path is not yet stable enough for a broker-owned parser
-
-This means high-level query expansion should currently assume DuckDuckGo is the broker-supported public web search path.
+This means high-level query expansion should currently assume Google is the primary broker-supported public web search path, with DuckDuckGo as the fallback.

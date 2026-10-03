@@ -22,38 +22,75 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <main>
 <h1>BaseLogger Governance Logging Design</h1>
 <p>更新日期：2026-06-20</p>
+<p>狀態：未實作（提案）。BaseLogger 仍為舊 API（<code>packages/csharp/logging/BaseLogger/BaseLogger.cs</code>），規劃中的檔案均不存在；未解缺口見 <a href="../../reports/follow-up-planning.zh-TW.html">docs/reports/follow-up-planning.zh-TW.md</a>。</p>
 <h2>1. 背景</h2>
 <p>Bricks4Agent 是 broker-centered governed AI operations platform。LOG / Audit / Observability 不是一般維運附屬功能，而是治理、追溯、事故復盤、可信證據鏈與狀態外部化的核心。</p>
 <p>目前專案已存在 <code>packages/csharp/logging/BaseLogger</code>，且 broker 已 reference 此專案；但主線 runtime logging 仍主要使用 <code>Microsoft.Extensions.Logging.ILogger&lt;T&gt;</code> 與 console provider。<code>BaseLogger</code> 目前比較像未正式接入的平台元件，並且公開型別如 <code>ILogger</code>、<code>Logger</code>、<code>LogLevel</code>、<code>LogEntry</code>、<code>ILogTarget</code> 容易與 .NET logging abstraction 或常見基礎函式庫命名混淆。</p>
 <p>本設計保留 <code>BaseLogger</code> 作為套件、專案與 namespace 名稱，但將其升級為 Bricks4Agent 的治理式 logging pipeline 元件，並避免在 <code>BaseLogger</code> namespace 底下暴露與系統或基本函式庫 logging 型別重名的主要公開 API。</p>
 <h2>2. 設計目標</h2>
 <ol>
-<li><code>BaseLogger</code> 成為正式、泛用、可抽換的 logging component。</li>
-<li>應用層仍依賴 <code>Microsoft.Extensions.Logging.ILogger&lt;T&gt;</code>，不直接依賴 <code>BaseLogger</code> 具體實作。</li>
-<li><code>BaseLogger</code> 透過 <code>Microsoft.Extensions.Logging</code> provider 接入 broker、rag-service、workers。</li>
-<li><code>BaseLogger</code> 補足標準 logging abstraction 不負責的治理能力：correlation、redaction、structured event、rolling/retention、memory live view、database sink、security rejection audit bridge。</li>
-<li>runtime log、audit event、observation、RAG retrieval、LLM call metadata 可以用同一個 trace/correlation model 串接。</li>
-<li><code>AuditService</code> 仍是治理事件與 hash-chain audit trail 的 canonical store，不與 runtime log 混為同一機制。</li>
-<li>前置拒絕事件，例如 body too large、rate limited、decryption failed、missing/invalid token，也要能進入 minimal audit trail。</li>
+<li>
+<p><code>BaseLogger</code> 成為正式、泛用、可抽換的 logging component。</p>
+</li>
+<li>
+<p>應用層仍依賴 <code>Microsoft.Extensions.Logging.ILogger&lt;T&gt;</code>，不直接依賴 <code>BaseLogger</code> 具體實作。</p>
+</li>
+<li>
+<p><code>BaseLogger</code> 透過 <code>Microsoft.Extensions.Logging</code> provider 接入 broker、rag-service、workers。</p>
+</li>
+<li>
+<p><code>BaseLogger</code> 補足標準 logging abstraction 不負責的治理能力：correlation、redaction、structured event、rolling/retention、memory live view、database sink、security rejection audit bridge。</p>
+</li>
+<li>
+<p>runtime log、audit event、observation、RAG retrieval、LLM call metadata 可以用同一個 trace/correlation model 串接。</p>
+</li>
+<li>
+<p><code>AuditService</code> 仍是治理事件與 hash-chain audit trail 的 canonical store，不與 runtime log 混為同一機制。</p>
+</li>
+<li>
+<p>前置拒絕事件，例如 body too large、rate limited、decryption failed、missing/invalid token，也要能進入 minimal audit trail。</p>
+</li>
 </ol>
 <h2>3. 非目標</h2>
 <ol>
-<li>不用 <code>BaseLogger</code> 平替 <code>Microsoft.Extensions.Logging</code>。</li>
-<li>不要求全庫把 constructor 從 <code>ILogger&lt;T&gt;</code> 改成 BaseLogger 型別。</li>
-<li>不把一般 runtime log 全部寫成 audit event。</li>
-<li>不把 raw interaction log、memory、execution payload、audit event 合併成同一資料表。</li>
-<li>不在第一期引入外部 SIEM、OpenTelemetry collector 或分散式 trace backend；但 sink 介面需保留擴充空間。</li>
+<li>
+<p>不用 <code>BaseLogger</code> 平替 <code>Microsoft.Extensions.Logging</code>。</p>
+</li>
+<li>
+<p>不要求全庫把 constructor 從 <code>ILogger&lt;T&gt;</code> 改成 BaseLogger 型別。</p>
+</li>
+<li>
+<p>不把一般 runtime log 全部寫成 audit event。</p>
+</li>
+<li>
+<p>不把 raw interaction log、memory、execution payload、audit event 合併成同一資料表。</p>
+</li>
+<li>
+<p>不在第一期引入外部 SIEM、OpenTelemetry collector 或分散式 trace backend；但 sink 介面需保留擴充空間。</p>
+</li>
 </ol>
 <h2>4. 命名原則</h2>
 <p><code>BaseLogger</code> namespace 保留，但主要公開型別避免使用過度泛用或易撞名名稱。</p>
 <p>應避免作為新主要 API 的名稱：</p>
 <ul>
-<li><code>ILogger</code></li>
-<li><code>Logger</code></li>
-<li><code>Log</code></li>
-<li><code>LogLevel</code></li>
-<li><code>LogEntry</code></li>
-<li><code>ILogTarget</code></li>
+<li>
+<p><code>ILogger</code></p>
+</li>
+<li>
+<p><code>Logger</code></p>
+</li>
+<li>
+<p><code>Log</code></p>
+</li>
+<li>
+<p><code>LogLevel</code></p>
+</li>
+<li>
+<p><code>LogEntry</code></p>
+</li>
+<li>
+<p><code>ILogTarget</code></p>
+</li>
 </ul>
 <p>新的主要 API 採明確前綴與責任命名：</p>
 <table>
@@ -148,13 +185,27 @@ Security rejection path
 <p><code>BaseLoggerProvider</code> 是應用層的 logging provider。它接受 <code>Microsoft.Extensions.Logging</code> 事件，轉換成 <code>BaseLoggerEvent</code>，交給 <code>BaseLoggerPipeline</code>。</p>
 <p><code>BaseLoggerPipeline</code> 負責處理：</p>
 <ul>
-<li>scope/context merge</li>
-<li>severity mapping</li>
-<li>property normalization</li>
-<li>redaction</li>
-<li>formatting</li>
-<li>sink dispatch</li>
-<li>sink failure isolation</li>
+<li>
+<p>scope/context merge</p>
+</li>
+<li>
+<p>severity mapping</p>
+</li>
+<li>
+<p>property normalization</p>
+</li>
+<li>
+<p>redaction</p>
+</li>
+<li>
+<p>formatting</p>
+</li>
+<li>
+<p>sink dispatch</p>
+</li>
+<li>
+<p>sink failure isolation</p>
+</li>
 </ul>
 <h2>6. Event Schema</h2>
 <p><code>BaseLoggerEvent</code> 應包含以下欄位：</p>
@@ -300,11 +351,21 @@ builder.Logging.AddBaseLogger(builder.Configuration);
 <p>新增 early correlation middleware，位置需早於 body-size limit、rate limit、encryption、worker auth、broker auth、audit middleware。</p>
 <p>責任：</p>
 <ol>
-<li>建立或讀取 <code>broker_trace_id</code>。</li>
-<li>寫入 <code>HttpContext.Items</code>。</li>
-<li>建立 <code>ILogger.BeginScope</code>，讓所有 runtime log 自動帶入 correlation property。</li>
-<li>將 trace id 放入 error response metadata，避免使用者只能看到 500 而無法回報追蹤碼。</li>
-<li>供 <code>AuditMiddleware</code>、<code>ExecutionEndpoints</code>、<code>PlanEndpoints</code>、security rejection audit recorder 重用同一 trace id。</li>
+<li>
+<p>建立或讀取 <code>broker_trace_id</code>。</p>
+</li>
+<li>
+<p>寫入 <code>HttpContext.Items</code>。</p>
+</li>
+<li>
+<p>建立 <code>ILogger.BeginScope</code>，讓所有 runtime log 自動帶入 correlation property。</p>
+</li>
+<li>
+<p>將 trace id 放入 error response metadata，避免使用者只能看到 500 而無法回報追蹤碼。</p>
+</li>
+<li>
+<p>供 <code>AuditMiddleware</code>、<code>ExecutionEndpoints</code>、<code>PlanEndpoints</code>、security rejection audit recorder 重用同一 trace id。</p>
+</li>
 </ol>
 <p>建議 <code>HttpContext.Items</code> keys：</p>
 <pre><code class="language-text">broker_trace_id
@@ -319,11 +380,21 @@ broker_component
 <p><code>IBaseLoggerRedactor</code> 是必備元件，不是 optional helper。</p>
 <p>預設策略：</p>
 <ol>
-<li>屬性名稱包含以下詞時一律遮罩：<code>token</code>, <code>secret</code>, <code>key</code>, <code>password</code>, <code>authorization</code>, <code>cookie</code>, <code>signature</code>, <code>credential</code>。</li>
-<li><code>user_id</code>, <code>principal_id</code>, <code>session_id</code>, IP address 預設以 stable hash 表示；若是 system principal 可保留明文。</li>
-<li>LINE message、assistant reply、upstream response body 預設截斷且標為 restricted。</li>
-<li>exception string 應移除明顯 token/header/body secret。</li>
-<li>audit details 與 runtime log 可採不同 redaction profile，但都不可存 raw secret。</li>
+<li>
+<p>屬性名稱包含以下詞時一律遮罩：<code>token</code>, <code>secret</code>, <code>key</code>, <code>password</code>, <code>authorization</code>, <code>cookie</code>, <code>signature</code>, <code>credential</code>。</p>
+</li>
+<li>
+<p><code>user_id</code>, <code>principal_id</code>, <code>session_id</code>, IP address 預設以 stable hash 表示；若是 system principal 可保留明文。</p>
+</li>
+<li>
+<p>LINE message、assistant reply、upstream response body 預設截斷且標為 restricted。</p>
+</li>
+<li>
+<p>exception string 應移除明顯 token/header/body secret。</p>
+</li>
+<li>
+<p>audit details 與 runtime log 可採不同 redaction profile，但都不可存 raw secret。</p>
+</li>
 </ol>
 <p>redaction 必須在所有 sink 之前完成，sink 不應自行決定是否遮罩。</p>
 <h2>10. Sink Model</h2>
@@ -353,9 +424,15 @@ broker_component
 </ol>
 <p>後續 sink：</p>
 <ul>
-<li>OTLP / OpenTelemetry exporter</li>
-<li>SIEM sink</li>
-<li>compressed archive sink</li>
+<li>
+<p>OTLP / OpenTelemetry exporter</p>
+</li>
+<li>
+<p>SIEM sink</p>
+</li>
+<li>
+<p>compressed archive sink</p>
+</li>
 </ul>
 <p>sink 失敗不可造成主流程失敗；pipeline 需記錄 sink health，但避免 recursive logging storm。</p>
 <h2>11. Audit 邊界</h2>
@@ -394,14 +471,30 @@ broker_component
 </table>
 <p>security rejection audit bridge 只針對治理相關拒絕事件寫入 audit，例如：</p>
 <ul>
-<li>body too large</li>
-<li>rate limit exceeded</li>
-<li>invalid encrypted envelope</li>
-<li>replay detected</li>
-<li>missing token</li>
-<li>invalid token</li>
-<li>revoked token/session</li>
-<li>unauthorized worker identity</li>
+<li>
+<p>body too large</p>
+</li>
+<li>
+<p>rate limit exceeded</p>
+</li>
+<li>
+<p>invalid encrypted envelope</p>
+</li>
+<li>
+<p>replay detected</p>
+</li>
+<li>
+<p>missing token</p>
+</li>
+<li>
+<p>invalid token</p>
+</li>
+<li>
+<p>revoked token/session</p>
+</li>
+<li>
+<p>unauthorized worker identity</p>
+</li>
 </ul>
 <p>details 採 minimal schema：</p>
 <pre><code class="language-json">{
@@ -451,80 +544,172 @@ broker_component
 <p>現有 <code>BaseLogger</code> 型別不可一次破壞。</p>
 <p>策略：</p>
 <ol>
-<li>新 API 先建立。</li>
-<li>舊 API 轉接新 pipeline。</li>
-<li>舊型別標 <code>[Obsolete]</code>，訊息需指向替代型別。</li>
-<li>README、manual、broker setup 改用新 API。</li>
-<li>單元測試同時覆蓋新 API 與 compatibility wrapper。</li>
-<li>後續版本再決定是否移除舊 API。</li>
+<li>
+<p>新 API 先建立。</p>
+</li>
+<li>
+<p>舊 API 轉接新 pipeline。</p>
+</li>
+<li>
+<p>舊型別標 <code>[Obsolete]</code>，訊息需指向替代型別。</p>
+</li>
+<li>
+<p>README、manual、broker setup 改用新 API。</p>
+</li>
+<li>
+<p>單元測試同時覆蓋新 API 與 compatibility wrapper。</p>
+</li>
+<li>
+<p>後續版本再決定是否移除舊 API。</p>
+</li>
 </ol>
 <h2>14. Implementation Phases</h2>
 <h3>Phase 1：BaseLogger API 整理</h3>
 <ul>
-<li>建立 <code>BaseLoggerEvent</code>、<code>BaseLoggerSeverity</code>、<code>BaseLoggerPipeline</code>、<code>IBaseLoggerSink</code>、<code>IBaseLoggerFormatter</code>、<code>IBaseLoggerRedactor</code>。</li>
-<li>將現有 console/file/database/memory target 遷移或包裝成 sink。</li>
-<li>舊 <code>ILogger</code>、<code>Logger</code>、<code>LogLevel</code>、<code>LogEntry</code>、<code>ILogTarget</code> 保留 compatibility wrapper。</li>
+<li>
+<p>建立 <code>BaseLoggerEvent</code>、<code>BaseLoggerSeverity</code>、<code>BaseLoggerPipeline</code>、<code>IBaseLoggerSink</code>、<code>IBaseLoggerFormatter</code>、<code>IBaseLoggerRedactor</code>。</p>
+</li>
+<li>
+<p>將現有 console/file/database/memory target 遷移或包裝成 sink。</p>
+</li>
+<li>
+<p>舊 <code>ILogger</code>、<code>Logger</code>、<code>LogLevel</code>、<code>LogEntry</code>、<code>ILogTarget</code> 保留 compatibility wrapper。</p>
+</li>
 </ul>
 <h3>Phase 2：Microsoft.Extensions.Logging Provider</h3>
 <ul>
-<li>建立 <code>BaseLoggerProvider</code>。</li>
-<li>建立 <code>BaseLoggerMicrosoftLogger</code> 或內部 adapter，避免公開命名撞 <code>ILogger</code>。</li>
-<li>建立 <code>AddBaseLogger</code> extension。</li>
-<li>broker、workers、rag-service 只在 host setup 接入。</li>
+<li>
+<p>建立 <code>BaseLoggerProvider</code>。</p>
+</li>
+<li>
+<p>建立 <code>BaseLoggerMicrosoftLogger</code> 或內部 adapter，避免公開命名撞 <code>ILogger</code>。</p>
+</li>
+<li>
+<p>建立 <code>AddBaseLogger</code> extension。</p>
+</li>
+<li>
+<p>broker、workers、rag-service 只在 host setup 接入。</p>
+</li>
 </ul>
 <h3>Phase 3：Correlation 與 Security Rejection Audit</h3>
 <ul>
-<li>新增 early correlation middleware。</li>
-<li>AuditMiddleware 改用同一 <code>broker_trace_id</code>。</li>
-<li>ExceptionHandlingMiddleware 改用同一 trace id 並回傳 trace metadata。</li>
-<li>body-limit、rate-limit、encryption、worker auth、broker auth 拒絕事件寫 minimal audit。</li>
+<li>
+<p>新增 early correlation middleware。</p>
+</li>
+<li>
+<p>AuditMiddleware 改用同一 <code>broker_trace_id</code>。</p>
+</li>
+<li>
+<p>ExceptionHandlingMiddleware 改用同一 trace id 並回傳 trace metadata。</p>
+</li>
+<li>
+<p>body-limit、rate-limit、encryption、worker auth、broker auth 拒絕事件寫 minimal audit。</p>
+</li>
 </ul>
 <h3>Phase 4：Sidecar 與 Runtime Retention</h3>
 <ul>
-<li>sidecar log 不再啟動即刪除上一輪。</li>
-<li>使用 run id 或 rolling file retention。</li>
-<li>runbook 補上 log retention、查詢與清理方式。</li>
+<li>
+<p>sidecar log 不再啟動即刪除上一輪。</p>
+</li>
+<li>
+<p>使用 run id 或 rolling file retention。</p>
+</li>
+<li>
+<p>runbook 補上 log retention、查詢與清理方式。</p>
+</li>
 </ul>
 <h3>Phase 5：Testing 與 Documentation</h3>
 <ul>
-<li>增加 BaseLogger unit tests。</li>
-<li>增加 broker middleware correlation/security rejection tests。</li>
-<li>更新 user manual、technical manual、follow-up planning。</li>
+<li>
+<p>增加 BaseLogger unit tests。</p>
+</li>
+<li>
+<p>增加 broker middleware correlation/security rejection tests。</p>
+</li>
+<li>
+<p>更新 user manual、technical manual、follow-up planning。</p>
+</li>
 </ul>
 <h2>15. Testing Requirements</h2>
 <p>必備測試：</p>
 <ol>
-<li>provider 將 <code>ILogger&lt;T&gt;</code> 事件轉成 <code>BaseLoggerEvent</code>。</li>
-<li><code>BeginScope</code> properties 會合併到 event。</li>
-<li>redactor 遮罩 token、secret、authorization、cookie。</li>
-<li>rolling file sink 達到大小後 rotate，且 retention 不覆蓋最新 evidence。</li>
-<li>database sink 建表與 insert 正常，table name validation 阻擋危險名稱。</li>
-<li>correlation middleware 在未授權請求也會建立 trace id。</li>
-<li>body too large / rate limited / invalid token 會產生 minimal audit event。</li>
-<li><code>/audit/trace</code> 與 <code>/audit/verify</code> 非 admin 不可查他人 trace。</li>
-<li>exception response 包含 trace id，但不洩漏 exception details。</li>
-<li>compatibility wrapper 可運作，但新文件不使用舊型別。</li>
+<li>
+<p>provider 將 <code>ILogger&lt;T&gt;</code> 事件轉成 <code>BaseLoggerEvent</code>。</p>
+</li>
+<li>
+<p><code>BeginScope</code> properties 會合併到 event。</p>
+</li>
+<li>
+<p>redactor 遮罩 token、secret、authorization、cookie。</p>
+</li>
+<li>
+<p>rolling file sink 達到大小後 rotate，且 retention 不覆蓋最新 evidence。</p>
+</li>
+<li>
+<p>database sink 建表與 insert 正常，table name validation 阻擋危險名稱。</p>
+</li>
+<li>
+<p>correlation middleware 在未授權請求也會建立 trace id。</p>
+</li>
+<li>
+<p>body too large / rate limited / invalid token 會產生 minimal audit event。</p>
+</li>
+<li>
+<p><code>/audit/trace</code> 與 <code>/audit/verify</code> 非 admin 不可查他人 trace。</p>
+</li>
+<li>
+<p>exception response 包含 trace id，但不洩漏 exception details。</p>
+</li>
+<li>
+<p>compatibility wrapper 可運作，但新文件不使用舊型別。</p>
+</li>
 </ol>
 <h2>16. Acceptance Criteria</h2>
 <p>第一期完成後，應滿足：</p>
 <ol>
-<li><code>BaseLogger</code> namespace 保留。</li>
-<li>新主要 API 不再使用 <code>ILogger</code>、<code>Logger</code>、<code>LogLevel</code>、<code>LogEntry</code>、<code>ILogTarget</code> 作為公開主名稱。</li>
-<li>broker、rag-service、workers 可透過 <code>builder.Logging.AddBaseLogger(...)</code> 接入。</li>
-<li>應用層 constructor 不需大規模從 <code>ILogger&lt;T&gt;</code> 改成 BaseLogger 型別。</li>
-<li>runtime log、audit event、exception response 能以同一 <code>broker_trace_id</code> 串接。</li>
-<li>前置拒絕事件可查詢於 audit trail。</li>
-<li>redaction policy 在所有 sink 之前執行。</li>
-<li>sidecar log 不再無條件覆蓋上一輪 evidence。</li>
-<li>文件明確說明 runtime log、audit event、raw interaction log、observation 的邊界。</li>
+<li>
+<p><code>BaseLogger</code> namespace 保留。</p>
+</li>
+<li>
+<p>新主要 API 不再使用 <code>ILogger</code>、<code>Logger</code>、<code>LogLevel</code>、<code>LogEntry</code>、<code>ILogTarget</code> 作為公開主名稱。</p>
+</li>
+<li>
+<p>broker、rag-service、workers 可透過 <code>builder.Logging.AddBaseLogger(...)</code> 接入。</p>
+</li>
+<li>
+<p>應用層 constructor 不需大規模從 <code>ILogger&lt;T&gt;</code> 改成 BaseLogger 型別。</p>
+</li>
+<li>
+<p>runtime log、audit event、exception response 能以同一 <code>broker_trace_id</code> 串接。</p>
+</li>
+<li>
+<p>前置拒絕事件可查詢於 audit trail。</p>
+</li>
+<li>
+<p>redaction policy 在所有 sink 之前執行。</p>
+</li>
+<li>
+<p>sidecar log 不再無條件覆蓋上一輪 evidence。</p>
+</li>
+<li>
+<p>文件明確說明 runtime log、audit event、raw interaction log、observation 的邊界。</p>
+</li>
 </ol>
 <h2>17. Explicit Implementation Defaults</h2>
 <p>本設計已決定保留 <code>BaseLogger</code> 名稱與 namespace。第一期 implementation plan 採以下預設，不再留待實作者猜測：</p>
 <ol>
-<li><code>BaseLoggerDatabaseSink</code> 第一批先完成 library-level verify；broker SQLite operational log 接入排在 provider、redaction、correlation 測試穩定之後。</li>
-<li><code>BaseLoggerMemorySink</code> 第一批只提供內部 ring buffer 查詢 API；local admin diagnostics endpoint 另列後續 UI/API 工作。</li>
-<li>sidecar runtime log retention 預設保留 14 天、每個 stream 最多 10 個 rolling files。</li>
-<li>audit HMAC / external anchoring 不納入此批；本批只確保前置拒絕事件進入既有 <code>AuditService</code> hash-chain audit trail。</li>
+<li>
+<p><code>BaseLoggerDatabaseSink</code> 第一批先完成 library-level verify；broker SQLite operational log 接入排在 provider、redaction、correlation 測試穩定之後。</p>
+</li>
+<li>
+<p><code>BaseLoggerMemorySink</code> 第一批只提供內部 ring buffer 查詢 API；local admin diagnostics endpoint 另列後續 UI/API 工作。</p>
+</li>
+<li>
+<p>sidecar runtime log retention 預設保留 14 天、每個 stream 最多 10 個 rolling files。</p>
+</li>
+<li>
+<p>audit HMAC / external anchoring 不納入此批；本批只確保前置拒絕事件進入既有 <code>AuditService</code> hash-chain audit trail。</p>
+</li>
 </ol>
 </main>
 </body>

@@ -37,8 +37,12 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 </ul>
 <p>Action policy answers:</p>
 <ul>
-<li>what the browser tool is actually allowed to do</li>
-<li>which levels require explicit human confirmation</li>
+<li>
+<p>what the browser tool is actually allowed to do</p>
+</li>
+<li>
+<p>which levels require explicit human confirmation</p>
+</li>
 </ul>
 <p>All four are required before browser tools can safely evolve toward assistant-grade operation.</p>
 <h2>Core Rule</h2>
@@ -47,108 +51,214 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <h2>Action Policy Fields</h2>
 <p>The registry can now carry:</p>
 <ul>
-<li><code>max_action_level</code></li>
-<li><code>read</code></li>
-<li><code>navigate</code></li>
-<li><code>authenticate</code></li>
-<li><code>draft_action</code></li>
-<li><code>committed_action</code></li>
-<li><code>requires_human_confirmation_on</code></li>
-<li><code>allows_form_fill</code></li>
-<li><code>allows_submit</code></li>
-<li><code>allows_download</code></li>
-<li><code>allows_file_upload</code></li>
+<li>
+<p><code>max_action_level</code></p>
+</li>
+<li>
+<p><code>read</code></p>
+</li>
+<li>
+<p><code>navigate</code></p>
+</li>
+<li>
+<p><code>authenticate</code></p>
+</li>
+<li>
+<p><code>draft_action</code></p>
+</li>
+<li>
+<p><code>committed_action</code></p>
+</li>
+<li>
+<p><code>requires_human_confirmation_on</code></p>
+</li>
+<li>
+<p><code>allows_form_fill</code></p>
+</li>
+<li>
+<p><code>allows_submit</code></p>
+</li>
+<li>
+<p><code>allows_download</code></p>
+</li>
+<li>
+<p><code>allows_file_upload</code></p>
+</li>
 </ul>
 <p>These fields belong to <code>browser_action_policy</code>.</p>
 <h2>Meaning Of Action Levels</h2>
 <h3><code>read</code></h3>
 <ul>
-<li>read already-loaded content</li>
-<li>extract text, metadata, or structured results</li>
+<li>
+<p>read already-loaded content</p>
+</li>
+<li>
+<p>extract text, metadata, or structured results</p>
+</li>
 </ul>
 <h3><code>navigate</code></h3>
 <ul>
-<li>navigate between allowed pages</li>
-<li>follow links or broker-approved page transitions</li>
+<li>
+<p>navigate between allowed pages</p>
+</li>
+<li>
+<p>follow links or broker-approved page transitions</p>
+</li>
 </ul>
 <h3><code>authenticate</code></h3>
 <ul>
-<li>perform login or session-establishment steps</li>
-<li>may pass through interactive auth challenges depending on session policy</li>
+<li>
+<p>perform login or session-establishment steps</p>
+</li>
+<li>
+<p>may pass through interactive auth challenges depending on session policy</p>
+</li>
 </ul>
 <h3><code>draft_action</code></h3>
 <ul>
-<li>populate forms or stage an action without committing external state</li>
-<li>should stop before final submission</li>
+<li>
+<p>populate forms or stage an action without committing external state</p>
+</li>
+<li>
+<p>should stop before final submission</p>
+</li>
 </ul>
 <h3><code>committed_action</code></h3>
 <ul>
-<li>submit or confirm an action that changes external state</li>
-<li>highest-risk browser action class</li>
+<li>
+<p>submit or confirm an action that changes external state</p>
+</li>
+<li>
+<p>highest-risk browser action class</p>
+</li>
 </ul>
 <h2>Human Confirmation</h2>
 <p><code>requires_human_confirmation_on</code> lists action levels that must not proceed silently.</p>
 <p>Typical examples:</p>
 <ul>
-<li>anonymous tools: none</li>
-<li>system-account read tools: maybe none, or <code>authenticate</code> depending on policy</li>
-<li>user-delegated tools: often <code>authenticate</code>, <code>draft_action</code>, and always <code>committed_action</code></li>
+<li>
+<p>anonymous tools: none</p>
+</li>
+<li>
+<p>system-account read tools: maybe none, or <code>authenticate</code> depending on policy</p>
+</li>
+<li>
+<p>user-delegated tools: often <code>authenticate</code>, <code>draft_action</code>, and always <code>committed_action</code></p>
+</li>
 </ul>
 <p>This is a registry-visible requirement, not an implementation detail hidden in runtime code.</p>
 <h2>Capability Expectations</h2>
 <h3>Anonymous Public Read</h3>
 <ul>
-<li><code>max_action_level = navigate</code></li>
-<li><code>requires_human_confirmation_on = []</code></li>
-<li><code>allows_form_fill = false</code></li>
-<li><code>allows_submit = false</code></li>
-<li><code>allows_download = false</code></li>
-<li><code>allows_file_upload = false</code></li>
+<li>
+<p><code>max_action_level = navigate</code></p>
+</li>
+<li>
+<p><code>requires_human_confirmation_on = []</code></p>
+</li>
+<li>
+<p><code>allows_form_fill = false</code></p>
+</li>
+<li>
+<p><code>allows_submit = false</code></p>
+</li>
+<li>
+<p><code>allows_download = false</code></p>
+</li>
+<li>
+<p><code>allows_file_upload = false</code></p>
+</li>
 </ul>
 <h3>System Account Read</h3>
 <ul>
-<li><code>max_action_level = authenticate</code></li>
-<li><code>requires_human_confirmation_on = []</code> or policy-driven</li>
-<li><code>allows_form_fill = false</code></li>
-<li><code>allows_submit = false</code></li>
+<li>
+<p><code>max_action_level = authenticate</code></p>
+</li>
+<li>
+<p><code>requires_human_confirmation_on = []</code> or policy-driven</p>
+</li>
+<li>
+<p><code>allows_form_fill = false</code></p>
+</li>
+<li>
+<p><code>allows_submit = false</code></p>
+</li>
 </ul>
 <h3>User Delegated Read</h3>
 <ul>
-<li><code>max_action_level = authenticate</code></li>
-<li><code>requires_human_confirmation_on = ["authenticate"]</code></li>
-<li><code>allows_form_fill = false</code></li>
-<li><code>allows_submit = false</code></li>
+<li>
+<p><code>max_action_level = authenticate</code></p>
+</li>
+<li>
+<p><code>requires_human_confirmation_on = ["authenticate"]</code></p>
+</li>
+<li>
+<p><code>allows_form_fill = false</code></p>
+</li>
+<li>
+<p><code>allows_submit = false</code></p>
+</li>
 </ul>
 <h2>Why This Matters</h2>
 <p>Without an explicit action model, browser tools drift into unsafe ambiguity:</p>
 <ul>
-<li>is this tool only reading?</li>
-<li>may it log in?</li>
-<li>may it fill a form?</li>
-<li>may it submit?</li>
-<li>when must the user be asked again?</li>
+<li>
+<p>is this tool only reading?</p>
+</li>
+<li>
+<p>may it log in?</p>
+</li>
+<li>
+<p>may it fill a form?</p>
+</li>
+<li>
+<p>may it submit?</p>
+</li>
+<li>
+<p>when must the user be asked again?</p>
+</li>
 </ul>
 <p>Those are governance questions and must be visible in broker-owned spec data.</p>
 <h2>Current Phase</h2>
 <p>Current implementation direction:</p>
 <ul>
-<li>broker registry can read and surface <code>browser_action_policy</code></li>
-<li>reference browser specs should declare action limits alongside identity/session/site policy</li>
+<li>
+<p>broker registry can read and surface <code>browser_action_policy</code></p>
+</li>
+<li>
+<p>reference browser specs should declare action limits alongside identity/session/site policy</p>
+</li>
+<li>
+<p>runtime action gate enforcement is implemented: the browser worker's <code>GovernedBrowserActionHandler</code> (<code>browser.navigate</code>) calls <code>BrowserActionGate.Evaluate</code> before any browser action and returns a structured <code>gated</code> result when the intended level exceeds <code>max_action_level</code> or requires human confirmation (<code>packages/csharp/workers/browser-worker/Handlers/GovernedBrowserActionHandler.cs:64-76</code>, <code>packages/csharp/broker-core/Services/BrowserActionGate.cs</code>); the active reference spec <code>browser.reference.anonymous.navigate</code> declares <code>max_action_level: navigate</code></p>
+</li>
 </ul>
 <p>Not yet implemented:</p>
 <ul>
-<li>runtime action gate enforcement</li>
-<li>DOM-level action policy engine</li>
-<li>form-staging checkpoints</li>
-<li>final-commit approval workflow</li>
+<li>
+<p>DOM-level action policy engine</p>
+</li>
+<li>
+<p>form-staging checkpoints</p>
+</li>
+<li>
+<p>final-commit approval workflow</p>
+</li>
 </ul>
 <h2>Rule</h2>
 <p>No browser tool definition is complete until it explicitly states:</p>
 <ol>
-<li>who it acts as</li>
-<li>how session/credentials are bound</li>
-<li>which sites it may touch</li>
-<li>what maximum action level it may reach</li>
+<li>
+<p>who it acts as</p>
+</li>
+<li>
+<p>how session/credentials are bound</p>
+</li>
+<li>
+<p>which sites it may touch</p>
+</li>
+<li>
+<p>what maximum action level it may reach</p>
+</li>
 </ol>
 </main>
 </body>

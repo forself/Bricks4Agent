@@ -8,6 +8,7 @@ import { CanvasChart } from './CanvasChart.js';
 import { ModalPanel } from '../layout/Panel/index.js';
 import { categoricalColor, hierarchicalColor } from '../utils/color-scale.js';
 import { FALLBACK_PAINT } from '../utils/theme-bus.js';
+import Locale from '../i18n/index.js';
 
 const px = (v, d) => typeof v === 'number' ? v + 'px' : (v || d);
 const TAU = Math.PI * 2;
@@ -206,6 +207,39 @@ export class SunburstChart extends CanvasChart {
     setData(data) {
         this.options.data = data;
         this.render();
+    }
+
+    /**
+     * 無障礙資料表(accessibleTable):路徑 / 數值,前序列出每個扇區(含根)。
+     * 數值規則同繪圖:葉節點取 value(未給=1)、非葉節點=子節點加總;另行計算,不寫回原資料。
+     */
+    getDataTable() {
+        const root = this.options.data;
+        const rows = [];
+        if (root && root.name) {
+            const memo = new Map();
+            const inProgress = new Set();
+            const total = (node) => {
+                if (memo.has(node)) return memo.get(node);
+                if (inProgress.has(node)) return 0;              // 環狀參照防護
+                inProgress.add(node);
+                const kids = Array.isArray(node.children) ? node.children : [];
+                const v = kids.length
+                    ? kids.reduce((s, k) => s + (k && typeof k === 'object' ? total(k) : 0), 0)
+                    : (node.value != null ? Number(node.value) : 1);
+                inProgress.delete(node);
+                memo.set(node, v);
+                return v;
+            };
+            this._a11yWalkTree(root, (n) => n.name, (node, path) => rows.push({ path, value: total(node) }));
+        }
+        return {
+            columns: [
+                { key: 'path', label: Locale.t('canvasChart.path'), rowHeader: true },
+                { key: 'value', label: Locale.t('canvasChart.value'), format: 'number' }
+            ],
+            rows
+        };
     }
 }
 

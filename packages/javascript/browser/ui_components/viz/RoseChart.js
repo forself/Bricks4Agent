@@ -141,6 +141,11 @@ export class RoseChart extends CanvasChart {
         ];
     }
 
+    /** 無障礙資料表(accessibleTable):類別欄 + 每系列一欄(與扇區堆疊順序一致)。 */
+    getDataTable() {
+        return this._a11ySeriesTable(this.options.data);
+    }
+
     /** 更新資料並重繪(舊 API 相容)。 */
     setData(data) {
         this.options.data = data;

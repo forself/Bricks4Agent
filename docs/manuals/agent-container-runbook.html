@@ -29,12 +29,24 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <p>與 LINE sidecar(<code>line-sidecar.ps1</code>)不同:那是 broker + line-worker + tunnel 的常駐服務;受控代理容器是 podman compose 起的一次性治理 stack(broker + worker(s) + agent),用來執行單一受控任務。</p>
 <h2>2. 前置需求</h2>
 <ul>
-<li><strong>podman</strong>(Windows 用 podman machine / WSL backend)。首次需 <code>podman machine start</code>(若 <code>LAST UP: Never</code>)。</li>
-<li><strong>node</strong>(跑 stack 啟動腳本)。</li>
-<li>LLM 後端三選一:</li>
-<li>mock(內建,無需外部)</li>
-<li>本機 <strong>ollama</strong>(<code>localhost:11434</code>,需先 <code>ollama pull &lt;model&gt;</code>)</li>
-<li><strong>商用 API</strong>(OpenAI-compatible 或 Anthropic Claude,需 API key)</li>
+<li>
+<p><strong>podman</strong>(Windows 用 podman machine / WSL backend)。首次需 <code>podman machine start</code>(若 <code>LAST UP: Never</code>)。</p>
+</li>
+<li>
+<p><strong>node</strong>(跑 stack 啟動腳本)。</p>
+</li>
+<li>
+<p>LLM 後端三選一:</p>
+</li>
+<li>
+<p>mock(內建,無需外部)</p>
+</li>
+<li>
+<p>本機 <strong>ollama</strong>(<code>localhost:11434</code>,需先 <code>ollama pull &lt;model&gt;</code>)</p>
+</li>
+<li>
+<p><strong>商用 API</strong>(OpenAI-compatible 或 Anthropic Claude,需 API key)</p>
+</li>
 </ul>
 <h2>3. 三條 LLM 路徑(都已實測通過 2026-06-13)</h2>
 <p>每條都是 <code>podman compose up</code> 一個 stack:build 映像 → 起 broker + worker(s) + agent → agent 註冊 session、領 capability、經 broker 裁決執行工具。</p>
@@ -62,9 +74,15 @@ node tools/agent/tests/test-podman-openai-compatible-stack.js
 </blockquote>
 <h2>4. 用真實商用 API 時的注意</h2>
 <ul>
-<li><code>OPENAI_API_FORMAT</code>:responses API 的原始回應把文字放在 <code>output[].content[].output_text</code>(頂層 <code>output_text</code> 是 SDK 便利欄位,真實 API 不一定有);broker parser 兩者皆支援。gpt-5 系列的 <code>output[]</code> 會夾帶 reasoning item,parser 會略過。</li>
-<li>Claude Messages API 需要 <code>max_tokens</code>;目前預設 <code>MaxOutputTokens=4096</code>。</li>
-<li>key 不應放進 repo;Anthropic 使用 <code>ANTHROPIC_API_KEY</code>,OpenAI-compatible fallback 使用 <code>C:\secure\Bricks4Agent\Api.txt</code> 或環境變數。</li>
+<li>
+<p><code>OPENAI_API_FORMAT</code>:responses API 的原始回應把文字放在 <code>output[].content[].output_text</code>(頂層 <code>output_text</code> 是 SDK 便利欄位,真實 API 不一定有);broker parser 兩者皆支援。gpt-5 系列的 <code>output[]</code> 會夾帶 reasoning item,parser 會略過。</p>
+</li>
+<li>
+<p>Claude Messages API 需要 <code>max_tokens</code>;目前預設 <code>MaxOutputTokens=4096</code>。</p>
+</li>
+<li>
+<p>key 不應放進 repo;Anthropic 使用 <code>ANTHROPIC_API_KEY</code>,OpenAI-compatible fallback 使用 <code>C:\secure\Bricks4Agent\Api.txt</code> 或環境變數。</p>
+</li>
 </ul>
 <h2>5. FunctionPool 與健康端點</h2>
 <p>受控代理容器 stack 的 broker 預設 <code>FunctionPool:Enabled=true</code>(worker dispatch + container manager 的基礎)。<code>/api/v1/health/workers</code>、<code>/health/score</code> 等監控端點只在 FunctionPool 啟用時註冊——它們的 handler 依賴 worker registry 服務,關閉時不註冊以免 Minimal API 把未註冊服務推斷成 body。純 LLM 對話的 stack(如 ollama/openai host 測試)可 FunctionPool=false。</p>
@@ -164,11 +182,25 @@ podman network rm seal-probe
 <p>mock stack 已實測:套上述 hardening 後 agent 仍能完成 governed <code>read_file</code> → <code>STACK_OK</code>。</p>
 <h2>9. 執行配接器(§18.1,已實作 + 單元驗證 2026-06-13)</h2>
 <p><code>execution-adapter-worker</code> 讓受控 agent 能真的做事(不再只讀):agent 產生結構化請求 → broker 裁決(grant/quota/scope/policy)→ adapter worker 執行並附證據。agent 永遠碰不到 adapter,只有 broker 會 dispatch。</p>
-<p>兩個能力:
-| 能力 / route | 行為 |
-|------|------|
-| <code>repo.patch.apply</code> / <code>execution.repo.apply_patch</code> | 驗 patch(非自由 shell)、驗 base_commit==HEAD、限 <code>scope.allowed_paths</code>、<code>git apply --check</code> 後套用、存 diff 證據、支援 idempotency_key(重放回前次結果不重套) |
-| <code>build.test.run</code> / <code>execution.build_test.run</code> | 只跑白名單命令(npm test / npm run build / dotnet test / pytest)、不經 shell、收 stdout/stderr+exit、截斷大輸出、存 log 證據 |</p>
+<p>兩個能力:</p>
+<table>
+<thead>
+<tr>
+<th>能力 / route</th>
+<th>行為</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>repo.patch.apply</code> / <code>execution.repo.apply_patch</code></td>
+<td>驗 patch(非自由 shell)、驗 base_commit==HEAD、限 <code>scope.allowed_paths</code>、<code>git apply --check</code> 後套用、存 diff 證據、支援 idempotency_key(重放回前次結果不重套)</td>
+</tr>
+<tr>
+<td><code>build.test.run</code> / <code>execution.build_test.run</code></td>
+<td>只跑白名單命令(npm test / npm run build / dotnet test / dotnet build / pytest;預設見 <code>packages/csharp/workers/execution-adapter-worker/Handlers/BuildTestRunHandler.cs:23-26</code>,可由 <code>Worker:BuildTest:Whitelist</code> 覆寫)、不經 shell、收 stdout/stderr+exit、截斷大輸出、存 log 證據</td>
+</tr>
+</tbody>
+</table>
 <p>adapter 是<strong>受信任執行節點</strong>:套 §13.2 OS 加固(非 root uid 10004、read-only rootfs、cap-drop ALL、no-new-privileges、無 docker socket),但與 agent 不同 —— 可寫 workspace(它就是經控制平面中介的寫入路徑)、有出口(build/test restore)。</p>
 <p>驗證:</p>
 <pre><code class="language-bash"># broker 單元測試(含 38 條執行配接器斷言,對真實 git 操作)
@@ -184,11 +216,12 @@ node tools/agent/tests/test-podman-execution-adapter-stack.js
 <p>慣例提醒:agent 送出的 payload <code>route</code> 就是「工具名」(如 <code>apply_patch</code>),broker policy 要求 <code>route == capability.Route</code>。所以新能力的 <code>Route</code> 必須設成工具名(<code>repo.patch.apply</code>→<code>apply_patch</code>、<code>build.test.run</code>→<code>run_build_test</code>),而非設計文件的 <code>execution.*</code> 邏輯名。</p>
 </blockquote>
 <p>尚未做:broker <code>--integration</code> HTTP 對新 route 的覆蓋(stack 測試已涵蓋真實 dispatch 路徑)。</p>
-<h2>10. 範圍界線(尚未做,對照規格 §13/§18)</h2>
+<h2>10. 範圍界線(對照規格 §13/§18;2026-09-26 核對)</h2>
+<p><strong>已實作</strong>:
+- §18.2 審批服務與風險分級:<code>PolicyEngine</code> 依 <code>RiskLevel</code> / <code>approval_policy</code> 裁決 —— High/Critical 需管理員層審批(Critical 需 2 票)、<code>auto_if_task_scope_match</code> 逸出 scope 轉管理員審批(<code>packages/csharp/broker-core/Services/PolicyEngine.cs:68-117</code>);<code>RequireApproval</code> 時 broker 建審批請求並擱置執行(<code>packages/csharp/broker-core/Services/BrokerService.cs:256-280</code>)。放行端點:使用者層 <code>/api/v1/user/approvals</code>(<code>packages/csharp/broker/Endpoints/UserApprovalEndpoints.cs</code>)、管理員層 <code>/api/v1/local-admin/approvals</code>(<code>packages/csharp/broker/Endpoints/LocalAdminEndpoints.cs:933-953</code>)。</p>
 <p><strong>尚未實作</strong>:
-- §18.2 審批服務、風險分級(高風險 adapter 動作走人工放行)
 - agent 客製 seccomp profile(目前用 runtime 預設)</p>
-<p>這些是後續階段。重點:容器「關得住」已做到;agent「能做什麼、危險動作怎麼放行」尚未做。</p>
+<p>重點:容器「關得住」已做到;危險動作的人工放行也已接上,剩客製 seccomp。</p>
 </main>
 </body>
 </html>

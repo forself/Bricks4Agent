@@ -138,6 +138,11 @@ export class BarChart extends CanvasChart {
         return rows;
     }
 
+    /** 無障礙資料表(accessibleTable):類別欄 + 每系列一欄(表頭=系列名稱)。 */
+    getDataTable() {
+        return this._a11ySeriesTable(this.options.data, { unit: this.options.unit });
+    }
+
     /** 更新資料並重繪(舊 API 相容)。 */
     setData(data) { this.options.data = data; this.render(); }
 }

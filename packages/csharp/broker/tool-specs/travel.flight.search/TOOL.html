@@ -23,12 +23,29 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <h1>travel.flight.search</h1>
 <p>Purpose: broker-mediated flight lookup for travel planning.</p>
 <p>Current status: active.</p>
+<p>Implementation:</p>
+<ul>
+<li>
+<p>TDX only (source label <code>TDX 航班即時資訊 API (FIDS)</code>); there is no public-web fallback. If TDX is not configured, fails, or returns nothing, the tool returns an empty result</p>
+</li>
+<li>
+<p>high-level LINE <code>?flight</code> queries are routed through <code>transport.query</code>, not directly through this tool</p>
+</li>
+</ul>
 <p>Rules:</p>
 <ul>
-<li>sources must be defined in policy, not hardcoded in the model prompt</li>
-<li>schedule and availability information must be treated as time-sensitive</li>
-<li>responses must identify source and retrieval time</li>
-<li>returned options are candidate schedules gathered from public travel pages</li>
+<li>
+<p>sources must be defined in policy, not hardcoded in the model prompt</p>
+</li>
+<li>
+<p>schedule and availability information must be treated as time-sensitive</p>
+</li>
+<li>
+<p>responses must identify source and retrieval time</p>
+</li>
+<li>
+<p>returned options are candidate flights from TDX flight information (FIDS)</p>
+</li>
 </ul>
 </main>
 </body>

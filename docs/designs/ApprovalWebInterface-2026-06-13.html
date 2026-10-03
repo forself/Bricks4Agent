@@ -36,7 +36,7 @@ Status: <strong>已實作(2026-06-13)</strong> —— 共用後端 + 管理員�
 <tbody>
 <tr>
 <td><strong>管理員 web 後台</strong></td>
-<td><code>line-admin.html</code>(單檔 vanilla JS,~1700 行,深色主題,sidebar+tabs)。認證 <code>LocalAdminAuthService</code>:<strong>僅限 localhost</strong>、單一共享密碼、cookie 12h。Local admin approver id 目前由 session 形成；dual approval 可要求兩個不同 admin session/approver id，但尚非完整 named operator account。加分頁的 pattern 清楚(HTML section + nav 鈕 + state + load/render + 路由)。</td>
+<td><code>line-admin.html</code>(單檔 vanilla JS,~1700 行,深色主題,sidebar+tabs)。認證 <code>LocalAdminAuthService</code>:<strong>僅限 localhost</strong>、具名 operator 帳號(<code>LocalAdminCredential</code> 的 <code>operator_id</code>/<code>username</code>/<code>role</code>,<code>packages/csharp/broker-core/Models/LocalAdminCredential.cs:12-22</code>;<code>/operators*</code> 管理端點見 <code>packages/csharp/broker/Endpoints/LocalAdminEndpoints.cs:112-209</code>)、cookie 12h。Local admin approver id 為 <code>local-admin:{OperatorId}</code>(<code>LocalAdminEndpoints.cs:1104-1105</code>),因此 dual approval 需要兩個不同 operator;同一 operator 開多個 session 仍算同一 approver。加分頁的 pattern 清楚(HTML section + nav 鈕 + state + load/render + 路由)。</td>
 </tr>
 <tr>
 <td><strong>使用者 web 前台</strong></td>
@@ -105,7 +105,7 @@ Status: <strong>已實作(2026-06-13)</strong> —— 共用後端 + 管理員�
 <p>在既有 <code>line-admin.html</code> 加「<strong>審批</strong>」分頁(全域,管理員 = §6.5 Admin 層信任錨):</p>
 <p><strong>後端端點</strong>(<code>LocalAdminEndpoints.cs</code>,沿用 <code>auth.TryRequireAuthenticated</code> + <code>IBrokerService</code>):
 - <code>GET /api/v1/local-admin/approvals</code> → 待審清單(含關聯 ExecutionRequest 細節:intent、payload、policy_reason、tier、owner)
-- <code>POST /api/v1/local-admin/approvals/{id}/approve</code> body <code>{reason}</code> → <code>broker.ApproveExecutionAsync(id, adminSessionApproverId, reason, isAdmin:true)</code>；Critical 需兩個不同 admin session/approver id 才 dispatch
+- <code>POST /api/v1/local-admin/approvals/{id}/approve</code> body <code>{reason}</code> → <code>broker.ApproveExecutionAsync(id, "local-admin:{OperatorId}", reason, isAdmin:true)</code>；Critical 需兩個不同 operator(approver id)才 dispatch
 - <code>POST /api/v1/local-admin/approvals/{id}/reject</code> body <code>{reason}</code> → <code>broker.RejectExecution(..., isAdmin:true)</code></p>
 <p><strong>前端</strong>(新分頁,左清單 + 右細節/動作,沿用 .panel/.list/.item/.json/.button):
 - 左:待審佇列,每筆顯示 能力 / tier 徽章 / 發起者 / 時間;可篩選;nav 上待審數徽章。
@@ -119,23 +119,39 @@ Status: <strong>已實作(2026-06-13)</strong> —— 共用後端 + 管理員�
 <h3>Phase 2 — 使用者審批前台(較大,但你要的「web 比 LINE 好」主要在此)</h3>
 <p><strong>問題</strong>:目前沒有使用者 web 認證(後台是 localhost-only,不適用使用者)。使用者要在「自己的介面」批自己權限內的(§6.5 User 層),選項:</p>
 <ul>
-<li><strong>2a(建議):輕量使用者 web 入口 + 連結式認證</strong>。使用者在 LINE 收到一則「有待審動作,點此查看」→ 開啟帶<strong>短時效簽章 token</strong> 的 web 頁(綁該 userId),頁面只列<strong>他自己的 User 層待審</strong>,可看內容(例如 agent 想在他資料夾寫什麼)再 approve/deny。這把「LINE 一鍵」升級成「web 看了內容再決定」,正是你要的。需新增:使用者 web 認證(簽章連結,非 localhost)、<code>/api/v1/user/approvals/*</code>(<code>isAdmin:false</code>,broker 已支援 owner 授權)、<code>user-approvals.html</code>。</li>
-<li>2b(暫行):User 層先沿用 LINE confirm/deny,web 先做管理員(Phase 1)。</li>
+<li>
+<p><strong>2a(建議):輕量使用者 web 入口 + 連結式認證</strong>。使用者在 LINE 收到一則「有待審動作,點此查看」→ 開啟帶<strong>短時效簽章 token</strong> 的 web 頁(綁該 userId),頁面只列<strong>他自己的 User 層待審</strong>,可看內容(例如 agent 想在他資料夾寫什麼)再 approve/deny。這把「LINE 一鍵」升級成「web 看了內容再決定」,正是你要的。需新增:使用者 web 認證(簽章連結,非 localhost)、<code>/api/v1/user/approvals/*</code>(<code>isAdmin:false</code>,broker 已支援 owner 授權)、<code>user-approvals.html</code>。</p>
+</li>
+<li>
+<p>2b(暫行):User 層先沿用 LINE confirm/deny,web 先做管理員(Phase 1)。</p>
+</li>
 </ul>
 <p>建議:<strong>先 Phase 1(管理員後台,快又高價值),再 Phase 2a(使用者連結式 web 審批)</strong>。LINE 仍保留為「通知 + 輕量確認」管道,但「需看內容」的決策導向 web。</p>
 <h3>Phase 3 — LINE send 頻率限制(獨立小項)</h3>
 <p>已完成基本 worker-local rate-limit：依 recipient + capability 限制 <code>line.message.send</code> / <code>line.audio.send</code>。仍待補分散式 quota、營運級 per-user/per-channel quota、異常量升 High，以及 <code>line.notification.send</code> 覆蓋。與審批 UI 無關,可並行。</p>
 <h2>4. 建議落地順序</h2>
 <ol>
-<li><strong>Phase 1 管理員審批分頁 + 端點</strong>(test-first:端點整合測 + UI 手動驗)。← 最高 CP 值,先做。</li>
-<li>Phase 2a 使用者連結式 web 審批(新使用者 web 認證 + 頁面)。</li>
-<li>Phase 3 LINE send quota/rate-limit hardening。</li>
+<li>
+<p><strong>Phase 1 管理員審批分頁 + 端點</strong>(test-first:端點整合測 + UI 手動驗)。← 最高 CP 值,先做。</p>
+</li>
+<li>
+<p>Phase 2a 使用者連結式 web 審批(新使用者 web 認證 + 頁面)。</p>
+</li>
+<li>
+<p>Phase 3 LINE send quota/rate-limit hardening。</p>
+</li>
 </ol>
 <h2>5. 已定案(owner,2026-06-13)</h2>
 <ul>
-<li><strong>兩面一起規劃再做</strong>(管理員 + 使用者)。</li>
-<li>使用者面走 <strong>2a:連結式 web</strong>(LINE 送簽章連結 → web 看內容再批)。</li>
-<li><strong>內容渲染(patch diff/命令/路徑)高優先</strong>,是賣點。</li>
+<li>
+<p><strong>兩面一起規劃再做</strong>(管理員 + 使用者)。</p>
+</li>
+<li>
+<p>使用者面走 <strong>2a:連結式 web</strong>(LINE 送簽章連結 → web 看內容再批)。</p>
+</li>
+<li>
+<p><strong>內容渲染(patch diff/命令/路徑)高優先</strong>,是賣點。</p>
+</li>
 </ul>
 <h2>6. 統一設計(兩面一起)</h2>
 <h3>6.1 共用:審批明細 + 內容渲染契約</h3>
@@ -158,13 +174,13 @@ Status: <strong>已實作(2026-06-13)</strong> —— 共用後端 + 管理員�
 <h3>6.2 管理員面(全域,localhost-only)</h3>
 <p>端點(<code>LocalAdminEndpoints.cs</code>,<code>auth.TryRequireAuthenticated</code>):
 - <code>GET  /api/v1/local-admin/approvals</code> → 全部 pending 的審批明細(含 rendered)。
-- <code>POST /api/v1/local-admin/approvals/{id}/approve</code> <code>{reason}</code> → <code>ApproveExecutionAsync(id,adminSessionApproverId,reason,isAdmin:true)</code>；Critical 需兩個不同 admin session/approver id 才 dispatch。
+- <code>POST /api/v1/local-admin/approvals/{id}/approve</code> <code>{reason}</code> → <code>ApproveExecutionAsync(id,"local-admin:{OperatorId}",reason,isAdmin:true)</code>；Critical 需兩個不同 operator(approver id)才 dispatch。
 - <code>POST /api/v1/local-admin/approvals/{id}/reject</code> <code>{reason}</code> → <code>RejectExecution(...,isAdmin:true)</code>。</p>
 <p>UI:<code>line-admin.html</code> 新「審批」分頁(見上方 mockup)。</p>
 <h3>6.3 使用者面(2a:連結式 web)</h3>
 <p><strong>簽章連結認證</strong>(新,有別於 localhost-only 後台):
 - User 層審批產生時,broker 經 <strong>LINE</strong> 送該使用者一則:「有待審動作,點此查看 → <code>{baseUrl}/user-approvals.html#token=&lt;signed&gt;</code>」。
-- <code>signed</code> = 短時效(15 分)HMAC token,綁 <code>principal_id</code>(使用者)+ 到期。以既有 <code>Broker__ScopedToken__Secret</code> 簽。<strong>只授權看/批該使用者自己的 User 層待審</strong>(broker owner 授權已強制 <code>approverId==OwnerPrincipalId</code>)。
+- <code>signed</code> = 短時效(15 分)HMAC token,綁 <code>principal_id</code>(使用者)+ 到期。實作沿用 artifact 下載的簽章 secret <code>ArtifactDownload:SigningSecret</code>(<code>BrokerArtifactDownloadOptions.SigningSecret</code>,見 <code>packages/csharp/broker/Services/ApprovalLinkService.cs:9,16-18</code>);未設定時不產生連結。<strong>只授權看/批該使用者自己的 User 層待審</strong>(broker owner 授權已強制 <code>approverId==OwnerPrincipalId</code>)。
 - 新使用者端點(驗 token → 解出 userId):
   - <code>GET  /api/v1/user/approvals?token=...</code> → <code>ListPendingApprovalsForApprover(userId,false)</code> + rendered。
   - <code>POST /api/v1/user/approvals/{id}/approve</code> <code>{reason,token}</code> → <code>ApproveExecutionAsync(id,userId,reason,isAdmin:false)</code>。
@@ -173,11 +189,19 @@ Status: <strong>已實作(2026-06-13)</strong> —— 共用後端 + 管理員�
 <p>安全:token 短效、綁單一 userId、只暴露其本人 User 層;broker 仍二次強制 owner 授權。</p>
 <h3>6.4 落地順序(實作)</h3>
 <ol>
-<li>✅ <strong>共用 ApprovalDetail 組裝 + 內容渲染</strong>(<code>65db870</code>,6 測試)。</li>
-<li>✅ <strong>管理員端點 + line-admin.html 審批分頁</strong>(<code>e3015b6</code>,build+JS+實機 smoke)。</li>
-<li>✅ <strong>使用者簽章連結認證 + 使用者端點 + user-approvals.html</strong>(<code>752f0cc</code>,8 token 測試 + 實機)。
-3b. ✅ <strong>LINE 自動送連結</strong>:<code>IApprovalNotifier</code> seam + <code>LineApprovalNotifier</code>(<code>3620a45</code>,5 測試)—— User 層審批建立時 → 組簽章連結 → <code>QueueLineNotification</code> → line-worker 送達。</li>
-<li>◐ LINE send rate-limit(Phase 3,獨立): <code>line.message.send</code> / <code>line.audio.send</code> worker-local limiter 已完成；分散式 quota 與 <code>line.notification.send</code> 覆蓋待做。</li>
+<li>
+<p>✅ <strong>共用 ApprovalDetail 組裝 + 內容渲染</strong>(<code>65db870</code>,6 測試)。</p>
+</li>
+<li>
+<p>✅ <strong>管理員端點 + line-admin.html 審批分頁</strong>(<code>e3015b6</code>,build+JS+實機 smoke)。</p>
+</li>
+<li>
+<p>✅ <strong>使用者簽章連結認證 + 使用者端點 + user-approvals.html</strong>(<code>752f0cc</code>,8 token 測試 + 實機)。
+3b. ✅ <strong>LINE 自動送連結</strong>:<code>IApprovalNotifier</code> seam + <code>LineApprovalNotifier</code>(<code>3620a45</code>,5 測試)—— User 層審批建立時 → 組簽章連結 → <code>QueueLineNotification</code> → line-worker 送達。</p>
+</li>
+<li>
+<p>◐ LINE send rate-limit(Phase 3,獨立): <code>line.message.send</code> / <code>line.audio.send</code> worker-local limiter 已完成；分散式 quota 與 <code>line.notification.send</code> 覆蓋待做。</p>
+</li>
 </ol>
 <p>實機 smoke(2026-06-13,真實 broker):使用者端點 bad token→401、<code>user-approvals.html</code>/<code>line-admin.html</code>→200、管理員端點未登入→401。</p>
 </main>

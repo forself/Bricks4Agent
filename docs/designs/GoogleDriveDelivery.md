@@ -76,13 +76,25 @@ even when authentication is otherwise valid.
 
 - `POST /api/v1/local-admin/delivery/google-drive/share`
 
+- local admin delegated OAuth (`packages/csharp/broker/Endpoints/LocalAdminEndpoints.cs:754-778`):
+
+- `GET /api/v1/local-admin/delivery/google-drive/oauth/status`
+
+- `GET /api/v1/local-admin/delivery/google-drive/oauth/credentials`
+
+- `POST /api/v1/local-admin/delivery/google-drive/oauth/start`
+
+- OAuth callback (loopback only): `GET /api/v1/google-drive/oauth/callback` (`packages/csharp/broker/Endpoints/GoogleDriveOAuthEndpoints.cs:13`)
+
 ## Required configuration
 
-- `GoogleDriveDelivery:ServiceAccountJsonPath`
+- `GoogleDriveDelivery:ServiceAccountJsonPath` (for `system_account`) and/or `GoogleDriveDelivery:OAuthClientJsonPath` (for `shared_delegated` / `user_delegated`); delivery is enabled when either file exists
 
 - `GoogleDriveDelivery:DefaultFolderId`
 
 - optional:
+
+- `GoogleDriveDelivery:DelegatedRedirectUri` (default `http://127.0.0.1:5361/api/v1/google-drive/oauth/callback`)
 
 - `GoogleDriveDelivery:DefaultShareMode`
 
@@ -96,7 +108,7 @@ even when authentication is otherwise valid.
 
 ## Current operator reality
 
-There is currently no end-user frontend for artifact browsing or downloading.
+An end-user frontend for artifact browsing and downloading now exists (checked 2026-09-26).
 
 What exists today:
 
@@ -106,15 +118,17 @@ What exists today:
 
 - broker-managed artifact records
 
-What should exist later as a frontend feature:
+- signed artifact download API: `GET /api/v1/artifacts/download/{artifactId}?exp=&sig=` (HMAC link signed with `ArtifactDownload:SigningSecret`; `packages/csharp/broker/Endpoints/ArtifactDownloadEndpoints.cs:9`)
+
+- user portal served at `/portal` (`packages/javascript/browser/user-portal`), which lists the signed-in user's own artifacts with download links via `GET /api/v1/portal/artifacts` (`packages/csharp/broker/Endpoints/PortalEndpoints.cs:139-176`, owner check on the single-artifact route)
+
+Originally planned as later frontend features (now covered by the portal session-authenticated listing plus HMAC-signed download links above):
 
 - an authenticated public-facing artifact download API
 
 - user-facing artifact history and download page
 
 - broker-governed access checks before file delivery
-
-This is intentionally recorded here as a missing frontend capability, not as a completed feature.
 
 ## Next steps
 

@@ -1,0 +1,500 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Canvas 圖表無障礙資料表(accessibleTable)</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Canvas 圖表無障礙資料表(accessibleTable)</h1>
+<h2>目的</h2>
+<p>Canvas 圖表對輔助科技(螢幕閱讀器等)而言只是一張圖片:<code>&lt;canvas role="img" aria-label="…"&gt;</code> 只能讀出標題，讀不到任何數據。
+開啟 <code>accessibleTable</code> 後，圖表會在自己的根元素內產生一個真實的 <code>&lt;table&gt;</code>,把圖上的資料以表格呈現，並讓 canvas 以 <code>aria-describedby</code> 指向它。</p>
+<ul>
+<li>適用於 <code>CanvasChart</code> 基底與全部 14 個子類:<code>BarChart</code>、<code>LineChart</code>、<code>PieChart</code>、<code>RoseChart</code>、<code>HeatmapChart</code>、<code>ScatterChart</code>、<code>SankeyChart</code>、<code>RelationChart</code>、<code>ClusterGraph</code>、<code>OrgChart</code>(含繼承的 <code>HierarchyChart</code>)、<code>SunburstChart</code>、<code>FlameChart</code>、<code>TimelineChart</code>、<code>Sparkline</code>。</li>
+<li><strong>預設關閉</strong>。未開啟時不建立任何 DOM、不改動 canvas 的 ARIA 屬性、不註冊任何監聽、不消耗 <code>nextUid</code> 序號，繪圖結果與既有行為完全相同。</li>
+</ul>
+<h2>選項</h2>
+<pre><code class="language-js">new BarChart({
+    container: '#host',
+    title: '',                   // 既有選項:圖表標題;開啟資料表時也作為 &lt;caption&gt;(優先)
+    ariaLabel: '',               // 既有選項:canvas 的 aria-label;沒有 title 時作為 &lt;caption&gt;
+    accessibleTable: false,      // false=關閉(預設);true=視覺隱藏資料表(供輔助科技);'visible'=圖下可見資料表
+    accessibleTableMaxRows: 500, // 資料表列數上限;超過時只列前 N 列，末列註明省略筆數(Infinity=不截斷)
+    // …其他圖表選項照舊
+});
+</code></pre>
+<ul>
+<li><code>accessibleTable</code> 只認 <code>true</code> 與 <code>'visible'</code>;其他值(例如字串 <code>'true'</code>、<code>1</code>)一律視為關閉。</li>
+<li><code>accessibleTableMaxRows</code> 為負數或非數字時退回預設 500;<code>0</code> 表示只顯示「另有 N 筆資料未列出」註記列。</li>
+<li>兩個選項都可以在建構後以 <code>chart.update({ accessibleTable: 'visible' })</code> 開啟、切換或關閉。</li>
+</ul>
+<h2>DOM 結構</h2>
+<p>開啟後的結構(新增部分只在開啟時存在):</p>
+<pre><code class="language-text">div.cl-canvas-chart                                   根元素
+├─ div.cl-canvas-chart__title                         有 title 時
+├─ div.cl-canvas-chart__body
+│  ├─ canvas[role=img][aria-label][aria-describedby=&quot;cl-chart-table-N&quot;]
+│  └─ div.cl-canvas-chart__tooltip
+└─ div.cl-canvas-chart__a11y[data-mode=&quot;hidden|visible&quot;]           ← 新增
+   └─ table#cl-chart-table-N.cl-canvas-chart__table
+      ├─ caption#cl-chart-table-N-caption
+      ├─ thead &gt; tr &gt; th[scope=&quot;col&quot;] …
+      └─ tbody &gt; tr &gt; (th[scope=&quot;row&quot;] | td) …
+               └─ tr.cl-canvas-chart__table-note &gt; td[colspan]      無資料 / 截斷註記
+</code></pre>
+<ul>
+<li>所有文字(caption、表頭、儲存格)一律以 <code>textContent</code> 寫入，資料中的 HTML 不會被解析。</li>
+<li>樣式全部透過 CSSOM(<code>style.cssText</code>)設定，只使用 <code>var(--cl-*)</code> token;深色模式由 <code>[data-theme="dark"]</code> 的 token 值自動切換。</li>
+<li>表格 id 由 <code>nextUid('cl-chart-table')</code> 產生(可重現);caption id 為 <code>&lt;table id&gt;-caption</code>。</li>
+</ul>
+<h2>兩種模式</h2>
+<table>
+<thead>
+<tr>
+<th></th>
+<th><code>accessibleTable: true</code></th>
+<th><code>accessibleTable: 'visible'</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>呈現</td>
+<td>視覺隱藏(<code>position:absolute; 1px; clip; clip-path</code>),<strong>不使用 <code>display:none</code></strong>,仍在無障礙樹中</td>
+<td>接在繪圖區下方的一般表格</td>
+</tr>
+<tr>
+<td>外層屬性</td>
+<td>無 <code>role</code>、無 <code>tabindex</code>(隱藏內容不可成為 Tab 停駐點)</td>
+<td><code>role="region"</code>、<code>tabindex="0"</code>、<code>aria-labelledby</code> 指向 caption(寬表可用鍵盤橫向捲動)</td>
+</tr>
+<tr>
+<td>版面</td>
+<td>不佔空間，圖表尺寸不變</td>
+<td>見下方「可見模式的版面」</td>
+</tr>
+<tr>
+<td>儲存格樣式</td>
+<td>無</td>
+<td>表頭 <code>--cl-bg-secondary</code> 底、數值欄靠右並使用等寬數字、<code>--cl-text</code> 文字、<code>--cl-border-light</code> 分隔線</td>
+</tr>
+</tbody>
+</table>
+<h3>可見模式的版面</h3>
+<p>圖表根元素原本以 <code>height</code> 固定高度(例如 BarChart 預設 260px)。若直接把表格塞進固定高度的根元素，繪圖區會被擠壓。因此可見模式在圖表第一次完成排版後:</p>
+<ol>
+<li>量測繪圖區(<code>.cl-canvas-chart__body</code>)目前的像素高度(量測時暫時隱藏資料表);</li>
+<li>把繪圖區固定為該像素高度，根元素改為 <code>height: auto</code>;</li>
+<li>資料表接在繪圖區下方，把根元素撐高，後續內容往下推。</li>
+</ol>
+<p>結果是繪圖區大小與未開啟時相同。切回 <code>true</code> 或關閉時，根元素與繪圖區的原始樣式會完整還原。注意:</p>
+<ul>
+<li>以百分比設定 <code>height</code> 的圖表，在可見模式期間高度固定為進入時的像素值，不再跟隨容器高度變化;若容器本身固定高度，資料表會超出容器。</li>
+<li>圖表尚未排版(未掛上文件、位於 <code>display:none</code> 容器內)時不固定高度，待下一次量測再處理。</li>
+<li><code>Sparkline</code> 通常放在表格儲存格或行內文字中，寬度很窄;建議使用 <code>true</code>。</li>
+</ul>
+<h2>ARIA 行為</h2>
+<ul>
+<li>canvas 保留既有的 <code>role="img"</code> 與 <code>aria-label</code>(基底一律會設定);只有當 canvas 缺少這兩個屬性時才補上(<code>aria-label</code> 補 caption 文字),關閉時也只移除自己補上的屬性。</li>
+<li><code>aria-describedby</code> 附加資料表 id;若 canvas 原本已有 <code>aria-describedby</code>,以空白分隔附加，關閉時只移除本資料表的 id。</li>
+<li>資料表只在存在期間與 canvas 關聯:<code>update({ accessibleTable: false })</code>、直接改選項後呼叫 <code>render()</code>、<code>destroy()</code> 都會移除表格與關聯。</li>
+</ul>
+<h3>caption 來源(依序)</h3>
+<ol>
+<li><code>getDataTable()</code> 回傳的 <code>caption</code></li>
+<li><code>options.title</code></li>
+<li><code>options.ariaLabel</code></li>
+<li><code>Locale.t('canvasChart.tableCaption')</code>(「圖表資料」/ "Chart data")</li>
+</ol>
+<p><code>Sparkline</code> 預設 <code>ariaLabel</code> 為 <code>'sparkline'</code>,資料表 caption 改用呼叫端明確傳入的 <code>ariaLabel</code>,未傳入時用 Locale 預設;canvas 的 <code>aria-label</code> 維持原樣。</p>
+<h2>同步時機</h2>
+<p>資料表在「資料變更」時重建，同一輪事件內的多次變更以微任務合併為<strong>一次</strong>重建:</p>
+<table>
+<thead>
+<tr>
+<th>觸發</th>
+<th>是否重建</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>setData(...)</code>、<code>update(patch)</code>(任何 patch)</td>
+<td>是</td>
+</tr>
+<tr>
+<td>直接替換資料參照後呼叫 <code>render()</code>(例如 <code>chart.options.data = next; chart.render()</code>)</td>
+<td>是(以參照比對偵測)</td>
+</tr>
+<tr>
+<td><code>Locale.setLang(...)</code>(資料表存在期間監聽 <code>window</code> 的 <code>locale-changed</code>)</td>
+<td>是</td>
+</tr>
+<tr>
+<td>切換 <code>true</code> ↔ <code>'visible'</code></td>
+<td>是(只換樣式，表格節點沿用)</td>
+</tr>
+<tr>
+<td>單純 <code>render()</code>、容器縮放、主題切換、滑鼠 hover、動畫/力導向模擬的逐幀重繪</td>
+<td>否</td>
+</tr>
+<tr>
+<td>OrgChart 收合/展開、ClusterGraph 鑽取、縮放平移等檢視狀態</td>
+<td>否(資料表永遠列出完整資料)</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>原地修改資料</strong>(例如 <code>data.series[0].data[3] = 5</code>)不會改變參照，請接著呼叫 <code>chart.update()</code> 讓資料表同步;只呼叫 <code>render()</code> 會重繪圖表但不重建資料表。</li>
+<li>重建與繪圖排程脫鉤：圖表離開視口(背景儲存已釋放、略過繪製)時，資料表仍會同步——螢幕閱讀器讀取的是整份文件，而非只有可視範圍。</li>
+<li><code>getDataTable()</code> 擲錯時會 <code>console.error</code> 記錄，資料表顯示「無資料」列，不會中斷圖表。</li>
+</ul>
+<h2>數字與日期格式</h2>
+<ul>
+<li>數字:<code>Intl.NumberFormat(Locale.getLang())</code>(千分位、最多 3 位小數);欄位有 <code>unit</code> 時附加在數值後(例如 <code>1,234.5 kg</code>)。</li>
+<li>百分比欄:值為 0~1 的比例，以 <code>Intl.NumberFormat(..., { style: 'percent', maximumFractionDigits: 1 })</code> 呈現。</li>
+<li>日期時間欄:接受 epoch 毫秒、<code>Date</code> 或可解析字串，以 <code>Intl.DateTimeFormat(Locale.getLang(), { dateStyle: 'medium', timeStyle: 'medium' })</code> 呈現;無法解析者原樣顯示。</li>
+<li><code>null</code>、<code>undefined</code>、<code>''</code>、<code>NaN</code> 顯示為空白格;非數字字串原樣顯示。</li>
+<li>語系代碼不被 <code>Intl</code> 接受時(例如 <code>zh_TW</code>),退回執行環境預設語系，不擲錯。</li>
+</ul>
+<h2>各圖表的資料表形狀</h2>
+<table>
+<thead>
+<tr>
+<th>圖表</th>
+<th>欄位(表頭)</th>
+<th>每列代表</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>BarChart</code>、<code>LineChart</code></td>
+<td>類別、每個系列一欄</td>
+<td><code>labels</code> 的每個類別</td>
+<td>系列欄表頭 = <code>series[i].name</code>,缺名時為「系列 N」;數值附 <code>unit</code>;LineChart 的 <code>null</code> 斷點為空白格</td>
+</tr>
+<tr>
+<td><code>RoseChart</code></td>
+<td>類別、每個系列一欄</td>
+<td>每個類別</td>
+<td>同 BarChart(無 <code>unit</code> 選項)</td>
+</tr>
+<tr>
+<td><code>PieChart</code></td>
+<td>名稱、數值、占比</td>
+<td>每個 <code>value &gt; 0</code> 的項目</td>
+<td>與圖相同只列有畫出的扇區;占比 = 值 / 總和</td>
+</tr>
+<tr>
+<td><code>HeatmapChart</code></td>
+<td>列、欄、數值</td>
+<td>每個非空格</td>
+<td>長格式;略過 <code>null</code>/<code>NaN</code> 格;數值附 <code>unit</code></td>
+</tr>
+<tr>
+<td><code>ScatterChart</code></td>
+<td>[名稱]、x、y、[大小]、[分類]</td>
+<td>每個 x、y 有效的點</td>
+<td>x/y 表頭取 <code>xLabel</code>/<code>yLabel</code>(缺則「X 值」「Y 值」),單位取 <code>xUnit</code>/<code>yUnit</code>;大小/分類表頭取 <code>sizeLabel</code>/<code>colorLabel</code>;方括號欄只在資料有值時出現</td>
+</tr>
+<tr>
+<td><code>SankeyChart</code></td>
+<td>來源、目標、數值</td>
+<td>每條流(link)</td>
+<td>端點顯示節點 <code>name</code>;索引解析規則同佈局</td>
+</tr>
+<tr>
+<td><code>RelationChart</code></td>
+<td>起點、終點、權重</td>
+<td>每條有效邊</td>
+<td>端點顯示節點 <code>label</code>(缺則 <code>id</code>);權重 = <code>link.value</code>;略過端點不存在或自環的邊</td>
+</tr>
+<tr>
+<td><code>ClusterGraph</code></td>
+<td>起點、終點、權重</td>
+<td>每一對有關聯的人員(不分方向)</td>
+<td>同對的多條邊合併，權重 = 邊數;列出完整資料，不受鑽取展開狀態影響</td>
+</tr>
+<tr>
+<td><code>OrgChart</code>、<code>HierarchyChart</code></td>
+<td>路徑、說明</td>
+<td>每個節點(前序)</td>
+<td>路徑 = 各層 <code>title</code> 以「 / 」串接(缺則 <code>label</code>/<code>id</code>);說明 = <code>label</code>;不受收合狀態影響</td>
+</tr>
+<tr>
+<td><code>SunburstChart</code></td>
+<td>路徑、數值</td>
+<td>每個扇區(含根，前序)</td>
+<td>數值規則同繪圖：非葉 = 子節點加總、葉節點缺值 = 1;另行計算，不寫回原資料</td>
+</tr>
+<tr>
+<td><code>FlameChart</code></td>
+<td>路徑、數值</td>
+<td>每個框(含根，前序)</td>
+<td>數值取節點原值</td>
+</tr>
+<tr>
+<td><code>TimelineChart</code></td>
+<td>名稱、[群組]、開始、結束</td>
+<td>每個事件(資料順序)</td>
+<td>群組(泳道)欄只在資料有 <code>group</code> 時出現;時間以日期時間格式呈現</td>
+</tr>
+<tr>
+<td><code>Sparkline</code></td>
+<td>序號、數值</td>
+<td>每個資料點</td>
+<td>序號自 1 起</td>
+</tr>
+<tr>
+<td><code>CanvasChart</code>(基底)</td>
+<td>依 <code>options.data</code> 形狀</td>
+<td>—</td>
+<td><code>{ labels, series }</code> → 同 BarChart;數字陣列 → 序號/數值;<code>[{ name 或 label, value }]</code> → 名稱/數值;<code>{ nodes, links }</code> → 來源/目標/數值;階層 <code>{ name, children }</code> → 路徑/數值;其他形狀 → 「無資料」</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>路徑欄、名稱欄、類別欄以 <code>&lt;th scope="row"&gt;</code> 呈現(列標題),螢幕閱讀器在欄間移動時會一併報讀。</li>
+<li>無任何資料時，資料表只有一列跨全部欄的「無資料」。</li>
+</ul>
+<h2>getDataTable() 契約</h2>
+<pre><code class="language-js">/**
+ * @returns {{
+ *   caption?: string,
+ *   columns: Array&lt;{
+ *     key: string,              // 列物件中的鍵
+ *     label: string,            // 表頭文字(未給時用 key)
+ *     format?: 'number' | 'percent' | 'datetime' | 'text',  // 省略時依值型別推斷
+ *     unit?: string,            // 數值後綴(number 欄)
+ *     rowHeader?: boolean       // 該欄以 &lt;th scope=&quot;row&quot;&gt; 呈現
+ *   }&gt;,
+ *   rows: Array&lt;Object&gt;         // 原始值;percent 為 0~1、datetime 為 epoch 毫秒或 Date
+ * } | null}
+ */
+getDataTable()
+</code></pre>
+<ul>
+<li>列物件存<strong>原始值</strong>,格式化(語系、單位、百分比)由基底負責，因此 <code>getDataTable()</code> 的回傳值也適合拿來做 CSV 匯出等用途。</li>
+<li>回傳 <code>null</code> 或空 <code>rows</code> 時，資料表顯示「無資料」。</li>
+<li>資料不在 <code>options.data</code> 的自訂子類，另外覆寫 <code>_a11ySources()</code> 回傳資料參照陣列，讓「替換資料參照後 <code>render()</code>」也能被偵測(內建子類皆已處理)。</li>
+</ul>
+<p>自訂子類範例:</p>
+<pre><code class="language-js">import { CanvasChart } from './CanvasChart.js';
+import Locale from '../i18n/index.js';
+
+class RoomUsageChart extends CanvasChart {
+    draw(ctx, w, h) { /* 以 this.options.rooms 繪製 */ }
+
+    getDataTable() {
+        return {
+            columns: [
+                { key: 'room', label: Locale.t('canvasChart.name'), rowHeader: true },
+                { key: 'hours', label: Locale.t('canvasChart.value'), format: 'number', unit: 'h' },
+                { key: 'share', label: Locale.t('canvasChart.percent'), format: 'percent' }
+            ],
+            rows: this.options.rooms.map((r) =&gt; ({ room: r.name, hours: r.hours, share: r.hours / 40 }))
+        };
+    }
+
+    _a11ySources() { return [this.options.rooms]; }
+}
+</code></pre>
+<h2>方法</h2>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>getDataTable()</code></td>
+<td>回傳目前資料的表格模型(上方契約);純函式，資料表關閉時也可呼叫</td>
+</tr>
+<tr>
+<td><code>update(patch)</code></td>
+<td>既有方法;合併選項後重繪，並觸發資料表重建一次;<code>accessibleTable</code> / <code>accessibleTableMaxRows</code> 亦可由此切換</td>
+</tr>
+<tr>
+<td><code>setData(data)</code></td>
+<td>既有方法(各子類);替換資料並重繪，資料表同步重建</td>
+</tr>
+<tr>
+<td><code>render()</code></td>
+<td>既有方法;排程重繪。只有在資料參照或 <code>accessibleTable</code> 選項改變時才會牽動資料表</td>
+</tr>
+<tr>
+<td><code>destroy()</code></td>
+<td>既有方法;另外移除資料表、canvas 的 <code>aria-describedby</code>、<code>locale-changed</code> 監聽與可見模式的高度固定。可重複呼叫</td>
+</tr>
+</tbody>
+</table>
+<h2>事件與回呼</h2>
+<p>不新增事件或回呼。資料表存在期間會在 <code>window</code> 監聽 <code>Locale.setLang()</code> 發出的 <code>locale-changed</code> 事件，以重建 caption、表頭與數字格式;關閉或 <code>destroy()</code> 時移除。</p>
+<h2>鍵盤與 ARIA 摘要</h2>
+<ul>
+<li><code>true</code>:表格不可聚焦、不在 Tab 順序中;螢幕閱讀器可用表格導覽(例如 NVDA/JAWS 的 <code>T</code> 鍵)找到它，或在讀到圖片時經由 <code>aria-describedby</code> 取得描述。</li>
+<li><code>'visible'</code>:外層 <code>role="region"</code> 以 caption 命名，<code>tabindex="0"</code> 可用 Tab 聚焦，聚焦後以方向鍵橫向捲動寬表;焦點外框沿用瀏覽器預設(不覆寫 <code>outline</code>)。</li>
+<li>表頭 <code>th[scope="col"]</code>、列標題 <code>th[scope="row"]</code>、截斷/無資料註記列以 <code>colspan</code> 跨全部欄。</li>
+</ul>
+<h2>Locale 字串(<code>canvasChart</code> 命名空間)</h2>
+<table>
+<thead>
+<tr>
+<th>鍵</th>
+<th>zh-TW</th>
+<th>en</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>tableCaption</code></td>
+<td>圖表資料</td>
+<td>Chart data</td>
+</tr>
+<tr>
+<td><code>empty</code></td>
+<td>無資料</td>
+<td>No data</td>
+</tr>
+<tr>
+<td><code>truncated</code></td>
+<td>另有 {count} 筆資料未列出</td>
+<td count>Rows not shown:</td>
+</tr>
+<tr>
+<td><code>category</code></td>
+<td>類別</td>
+<td>Category</td>
+</tr>
+<tr>
+<td><code>series</code></td>
+<td index>系列</td>
+<td index>Series</td>
+</tr>
+<tr>
+<td><code>name</code></td>
+<td>名稱</td>
+<td>Name</td>
+</tr>
+<tr>
+<td><code>value</code></td>
+<td>數值</td>
+<td>Value</td>
+</tr>
+<tr>
+<td><code>percent</code></td>
+<td>占比</td>
+<td>Percentage</td>
+</tr>
+<tr>
+<td><code>row</code> / <code>column</code></td>
+<td>列 / 欄</td>
+<td>Row / Column</td>
+</tr>
+<tr>
+<td><code>source</code> / <code>target</code></td>
+<td>來源 / 目標</td>
+<td>Source / Target</td>
+</tr>
+<tr>
+<td><code>from</code> / <code>to</code> / <code>weight</code></td>
+<td>起點 / 終點 / 權重</td>
+<td>From / To / Weight</td>
+</tr>
+<tr>
+<td><code>path</code> / <code>description</code></td>
+<td>路徑 / 說明</td>
+<td>Path / Description</td>
+</tr>
+<tr>
+<td><code>group</code> / <code>start</code> / <code>end</code></td>
+<td>群組 / 開始 / 結束</td>
+<td>Group / Start / End</td>
+</tr>
+<tr>
+<td><code>index</code></td>
+<td>序號</td>
+<td>Index</td>
+</tr>
+<tr>
+<td><code>xValue</code> / <code>yValue</code> / <code>size</code></td>
+<td>X 值 / Y 值 / 大小</td>
+<td>X value / Y value / Size</td>
+</tr>
+</tbody>
+</table>
+<p>其他語系可用 <code>Locale.register('&lt;lang&gt;', 'canvasChart', { … })</code> 補齊。</p>
+<h2>範例</h2>
+<p>以下頁面放在 <code>packages/javascript/browser/</code> 目錄下，以任一靜態伺服器開啟即可執行:</p>
+<pre><code class="language-html">&lt;!DOCTYPE html&gt;
+&lt;html lang=&quot;zh-TW&quot; data-theme=&quot;light&quot;&gt;
+&lt;head&gt;
+    &lt;meta charset=&quot;utf-8&quot;&gt;
+    &lt;title&gt;圖表無障礙資料表&lt;/title&gt;
+    &lt;link rel=&quot;stylesheet&quot; href=&quot;ui_components/theme.css&quot;&gt;
+&lt;/head&gt;
+&lt;body&gt;
+    &lt;div id=&quot;orders&quot;&gt;&lt;/div&gt;
+    &lt;div id=&quot;rooms&quot;&gt;&lt;/div&gt;
+    &lt;script type=&quot;module&quot;&gt;
+        import { BarChart } from './ui_components/viz/BarChart.js';
+        import { PieChart } from './ui_components/viz/PieChart.js';
+
+        // 可見資料表:圖下直接列出數據
+        const orders = new BarChart({
+            container: '#orders',
+            title: '各月訂單數',
+            unit: '筆',
+            data: {
+                labels: ['一月', '二月', '三月'],
+                series: [{ name: '線上', data: [120, 98, 143] }, { name: '門市', data: [80, 91, 77] }]
+            },
+            accessibleTable: 'visible'
+        });
+
+        // 隱藏資料表:畫面不變，只提供給輔助科技
+        new PieChart({
+            container: '#rooms',
+            title: '會議室使用占比',
+            data: [{ name: 'A 室', value: 42 }, { name: 'B 室', value: 30 }, { name: 'C 室', value: 28 }],
+            accessibleTable: true
+        });
+
+        // 資料更新 → 資料表同步重建一次
+        setTimeout(() =&gt; orders.setData({
+            labels: ['一月', '二月', '三月', '四月'],
+            series: [{ name: '線上', data: [120, 98, 143, 160] }, { name: '門市', data: [80, 91, 77, 85] }]
+        }), 2000);
+
+        // 讀取表格模型(例如匯出 CSV)
+        console.log(orders.getDataTable());
+    &lt;/script&gt;
+&lt;/body&gt;
+&lt;/html&gt;
+</code></pre>
+<h2>限制與注意事項</h2>
+<ul>
+<li><code>aria-describedby</code> 指向整張表格：部分螢幕閱讀器在讀到圖片時會把描述全文念出;資料量大時可調低 <code>accessibleTableMaxRows</code>,或讓使用者直接以表格導覽閱讀。</li>
+<li>資料表呈現「資料」,不呈現檢視狀態(縮放、平移、鑽取、收合、hover)。</li>
+<li><code>RelationChart</code> / <code>ClusterGraph</code> 的資料表列出關聯邊;沒有任何邊的孤立節點與 ClusterGraph 的群組層級不會列在表中。</li>
+<li>資料表的表頭與註記走 Locale;canvas 上既有的軸標籤、tooltip、「無資料」等繪製文字維持原樣，不在本功能範圍內。</li>
+</ul>
+</main>
+</body>
+</html>

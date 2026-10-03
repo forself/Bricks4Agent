@@ -1,5 +1,7 @@
 # PaginationHelper - Pagination Utilities
 
+> ⚠ Reference code: this folder has no .csproj, is not compiled or referenced by any project, and is not built by CI; the content below is not build-verified.
+
 Comprehensive pagination utilities for handling paged results in API responses and database queries.
 
 ## Features
@@ -19,6 +21,8 @@ Comprehensive pagination utilities for handling paged results in API responses a
 - DTO mapping support
 
 ## Usage
+
+> Most examples below assume an EF Core `DbContext` (`_context`, `CountAsync`, `ToListAsync`), an `IUnitOfWork` with `Repository<T>().Query()`, and a controller base class providing `Success(...)` (`api/Controllers/BaseController`, itself unbuilt). None of these exist as built code in this repo (the repo uses BaseOrm, not EF Core); only `PaginationHelper.cs` itself belongs to this folder.
 
 ### Basic Pagination
 
@@ -399,7 +403,7 @@ public IActionResult Get([FromQuery] PaginationParams pagination)
 
 - System.Linq
 
-- .NET 6.0 or higher
+- .NET 10 (`net10.0`, the repo's target framework)
 
 - No external NuGet packages required
 

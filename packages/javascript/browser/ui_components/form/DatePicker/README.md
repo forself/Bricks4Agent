@@ -32,7 +32,7 @@ import { DatePicker } from './packages/javascript/browser/ui_components/form/Dat
 
 ### CSS 樣式
 
-DatePicker 使用 inline styles，無需額外導入 CSS 檔。
+DatePicker 以 CSSOM 設定樣式，不需額外的元件 CSS 檔；但樣式值使用 `var(--cl-*)` token，頁面必須載入 `theme.css`。
 
 ---
 
@@ -114,10 +114,10 @@ pickerRange.mount('#date-range-container');
 | 參數 | 類型 | 預設值 | 說明 |
 |---|---|---|---|
 | `label` | String | `''` | 標籤文字 |
-| `placeholder` | String | `'請選擇日期'` | 未選擇時的提示文字 |
+| `placeholder` | String | `Locale.t('datePicker.placeholder')` | 未選擇時的提示文字 |
 | `value` | Date | `null` | 初始日期值 |
 | `disabled` | Boolean | `false` | 是否禁用 |
-| `required` | Boolean | `false` | 是否必填（顯示紅色星號） |
+| `required` | Boolean | `false` | 只在有設定 `label` 時於標籤旁顯示紅色星號；元件本身不做必填驗證 |
 | `size` | String | `'medium'` | 尺寸：`'small'` / `'medium'` / `'large'` |
 | `useROC` | Boolean | `false` | 是否使用民國年格式（舊參數，建議改用 `format`） |
 | `format` | String | `'western'` | 日期格式：`'western'`（西元）/ `'taiwan'`（民國） |
@@ -234,6 +234,38 @@ picker.toggle();
 
 ---
 
+#### `setDisabled(disabled)`
+
+設定停用狀態。
+
+```javascript
+picker.setDisabled(true);
+```
+
+---
+
+#### `setError(message, { display })` / `clearError()`
+
+標示或清除欄位錯誤：輸入框紅框、`aria-invalid`，錯誤文字顯示在輸入框下方。`display: false` 只標示狀態、不顯示文字，給自行顯示錯誤文字的外層使用。
+
+```javascript
+picker.setError('請選擇日期');
+picker.clearError();
+```
+
+---
+
+#### `show()` / `hide()`
+
+顯示 / 隱藏組件。
+
+```javascript
+picker.hide();
+picker.show();
+```
+
+---
+
 #### `destroy()`
 
 銷毀組件並從 DOM 中移除。
@@ -288,9 +320,9 @@ const picker = new DatePicker({
 
 picker.mount('#dynamic-date');
 
-// 根據業務邏輯動態更新範圍
+// 根據業務邏輯動態更新範圍（改 options.max 不會生效，需直接設定 maxDate）
 document.getElementById('limit-future').addEventListener('click', () => {
-    picker.options.max = new Date();
+    picker.maxDate = new Date();
     picker._renderCalendar();
     console.log('已限制為今天或之前的日期');
 });
@@ -305,8 +337,8 @@ const startDatePicker = new DatePicker({
     label: '開始日期',
     required: true,
     onChange: (date) => {
-        // 動態設定結束日期的最小值
-        endDatePicker.options.min = date;
+        // 動態設定結束日期的最小值（改 options.min 不會生效，需直接設定 minDate）
+        endDatePicker.minDate = date;
         endDatePicker._renderCalendar();
     }
 });
@@ -368,14 +400,14 @@ new DatePicker({
 ### 民國年格式 (format: 'taiwan')
 
 ```javascript
-// 輸出格式: YYY/MM/DD (民國年)
+// 輸出格式: 民國年/MM/DD（民國年不補零，例：1990/05/12 → 79/05/12）
 new DatePicker({
     format: 'taiwan'
 });
 
 // 選擇 2026 年 1 月 24 日（民國 115 年）
 // 顯示: 115/01/24
-// 年份下拉選單顯示: 民國 115 年
+// 年份下拉選單顯示: 115
 ```
 
 **民國年轉換公式**: 民國年 = 西元年 - 1911
@@ -390,7 +422,7 @@ new DatePicker({
 
 | 屬性 | 效果 |
 |---|---|
-| `color` | 灰色 (`#ccc`) |
+| `color` | 灰色 (`var(--cl-border-dark)`) |
 | `opacity` | 半透明 (0.5) |
 | `cursor` | 禁止圖標 (`not-allowed`) |
 
@@ -411,9 +443,9 @@ const picker = new DatePicker({
 
 1. **渲染層面**: 禁用日期添加 `data-disabled="true"` 屬性
 
-2. **事件層面**: 點擊事件檢查 `data-disabled` 屬性
+2. **事件層面**: 點擊事件檢查渲染時計算的 `isDisabled`（closure 變數，不讀 `data-disabled` 屬性）
 
-3. **邏輯層面**: `_selectDate()` 方法內再次檢查日期範圍
+3. **邏輯層面**: 狀態機的 `SELECT_DAY` reducer 內再次檢查日期範圍
 
 這種三層防護確保絕對不會選擇超出範圍的日期。
 

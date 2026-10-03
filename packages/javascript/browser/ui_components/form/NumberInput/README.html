@@ -38,7 +38,7 @@ const input = new NumberInput({
     placeholder: '',         // 提示文字
     width: '100%',           // 寬度
     size: 'medium',          // 'small' | 'medium' | 'large'
-    onChange: (value) =&gt; {},  // 變更回調
+    onChange: (value) =&gt; {},  // 變更回調：+/- 按鈕、方向鍵、clear()，以及直接輸入後 blur 或 Enter 且數值確實改變時觸發
     className: ''            // 自訂 CSS 類別
 });
 </code></pre>
@@ -71,12 +71,20 @@ const input = new NumberInput({
 <td><code>clear()</code></td>
 <td>清空為 null</td>
 </tr>
+<tr>
+<td><code>setError(msg, { display })</code> / <code>clearError()</code></td>
+<td>標示 / 清除欄位錯誤：紅框、<code>aria-invalid</code> 與錯誤文字；<code>display: false</code> 只標示狀態、不顯示文字</td>
+</tr>
 </tbody>
 </table>
 <h3>屬性</h3>
 <ul>
-<li><code>element</code> — 根 DOM 元素</li>
-<li><code>value</code> — 目前數值</li>
+<li>
+<p><code>element</code> — 根 DOM 元素</p>
+</li>
+<li>
+<p><code>value</code> — 目前數值</p>
+</li>
 </ul>
 <h2>使用範例</h2>
 <pre><code class="language-javascript">import { NumberInput } from './NumberInput.js';

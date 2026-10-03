@@ -7,7 +7,7 @@
 
 ### AI Agent 框架入口
 
-- 通用 / 其他框架：`.agentrc`（指向本手冊）
+- 通用 / 其他框架：`.agentrc`（指向 [AGENTS.md](AGENTS.md)，再連到本手冊與 AGENT-UI-GUIDE.md）
 
 - Claude Code：[CLAUDE.md](CLAUDE.md)
 
@@ -21,7 +21,7 @@ Bricks4Agent 是一套**零 runtime 依賴的 Vanilla JS UI 元件庫**，加上
 
 - **前端 UI 元件庫**（Vanilla JS，零外部 runtime dependency，116 個元件）
 
-- **頁面生成引擎**（PageGenerator，支援 30 種欄位類型；靜態產碼 + 動態渲染）
+- **頁面生成引擎**（PageGenerator，`PageDefinition.FieldTypes` 共 37 種欄位類型，`tools/page-gen.js` 接受其中 34 種；靜態產碼 + 動態渲染）
 
 - **SPA 生成器**（CLI + Web UI，一鍵產生全端 CRUD）
 
@@ -48,12 +48,14 @@ AI agent 動手前的優先閱讀：手刻頁面／補元件看 [AGENT-UI-GUIDE.
 ### 1.2 Build 與 test 入口
 
 ```powershell
-npm test                        # 頁面生成器測試
+npm --prefix packages/javascript/browser install   # 首次：安裝 Vitest/jsdom（npm test 的最後一段需要）
+npm test                        # test-all.js 生成器範例 + test:ui-components + test:custom-components + 元件 Vitest 套件
 npm run validate:ui-library     # UI 元件庫檢查
 npm run audit:ui-styles         # 樣式 token 稽核
 npm run test:form-designer:dotnet # 生成並編譯 SQLite/SQL Server/PostgreSQL/MySQL 後端
 npm run test:dotnet10           # 35 個 net10.0 專案；任何建置警告都視為錯誤
-npm run serve                   # 啟動生成器 Web UI（port 3080）
+node tools/spa-generator/server.js # 生成器 Web UI + 生成 API（port 3080）
+npm run serve                   # 只以 StaticServer 提供生成器靜態前端（port 3080，無 /api）
 
 # 生成器產出的 .NET 10 後端（SPA 範本）
 dotnet build templates/spa/backend/SpaApi.csproj
@@ -63,10 +65,11 @@ dotnet test templates/spa/backend.Tests/SpaApi.Template.Tests.csproj
 ### 核心工具鏈
 
 ```
-spa-cli.js feature → generate-api.js (C# 後端)
-                    → generate-page.js (前端頁面)
-                        ├── 無 --fields → 原始 HTML 模板
-                        └── 有 --fields → PageGenerator → 元件庫頁面 + 自動更新 routes.js
+spa-cli.js feature → generate-api.js (C# Model/Service；--fields 只決定後端型別)
+                    → generate-page.js ×2 (前端頁面)
+                        └── 一律輸出原始 BasePage 模板 + 自動登錄 pages/generated/routes.generated.js
+
+元件庫頁面：PageDefinition JSON → PageGenerator（靜態）／DynamicPageRenderer（動態）／tools/page-gen.js（§7）
 ```
 
 ---
@@ -94,39 +97,31 @@ node templates/spa/scripts/spa-cli.js feature Diary --fields "Title:string,Conte
 ```
 backend/Models/Diary.cs              ← C# Model + DTO
 backend/Services/DiaryService.cs     ← CRUD Service
-frontend/pages/diarys/DiaryListPage.js   ← 元件庫列表頁
-frontend/pages/diarys/DiaryDetailPage.js ← 元件庫詳情頁
-frontend/pages/routes.js             ← 自動更新（import + 路由）
+frontend/pages/diarys/DiaryListPage.js   ← 原始 BasePage 列表模板頁（不依欄位產生元件）
+frontend/pages/diarys/DiaryDetailPage.js ← 原始 BasePage 詳情模板頁
+frontend/pages/generated/routes.generated.js ← 自動登錄（import + 路由）
 ```
 
-**後續步驟（僅需 1 步）：**
-依照終端輸出的指示，將 API 端點程式碼貼入 `Program.cs`。
+**後續步驟：**
+`generate-api.js` 預設會以 `// --- BRICKS:* ---` 標記自動修補 `Program.cs`／`AppDbContext.cs`，但這些標記已於 `9093509` 從範本移除，因此只會印出 `Marker not found`、不會修補。建議加上 `--no-patch`（`spa-cli.js feature` 會把它轉給 `generate-api.js`），取得終端印出的服務註冊與 API 端點程式碼，再手動更新 `AppDbContext.cs` 的 `EnsureCreated()`（建表 SQL）與 AppDb 方法、`Program.cs`（服務註冊 + API 端點）。`spa-cli.js` 結尾列出的第 3 步「更新 routes.js」已由 `generate-page.js` 的自動登錄完成（除非加了 `--no-register`）。
 
 ---
 
 ### 2.2 僅生成頁面
 
 ```bash
-# 元件庫頁面（推薦）
-node templates/spa/scripts/generate-page.js <路徑/名稱> --fields "<欄位>" --api-path "<API路徑>"
-
-# 原始模板頁面（向下相容）
-node templates/spa/scripts/generate-page.js <路徑/名稱>
-node templates/spa/scripts/generate-page.js <路徑/名稱> --detail
+node templates/spa/scripts/generate-page.js <路徑/名稱> [--detail] [--no-register]
 ```
 
 **範例：**
 
 ```bash
-# 元件庫表單頁
-node scripts/generate-page.js orders/OrderList --fields "Name:string,Price:decimal" --api-path "/api/orders"
-
-# 元件庫詳情頁
-node scripts/generate-page.js orders/OrderDetail --detail --fields "Name:string,Price:decimal" --api-path "/api/orders"
-
-# 原始模板（無 --fields）
-node scripts/generate-page.js SimplePage
+node templates/spa/scripts/generate-page.js orders/OrderList
+node templates/spa/scripts/generate-page.js orders/OrderDetail --detail
+node templates/spa/scripts/generate-page.js SimplePage --no-register
 ```
+
+`generate-page.js` 一律輸出原始 `BasePage` 模板頁（檔名含 `detail`／`view` 或加 `--detail` 時用詳情模板），沒有 `--fields`／`--api-path`，也不使用 PageGenerator；要依欄位產生元件庫頁面請用 PageGenerator／DynamicPageRenderer／`tools/page-gen.js`（§7）。預設會把新頁登錄到 `frontend/pages/generated/routes.generated.js`（`--no-register` 略過）；目標檔已存在時報錯結束、不覆蓋。
 
 ---
 
@@ -152,23 +147,13 @@ node templates/spa/scripts/create-project.js --config templates/spa/scripts/proj
 
 ## 3. 欄位類型對應表
 
-### 3.1 CLI 類型 → PageDefinition 類型 → UI 元件
+### 3.1 CLI `--fields` 類型只決定後端型別
 
-| CLI `--fields` 類型 | PageDefinition 類型 | 生成的 UI 元件 | 說明 |
-|---|---|---|---|
-| `string` | `text` | TextInput | 單行文字 |
-| `text` | `textarea` | WebTextEditor | 多行富文本 |
-| `int`, `integer` | `number` | NumberInput | 整數 |
-| `long` | `number` | NumberInput | 長整數 |
-| `decimal`, `float`, `double` | `number` | NumberInput | 小數 |
-| `bool`, `boolean` | `toggle` | ToggleSwitch | 開關 |
-| `date` | `date` | DatePicker | 日期選擇器 |
-| `datetime` | `datetime` | DateTimeInput | 日期時間 |
-| `guid` | `text` | TextInput | GUID 文字 |
+`spa-cli.js feature`／`generate-api.js` 的 `--fields` 類型**只決定 C# 後端型別**（§3.3）。`spa-cli.js` 呼叫 `generate-page.js` 時不傳 `--fields`（spa-cli.js:116-117），前端一律是原始 `BasePage` 模板頁，不會依欄位挑選 UI 元件。
 
-### 3.2 未對應的類型（預設為 TextInput）
+### 3.2 要依欄位產生元件庫頁面
 
-未列於上表的 CLI 類型會預設映射為 `text` → TextInput。若需要其他 30 種欄位類型（如 `select`、`multiselect`、`color`、`image`、`richtext`、`canvas` 等），請直接使用 PageDefinition JSON 格式搭配 PageGenerator API 或 `tools/page-gen.js`。
+請直接使用 PageDefinition JSON 格式（37 種欄位類型，如 `select`、`multiselect`、`color`、`image`、`richtext`、`canvas` 等，見 §7.1），搭配 PageGenerator（靜態產碼）、DynamicPageRenderer（動態渲染）或 `tools/page-gen.js`。
 
 ### 3.3 C# 類型對應（generate-api.js）
 
@@ -190,37 +175,37 @@ node templates/spa/scripts/create-project.js --config templates/spa/scripts/proj
 
 ## 4. SPA 範本元件清單
 
-`templates/spa/frontend/components/` 中的元件會隨 `spa new` 一起複製到新專案。PageGenerator 生成的頁面會自動 import 這些元件：
+`templates/spa/frontend/components/` 中的檔案會隨 `spa new` 一起複製到新專案，實際內容如下（`BasePage` 使用其中的 `Panel/ModalPanel.js`、`Panel/ToastPanel.js` 與 `CanvasIcon.js`）：
 
 | 元件 | 路徑 | 用途 |
 |---|---|---|
-| TextInput | `components/TextInput/TextInput.js` | 文字輸入（含 XSS 防護） |
-| NumberInput | `components/NumberInput/NumberInput.js` | 數字輸入（含 +/- 按鈕） |
-| Dropdown | `components/Dropdown/Dropdown.js` | 下拉選單（含搜尋） |
-| ToggleSwitch | `components/ToggleSwitch/ToggleSwitch.js` | 開關元件 |
-| WebTextEditor | `components/WebTextEditor/WebTextEditor.js` | 簡易富文本編輯器 |
-| DatePicker | `components/DatePicker/DatePicker.js` | 日期選擇器 |
+| CanvasIcon | `components/CanvasIcon.js` | Canvas 圖示 |
 | ColorPicker | `components/ColorPicker/ColorPicker.js` | 顏色選擇器 |
+| DatePicker | `components/DatePicker/DatePicker.js` | 日期選擇器 |
 | ImageViewer | `components/ImageViewer/ImageViewer.js` | 圖片檢視器 |
-| Panel | `components/Panel/Panel.js` | 面板佈局 |
+| Panel | `components/Panel/{BasePanel,ModalPanel,PanelManager,ToastPanel}.js` | 面板／對話框／Toast |
+| services | `components/services/{GeolocationService,WeatherService}.js` | 定位／天氣服務 |
+| utils | `components/utils/security.js` | 跳脫與安全檢查工具 |
+
+注意：PageGenerator 生成的頁面**不會** import 這個資料夾；元件 import 一律指向元件庫本體 `@component-library/ui_components/…`（見 PageGenerator.js 的 `ComponentPaths`）。
 
 ---
 
 ## 5. 自動路由更新
 
-使用 `--fields` 生成頁面時，`routes.js` 會自動更新：
+`generate-page.js` 預設會把新頁登錄到 `frontend/pages/generated/routes.generated.js`（`routes.js` 會併入其中的 `generatedRoutes`）：
 
-1. 在最後一個 `import` 後插入新的 import 語句
+1. 檔案不存在時先建立空的 `generatedRoutes` 陣列
 
-2. 在 `];` 前插入新的路由條目
+2. 在最後一個 `import` 後插入新的 import 語句
 
-3. 自動處理逗號分隔
+3. 在 `];` 前插入新的路由條目
 
-4. 重複檢查：若 className 已存在則跳過
+4. 自動處理逗號分隔
 
-5. 保持原始換行符號（CRLF/LF）
+5. 重複檢查：若相同 path 或 className 已存在則跳過
 
-**不使用 `--fields`**（原始模板）時，需手動更新 routes.js，終端會輸出所需的程式碼。
+**加 `--no-register`** 時不改路由檔，需自行把終端輸出的 import 與路由條目加進路由設定。
 
 ---
 
@@ -252,13 +237,14 @@ Bricks4Agent/
 ├── templates/spa/                        ← SPA 專案範本
 │   ├── scripts/
 │   │   ├── spa-cli.js                    ← CLI 入口（new/feature/page/api）
-│   │   ├── generate-page.js              ← 頁面生成（整合 PageGenerator）
+│   │   ├── generate-page.js              ← 原始模板頁面生成
 │   │   ├── generate-api.js               ← C# API 生成
 │   │   └── create-project.js             ← 專案建立
 │   ├── frontend/
 │   │   ├── core/                         ← 框架核心（BasePage, Router, Store）
 │   │   ├── pages/                        ← 頁面範本
-│   │   │   └── routes.js                 ← 路由配置（自動更新）
+│   │   │   ├── routes.js                 ← 路由配置（併入 generated/ 的自動登錄路由）
+│   │   │   └── generated/routes.generated.js ← generate-page.js 自動登錄
 │   │   └── components/                   ← SPA 範本元件
 │   └── backend/                          ← .NET 10 後端範本（SpaApi.csproj）
 └── tools/
@@ -271,14 +257,14 @@ Bricks4Agent/
 
 ## 7. PageGenerator 進階用法
 
-若 CLI 的 13 種欄位類型不夠用，可直接使用 PageGenerator 的 30 種欄位類型：
+CLI 的 `--fields` 只決定後端型別（§3）；要依欄位產生元件庫頁面，請直接使用 PageGenerator 的 37 種欄位類型（`PageDefinition.FieldTypes`）：
 
 ```javascript
 import { PageGenerator } from './packages/javascript/browser/page-generator/PageGenerator.js';
 
 const definition = {
     name: 'MyFormPage',
-    type: 'form',           // form | detail | list
+    type: 'form',           // form | list | detail | dashboard | tool
     description: '自訂表單',
     fields: [
         { name: 'Color', type: 'color', label: '顏色' },
@@ -307,25 +293,36 @@ const result = generator.generate(definition);
 
 **命名限制**：`name`、每個 `fields[].name`，以及 `behaviors.onInit/onSave/onDelete` 與 `behaviors.fieldTriggers[欄位名]` 的方法名，都會被寫成生成檔中的**裸 JavaScript 識別字**，無法跳脫，因此生成前會先驗證是否為合法的 JS `IdentifierName`（依 Unicode `ID_Start`/`ID_Continue`，中文欄位名如 `姓名` 合法；`a-b`、`2col`、含空白或引號者不合法）。保留字只在繫結位置（`name` → class 名稱）被擋。不合法時 `generate()` 回傳 `{ code: null, errors: [...] }`——**產碼後務必先檢查 `result.errors` 是否為空**。
 
-### 7.1 完整 30 種欄位類型
+### 7.1 完整 37 種欄位類型
 
-| 類型 | 元件 | 類型 | 元件 |
-|---|---|---|---|
-| text | TextInput | number | NumberInput |
-| textarea | WebTextEditor | toggle | ToggleSwitch |
-| date | DatePicker | datetime | DateTimeInput |
-| select | Dropdown | multiselect | MultiSelect |
-| checkbox | CheckboxGroup | radio | RadioGroup |
-| color | ColorPicker | slider | Slider |
-| rating | StarRating | image | ImageUploader |
-| file | FileUploader | password | TextInput(password) |
-| email | TextInput(email) | url | TextInput(url) |
-| tel | TextInput(tel) | richtext | RichTextEditor |
-| canvas | CanvasBoard | address | AddressInput |
-| location | LocationPicker | weather | WeatherWidget |
-| avatar | AvatarUploader | tags | TagInput |
-| signature | SignaturePad | percentage | PercentageInput |
-| currency | CurrencyInput | hidden | (隱藏欄位) |
+元件欄以動態渲染（[FieldResolver.js](packages/javascript/browser/page-generator/FieldResolver.js)）為準；［］內為靜態產碼（PageGenerator）的差異。
+
+| 類型 | 元件 |
+|---|---|
+| text / email / password | TextInput |
+| tel / url | 未註冊，退回 TextInput |
+| number | NumberInput |
+| textarea / memo | TextArea［靜態：memo 生成錯誤］ |
+| select | Dropdown |
+| multiselect | MultiSelectDropdown［靜態：無模板，不渲染任何控制項］ |
+| radio | Radio.createGroup |
+| checkbox | Checkbox |
+| toggle | ToggleSwitch |
+| date / rocDate | DatePicker（rocDate 帶 `format: 'taiwan'`） |
+| time | TimePicker |
+| datetime | DateTimeInput |
+| richtext | WebTextEditor |
+| canvas | DrawingBoard |
+| color | ColorPicker |
+| image | ImageViewer |
+| file | BatchUploader |
+| geolocation / weather | GeolocationService / WeatherService |
+| address / addresslist / chained / list / personinfo / phonelist / socialmedia / organization / student | AddressInput / AddressListInput / ChainedInput / ListInput / PersonInfoList / PhoneListInput / SocialMediaList / OrganizationInput / StudentInput |
+| slider | Slider［靜態：生成錯誤］ |
+| rating / tags | 未註冊，退回 TextInput［靜態：原生星等 radio／標籤清單］ |
+| hidden | `<input type="hidden">` |
+
+靜態產碼對 text、email、password、tel、url、number、textarea、select、radio、checkbox、toggle、time、file、hidden 輸出原生 HTML 控制項，只有 date、rocDate、datetime、richtext、canvas、color、image、geolocation、weather 與九個複合輸入會 import 元件庫元件。`tools/page-gen.js` 只接受其中 34 種（不含 rocDate、slider、memo），並在靜態生成前把 multiselect 轉成 select。
 
 ### 7.2 用 `tools/page-gen.js` 批次產頁
 
@@ -334,6 +331,8 @@ const result = generator.generate(definition);
 ```bash
 node tools/page-gen.js --def employee.json --mode static --output ./output/
 ```
+
+CLI 的輸入須為 page-gen 格式 `{ page: {...}, fields: [{ fieldName, fieldType, ... }] }` 或 DefinitionTemplate；上面 §7 那種 PageDefinition 物件（`{ name, type, fields }`）直接餵給 CLI 會被拒（`缺少 page 區塊`）。
 
 輸入若是 DefinitionTemplate（一份定義內含多個 pages），可在**同一個 process 內**一次產出多頁（不必每頁開一個 process）：
 
@@ -364,28 +363,23 @@ node tools/page-gen.js --def site-definition.json --all --mode static --output .
 
 ### 8.1 MSYS 路徑轉換（Windows Git Bash）
 
-在 Git Bash 中，`/api/xxx` 會被自動轉換為 `C:/Program Files/Git/api/xxx`。generate-page.js 已內建 `sanitizeApiPath()` 修復此問題，但若你手動傳遞路徑，請注意：
-
-```bash
-# Git Bash 中安全的寫法（加引號）
-node scripts/generate-page.js orders/OrderList --api-path "/api/orders"
-```
+在 Git Bash 中，以 `/` 開頭的命令列參數（如 `/api/xxx`）會被自動轉換為 `C:/Program Files/Git/api/xxx`，加引號也無法避免。目前的生成器 CLI 都沒有 API 路徑參數（`generate-page.js` 沒有 `--api-path`，repo 內也沒有 `sanitizeApiPath()`）；API 路徑請寫在 PageDefinition JSON 的 `api.*`。若必須在 Git Bash 傳遞此類參數，請在指令前加 `MSYS_NO_PATHCONV=1`。
 
 ### 8.2 檔案已存在
 
-生成器不會覆蓋已存在的檔案。若需重新生成，請先手動刪除目標檔案。
+只有 `generate-page.js` 會拒絕覆蓋已存在的檔案（報錯結束）。`generate-api.js` 會直接覆寫 `backend/Models/<名稱>.cs` 與 `backend/Services/<名稱>Service.cs`；`tools/page-gen.js` 也會覆寫輸出目錄內的同名檔案。重新生成前請先確認或備份目標檔案。
 
 ### 8.3 CJS 與 ESM
 
-- `generate-page.js`、`spa-cli.js`：CommonJS（使用 `require`）
+- `tools/page-gen.js`、`generate-page.js`、`spa-cli.js`：CommonJS（使用 `require`）
 
 - `PageGenerator.js`、所有元件：ESM（使用 `import/export`）
 
-- 橋接方式：`const { pathToFileURL } = require('url')` + `await import(path)`
+- 橋接方式（見 `tools/page-gen.js`）：`const { pathToFileURL } = require('node:url')` + `await import(pathToFileURL(path).href)`
 
 ### 8.4 import 路徑深度
 
-PageGenerator 輸出的 import 路徑為 depth=1（`../components/X/X.js`）。若頁面位於子目錄（如 `pages/orders/OrderPage.js`），generate-page.js 會自動調整為 `../../components/X/X.js`。
+PageGenerator 輸出的 `BasePage` import 預設為 `'../core/BasePage.js'`（可用 `new PageGenerator({ baseImportPath })` 覆寫）；元件 import 一律是元件庫路徑 `@component-library/ui_components/…`（見 `ComponentPaths`），部署時需自行提供對應的 alias 或 import map。`generate-page.js` 不使用 PageGenerator，只依子資料夾深度調整原始模板中 `core/BasePage.js` 的相對路徑（如 `pages/orders/OrderPage.js` → `../../core/BasePage.js`）。
 
 ### 8.5 欄位名／頁面名不是合法識別字
 
@@ -408,7 +402,7 @@ node templates/spa/scripts/spa-cli.js new --name my-blog --output ./projects
 #    create-project.js 複製時會排除 scripts/，生成的專案內沒有這支 CLI 可用。
 node templates/spa/scripts/spa-cli.js feature Article --fields "Title:string,Content:text,Author:string,PublishedAt:datetime,IsPublished:bool"
 
-# 3. 依終端輸出指示，更新 Program.cs
+# 3. 手動更新 AppDbContext.cs 與 Program.cs（預設 patch 找不到標記，見 §2.1 後續步驟）
 
 # 4. 啟動
 dotnet run              # 後端
@@ -418,9 +412,9 @@ dotnet run              # 後端
 **生成結果：**
 - `Article.cs`：C# Model，含 Title(string), Content(string), Author(string), PublishedAt(DateTime), IsPublished(bool)
 - `ArticleService.cs`：CRUD 服務
-- `ArticleListPage.js`：使用 TextInput, WebTextEditor, DateTimeInput, ToggleSwitch
-- `ArticleDetailPage.js`：同上元件
-- `routes.js`：自動加入 `/articles/article-list` 與 `/articles/article-detail` 路由
+- `ArticleListPage.js`：原始 `BasePage` 列表模板頁（不依欄位產生元件）
+- `ArticleDetailPage.js`：原始 `BasePage` 詳情模板頁
+- `pages/generated/routes.generated.js`：自動加入 `/articles/article-list` 與 `/articles/article-detail` 路由
 
 ---
 

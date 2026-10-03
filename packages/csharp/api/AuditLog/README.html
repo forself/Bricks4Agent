@@ -21,9 +21,15 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <body>
 <main>
 <h1>AuditLog</h1>
+<blockquote>
+<p>⚠ 參考程式碼：此目錄沒有 .csproj，未被任何專案編譯或引用，CI 也不建置它；以下說明未經建置驗證。</p>
+</blockquote>
 <p>安全稽核日誌 API 控制器 — 提供安全事件查詢、使用者活動分析、告警管理、儀表板與 CSV 匯出功能。</p>
 <h2>初始化方式</h2>
-<pre><code class="language-csharp">builder.Services.AddScoped&lt;ISecurityLogService, SecurityLogService&gt;();
+<pre><code class="language-csharp">// SecurityLogService 建構子必須取得這兩個 repository，否則 DI 解析失敗
+builder.Services.AddSingleton&lt;ISecurityLogRepository, InMemorySecurityLogRepository&gt;();
+builder.Services.AddSingleton&lt;ILoginRecordRepository, InMemoryLoginRecordRepository&gt;();
+builder.Services.AddScoped&lt;ISecurityLogService, SecurityLogService&gt;();
 // Controller 由 DI 自動注入
 </code></pre>
 <h2>API 列表</h2>
@@ -210,7 +216,7 @@ Content-Type: application/json
     &quot;startDate&quot;: &quot;2026-03-01T00:00:00Z&quot;,
     &quot;endDate&quot;: &quot;2026-03-06T23:59:59Z&quot;,
     &quot;eventTypes&quot;: [&quot;LoginFailed&quot;],
-    &quot;severities&quot;: [&quot;Warning&quot;, &quot;Critical&quot;],
+    &quot;severities&quot;: [&quot;High&quot;, &quot;Critical&quot;],
     &quot;outcome&quot;: &quot;Failure&quot;,
     &quot;page&quot;: 1,
     &quot;pageSize&quot;: 50,
@@ -218,6 +224,7 @@ Content-Type: application/json
     &quot;sortDescending&quot;: true
 }
 </code></pre>
+<p>嚴重等級只有 <code>Info</code>、<code>Low</code>、<code>Medium</code>、<code>High</code>、<code>Critical</code>（沒有 <code>Warning</code>）。以字串傳送列舉（<code>eventTypes</code>、<code>severities</code>、<code>outcome</code>）需在主機加入 <code>JsonStringEnumConverter</code>，否則 System.Text.Json 只接受數值（如 <code>"severities": [3, 4]</code>）。</p>
 <h3>確認告警</h3>
 <pre><code class="language-http">POST /api/security-logs/alerts/123/acknowledge
 Content-Type: application/json
@@ -248,7 +255,7 @@ Content-Type: application/json
 <tbody>
 <tr>
 <td><code>ISecurityLogService</code></td>
-<td>安全日誌服務介面（需自行實作）</td>
+<td>安全日誌服務介面（實作 <code>SecurityLogService</code> 位於 <code>security/AuditLog</code>，另需註冊 <code>ISecurityLogRepository</code>、<code>ILoginRecordRepository</code>）</td>
 </tr>
 <tr>
 <td><code>ILogger&lt;SecurityLogController&gt;</code></td>
@@ -266,11 +273,21 @@ Content-Type: application/json
 </table>
 <h2>相關 DTO</h2>
 <ul>
-<li><code>SecurityLogQueryRequest</code> — 查詢請求（StartDate, EndDate, EventTypes, Severities, Outcome, UserId, SearchText, Tags 等）</li>
-<li><code>DateRangeRequest</code> — 日期範圍請求</li>
-<li><code>AcknowledgeAlertRequest</code> — 告警確認請求（Note）</li>
-<li><code>DeleteLogsResponse</code> — 刪除日誌回應（DeletedCount）</li>
-<li><code>DashboardSummary</code> — 儀表板摘要（24h/7d 統計、趨勢、告警數等）</li>
+<li>
+<p><code>SecurityLogQueryRequest</code> — 查詢請求（StartDate, EndDate, EventTypes, Severities, Outcome, UserId, SearchText, Tags 等）</p>
+</li>
+<li>
+<p><code>DateRangeRequest</code> — 日期範圍請求</p>
+</li>
+<li>
+<p><code>AcknowledgeAlertRequest</code> — 告警確認請求（Note）</p>
+</li>
+<li>
+<p><code>DeleteLogsResponse</code> — 刪除日誌回應（DeletedCount）</p>
+</li>
+<li>
+<p><code>DashboardSummary</code> — 儀表板摘要（24h/7d 統計、趨勢、告警數等）</p>
+</li>
 </ul>
 </main>
 </body>

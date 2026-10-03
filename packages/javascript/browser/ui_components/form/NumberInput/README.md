@@ -21,7 +21,7 @@ const input = new NumberInput({
     placeholder: '',         // 提示文字
     width: '100%',           // 寬度
     size: 'medium',          // 'small' | 'medium' | 'large'
-    onChange: (value) => {},  // 變更回調
+    onChange: (value) => {},  // 變更回調：+/- 按鈕、方向鍵、clear()，以及直接輸入後 blur 或 Enter 且數值確實改變時觸發
     className: ''            // 自訂 CSS 類別
 });
 ```
@@ -35,6 +35,7 @@ const input = new NumberInput({
 | `getValue()` | 取得目前數值（number 或 null） |
 | `setValue(value, { emit }?)` | 設定數值（預設不觸發 onChange，傳 `{ emit: true }` 才觸發） |
 | `clear()` | 清空為 null |
+| `setError(msg, { display })` / `clearError()` | 標示 / 清除欄位錯誤：紅框、`aria-invalid` 與錯誤文字；`display: false` 只標示狀態、不顯示文字 |
 
 ### 屬性
 

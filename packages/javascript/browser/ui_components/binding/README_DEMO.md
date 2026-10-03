@@ -1,13 +1,13 @@
 # ROC DatePicker Demo Instructions
 
-Since the standard `demo_binding.html` requires a running web server (localhost) to load modules, we created a **Standalone Demo** that works directly by opening the file.
+The ROC (民國年) DatePicker demo lives in `demo_binding.html` in this folder (the `roc_cal` field, a `DatePicker` with `useROC: true`). There is no standalone demo; the page loads ES modules, so it must be served over HTTP.
 
 ## How to Run
 
-1. Locate `src/components/binding/demo_roc_standalone.html` in your project folder.
+1. Start a static server at the repository root, e.g. `python -m http.server 8124`.
 
-2. **Double-click** the file to open it in your browser.
+2. Open `http://localhost:8124/packages/javascript/browser/ui_components/binding/demo_binding.html` in your browser.
 
-3. Click the input field to see the **ROC Calendar** working visually.
+3. Click the "ROC Date (民國年)" input field to see the **ROC Calendar** working visually.
 
-This bypasses the current server connection issues.
+Opening the file directly (`file://`) does not work, because browsers block module imports from local files.

@@ -21,93 +21,151 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <body>
 <main>
 <h1>統一 Worker Identity 驗證設計</h1>
-<p>Date: 2026-04-07<br>
-Status: draft for review</p>
+<p>Date: 2026-04-07  </p>
+<p>Status: draft for review</p>
+<blockquote>
+<p><strong>實作現況（2026-09-26 核對）</strong></p>
+<ul>
+<li>registration base string 實際順序為 <code>WORKER_REGISTER</code>、<code>worker_type</code>、<code>key_id</code>、<code>worker_id</code>、<code>SHA-256(capabilities 以 \n 串接，未排序)</code>、<code>max_concurrent</code>、<code>timestamp</code>、<code>nonce</code>（<code>packages/csharp/broker-core/Services/WorkerIdentityAuthService.cs:194-204</code>），與下文 <code>&lt;sorted_capabilities_csv&gt;</code> 版本不同。</li>
+<li><code>worker_type</code> 與 capability allowlist 的相容性檢查未實作；<code>ValidateWorkerRegister</code> 只驗 credential、timestamp、nonce、signature（<code>packages/csharp/broker-core/Services/WorkerIdentityAuthService.cs:103-147</code>）。</li>
+<li>設定鍵：broker 端為 <code>WorkerAuth:*</code>（<code>packages/csharp/broker/Program.cs:211</code>）；worker 端為 <code>Worker:Auth:WorkerType/KeyId/SharedSecret</code>，line-worker 另以 <code>Broker:WorkerAuth:*</code> 為 fallback（<code>packages/csharp/workers/line-worker/Program.cs:53-61</code>），而非下文的 <code>WorkerAuth:KeyId</code> 等。</li>
+<li>HTTP route 權限不是寫死的靜態規則，而是讀 <code>WorkerAuth:HttpRoutes</code>（<code>packages/csharp/broker-core/Services/WorkerIdentityAuthService.cs:149-162</code>；預設值見 <code>packages/csharp/broker/appsettings.json:261</code>）。</li>
+<li>預設 <code>WorkerAuth:Enforce=false</code>（<code>packages/csharp/broker/appsettings.json:239</code>），此時 HTTP 與 registration 驗證一律放行。</li>
+</ul>
+</blockquote>
 <h2>摘要</h2>
 <p>目前 broker 對不同 worker 類型採用了不一致的信任模型：</p>
 <ul>
-<li>一般 agent / capability execution path 會經過 session、scoped token、grant、policy 檢查。</li>
-<li><code>line-worker -&gt; /api/v1/high-level/line/*</code> 則被視為 trusted internal plain JSON path，缺少 broker-side caller authentication。</li>
-<li>function-pool 的 worker registration 目前只要能連上 TCP listener 並送出 <code>WORKER_REGISTER</code>，就可能被註冊到 <code>WorkerRegistry</code>。</li>
+<li>
+<p>一般 agent / capability execution path 會經過 session、scoped token、grant、policy 檢查。</p>
+</li>
+<li>
+<p><code>line-worker -&gt; /api/v1/high-level/line/*</code> 則被視為 trusted internal plain JSON path，缺少 broker-side caller authentication。</p>
+</li>
+<li>
+<p>function-pool 的 worker registration 目前只要能連上 TCP listener 並送出 <code>WORKER_REGISTER</code>，就可能被註冊到 <code>WorkerRegistry</code>。</p>
+</li>
 </ul>
 <p>這種設計的問題不是「完全沒有安全性」，而是「安全邊界不一致」：同樣是 worker，卻因為歷史演進而分裂成一部分要驗證、一部分靠 trusted path 豁免。</p>
 <p>本設計把原則收斂成一句話：</p>
 <p><strong>worker 就是 worker，不應該有免驗證特例。</strong></p>
 <p>v1 採用「每種 worker 一組 credential」的 HMAC-based identity model，統一覆蓋：</p>
 <ul>
-<li><code>line-worker -&gt; broker</code> HTTP 呼叫</li>
-<li>function-pool worker registration</li>
+<li>
+<p><code>line-worker -&gt; broker</code> HTTP 呼叫</p>
+</li>
+<li>
+<p>function-pool worker registration</p>
+</li>
 </ul>
 <p>藉此把目前的 trusted path 改成 authenticated worker path。</p>
 <hr>
 <h2>問題定義</h2>
 <h3>現況問題</h3>
 <ol>
-<li>
-<p><code>line-worker -&gt; broker</code> 沒有 broker-side caller authentication<br>
-   broker middleware 目前把 <code>/api/v1/high-level/line/*</code> 視為 trusted internal plain JSON path，因此：
+<li><code>line-worker -&gt; broker</code> 沒有 broker-side caller authentication  </li>
+</ol>
+<p>broker middleware 目前把 <code>/api/v1/high-level/line/*</code> 視為 trusted internal plain JSON path，因此：
    - 不要求 encryption envelope
    - 不要求 scoped token
    - endpoint 本身也不要求 worker identity</p>
-</li>
-<li>
-<p>function-pool <code>WORKER_REGISTER</code> 沒有 worker identity proof<br>
-   目前只要 TCP 連到 pool listener，就可以送出 <code>WORKER_REGISTER</code> 並進入註冊流程。這代表 broker 證明不了「這真的是合法 worker」。</p>
-</li>
-<li>
-<p>worker trust model 不一致<br>
-   - session/scoped token/grant/policy 是一套
-   - trusted internal paths 是另一套
-   - function-pool registration 幾乎是第三套</p>
-</li>
+<ol start="2">
+<li>function-pool <code>WORKER_REGISTER</code> 沒有 worker identity proof  </li>
 </ol>
+<p>目前只要 TCP 連到 pool listener，就可以送出 <code>WORKER_REGISTER</code> 並進入註冊流程。這代表 broker 證明不了「這真的是合法 worker」。</p>
+<ol start="3">
+<li>worker trust model 不一致  </li>
+</ol>
+<ul>
+<li>session/scoped token/grant/policy 是一套</li>
+<li>trusted internal paths 是另一套</li>
+<li>function-pool registration 幾乎是第三套</li>
+</ul>
 <h3>風險</h3>
 <ul>
-<li>可偽造 <code>line-worker</code> 對 broker 發送 high-level line message</li>
-<li>可偽造或冒充 function-pool worker</li>
-<li>trusted path 一旦被誤暴露或被其他本機/內網程序打到，broker 缺少 caller proof</li>
-<li>安全規則分裂，未來更難推導哪些路徑真的安全</li>
+<li>
+<p>可偽造 <code>line-worker</code> 對 broker 發送 high-level line message</p>
+</li>
+<li>
+<p>可偽造或冒充 function-pool worker</p>
+</li>
+<li>
+<p>trusted path 一旦被誤暴露或被其他本機/內網程序打到，broker 缺少 caller proof</p>
+</li>
+<li>
+<p>安全規則分裂，未來更難推導哪些路徑真的安全</p>
+</li>
 </ul>
 <hr>
 <h2>設計目標</h2>
 <ol>
-<li>建立統一的 worker identity model，不再為特定 worker 保留免驗證例外。</li>
-<li>讓 broker 能驗證：
+<li>
+<p>建立統一的 worker identity model，不再為特定 worker 保留免驗證例外。</p>
+</li>
+<li>
+<p>讓 broker 能驗證：
    - 這個請求來自哪種 worker
    - 它是否持有正確 credential
    - 這個請求是否在可接受的時間窗內
-   - 這個請求是否可能是 replay</li>
-<li>在不大幅打亂現有架構的前提下，先補上最急迫風險。</li>
-<li>保持未來可升級到 per-instance credential 或 mTLS。</li>
+   - 這個請求是否可能是 replay</p>
+</li>
+<li>
+<p>在不大幅打亂現有架構的前提下，先補上最急迫風險。</p>
+</li>
+<li>
+<p>保持未來可升級到 per-instance credential 或 mTLS。</p>
+</li>
 </ol>
 <hr>
 <h2>非目標</h2>
 <p>v1 不處理以下事項：</p>
 <ol>
-<li>不引入 mTLS。</li>
-<li>不做每個 worker instance 一組 credential。</li>
-<li>不在 v1 對 function-pool 的每個 <code>WORKER_EXECUTE</code> / <code>WORKER_RESULT</code> frame 逐包簽章。</li>
-<li>不取代 scoped token / grant / policy；worker identity auth 只補「來源驗證」，不取代「能力授權」。</li>
+<li>
+<p>不引入 mTLS。</p>
+</li>
+<li>
+<p>不做每個 worker instance 一組 credential。</p>
+</li>
+<li>
+<p>不在 v1 對 function-pool 的每個 <code>WORKER_EXECUTE</code> / <code>WORKER_RESULT</code> frame 逐包簽章。</p>
+</li>
+<li>
+<p>不取代 scoped token / grant / policy；worker identity auth 只補「來源驗證」，不取代「能力授權」。</p>
+</li>
 </ol>
 <hr>
 <h2>設計理由</h2>
 <h3>為什麼不用 trusted internal path</h3>
-<p>trusted path 的前提是「只有受信任程序能打到它」，但這不是 broker 可驗證的事實，而只是部署假設。<br>
-這種設計會讓系統正確性依賴環境配置，而不是依賴可驗證協議。</p>
+<p>trusted path 的前提是「只有受信任程序能打到它」，但這不是 broker 可驗證的事實，而只是部署假設。  </p>
+<p>這種設計會讓系統正確性依賴環境配置，而不是依賴可驗證協議。</p>
 <h3>為什麼採每種 worker 一組 credential</h3>
 <p>這是成本與一致性的平衡：</p>
 <ul>
-<li>比 per-instance credential 容易部署與輪替</li>
-<li>比單一 global secret 更容易隔離不同 worker 類型</li>
-<li>足以把目前 <code>line-worker</code> 與 function-pool registration 的主要風險補上</li>
+<li>
+<p>比 per-instance credential 容易部署與輪替</p>
+</li>
+<li>
+<p>比單一 global secret 更容易隔離不同 worker 類型</p>
+</li>
+<li>
+<p>足以把目前 <code>line-worker</code> 與 function-pool registration 的主要風險補上</p>
+</li>
 </ul>
 <h3>為什麼採 HMAC</h3>
 <p>對目前 repo 而言，HMAC 有幾個實際優點：</p>
 <ul>
-<li>可直接套用在 HTTP header 與 TCP registration payload</li>
-<li>不需要先建 PKI</li>
-<li>可用相同 base string 規則覆蓋不同 transport</li>
-<li>對 Windows / sidecar / function-pool 現況的導入成本最低</li>
+<li>
+<p>可直接套用在 HTTP header 與 TCP registration payload</p>
+</li>
+<li>
+<p>不需要先建 PKI</p>
+</li>
+<li>
+<p>可用相同 base string 規則覆蓋不同 transport</p>
+</li>
+<li>
+<p>對 Windows / sidecar / function-pool 現況的導入成本最低</p>
+</li>
 </ul>
 <hr>
 <h2>替代方案比較</h2>
@@ -136,21 +194,35 @@ Status: draft for review</p>
 <hr>
 <h2>核心設計</h2>
 <h3>統一原則</h3>
-<p>所有 worker 都必須提供 identity proof。<br>
-差異只存在於：</p>
+<p>所有 worker 都必須提供 identity proof。  </p>
+<p>差異只存在於：</p>
 <ul>
-<li><code>worker_type</code></li>
-<li>可呼叫的 route / op</li>
-<li>capability / role / grant</li>
+<li>
+<p><code>worker_type</code></p>
+</li>
+<li>
+<p>可呼叫的 route / op</p>
+</li>
+<li>
+<p>capability / role / grant</p>
+</li>
 </ul>
 <p>差異不應存在於「某些 worker 免驗證」。</p>
 <h3>Credential 粒度</h3>
 <p>v1 採 <strong>每種 worker 一組 credential</strong>：</p>
 <ul>
-<li><code>line-worker</code></li>
-<li><code>file-worker</code></li>
-<li><code>browser-worker</code></li>
-<li>未來新 worker type 各自新增</li>
+<li>
+<p><code>line-worker</code></p>
+</li>
+<li>
+<p><code>file-worker</code></p>
+</li>
+<li>
+<p><code>browser-worker</code></p>
+</li>
+<li>
+<p>未來新 worker type 各自新增</p>
+</li>
 </ul>
 <h3>Credential 模型</h3>
 <p>每筆 credential 至少包含：</p>
@@ -164,8 +236,12 @@ Status: draft for review</p>
 <h3>設定來源</h3>
 <p>v1 先使用 broker / worker 設定檔載入：</p>
 <ul>
-<li>broker: <code>WorkerAuth:Credentials</code></li>
-<li>worker: <code>WorkerAuth:KeyId</code>, <code>WorkerAuth:SharedSecret</code>, <code>WorkerAuth:WorkerType</code></li>
+<li>
+<p>broker: <code>WorkerAuth:Credentials</code></p>
+</li>
+<li>
+<p>worker: <code>WorkerAuth:KeyId</code>, <code>WorkerAuth:SharedSecret</code>, <code>WorkerAuth:WorkerType</code></p>
+</li>
 </ul>
 <p>之後可再演進成 DB 管理或 secret manager。</p>
 <hr>
@@ -173,18 +249,32 @@ Status: draft for review</p>
 <h3>適用路徑</h3>
 <p>v1 先套用到：</p>
 <ul>
-<li><code>/api/v1/high-level/line/process</code></li>
-<li><code>/api/v1/high-level/line/notifications/complete</code></li>
+<li>
+<p><code>/api/v1/high-level/line/process</code></p>
+</li>
+<li>
+<p><code>/api/v1/high-level/line/notifications/complete</code></p>
+</li>
 </ul>
 <p>未來若其他 worker 也走 broker HTTP path，再擴充到相同模型。</p>
 <h3>Header</h3>
 <p>worker 呼叫 broker 時必須附帶：</p>
 <ul>
-<li><code>X-B4A-Worker-Type</code></li>
-<li><code>X-B4A-Key-Id</code></li>
-<li><code>X-B4A-Timestamp</code></li>
-<li><code>X-B4A-Nonce</code></li>
-<li><code>X-B4A-Signature</code></li>
+<li>
+<p><code>X-B4A-Worker-Type</code></p>
+</li>
+<li>
+<p><code>X-B4A-Key-Id</code></p>
+</li>
+<li>
+<p><code>X-B4A-Timestamp</code></p>
+</li>
+<li>
+<p><code>X-B4A-Nonce</code></p>
+</li>
+<li>
+<p><code>X-B4A-Signature</code></p>
+</li>
 </ul>
 <h3>簽章 base string</h3>
 <p>HTTP base string：</p>
@@ -202,20 +292,36 @@ Status: draft for review</p>
 <h3>驗證規則</h3>
 <p>broker 收到請求時必須：</p>
 <ol>
-<li>找到 <code>worker_type + key_id</code> 對應 credential</li>
-<li>確認 credential <code>status=active</code></li>
-<li>驗證 timestamp 在容忍窗內</li>
-<li>驗證 nonce 未被用過</li>
-<li>驗證 signature</li>
-<li>驗證 <code>worker_type</code> 是否允許存取該 route</li>
+<li>
+<p>找到 <code>worker_type + key_id</code> 對應 credential</p>
+</li>
+<li>
+<p>確認 credential <code>status=active</code></p>
+</li>
+<li>
+<p>驗證 timestamp 在容忍窗內</p>
+</li>
+<li>
+<p>驗證 nonce 未被用過</p>
+</li>
+<li>
+<p>驗證 signature</p>
+</li>
+<li>
+<p>驗證 <code>worker_type</code> 是否允許存取該 route</p>
+</li>
 </ol>
 <p>若任一條件失敗，回 <code>401</code> 或 <code>403</code>。</p>
 <h3>Replay 防護</h3>
 <p>broker 必須記錄最近已使用過的 <code>(worker_type, key_id, nonce)</code>。</p>
 <p>v1 可接受做法：</p>
 <ul>
-<li>使用 memory cache</li>
-<li>若 cache cluster 啟用，可優先使用 distributed cache</li>
+<li>
+<p>使用 memory cache</p>
+</li>
+<li>
+<p>若 cache cluster 啟用，可優先使用 distributed cache</p>
+</li>
 </ul>
 <p>nonce TTL 應與 timestamp 容忍窗一致，略高一些即可。</p>
 <hr>
@@ -227,9 +333,15 @@ Status: draft for review</p>
 </ul>
 <p>不在 v1 逐包保護：</p>
 <ul>
-<li><code>WORKER_EXECUTE</code></li>
-<li><code>WORKER_RESULT</code></li>
-<li><code>PING/PONG</code></li>
+<li>
+<p><code>WORKER_EXECUTE</code></p>
+</li>
+<li>
+<p><code>WORKER_RESULT</code></p>
+</li>
+<li>
+<p><code>PING/PONG</code></p>
+</li>
 </ul>
 <p>理由是：先把「未驗證連線可註冊 worker」這個最大洞補上。</p>
 <h3>Registration payload</h3>
@@ -259,12 +371,24 @@ Status: draft for review</p>
 <h3>驗證規則</h3>
 <p>broker <code>WorkerSession.HandleRegisterAsync()</code> 必須：</p>
 <ol>
-<li>解析 <code>worker_type / key_id / timestamp / nonce / signature</code></li>
-<li>找 credential</li>
-<li>驗 timestamp</li>
-<li>驗 nonce</li>
-<li>驗 signature</li>
-<li>驗 <code>worker_type</code> 與 capability allowlist 是否相容</li>
+<li>
+<p>解析 <code>worker_type / key_id / timestamp / nonce / signature</code></p>
+</li>
+<li>
+<p>找 credential</p>
+</li>
+<li>
+<p>驗 timestamp</p>
+</li>
+<li>
+<p>驗 nonce</p>
+</li>
+<li>
+<p>驗 signature</p>
+</li>
+<li>
+<p>驗 <code>worker_type</code> 與 capability allowlist 是否相容</p>
+</li>
 </ol>
 <p>只有通過後，才允許 <code>WorkerRegistry.Register()</code>。</p>
 <hr>
@@ -272,17 +396,31 @@ Status: draft for review</p>
 <h3>調整前</h3>
 <p><code>/api/v1/high-level/line/*</code> 是：</p>
 <ul>
-<li>plain JSON</li>
-<li>no envelope</li>
-<li>no scoped token</li>
-<li>no worker identity auth</li>
+<li>
+<p>plain JSON</p>
+</li>
+<li>
+<p>no envelope</p>
+</li>
+<li>
+<p>no scoped token</p>
+</li>
+<li>
+<p>no worker identity auth</p>
+</li>
 </ul>
 <h3>調整後</h3>
 <p><code>/api/v1/high-level/line/*</code> 改為：</p>
 <ul>
-<li>仍可維持 plain JSON</li>
-<li>仍可不走 scoped token</li>
-<li><strong>但必須通過 worker identity auth</strong></li>
+<li>
+<p>仍可維持 plain JSON</p>
+</li>
+<li>
+<p>仍可不走 scoped token</p>
+</li>
+<li>
+<p><strong>但必須通過 worker identity auth</strong></p>
+</li>
 </ul>
 <p>也就是把語義從：</p>
 <ul>
@@ -297,31 +435,57 @@ Status: draft for review</p>
 <p>broker 必須能檢查 <code>worker_type</code> 是否允許存取特定路徑或 opcode。</p>
 <p>v1 先採靜態規則：</p>
 <ul>
-<li><code>line-worker</code></li>
-<li>可呼叫 <code>/api/v1/high-level/line/process</code></li>
-<li>可呼叫 <code>/api/v1/high-level/line/notifications/complete</code></li>
-<li><code>file-worker</code></li>
-<li>不可呼叫上述 high-level line paths</li>
-<li><code>browser-worker</code></li>
-<li>不可呼叫上述 high-level line paths</li>
+<li>
+<p><code>line-worker</code></p>
+</li>
+<li>
+<p>可呼叫 <code>/api/v1/high-level/line/process</code></p>
+</li>
+<li>
+<p>可呼叫 <code>/api/v1/high-level/line/notifications/complete</code></p>
+</li>
+<li>
+<p><code>file-worker</code></p>
+</li>
+<li>
+<p>不可呼叫上述 high-level line paths</p>
+</li>
+<li>
+<p><code>browser-worker</code></p>
+</li>
+<li>
+<p>不可呼叫上述 high-level line paths</p>
+</li>
 </ul>
 <p>對 function-pool registration，<code>worker_type</code> 也必須與 capability allowlist 相容。</p>
 <hr>
 <h2>失敗語意</h2>
 <h3>HTTP</h3>
 <ul>
-<li><code>401 Unauthorized</code></li>
-<li>缺少 header</li>
-<li>key 不存在</li>
-<li>timestamp 過期</li>
-<li>nonce replay</li>
+<li>
+<p><code>401 Unauthorized</code></p>
+</li>
+<li>
+<p>缺少 header</p>
+</li>
+<li>
+<p>key 不存在</p>
+</li>
+<li>
+<p>timestamp 過期</p>
+</li>
+<li>
+<p>nonce replay</p>
+</li>
 <li>
 <p>signature 無效</p>
 </li>
 <li>
 <p><code>403 Forbidden</code></p>
 </li>
-<li>worker type 無權呼叫該 route</li>
+<li>
+<p>worker type 無權呼叫該 route</p>
+</li>
 </ul>
 <h3>Pool Registration</h3>
 <p><code>WORKER_REGISTER_ACK</code>：</p>
@@ -367,16 +531,28 @@ Status: draft for review</p>
 <h3>Task 1</h3>
 <p>新增共用驗證服務：</p>
 <ul>
-<li><code>WorkerIdentityAuthOptions</code></li>
-<li><code>WorkerCredentialRecord</code></li>
-<li><code>WorkerIdentityAuthService</code></li>
-<li><code>WorkerNonceStore</code></li>
+<li>
+<p><code>WorkerIdentityAuthOptions</code></p>
+</li>
+<li>
+<p><code>WorkerCredentialRecord</code></p>
+</li>
+<li>
+<p><code>WorkerIdentityAuthService</code></p>
+</li>
+<li>
+<p><code>WorkerNonceStore</code></p>
+</li>
 </ul>
 <h3>Task 2</h3>
 <p>HTTP 驗證中介層：</p>
 <ul>
-<li><code>WorkerIdentityAuthMiddleware</code></li>
-<li>將 <code>/api/v1/high-level/line/*</code> 從 trusted bypass 改為 authenticated worker path</li>
+<li>
+<p><code>WorkerIdentityAuthMiddleware</code></p>
+</li>
+<li>
+<p>將 <code>/api/v1/high-level/line/*</code> 從 trusted bypass 改為 authenticated worker path</p>
+</li>
 </ul>
 <h3>Task 3</h3>
 <p>line-worker outbound signing：</p>
@@ -386,75 +562,141 @@ Status: draft for review</p>
 <h3>Task 4</h3>
 <p>function-pool registration signing：</p>
 <ul>
-<li>擴充 <code>WorkerHost</code> register payload</li>
-<li>擴充 <code>WorkerSession.HandleRegisterAsync()</code> 驗證</li>
+<li>
+<p>擴充 <code>WorkerHost</code> register payload</p>
+</li>
+<li>
+<p>擴充 <code>WorkerSession.HandleRegisterAsync()</code> 驗證</p>
+</li>
 </ul>
 <h3>Task 5</h3>
 <p>測試與文件同步：</p>
 <ul>
-<li>unit tests</li>
-<li>integration tests</li>
-<li>runbook / docs 更新</li>
+<li>
+<p>unit tests</p>
+</li>
+<li>
+<p>integration tests</p>
+</li>
+<li>
+<p>runbook / docs 更新</p>
+</li>
 </ul>
 <hr>
 <h2>測試策略</h2>
 <h3>Unit</h3>
 <ol>
-<li>HMAC base string 產生正確</li>
-<li>signature 驗證成功</li>
-<li>key_id 不存在失敗</li>
-<li>timestamp 過期失敗</li>
-<li>nonce replay 失敗</li>
-<li>worker type route allowlist 拒絕</li>
+<li>
+<p>HMAC base string 產生正確</p>
+</li>
+<li>
+<p>signature 驗證成功</p>
+</li>
+<li>
+<p>key_id 不存在失敗</p>
+</li>
+<li>
+<p>timestamp 過期失敗</p>
+</li>
+<li>
+<p>nonce replay 失敗</p>
+</li>
+<li>
+<p>worker type route allowlist 拒絕</p>
+</li>
 </ol>
 <h3>Integration</h3>
 <ol>
-<li>未附簽章呼叫 <code>/api/v1/high-level/line/process</code> 被拒</li>
-<li>正確 <code>line-worker</code> 簽章可通過</li>
-<li><code>file-worker</code> 簽章呼叫 line route 被拒</li>
-<li><code>WORKER_REGISTER</code> 無簽章失敗</li>
-<li><code>WORKER_REGISTER</code> 正確簽章成功</li>
-<li>replay register 被拒</li>
+<li>
+<p>未附簽章呼叫 <code>/api/v1/high-level/line/process</code> 被拒</p>
+</li>
+<li>
+<p>正確 <code>line-worker</code> 簽章可通過</p>
+</li>
+<li>
+<p><code>file-worker</code> 簽章呼叫 line route 被拒</p>
+</li>
+<li>
+<p><code>WORKER_REGISTER</code> 無簽章失敗</p>
+</li>
+<li>
+<p><code>WORKER_REGISTER</code> 正確簽章成功</p>
+</li>
+<li>
+<p>replay register 被拒</p>
+</li>
 </ol>
 <h3>Regression</h3>
 <ol>
-<li>LINE webhook ingress 仍正常</li>
-<li><code>/proj</code> workflow 仍可運作</li>
-<li>artifact delivery / notification complete 仍可運作</li>
+<li>
+<p>LINE webhook ingress 仍正常</p>
+</li>
+<li>
+<p><code>/proj</code> workflow 仍可運作</p>
+</li>
+<li>
+<p>artifact delivery / notification complete 仍可運作</p>
+</li>
 </ol>
 <hr>
 <h2>向後相容策略</h2>
-<p>v1 不建議長時間保留雙軌模式。<br>
-但為了平滑部署，可接受極短暫 migration flag：</p>
+<p>v1 不建議長時間保留雙軌模式。  </p>
+<p>但為了平滑部署，可接受極短暫 migration flag：</p>
 <ul>
-<li>broker 開啟 <code>WorkerAuth:Enforce=false</code></li>
-<li>先讓 worker 帶簽章</li>
-<li>驗證 live 後切成 <code>WorkerAuth:Enforce=true</code></li>
+<li>
+<p>broker 開啟 <code>WorkerAuth:Enforce=false</code></p>
+</li>
+<li>
+<p>先讓 worker 帶簽章</p>
+</li>
+<li>
+<p>驗證 live 後切成 <code>WorkerAuth:Enforce=true</code></p>
+</li>
 </ul>
 <p>切換完成後，應移除 <code>line-worker</code> trusted bypass。</p>
 <hr>
 <h2>Open Questions</h2>
 <p>目前保留但不阻礙 v1 的問題：</p>
 <ol>
-<li>nonce store 是否要直接落在 distributed cache，而不是 memory cache</li>
-<li>function-pool 後續是否要對每個 frame 再加 session-level integrity</li>
-<li>credential 後續是否要搬到 DB 或 secret manager</li>
+<li>
+<p>nonce store 是否要直接落在 distributed cache，而不是 memory cache</p>
+</li>
+<li>
+<p>function-pool 後續是否要對每個 frame 再加 session-level integrity</p>
+</li>
+<li>
+<p>credential 後續是否要搬到 DB 或 secret manager</p>
+</li>
 </ol>
 <p>這些不阻礙 v1。</p>
 <hr>
 <h2>最終決策</h2>
 <p>採用：</p>
 <ul>
-<li>每種 worker 一組 credential</li>
-<li>HMAC-SHA256 簽章</li>
-<li>HTTP 與 <code>WORKER_REGISTER</code> 皆納入 worker identity auth</li>
-<li><code>line-worker</code> 不再享有免驗證特例</li>
+<li>
+<p>每種 worker 一組 credential</p>
+</li>
+<li>
+<p>HMAC-SHA256 簽章</p>
+</li>
+<li>
+<p>HTTP 與 <code>WORKER_REGISTER</code> 皆納入 worker identity auth</p>
+</li>
+<li>
+<p><code>line-worker</code> 不再享有免驗證特例</p>
+</li>
 </ul>
 <p>不採用：</p>
 <ul>
-<li>trusted internal path 繼續裸放行</li>
-<li>per-instance credential</li>
-<li>mTLS 作為 v1</li>
+<li>
+<p>trusted internal path 繼續裸放行</p>
+</li>
+<li>
+<p>per-instance credential</p>
+</li>
+<li>
+<p>mTLS 作為 v1</p>
+</li>
 </ul>
 </main>
 </body>

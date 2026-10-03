@@ -2,6 +2,8 @@
 
 IP 限流與連線資訊模組，提供滑動視窗演算法的 IP 限流、連線資訊擷取、用戶會話管理等功能。
 
+> `broker/Broker.csproj` 有 ProjectReference 引用此專案，但 broker 原始碼沒有使用其中任何型別；broker 的 IP 限流由自己的 `BrokerIpRateLimitMiddleware` 負責。
+
 ## 功能特點
 
 - **IP 限流**：滑動視窗演算法，精確控制請求頻率
@@ -10,14 +12,16 @@ IP 限流與連線資訊模組，提供滑動視窗演算法的 IP 限流、連�
 
 - **會話管理**：追蹤用戶登入會話與裝置
 
-- **可疑 IP 偵測**：自動標記異常行為的 IP
+- **可疑 IP 管理**：可手動標記可疑 IP（套用較嚴格的限制）或封鎖 IP；函式庫本身不會自動標記
 
 - **登入歷史**：記錄登入嘗試供安全分析
 
 ## 安裝
 
+本 repo 不發佈此套件（`dotnet add package IpRateLimiting` 取得的若是 nuget.org 上的同名套件，也不是這份程式碼），請以專案參考（ProjectReference）引用，於 repo 根目錄執行：
+
 ```bash
-dotnet add package IpRateLimiting
+dotnet add <你的專案>.csproj reference packages/csharp/security/RateLimiting/RateLimiting.csproj
 ```
 
 ## 快速開始
@@ -132,13 +136,7 @@ var result = rateLimiter.CheckAndIncrement(clientIp, "custom_api");
 
 ### 自動偵測
 
-系統會在以下情況自動標記可疑 IP：
-
-- 連續多次登入失敗（預設 15 次）
-
-- 短時間內大量請求
-
-- 嘗試攻擊行為
+本函式庫不會自動標記可疑 IP，`MarkSuspicious` 只會由呼叫端呼叫；超過規則限制時，限流器只會依該規則的 `LockoutDuration` 暫時拒絕請求。「登入被限流時，若最近 20 次嘗試中有 15 次以上失敗就標記 24 小時」的規則只存在於未建置的參考程式碼 `api/Auth/RateLimitedAuthController.cs`（沒有 .csproj）。
 
 ### 手動管理
 
@@ -165,18 +163,18 @@ var stats = _rateLimiter.GetStatistics("192.168.1.100");
 
 ## 回應標頭
 
-控制器會自動設定以下回應標頭：
+本函式庫不設定任何回應標頭；以下標頭由未建置的參考程式碼 `api/Auth/RateLimitedAuthController.cs` 依 `RateLimitResult` 設定：
 
 | 標頭 | 說明 |
 |---|---|
 | `X-RateLimit-Limit` | 視窗內允許的最大請求數 |
 | `X-RateLimit-Remaining` | 剩餘請求數 |
-| `X-RateLimit-Reset` | 重設時間（Unix timestamp） |
+| `X-RateLimit-Reset` | 重設時間（ISO-8601，`WindowReset.ToString("o")`） |
 | `Retry-After` | 被限流時，等待秒數 |
 
 ## API 端點
 
-使用 `RateLimitedAuthController` 提供以下端點：
+以下端點定義在未建置的參考程式碼 `api/Auth/RateLimitedAuthController.cs`（沒有 .csproj），repo 內沒有任何主機提供這些端點：
 
 ### 認證
 
@@ -238,6 +236,8 @@ public class UserAgentInfo
 
 支援反向代理環境，IP 擷取優先順序：
 
+> ⚠ `ConnectionInfoOptions.TrustProxyHeaders` 預設為 `true`，且 `TrustedProxies` 從未被讀取；因此任何直接連線的客戶端都能以 `CF-Connecting-IP`、`X-Real-IP` 或 `X-Forwarded-For` 偽造 IP，繞過以 IP 為單位的限流與封鎖。未位於受信任反向代理之後時，請關閉此選項，例如註冊 `builder.Services.AddSingleton(new ConnectionInfoOptions { TrustProxyHeaders = false });`（`ConnectionInfoService` 建構子會從 DI 取得）。
+
 1. `CF-Connecting-IP` (Cloudflare)
 
 2. `X-Real-IP`
@@ -270,7 +270,7 @@ public class UserAgentInfo
 
 ## 與 MFA 模組整合
 
-此模組可與 `YourNamespace.Security.Mfa` 模組無縫整合：
+此模組可與 `Bricks4Agent.Security.Mfa` 模組整合（`RateLimitedAuthController` 為未建置的參考程式碼）：
 
 ```csharp
 // 使用 RateLimitedAuthController 已整合 MFA + 限流
@@ -282,7 +282,7 @@ services.AddSingleton<IUserSessionService, UserSessionService>();
 
 ## 相依套件
 
-- `Microsoft.AspNetCore.Http.Abstractions` >= 2.2.0
+- 目標框架 `net10.0`，透過 `<FrameworkReference Include="Microsoft.AspNetCore.App" />` 取得 ASP.NET Core API（不使用 `Microsoft.AspNetCore.Http.Abstractions` NuGet 套件）
 
 ## 授權
 

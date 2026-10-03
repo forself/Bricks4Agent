@@ -160,6 +160,14 @@ export default {
         jump: 'Go'
     },
 
+    /** TreeList (lazy loading) */
+    treeList: {
+        loading: 'Loading...',
+        loadError: 'Failed to load child items',
+        retry: 'Retry',
+        retryLabel: 'Retry loading child items of {label}'
+    },
+
     /** LoadingSpinner */
     loadingSpinner: {
         text: 'Loading...'
@@ -253,15 +261,31 @@ export default {
     // ===== layout/ =====
 
     /** DataTable */
+    textArea: {
+        sizingFixedTitle: 'Fixed at {rows} rows with a scrollbar; click to grow with content',
+        sizingAutoTitle: 'Grows with content beyond {rows} rows; click to return to {rows} fixed rows',
+    },
     dataTable: {
         rowsPerPage: 'Rows per page:',
         displayRows: 'Total',
         noMatch: 'No matching records',
         selectedUnit: 'rows',
+        searchPlaceholder: 'Filter loaded results',
+        searchResultCount: 'Showing {count} of {total}',
+        searchButtonLabel: 'Apply filter',
         firstPage: 'First Page',
         prevPage: 'Previous',
         nextPage: 'Next',
-        lastPage: 'Last Page'
+        lastPage: 'Last Page',
+        serverSearchPlaceholder: 'Search',
+        serverResultCount: '{total} rows',
+        loading: 'Loading…',
+        loadError: 'Failed to load data',
+        retry: 'Retry',
+        columnToggle: 'Columns',
+        columnMenuLabel: 'Show columns',
+        expandColumn: 'Details',
+        toggleRowDetails: 'Row details'
     },
 
     /** DynamicDetailRenderer */
@@ -279,6 +303,11 @@ export default {
         emptyValue: '-'
     },
 
+    /** BasePanel */
+    basePanel: {
+        close: 'Close'
+    },
+
     /** ModalPanel */
     modalPanel: {
         confirmTitle: 'Confirm',
@@ -287,6 +316,15 @@ export default {
         confirmText: 'Confirm',
         cancelText: 'Cancel',
         okText: 'OK'
+    },
+
+    /** Progress (segment mode) */
+    progress: {
+        segmentSummary: '{label}: {percent}%',
+        segmentSeparator: ', ',
+        segmentFallbackLabel: 'Segment {index}',
+        noSegments: 'No data',
+        legendValue: '{value} ({percent}%)'
     },
 
     /** PhotoWall */
@@ -341,7 +379,8 @@ export default {
     /** WorkflowPanel */
     workflowPanel: {
         currentBadge: 'Current',
-        pending: 'Pending'
+        pending: 'Pending',
+        nextStageHint: '(To do)'
     },
 
     // ===== input/ =====
@@ -513,6 +552,34 @@ export default {
     /** RelationChart */
     relationChart: {
         hoverTooltip: 'Show details (Hover)'
+    },
+
+    /** CanvasChart — accessible data table (accessibleTable) */
+    canvasChart: {
+        tableCaption: 'Chart data',
+        empty: 'No data',
+        truncated: 'Rows not shown: {count}',
+        category: 'Category',
+        series: 'Series {index}',
+        name: 'Name',
+        value: 'Value',
+        percent: 'Percentage',
+        row: 'Row',
+        column: 'Column',
+        source: 'Source',
+        target: 'Target',
+        from: 'From',
+        to: 'To',
+        weight: 'Weight',
+        path: 'Path',
+        description: 'Description',
+        group: 'Group',
+        start: 'Start',
+        end: 'End',
+        index: 'Index',
+        xValue: 'X value',
+        yValue: 'Y value',
+        size: 'Size'
     },
 
     // ===== editor/ =====

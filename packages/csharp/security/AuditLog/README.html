@@ -24,17 +24,35 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <p>安全稽核日誌模組，提供完整的登入紀錄管理、安全事件追蹤、統計分析與警示功能。</p>
 <h2>功能特點</h2>
 <ul>
-<li><strong>安全事件記錄</strong>：完整的安全事件類型與嚴重等級分類</li>
-<li><strong>登入歷史追蹤</strong>：詳細的登入紀錄，包含裝置、位置、MFA 狀態</li>
-<li><strong>新裝置偵測</strong>：自動識別用戶首次使用的裝置</li>
-<li><strong>可疑活動標記</strong>：自動偵測並標記異常登入行為</li>
-<li><strong>統計分析</strong>：豐富的統計報表與趨勢分析</li>
-<li><strong>警示系統</strong>：可配置的安全警示規則</li>
-<li><strong>GDPR 合規</strong>：支援用戶資料刪除</li>
+<li>
+<p><strong>安全事件記錄</strong>：完整的安全事件類型與嚴重等級分類</p>
+</li>
+<li>
+<p><strong>登入歷史追蹤</strong>：詳細的登入紀錄，包含裝置、位置、MFA 狀態</p>
+</li>
+<li>
+<p><strong>新裝置偵測</strong>：自動識別用戶首次使用的裝置</p>
+</li>
+<li>
+<p><strong>可疑活動標記</strong>：自動偵測並標記異常登入行為</p>
+</li>
+<li>
+<p><strong>統計分析</strong>：豐富的統計報表與趨勢分析</p>
+</li>
+<li>
+<p><strong>警示系統</strong>：可配置的安全警示規則</p>
+</li>
+<li>
+<p><strong>GDPR 合規</strong>：支援用戶資料刪除</p>
+</li>
 </ul>
 <h2>安裝</h2>
-<pre><code class="language-bash">dotnet add package SecurityAuditLog
+<p>本 repo 不發佈此套件（<code>dotnet add package SecurityAuditLog</code> 取得的若是 nuget.org 上的同名套件，也不是這份程式碼），請以專案參考（ProjectReference）引用，於 repo 根目錄執行：</p>
+<pre><code class="language-bash">dotnet add &lt;你的專案&gt;.csproj reference packages/csharp/security/AuditLog/AuditLog.csproj
 </code></pre>
+<blockquote>
+<p>目前 repo 內沒有任何專案引用 <code>AuditLog.csproj</code>。</p>
+</blockquote>
 <h2>快速開始</h2>
 <h3>1. 註冊服務</h3>
 <pre><code class="language-csharp">// Program.cs 或 Startup.cs
@@ -351,6 +369,55 @@ var activity = _logService.GetUserActivity(userId, since: DateTime.UtcNow.AddDay
 </tr>
 </tbody>
 </table>
+<h3>資料存取事件 (6xx)</h3>
+<table>
+<thead>
+<tr>
+<th>類型</th>
+<th>代碼</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>SensitiveDataAccessed</code></td>
+<td>600</td>
+<td>存取敏感資料</td>
+</tr>
+<tr>
+<td><code>DataExported</code></td>
+<td>601</td>
+<td>資料匯出</td>
+</tr>
+<tr>
+<td><code>BulkOperation</code></td>
+<td>602</td>
+<td>大量操作</td>
+</tr>
+</tbody>
+</table>
+<h3>其他 (9xx)</h3>
+<table>
+<thead>
+<tr>
+<th>類型</th>
+<th>代碼</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Custom</code></td>
+<td>900</td>
+<td>自訂事件</td>
+</tr>
+<tr>
+<td><code>Unknown</code></td>
+<td>999</td>
+<td>未知</td>
+</tr>
+</tbody>
+</table>
 <h2>嚴重等級</h2>
 <table>
 <thead>
@@ -383,6 +450,9 @@ var activity = _logService.GetUserActivity(userId, since: DateTime.UtcNow.AddDay
 </tbody>
 </table>
 <h2>API 端點</h2>
+<blockquote>
+<p>以下端點定義在未建置的參考程式碼 <code>api/AuditLog/SecurityLogController.cs</code>（沒有 .csproj），repo 內沒有任何主機提供這些端點；本模組本身不含 Controller。</p>
+</blockquote>
 <h3>用戶端點（已登入用戶）</h3>
 <table>
 <thead>
@@ -570,9 +640,15 @@ if (!rateLimitResult.IsAllowed)
 <h2>資料保留與清理</h2>
 <p>系統會自動清理過期的日誌記錄：</p>
 <ul>
-<li>預設保留 90 天</li>
-<li>每小時執行一次清理</li>
-<li>可透過 <code>DeleteOlderThan()</code> 手動清理</li>
+<li>
+<p>預設保留 90 天</p>
+</li>
+<li>
+<p>每小時執行一次清理</p>
+</li>
+<li>
+<p>可透過 <code>DeleteOlderThan()</code> 手動清理</p>
+</li>
 </ul>
 <pre><code class="language-csharp">// 手動清理 30 天前的記錄
 var cutoff = DateTime.UtcNow.AddDays(-30);
@@ -580,11 +656,21 @@ var deletedCount = _logRepository.DeleteOlderThan(cutoff);
 </code></pre>
 <h2>生產環境建議</h2>
 <ol>
-<li><strong>使用資料庫儲存</strong>：替換 InMemory 實作為 SQL Server/PostgreSQL 實作</li>
-<li><strong>索引優化</strong>：在 Timestamp、UserId、IpAddressHash 建立索引</li>
-<li><strong>分區表</strong>：考慮按月分區以提升查詢效能</li>
-<li><strong>非同步寫入</strong>：使用訊息佇列非同步寫入日誌</li>
-<li><strong>備份策略</strong>：定期備份安全日誌</li>
+<li>
+<p><strong>使用資料庫儲存</strong>：替換 InMemory 實作為 SQL Server/PostgreSQL 實作</p>
+</li>
+<li>
+<p><strong>索引優化</strong>：在 Timestamp、UserId、IpAddressHash 建立索引</p>
+</li>
+<li>
+<p><strong>分區表</strong>：考慮按月分區以提升查詢效能</p>
+</li>
+<li>
+<p><strong>非同步寫入</strong>：使用訊息佇列非同步寫入日誌</p>
+</li>
+<li>
+<p><strong>備份策略</strong>：定期備份安全日誌</p>
+</li>
 </ol>
 <h2>相依套件</h2>
 <ul>

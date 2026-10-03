@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ApprovalTimeline</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>ApprovalTimeline</h1>
+<p>審核歷程（原子元件）。以垂直時間軸呈現一連串審核步驟，適用各種通用簽核流程：採購申請、請假單、用印申請、報修單等。每個步驟顯示標題、處理人、時間、狀態、意見與附件。</p>
+<ul>
+<li>語意 <code>&lt;ol&gt;</code>；狀態為 <code>current</code> 的步驟帶 <code>aria-current="step"</code>。</li>
+<li>狀態一律有文字標籤（Locale），符號與顏色只是輔助。</li>
+<li>附件網址一律經 <code>sanitizeUrl()</code>；不安全的網址（例如 <code>javascript:</code>、<code>data:</code>）不產生連結，只顯示檔名。</li>
+<li>全部以 <code>createElement</code> + <code>textContent</code> 建構、樣式走 CSSOM，符合嚴格 CSP。</li>
+</ul>
+<h2>建構</h2>
+<pre><code class="language-js">import { ApprovalTimeline } from './index.js';
+
+const timeline = new ApprovalTimeline({
+    steps: [],                 // 步驟：[{ id, title, actor?, time?, status, comment?, attachments?: [{ name, href }] }]
+    compact: false,            // 緊湊模式：較小的狀態符號與間距
+    showTimestamps: true,      // 顯示時間
+    formatTime: null,          // (date: Date, step) =&gt; string；null 使用 Intl.DateTimeFormat(Locale 語言, { dateStyle: 'medium', timeStyle: 'short' })
+    reverse: false,            // true：最新的步驟在最上面（&lt;ol reversed&gt;）
+    openLinksInNewTab: false,  // 附件連結在新分頁開啟：加 target=&quot;_blank&quot; 與 rel=&quot;noopener noreferrer&quot;
+    emptyText: null,           // 沒有步驟時的文字；null 使用 Locale approvalTimeline.empty
+    ariaLabel: null,           // 清單的無障礙名稱；null 使用 Locale approvalTimeline.label
+    onStepClick: null          // (step) =&gt; void；提供時步驟標題成為按鈕
+});
+timeline.mount('#history');
+</code></pre>
+<h3>step 物件</h3>
+<table>
+<thead>
+<tr>
+<th>欄位</th>
+<th>型別</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>id</code></td>
+<td><code>string | number</code></td>
+<td>識別碼（輸出為 <code>data-step-id</code>）</td>
+</tr>
+<tr>
+<td><code>title</code></td>
+<td><code>string</code></td>
+<td>步驟名稱，例如「部門主管審核」</td>
+</tr>
+<tr>
+<td><code>actor</code></td>
+<td><code>string?</code></td>
+<td>處理人</td>
+</tr>
+<tr>
+<td><code>time</code></td>
+<td><code>string | Date | number?</code></td>
+<td>ISO 字串、<code>Date</code> 或毫秒；無法解析的字串原樣顯示</td>
+</tr>
+<tr>
+<td><code>status</code></td>
+<td><code>string</code></td>
+<td><code>pending</code>（待審核）、<code>current</code>（審核中）、<code>approved</code>（已核准）、<code>rejected</code>（已駁回）、<code>returned</code>（已退回）、<code>skipped</code>（已略過）、<code>cancelled</code>（已取消）；其他值視為 <code>pending</code></td>
+</tr>
+<tr>
+<td><code>comment</code></td>
+<td><code>string?</code></td>
+<td>審核意見（保留換行）</td>
+</tr>
+<tr>
+<td><code>attachments</code></td>
+<td><code>{ name, href }[]?</code></td>
+<td>附件；<code>href</code> 經 <code>sanitizeUrl()</code></td>
+</tr>
+</tbody>
+</table>
+<h2>方法</h2>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>回傳</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>setSteps(steps)</code></td>
+<td><code>this</code></td>
+<td>以新陣列取代全部步驟並重繪</td>
+</tr>
+<tr>
+<td><code>getSteps()</code></td>
+<td><code>object[]</code></td>
+<td>目前的步驟（原始順序，不受 <code>reverse</code> 影響；新陣列，元素為呼叫端原物件）</td>
+</tr>
+<tr>
+<td><code>mount(container)</code></td>
+<td><code>this</code></td>
+<td>掛載到元素或 CSS 選擇器</td>
+</tr>
+<tr>
+<td><code>destroy()</code></td>
+<td><code>void</code></td>
+<td>移除 DOM 與 <code>locale-changed</code> 監聽；可重複呼叫，之後呼叫其他方法不會拋錯</td>
+</tr>
+</tbody>
+</table>
+<p>靜態屬性：<code>ApprovalTimeline.STATUSES</code> 列出所有狀態值。</p>
+<h2>事件（callback）</h2>
+<table>
+<thead>
+<tr>
+<th>Callback</th>
+<th>參數</th>
+<th>觸發時機</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>onStepClick</code></td>
+<td><code>step</code>（呼叫端原物件）</td>
+<td>點擊步驟標題按鈕，或在按鈕上按 Enter／Space</td>
+</tr>
+</tbody>
+</table>
+<h2>鍵盤與無障礙</h2>
+<ul>
+<li>沒有 <code>onStepClick</code> 時沒有任何互動元素，不佔 Tab 停駐點（附件連結除外）。</li>
+<li>提供 <code>onStepClick</code> 時，每個步驟標題是原生 <code>&lt;button type="button"&gt;</code>：Tab 可到達，Enter／Space 觸發。</li>
+<li>整體是 <code>&lt;ol aria-label="審核歷程"&gt;</code>；<code>reverse: true</code> 時加 <code>reversed</code> 屬性。</li>
+<li>目前步驟 <code>&lt;li aria-current="step"&gt;</code>；並行審核時多個 <code>current</code> 步驟都會標上。</li>
+<li>狀態符號與連接線在 <code>aria-hidden="true"</code> 的軌道內；狀態以可見文字標籤呈現（例如「已駁回」），<code>cancelled</code> 另加刪除線。</li>
+<li>時間輸出 <code>&lt;time datetime="ISO"&gt;</code>。</li>
+<li>附件清單 <code>&lt;ul aria-label="附件"&gt;</code>；<code>openLinksInNewTab: true</code> 時每個連結另有視覺隱藏的「（在新分頁開啟）」提示。</li>
+<li><code>Locale.setLang()</code> 會即時重繪（狀態文字、時間格式），並保留標題按鈕的焦點。</li>
+</ul>
+<h2>Locale（namespace：<code>approvalTimeline</code>）</h2>
+<p><code>label</code>、<code>empty</code>、<code>attachments</code>、<code>newTab</code>、<code>status.pending</code>、<code>status.current</code>、<code>status.approved</code>、<code>status.rejected</code>、<code>status.returned</code>、<code>status.skipped</code>、<code>status.cancelled</code>。字串由同目錄 <code>locale.js</code> 註冊 zh-TW 與 en。</p>
+<h2>可執行範例</h2>
+<p>把下列內容存成本目錄的 <code>example.html</code>，以 HTTP 伺服器開啟（例如在 repo 根目錄執行 <code>python -m http.server 8124</code>；ES module 不能用 <code>file://</code>）。</p>
+<pre><code class="language-html">&lt;!DOCTYPE html&gt;
+&lt;html lang=&quot;zh-TW&quot; data-theme=&quot;light&quot;&gt;
+&lt;head&gt;
+    &lt;meta charset=&quot;UTF-8&quot;&gt;
+    &lt;title&gt;ApprovalTimeline 範例&lt;/title&gt;
+    &lt;link rel=&quot;stylesheet&quot; href=&quot;../../theme.css&quot;&gt;
+&lt;/head&gt;
+&lt;body&gt;
+    &lt;div id=&quot;history&quot;&gt;&lt;/div&gt;
+    &lt;script type=&quot;module&quot;&gt;
+        import { ApprovalTimeline } from './index.js';
+
+        const timeline = new ApprovalTimeline({
+            steps: [
+                { id: 1, title: '申請人送出', actor: '王小明', time: '2026-09-01T09:00:00+08:00', status: 'approved', comment: '採購會議室投影機一台' },
+                { id: 2, title: '部門主管審核', actor: '李主任', time: '2026-09-02T14:30:00+08:00', status: 'returned', comment: '請補上第二家報價',
+                  attachments: [{ name: '報價單.pdf', href: '/files/quote-1.pdf' }] },
+                { id: 3, title: '部門主管複審', actor: '李主任', status: 'current' },
+                { id: 4, title: '總務核銷', status: 'pending' }
+            ],
+            reverse: true,
+            openLinksInNewTab: true,
+            onStepClick: (step) =&gt; console.log('檢視步驟', step.id)
+        }).mount('#history');
+
+        // 狀態更新後整批重設
+        setTimeout(() =&gt; {
+            const steps = timeline.getSteps().map((step) =&gt; (step.id === 3 ? { ...step, status: 'approved', time: new Date() } : step));
+            steps[3] = { ...steps[3], status: 'current' };
+            timeline.setSteps(steps);
+        }, 3000);
+    &lt;/script&gt;
+&lt;/body&gt;
+&lt;/html&gt;
+</code></pre>
+</main>
+</body>
+</html>

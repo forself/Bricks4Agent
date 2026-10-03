@@ -6,6 +6,12 @@ Status: proposed
 
 > **2026-06-16 後續**:本文件提出的產生器組件詞表(`HeroSection` 等)後來被認定為語料取樣的「罐頭」,已**錨定到 canonical `ui_components`(B)** 並退役死行話 —— 每個產生器型別綁定 B 閉集(`b_component`)、fail-closed、`HeroSection` 已刪。現況以 [ComponentLibraryConsolidation-2026-06-15.md](../../designs/ComponentLibraryConsolidation-2026-06-15.md) 為準。
 
+> **實作現況（2026-09-26 核對）**
+>
+> - `template-framework/institutional_site.json` 已於 commit `7227c5a` 刪除，改為 `template-framework/visual_patterns.json`；loader 預設讀 `visual_patterns.json`，舊檔名僅作 fallback（`packages/csharp/workers/site-crawler-worker/Services/TemplateFrameworkLoader.cs:8-9`）。
+> - 模板改以視覺樣式（visual pattern）為鍵，而非網站家族／`supported_site_kinds`：`template_id` 為 `hero_news_portal`、`search_service_portal`、`commercial_showcase` 等，並帶 `pattern_tags`（`packages/csharp/workers/site-crawler-worker/template-framework/visual_patterns.json:4-5`）。
+> - 上方 2026-06-16 註記稱 `HeroSection` 已刪，但靜態套件 runtime 仍保留 `HeroSection` renderer（`packages/csharp/workers/site-crawler-worker/Services/StaticSitePackageGenerator.cs:537`、`:774`）。
+
 ## Purpose
 
 Site rebuild currently satisfies the "component library only" constraint, but the visual result is limited because the generator maps visual regions directly into low-level components such as `AtomicSection`, `TextBlock`, `ImageBlock`, and `CardGrid`. The missing layer is a reusable template framework above the component library and below `site.json` generation.

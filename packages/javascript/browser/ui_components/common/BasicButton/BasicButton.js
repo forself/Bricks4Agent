@@ -303,9 +303,11 @@ export class BasicButton {
             button.appendChild(labelSpan);
         }
 
-        // 互動效果
-        if (!disabled) {
+        // 互動效果：一律綁定、執行時才檢查停用狀態，
+        // 讓建立時停用、之後 setDisabled(false) 的按鈕也能點擊與呈現 hover 效果
+        {
             button.addEventListener('mouseenter', () => {
+                if (button.disabled) return;
                 Object.entries(variantStyles.hover).forEach(([key, value]) => {
                     button.style[key] = value;
                 });
@@ -323,14 +325,17 @@ export class BasicButton {
             });
 
             button.addEventListener('mousedown', () => {
+                if (button.disabled) return;
                 button.style.transform = 'translateY(0) scale(0.97)';
             });
 
             button.addEventListener('mouseup', () => {
+                if (button.disabled) return;
                 button.style.transform = 'translateY(-1px)';
             });
 
             button.addEventListener('click', (e) => {
+                if (button.disabled) return;
                 if (this.options.onClick) {
                     this.options.onClick(e, { type: this.options.type });
                 }

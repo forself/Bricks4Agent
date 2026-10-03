@@ -52,7 +52,7 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <td><code>options.color</code></td>
 <td><code>string</code></td>
 <td><code>'var(--cl-primary)'</code></td>
-<td>主色彩</td>
+<td>主色彩。目前行為：只接受 hex、<code>rgb()</code>/<code>rgba()</code>/<code>hsl()</code>/<code>hsla()</code> 或具名色；傳入 <code>var(--cl-*)</code> 會被拒絕並回退為 <code>var(--cl-primary)</code></td>
 </tr>
 <tr>
 <td><code>options.text</code></td>
@@ -82,8 +82,12 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 </table>
 <h3>靜態常數</h3>
 <ul>
-<li><code>LoadingSpinner.VARIANTS</code> — <code>{ SPINNER, DOTS, PULSE, BAR }</code></li>
-<li><code>LoadingSpinner.SIZES</code> — <code>{ SMALL, MEDIUM, LARGE }</code></li>
+<li>
+<p><code>LoadingSpinner.VARIANTS</code> — <code>{ SPINNER, DOTS, PULSE, BAR }</code></p>
+</li>
+<li>
+<p><code>LoadingSpinner.SIZES</code> — <code>{ SMALL, MEDIUM, LARGE }</code></p>
+</li>
 </ul>
 <h3>方法</h3>
 <table>
@@ -118,7 +122,7 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <tr>
 <td><code>setText(text)</code></td>
 <td><code>this</code></td>
-<td>設定載入文字</td>
+<td>更新載入文字；只有建構時已給非空 <code>text</code>（文字元素已存在）才有作用，否則不做任何事</td>
 </tr>
 <tr>
 <td><code>mount(container)</code></td>

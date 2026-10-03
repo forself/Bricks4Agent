@@ -190,8 +190,10 @@
     "clear": {
       "component_roles": [
         "command_input",
+        "data_view",
         "display",
         "editor",
+        "feedback",
         "input",
         "visualizer"
       ],
@@ -205,9 +207,11 @@
       "component_roles": [
         "command_input",
         "container",
+        "data_view",
         "feedback",
         "input",
-        "search"
+        "search",
+        "visualizer"
       ],
       "usage_modes": [
         "definition_explicit",
@@ -249,7 +253,9 @@
     },
     "reload": {
       "component_roles": [
-        "display"
+        "data_view",
+        "display",
+        "input"
       ],
       "usage_modes": [
         "manual_only"
@@ -257,7 +263,9 @@
     },
     "reloadOptions": {
       "component_roles": [
+        "data_view",
         "display",
+        "feedback",
         "input",
         "navigation"
       ],
@@ -270,21 +278,29 @@
   "manual_only_components": [
     "ActionButton",
     "Alert",
+    "ApprovalTimeline",
     "AuthButton",
     "Avatar",
     "Badge",
     "BannerSection",
     "BarChart",
+    "Barcode",
     "Breadcrumb",
     "CanvasMap",
     "CardGrid",
     "ClusterGraph",
     "CodeBlock",
     "CommandComposer",
+    "ConditionBuilder",
+    "ConflictNotice",
     "ConnectionCard",
     "ContentSection",
+    "Countdown",
     "DataExplorer",
+    "DataGrid",
     "DataTable",
+    "DateRangePicker",
+    "DateTimeRangePicker",
     "DescriptionList",
     "Divider",
     "DocumentWall",
@@ -304,7 +320,9 @@
     "HeatmapChart",
     "HierarchyChart",
     "Icon",
+    "ImportWizard",
     "InfoPanel",
+    "IssueList",
     "LeafletMap",
     "LineChart",
     "Link",
@@ -314,6 +332,7 @@
     "MapEditorV2",
     "MediaPlayer",
     "Notification",
+    "NotificationCenter",
     "OSMMapEditor",
     "OrgChart",
     "PageFooter",
@@ -322,10 +341,14 @@
     "PhotoCard",
     "PhotoWall",
     "PieChart",
+    "Popover",
+    "PrintLayout",
     "Progress",
+    "QrCode",
     "Rating",
     "RegionMap",
     "RelationChart",
+    "RemoteSelect",
     "ResultList",
     "RoseChart",
     "SankeyChart",
@@ -346,9 +369,12 @@
     "Tag",
     "TagInput",
     "Text",
+    "TimeGrid",
+    "TimeRangePicker",
     "Timeline",
     "TimelineChart",
     "Tooltip",
+    "Transfer",
     "TreeList",
     "UploadButton",
     "WorkflowPanel"

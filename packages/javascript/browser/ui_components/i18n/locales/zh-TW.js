@@ -161,6 +161,14 @@ export default {
         jump: '跳轉'
     },
 
+    /** TreeList — 樹狀列表(延遲載入) */
+    treeList: {
+        loading: '載入中...',
+        loadError: '子項目載入失敗',
+        retry: '重試',
+        retryLabel: '重試載入「{label}」的子項目'
+    },
+
     /** LoadingSpinner — 載入中 */
     loadingSpinner: {
         text: '載入中...'
@@ -254,15 +262,31 @@ export default {
     // ===== layout/ =====
 
     /** DataTable — 資料表格 */
+    textArea: {
+        sizingFixedTitle: '固定 {rows} 行並顯示捲軸；點一下改為依內容自動加高',
+        sizingAutoTitle: '超過 {rows} 行依內容自動加高；點一下改回固定 {rows} 行',
+    },
     dataTable: {
         rowsPerPage: '每頁筆數:',
         displayRows: '共',
         noMatch: '無查詢結果',
         selectedUnit: '筆',
+        searchPlaceholder: '篩選已載入結果',
+        searchResultCount: '顯示 {count} / 共 {total} 筆',
+        searchButtonLabel: '套用篩選',
         firstPage: '第一頁',
         prevPage: '上一頁',
         nextPage: '下一頁',
-        lastPage: '最後一頁'
+        lastPage: '最後一頁',
+        serverSearchPlaceholder: '搜尋',
+        serverResultCount: '共 {total} 筆',
+        loading: '載入中…',
+        loadError: '資料載入失敗',
+        retry: '重試',
+        columnToggle: '欄位',
+        columnMenuLabel: '顯示欄位',
+        expandColumn: '明細',
+        toggleRowDetails: '列明細'
     },
 
     /** DynamicDetailRenderer — 定義驅動明細頁 */
@@ -280,6 +304,11 @@ export default {
         emptyValue: '—'
     },
 
+    /** BasePanel — 面板共用 */
+    basePanel: {
+        close: '關閉'
+    },
+
     /** ModalPanel — 模態面板 */
     modalPanel: {
         confirmTitle: '確認',
@@ -288,6 +317,15 @@ export default {
         confirmText: '確認',
         cancelText: '取消',
         okText: '確定'
+    },
+
+    /** Progress — 進度指示器（分段模式） */
+    progress: {
+        segmentSummary: '{label}：{percent}%',
+        segmentSeparator: '，',
+        segmentFallbackLabel: '區段 {index}',
+        noSegments: '無資料',
+        legendValue: '{value}（{percent}%）'
     },
 
     /** PhotoWall — 照片牆 */
@@ -342,7 +380,8 @@ export default {
     /** WorkflowPanel — 流程面板（流程階段名稱為領域特定，但 UI 文字需要） */
     workflowPanel: {
         currentBadge: '目前',
-        pending: '待定'
+        pending: '待定',
+        nextStageHint: '(待處理)'
     },
 
     // ===== input/ =====
@@ -514,6 +553,34 @@ export default {
     /** RelationChart — 關係圖 */
     relationChart: {
         hoverTooltip: '顯示詳細資訊 (Hover)'
+    },
+
+    /** CanvasChart — 圖表無障礙資料表(accessibleTable) */
+    canvasChart: {
+        tableCaption: '圖表資料',
+        empty: '無資料',
+        truncated: '另有 {count} 筆資料未列出',
+        category: '類別',
+        series: '系列 {index}',
+        name: '名稱',
+        value: '數值',
+        percent: '占比',
+        row: '列',
+        column: '欄',
+        source: '來源',
+        target: '目標',
+        from: '起點',
+        to: '終點',
+        weight: '權重',
+        path: '路徑',
+        description: '說明',
+        group: '群組',
+        start: '開始',
+        end: '結束',
+        index: '序號',
+        xValue: 'X 值',
+        yValue: 'Y 值',
+        size: '大小'
     },
 
     // ===== editor/ =====

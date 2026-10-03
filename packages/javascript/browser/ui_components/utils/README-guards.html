@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>介面守衛工具：PermissionGate 與 DirtyGuard</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>介面守衛工具：PermissionGate 與 DirtyGuard</h1>
+<p>兩個跨頁面共用的工具，都是零依賴的 ES module：</p>
+<table>
+<thead>
+<tr>
+<th>工具</th>
+<th>檔案</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>PermissionGate</td>
+<td><code>utils/permission-gate.js</code></td>
+<td>依「能力字串」隱藏或停用畫面元素（前端 UX）</td>
+</tr>
+<tr>
+<td>DirtyGuard</td>
+<td><code>utils/dirty-guard.js</code></td>
+<td>追蹤尚未儲存的變更，離開前請使用者確認</td>
+</tr>
+</tbody>
+</table>
+<p>字串分別註冊在 <code>permissionGate</code>、<code>dirtyGuard</code> 命名空間（<code>permission-gate.locale.js</code>、<code>dirty-guard.locale.js</code>，匯入工具時自動註冊），提供 zh-TW 與 en。</p>
+<hr>
+<h2>PermissionGate</h2>
+<blockquote>
+<p><strong>安全警告：PermissionGate 不是存取控制。</strong>
+它只是讓介面「不顯示或不能點」使用者沒有權限的功能，改善操作體驗。使用者可以用瀏覽器開發者工具移除 <code>hidden</code>／<code>disabled</code>，也可以直接呼叫 API。
+<strong>每一個能力都必須由伺服器端在每個請求再次驗證</strong>；前端閘門擋不住任何請求，也不能用來保護資料。</p>
+</blockquote>
+<h3>建立</h3>
+<pre><code class="language-js">import { createPermissionGate } from './ui_components/utils/permission-gate.js';
+
+const gate = createPermissionGate({
+    can,                 // (capability, context) =&gt; boolean | Promise&lt;boolean&gt;（必填）；只有 true 才算允許
+    mode: 'hide',        // 預設處理方式：'hide' 隱藏、'disable' 停用
+    context: null,       // 傳給 can() 的第二個參數，例如目前使用者
+    deniedReason: null   // disable 模式的提示原因：字串或 (requirement, context) =&gt; string；null 用 Locale 預設
+});
+</code></pre>
+<p>能力字串對 PermissionGate 是<strong>不透明</strong>的，不做任何解析（<code>'a || b'</code> 就是一個名為 <code>a || b</code> 的能力）。組合條件只用物件：</p>
+<table>
+<thead>
+<tr>
+<th>寫法</th>
+<th>意義</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>'orders.delete'</code></td>
+<td>需要這個能力</td>
+</tr>
+<tr>
+<td><code>{ anyOf: ['rooms.book', 'rooms.admin'] }</code></td>
+<td>任一項成立即可</td>
+</tr>
+<tr>
+<td><code>{ allOf: ['tasks.edit', 'tasks.close'] }</code></td>
+<td>全部成立才可</td>
+</tr>
+<tr>
+<td><code>{ allOf: [...], anyOf: [...] }</code></td>
+<td>allOf 全部成立，且 anyOf 至少一項成立</td>
+</tr>
+</tbody>
+</table>
+<p>空字串、空陣列或型別錯誤會丟出 <code>TypeError</code>。</p>
+<p><code>can()</code> 回傳 <code>true</code>（或 resolve 成 <code>true</code>）才算允許；<code>false</code>、其他值、丟出例外或 reject 一律視為拒絕（fail closed），並以 <code>console.warn</code> 提示。同一輪 <code>apply</code>／<code>scan</code>／<code>refresh</code> 中，同一個能力只會問一次 <code>can()</code>。</p>
+<h3>gate 方法</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>回傳</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>apply(target, requirement, { mode, reason } = {})</code></td>
+<td>handle</td>
+<td>對一個目標套用權限。<code>target</code> 可以是 Element 或 B4A 元件；<code>reason</code> 為字串或函式，只用於 disable 模式</td>
+</tr>
+<tr>
+<td><code>scan(root = document)</code></td>
+<td>handle[]</td>
+<td>處理 <code>root</code>（含 root 本身）內所有宣告 <code>data-permission*</code> 的元素。已處理且宣告未變的元素沿用原 handle；宣告改變時釋放舊的再重建</td>
+</tr>
+<tr>
+<td><code>refresh()</code></td>
+<td><code>Promise&lt;void&gt;</code></td>
+<td>重新評估所有已套用的目標（登入、登出、角色變更後呼叫）</td>
+</tr>
+<tr>
+<td><code>setContext(context, { refresh = true } = {})</code></td>
+<td><code>Promise&lt;void&gt;</code></td>
+<td>更新傳給 <code>can()</code> 的 context，預設立即 <code>refresh()</code></td>
+</tr>
+<tr>
+<td><code>getContext()</code></td>
+<td>any</td>
+<td>目前的 context</td>
+</tr>
+<tr>
+<td><code>destroy()</code></td>
+<td>void</td>
+<td>釋放所有 handle 並還原所有目標；之後的呼叫都不會丟例外（<code>apply</code> 回傳已釋放的空 handle、<code>scan</code> 回傳 <code>[]</code>）</td>
+</tr>
+</tbody>
+</table>
+<h3>handle</h3>
+<table>
+<thead>
+<tr>
+<th>成員</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>allowed</code></td>
+<td><code>true</code>／<code>false</code>；非同步結果尚未回來時為 <code>null</code></td>
+</tr>
+<tr>
+<td><code>pending</code></td>
+<td>是否有評估進行中</td>
+</tr>
+<tr>
+<td><code>ready</code></td>
+<td>最近一次評估完成的 Promise（resolve 成 <code>allowed</code>）</td>
+</tr>
+<tr>
+<td><code>released</code></td>
+<td>是否已釋放</td>
+</tr>
+<tr>
+<td><code>refresh()</code></td>
+<td>只重新評估這個目標</td>
+</tr>
+<tr>
+<td><code>release()</code></td>
+<td>停止套用，並把目標還原成<strong>第一次套用前的原樣</strong>（屬性值、<code>disabled</code>、<code>hidden</code>、<code>title</code>、行內 <code>display</code>）；可重複呼叫</td>
+</tr>
+<tr>
+<td><code>target</code>、<code>mode</code>、<code>requirement</code></td>
+<td>建立時的參數（requirement 為正規化後的 <code>{ allOf, anyOf }</code>）</td>
+</tr>
+</tbody>
+</table>
+<h3>模式行為</h3>
+<p><strong>hide</strong></p>
+<ul>
+<li>Element：設定 <code>hidden</code> 屬性。只有在 <code>hidden</code> 被行內 <code>display</code> 或作者樣式蓋掉、元素仍然顯示時，才另外加上 <code>display: none !important</code> 與 <code>aria-hidden="true"</code>。</li>
+<li>元件：有 <code>hide()</code>／<code>show()</code> 時呼叫它們（有 <code>setVisibility()</code> 的面板會還原原本的可見狀態值）；否則改對 <code>component.element</code> 做上述 DOM 處理。原本就隱藏的元件，還原後維持隱藏。</li>
+</ul>
+<p><strong>disable</strong></p>
+<ul>
+<li>原生可停用的元素（button、input、select、textarea、fieldset…）：設定 <code>disabled</code>。</li>
+<li>所有 Element：設定 <code>aria-disabled="true"</code>，並以原因文字設定 <code>title</code>（滑鼠提示）與 <code>aria-description</code>（螢幕報讀器描述）。</li>
+<li>沒有原生 <code>disabled</code> 的元素（連結、<code>role="button"</code> 的元素）：在元素上以捕獲階段攔下 <code>click</code>、<code>auxclick</code>，以及元素本身的 Enter／Space <code>keydown</code>；元素仍可聚焦，讓使用者讀到原因。</li>
+<li>元件：有 <code>setDisabled()</code> 時呼叫 <code>setDisabled(true)</code>，還原時回到原本的停用狀態；原因文字寫在 <code>component.element</code>。沒有 <code>setDisabled()</code> 時改對 <code>component.element</code> 做 DOM 處理。</li>
+<li>原因順序：<code>apply</code> 的 <code>reason</code> → gate 的 <code>deniedReason</code> → Locale <code>permissionGate.deniedReason</code>。給空字串 <code>''</code> 表示不顯示原因。</li>
+</ul>
+<blockquote>
+<p>要停用整個區塊，請把目標設為 <code>&lt;fieldset&gt;</code>（原生停用所有子控制項），或改用 hide 模式。</p>
+</blockquote>
+<h3>宣告式屬性（scan）</h3>
+<table>
+<thead>
+<tr>
+<th>屬性</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>data-permission="a"</code></td>
+<td>需要 <code>a</code>；以逗號分隔多個時<strong>全部</strong>需要（<code>"a, b"</code> 等同 allOf）</td>
+</tr>
+<tr>
+<td><code>data-permission-all="a, b"</code></td>
+<td>全部需要</td>
+</tr>
+<tr>
+<td><code>data-permission-any="a, b"</code></td>
+<td>任一項即可</td>
+</tr>
+<tr>
+<td><code>data-permission-mode="disable"</code></td>
+<td>覆寫 gate 預設模式；未知值用預設並警告</td>
+</tr>
+<tr>
+<td><code>data-permission-reason="…"</code></td>
+<td>disable 模式的原因文字</td>
+</tr>
+</tbody>
+</table>
+<p>同一元素可混用；<code>data-permission</code> 與 <code>data-permission-all</code> 合併成 allOf。宣告了屬性卻沒有任何能力（例如 <code>data-permission=""</code>）時視為拒絕並警告。</p>
+<h3>非同步、重新評估與組合</h3>
+<ul>
+<li><strong>不閃爍</strong>：非同步 <code>can()</code> 的結果回來前，目標維持目前狀態。第一次套用時會先保持原樣（可見、可用），結果回來才隱藏或停用；若不希望首次載入時短暫出現，請在權限載入完成前不要顯示該區塊，或 <code>await handle.ready</code> 後再顯示。</li>
+<li><strong>過期結果丟棄</strong>：較早開始、較晚回來的評估結果會被忽略；<code>release()</code>／<code>destroy()</code> 之後回來的結果也會被忽略。</li>
+<li><strong>多個 handle 疊加</strong>：同一目標可被多個 handle（甚至多個 gate）套用。任一 handle 拒絕就維持隱藏／停用；全部放行或全部釋放後，才還原成第一次套用前的狀態。</li>
+<li>套用期間請勿由其他程式碼改動同一個屬性；還原時會寫回套用前的值。若其他程式碼重新啟用了元素，呼叫 <code>refresh()</code> 會再次套用。</li>
+<li>不會在 <code>document</code>／<code>window</code> 上掛任何監聽；DOM 寫入會批次處理，所有寫入完成後才一次讀取樣式。</li>
+<li>以 <code>scan()</code> 處理後被移出 DOM 的元素仍由 gate 持有；頁面卸載時請呼叫 <code>gate.destroy()</code>（或逐一 <code>release()</code>）。</li>
+</ul>
+<h3>範例</h3>
+<pre><code class="language-html">&lt;div id=&quot;order-toolbar&quot;&gt;
+    &lt;button type=&quot;button&quot; data-permission=&quot;orders.create&quot;&gt;新增訂單&lt;/button&gt;
+    &lt;button type=&quot;button&quot; data-permission=&quot;orders.export&quot; data-permission-mode=&quot;disable&quot;&gt;匯出&lt;/button&gt;
+    &lt;a href=&quot;#/orders/archive&quot; data-permission-any=&quot;orders.archive, orders.admin&quot;&gt;封存區&lt;/a&gt;
+&lt;/div&gt;
+</code></pre>
+<pre><code class="language-js">import { createPermissionGate } from './ui_components/utils/permission-gate.js';
+
+const gate = createPermissionGate({
+    can: (capability, user) =&gt; Boolean(user &amp;&amp; user.permissions.includes(capability)),
+    context: currentUser,
+    deniedReason: '請聯絡管理員開通此功能'
+});
+
+gate.scan(document.getElementById('order-toolbar'));
+gate.apply(deleteButton, { allOf: ['orders.delete', 'orders.edit'] }, { mode: 'disable' });
+
+// 角色變更後
+await gate.setContext(nextUser);
+
+// 頁面卸載
+gate.destroy();
+</code></pre>
+<hr>
+<h2>DirtyGuard</h2>
+<p>追蹤表單或元件是否有尚未儲存的變更；離開頁面（關閉分頁、重新整理）時交給瀏覽器的 <code>beforeunload</code> 提示，SPA 內的路由切換或關閉按鈕則用 <code>confirmLeave()</code>／<code>wrap()</code> 顯示確認對話框。</p>
+<h3>建立</h3>
+<pre><code class="language-js">import { createDirtyGuard } from './ui_components/utils/dirty-guard.js';
+
+const guard = createDirtyGuard({
+    confirm: null,        // (message, { dirtyKeys }) =&gt; boolean | Promise&lt;boolean&gt;；回傳 true 表示離開。null 用 ModalPanel.confirm
+    message: null,        // 確認訊息：字串或 (dirtyKeys) =&gt; string；null 用 Locale（dirtyGuard.message）
+    beforeUnload: true    // 有未儲存變更時是否掛 beforeunload 提示
+});
+</code></pre>
+<h3>追蹤來源</h3>
+<p><code>guard.track(source, { key })</code> 回傳 <code>untrack()</code> 函式。<code>key</code> 預設自動產生（<code>source-1</code>…）；重複的 key 會先取消舊的追蹤。</p>
+<table>
+<thead>
+<tr>
+<th>來源</th>
+<th>判斷方式</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>表單／容器 Element</td>
+<td>監聽內部 <code>input</code>、<code>change</code> 事件，比對所有 <code>input</code>／<code>select</code>／<code>textarea</code> 值的快照（改回原值即恢復乾淨）。<code>button</code>／<code>submit</code>／<code>reset</code>／<code>image</code> 不計入；<code>[data-dirty-ignore]</code> 內的控制項不計入（例如表單內的搜尋框）。點擊（新增／刪除列）與 <code>reset</code> 事件後也會重新比對</td>
+</tr>
+<tr>
+<td>具 <code>isDirty()</code> 的物件</td>
+<td>狀態由物件自己決定；<code>guard.markClean()</code> 會呼叫它的 <code>markClean()</code>（若有）</td>
+</tr>
+<tr>
+<td>具 <code>getValue()</code> 的元件</td>
+<td><code>track</code> 當下記錄基準值快照；以深度比較判斷，物件鍵的順序不影響結果，值為 <code>undefined</code> 的鍵忽略；Date、Map、Set、循環參照都可處理</td>
+</tr>
+</tbody>
+</table>
+<p>B4A 元件改值時多半只呼叫 <code>options.onChange</code>，不發 DOM 事件，下拉選單或日曆也可能渲染在元件外。因此只要有元件或 <code>isDirty()</code> 物件被追蹤，DirtyGuard 會在 <code>document</code> 以捕獲階段監聽 <code>input</code>、<code>change</code>、<code>click</code>、<code>keyup</code>、<code>pointerup</code>，並在事件處理結束後（<code>setTimeout 0</code>，同一時間只排一次）重新比對；沒有這類來源時不掛這些監聽。<strong>程式化改值</strong>（例如 <code>setValue()</code>）請接著呼叫 <code>guard.check()</code>。</p>
+<p>請在載入資料之後才 <code>track()</code>，或載入後呼叫 <code>markClean()</code>，否則載入本身會被當成變更。</p>
+<h3>方法</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>回傳</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>track(source, { key })</code></td>
+<td><code>Function</code></td>
+<td>開始追蹤，回傳 <code>untrack()</code></td>
+</tr>
+<tr>
+<td><code>check()</code></td>
+<td><code>boolean</code></td>
+<td>立即重新讀取所有來源（程式化改值後呼叫），回傳是否有未儲存變更</td>
+</tr>
+<tr>
+<td><code>isDirty()</code></td>
+<td><code>boolean</code></td>
+<td>同 <code>check()</code></td>
+</tr>
+<tr>
+<td><code>getDirtyKeys()</code></td>
+<td><code>string[]</code></td>
+<td>有未儲存變更的 key（依 track 順序）</td>
+</tr>
+<tr>
+<td><code>markClean(key?)</code></td>
+<td>void</td>
+<td>以目前值作為新基準（儲存成功後呼叫）；不給 key 表示全部</td>
+</tr>
+<tr>
+<td><code>onChange(listener)</code></td>
+<td><code>Function</code></td>
+<td>dirty key 集合改變時呼叫 <code>listener(dirty, dirtyKeys)</code>；回傳取消訂閱函式。listener 丟出的例外會被攔下</td>
+</tr>
+<tr>
+<td><code>confirmLeave()</code></td>
+<td><code>Promise&lt;boolean&gt;</code></td>
+<td>沒有未儲存變更時直接 <code>true</code>；否則詢問，選擇離開為 <code>true</code>。對話框開啟期間重複呼叫共用同一個結果</td>
+</tr>
+<tr>
+<td><code>wrap(fn)</code></td>
+<td><code>Function</code></td>
+<td>回傳 async 函式：<code>confirmLeave()</code> 為 true 才執行 <code>fn</code>（保留 <code>this</code> 與參數，resolve 成 <code>fn</code> 的回傳值；取消時為 <code>undefined</code>）</td>
+</tr>
+<tr>
+<td><code>destroy()</code></td>
+<td>void</td>
+<td>移除所有監聽與計時器；開啟中的預設對話框會關閉，等待中的 <code>confirmLeave()</code> 得到 <code>false</code>。之後的呼叫都不會丟例外</td>
+</tr>
+</tbody>
+</table>
+<h3>beforeunload</h3>
+<ul>
+<li>只在<strong>有未儲存變更</strong>且 <code>beforeUnload: true</code> 時才在 <code>window</code> 掛 <code>beforeunload</code> 監聽；變乾淨或 <code>destroy()</code> 時移除（不影響瀏覽器的往返快取）。</li>
+<li>觸發時會先重新比對，確定仍有變更才 <code>preventDefault()</code> 並設定 <code>returnValue</code>。現代瀏覽器只顯示內建文字，自訂 <code>message</code> 只用於確認對話框。</li>
+<li>使用者在確認對話框選擇「離開」後，<code>beforeunload</code> 會暫停，直到內容再次變動；避免接著做整頁導向時又跳出第二次瀏覽器提示。</li>
+</ul>
+<h3>確認對話框、鍵盤與無障礙</h3>
+<p>預設 <code>confirm</code> 使用 <code>ModalPanel.confirm</code>（<code>destroyOnClose: true</code>，關閉後自行銷毀），標題、訊息、按鈕文字來自 Locale（「尚未儲存的變更」「離開」「留在此頁」）：</p>
+<ul>
+<li>對話框面板設定 <code>role="alertdialog"</code>、<code>aria-modal="true"</code>，並以 <code>aria-labelledby</code>／<code>aria-describedby</code> 指向標題與訊息。</li>
+<li>開啟時焦點放在「留在此頁」（不會遺失資料的選項）；Tab／Shift+Tab 在對話框內循環。</li>
+<li>Esc、右上角關閉鈕、「留在此頁」都得到 <code>false</code>；「離開」得到 <code>true</code>。關閉後焦點回到開啟前的元素。</li>
+<li>自訂 <code>confirm</code> 只有回傳（或 resolve 成）<code>true</code> 才算同意離開；丟出例外或 reject 視為留下。</li>
+</ul>
+<h3>範例</h3>
+<pre><code class="language-js">import { createDirtyGuard } from './ui_components/utils/dirty-guard.js';
+import { TextArea } from './ui_components/form/TextArea/TextArea.js';
+
+const form = document.getElementById('task-form');
+const notes = new TextArea({ value: task.notes }).mount('#task-notes');
+
+const guard = createDirtyGuard();
+guard.track(form, { key: 'task' });
+guard.track(notes, { key: 'notes' });
+guard.onChange((dirty) =&gt; saveButton.setDisabled(!dirty));
+
+saveButton.addEventListener('click', async () =&gt; {
+    await saveTask();
+    guard.markClean();
+});
+
+// SPA 路由離開前
+router.beforeLeave(() =&gt; guard.confirmLeave());
+
+// 關閉抽屜前
+closeButton.addEventListener('click', guard.wrap(() =&gt; drawer.close()));
+
+// 頁面卸載
+guard.destroy();
+</code></pre>
+</main>
+</body>
+</html>

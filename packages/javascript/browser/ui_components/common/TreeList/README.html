@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TreeList</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>TreeList</h1>
+<p>樹狀導航列表。支援無限層級、父節點與葉節點皆可選取（單選高亮）、箭頭獨立展開/收合、四種主題，並提供兩項<strong>預設關閉</strong>的進階能力：</p>
+<ul>
+<li><strong>勾選多選</strong>（<code>checkable</code>）：每個節點前顯示勾選框，預設上下連動並呈現半選（mixed）；<code>checkStrictly: true</code> 可關閉連動。</li>
+<li><strong>延遲載入</strong>（<code>loadChildren</code>）：節點第一次展開時才非同步載入子節點，含「載入中」提示與失敗重試。</li>
+</ul>
+<p>兩項能力都關閉時，DOM 結構、class、<code>data-*</code> 屬性、樣式、選取與展開行為都與先前版本相同；唯一差異是新增的 WAI-ARIA 屬性與 roving <code>tabindex</code>（見〈鍵盤與無障礙〉）。</p>
+<h2>建構子</h2>
+<pre><code class="language-js">import { TreeList } from './TreeList.js';
+
+const tree = new TreeList({
+    data: [],               // 樹狀資料，節點格式見下方〈節點資料〉
+    activeId: null,         // 初始選取（高亮）的節點 id；會自動展開其祖先
+    onSelect: null,         // (node) =&gt; void，點擊整列、Enter（或未勾選模式下的 Space）選取時呼叫
+    width: '260px',         // 容器寬度
+    theme: 'modern',        // 'minimal' | 'classic' | 'modern' | 'dark'
+    ariaLabel: '',          // 樹的無障礙名稱，寫入 role=&quot;tree&quot; 的 aria-label；空字串則不設定
+    checkable: false,       // true = 每個節點顯示勾選框
+    checkStrictly: false,   // true = 勾選不上下連動、沒有半選
+    checkedKeys: [],        // 初始勾選的節點 id（陣列或 Set）
+    onCheck: null,          // (checkedKeys, { node, checked }) =&gt; void，只在使用者操作時呼叫
+    loadChildren: null,     // async (node) =&gt; children[]；設定後才啟用延遲載入
+});
+tree.mount('#tree');
+</code></pre>
+<h3>節點資料</h3>
+<table>
+<thead>
+<tr>
+<th>欄位</th>
+<th>型別</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>id</code></td>
+<td><code>string | number</code></td>
+<td>節點唯一鍵。選取、展開、勾選、延遲載入都以 <code>===</code> 比對（數字 <code>1</code> 與字串 <code>'1'</code> 不同），必須在整棵樹中唯一</td>
+</tr>
+<tr>
+<td><code>label</code></td>
+<td><code>string</code></td>
+<td>顯示文字（以 <code>textContent</code> 寫入，不解析 HTML）</td>
+</tr>
+<tr>
+<td><code>icon</code></td>
+<td><code>string</code></td>
+<td>Icon 註冊名稱（如 <code>'calendar'</code>）或最多兩個字元的 emoji；其他值（含 HTML/SVG 字串）會被拒絕並改顯示 <code>help</code> 圖示</td>
+</tr>
+<tr>
+<td><code>children</code></td>
+<td><code>Array</code></td>
+<td>子節點。未提供時為葉節點；啟用延遲載入時則代表「尚未載入」</td>
+</tr>
+<tr>
+<td><code>disabled</code></td>
+<td><code>boolean</code></td>
+<td>勾選框停用（見〈勾選規則〉）。為維持既有行為，<strong>不會</strong>阻擋單選</td>
+</tr>
+<tr>
+<td><code>disableCheckbox</code></td>
+<td><code>boolean</code></td>
+<td>只停用勾選框，效果與 <code>disabled</code> 在勾選上相同</td>
+</tr>
+<tr>
+<td><code>isLeaf</code></td>
+<td><code>boolean</code></td>
+<td>延遲載入模式下標示「確定沒有子節點」，不顯示展開箭頭</td>
+</tr>
+<tr>
+<td><code>hasChildren</code></td>
+<td><code>boolean</code></td>
+<td>延遲載入模式下標示「有子節點待載入」，即使 <code>children</code> 是空陣列也會顯示展開箭頭</td>
+</tr>
+</tbody>
+</table>
+<h2>方法</h2>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>回傳</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>mount(container)</code></td>
+<td><code>this</code></td>
+<td>掛載到元素或 CSS 選擇器</td>
+</tr>
+<tr>
+<td><code>destroy()</code></td>
+<td><code>void</code></td>
+<td>移除 DOM、容器事件、所有 Icon；進行中的延遲載入結果會被丟棄。可重複呼叫，之後呼叫其他方法不會拋錯</td>
+</tr>
+<tr>
+<td><code>setData(data)</code></td>
+<td><code>this</code></td>
+<td>取代整棵資料並重繪；保留展開與勾選狀態，清除延遲載入快取（仍展開的延遲節點會自動重新載入）</td>
+</tr>
+<tr>
+<td><code>setActive(id)</code></td>
+<td><code>this</code></td>
+<td>設定選取節點並展開其祖先；不觸發 <code>onSelect</code></td>
+</tr>
+<tr>
+<td><code>setActiveId(id)</code></td>
+<td><code>this</code></td>
+<td><code>setActive</code> 的別名</td>
+</tr>
+<tr>
+<td><code>setTheme(name)</code></td>
+<td><code>void</code></td>
+<td>切換主題並重繪</td>
+</tr>
+<tr>
+<td><code>getCheckedKeys({ leafOnly = false, includeIndeterminate = false } = {})</code></td>
+<td><code>Array</code></td>
+<td>目前勾選的 id。已載入的依樹狀順序排列，之後接著「已設定為勾選但尚未載入」的 id。<code>leafOnly</code> 只回傳沒有已載入子節點的節點；<code>includeIndeterminate</code> 一併回傳半選節點</td>
+</tr>
+<tr>
+<td><code>setCheckedKeys(keys)</code></td>
+<td><code>this</code></td>
+<td>以程式設定勾選，<strong>不觸發</strong> <code>onCheck</code>。連動模式下會帶動子孫、推導父節點；停用節點照給定值設定</td>
+</tr>
+<tr>
+<td><code>checkAll()</code></td>
+<td><code>this</code></td>
+<td>勾選所有已載入且未停用的節點，不觸發 <code>onCheck</code></td>
+</tr>
+<tr>
+<td><code>uncheckAll()</code></td>
+<td><code>this</code></td>
+<td>取消所有未停用節點的勾選（含尚未載入的 id），不觸發 <code>onCheck</code></td>
+</tr>
+<tr>
+<td><code>reloadNode(key)</code></td>
+<td><code>Promise&lt;boolean&gt;</code></td>
+<td>清除延遲節點（及其子孫）的載入快取；節點展開中則立即重新載入。重新載入成功 resolve <code>true</code>；節點收合（只清快取）、找不到、非延遲節點、載入失敗或被後續操作取代時 resolve <code>false</code>。不會 reject</td>
+</tr>
+</tbody>
+</table>
+<p>公開屬性（既有）：<code>element</code>（根元素）、<code>data</code>、<code>activeId</code>、<code>expandedIds</code>（<code>Set</code>）、<code>options</code>。</p>
+<h2>事件 / 回呼</h2>
+<table>
+<thead>
+<tr>
+<th>回呼</th>
+<th>參數</th>
+<th>觸發時機</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>onSelect</code></td>
+<td><code>(node)</code></td>
+<td>點擊整列、在節點上按 Enter；未開啟 <code>checkable</code> 時 Space 也會選取。點擊展開箭頭或勾選框不會觸發</td>
+</tr>
+<tr>
+<td><code>onCheck</code></td>
+<td><code>(checkedKeys, { node, checked })</code></td>
+<td>使用者點擊勾選框或按 Space 變更勾選後。<code>checkedKeys</code> 等同 <code>getCheckedKeys()</code>，<code>checked</code> 是被操作節點的新狀態。程式方法（<code>setCheckedKeys</code> / <code>checkAll</code> / <code>uncheckAll</code>）與延遲載入的承接都不會觸發</td>
+</tr>
+<tr>
+<td><code>loadChildren</code></td>
+<td><code>(node)</code> → <code>children[]</code> 或其 Promise</td>
+<td>延遲節點第一次展開時（同步呼叫）。回傳非陣列或拋錯都視為載入失敗</td>
+</tr>
+</tbody>
+</table>
+<h2>勾選規則（<code>checkable: true</code>）</h2>
+<ul>
+<li><strong>連動（預設）</strong>：勾選節點會勾選它所有已載入的子孫（包含收合中的）；父節點在「所有未停用的子節點都勾選」時自動勾選，部分勾選或有半選子節點時顯示半選（<code>aria-checked="mixed"</code>、勾選框 <code>indeterminate</code>）。點擊半選節點 = 全部勾選。</li>
+<li><strong><code>checkStrictly: true</code></strong>：每個節點獨立勾選，沒有連動也沒有半選。</li>
+<li><strong>停用節點</strong>（<code>disabled</code> 或 <code>disableCheckbox</code>）：使用者無法變更，連動時整個停用子樹都會被略過；停用節點也不參與父節點的推導。其狀態只能由 <code>checkedKeys</code> / <code>setCheckedKeys()</code> 設定。停用節點底下的可用節點仍可單獨勾選，但不會往上推導越過停用節點。</li>
+<li><strong>尚未載入的 id</strong>：<code>checkedKeys</code> / <code>setCheckedKeys()</code> 中找不到的 id 會被保留（出現在 <code>getCheckedKeys()</code> 結果尾端），等該節點載入後自動套用。</li>
+<li>單選（<code>activeId</code> / <code>onSelect</code>）與勾選彼此獨立。</li>
+</ul>
+<h2>延遲載入（<code>loadChildren</code>）</h2>
+<ul>
+<li>設定 <code>loadChildren</code> 後，符合下列任一條件的節點會顯示展開箭頭並視為「尚未載入」：</li>
+<li><code>children</code> 為 <code>undefined</code> 且 <code>isLeaf !== true</code>；</li>
+<li><code>hasChildren: true</code> 且 <code>children</code> 不是非空陣列。
+  （<code>children: null</code> 或 <code>children: []</code> 且沒有 <code>hasChildren</code> 視為葉節點。）</li>
+<li>第一次展開時呼叫 <code>loadChildren(node)</code> 一次，期間節點列帶 <code>aria-busy="true"</code>，子層顯示「載入中...」（<code>.tree-node-loading</code>）。結果快取在元件內，<strong>不會改寫</strong>傳入的節點物件；再次收合/展開不會重新載入。</li>
+<li>載入到空陣列時，節點變成葉節點（箭頭消失）。</li>
+<li>失敗時子層顯示錯誤訊息與「重試」按鈕（<code>.tree-node-error</code>，<code>role="alert"</code>；按鈕 <code>.tree-node-retry</code>），節點仍可收合；收合後再展開也會重新嘗試。</li>
+<li>競態處理：載入中收合 → 結果照樣快取，但不會渲染到收合的節點；載入中再展開 → 不會重複呼叫；<code>reloadNode()</code>、<code>setData()</code> 或 <code>destroy()</code> 之後才回來的舊結果一律丟棄。</li>
+<li>連動模式下，新載入的子節點承接父節點狀態：父節點已勾選 → 子節點（停用者除外）一起勾選；使用者先前明確取消勾選該父節點 → 子節點一律未勾選（覆蓋先前以 <code>checkedKeys</code> 預設的 id）；其餘情況套用已保留的 id。<code>checkStrictly</code> 時不承接。</li>
+</ul>
+<h2>鍵盤與無障礙</h2>
+<p>採 WAI-ARIA tree 模式：</p>
+<ul>
+<li>根元素 <code>role="tree"</code>（可用 <code>ariaLabel</code> 命名）；每一列 <code>role="treeitem"</code>，帶 <code>aria-level</code>、<code>aria-setsize</code>、<code>aria-posinset</code>、<code>aria-selected</code>，可展開的節點帶 <code>aria-expanded</code>，勾選模式帶 <code>aria-checked</code>（<code>true</code> / <code>false</code> / <code>mixed</code>），延遲載入中帶 <code>aria-busy</code>；子層容器 <code>role="group"</code>。</li>
+<li>Roving tabindex：整棵樹只有一列 <code>tabindex="0"</code>（預設為選取的節點，否則第一列），其餘為 <code>-1</code>；Tab 進出樹只停一次。焦點移到哪一列，停駐點就跟到哪一列。</li>
+<li>展開箭頭與圖示為裝飾（<code>aria-hidden="true"</code>），列的名稱只取文字標籤。勾選框是 <code>tabindex="-1"</code>、<code>aria-hidden="true"</code> 的原生 checkbox，只負責視覺與滑鼠操作，勾選語意由 treeitem 的 <code>aria-checked</code> 提供。</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>按鍵</th>
+<th>行為</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>↓ / ↑</td>
+<td>移到下一個 / 上一個可見節點</td>
+</tr>
+<tr>
+<td>→</td>
+<td>收合的父節點：展開（延遲節點開始載入）；已展開：移到第一個子節點</td>
+</tr>
+<tr>
+<td>←</td>
+<td>已展開：收合；否則移到父節點</td>
+</tr>
+<tr>
+<td>Home / End</td>
+<td>移到第一個 / 最後一個可見節點</td>
+</tr>
+<tr>
+<td>Enter</td>
+<td>選取（觸發 <code>onSelect</code>），與點擊整列相同</td>
+</tr>
+<tr>
+<td>Space</td>
+<td><code>checkable</code> 時切換勾選（停用節點不變）；否則選取</td>
+</tr>
+</tbody>
+</table>
+<p>加上 Ctrl / Alt / Meta 的組合鍵不處理。焦點使用瀏覽器預設的 focus 樣式。</p>
+<h2>DOM 結構與 class</h2>
+<pre><code>div.tree-list.theme-{theme}                         role=&quot;tree&quot;
+  div.tree-node-wrapper
+    div.tree-node-row[data-node-id]                 role=&quot;treeitem&quot;
+      div.tree-node-toggle[data-node-id]            展開箭頭
+      input.tree-node-checkbox[data-node-id]        僅 checkable
+      div                                           節點圖示
+      span                                          文字標籤
+    div                                             role=&quot;group&quot;，僅展開時存在
+      div.tree-node-wrapper ...                     子節點
+      div.tree-node-loading                         延遲載入中
+      div.tree-node-error &gt; button.tree-node-retry  延遲載入失敗
+</code></pre>
+<h2>範例</h2>
+<pre><code class="language-html">&lt;link rel=&quot;stylesheet&quot; href=&quot;../../theme.css&quot;&gt;
+&lt;div id=&quot;tree&quot;&gt;&lt;/div&gt;
+&lt;script type=&quot;module&quot;&gt;
+    import { TreeList } from './TreeList.js';
+
+    const wait = (ms) =&gt; new Promise((resolve) =&gt; setTimeout(resolve, ms));
+
+    const tree = new TreeList({
+        ariaLabel: '組織與會議室',
+        checkable: true,
+        checkedKeys: ['room-a'],
+        data: [
+            {
+                id: 'dept',
+                label: '部門',
+                children: [
+                    { id: 'sales', label: '業務部' },   // children 未定義 → 展開時延遲載入
+                    { id: 'ops', label: '營運部' },
+                    { id: 'legal', label: '法務部', isLeaf: true },
+                ],
+            },
+            {
+                id: 'rooms',
+                label: '會議室',
+                children: [
+                    { id: 'room-a', label: 'A 會議室', children: [] },
+                    { id: 'room-b', label: 'B 會議室（維修中）', children: [], disableCheckbox: true },
+                ],
+            },
+        ],
+        loadChildren: async (node) =&gt; {
+            await wait(400); // 模擬後端延遲
+            return [
+                { id: `${node.id}-lead`, label: `${node.label}主管`, isLeaf: true },
+                { id: `${node.id}-staff`, label: `${node.label}同仁`, isLeaf: true },
+            ];
+        },
+        onSelect: (node) =&gt; console.log('選取', node.id),
+        onCheck: (keys, { node, checked }) =&gt; console.log('勾選', keys, node.id, checked),
+    }).mount('#tree');
+
+    // 例如在工具列上提供「全選 / 全不選 / 重新整理業務部」
+    // tree.checkAll(); tree.uncheckAll(); await tree.reloadNode('sales');
+&lt;/script&gt;
+</code></pre>
+<h2>已知限制</h2>
+<ul>
+<li>尚未載入的節點位置未知：以 <code>checkedKeys</code> 預設、但其祖先後來被使用者取消勾選的 id，在該子樹載入前仍會出現在 <code>getCheckedKeys()</code> 中（載入時會依使用者的取消勾選清除）；尚未載入子節點的父節點也無法顯示半選。</li>
+<li><code>setData()</code> 或 <code>reloadNode()</code> 後已不存在的 id 仍保留在勾選集合中，需要時請以 <code>setCheckedKeys()</code> 或 <code>uncheckAll()</code> 重設。</li>
+<li>所有可見節點都會實際渲染（未做虛擬捲動），大量節點建議搭配延遲載入。</li>
+<li>未提供 type-ahead（輸入字母跳到節點）與 <code>*</code>（展開同層全部節點）快捷鍵。</li>
+</ul>
+<h2>Demo</h2>
+<p>開啟同目錄的 <code>demo.html</code> 在瀏覽器中檢視主題與選取行為。</p>
+</main>
+</body>
+</html>

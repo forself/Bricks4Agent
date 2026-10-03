@@ -5,6 +5,14 @@ Status: **已依 owner 決策定案(2026-06-13)** —— §18.2 審批服務的�
 依據: [ControlledAutonomousAISystemTechnicalDesign.md](ControlledAutonomousAISystemTechnicalDesign.md) §3.1、§6.3、§6.4、§18.2、§21
 銜接: [CurrentArchitectureAndProgress-2026-06-13.md](../reports/CurrentArchitectureAndProgress-2026-06-13.md)(§18.1 執行配接器已 e2e 完成)
 
+> **實作現況（2026-09-26 核對）**
+>
+> - `command.execute` 的 seed 仍是 **High / deny**,不是 §5 定案的 Critical / deny(`packages/csharp/broker-core/Data/BrokerDbInitializer.cs:550-555`)。
+> - Google Drive 上傳(`delivery.google-drive.share` tool-spec)實際為 **medium / auto**,不是 §5 的 High / require_approval(`packages/csharp/broker/tool-specs/delivery.google-drive.share/tool.json:12-13`)。
+> - `deploy.azure-vm-iis` tool-spec 實際為 **high / require_approval**,不是 §5 的 Critical(`packages/csharp/broker/tool-specs/deploy.azure-vm-iis/tool.json:12-13`)。
+> - 沒有獨立的 `ApprovalService` 類別(§8.4):approval lifecycle 實作在 `BrokerService`(`ApproveExecutionAsync` / `RejectExecution`,`packages/csharp/broker-core/Services/BrokerService.cs:539,635`)。
+> - Local admin 已是具名 operator 帳號,approver id = `local-admin:{OperatorId}`(`packages/csharp/broker/Endpoints/LocalAdminEndpoints.cs:1104-1105`);Critical 雙人審批需兩個不同 operator。
+
 ## 0. 目的
 
 規格只說「**高風險行為不由 agent 自決,必須可審批、可撤銷、可重放**」(§3.1/§6.3/§21),但**沒定義什麼叫高風險**。本文補上這個定義,作為 §18.2 審批服務的依據:先有「什麼是高風險」,審批閘門才知道該攔什麼。
@@ -139,7 +147,7 @@ Status: **已依 owner 決策定案(2026-06-13)** —— §18.2 審批服務的�
 
 2. **檔案/記憶體寫刪改成 scope-aware**(`auto_if_task_scope_match`)—— 使用者在自己私有資料夾內 auto;逸出才升 High。`file.write` 不再無條件 require_approval。
 
-3. **審批門檻**:High / `require_approval` 只需**一個**審批者；Critical / `require_dual_approval` 需**兩個不同 approver id**。目前 local admin approver id 來自 admin session，因此是兩個不同 session/approver id，不是完整 named operator account 管理。
+3. **審批門檻**:High / `require_approval` 只需**一個**審批者；Critical / `require_dual_approval` 需**兩個不同 approver id**。目前 local admin approver id 為 `local-admin:{OperatorId}`(具名 operator 帳號)，因此需兩個不同 operator；同一 operator 的多個 session 仍算同一 approver。
 
 4. **審批通道兩個都要,且區分使用者/管理員**:
    - **使用者(User)**:經 **LINE 或 Web** 操作,作用範圍**只限自己的私有資料夾**(`{AccessRoot}/{channel}/{userId}/...`)。在自己資料夾內都是 auto,本來就不需審批;碰不到資料夾外。
@@ -165,4 +173,4 @@ Status: **已依 owner 決策定案(2026-06-13)** —— §18.2 審批服務的�
 
 ## 9. 範圍界線
 
-本文是風險分級與審批模型的定義文件。Broker 層已實作 §8 的核心決策、持久化 approval lifecycle、User/Admin 介面，以及 Critical / `require_dual_approval` 的兩個不同 approver id 門檻；local admin 身分仍是 session 型，尚不包含完整 named operator account / 多人帳號管理。
+本文是風險分級與審批模型的定義文件。Broker 層已實作 §8 的核心決策、持久化 approval lifecycle、User/Admin 介面，以及 Critical / `require_dual_approval` 的兩個不同 approver id 門檻；local admin 已有具名 operator 帳號(`/api/v1/local-admin/operators*`),approver id 以 operator 為單位。

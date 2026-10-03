@@ -42,7 +42,7 @@
 
 ## 輸出契約
 
-結果是 `SiteCrawlResult`，包含 `crawl_run_id`、`status`、`root`、`pages`、`excluded`、`extracted_model` 與 `limits`。
+結果是 `SiteCrawlResult`，包含 `crawl_run_id`、`status`、`root`、`pages`、`assets`、`excluded`、`redirects`、`extracted_model` 與 `limits`。
 
 頁面可包含渲染後的 visual snapshots：可見區塊、版面座標、文字階層、媒體、連結、表單與來源 selector。爬取可以包含比 visual snapshots 更多的頁面與 routes；`html`、`text_excerpt`、`links`、`forms` 等原始碼導向欄位仍只是輔助證據。
 

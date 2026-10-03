@@ -68,6 +68,10 @@ const picker = new TimePicker({
 <td>清除已選時間</td>
 </tr>
 <tr>
+<td><code>setError(msg, { display })</code> / <code>clearError()</code></td>
+<td>標示 / 清除欄位錯誤：紅框、<code>aria-invalid</code> 與錯誤文字；<code>display: false</code> 只標示狀態、不顯示文字</td>
+</tr>
+<tr>
 <td><code>open()</code> / <code>close()</code> / <code>toggle()</code></td>
 <td>開關面板</td>
 </tr>
@@ -75,8 +79,12 @@ const picker = new TimePicker({
 </table>
 <h3>屬性</h3>
 <ul>
-<li><code>element</code> — 根 DOM 元素</li>
-<li><code>hour</code> / <code>minute</code> — 目前選中的小時/分鐘（number 或 null）</li>
+<li>
+<p><code>element</code> — 根 DOM 元素</p>
+</li>
+<li>
+<p><code>hour</code> / <code>minute</code> — 目前選中的小時/分鐘（number 或 null）</p>
+</li>
 </ul>
 <h2>使用範例</h2>
 <pre><code class="language-javascript">import { TimePicker } from './TimePicker.js';

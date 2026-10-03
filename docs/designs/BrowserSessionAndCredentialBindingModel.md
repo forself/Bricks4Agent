@@ -219,13 +219,13 @@ Current implementation direction:
 
 - reference browser specs should declare both identity and session policy
 
+- user grant store (implemented: `BrowserUserGrant` records with list/get/upsert, `packages/csharp/broker/Endpoints/BrowserBindingEndpoints.cs:59-99`; validated by `BrowserExecutionRequestBuilder`)
+
+- session lease issuance and revocation (implemented: `BrowserBindingEndpoints.cs:160-188`)
+
 Not yet implemented:
 
 - credential vault
-
-- user grant store
-
-- session lease issuance and revocation
 
 - browser worker session pooling
 

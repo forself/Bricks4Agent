@@ -40,7 +40,7 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <td><code>options.items</code></td>
 <td><code>Array</code></td>
 <td><code>[]</code></td>
-<td>導航項目 <code>[{text, href?, icon?, active?}]</code></td>
+<td>導航項目 <code>[{text, href?, icon?}]</code>（<code>active</code> 不會被讀取；只有「最後一項且沒有 <code>href</code>」會渲染為純文字的當前頁，其餘皆為連結）</td>
 </tr>
 <tr>
 <td><code>options.separator</code></td>

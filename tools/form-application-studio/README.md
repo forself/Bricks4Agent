@@ -28,7 +28,7 @@
 
 ## Schema 範例
 
-見 `sample-schema.json`。表名、欄位名採可攜式識別字：`^[A-Za-z][A-Za-z0-9_]{0,62}$`。不接受任意 SQL、函式、raw HTML、prototype-sensitive key 或未核准的 provider／型別／元件。
+見 `sample-schema.json`。表名、欄位名採可攜式識別字：核心驗證器（`packages/javascript/browser/form-application/FormApplicationDefinition.js`）接受 `^[A-Za-z_][A-Za-z0-9_]*$`、最長 128 字元；在 Studio 畫布（`FormDesigner`）改欄位名時另套用較嚴格的 `^[A-Za-z][A-Za-z0-9_]{0,62}$`。不接受任意 SQL、函式、raw HTML、prototype-sensitive key 或未核准的 provider／型別／元件。
 
 ## CLI 生成
 

@@ -21,18 +21,38 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <body>
 <main>
 <h1>PaginationHelper - Pagination Utilities</h1>
+<blockquote>
+<p>⚠ Reference code: this folder has no .csproj, is not compiled or referenced by any project, and is not built by CI; the content below is not build-verified.</p>
+</blockquote>
 <p>Comprehensive pagination utilities for handling paged results in API responses and database queries.</p>
 <h2>Features</h2>
 <ul>
-<li>Offset-based pagination (traditional page numbers)</li>
-<li>Cursor-based pagination (for large datasets)</li>
-<li>PagedResult wrapper with metadata</li>
-<li>IQueryable extension methods</li>
-<li>Pagination parameter validation</li>
-<li>Automatic total pages calculation</li>
-<li>DTO mapping support</li>
+<li>
+<p>Offset-based pagination (traditional page numbers)</p>
+</li>
+<li>
+<p>Cursor-based pagination (for large datasets)</p>
+</li>
+<li>
+<p>PagedResult wrapper with metadata</p>
+</li>
+<li>
+<p>IQueryable extension methods</p>
+</li>
+<li>
+<p>Pagination parameter validation</p>
+</li>
+<li>
+<p>Automatic total pages calculation</p>
+</li>
+<li>
+<p>DTO mapping support</p>
+</li>
 </ul>
 <h2>Usage</h2>
+<blockquote>
+<p>Most examples below assume an EF Core <code>DbContext</code> (<code>_context</code>, <code>CountAsync</code>, <code>ToListAsync</code>), an <code>IUnitOfWork</code> with <code>Repository&lt;T&gt;().Query()</code>, and a controller base class providing <code>Success(...)</code> (<code>api/Controllers/BaseController</code>, itself unbuilt). None of these exist as built code in this repo (the repo uses BaseOrm, not EF Core); only <code>PaginationHelper.cs</code> itself belongs to this folder.</p>
+</blockquote>
 <h3>Basic Pagination</h3>
 <pre><code class="language-csharp">// In-memory list pagination
 var users = GetAllUsers(); // List&lt;User&gt;
@@ -325,44 +345,94 @@ public IActionResult Get([FromQuery] PaginationParams pagination)
 </code></pre>
 <h2>Best Practices</h2>
 <ol>
-<li><strong>Always Validate Parameters</strong> - Use PaginationParams or ValidatePaginationParams</li>
-<li><strong>Set Maximum Page Size</strong> - Prevent abuse (default: 100)</li>
-<li><strong>Use Cursor Pagination for Large Datasets</strong> - Better performance than offset</li>
-<li><strong>Index Sort Columns</strong> - Ensure database indexes on sorted fields</li>
-<li><strong>Count Only When Needed</strong> - For very large tables, consider approximations</li>
-<li><strong>Cache Total Counts</strong> - For frequently accessed, slow-changing data</li>
-<li><strong>Provide Metadata</strong> - Help clients build pagination UI</li>
+<li>
+<p><strong>Always Validate Parameters</strong> - Use PaginationParams or ValidatePaginationParams</p>
+</li>
+<li>
+<p><strong>Set Maximum Page Size</strong> - Prevent abuse (default: 100)</p>
+</li>
+<li>
+<p><strong>Use Cursor Pagination for Large Datasets</strong> - Better performance than offset</p>
+</li>
+<li>
+<p><strong>Index Sort Columns</strong> - Ensure database indexes on sorted fields</p>
+</li>
+<li>
+<p><strong>Count Only When Needed</strong> - For very large tables, consider approximations</p>
+</li>
+<li>
+<p><strong>Cache Total Counts</strong> - For frequently accessed, slow-changing data</p>
+</li>
+<li>
+<p><strong>Provide Metadata</strong> - Help clients build pagination UI</p>
+</li>
 </ol>
 <h2>Offset vs Cursor Pagination</h2>
 <h3>Offset (Page Number) - Best for:</h3>
 <ul>
-<li>Small to medium datasets</li>
-<li>Random page access needed</li>
-<li>UI shows page numbers</li>
-<li>Total count is useful</li>
+<li>
+<p>Small to medium datasets</p>
+</li>
+<li>
+<p>Random page access needed</p>
+</li>
+<li>
+<p>UI shows page numbers</p>
+</li>
+<li>
+<p>Total count is useful</p>
+</li>
 </ul>
 <h3>Cursor - Best for:</h3>
 <ul>
-<li>Very large datasets (millions of rows)</li>
-<li>Infinite scroll UI</li>
-<li>Real-time data (items being added/removed)</li>
-<li>Better performance with indexes</li>
+<li>
+<p>Very large datasets (millions of rows)</p>
+</li>
+<li>
+<p>Infinite scroll UI</p>
+</li>
+<li>
+<p>Real-time data (items being added/removed)</p>
+</li>
+<li>
+<p>Better performance with indexes</p>
+</li>
 </ul>
 <h2>Dependencies</h2>
 <ul>
-<li>System.Linq</li>
-<li>.NET 6.0 or higher</li>
-<li>No external NuGet packages required</li>
+<li>
+<p>System.Linq</p>
+</li>
+<li>
+<p>.NET 10 (<code>net10.0</code>, the repo's target framework)</p>
+</li>
+<li>
+<p>No external NuGet packages required</p>
+</li>
 </ul>
 <h2>Benefits</h2>
 <ol>
-<li><strong>Consistent API Responses</strong> - Uniform pagination format</li>
-<li><strong>Performance</strong> - Efficient database queries with Skip/Take</li>
-<li><strong>Metadata</strong> - Complete pagination information for clients</li>
-<li><strong>Validation</strong> - Built-in parameter validation</li>
-<li><strong>Flexibility</strong> - Works with IQueryable, IEnumerable, and lists</li>
-<li><strong>Type Safety</strong> - Strongly-typed paged results</li>
-<li><strong>DTO Mapping</strong> - Easy transformation to DTOs</li>
+<li>
+<p><strong>Consistent API Responses</strong> - Uniform pagination format</p>
+</li>
+<li>
+<p><strong>Performance</strong> - Efficient database queries with Skip/Take</p>
+</li>
+<li>
+<p><strong>Metadata</strong> - Complete pagination information for clients</p>
+</li>
+<li>
+<p><strong>Validation</strong> - Built-in parameter validation</p>
+</li>
+<li>
+<p><strong>Flexibility</strong> - Works with IQueryable, IEnumerable, and lists</p>
+</li>
+<li>
+<p><strong>Type Safety</strong> - Strongly-typed paged results</p>
+</li>
+<li>
+<p><strong>DTO Mapping</strong> - Easy transformation to DTOs</p>
+</li>
 </ol>
 </main>
 </body>

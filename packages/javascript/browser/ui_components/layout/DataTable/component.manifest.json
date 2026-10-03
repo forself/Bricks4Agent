@@ -25,7 +25,9 @@
     "listener_events": [
       "change"
     ],
-    "target_actions": []
+    "target_actions": [
+      "reload"
+    ]
   },
   "styling": {
     "theme_token_only": true,

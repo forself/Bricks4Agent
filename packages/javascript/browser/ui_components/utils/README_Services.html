@@ -59,11 +59,21 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <p>地理位置服務 - 取得使用者位置並進行反向地理編碼。</p>
 <h3>Features</h3>
 <ul>
-<li><strong>取得當前位置</strong>：使用 Browser Geolocation API</li>
-<li><strong>反向地理編碼</strong>：座標轉地址 (使用 Nominatim OpenStreetMap)</li>
-<li><strong>位置監聽</strong>：監聽位置變化</li>
-<li><strong>距離計算</strong>：計算兩點距離 (Haversine 公式)</li>
-<li><strong>多語言支援</strong>：支援繁體中文、英文</li>
+<li>
+<p><strong>取得當前位置</strong>：使用 Browser Geolocation API</p>
+</li>
+<li>
+<p><strong>反向地理編碼</strong>：座標轉地址 (使用 Nominatim OpenStreetMap)</p>
+</li>
+<li>
+<p><strong>位置監聽</strong>：監聽位置變化</p>
+</li>
+<li>
+<p><strong>距離計算</strong>：計算兩點距離 (Haversine 公式)</p>
+</li>
+<li>
+<p><strong>多語言支援</strong>：支援繁體中文、英文</p>
+</li>
 </ul>
 <h3>Usage</h3>
 <pre><code class="language-javascript">import { GeolocationService, GeolocationError } from './GeolocationService.js';
@@ -107,7 +117,7 @@ const distance = GeolocationService.calculateDistance(
     25.0330, 121.5654,  // 台北101
     24.1477, 120.6736   // 台中火車站
 );
-console.log(GeolocationService.formatDistance(distance));  // &quot;162.3 公里&quot;
+console.log(GeolocationService.formatDistance(distance));  // &quot;133.5 公里&quot;
 </code></pre>
 <h3>錯誤代碼</h3>
 <table>
@@ -141,12 +151,24 @@ console.log(GeolocationService.formatDistance(distance));  // &quot;162.3 公里
 <p>天氣服務 - 使用 Open-Meteo API 取得天氣資訊。</p>
 <h3>Features</h3>
 <ul>
-<li><strong>當前天氣</strong>：溫度、體感溫度、濕度、風速</li>
-<li><strong>天氣預報</strong>：每日預報 (最多 16 天)</li>
-<li><strong>每小時預報</strong>：每小時預報 (最多 384 小時)</li>
-<li><strong>WMO 代碼解析</strong>：天氣代碼轉描述文字與圖示</li>
-<li><strong>多語言支援</strong>：繁體中文、英文</li>
-<li><strong>免費無 API Key</strong>：使用 Open-Meteo 公開 API</li>
+<li>
+<p><strong>當前天氣</strong>：溫度、體感溫度、濕度、風速</p>
+</li>
+<li>
+<p><strong>天氣預報</strong>：每日預報 (最多 16 天)</p>
+</li>
+<li>
+<p><strong>每小時預報</strong>：每小時預報 (最多 384 小時)</p>
+</li>
+<li>
+<p><strong>WMO 代碼解析</strong>：天氣代碼轉描述文字與圖示</p>
+</li>
+<li>
+<p><strong>多語言支援</strong>：繁體中文、英文</p>
+</li>
+<li>
+<p><strong>免費無 API Key</strong>：使用 Open-Meteo 公開 API</p>
+</li>
 </ul>
 <h3>Usage</h3>
 <pre><code class="language-javascript">import { WeatherService, WeatherError } from './WeatherService.js';
@@ -300,14 +322,24 @@ getLocationWeather();
 <hr>
 <h2>瀏覽器支援</h2>
 <ul>
-<li>Chrome/Edge 90+</li>
-<li>Firefox 88+</li>
-<li>Safari 14+</li>
+<li>
+<p>Chrome/Edge 90+</p>
+</li>
+<li>
+<p>Firefox 88+</p>
+</li>
+<li>
+<p>Safari 14+</p>
+</li>
 </ul>
 <h2>API 參考</h2>
 <ul>
-<li><a href="https://nominatim.org/release-docs/latest/api/Reverse/">Nominatim OpenStreetMap</a></li>
-<li><a href="https://open-meteo.com/en/docs">Open-Meteo</a></li>
+<li>
+<p><a href="https://nominatim.org/release-docs/latest/api/Reverse/">Nominatim OpenStreetMap</a></p>
+</li>
+<li>
+<p><a href="https://open-meteo.com/en/docs">Open-Meteo</a></p>
+</li>
 </ul>
 <hr>
 <p><strong>Created for Bricks4Agent Project</strong></p>

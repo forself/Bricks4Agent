@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NotificationCenter</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>NotificationCenter</h1>
+<p>通知中心（複合元件）。鈴鐺按鈕加未讀徽章，點開是浮出面板，列出一串通知並追蹤已讀狀態。</p>
+<p>與 <code>common/Notification</code> 的差別：<code>Notification</code> 是一次性的 Toast（自動消失、不保存）；<code>NotificationCenter</code> 保存通知清單、記錄已讀、由使用者主動開啟瀏覽，兩者可以並用（例如新通知到達時同時彈 Toast 並 <code>add()</code> 進通知中心）。</p>
+<ul>
+<li>觸發鈕的無障礙名稱含未讀數；徽章超過 99 顯示「99+」。</li>
+<li>面板浮出方式比照 <code>form/Dropdown</code>：面板留在元件內（維持 DOM 契約），開啟時改 <code>position: fixed</code> 依觸發鈕定位，不受上層 <code>overflow</code> 裁切；上層有 <code>transform</code>／<code>filter</code> 時補償座標；下方空間不足時翻到上方。</li>
+<li><code>document</code>／<code>window</code> 監聽只在面板開啟期間掛載。</li>
+<li>項目的 <code>href</code> 一律經 <code>sanitizeUrl()</code>；不安全的網址退回按鈕。全部以 <code>createElement</code> + <code>textContent</code> 建構，符合嚴格 CSP；鈴鐺為 <code>common/Icon</code>（Canvas）。</li>
+</ul>
+<h2>建構</h2>
+<pre><code class="language-js">import { NotificationCenter } from './index.js';
+
+const center = new NotificationCenter({
+    items: [],               // 通知（新到舊）：[{ id, title, message?, time?, read?: false, variant?: 'info'|'success'|'warning'|'danger', href? }]
+    maxItems: 100,           // 記憶體中最多保留幾則，超過時丟棄最舊的；0 或非有限數＝不限
+    emptyText: null,         // 沒有通知時的文字；null 使用 Locale notificationCenter.empty
+    markReadOnOpen: false,   // 開啟面板時把目前未讀全部標為已讀（觸發 onMarkRead）
+    markReadOnClick: true,   // 點選項目時標為已讀（觸發 onMarkRead）
+    onItemClick: null,       // (item, event) =&gt; void；item 為呼叫端原物件
+    onMarkRead: null,        // (ids) =&gt; void；只在使用者操作造成已讀變化時呼叫
+    onLoadMore: null,        // async () =&gt; items[] | { items, hasMore } | void；提供且 hasMore 時顯示「載入更多」
+    hasMore: false,          // 是否還有更舊的通知
+    ariaLabel: null,         // 觸發鈕的基本名稱，也是面板標題；null 使用 Locale notificationCenter.label
+    formatTime: null,        // (date: Date, item) =&gt; string；null 使用 Intl.DateTimeFormat(Locale 語言, medium／short)
+    announceDelay: 1000      // 未讀數播報的節流間隔（ms）
+});
+center.mount('#header-actions');
+</code></pre>
+<h3>item 物件</h3>
+<table>
+<thead>
+<tr>
+<th>欄位</th>
+<th>型別</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>id</code></td>
+<td><code>string | number</code></td>
+<td>識別碼；去重、<code>markRead</code>、<code>remove</code> 以它比對（<code>'1'</code> 與 <code>1</code> 視為相同）</td>
+</tr>
+<tr>
+<td><code>title</code></td>
+<td><code>string</code></td>
+<td>標題</td>
+</tr>
+<tr>
+<td><code>message</code></td>
+<td><code>string?</code></td>
+<td>內容（保留換行）</td>
+</tr>
+<tr>
+<td><code>time</code></td>
+<td><code>string | Date | number?</code></td>
+<td>時間；無法解析的字串原樣顯示</td>
+</tr>
+<tr>
+<td><code>read</code></td>
+<td><code>boolean?</code></td>
+<td>是否已讀，預設 <code>false</code>；同 id 再次加入且未指定時沿用原本的已讀狀態</td>
+</tr>
+<tr>
+<td><code>variant</code></td>
+<td><code>'info' | 'success' | 'warning' | 'danger'</code></td>
+<td>類型（圖示、顏色與視覺隱藏的類型文字）；預設 <code>info</code></td>
+</tr>
+<tr>
+<td><code>href</code></td>
+<td><code>string?</code></td>
+<td>有值時項目是連結（經 <code>sanitizeUrl()</code>），否則是按鈕</td>
+</tr>
+</tbody>
+</table>
+<h3>清單規則</h3>
+<ul>
+<li>清單順序一律「新到舊」。<code>add()</code> 把新通知放在最上方；傳陣列時陣列本身視為新到舊。</li>
+<li>同 id 去重：<code>add()</code> 取代舊的並移到最上方；同一批內重複的 id 只保留第一筆。</li>
+<li>超過 <code>maxItems</code> 時丟棄最舊（尾端）的通知。清單已達上限時不顯示「載入更多」。</li>
+<li><code>onLoadMore</code> 回傳陣列或 <code>{ items, hasMore }</code> 時，較舊的通知接在尾端（已存在的 id 不重複加入）；回傳 <code>{ hasMore }</code> 會更新狀態，也可以在 callback 內自行呼叫 <code>setHasMore()</code>。失敗（reject）時恢復按鈕並以 live region 播報「載入失敗」。</li>
+</ul>
+<h2>方法</h2>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>回傳</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>setItems(items)</code></td>
+<td><code>this</code></td>
+<td>以新陣列（新到舊）取代全部通知</td>
+</tr>
+<tr>
+<td><code>add(itemOrItems)</code></td>
+<td><code>this</code></td>
+<td>新增一則或多則放在最上方；同 id 取代並移到最上方</td>
+</tr>
+<tr>
+<td><code>markRead(ids, { emit = false })</code></td>
+<td><code>this</code></td>
+<td>標為已讀；預設不觸發 <code>onMarkRead</code>，傳 <code>{ emit: true }</code> 才觸發</td>
+</tr>
+<tr>
+<td><code>markAllRead({ emit = false })</code></td>
+<td><code>this</code></td>
+<td>全部標為已讀；同上</td>
+</tr>
+<tr>
+<td><code>remove(id)</code></td>
+<td><code>this</code></td>
+<td>移除指定 id</td>
+</tr>
+<tr>
+<td><code>getItems()</code></td>
+<td><code>object[]</code></td>
+<td>目前的通知（新到舊；淺拷貝並帶上目前的 <code>read</code>）</td>
+</tr>
+<tr>
+<td><code>getUnreadCount()</code></td>
+<td><code>number</code></td>
+<td>未讀數</td>
+</tr>
+<tr>
+<td><code>setHasMore(hasMore)</code></td>
+<td><code>this</code></td>
+<td>設定是否還有更舊的通知</td>
+</tr>
+<tr>
+<td><code>open()</code></td>
+<td><code>this</code></td>
+<td>開啟面板並把焦點移入面板</td>
+</tr>
+<tr>
+<td><code>close()</code></td>
+<td><code>this</code></td>
+<td>關閉面板；焦點原本在面板內（或已遺失）時還給觸發鈕</td>
+</tr>
+<tr>
+<td><code>isOpen()</code></td>
+<td><code>boolean</code></td>
+<td>面板是否開啟</td>
+</tr>
+<tr>
+<td><code>snapshot()</code></td>
+<td><code>object</code></td>
+<td>狀態機快照：<code>{ lifecycle, open, hasMore, loading }</code></td>
+</tr>
+<tr>
+<td><code>mount(container)</code></td>
+<td><code>this</code></td>
+<td>掛載到元素或 CSS 選擇器</td>
+</tr>
+<tr>
+<td><code>destroy()</code></td>
+<td><code>void</code></td>
+<td>移除 DOM、Icon、所有監聽與計時器（開啟中也可直接呼叫）；可重複呼叫，之後呼叫其他方法不會拋錯</td>
+</tr>
+</tbody>
+</table>
+<h2>事件（callback）</h2>
+<table>
+<thead>
+<tr>
+<th>Callback</th>
+<th>參數</th>
+<th>觸發時機</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>onItemClick</code></td>
+<td><code>(item, event)</code></td>
+<td>點選項目（連結或按鈕）。<code>item</code> 是呼叫端原物件；SPA 可在這裡 <code>event.preventDefault()</code> 後自行導頁</td>
+</tr>
+<tr>
+<td><code>onMarkRead</code></td>
+<td><code>(ids)</code></td>
+<td>使用者操作讓項目變成已讀：點選項目（<code>markReadOnClick</code>）、「全部標為已讀」、開啟面板（<code>markReadOnOpen</code>）。只含這次真正變動的 id</td>
+</tr>
+<tr>
+<td><code>onLoadMore</code></td>
+<td><code>()</code></td>
+<td>點「載入更多」；回傳 Promise，完成前按鈕顯示「載入中…」並忽略重複點擊</td>
+</tr>
+</tbody>
+</table>
+<p>點選項目的順序：標為已讀（<code>onMarkRead</code>）→ 關閉面板並把焦點還給觸發鈕 → <code>onItemClick</code>。以 Ctrl／⌘／Shift 或滑鼠中鍵點連結（開新分頁）時面板保持開啟。已讀只就地更新項目外觀，不重繪清單，所以連結點擊後瀏覽器仍會正常導覽。</p>
+<h2>鍵盤與無障礙</h2>
+<table>
+<thead>
+<tr>
+<th>按鍵</th>
+<th>行為</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Enter ／ Space（觸發鈕）</td>
+<td>開關面板（原生按鈕）</td>
+</tr>
+<tr>
+<td>Escape</td>
+<td>關閉面板並把焦點還給觸發鈕；事件不再往外傳，外層對話框不會一起關閉</td>
+</tr>
+<tr>
+<td>↓ ／ ↑</td>
+<td>在項目之間移動（焦點在面板本身時 ↓ 到第一則）</td>
+</tr>
+<tr>
+<td>Home ／ End</td>
+<td>第一則／最後一則</td>
+</tr>
+<tr>
+<td>Tab</td>
+<td>在面板內依序經過「全部標為已讀」、各項目、「載入更多」；Tab 離開元件時面板自動關閉（不搶焦點）</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>觸發鈕：<code>aria-haspopup="dialog"</code>、<code>aria-expanded</code>、<code>aria-controls</code> 指向面板；無障礙名稱例如「通知（3 則未讀）」（Locale <code>triggerLabel</code> 的 <code>{count}</code> 為實際數字，不受 99+ 限制）。徽章 <code>aria-hidden="true"</code>。</li>
+<li>面板：<code>role="dialog"</code>、<code>aria-modal="false"</code>、<code>aria-labelledby</code> 指向 <code>&lt;h2&gt;</code> 標題；開啟時焦點移到面板。</li>
+<li>點面板外會關閉；如果使用者點到的是其他可聚焦元素，焦點留在那裡，只有焦點遺失（落在 body）時才還給觸發鈕。外部點擊以 capture 監聽，其他元素 <code>stopPropagation()</code> 也關得掉。</li>
+<li>未讀以粗體標題、圓點與視覺隱藏的「未讀」文字表示；非 <code>info</code> 類型另有視覺隱藏的類型文字（例如「警告」）。</li>
+<li>「全部標為已讀」沒有未讀時為 <code>aria-disabled="true"</code>（仍可聚焦，點擊不動作）；載入中清單 <code>aria-busy="true"</code>。</li>
+<li>未讀數變動以 live region（<code>role="status"</code>、<code>aria-live="polite"</code>）依 <code>announceDelay</code> 節流播報，例如「4 則未讀通知」；初始資料不播報，數字沒變也不播報。</li>
+<li><code>Locale.setLang()</code> 會即時更新觸發鈕名稱、標題、按鈕與項目文字。</li>
+</ul>
+<h2>Locale（namespace：<code>notificationCenter</code>）</h2>
+<p><code>label</code>、<code>triggerLabel</code>（<code>{label}</code>、<code>{count}</code>）、<code>markAllRead</code>、<code>loadMore</code>、<code>loading</code>、<code>loadFailed</code>、<code>empty</code>、<code>unread</code>、<code>unreadAnnouncement</code>（<code>{count}</code>）、<code>noUnread</code>、<code>variant.info</code>、<code>variant.success</code>、<code>variant.warning</code>、<code>variant.danger</code>。字串由同目錄 <code>locale.js</code> 註冊 zh-TW 與 en。</p>
+<h2>可執行範例</h2>
+<p>把下列內容存成本目錄的 <code>example.html</code>，以 HTTP 伺服器開啟（例如在 repo 根目錄執行 <code>python -m http.server 8124</code>；ES module 不能用 <code>file://</code>）。</p>
+<pre><code class="language-html">&lt;!DOCTYPE html&gt;
+&lt;html lang=&quot;zh-TW&quot; data-theme=&quot;light&quot;&gt;
+&lt;head&gt;
+    &lt;meta charset=&quot;UTF-8&quot;&gt;
+    &lt;title&gt;NotificationCenter 範例&lt;/title&gt;
+    &lt;link rel=&quot;stylesheet&quot; href=&quot;../../theme.css&quot;&gt;
+&lt;/head&gt;
+&lt;body&gt;
+    &lt;header&gt;
+        &lt;div id=&quot;header-actions&quot;&gt;&lt;/div&gt;
+    &lt;/header&gt;
+    &lt;script type=&quot;module&quot;&gt;
+        import { NotificationCenter } from './index.js';
+
+        let page = 0;
+        const center = new NotificationCenter({
+            items: [
+                { id: 'n3', title: '新的任務指派', message: '請於週五前完成庫存盤點', time: new Date(), variant: 'warning' },
+                { id: 'n2', title: '會議室預約已確認', message: 'A 室 週三 10:00', href: '#/rooms/a' },
+                { id: 'n1', title: '訂單已出貨', read: true, variant: 'success' }
+            ],
+            hasMore: true,
+            onItemClick: (item, event) =&gt; console.log('開啟', item.id),
+            onMarkRead: (ids) =&gt; console.log('同步已讀', ids),
+            onLoadMore: async () =&gt; {
+                page += 1;
+                const items = [{ id: `old-${page}`, title: `較舊的通知 ${page}`, read: true }];
+                return { items, hasMore: page &lt; 3 };
+            }
+        }).mount('#header-actions');
+
+        // 模擬推播
+        setTimeout(() =&gt; center.add({ id: 'n4', title: '專案文件已更新', variant: 'info' }), 3000);
+    &lt;/script&gt;
+&lt;/body&gt;
+&lt;/html&gt;
+</code></pre>
+</main>
+</body>
+</html>

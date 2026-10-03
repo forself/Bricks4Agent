@@ -1,5 +1,11 @@
 # PasswordHasher - Secure Password Hashing
 
+> ⚠ Reference code: this folder has no .csproj, is not compiled or referenced by any project, and is not built by CI; the content below is not build-verified.
+>
+> Known not to compile: `PasswordHasher.cs` calls `BCrypt.Net.BCrypt`, but no project in this repo provides the BCrypt package.
+>
+> **Deprecated.** BCrypt contradicts the repo password-hashing policy, which is PBKDF2 through the static `Rfc2898DeriveBytes.Pbkdf2` API with the existing iteration/salt/hash sizes and stored formats kept unchanged (see the repo `CLAUDE.md`; implementations in `broker/Services/LocalAdminAuthService.cs` and `security/Mfa/MfaAuthService.cs`). `BCrypt.Net-Next` is not in the .NET dependency policy (`tools/scripts/dotnet-dependency-policy.json`). Do not use this helper for new code.
+
 Secure password hashing utility using BCrypt algorithm with built-in password strength validation.
 
 ## Features
@@ -337,9 +343,9 @@ Higher work factor = more secure but slower hashing:
 
 ## Dependencies
 
-- BCrypt.Net-Next (NuGet package)
+- BCrypt.Net-Next (NuGet package; not referenced by any project and not allowed by the repo dependency policy)
 
-- .NET 6.0 or higher
+- .NET 10 (`net10.0`, the repo's target framework)
 
 ## Example DTOs
 

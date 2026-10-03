@@ -24,6 +24,14 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <p>日期：2026-03-29
 類型：測試架構設計規格
 狀態：Draft</p>
+<blockquote>
+<p><strong>實作現況（2026-09-26 核對）</strong></p>
+<ul>
+<li>基礎建設已到位：<code>packages/csharp/tests/unit/Unit.Tests.csproj</code>、<code>packages/csharp/tests/integration/Integration.Tests.csproj</code> 已加入 <code>packages/csharp/ControlPlane.slnx:38</code>、<code>:41</code>；<code>packages/csharp/tests/integration/Fixtures/BrokerFixture.cs</code>、<code>packages/javascript/browser/vitest.config.js</code>、<code>packages/javascript/browser/__tests__/setup.js</code>、<code>tests/e2e/playwright.config.ts</code> 均存在。<code>CacheServerFixture.cs</code>、<code>TestDatabaseFixture.cs</code>、<code>tests/e2e/fixtures/</code> 未建立。</li>
+<li>§2.3 具名規劃的 72 個測試檔（C# 49、前端 14、E2E 9）中，同名已存在的只有 11 個：<code>PolicyEngineTests</code>、<code>IdGenTests</code>、<code>EnvelopeCryptoTests</code>、<code>ScopedTokenServiceTests</code>、<code>SandboxPathTests</code>、<code>WorkerRegistryTests</code>、<code>FieldResolver</code>、<code>TriggerEngine</code>、<code>PageDefinitionAdapter</code>、<code>ThemeSwitching</code>、<code>Locale</code>；另有少數部分對應（如 <code>BasicButton.test.js</code>、<code>InboundDispatcherApprovalTests.cs</code>、<code>EncryptionBypassTests.cs</code>、<code>DynamicPageRendererTool.test.js</code>）。其餘實際測試多為計畫外新增（Transport、SiteCrawler、Admin 等）。</li>
+<li>主要缺口：<code>BrokerServiceTests</code> / <code>PepPipelineTests</code>（PEP 管線）、<code>SessionServiceTests</code> / <code>SessionKeyStoreTests</code>、Data 層（<code>BrokerDb*</code>）、FunctionPool 派工（<code>PoolDispatcher</code> / <code>StrictPoolDispatcher</code> / <code>FallbackDispatcher</code> / <code>HealthMonitor</code> / <code>ContainerManager</code>）、Delivery 三項（<code>LineArtifactDeliveryService</code>、<code>ArtifactDownloadSignature</code>、<code>SidecarPublicUrlResolver</code>）、Cache 四項、多數整合 API 測試（Session / Task / Admin / Plan / Worker / ArtifactDownload / Delivery）、<code>WorkerIntegration/*</code>，以及全部 5 個 E2E 情境 spec 與規劃中的 4 個 UI spec（<code>tests/e2e/ui/</code> 目前只有 <code>admin-structure.spec.ts</code>、<code>spa-commerce-proof.spec.ts</code>）。</li>
+</ul>
+</blockquote>
 <hr>
 <h2>1. 現狀與問題</h2>
 <h3>1.1 現有測試基礎</h3>
@@ -919,73 +927,149 @@ cd packages/javascript/browser &amp;&amp; npx vitest run --coverage
 <h2>8. 實施順序</h2>
 <h3>Phase 1: 基礎建設（第 1 週）</h3>
 <ol>
-<li>建立 xUnit 專案結構，設定 NSubstitute + FluentAssertions</li>
-<li>建立 WebApplicationFactory Fixture（記憶體內 Broker）</li>
-<li>建立 Vitest 環境（jsdom 設定）</li>
-<li>將測試專案加入 ControlPlane.slnx</li>
-<li>遷移現有 62 個斷言到 xUnit 格式</li>
+<li>
+<p>建立 xUnit 專案結構，設定 NSubstitute + FluentAssertions</p>
+</li>
+<li>
+<p>建立 WebApplicationFactory Fixture（記憶體內 Broker）</p>
+</li>
+<li>
+<p>建立 Vitest 環境（jsdom 設定）</p>
+</li>
+<li>
+<p>將測試專案加入 ControlPlane.slnx</p>
+</li>
+<li>
+<p>遷移現有 62 個斷言到 xUnit 格式</p>
+</li>
 </ol>
 <h3>Phase 2: P0 安全核心測試（第 2 週）</h3>
-<ol start="6">
-<li>PolicyEngine 7 規則完整測試</li>
-<li>EnvelopeCrypto 加解密測試</li>
-<li>SessionService 生命週期測試</li>
-<li>ScopedTokenService 測試</li>
-<li>BrokerService PEP 管線整合測試</li>
+<ol>
+<li>
+<p>PolicyEngine 7 規則完整測試</p>
+</li>
+<li>
+<p>EnvelopeCrypto 加解密測試</p>
+</li>
+<li>
+<p>SessionService 生命週期測試</p>
+</li>
+<li>
+<p>ScopedTokenService 測試</p>
+</li>
+<li>
+<p>BrokerService PEP 管線整合測試</p>
+</li>
 </ol>
 <h3>Phase 3: P1 業務邏輯測試（第 3 週）</h3>
-<ol start="11">
-<li>Worker Handler 單元測試（LINE/File/Browser）</li>
-<li>FunctionPool（Registry + Dispatchers + Health）</li>
-<li>前端核心元件測試（P0 元件 ~10 個）</li>
-<li>FieldResolver + TriggerEngine 測試</li>
+<ol>
+<li>
+<p>Worker Handler 單元測試（LINE/File/Browser）</p>
+</li>
+<li>
+<p>FunctionPool（Registry + Dispatchers + Health）</p>
+</li>
+<li>
+<p>前端核心元件測試（P0 元件 ~10 個）</p>
+</li>
+<li>
+<p>FieldResolver + TriggerEngine 測試</p>
+</li>
 </ol>
 <h3>Phase 4: 整合 + UI 測試（第 4 週）</h3>
-<ol start="15">
-<li>API 端點整合測試</li>
-<li>中介軟體管線測試</li>
-<li>快取叢集整合測試</li>
-<li>line-admin.html UI 測試（Playwright）</li>
+<ol>
+<li>
+<p>API 端點整合測試</p>
+</li>
+<li>
+<p>中介軟體管線測試</p>
+</li>
+<li>
+<p>快取叢集整合測試</p>
+</li>
+<li>
+<p>line-admin.html UI 測試（Playwright）</p>
+</li>
 </ol>
 <h3>Phase 5: E2E 行為模擬（第 5 週）</h3>
-<ol start="19">
-<li>Playwright 環境建立 + Fixture</li>
-<li>LINE 對話全鏈路模擬</li>
-<li>審核工作流模擬</li>
-<li>Admin 介面操作模擬</li>
-<li>Worker 容錯模擬</li>
-<li>Artifact 遞送模擬</li>
+<ol>
+<li>
+<p>Playwright 環境建立 + Fixture</p>
+</li>
+<li>
+<p>LINE 對話全鏈路模擬</p>
+</li>
+<li>
+<p>審核工作流模擬</p>
+</li>
+<li>
+<p>Admin 介面操作模擬</p>
+</li>
+<li>
+<p>Worker 容錯模擬</p>
+</li>
+<li>
+<p>Artifact 遞送模擬</p>
+</li>
 </ol>
 <hr>
 <h2>9. 設計決策與取捨</h2>
 <h3>9.1 為何選 xUnit 而非 NUnit/MSTest</h3>
 <ul>
-<li>xUnit 是 .NET 社群最活躍的框架，<code>IAsyncLifetime</code> 更適合 WebApplicationFactory</li>
-<li><code>[Theory]</code> + <code>[InlineData]</code> 適合策略規則的參數化測試</li>
-<li>與 <code>dotnet test</code> 無縫整合</li>
+<li>
+<p>xUnit 是 .NET 社群最活躍的框架，<code>IAsyncLifetime</code> 更適合 WebApplicationFactory</p>
+</li>
+<li>
+<p><code>[Theory]</code> + <code>[InlineData]</code> 適合策略規則的參數化測試</p>
+</li>
+<li>
+<p>與 <code>dotnet test</code> 無縫整合</p>
+</li>
 </ul>
 <h3>9.2 為何選 Vitest 而非 Jest</h3>
 <ul>
-<li>原生 ESM 支援（專案使用 ES modules）</li>
-<li>零配置、啟動快</li>
-<li>與 Vite 生態一致（如未來需要打包）</li>
+<li>
+<p>原生 ESM 支援（專案使用 ES modules）</p>
+</li>
+<li>
+<p>零配置、啟動快</p>
+</li>
+<li>
+<p>與 Vite 生態一致（如未來需要打包）</p>
+</li>
 </ul>
 <h3>9.3 為何 WebApplicationFactory 而非獨立啟動</h3>
 <ul>
-<li>記憶體內運行，無需佔用 port，測試間隔離</li>
-<li>可替換 DI 服務（in-memory DB、mock Worker）</li>
-<li>測試結束自動清理</li>
+<li>
+<p>記憶體內運行，無需佔用 port，測試間隔離</p>
+</li>
+<li>
+<p>可替換 DI 服務（in-memory DB、mock Worker）</p>
+</li>
+<li>
+<p>測試結束自動清理</p>
+</li>
 </ul>
 <h3>9.4 為何不用 Docker 做整合測試</h3>
 <ul>
-<li>增加 CI 複雜度和時間</li>
-<li>WebApplicationFactory + in-memory SQLite 已足夠</li>
-<li>快取叢集測試可用多進程模擬（無需 Docker）</li>
+<li>
+<p>增加 CI 複雜度和時間</p>
+</li>
+<li>
+<p>WebApplicationFactory + in-memory SQLite 已足夠</p>
+</li>
+<li>
+<p>快取叢集測試可用多進程模擬（無需 Docker）</p>
+</li>
 </ul>
 <h3>9.5 保留現有測試</h3>
 <ul>
-<li>不刪除 <code>broker-tests/</code> 和 <code>e2e-bridge/</code>，保持向後相容</li>
-<li>新測試建立在新結構中，逐步遷移</li>
+<li>
+<p>不刪除 <code>broker-tests/</code> 和 <code>e2e-bridge/</code>，保持向後相容</p>
+</li>
+<li>
+<p>新測試建立在新結構中，逐步遷移</p>
+</li>
 </ul>
 </main>
 </body>

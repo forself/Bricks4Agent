@@ -1,5 +1,7 @@
 # 統一視覺化引擎使用指南 (Unified Visualization Engine Guide)
 
+> ⚠️ **目前狀態**：`VizEngine.js` 仍是 stub——`render()` 只做資料轉換、**不會繪出任何圖表**；`events`、`on()`、`destroy()` 皆為 TODO 尚未實作（`setAuth()` / `fetch()` 可用）。實際可用的圖表是 `viz/` 下的 Canvas 圖表元件（如 `OrgChart`、`RelationChart`、`TimelineChart`、`SankeyChart`、`SunburstChart`、`FlameChart`、`HierarchyChart`，共用基底 `viz/CanvasChart.js`）。本文件描述的是資料協議與設計方向。
+
 ## 數據協議：JSON 物件陣列 (JSON Array Protocol)
 
 為了兼顧開發效率與直觀性，本引擎採用 **JSON 物件陣列** 作為標準輸入格式。
@@ -82,10 +84,12 @@ viz.render({
 
 ```javascript
 const tasks = [
-    { label: "Task 1", group: "Server", start: 1680000000, end: 1680001000 },
-    { label: "Task 2", group: "Client", start: 1680000500, end: 1680002000 }
+    { label: "Task 1", group: "Server", start: 1680000000000, end: 1680001000000 },
+    { label: "Task 2", group: "Client", start: 1680000500000, end: 1680002000000 }
 ];
 ```
+
+*`start` / `end` 為**毫秒** epoch（`TimelineChart` 以 `new Date(ms)` 解讀），不是秒。*
 
 **前端渲染 (Frontend Render):**
 
@@ -151,6 +155,6 @@ viz.fetch('/api/v1/employees')
 
 ### 4.2 XSS 防護 (XSS Prevention)
 
-- **自動過濾**: 引擎內部所有 Detail Card 與 Tooltip 渲染皆已強制實作 `escapeHtml()`。
+- **自動過濾**: Canvas 圖表的 Tooltip 由 `CanvasChart` 以 `textContent` 寫入 DOM（不經 HTML 解析）；各圖表的 Detail Card 以 `textContent` 或 `escapeHtml()` 處理。
 
 - **數據內容**: 即便後端回傳含有 `<script>` 的惡意字串，在前端也會被轉義為純文字顯示 (`&lt;script&gt;`)，確保不會執行惡意代碼。

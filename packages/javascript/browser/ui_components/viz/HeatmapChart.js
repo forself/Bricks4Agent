@@ -13,6 +13,7 @@
  */
 import { CanvasChart } from './CanvasChart.js';
 import { sequentialScale, divergingScale } from '../utils/color-scale.js';
+import Locale from '../i18n/index.js';
 
 export class HeatmapChart extends CanvasChart {
     constructor(options = {}) {
@@ -149,6 +150,33 @@ export class HeatmapChart extends CanvasChart {
             { label: '值', value: `${this.fmt(d.value)}${u ? ' ' + u : ''}` }
         ];
     }
+
+    /** 無障礙資料表(accessibleTable):列 / 欄 / 數值(長格式;與圖相同略過 null/NaN 空格)。 */
+    getDataTable() {
+        const o = this.options;
+        const xs = Array.isArray(o.xLabels) ? o.xLabels : [];
+        const ys = Array.isArray(o.yLabels) ? o.yLabels : [];
+        const matrix = Array.isArray(o.matrix) ? o.matrix : [];
+        const rows = [];
+        for (let yi = 0; yi < ys.length; yi++) {
+            const line = matrix[yi] || [];
+            for (let xi = 0; xi < xs.length; xi++) {
+                const v = line[xi];
+                if (v == null || Number.isNaN(v)) continue;
+                rows.push({ row: ys[yi], column: xs[xi], value: v });
+            }
+        }
+        return {
+            columns: [
+                { key: 'row', label: Locale.t('canvasChart.row') },
+                { key: 'column', label: Locale.t('canvasChart.column') },
+                { key: 'value', label: Locale.t('canvasChart.value'), format: 'number', unit: o.unit }
+            ],
+            rows
+        };
+    }
+
+    _a11ySources() { return [this.options.matrix, this.options.xLabels, this.options.yLabels]; }
 }
 
 export default HeatmapChart;

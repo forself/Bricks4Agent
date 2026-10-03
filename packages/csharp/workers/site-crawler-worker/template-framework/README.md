@@ -22,7 +22,7 @@ Home slots:
 
 - `features`: `MediaFeatureGrid`, `CardGrid`, or `AtomicSection`
 
-- `content`: `ContentArticle`, `ContentSection`, or `AtomicSection`
+- `content`: `TabbedNewsBoard`, `ArticleList`, `NewsGrid`, `CardGrid`, `ContentArticle`, `ContentSection`, or `AtomicSection`
 
 - `footer`: `InstitutionFooter` or `SiteFooter`
 
@@ -147,6 +147,21 @@ Home slots:
 - `cta_band`: `CtaBand`, `QuickLinkRibbon`, or `AtomicSection`
 
 - `footer`: `InstitutionFooter` or `SiteFooter`
+
+## Other Page Types
+
+Besides `home`, each template declares `listing`, `article`, and/or `unknown` page types in `visual_patterns.json`. Every page type also has `header` and `footer` slots that accept the same components as on `home`.
+
+| Template | Page type | Body slot and accepted components |
+|---|---|---|
+| `hero_news_portal` | `listing` | `content`: `ArticleList`, `NewsGrid`, `CardGrid`, or `AtomicSection` |
+| `search_service_portal` | `listing` | `content`: `ArticleList`, `TabbedNewsBoard`, `NewsGrid`, `CardGrid`, or `AtomicSection` |
+| `service_action_portal` | `listing` | `content`: `TabbedNewsBoard`, `ArticleList`, `NewsGrid`, `CardGrid`, or `AtomicSection` |
+| `hero_news_portal`, `search_service_portal`, `service_action_portal` | `article`, `unknown` | `content`: `ContentArticle`, `ContentSection`, or `AtomicSection` |
+| `search_results_portal` | `unknown` | `result_list` (same components as on `home`) |
+| `report_dashboard` | `unknown` | `data_table` (same components as on `home`) |
+| `input_flow` | `unknown` | `form_fields` (same components as on `home`) |
+| `commercial_showcase` | `unknown` | `showcase_hero` (same components as on `home`) |
 
 ## Selection Rules
 

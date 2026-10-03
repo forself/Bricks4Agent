@@ -31,6 +31,9 @@ jobs:
           node-version: '22'
           package-manager-cache: false
 
+      - name: Install browser test dependencies (vitest, jsdom)
+        run: npm --prefix packages/javascript/browser ci
+
       - name: Page generator and pure-function tests
         run: |
           npm test

@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "component_id": "common.countdown",
+  "registry_name": "Countdown",
+  "display_name": "Countdown",
+  "category": "common",
+  "kind": "atomic",
+  "source_path": "ui_components/common/Countdown/Countdown.js",
+  "docs_path": "ui_components/common/Countdown/README.md",
+  "maturity": "beta",
+  "generator": {
+    "usable": false,
+    "usage_mode": "manual_only",
+    "supported_field_types": [],
+    "supported_page_types": [],
+    "definition_runtime": false
+  },
+  "composition": {
+    "role": "feedback",
+    "requires_form_field_wrapper": false,
+    "manual_only": true
+  },
+  "binding": {
+    "value_io": false,
+    "listener_events": [
+      "complete"
+    ],
+    "target_actions": []
+  },
+  "styling": {
+    "theme_token_only": true,
+    "style_knobs": []
+  }
+}

@@ -13,6 +13,7 @@
  */
 import { CanvasChart } from './CanvasChart.js';
 import { sequentialScale, categoricalColor } from '../utils/color-scale.js';
+import Locale from '../i18n/index.js';
 
 export class ScatterChart extends CanvasChart {
     constructor(options = {}) {
@@ -175,6 +176,37 @@ export class ScatterChart extends CanvasChart {
         if (d.s != null) rows.push({ label: o.sizeLabel || '大小', value: this.fmt(Number(d.s)) });
         return rows;
     }
+
+    /**
+     * 無障礙資料表(accessibleTable):[名稱] / x / y / [大小] / [分類];
+     * 表頭沿用 xLabel/yLabel/sizeLabel/colorLabel(含單位),選配欄只在資料有值時出現。
+     */
+    getDataTable() {
+        const o = this.options;
+        const pts = (Array.isArray(o.points) ? o.points : [])
+            .filter((p) => p && Number.isFinite(Number(p.x)) && Number.isFinite(Number(p.y)));
+        const sizeOf = (p) => (p.s != null && p.s !== '' && Number.isFinite(Number(p.s)) ? Number(p.s) : null);
+        const columns = [];
+        if (pts.some((p) => p.label != null && p.label !== '')) {
+            columns.push({ key: 'label', label: Locale.t('canvasChart.name'), rowHeader: true });
+        }
+        columns.push(
+            { key: 'x', label: o.xLabel || Locale.t('canvasChart.xValue'), format: 'number', unit: o.xUnit },
+            { key: 'y', label: o.yLabel || Locale.t('canvasChart.yValue'), format: 'number', unit: o.yUnit }
+        );
+        if (pts.some((p) => sizeOf(p) != null)) {
+            columns.push({ key: 'size', label: o.sizeLabel || Locale.t('canvasChart.size'), format: 'number' });
+        }
+        if (pts.some((p) => p.c != null)) {
+            columns.push({ key: 'color', label: o.colorLabel || Locale.t('canvasChart.category') });
+        }
+        return {
+            columns,
+            rows: pts.map((p) => ({ label: p.label, x: Number(p.x), y: Number(p.y), size: sizeOf(p), color: p.c }))
+        };
+    }
+
+    _a11ySources() { return [this.options.points]; }
 }
 
 export default ScatterChart;

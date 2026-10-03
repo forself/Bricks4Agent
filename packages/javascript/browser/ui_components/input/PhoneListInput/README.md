@@ -33,7 +33,7 @@ new PhoneListInput(options?)
 ## 使用範例
 
 ```js
-import { PhoneListInput } from './input/PhoneListInput/index.js';
+import { PhoneListInput } from './index.js';
 
 const phones = new PhoneListInput({
     maxItems: 3,

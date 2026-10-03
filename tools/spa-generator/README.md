@@ -35,7 +35,7 @@ dotnet run
 
 Default API URL:
 
-- `https://localhost:5002`
+- `http://localhost:5000` (Kestrel's default; the backend has no `launchSettings.json` or `Urls` setting, so bare `dotnet run` does not use port 5002)
 
 ### Frontend UI
 
@@ -104,7 +104,7 @@ tools/spa-generator/
 
 - `server.js` is the preferred frontend launcher because it handles API routing and `/packages/` path behavior more completely than a bare static server.
 
-- The generator frontend and backend use ports `3080` / `5002`.
+- The generator frontend uses port `3080`. `5002` appears only as `backend.apiPort` metadata in `project.json`; the backend itself listens on Kestrel's default `http://localhost:5000` unless you configure a URL yourself.
 
 - `npm run test:dotnet10` builds this backend as part of the 35-project .NET 10
  matrix and treats every warning as an error.

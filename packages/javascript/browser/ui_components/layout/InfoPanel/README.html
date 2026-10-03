@@ -24,27 +24,45 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <p>功能完整的資訊面板容器組件，支援統計數據、通知、圖表等多種面板類型展示。</p>
 <h2>特性</h2>
 <ul>
-<li>✅ <strong>多種面板類型</strong>: 統計（stat）、通知（notification）、圖表（chart）、卡片（card）</li>
-<li>✅ <strong>多種布局</strong>: Grid（網格）、List（列表）、Masonry（瀑布流）</li>
-<li>✅ <strong>可收合</strong>: 支援面板收合/展開</li>
-<li>✅ <strong>顏色主題</strong>: 支援多種預設主題顏色</li>
-<li>✅ <strong>動態管理</strong>: 動態添加、移除、更新面板</li>
-<li>✅ <strong>響應式設計</strong>: 自動適配不同螢幕尺寸</li>
-<li>✅ <strong>深色模式</strong>: 支援深色模式</li>
-<li>✅ <strong>動畫效果</strong>: 平滑的動畫過渡</li>
+<li>
+<p>✅ <strong>多種面板類型</strong>: 統計（stat）、通知（notification）、圖表（chart）、卡片（card）</p>
+</li>
+<li>
+<p>✅ <strong>多種布局</strong>: Grid（網格）、List（列表）、Masonry（瀑布流）</p>
+</li>
+<li>
+<p>✅ <strong>可收合</strong>: 支援面板收合/展開</p>
+</li>
+<li>
+<p>✅ <strong>顏色主題</strong>: 支援多種預設主題顏色</p>
+</li>
+<li>
+<p>✅ <strong>動態管理</strong>: 動態添加、移除、更新面板</p>
+</li>
+<li>
+<p>✅ <strong>響應式設計</strong>: 窄螢幕時 masonry 面板改為單欄（grid 欄數由 inline style 固定為 <code>columns</code>，不會隨螢幕縮減）</p>
+</li>
+<li>
+<p>✅ <strong>深色模式</strong>: 支援深色模式</p>
+</li>
+<li>
+<p>✅ <strong>動畫效果</strong>: 平滑的動畫過渡</p>
+</li>
 </ul>
 <h2>使用方法</h2>
 <h3>基本使用</h3>
 <pre><code class="language-html">&lt;!DOCTYPE html&gt;
 &lt;html&gt;
 &lt;head&gt;
+    &lt;link rel=&quot;stylesheet&quot; href=&quot;../../theme.css&quot;&gt;
     &lt;link rel=&quot;stylesheet&quot; href=&quot;InfoPanel.css&quot;&gt;
 &lt;/head&gt;
 &lt;body&gt;
     &lt;div id=&quot;my-panels&quot;&gt;&lt;/div&gt;
 
-    &lt;script src=&quot;InfoPanel.js&quot;&gt;&lt;/script&gt;
-    &lt;script&gt;
+    &lt;script type=&quot;module&quot;&gt;
+        import { InfoPanel } from './InfoPanel.js';
+
         const panels = new InfoPanel({
             containerId: 'my-panels',
             layout: 'grid',
@@ -81,7 +99,7 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
     // 面板是否可收合（預設: true）
     collapsible: true,
 
-    // 面板是否可排序（預設: false）
+    // 面板是否可排序（預設: false；目前無作用，值只會被保存）
     sortable: false,
 
     // 初始面板配置
@@ -166,12 +184,12 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
     title: '自訂卡片',
     icon: 'fas fa-file-alt',
     data: {
-        html: '&lt;h3&gt;自訂內容&lt;/h3&gt;&lt;p&gt;可放置任何 HTML&lt;/p&gt;'
+        html: '&lt;h3&gt;自訂內容&lt;/h3&gt;&lt;p&gt;可放置任何 HTML&lt;/p&gt;'  // 經 sanitizeHTML 清洗；可信 HTML 請用 raw(...)
         // 或 text: '純文字內容'
-        // 或直接傳入 DOM 元素
     }
 }
 </code></pre>
+<p><code>data.html</code>（以及 <code>data</code> 本身為字串時）會經 <code>sanitizeHTML</code> 清洗，已知安全的 HTML 需以 <code>raw()</code> 包裝。要放入 DOM 元素時，<code>data</code> 本身必須就是該元素（例：<code>data: myElement</code>），而不是放在 <code>data</code> 的屬性中。</p>
 <h2>API 方法</h2>
 <h3>addPanel(panel)</h3>
 <p>添加新面板</p>
@@ -350,22 +368,42 @@ setInterval(() =&gt; {
 </code></pre>
 <h2>注意事項</h2>
 <ol>
-<li><strong>面板 ID 必須唯一</strong>: 每個面板的 <code>id</code> 必須是唯一的</li>
-<li><strong>圖示依賴</strong>: 使用圖示需引入 Font Awesome</li>
-<li><strong>圖表整合</strong>: chart 類型提供佔位符，需整合 Chart.js 等圖表庫</li>
-<li><strong>響應式</strong>: 在小螢幕上自動切換為單欄布局</li>
+<li>
+<p><strong>面板 ID 必須唯一</strong>: 每個面板的 <code>id</code> 必須是唯一的</p>
+</li>
+<li>
+<p><strong>圖示依賴</strong>: 使用圖示需引入 Font Awesome</p>
+</li>
+<li>
+<p><strong>圖表整合</strong>: chart 類型只提供佔位符；圖表可改用本庫 <code>viz/</code> 下的 Canvas 圖表元件（如 <code>LineChart</code>、<code>BarChart</code>）</p>
+</li>
+<li>
+<p><strong>響應式</strong>: grid 布局的欄數由 inline style 固定為 <code>columns</code>，小螢幕不會自動切換為單欄（CSS 斷點只對 masonry 面板寬度生效）</p>
+</li>
 </ol>
 <h2>瀏覽器支援</h2>
 <ul>
-<li>Chrome 90+</li>
-<li>Firefox 88+</li>
-<li>Safari 14+</li>
-<li>Edge 90+</li>
+<li>
+<p>Chrome 90+</p>
+</li>
+<li>
+<p>Firefox 88+</p>
+</li>
+<li>
+<p>Safari 14+</p>
+</li>
+<li>
+<p>Edge 90+</p>
+</li>
 </ul>
 <h2>依賴</h2>
 <ul>
-<li>無外部依賴（純 JavaScript 實作）</li>
-<li>可選：Font Awesome（用於圖示）</li>
+<li>
+<p>無外部依賴（純 JavaScript 實作）</p>
+</li>
+<li>
+<p>可選：Font Awesome（用於圖示；收合按鈕的箭頭圖示也使用 Font Awesome，未引入時按鈕無圖示）</p>
+</li>
 </ul>
 <h2>授權</h2>
 <p>MIT License</p>

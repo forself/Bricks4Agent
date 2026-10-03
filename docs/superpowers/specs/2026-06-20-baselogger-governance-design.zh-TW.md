@@ -2,6 +2,8 @@
 
 更新日期：2026-06-20
 
+狀態：未實作（提案）。BaseLogger 仍為舊 API（`packages/csharp/logging/BaseLogger/BaseLogger.cs`），規劃中的檔案均不存在；未解缺口見 [docs/reports/follow-up-planning.zh-TW.md](../../reports/follow-up-planning.zh-TW.md)。
+
 ## 1. 背景
 
 Bricks4Agent 是 broker-centered governed AI operations platform。LOG / Audit / Observability 不是一般維運附屬功能，而是治理、追溯、事故復盤、可信證據鏈與狀態外部化的核心。

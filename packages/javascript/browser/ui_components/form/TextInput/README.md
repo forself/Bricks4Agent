@@ -38,7 +38,7 @@ const input = new TextInput({
 | `getValue()` | 取得目前值 |
 | `setValue(value)` | 設定值 |
 | `clear()` | 清空值並清除錯誤 |
-| `setError(msg)` | 設定錯誤訊息 |
+| `setError(msg, { display })` | 設定錯誤訊息並加上 `aria-invalid`；`display: false` 只標示紅框、不顯示文字 |
 | `clearError()` | 清除錯誤 |
 | `focus()` | 聚焦輸入框 |
 

@@ -2,7 +2,7 @@
  * Progress - 進度指示器元件
  *
  * 提供線性（bar）與圓形（circle）兩種進度顯示模式，
- * 支援確定值與不確定（indeterminate）動畫。
+ * 支援確定值與不確定（indeterminate）動畫，以及多段堆疊（segments，預設關閉）。
  *
  * SVG 禁用政策:環形變體已改為 Canvas arc 繪製。
  * 線性條(bar)維持 DOM(已合規,無 SVG)。
@@ -13,8 +13,13 @@
  *     SVG WAAPI strokeDashoffset 動畫屬性,僅操作純數字狀態後 clearRect/arc)。
  *   circle determinate  — 靜態比例直接繪製(setValue 呼叫後立即重繪)。
  *
+ * 分段模式（segments 為陣列時啟用）:
+ *   bar    — 軌道內以絕對定位的 DOM 區段依序堆疊；軌道改為 role="img" + aria-label 摘要。
+ *   circle — Canvas 依序畫多段弧，顏色經 theme-bus 解析 token；canvas 為 role="img" + aria-label。
+ *   分段一律為確定值（忽略 indeterminate）；setSegments(null) 還原單一數值模式的 DOM 與 ARIA。
+ *
  * @author MAGI System
- * @version 2.0.0 (Canvas 版)
+ * @version 2.1.0 (Canvas 版 + segments)
  *
  * @example
  *   const bar = new Progress({ value: 60, variant: 'success', showText: true });
@@ -22,13 +27,32 @@
  *
  *   const circle = new Progress({ type: 'circle', value: 75, size: 'large' });
  *   circle.render(document.getElementById('app'));
+ *
+ *   const stacked = new Progress({
+ *       segments: [
+ *           { value: 40, variant: 'success', label: 'Done' },
+ *           { value: 25, variant: 'warning', label: 'In review' }
+ *       ],
+ *       showLegend: true
+ *   });
+ *   stacked.mount(document.getElementById('app'));
  */
 import { onThemeChange, resolveTokens, FALLBACK_PAINT } from '../../utils/theme-bus.js';
+import Locale from '../../i18n/index.js';
 
 /**
  * @typedef {'bar'|'circle'} ProgressType
  * @typedef {'primary'|'success'|'warning'|'danger'} ProgressVariant
+ * @typedef {'primary'|'success'|'warning'|'danger'|'info'|'neutral'} ProgressSegmentVariant
  * @typedef {'small'|'medium'|'large'} ProgressSize
+ */
+
+/**
+ * @typedef {Object} ProgressSegment
+ * @property {number}                 value     - Part of `max`; the running total is clamped to `max`
+ * @property {ProgressSegmentVariant} [variant] - Colour variant (defaults rotate by index)
+ * @property {string}                 [color]   - Exactly one token reference, e.g. 'var(--cl-success)'; anything else is ignored
+ * @property {string}                 [label]   - Plain-text name used by the legend and the aria-label
  */
 
 /**
@@ -38,8 +62,10 @@ import { onThemeChange, resolveTokens, FALLBACK_PAINT } from '../../utils/theme-
  * @property {ProgressVariant}  [variant='primary']  - Colour variant
  * @property {ProgressType}     [type='bar']         - Display type
  * @property {ProgressSize}     [size='medium']      - Size preset
- * @property {boolean}          [showText=false]     - Show percentage label
- * @property {boolean}          [indeterminate=false] - Indeterminate animation
+ * @property {boolean}          [showText=false]     - Show percentage label (segment mode: total percentage)
+ * @property {boolean}          [indeterminate=false] - Indeterminate animation (ignored in segment mode)
+ * @property {ProgressSegment[]|null} [segments=null] - An array switches to stacked segment mode
+ * @property {boolean}          [showLegend=false]   - Segment mode only: legend with label, value and percentage
  */
 
 /** Variant name to CSS variable mapping */
@@ -49,6 +75,25 @@ const VARIANT_MAP = {
     warning: '--cl-warning',
     danger:  '--cl-danger',
 };
+
+/** Segment variants: the single-value variants plus info / neutral */
+const SEGMENT_VARIANT_MAP = {
+    ...VARIANT_MAP,
+    info:    '--cl-info',
+    neutral: '--cl-grey',
+};
+
+/** Rotation for segments naming neither variant nor color, so neighbours stay distinguishable */
+const SEGMENT_VARIANT_CYCLE = ['primary', 'success', 'warning', 'danger', 'info', 'neutral'];
+
+/** A segment colour must be exactly one custom-property reference: var(--name) */
+const TOKEN_COLOR_RE = /^var\(\s*(--[A-Za-z0-9_-]+)\s*\)$/;
+
+/** ARIA value attributes owned by the single-value progressbar */
+const PROGRESSBAR_VALUE_ATTRS = ['aria-valuemin', 'aria-valuemax', 'aria-valuenow'];
+
+/** CSS percentage rounded to 4 decimals (sub-pixel; avoids float noise such as 99.99999999999999%) */
+const toPercent = (n) => `${Math.round(n * 10000) / 10000}%`;
 
 /** Size presets for the bar type (track height in px) */
 const BAR_SIZE = { small: 4, medium: 8, large: 12 };
@@ -74,6 +119,8 @@ export class Progress {
             size: 'medium',
             showText: false,
             indeterminate: false,
+            segments: null,      // 分段模式：[{ value, variant?, color?, label? }]；null＝單一數值模式
+            showLegend: false,   // 分段模式下顯示圖例（標籤＋數值／百分比）
             ...options,
         };
 
@@ -92,7 +139,19 @@ export class Progress {
         this._indAngle = 0;   // rotating start angle (radians)
         this._destroyed = false;
 
+        /** @private segment mode: normalized segments, or null in single-value mode */
+        this._segments = null;
+        /** @private bar: one absolutely positioned fill per segment */
+        this._segmentEls = [];
+        /** @private <ul> legend (showLegend) */
+        this._legendEl = null;
+        /** @private circle + legend: box keeping the canvas and the centre text together */
+        this._ringEl = null;
+        /** @private the text element was created by segment mode (single mode had none) */
+        this._segmentOwnsText = false;
+
         this._create();
+        if (Array.isArray(this.options.segments)) this.setSegments(this.options.segments);
     }
 
     /* ------------------------------------------------------------------ */
@@ -150,17 +209,7 @@ export class Progress {
             fill.style.transition = 'none';
             track.removeAttribute('aria-valuenow');
 
-            // WAAPI (CSP-safe, DOM element — no SVG)
-            if (typeof fill.animate === 'function') {
-                this._animations.push(fill.animate(
-                    [
-                        { left: '-35%', width: '35%', offset: 0 },
-                        { left: '100%', width: '35%', offset: 0.6 },
-                        { left: '100%', width: '35%', offset: 1 }
-                    ],
-                    { duration: 1800, iterations: Infinity, easing: 'ease-in-out' }
-                ));
-            }
+            this._startBarIndeterminate(fill);
         } else {
             fill.style.width = `${pct}%`;
             track.setAttribute('aria-valuenow', String(value));
@@ -170,11 +219,7 @@ export class Progress {
         wrapper.appendChild(track);
 
         if (showText && !indeterminate) {
-            const text = document.createElement('span');
-            text.className = 'cl-progress-text';
-            text.textContent = `${Math.round(pct)}%`;
-            text.style.cssText = 'font-size: var(--cl-font-size-xs); color: var(--cl-text-secondary); white-space: nowrap; font-family: var(--cl-font-family);';
-            wrapper.appendChild(text);
+            wrapper.appendChild(this._createBarText(pct));
         }
 
         this.element = wrapper;
@@ -184,6 +229,28 @@ export class Progress {
         this._track = track;
         /** @private */
         this._textEl = wrapper.querySelector('.cl-progress-text') || null;
+    }
+
+    /** @private WAAPI sweep for the indeterminate bar (CSP-safe, DOM element — no SVG). */
+    _startBarIndeterminate(fill) {
+        if (typeof fill.animate !== 'function') return;
+        this._animations.push(fill.animate(
+            [
+                { left: '-35%', width: '35%', offset: 0 },
+                { left: '100%', width: '35%', offset: 0.6 },
+                { left: '100%', width: '35%', offset: 1 }
+            ],
+            { duration: 1800, iterations: Infinity, easing: 'ease-in-out' }
+        ));
+    }
+
+    /** @private Percentage label beside the bar. */
+    _createBarText(pct) {
+        const text = document.createElement('span');
+        text.className = 'cl-progress-text';
+        text.textContent = `${Math.round(pct)}%`;
+        text.style.cssText = 'font-size: var(--cl-font-size-xs); color: var(--cl-text-secondary); white-space: nowrap; font-family: var(--cl-font-family);';
+        return text;
     }
 
     /** @private Create circular Canvas DOM. */
@@ -216,19 +283,7 @@ export class Progress {
         wrapper.appendChild(canvas);
 
         if (showText && !indeterminate) {
-            const text = document.createElement('span');
-            text.className = 'cl-progress-circle-text';
-            text.textContent = `${Math.round(this._pct())}%`;
-            text.style.cssText = [
-                'position: absolute;',
-                'font-size: var(--cl-font-size-xs);',
-                'color: var(--cl-text-secondary);',
-                'font-family: var(--cl-font-family);',
-                'font-weight: 600;'
-            ].join(' ');
-            if (size === 'small') text.style.fontSize = 'var(--cl-font-size-2xs)';
-            else if (size === 'large') text.style.fontSize = 'var(--cl-font-size-lg)';
-            wrapper.appendChild(text);
+            wrapper.appendChild(this._createCircleText(this._pct()));
         }
 
         this.element = wrapper;
@@ -245,6 +300,24 @@ export class Progress {
         this._drawCircle();
 
         if (indeterminate) this._startIndeterminate();
+    }
+
+    /** @private Percentage label centred over the circle. */
+    _createCircleText(pct) {
+        const { size } = this.options;
+        const text = document.createElement('span');
+        text.className = 'cl-progress-circle-text';
+        text.textContent = `${Math.round(pct)}%`;
+        text.style.cssText = [
+            'position: absolute;',
+            'font-size: var(--cl-font-size-xs);',
+            'color: var(--cl-text-secondary);',
+            'font-family: var(--cl-font-family);',
+            'font-weight: 600;'
+        ].join(' ');
+        if (size === 'small') text.style.fontSize = 'var(--cl-font-size-2xs)';
+        else if (size === 'large') text.style.fontSize = 'var(--cl-font-size-lg)';
+        return text;
     }
 
     /* ------------------------------------------------------------------ */
@@ -274,7 +347,10 @@ export class Progress {
 
         /* Resolve colour tokens from wrapper element for correct theme scope */
         const varName = VARIANT_MAP[variant] || VARIANT_MAP.primary;
-        const tok = resolveTokens([varName, '--cl-bg-subtle'], this.element);
+        const segments = this._segments;
+        const names = [varName, '--cl-bg-subtle'];
+        if (segments) segments.forEach(segment => names.push(segment.token));
+        const tok = resolveTokens(names, this.element);
         const trackColor = tok['--cl-bg-subtle'] || FALLBACK_PAINT;
         const fillColor  = tok[varName]           || FALLBACK_PAINT;
 
@@ -287,7 +363,21 @@ export class Progress {
         ctx.stroke();
 
         /* Fill arc */
-        if (indeterminate) {
+        if (segments) {
+            /* Segment arcs: consecutive from 12 o'clock; butt caps so neighbours do not overlap */
+            let start = -Math.PI / 2;
+            for (const segment of segments) {
+                if (segment.percent <= 0) continue;
+                const end = start + (segment.percent / 100) * Math.PI * 2;
+                ctx.beginPath();
+                ctx.arc(cx, cy, radius, start, end);
+                ctx.strokeStyle = tok[segment.token] || FALLBACK_PAINT;
+                ctx.lineWidth = stroke;
+                ctx.lineCap = 'butt';
+                ctx.stroke();
+                start = end;
+            }
+        } else if (indeterminate) {
             /* Rotating arc of fixed 0.75 turn — driven by _indAngle */
             const start = this._indAngle;
             const end   = start + Math.PI * 1.5;   // 270° arc
@@ -340,12 +430,24 @@ export class Progress {
         if (target && this.element) {
             target.appendChild(this.element);
             this._container = target;
+            /* Canvas colours resolve against the live document: repaint once attached */
+            if (this._canvas) this._drawCircle();
         }
         return this;
     }
 
     /**
+     * Component-contract alias of render().
+     * @param {HTMLElement|string} container - DOM element or CSS selector
+     * @returns {Progress} this
+     */
+    mount(container) {
+        return this.render(container);
+    }
+
+    /**
      * Update the current progress value.
+     * In segment mode the value is only stored; it shows again after setSegments(null).
      * @param {number} value - New value (clamped between 0 and max)
      * @returns {Progress} this
      */
@@ -353,9 +455,15 @@ export class Progress {
         const clamped = Math.max(0, Math.min(Number(value) || 0, this.options.max));
         this.options.value = clamped;
 
-        if (this.options.indeterminate) return this;
+        if (this._destroyed || this.options.indeterminate) return this;
 
         const pct = this._pct();
+
+        if (this._segments) {
+            /* detached single fill keeps the latest width for when segment mode ends */
+            if (this._fill) this._fill.style.width = `${pct}%`;
+            return this;
+        }
 
         if (this.options.type === 'circle') {
             this._track.setAttribute('aria-valuenow', String(clamped));
@@ -372,18 +480,42 @@ export class Progress {
     }
 
     /**
-     * Switch the colour variant.
+     * Switch the colour variant (single-value mode; segments keep their own colours).
      * @param {ProgressVariant} variant
      * @returns {Progress} this
      */
     setVariant(variant) {
         if (!VARIANT_MAP[variant]) return this;
         this.options.variant = variant;
+        if (this._destroyed) return this;
 
         if (this.options.type === 'circle') {
             this._drawCircle();
         } else {
             this._fill.style.background = `var(${VARIANT_MAP[variant]})`;
+        }
+        return this;
+    }
+
+    /**
+     * Show stacked segments. An array (even empty) switches to segment mode;
+     * null or a non-array restores the single-value bar/circle exactly as before.
+     * @param {ProgressSegment[]|null} segments
+     * @returns {Progress} this
+     */
+    setSegments(segments) {
+        const list = Array.isArray(segments) ? segments : null;
+        this.options.segments = list;
+        if (this._destroyed || !this.element) return this;
+
+        if (list) {
+            const entering = !this._segments;
+            this._segments = this._normalizeSegments(list);
+            if (entering) this._enterSegmentMode();
+            this._renderSegments();
+        } else if (this._segments) {
+            this._segments = null;
+            this._exitSegmentMode();
         }
         return this;
     }
@@ -396,7 +528,9 @@ export class Progress {
         this._animations.forEach(anim => anim.cancel());
         this._animations = [];
         cancelAnimationFrame(this._indRaf);
+        this._indRaf = 0;
         if (this._offTheme) this._offTheme();
+        this._offTheme = null;
         this.element?.remove();
         this.element = null;
         this._fill = null;
@@ -405,6 +539,291 @@ export class Progress {
         this._container = null;
         this._canvas = null;
         this._ctx = null;
+        this._segments = null;
+        this._segmentEls = [];
+        this._legendEl = null;
+        this._ringEl = null;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /*  Segment mode                                                      */
+    /* ------------------------------------------------------------------ */
+
+    /**
+     * @private
+     * Clamp each value so the running total never exceeds max; resolve colour tokens.
+     */
+    _normalizeSegments(list) {
+        const max = Number(this.options.max) > 0 ? Number(this.options.max) : 0;
+        let remaining = max;
+        return list.map((entry, index) => {
+            const seg = entry !== null && typeof entry === 'object' ? entry : {};
+            const raw = Number(seg.value);
+            const value = Math.min(Number.isFinite(raw) && raw > 0 ? raw : 0, remaining);
+            remaining -= value;
+            if (remaining <= max * 1e-9) remaining = 0;   // drop floating-point residue (33.3 + 33.3 + 33.4)
+            const variant = Object.hasOwn(SEGMENT_VARIANT_MAP, seg.variant)
+                ? seg.variant
+                : SEGMENT_VARIANT_CYCLE[index % SEGMENT_VARIANT_CYCLE.length];
+            const custom = typeof seg.color === 'string' ? TOKEN_COLOR_RE.exec(seg.color.trim()) : null;
+            return {
+                index,
+                value,
+                percent: max > 0 ? (value / max) * 100 : 0,
+                token: custom ? custom[1] : SEGMENT_VARIANT_MAP[variant],
+                label: seg.label == null || seg.label === '' ? null : String(seg.label),
+            };
+        });
+    }
+
+    /** @private Swap the single-value progressbar semantics for role="img". */
+    _enterSegmentMode() {
+        /* segments are always determinate: stop indeterminate animation */
+        this._animations.forEach(anim => anim.cancel());
+        this._animations = [];
+        cancelAnimationFrame(this._indRaf);
+        this._indRaf = 0;
+
+        const holder = this._track;   // bar: track; circle: wrapper — where the progressbar role lives
+        PROGRESSBAR_VALUE_ATTRS.forEach(name => holder.removeAttribute(name));
+        if (this.options.type === 'circle') {
+            holder.removeAttribute('role');
+            this._canvas.setAttribute('role', 'img');
+        } else {
+            holder.setAttribute('role', 'img');
+            holder.classList.add('cl-progress-bar-track--segmented');
+            this._fill.remove();
+        }
+    }
+
+    /** @private Restore the single-value DOM, ARIA and animation. */
+    _exitSegmentMode() {
+        const { type, max, value, indeterminate } = this.options;
+        const holder = this._track;
+
+        this._syncLegend(null);
+
+        if (this._segmentOwnsText) {
+            this._textEl.remove();
+            this._textEl = null;
+            this._segmentOwnsText = false;
+        } else if (this._textEl) {
+            this._textEl.textContent = `${Math.round(this._pct())}%`;
+        }
+
+        if (type === 'circle') {
+            this._canvas.removeAttribute('role');
+            this._canvas.removeAttribute('aria-label');
+            holder.setAttribute('role', 'progressbar');
+        } else {
+            this._segmentEls.forEach(el => el.remove());
+            this._segmentEls = [];
+            holder.classList.remove('cl-progress-bar-track--segmented');
+            holder.removeAttribute('aria-label');
+            holder.setAttribute('role', 'progressbar');
+            holder.prepend(this._fill);
+        }
+        holder.setAttribute('aria-valuemin', '0');
+        holder.setAttribute('aria-valuemax', String(max));
+        if (!indeterminate) holder.setAttribute('aria-valuenow', String(value));
+
+        if (type === 'circle') {
+            this._drawCircle();
+            if (indeterminate) this._startIndeterminate();
+        } else if (indeterminate) {
+            this._startBarIndeterminate(this._fill);
+        }
+    }
+
+    /** @private Paint segments (bar DOM or circle canvas), total text, legend and aria-label. */
+    _renderSegments() {
+        const segments = this._segments;
+        const isCircle = this.options.type === 'circle';
+        const graphic = isCircle ? this._canvas : this._track;
+        graphic.setAttribute('aria-label', this._segmentSummary(segments));
+
+        if (isCircle) this._drawCircle();
+        else this._renderBarSegments(segments);
+
+        if (this.options.showText) {
+            const total = segments.reduce((sum, segment) => sum + segment.percent, 0);
+            this._showSegmentText(total);
+        }
+        this._syncLegend(segments);
+    }
+
+    /** @private Reuse one absolutely positioned fill per segment so width changes animate. */
+    _renderBarSegments(segments) {
+        let offset = 0;
+        segments.forEach((segment, i) => {
+            let el = this._segmentEls[i];
+            if (!el) {
+                el = document.createElement('div');
+                el.className = 'cl-progress-bar-segment';
+                el.dataset.segmentIndex = String(i);
+                el.style.cssText = [
+                    'position: absolute;',
+                    'top: 0;',
+                    'bottom: 0;',
+                    'transition: left var(--cl-transition), width var(--cl-transition);'
+                ].join(' ');
+                this._track.appendChild(el);
+                this._segmentEls.push(el);
+            }
+            el.style.left = toPercent(offset);
+            el.style.width = toPercent(segment.percent);
+            el.style.background = `var(${segment.token})`;
+            offset += segment.percent;
+        });
+        this._segmentEls.splice(segments.length).forEach(el => el.remove());
+    }
+
+    /** @private Total percentage label (created here when single mode had none). */
+    _showSegmentText(totalPct) {
+        if (!this._textEl) {
+            const isCircle = this.options.type === 'circle';
+            this._textEl = isCircle ? this._createCircleText(totalPct) : this._createBarText(totalPct);
+            (isCircle ? this._canvas : this._track).after(this._textEl);
+            this._segmentOwnsText = true;
+        }
+        this._textEl.textContent = `${Math.round(totalPct)}%`;
+    }
+
+    /** @private "{label}: {percent}%" per segment, joined — the accessible name of the graphic. */
+    _segmentSummary(segments) {
+        if (segments.length === 0) return Locale.t('progress.noSegments');
+        return segments
+            .map(segment => Locale.t('progress.segmentSummary', {
+                label: this._segmentLabel(segment),
+                percent: Math.round(segment.percent),
+            }))
+            .join(Locale.t('progress.segmentSeparator'));
+    }
+
+    /** @private Caller label, or the localized "Segment {n}" fallback. */
+    _segmentLabel(segment) {
+        return segment.label ?? Locale.t('progress.segmentFallbackLabel', { index: segment.index + 1 });
+    }
+
+    /** @private Create, refresh or remove the legend (segment mode + showLegend only). */
+    _syncLegend(segments) {
+        if (!segments || !this.options.showLegend) {
+            if (this._legendEl) {
+                this._legendEl.remove();
+                this._legendEl = null;
+                this._setLegendLayout(false);
+            }
+            return;
+        }
+        if (!this._legendEl) {
+            const legend = document.createElement('ul');
+            legend.className = 'cl-progress-legend';
+            legend.style.cssText = [
+                'display: flex;',
+                'flex-wrap: wrap;',
+                'gap: 4px 12px;',
+                'flex: 1 0 100%;',
+                'margin: 0;',
+                'padding: 0;',
+                'list-style: none;',
+                'font-size: var(--cl-font-size-xs);',
+                'color: var(--cl-text-secondary);',
+                'font-family: var(--cl-font-family);'
+            ].join(' ');
+            this._setLegendLayout(true);
+            this.element.appendChild(legend);
+            this._legendEl = legend;
+        }
+        this._legendEl.replaceChildren(...segments.map(segment => this._createLegendItem(segment)));
+    }
+
+    /**
+     * @private
+     * Make room for the legend below the graphic; `on = false` restores the single-mode layout.
+     */
+    _setLegendLayout(on) {
+        const wrapper = this.element;
+        if (this.options.type !== 'circle') {
+            /* wrap the legend onto its own line; the track grows from 0 so bar + text stay on one line.
+               Longhands (not the flex shorthand) so removal restores the original style exactly. */
+            if (on) {
+                wrapper.style.setProperty('flex-wrap', 'wrap');
+                this._track.style.setProperty('flex-grow', '1');
+                this._track.style.setProperty('flex-basis', '0%');
+            } else {
+                wrapper.style.removeProperty('flex-wrap');
+                this._track.style.removeProperty('flex-grow');
+                this._track.style.removeProperty('flex-basis');
+            }
+            return;
+        }
+
+        const diameter = CIRCLE_SIZE[this.options.size] || CIRCLE_SIZE.medium;
+        if (on && !this._ringEl) {
+            const ring = document.createElement('div');
+            ring.className = 'cl-progress-circle-ring';
+            ring.style.cssText = [
+                'display: inline-flex;',
+                'align-items: center;',
+                'justify-content: center;',
+                'position: relative;',
+                `width: ${diameter}px;`,
+                `height: ${diameter}px;`
+            ].join(' ');
+            ring.append(...[this._canvas, this._textEl].filter(Boolean));
+            wrapper.prepend(ring);
+            wrapper.style.setProperty('flex-direction', 'column');
+            wrapper.style.setProperty('gap', '8px');
+            wrapper.style.setProperty('width', 'auto');
+            wrapper.style.setProperty('height', 'auto');
+            this._ringEl = ring;
+        } else if (!on && this._ringEl) {
+            wrapper.prepend(...this._ringEl.childNodes);
+            this._ringEl.remove();
+            this._ringEl = null;
+            wrapper.style.removeProperty('flex-direction');
+            wrapper.style.removeProperty('gap');
+            wrapper.style.setProperty('width', `${diameter}px`);
+            wrapper.style.setProperty('height', `${diameter}px`);
+        }
+    }
+
+    /** @private One legend row: swatch (decorative) + label + "value (percent%)". */
+    _createLegendItem(segment) {
+        const item = document.createElement('li');
+        item.className = 'cl-progress-legend-item';
+        item.dataset.segmentIndex = String(segment.index);
+        item.style.cssText = 'display: inline-flex; align-items: center; gap: 4px;';
+
+        const swatch = document.createElement('span');
+        swatch.className = 'cl-progress-legend-swatch';
+        swatch.setAttribute('aria-hidden', 'true');
+        swatch.style.cssText = 'display: inline-block; width: 8px; height: 8px; border-radius: var(--cl-radius-xs); flex: 0 0 auto;';
+        swatch.style.background = `var(${segment.token})`;
+
+        const label = document.createElement('span');
+        label.className = 'cl-progress-legend-label';
+        label.style.color = 'var(--cl-text)';
+        label.textContent = this._segmentLabel(segment);
+
+        const value = document.createElement('span');
+        value.className = 'cl-progress-legend-value';
+        value.textContent = Locale.t('progress.legendValue', {
+            value: this._formatNumber(segment.value),
+            percent: Math.round(segment.percent),
+        });
+
+        item.append(swatch, label, value);
+        return item;
+    }
+
+    /** @private Locale-aware number (at most two decimals). */
+    _formatNumber(value) {
+        try {
+            return new Intl.NumberFormat(Locale.getLang(), { maximumFractionDigits: 2 }).format(value);
+        } catch {
+            return String(Math.round(value * 100) / 100);
+        }
     }
 
     /* ------------------------------------------------------------------ */

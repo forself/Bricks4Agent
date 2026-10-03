@@ -23,6 +23,7 @@
 | `tools/windows-signing/New-BricksWdacSupplementalPolicy.ps1` | 用已簽章 assemblies 產生 WDAC supplemental policy XML / CIP |
 | `tools/windows-signing/Install-BricksWdacPolicy.ps1` | 預設 dry-run；加 `-Deploy` 且 elevated 時才呼叫 `CiTool --update-policy` |
 | `tools/windows-signing/Repair-BricksWdacRuntimeTrust.ps1` | 修復 `.run\line-sidecar` runtime trust：補簽自家 DLL/EXE、用 Publisher + Hash fallback 掃描 runtime、部署後驗證 policy active |
+| `tools/windows-signing/Repair-BricksWdacTestTrust.ps1` | 主工作區測試 trust 修復（`npm run signing:wdac-repair-tests`）：build broker / Unit / Integration / Broker.Tests、執行 `Sign-BricksAssemblies.ps1`，再對四個 `bin\Debug\net10.0` 輸出各呼叫一次 `Repair-BricksWdacRuntimeTrust.ps1`，產生 `.run\wdac\main-*` policy 並回報 `IsActive`；可用 `-SkipBuild` / `-SkipSigning` / `-PolicyLevel`，加 `-Deploy`（需 elevated）才部署 |
 
 ## 建立開發簽章憑證
 
@@ -241,12 +242,12 @@ npm run test:broker:trusted
 
 若 `dotnet run --no-build --project packages/csharp/tests/broker-tests/Broker.Tests.csproj` 或 worktree 內的 `Broker.Tests.exe` 被封鎖，即使 `Get-AuthenticodeSignature` 顯示簽章有效，也代表目前 active policy 沒有涵蓋這個測試輸出路徑。測試 apphost 適合使用 hash-level supplemental policy。
 
-以 `baselogger-governance` worktree 的 broker-tests 輸出為例：
+以主工作區 broker-tests 輸出為例（在 repo root 執行；相對路徑由腳本以 repo root 解析。其他 worktree 可把 `-RuntimeRoot` 改成該 worktree 內對應 `bin\Debug\net10.0` 的路徑）：
 
 ```powershell
 npm run signing:wdac-repair -- `
-  -RuntimeRoot "D:\Bricks4Agent\.worktrees\baselogger-governance\packages\csharp\tests\broker-tests\bin\Debug\net10.0" `
-  -OutputDir ".run\wdac\baselogger-worktree-broker-tests" `
+  -RuntimeRoot "packages\csharp\tests\broker-tests\bin\Debug\net10.0" `
+  -OutputDir ".run\wdac\broker-tests-hash" `
   -PolicyLevel Hash
 ```
 
@@ -254,16 +255,16 @@ npm run signing:wdac-repair -- `
 
 ```powershell
 npm run signing:wdac-repair -- `
-  -RuntimeRoot "D:\Bricks4Agent\.worktrees\baselogger-governance\packages\csharp\tests\broker-tests\bin\Debug\net10.0" `
-  -OutputDir ".run\wdac\baselogger-worktree-broker-tests" `
+  -RuntimeRoot "packages\csharp\tests\broker-tests\bin\Debug\net10.0" `
+  -OutputDir ".run\wdac\broker-tests-hash" `
   -PolicyLevel Hash `
   -Deploy
 ```
 
-也可以部署已產生的 CIP：
+也可以在 repo root 部署已產生的 CIP：
 
 ```powershell
-"C:\WINDOWS\system32\CiTool.exe" --update-policy "D:\Bricks4Agent\.run\wdac\baselogger-worktree-broker-tests\{policy-id}.cip" -json
+"C:\WINDOWS\system32\CiTool.exe" --update-policy ".\.run\wdac\broker-tests-hash\{policy-id}.cip" -json
 ```
 
 部署後再重跑 `dotnet run --no-build`。如果 build 後測試 apphost 被覆蓋，hash 會改變，必須重新產生並部署該測試輸出的 hash policy。

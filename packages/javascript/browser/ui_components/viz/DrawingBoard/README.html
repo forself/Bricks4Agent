@@ -84,21 +84,43 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 - <strong>WebPainter</strong>：完整圖片編輯、多元素標註、專業編輯需求</p>
 <h2>Features</h2>
 <ul>
-<li><strong>畫筆工具</strong>：自由繪製</li>
-<li><strong>橡皮擦</strong>：擦除繪製內容</li>
-<li><strong>直線工具</strong>：拖曳繪製直線，即時預覽</li>
-<li><strong>螢光筆</strong>：半透明標記，適合重點標示</li>
-<li><strong>透明度控制</strong>：10%-100% 可調整</li>
-<li><strong>顏色選擇</strong>：6 種預設顏色 + 自訂顏色</li>
-<li><strong>筆觸粗細</strong>：1-50px 可調整</li>
-<li><strong>復原/重做</strong>：支援 Ctrl+Z / Ctrl+Y</li>
-<li><strong>背景圖片</strong>：可載入圖片作為底圖描繪</li>
-<li><strong>匯出 PNG</strong>：一鍵匯出繪圖結果</li>
-<li><strong>觸控支援</strong>：支援觸控螢幕繪製</li>
+<li>
+<p><strong>畫筆工具</strong>：自由繪製</p>
+</li>
+<li>
+<p><strong>橡皮擦</strong>：擦除繪製內容</p>
+</li>
+<li>
+<p><strong>直線工具</strong>：拖曳繪製直線，即時預覽</p>
+</li>
+<li>
+<p><strong>螢光筆</strong>：半透明標記，適合重點標示</p>
+</li>
+<li>
+<p><strong>透明度控制</strong>：10%-100% 可調整</p>
+</li>
+<li>
+<p><strong>顏色選擇</strong>：6 種預設顏色 + 自訂顏色</p>
+</li>
+<li>
+<p><strong>筆觸粗細</strong>：1-50px 可調整</p>
+</li>
+<li>
+<p><strong>復原/重做</strong>：支援 Ctrl+Z / Ctrl+Y</p>
+</li>
+<li>
+<p><strong>背景圖片</strong>：可載入圖片作為底圖描繪</p>
+</li>
+<li>
+<p><strong>匯出 PNG</strong>：一鍵匯出繪圖結果</p>
+</li>
+<li>
+<p><strong>觸控支援</strong>：支援觸控螢幕繪製</p>
+</li>
 </ul>
 <h2>Usage</h2>
 <h3>基本使用</h3>
-<pre><code class="language-javascript">import { DrawingBoard } from './DrawingBoard/index.js';
+<pre><code class="language-javascript">import { DrawingBoard } from './index.js';
 
 const board = new DrawingBoard({
     container: '#drawing-container',
@@ -151,12 +173,16 @@ board.destroy();
 </code></pre>
 <h2>Shortcuts</h2>
 <ul>
-<li><strong>Ctrl + Z</strong>：復原</li>
-<li><strong>Ctrl + Y</strong>：重做</li>
+<li>
+<p><strong>Ctrl + Z</strong>：復原</p>
+</li>
+<li>
+<p><strong>Ctrl + Y</strong>：重做</p>
+</li>
 </ul>
 <h2>工具說明</h2>
 <h3>畫筆</h3>
-<p>預設工具，自由繪製平滑曲線。使用二次貝茲曲線讓筆觸更自然。</p>
+<p>預設工具，自由繪製。筆觸以 <code>lineTo</code> 逐點直線連接（未使用貝茲曲線平滑）。</p>
 <h3>橡皮擦</h3>
 <p>擦除已繪製的內容。游標會顯示橡皮擦大小預覽。</p>
 <h3>直線</h3>
@@ -166,24 +192,41 @@ board.destroy();
 <h2>技術細節</h2>
 <h3>零依賴</h3>
 <ul>
-<li>純 JavaScript 實現</li>
-<li>使用原生 Canvas API</li>
-<li>無需任何第三方函式庫</li>
+<li>
+<p>純 JavaScript 實現</p>
+</li>
+<li>
+<p>使用原生 Canvas API</p>
+</li>
+<li>
+<p>無需任何第三方函式庫</p>
+</li>
 </ul>
 <h3>瀏覽器支援</h3>
 <ul>
-<li>Chrome/Edge 90+</li>
-<li>Firefox 88+</li>
-<li>Safari 14+</li>
-<li>需要支援 ES6 模組</li>
+<li>
+<p>Chrome/Edge 90+</p>
+</li>
+<li>
+<p>Firefox 88+</p>
+</li>
+<li>
+<p>Safari 14+</p>
+</li>
+<li>
+<p>需要支援 ES6 模組</p>
+</li>
 </ul>
 <h2>Demo</h2>
 <p>開啟 <code>demo.html</code>（同目錄）查看完整示範。</p>
 <h2>檔案結構</h2>
 <pre><code>DrawingBoard/
-├── DrawingBoard.js   # 核心元件類別
-├── index.js          # 模組匯出
-└── README.md         # 說明文件（本檔案）
+├── DrawingBoard.js           # 核心元件類別
+├── index.js                  # 模組匯出
+├── component.manifest.json   # 元件 metadata
+├── demo.html                 # 示範頁面
+├── README.md                 # 說明文件（本檔案）
+└── README.html               # 說明文件 HTML 版
 </code></pre>
 <hr>
 <p><strong>Created with care for Bricks4Agent Project</strong></p>

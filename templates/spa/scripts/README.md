@@ -78,13 +78,19 @@ node spa-cli.js feature Product --fields "Name:string,Price:decimal,Stock:int"
 
 Generated output still needs manual integration.
 
-Typical follow-up work includes:
+By default `generate-api.js` tries to patch `backend/Program.cs` and
+`backend/Data/AppDbContext.cs` at `// --- BRICKS:* ---` markers, but those markers
+were removed from the template, so it only prints `Marker not found`. Pass
+`--no-patch` (also accepted by `spa-cli.js api` / `feature`) to get the service
+registration and endpoint code printed instead, then:
 
 1. update backend schema/bootstrap in `backend/Data/AppDbContext.cs`
 
 2. update backend routing in `backend/Program.cs`
 
-3. update frontend routing in `frontend/pages/routes.js`
+3. frontend routes are auto-registered by `generate-page.js` in
+ `frontend/pages/generated/routes.generated.js` (pass `--no-register` to skip and
+ wire them yourself)
 
 This CLI is a scaffold helper, not a full end-to-end product compiler.
 

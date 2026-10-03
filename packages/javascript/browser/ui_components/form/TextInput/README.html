@@ -75,8 +75,8 @@ const input = new TextInput({
 <td>清空值並清除錯誤</td>
 </tr>
 <tr>
-<td><code>setError(msg)</code></td>
-<td>設定錯誤訊息</td>
+<td><code>setError(msg, { display })</code></td>
+<td>設定錯誤訊息並加上 <code>aria-invalid</code>；<code>display: false</code> 只標示紅框、不顯示文字</td>
 </tr>
 <tr>
 <td><code>clearError()</code></td>
@@ -90,8 +90,12 @@ const input = new TextInput({
 </table>
 <h3>屬性</h3>
 <ul>
-<li><code>element</code> — 根 DOM 元素</li>
-<li><code>input</code> — 內部 <code>&lt;input&gt;</code> 元素</li>
+<li>
+<p><code>element</code> — 根 DOM 元素</p>
+</li>
+<li>
+<p><code>input</code> — 內部 <code>&lt;input&gt;</code> 元素</p>
+</li>
 </ul>
 <h2>使用範例</h2>
 <pre><code class="language-javascript">import { TextInput } from './TextInput.js';

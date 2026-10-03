@@ -25,21 +25,43 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <p>A zero-runtime-dependency Vanilla JS <strong>UI component library</strong> plus a <strong>page/SPA generator</strong>
 that turns a JSON <code>PageDefinition</code> into working pages (static code generation or dynamic runtime rendering).</p>
 <ul>
-<li>Authoritative component list: <a href="packages/javascript/browser/ui_components/metadata/component-catalog.json">component-catalog.json</a> (116 components)</li>
-<li>Read before building: <a href="AGENT-UI-GUIDE.html">AGENT-UI-GUIDE.md</a> (calling convention) and <a href="AGENT.html">AGENT.md</a> (SPA generator manual)</li>
+<li>
+<p>Authoritative component list: <a href="packages/javascript/browser/ui_components/metadata/component-catalog.json">component-catalog.json</a> (116 components)</p>
+</li>
+<li>
+<p>Read before building: <a href="AGENT-UI-GUIDE.html">AGENT-UI-GUIDE.md</a> (calling convention) and <a href="AGENT.html">AGENT.md</a> (SPA generator manual)</p>
+</li>
 </ul>
 <h2>Build &amp; Test</h2>
 <ul>
-<li>Page-generator tests: <code>npm test</code></li>
-<li>UI library checks: <code>npm run validate:ui-library</code></li>
-<li>Style-token audit: <code>npm run audit:ui-styles</code></li>
-<li>All SDK-style .NET 10 projects, with every warning treated as an error: <code>npm run test:dotnet10</code></li>
-<li>.NET tests: <code>dotnet test packages/csharp/tests/unit/Unit.Tests.csproj</code>, <code>dotnet test packages/csharp/tests/integration/Integration.Tests.csproj</code>, <code>dotnet test templates/spa/backend.Tests/SpaApi.Template.Tests.csproj</code></li>
-<li>CSP + SVG hard-zero gate (must pass before any commit touching ui_components): <code>node tools/scripts/audit-csp.mjs</code></li>
-<li>Browser smoke harnesses (serve repo root on :8124 first): <code>node tools/theme-studio/run.mjs</code>, <code>node tools/scripts/canvas-chart-smoke.mjs</code>, <code>node tools/scripts/wave2-stage-sweep.mjs</code>, <code>node tools/scripts/data-explorer-smoke.mjs</code>, <code>node tools/scripts/cluster-graph-perf.mjs</code></li>
-<li>Generated .NET 10 backend (SPA template): <code>dotnet build templates/spa/backend/SpaApi.csproj</code></li>
-<li>Rebuild component metadata after changing a component:
-  <code>node packages/javascript/browser/ui_components/metadata/build-metadata.mjs</code> (<code>--check</code> to validate only)</li>
+<li>
+<p>Full JS gate: <code>npm test</code> (runs <code>test-all.js</code> generator examples, then <code>test:ui-components</code>, <code>test:custom-components</code> and the Vitest component suites via <code>npm --prefix packages/javascript/browser run test:vitest</code>; run <code>npm --prefix packages/javascript/browser install</code> once first to get the vitest/jsdom devDependencies)</p>
+</li>
+<li>
+<p>UI library checks: <code>npm run validate:ui-library</code></p>
+</li>
+<li>
+<p>Style-token audit: <code>npm run audit:ui-styles</code></p>
+</li>
+<li>
+<p>All SDK-style .NET 10 projects, with every warning treated as an error: <code>npm run test:dotnet10</code></p>
+</li>
+<li>
+<p>.NET tests: <code>dotnet test packages/csharp/tests/unit/Unit.Tests.csproj</code>, <code>dotnet test packages/csharp/tests/integration/Integration.Tests.csproj</code>, <code>dotnet test templates/spa/backend.Tests/SpaApi.Template.Tests.csproj</code></p>
+</li>
+<li>
+<p>CSP + SVG hard-zero gate (covers both packages and shipped SPA templates): <code>npm run audit:csp</code>; also run the negative regression <code>npm run test:audit-csp-hard-zero</code>.</p>
+</li>
+<li>
+<p>Browser smoke harnesses self-host the repository and launch system Edge: <code>npm run validate:ui-library:browser</code>, <code>npm run test:spa-template:browser</code>, <code>npm run test:theme-studio:browser</code>, <code>npm run test:custom-components:browser</code>, <code>npm run test:studio:browser</code>, <code>npm run test:form-designer:browser</code>.</p>
+</li>
+<li>
+<p>Generated .NET 10 backend (SPA template): <code>dotnet build templates/spa/backend/SpaApi.csproj</code></p>
+</li>
+<li>
+<p>Rebuild component metadata after changing a component:
+ <code>node packages/javascript/browser/ui_components/metadata/build-metadata.mjs</code> (<code>--check</code> to validate only)</p>
+</li>
 </ul>
 <h2>Test Artifacts and Cleanup</h2>
 <p><strong>Rule: all test-generated files must be tracked and cleaned up.</strong></p>
@@ -66,28 +88,72 @@ that turns a JSON <code>PageDefinition</code> into working pages (static code ge
 </table>
 <h2>Code Conventions</h2>
 <ul>
-<li>Frontend: JavaScript, ES modules, vanilla — <strong>no third-party runtime UI dependency</strong> (only exceptions: vendored Leaflet 1.9.4 + html2canvas under <code>ui_components/vendor/</code>, local-first with CDN fallback).</li>
-<li>Styling: theme tokens only (<code>var(--cl-*)</code>); dark mode via <code>[data-theme="dark"]</code>. See <a href="packages/javascript/browser/ui_components/STYLE_CONVENTION.html">STYLE_CONVENTION.md</a>.</li>
-<li>Strict CSP (machine-enforced): no <code>&lt;style&gt;</code> injection, no <code>style=</code>/<code>on*=</code> in innerHTML templates, no eval / <code>javascript:</code>. Style via CSSOM or co-located <code>.css</code> + same-origin <code>&lt;link&gt;</code>.</li>
-<li><strong>SVG banned — Canvas only</strong>. <code>audit-csp.mjs</code> enforces hard zero; <code>tools/scripts/svg-baseline.json</code> is an empty inventory snapshot and cannot waive findings. Chart base <code>viz/CanvasChart.js</code>; theme reactivity <code>utils/theme-bus.js</code>; color fallbacks only via theme-bus <code>FALLBACK_PAINT</code> (no loose hex).</li>
-<li>Security: escape dynamic HTML with <code>escapeHtml()</code>; raw HTML only via explicit <code>raw()</code>.</li>
-<li>i18n: user-facing strings via <code>Locale.t()</code>.</li>
-<li>Component contract: <code>new X(options)</code> → <code>.mount(container)</code> → <code>.destroy()</code>.</li>
-<li>Generated backend: .NET 10 Minimal API, BaseOrm (no EF Core).</li>
-<li>Password hashing: use the static <code>Rfc2898DeriveBytes.Pbkdf2</code> API without changing the existing iteration/salt/hash sizes or stored formats; compatibility vectors live in the unit and SPA template test projects.</li>
+<li>
+<p>Frontend: JavaScript, ES modules, vanilla — <strong>no third-party runtime UI dependency</strong> (only exceptions: vendored Leaflet 1.9.4 + html2canvas under <code>ui_components/vendor/</code>, local-first with CDN fallback).</p>
+</li>
+<li>
+<p>Styling: theme tokens only (<code>var(--cl-*)</code>); dark mode via <code>[data-theme="dark"]</code>. See <a href="packages/javascript/browser/ui_components/STYLE_CONVENTION.html">STYLE_CONVENTION.md</a>.</p>
+</li>
+<li>
+<p>Strict CSP (machine-enforced): no <code>&lt;style&gt;</code> injection, no <code>style=</code>/<code>on*=</code> in innerHTML templates, no eval / <code>javascript:</code>. Style via CSSOM or co-located <code>.css</code> + same-origin <code>&lt;link&gt;</code>.</p>
+</li>
+<li>
+<p><strong>SVG banned — Canvas only</strong>. <code>audit-csp.mjs</code> enforces hard zero; <code>tools/scripts/svg-baseline.json</code> is an empty inventory snapshot and cannot waive findings. Chart base <code>viz/CanvasChart.js</code>; theme reactivity <code>utils/theme-bus.js</code>; color fallbacks only via theme-bus <code>FALLBACK_PAINT</code> (no loose hex).</p>
+</li>
+<li>
+<p>Security: escape dynamic HTML with <code>escapeHtml()</code>; raw HTML only via an explicit <code>raw()</code> call — <code>isRawHtml()</code> checks the <code>Symbol.for('bricks4agent.rawHtml')</code> own property, so a plain or JSON-parsed <code>{ __html }</code> is not an opt-in and gets escaped/sanitised.</p>
+</li>
+<li>
+<p>i18n: user-facing strings via <code>Locale.t()</code>.</p>
+</li>
+<li>
+<p>Component contract: <code>new X(options)</code> → <code>.mount(container)</code> → <code>.destroy()</code>; <code>destroy()</code> is mandatory. <code>ModalPanel.confirm/alert/prompt</code> set <code>destroyOnClose: true</code> and self-destruct after close; a direct <code>new ModalPanel</code> defaults to <code>false</code> and stays reusable.</p>
+</li>
+<li>
+<p>Generated backend: .NET 10 Minimal API, BaseOrm (no EF Core).</p>
+</li>
+<li>
+<p>Password hashing: use the static <code>Rfc2898DeriveBytes.Pbkdf2</code> API without changing the existing iteration/salt/hash sizes or stored formats; compatibility vectors live in the unit and SPA template test projects.</p>
+</li>
 </ul>
 <h2>Key Notes</h2>
 <ul>
-<li>The generator has two paths: <strong>static</strong> (<code>PageGenerator.generate()</code> / <code>tools/page-gen.js</code> emit <code>.js</code> files) and <strong>dynamic</strong> (<code>DynamicPageRenderer</code> renders at runtime from JSON).</li>
-<li>Field types map to components via <code>PageDefinition.ComponentMapping</code> and <code>FieldResolver</code>; field interactions via <code>TriggerEngine</code>.</li>
-<li>To add a missing component, follow <a href="AGENT-UI-GUIDE.html">AGENT-UI-GUIDE.md</a> §8, then rebuild metadata.</li>
+<li>
+<p>The generator has two paths: <strong>static</strong> (<code>PageGenerator.generate()</code> / <code>tools/page-gen.js</code> emit <code>.js</code> files) and <strong>dynamic</strong> (<code>DynamicPageRenderer</code> renders at runtime from JSON).</p>
+</li>
+<li>
+<p>Field types map to components via <code>PageDefinition.ComponentMapping</code> and <code>FieldResolver</code>; field interactions via <code>TriggerEngine</code>.</p>
+</li>
+<li>
+<p><code>definition.name</code>, <code>field.name</code> and <code>behaviors.*</code> (handler-method names) become bare JS identifiers, so <code>PageGenerator</code> validates them as real <code>IdentifierName</code> (CJK names pass; reserved words rejected in binding positions) and reports failures as <code>{ code: null, errors: [...] }</code>.</p>
+</li>
+<li>
+<p><code>tools/page-gen.js</code> takes <code>--page &lt;id&gt;</code> for one page of a DefinitionTemplate, and <code>--pages &lt;id,id,...&gt;</code> / <code>--all</code> to generate many in one process (aggregated JSON output).</p>
+</li>
+<li>
+<p>Tool pages (<code>DynamicToolRenderer</code>) default to <code>binding/LazyComponentFactory.js</code> — only the components a definition names get loaded (<code>create()</code> synchronous, <code>preload(names)</code> awaited in <code>init()</code>); the eager <code>ComponentFactory</code> is unchanged.</p>
+</li>
+<li>
+<p>Detail pages default to <code>lazyTabs: true</code> — a tab's content is built on first activation, not at construction; pass <code>lazyTabs: false</code> to opt out. Unpopulated panels carry <code>data-tab-pending="true"</code> until first activation.</p>
+</li>
+<li>
+<p>To add a missing component, follow <a href="AGENT-UI-GUIDE.html">AGENT-UI-GUIDE.md</a> §8, then rebuild metadata.</p>
+</li>
 </ul>
 <h2>Documentation</h2>
 <ul>
-<li>Calling convention + React-rewrite playbook: <a href="AGENT-UI-GUIDE.html">AGENT-UI-GUIDE.md</a></li>
-<li>JSON custom components + Studio + folder/runtime contract: <a href="CUSTOM-COMPONENTS.html">CUSTOM-COMPONENTS.md</a></li>
-<li>SPA generator manual: <a href="AGENT.html">AGENT.md</a></li>
-<li>Page generator: <a href="packages/javascript/browser/page-generator/README.html">page-generator/README.md</a></li>
+<li>
+<p>Calling convention + React-rewrite playbook: <a href="AGENT-UI-GUIDE.html">AGENT-UI-GUIDE.md</a></p>
+</li>
+<li>
+<p>JSON custom components + Studio + folder/runtime contract: <a href="CUSTOM-COMPONENTS.html">CUSTOM-COMPONENTS.md</a></p>
+</li>
+<li>
+<p>SPA generator manual: <a href="AGENT.html">AGENT.md</a></p>
+</li>
+<li>
+<p>Page generator: <a href="packages/javascript/browser/page-generator/README.html">page-generator/README.md</a></p>
+</li>
 </ul>
 </main>
 </body>

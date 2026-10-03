@@ -39,7 +39,7 @@ new ChainedInput(options?)
 ## 使用範例
 
 ```js
-import { ChainedInput } from './input/ChainedInput/index.js';
+import { ChainedInput } from './index.js';
 
 const input = new ChainedInput({
     fields: [

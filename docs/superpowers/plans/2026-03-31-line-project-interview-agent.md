@@ -934,9 +934,7 @@ git commit -m "feat: add project interview review artifact generation"
 **Files:**
 - Modify: `packages/csharp/broker/verify/Program.cs`
 - Modify: `docs/superpowers/specs/2026-03-30-line-project-interview-agent-design.md`
-- Modify: `docs/0329/00-overview.md`
-- Modify: `docs/0329/01-broker.md`
-- Modify: `docs/0329/07-tests.md`
+- Modify: `docs/manuals/current-technical-manual.zh-TW.md`
 
 - [ ] **Step 1: Add the final verify assertions for path redaction and delivery safety**
 
@@ -982,7 +980,7 @@ Update:
 - [ ] **Step 4: Commit**
 
 ```powershell
-git add packages/csharp/broker/verify/Program.cs docs/superpowers/specs/2026-03-30-line-project-interview-agent-design.md docs/0329/00-overview.md docs/0329/01-broker.md docs/0329/07-tests.md
+git add packages/csharp/broker/verify/Program.cs docs/superpowers/specs/2026-03-30-line-project-interview-agent-design.md docs/manuals/current-technical-manual.zh-TW.md
 git commit -m "docs: document project interview workflow and verification"
 ```
 

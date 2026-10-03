@@ -9,7 +9,7 @@ Status: **已實作(2026-06-13)** —— 共用後端 + 管理員分頁 + 使用
 
 | 面向 | 現況 |
 |---|---|
-| **管理員 web 後台** | `line-admin.html`(單檔 vanilla JS,~1700 行,深色主題,sidebar+tabs)。認證 `LocalAdminAuthService`:**僅限 localhost**、單一共享密碼、cookie 12h。Local admin approver id 目前由 session 形成；dual approval 可要求兩個不同 admin session/approver id，但尚非完整 named operator account。加分頁的 pattern 清楚(HTML section + nav 鈕 + state + load/render + 路由)。 |
+| **管理員 web 後台** | `line-admin.html`(單檔 vanilla JS,~1700 行,深色主題,sidebar+tabs)。認證 `LocalAdminAuthService`:**僅限 localhost**、具名 operator 帳號(`LocalAdminCredential` 的 `operator_id`/`username`/`role`,`packages/csharp/broker-core/Models/LocalAdminCredential.cs:12-22`;`/operators*` 管理端點見 `packages/csharp/broker/Endpoints/LocalAdminEndpoints.cs:112-209`)、cookie 12h。Local admin approver id 為 `local-admin:{OperatorId}`(`LocalAdminEndpoints.cs:1104-1105`),因此 dual approval 需要兩個不同 operator;同一 operator 開多個 session 仍算同一 approver。加分頁的 pattern 清楚(HTML section + nav 鈕 + state + load/render + 路由)。 |
 | **使用者 web 前台** | 已有 `user-approvals.html`，透過 LINE 短效簽章連結進入，只能查看/決定自己的 User-tier approval。 |
 | **既有 LINE 審批** | `line.approval.request` + InboundDispatcher:**記憶體內、易失**(worker 重啟即丟)、純文字 approve/deny、一次一筆、無上下文。與新的 `ApprovalRequest`(DB 持久化)是**兩套**。 |
 | **新審批引擎** | 已完成:決策含 tier、`ApprovalRequest` 持久化、`required_approval_count`、每位 approver 一筆 `approval_decisions`、approve/reject/list/授權。High / `require_approval` 仍 1 次核准；Critical / `require_dual_approval` 需兩個不同 approver id。 |
@@ -36,7 +36,7 @@ Status: **已實作(2026-06-13)** —— 共用後端 + 管理員分頁 + 使用
 
 **後端端點**(`LocalAdminEndpoints.cs`,沿用 `auth.TryRequireAuthenticated` + `IBrokerService`):
 - `GET /api/v1/local-admin/approvals` → 待審清單(含關聯 ExecutionRequest 細節:intent、payload、policy_reason、tier、owner)
-- `POST /api/v1/local-admin/approvals/{id}/approve` body `{reason}` → `broker.ApproveExecutionAsync(id, adminSessionApproverId, reason, isAdmin:true)`；Critical 需兩個不同 admin session/approver id 才 dispatch
+- `POST /api/v1/local-admin/approvals/{id}/approve` body `{reason}` → `broker.ApproveExecutionAsync(id, "local-admin:{OperatorId}", reason, isAdmin:true)`；Critical 需兩個不同 operator(approver id)才 dispatch
 - `POST /api/v1/local-admin/approvals/{id}/reject` body `{reason}` → `broker.RejectExecution(..., isAdmin:true)`
 
 **前端**(新分頁,左清單 + 右細節/動作,沿用 .panel/.list/.item/.json/.button):
@@ -108,7 +108,7 @@ broker 端新增一個「審批明細」組裝(從 `ApprovalRequest` + 關聯 `E
 
 端點(`LocalAdminEndpoints.cs`,`auth.TryRequireAuthenticated`):
 - `GET  /api/v1/local-admin/approvals` → 全部 pending 的審批明細(含 rendered)。
-- `POST /api/v1/local-admin/approvals/{id}/approve` `{reason}` → `ApproveExecutionAsync(id,adminSessionApproverId,reason,isAdmin:true)`；Critical 需兩個不同 admin session/approver id 才 dispatch。
+- `POST /api/v1/local-admin/approvals/{id}/approve` `{reason}` → `ApproveExecutionAsync(id,"local-admin:{OperatorId}",reason,isAdmin:true)`；Critical 需兩個不同 operator(approver id)才 dispatch。
 - `POST /api/v1/local-admin/approvals/{id}/reject` `{reason}` → `RejectExecution(...,isAdmin:true)`。
 
 UI:`line-admin.html` 新「審批」分頁(見上方 mockup)。
@@ -117,7 +117,7 @@ UI:`line-admin.html` 新「審批」分頁(見上方 mockup)。
 
 **簽章連結認證**(新,有別於 localhost-only 後台):
 - User 層審批產生時,broker 經 **LINE** 送該使用者一則:「有待審動作,點此查看 → `{baseUrl}/user-approvals.html#token=<signed>`」。
-- `signed` = 短時效(15 分)HMAC token,綁 `principal_id`(使用者)+ 到期。以既有 `Broker__ScopedToken__Secret` 簽。**只授權看/批該使用者自己的 User 層待審**(broker owner 授權已強制 `approverId==OwnerPrincipalId`)。
+- `signed` = 短時效(15 分)HMAC token,綁 `principal_id`(使用者)+ 到期。實作沿用 artifact 下載的簽章 secret `ArtifactDownload:SigningSecret`(`BrokerArtifactDownloadOptions.SigningSecret`,見 `packages/csharp/broker/Services/ApprovalLinkService.cs:9,16-18`);未設定時不產生連結。**只授權看/批該使用者自己的 User 層待審**(broker owner 授權已強制 `approverId==OwnerPrincipalId`)。
 - 新使用者端點(驗 token → 解出 userId):
   - `GET  /api/v1/user/approvals?token=...` → `ListPendingApprovalsForApprover(userId,false)` + rendered。
   - `POST /api/v1/user/approvals/{id}/approve` `{reason,token}` → `ApproveExecutionAsync(id,userId,reason,isAdmin:false)`。

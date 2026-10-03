@@ -21,13 +21,20 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <body>
 <main>
 <h1>統一視覺化引擎使用指南 (Unified Visualization Engine Guide)</h1>
+<blockquote>
+<p>⚠️ <strong>目前狀態</strong>：<code>VizEngine.js</code> 仍是 stub——<code>render()</code> 只做資料轉換、<strong>不會繪出任何圖表</strong>；<code>events</code>、<code>on()</code>、<code>destroy()</code> 皆為 TODO 尚未實作（<code>setAuth()</code> / <code>fetch()</code> 可用）。實際可用的圖表是 <code>viz/</code> 下的 Canvas 圖表元件（如 <code>OrgChart</code>、<code>RelationChart</code>、<code>TimelineChart</code>、<code>SankeyChart</code>、<code>SunburstChart</code>、<code>FlameChart</code>、<code>HierarchyChart</code>，共用基底 <code>viz/CanvasChart.js</code>）。本文件描述的是資料協議與設計方向。</p>
+</blockquote>
 <h2>數據協議：JSON 物件陣列 (JSON Array Protocol)</h2>
 <p>為了兼顧開發效率與直觀性，本引擎採用 <strong>JSON 物件陣列</strong> 作為標準輸入格式。
 This engine adopts the <strong>Array of JSON Objects</strong> as the standard input format for balance between efficiency and intuitiveness.</p>
 <h3>解決了什麼問題？ (Problem Solved)</h3>
 <ul>
-<li><strong>無需 Mapping</strong>: 欄位名稱直接寫在 JSON Key 中 (如 <code>id</code>, <code>label</code>)，通常情況下如果不需轉名，連 <code>mapping</code> 設定都可省略。</li>
-<li><strong>保持扁平 (Flat)</strong>: 後端不需組裝複雜的樹狀結構 (<code>children: []</code>)，只需回傳扁平的列表 (<code>List</code>)。</li>
+<li>
+<p><strong>無需 Mapping</strong>: 欄位名稱直接寫在 JSON Key 中 (如 <code>id</code>, <code>label</code>)，通常情況下如果不需轉名，連 <code>mapping</code> 設定都可省略。</p>
+</li>
+<li>
+<p><strong>保持扁平 (Flat)</strong>: 後端不需組裝複雜的樹狀結構 (<code>children: []</code>)，只需回傳扁平的列表 (<code>List</code>)。</p>
+</li>
 </ul>
 <hr>
 <h2>1. 怎麼用 (How to Use)</h2>
@@ -75,10 +82,11 @@ This engine adopts the <strong>Array of JSON Objects</strong> as the standard in
 <h3>範例：時間軸 (Timeline) - 列表</h3>
 <p><strong>後端回傳數據 (Backend Data):</strong></p>
 <pre><code class="language-javascript">const tasks = [
-    { label: &quot;Task 1&quot;, group: &quot;Server&quot;, start: 1680000000, end: 1680001000 },
-    { label: &quot;Task 2&quot;, group: &quot;Client&quot;, start: 1680000500, end: 1680002000 }
+    { label: &quot;Task 1&quot;, group: &quot;Server&quot;, start: 1680000000000, end: 1680001000000 },
+    { label: &quot;Task 2&quot;, group: &quot;Client&quot;, start: 1680000500000, end: 1680002000000 }
 ];
 </code></pre>
+<p><em><code>start</code> / <code>end</code> 為</em><em>毫秒</em><em> epoch（<code>TimelineChart</code> 以 <code>new Date(ms)</code> 解讀），不是秒。</em></p>
 <p><strong>前端渲染 (Frontend Render):</strong></p>
 <pre><code class="language-javascript">viz.render({
     type: 'timeline',
@@ -90,8 +98,12 @@ This engine adopts the <strong>Array of JSON Objects</strong> as the standard in
 <h2>2. 自動化轉換 (Automatic Transformation)</h2>
 <p>引擎內建了強大的轉換邏輯：</p>
 <ol>
-<li><strong>Flat-to-Tree</strong>: 對於 <code>org</code>, <code>hierarchy</code>, <code>flame</code> 等圖表，引擎會自動掃描數據中的 <code>parentId</code> 欄位，將扁平列表重組為樹狀結構。</li>
-<li><strong>別名系統 (Aliasing)</strong>: 透過 <code>mapping</code> 參數，您可以輕鬆對接任何後端既有的欄位命名，而無需修改後端 API。</li>
+<li>
+<p><strong>Flat-to-Tree</strong>: 對於 <code>org</code>, <code>hierarchy</code>, <code>flame</code> 等圖表，引擎會自動掃描數據中的 <code>parentId</code> 欄位，將扁平列表重組為樹狀結構。</p>
+</li>
+<li>
+<p><strong>別名系統 (Aliasing)</strong>: 透過 <code>mapping</code> 參數，您可以輕鬆對接任何後端既有的欄位命名，而無需修改後端 API。</p>
+</li>
 </ol>
 <hr>
 <h2>3. 事件與互動 (Events)</h2>
@@ -126,8 +138,12 @@ viz.fetch('/api/v1/employees')
 </code></pre>
 <h3>4.2 XSS 防護 (XSS Prevention)</h3>
 <ul>
-<li><strong>自動過濾</strong>: 引擎內部所有 Detail Card 與 Tooltip 渲染皆已強制實作 <code>escapeHtml()</code>。</li>
-<li><strong>數據內容</strong>: 即便後端回傳含有 <code>&lt;script&gt;</code> 的惡意字串，在前端也會被轉義為純文字顯示 (<code>&amp;lt;script&amp;gt;</code>)，確保不會執行惡意代碼。</li>
+<li>
+<p><strong>自動過濾</strong>: Canvas 圖表的 Tooltip 由 <code>CanvasChart</code> 以 <code>textContent</code> 寫入 DOM（不經 HTML 解析）；各圖表的 Detail Card 以 <code>textContent</code> 或 <code>escapeHtml()</code> 處理。</p>
+</li>
+<li>
+<p><strong>數據內容</strong>: 即便後端回傳含有 <code>&lt;script&gt;</code> 的惡意字串，在前端也會被轉義為純文字顯示 (<code>&amp;lt;script&amp;gt;</code>)，確保不會執行惡意代碼。</p>
+</li>
 </ul>
 </main>
 </body>

@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Countdown 倒數計時</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Countdown 倒數計時</h1>
+<p>顯示距離目標時間的剩餘時間，例如「會議 5 分鐘後開始」、「訂單保留時間」。</p>
+<ul>
+<li>可注入時鐘（<code>now</code>）與伺服器時差（<code>serverOffsetMs</code>），不受使用者電腦時間不準影響</li>
+<li>每次都從時鐘重算，計時器對齊整秒邊界，不累積誤差</li>
+<li>分頁隱藏時暫停，回到前景立即重新同步</li>
+<li>門檻（<code>thresholds</code>）依剩餘時間切換顏色，每個門檻只觸發一次 <code>onThreshold</code></li>
+<li>睡眠或背景分頁越過目標時間時，<code>onComplete</code> 也只觸發一次</li>
+<li>螢幕閱讀器只在開始、跨過門檻、完成時公告，不逐秒朗讀</li>
+</ul>
+<h2>建構子</h2>
+<pre><code class="language-javascript">import { Countdown } from './Countdown.js';
+
+const countdown = new Countdown({
+    target: null,                 // 目標時間：Date、ISO 字串或 epoch 毫秒
+    now: () =&gt; new Date().getTime(), // 可注入的時鐘（回傳毫秒或 Date）；預設為系統時鐘，值同 Date.now()
+    serverOffsetMs: 0,            // 伺服器時差（毫秒），加到 now() 上
+    format: 'auto',               // 'auto' | 'dhms' | 'hms' | (parts) =&gt; string
+    thresholds: [],               // [{ seconds, variant: 'info' | 'warning' | 'danger' }]
+    completedText: null,          // 完成時顯示的文字；null 使用語系預設「時間到」
+    autoStart: true,              // mount() 時自動開始
+    ariaLive: 'polite',           // 公告的 aria-live：'polite' | 'assertive' | 'off'
+    onTick: null,                 // (parts) 顯示的秒數改變時
+    onThreshold: null,            // (threshold) 跨過門檻時，每個門檻一次
+    onComplete: null              // () 倒數結束時，只觸發一次
+});
+</code></pre>
+<p><code>parts</code> 為 <code>{ days, hours, minutes, seconds, totalMs }</code>：<code>totalMs</code> 是剩餘毫秒（不為負）；天、時、分、秒以<strong>無條件進位</strong>的整秒計算——剩 0.4 秒時仍顯示 1 秒，顯示 0 的那一刻就是完成。</p>
+<p>目標無效（無法解析）時顯示「—」、不會開始倒數，也不會觸發 <code>onComplete</code>。</p>
+<h3>顯示格式</h3>
+<table>
+<thead>
+<tr>
+<th>format</th>
+<th>範例（剩 1 天 2 小時 3 分 4 秒）</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>'auto'</code></td>
+<td><code>1 天 02 小時 03 分 04 秒</code> / en <code>1d 02h 03m 04s</code></td>
+<td>省略前導為零的單位（剩 4 秒時顯示 <code>4 秒</code>）；第一個單位不補零，其後補成兩位數</td>
+</tr>
+<tr>
+<td><code>'dhms'</code></td>
+<td><code>1 天 02 小時 03 分 04 秒</code></td>
+<td>固定顯示四個單位，時、分、秒補成兩位數</td>
+</tr>
+<tr>
+<td><code>'hms'</code></td>
+<td><code>26:03:04</code></td>
+<td>時:分:秒，天數併入小時</td>
+</tr>
+<tr>
+<td>函式</td>
+<td>自訂</td>
+<td><code>(parts) =&gt; string</code>，回傳值以純文字顯示；拋錯時退回 <code>'auto'</code></td>
+</tr>
+</tbody>
+</table>
+<p>單位文字走 <code>Locale.t('countdown.units.*')</code>。</p>
+<h3>門檻</h3>
+<p>剩餘時間 ≤ <code>seconds</code> 時套用該門檻的 <code>variant</code>（同時符合多個時取 <code>seconds</code> 最小者），元素的 <code>data-variant</code> 同步為 <code>default</code> / <code>info</code> / <code>warning</code> / <code>danger</code>，並以對應的 <code>--cl-*</code> 色彩 token 著色。每個門檻在跨過時觸發一次 <code>onThreshold(threshold)</code>（傳回原本的門檻物件）；開始時已在門檻內的，依 <code>seconds</code> 由大到小立即各觸發一次。<code>setTarget()</code> 會重設。</p>
+<h2>方法</h2>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>mount(container)</code></td>
+<td>掛載到容器（元素或選擇器）；<code>autoStart</code> 為 true 時開始倒數。回傳 <code>this</code></td>
+</tr>
+<tr>
+<td><code>start()</code></td>
+<td>開始，或從 <code>stop()</code> 後繼續；已完成時不動作（先 <code>setTarget()</code>）</td>
+</tr>
+<tr>
+<td><code>stop()</code></td>
+<td>停止（保留目標與已觸發的門檻）</td>
+</tr>
+<tr>
+<td><code>setTarget(target)</code></td>
+<td>更換目標並重設門檻與完成狀態；原本在倒數或已完成時以新目標重新開始，原本停止時只更新顯示</td>
+</tr>
+<tr>
+<td><code>getRemaining()</code></td>
+<td>剩餘毫秒數，永不為負；沒有有效目標時為 0</td>
+</tr>
+<tr>
+<td><code>getParts()</code></td>
+<td><code>{ days, hours, minutes, seconds, totalMs }</code></td>
+</tr>
+<tr>
+<td><code>destroy()</code></td>
+<td>清除計時器與 <code>visibilitychange</code> 監聽並移除 DOM；可重複呼叫，之後呼叫其他方法不會拋錯</td>
+</tr>
+</tbody>
+</table>
+<h2>事件回呼</h2>
+<table>
+<thead>
+<tr>
+<th>回呼</th>
+<th>時機</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>onTick(parts)</code></td>
+<td>開始時，以及之後每次顯示的秒數改變時</td>
+</tr>
+<tr>
+<td><code>onThreshold(threshold)</code></td>
+<td>每個門檻跨過時一次</td>
+</tr>
+<tr>
+<td><code>onComplete()</code></td>
+<td>剩餘時間歸零時一次</td>
+</tr>
+</tbody>
+</table>
+<p>回呼拋錯只記錄到 console，不會中斷計時。</p>
+<h2>計時細節</h2>
+<ul>
+<li>每次觸發都從 <code>now() + serverOffsetMs</code> 重算剩餘時間；下一次 <code>setTimeout</code> 的延遲是「到剩餘時間下一個整秒邊界的時間」（目標為整秒時，即調整後時鐘的下一個整秒）。計時器晚到時下一次延遲會縮短補回，不會逐漸落後。</li>
+<li><code>document.hidden</code> 為 true 時不排任何計時器；<code>visibilitychange</code> 回到前景時立即重算，補觸發期間跨過的門檻與完成。</li>
+<li><code>visibilitychange</code> 監聽只在倒數進行中掛載；完成、<code>stop()</code>、<code>destroy()</code> 時移除。</li>
+</ul>
+<h2>無障礙</h2>
+<ul>
+<li>顯示元素為 <code>role="timer"</code>（<code>aria-live</code> 預設 off）：畫面每秒更新，但不逐秒朗讀。</li>
+<li>另有視覺隱藏的 live region（<code>aria-live</code> 依 <code>ariaLive</code>、<code>aria-atomic="true"</code>），只在開始（例如「剩餘 2 分鐘 30 秒」）、跨過門檻、完成（<code>completedText</code>）時公告；公告延後約 100ms 寫入，同一時刻的多次公告合併為一次。<code>ariaLive: 'off'</code> 完全不公告。</li>
+<li>狀態不只靠顏色：<code>danger</code> 時字重加粗；元素的 <code>data-state</code> 為 <code>running</code> / <code>stopped</code> / <code>completed</code>。</li>
+<li>所有文字走 <code>Locale.t('countdown.*')</code>，提供 zh-TW 與 en；完成文字預設在顯示當下取語系字串。</li>
+</ul>
+<h2>範例</h2>
+<pre><code class="language-javascript">import { Countdown } from './ui_components/common/Countdown/index.js';
+
+// 伺服器時間（例如取自 API 回應）：計算與本機的時差，避免使用者電腦時間不準
+const serverNow = Date.now() + 42_000;          // 假設伺服器比本機快 42 秒
+const serverOffsetMs = serverNow - Date.now();
+
+const countdown = new Countdown({
+    target: serverNow + 5 * 60 * 1000,          // 會議 5 分鐘後開始
+    serverOffsetMs,
+    thresholds: [
+        { seconds: 120, variant: 'warning' },
+        { seconds: 30, variant: 'danger' }
+    ],
+    completedText: '會議已開始',
+    onThreshold: (threshold) =&gt; console.log(`剩不到 ${threshold.seconds} 秒`),
+    onComplete: () =&gt; console.log('開始')
+}).mount('#host');
+
+// 離開頁面或不再需要時
+// countdown.destroy();
+</code></pre>
+</main>
+</body>
+</html>

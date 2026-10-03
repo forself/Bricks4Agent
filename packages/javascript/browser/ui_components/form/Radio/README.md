@@ -54,6 +54,7 @@ const group = Radio.createGroup({
 | `group.getValue()` | 取得選中值 |
 | `group.setValue(value)` | 設定選中值 |
 | `group.setValue(null)` | 清除選取（所有 Radio 取消選中） |
+| `group.setError(msg, { display })` / `group.clearError()` | 標示 / 清除群組錯誤：每個選項紅框與 `aria-invalid`，文字顯示在群組末端；`display: false` 只標示狀態 |
 | `group.destroy()` | 銷毀群組（含所有 Radio） |
 
 ## 使用範例

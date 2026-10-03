@@ -1,5 +1,9 @@
 # ApiResponse - Unified API Response Format
 
+> ⚠ Reference code: this folder has no .csproj, is not compiled or referenced by any project, and is not built by CI; the content below is not build-verified.
+>
+> The broker does not use this type: it defines its own, different `ApiResponse<T>` in `broker/Helpers/ApiResponseHelper.cs`.
+
 A generic response wrapper for consistent API responses across your application.
 
 ## Features
@@ -132,6 +136,6 @@ return Ok(response);
 
 ## Dependencies
 
-- .NET 6.0 or higher
+- .NET 10 (`net10.0`, the repo's target framework)
 
 - No external NuGet packages required

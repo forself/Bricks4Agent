@@ -10,7 +10,7 @@
 new StudentInput(options?)
 ```
 
-繼承 `ChainedInput` 所有選項（`onChange`、`layout`、`gap`），`fields` 已預設為：
+繼承 `ChainedInput` 的選項（如 `onChange`），`fields` 已預設為下表；`layout` 固定為 `'horizontal'`、`gap` 固定為 `'20px'`（傳入的值會被覆蓋）：
 
 | 欄位 name | type | 說明 |
 |---|---|---|
@@ -24,7 +24,7 @@ new StudentInput(options?)
 ## 使用範例
 
 ```js
-import { StudentInput } from './input/StudentInput/index.js';
+import { StudentInput } from './index.js';
 
 const student = new StudentInput({
     onChange: (values) => console.log(values)

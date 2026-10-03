@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "component_id": "form.transfer",
+  "registry_name": "Transfer",
+  "display_name": "Transfer",
+  "category": "form",
+  "kind": "composite",
+  "source_path": "ui_components/form/Transfer/Transfer.js",
+  "docs_path": "ui_components/form/Transfer/README.md",
+  "maturity": "beta",
+  "generator": {
+    "usable": false,
+    "usage_mode": "manual_only",
+    "supported_field_types": [],
+    "supported_page_types": [],
+    "definition_runtime": false
+  },
+  "composition": {
+    "role": "input",
+    "requires_form_field_wrapper": true,
+    "manual_only": true
+  },
+  "binding": {
+    "value_io": true,
+    "listener_events": [
+      "change"
+    ],
+    "target_actions": [
+      "clear",
+      "reloadOptions",
+      "setReadonly",
+      "setRequired",
+      "setValue"
+    ]
+  },
+  "styling": {
+    "theme_token_only": true,
+    "style_knobs": [
+      "disabled",
+      "height",
+      "readonly",
+      "required"
+    ]
+  }
+}

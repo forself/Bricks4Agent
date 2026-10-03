@@ -273,15 +273,13 @@ JSON/PDF 不是單純對話摘要，而是由已確認 assertions 推導出的�
 ### Task 6: 完整驗證、文件同步、與安全檢查
 
 目的：
-- 對齊 spec、0329 文件、與實際 verify/test 狀態
+- 對齊 spec、技術手冊、與實際 verify/test 狀態
 - 確保對使用者輸出不暴露內部路徑
 
 檔案：
 - Modify: `packages/csharp/broker/verify/Program.cs`
 - Modify: `docs/superpowers/specs/2026-03-30-line-project-interview-agent-design.md`
-- Modify: `docs/0329/00-overview.md`
-- Modify: `docs/0329/01-broker.md`
-- Modify: `docs/0329/07-tests.md`
+- Modify: `docs/manuals/current-technical-manual.zh-TW.md`
 
 步驟：
 - [ ] 在 verify 增加 path redaction assertions
@@ -290,7 +288,7 @@ JSON/PDF 不是單純對話摘要，而是由已確認 assertions 推導出的�
   - `dotnet run --project packages/csharp/broker/verify/Broker.Verify.csproj`
   - `dotnet test packages/csharp/tests/integration/Integration.Tests.csproj -v minimal`
   - `npm --prefix packages/javascript/browser run test`
-- [ ] 更新 spec 與 `docs/0329`，反映 state machine + per-version DAG + template catalog
+- [ ] 更新 spec 與 `docs/manuals/current-technical-manual.zh-TW.md`，反映 state machine + per-version DAG + template catalog
 - [ ] commit：`docs: document project interview workflow and verification`
 
 ---

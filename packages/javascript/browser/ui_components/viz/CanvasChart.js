@@ -12,6 +12,9 @@
  *   - 匯出:exportPNG(scale)離屏高倍重渲(列印銳利度的補償)
  *   - 排版輔助:tokens/ellipsis/wrapText/niceTicks/fmt/tween
  *   - debug:true 時描出所有 hit-region 外框
+ *   - 無障礙資料表(accessibleTable,預設關閉):true=視覺隱藏 <table>、'visible'=圖下可見表格;
+ *     內容來自 getDataTable()(子類覆寫),資料變更時以微任務合併重建(不隨動畫幀),
+ *     詳見 ACCESSIBILITY.md
  *
  * 子類契約:
  *   class MyChart extends CanvasChart {
@@ -21,9 +24,12 @@
  *           this.addRegion({ shape: 'rect', x, y, w: bw, h: bh, data: {...} });
  *       }
  *       getTooltip(data) { return [{ label: '案類', value: data.name }]; }  // 選配
+ *       getDataTable() { return { columns: [...], rows: [...] }; }       // 選配(accessibleTable 用)
  *   }
  */
 import { onThemeChange, resolveTokens, FALLBACK_PAINT } from '../utils/theme-bus.js';
+import Locale from '../i18n/index.js';
+import { nextUid } from '../utils/uid.js';
 
 /* ── 模組級共用排程器:同一幀 pass1 全部量測(讀 layout)、pass2 全部提交/繪製(寫 canvas),
    避免 N 張圖各自 rAF 交錯讀寫造成 N 次強制排版。 ── */
@@ -51,6 +57,79 @@ function _scheduleFlush() {
     });
 }
 
+/* ── 無障礙資料表(accessibleTable;預設關閉,關閉時不建任何 DOM、不動 ARIA)── */
+
+/** 視覺隱藏(螢幕閱讀器仍可讀;刻意不用 display:none,否則會一併移出無障礙樹)。 */
+const A11Y_HIDDEN_CSS = 'position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;' +
+    ' overflow: hidden; clip: rect(0, 0, 0, 0); clip-path: inset(50%); white-space: nowrap; border: 0;';
+/** 可見模式外層:接在繪圖區下方;寬表橫向捲動(外層 role=region + tabindex=0 供鍵盤捲動)。 */
+const A11Y_VISIBLE_CSS = 'position: static; flex: 0 0 auto; min-width: 0; max-width: 100%;' +
+    ' overflow-x: auto; line-height: 1.5;';
+const A11Y_TABLE_CSS = 'width: 100%; border-collapse: collapse; font-size: var(--cl-font-size-sm);' +
+    ' color: var(--cl-text); background: var(--cl-bg);';
+const A11Y_CAPTION_CSS = 'caption-side: top; text-align: start; font-weight: 600; padding: 0 0 4px;' +
+    ' color: var(--cl-text);';
+const A11Y_TH_COL_CSS = 'text-align: start; padding: 4px 8px; font-weight: 600; color: var(--cl-text);' +
+    ' background: var(--cl-bg-secondary); border-bottom: 1px solid var(--cl-border);';
+const A11Y_TH_ROW_CSS = 'text-align: start; padding: 4px 8px; font-weight: 600; color: var(--cl-text);' +
+    ' border-bottom: 1px solid var(--cl-border-light);';
+const A11Y_TD_CSS = 'text-align: start; padding: 4px 8px; color: var(--cl-text);' +
+    ' border-bottom: 1px solid var(--cl-border-light);';
+const A11Y_NUM_CSS = ' text-align: end; font-variant-numeric: tabular-nums;';
+const A11Y_NOTE_CSS = 'padding: 4px 8px; color: var(--cl-text-secondary); font-style: italic;';
+const A11Y_DEFAULT_MAX_ROWS = 500;
+
+/** accessibleTable 正規化:true → 'hidden'(視覺隱藏)、'visible' → 可見;其餘一律關閉(null)。 */
+function a11yMode(value) {
+    if (value === 'visible') return 'visible';
+    return value === true ? 'hidden' : null;
+}
+
+function sameRefs(a, b) {
+    return a.length === b.length && a.every((v, i) => v === b[i]);
+}
+
+const _a11yFormatters = new Map();
+
+/** Intl 格式器(依語系快取;語系代碼不合法時退回執行環境預設語系,不擲錯)。 */
+function a11yFormatter(kind, lang) {
+    const key = `${kind}|${lang}`;
+    let f = _a11yFormatters.get(key);
+    if (f) return f;
+    const opts = kind === 'percent' ? { style: 'percent', maximumFractionDigits: 1 }
+        : kind === 'datetime' ? { dateStyle: 'medium', timeStyle: 'medium' } : {};
+    const Ctor = kind === 'datetime' ? Intl.DateTimeFormat : Intl.NumberFormat;
+    try { f = new Ctor(lang, opts); } catch (_e) { f = new Ctor(undefined, opts); }
+    _a11yFormatters.set(key, f);
+    return f;
+}
+
+function a11yNumericColumn(col) {
+    return col.format === 'number' || col.format === 'percent';
+}
+
+/**
+ * 儲存格文字:數字走 Intl.NumberFormat(Locale.getLang());percent 欄值為 0~1 比例;
+ * datetime 欄接受 epoch 毫秒 / Date / 可解析字串;無法轉換者原樣以字串呈現。
+ */
+function a11yCellText(value, col, lang) {
+    if (value == null || value === '') return '';
+    const format = col.format;
+    if (format === 'text') return String(value);
+    if (format === 'datetime' || value instanceof Date) {
+        const d = value instanceof Date ? value : new Date(value);
+        return Number.isNaN(d.getTime()) ? String(value) : a11yFormatter('datetime', lang).format(d);
+    }
+    if (a11yNumericColumn(col) || typeof value === 'number') {
+        const n = typeof value === 'number' ? value : Number(value);
+        if (!Number.isFinite(n)) return typeof value === 'number' ? '' : String(value);
+        if (format === 'percent') return a11yFormatter('percent', lang).format(n);
+        const text = a11yFormatter('number', lang).format(n);
+        return col.unit ? `${text} ${col.unit}` : text;
+    }
+    return String(value);
+}
+
 export class CanvasChart {
     constructor(options = {}) {
         this.options = {
@@ -62,6 +141,8 @@ export class CanvasChart {
             padding: { top: 16, right: 16, bottom: 28, left: 44 },
             onPointClick: null,
             debug: false,
+            accessibleTable: false,           // true=視覺隱藏資料表(供輔助科技)、'visible'=圖下可見資料表
+            accessibleTableMaxRows: 500,      // 資料表列數上限;超過時以末列註明省略筆數
             ...options
         };
         this.container = typeof this.options.container === 'string'
@@ -77,6 +158,7 @@ export class CanvasChart {
         this._io = null;
         this._released = false;
         this._offscreen = false;
+        this._a11y = null;               // 無障礙資料表狀態(accessibleTable 開啟時才建立)
 
         this._buildDom();
         if (this.container) this.container.appendChild(this.element);
@@ -154,7 +236,9 @@ export class CanvasChart {
 
     /** 排程重繪(共用 rAF 合併;resize/theme/資料更新皆走這裡)。 */
     render() {
-        if (this._renderScheduled || this._destroyed) return;
+        if (this._destroyed) return;
+        this._syncAccessibleTable();     // 資料表:模式切換/資料參照變更才排程重建(關閉時為空操作)
+        if (this._renderScheduled) return;
         this._renderScheduled = true;
         _pending.add(this);
         _scheduleFlush();
@@ -168,6 +252,8 @@ export class CanvasChart {
 
     /** 讀取階段:只量測 layout,不碰 canvas(供排程器批次先讀後寫)。 */
     _measure() {
+        // 例外:可見資料表首次量測時固定繪圖區高度(每次進入可見模式只寫一次樣式)
+        if (this._a11y && this._a11y.mode === 'visible' && !this._a11y.pin) this._a11yPin();
         const cssW = Math.max(1, this._canvasWrap.clientWidth);
         const cssH = Math.max(1, this._canvasWrap.clientHeight);
         const dpr = window.devicePixelRatio || 1;
@@ -366,6 +452,336 @@ export class CanvasChart {
         return () => cancelAnimationFrame(raf);
     }
 
+    /* ── 無障礙資料表(accessibleTable)── */
+
+    /**
+     * 圖表內容的資料表模型(accessibleTable 用;子類覆寫以回傳有意義的表格)。
+     * 基底涵蓋 options.data 的常見形狀:{ labels, series }、數字陣列、[{ name|label, value }]、
+     * { nodes, links }、階層 { name, children }；其餘形狀回傳 null(資料表顯示「無資料」)。
+     * 欄位:key(列物件鍵)、label(表頭)、format('number'|'percent'|'datetime'|'text';
+     * 省略時依值型別推斷)、unit(數值後綴)、rowHeader(該欄儲存格以 <th scope="row"> 呈現)。
+     * 列物件存原始值(percent 為 0~1 比例、datetime 為 epoch 毫秒或 Date),格式化由基底負責。
+     * @returns {{ caption?: string, columns: Array<{ key: string, label: string, format?: string, unit?: string, rowHeader?: boolean }>, rows: Array<Object> } | null}
+     */
+    getDataTable() {
+        const data = this.options.data;
+        if (Array.isArray(data)) {
+            if (data.every((v) => v == null || typeof v !== 'object')) {
+                return {
+                    columns: [
+                        { key: 'index', label: Locale.t('canvasChart.index') },
+                        { key: 'value', label: Locale.t('canvasChart.value'), format: 'number', unit: this.options.unit }
+                    ],
+                    rows: data.map((value, i) => ({ index: i + 1, value }))
+                };
+            }
+            return {
+                columns: [
+                    { key: 'name', label: Locale.t('canvasChart.name'), rowHeader: true },
+                    { key: 'value', label: Locale.t('canvasChart.value'), format: 'number', unit: this.options.unit }
+                ],
+                rows: data.filter((d) => d && typeof d === 'object')
+                    .map((d) => ({ name: d.name ?? d.label ?? '', value: d.value }))
+            };
+        }
+        if (!data || typeof data !== 'object') return null;
+        if (Array.isArray(data.labels) && Array.isArray(data.series)) {
+            return this._a11ySeriesTable(data, { unit: this.options.unit });
+        }
+        if (Array.isArray(data.nodes) && Array.isArray(data.links)) {
+            const nodes = data.nodes;
+            const byId = new Map(nodes.filter((n) => n && n.id != null).map((n) => [n.id, n]));
+            const nameOf = (ref) => {
+                const n = byId.has(ref) ? byId.get(ref)
+                    : typeof ref === 'number' ? nodes[ref]
+                        : (ref && typeof ref === 'object' ? ref : null);
+                return n ? String(n.name ?? n.label ?? n.id ?? '') : String(ref ?? '');
+            };
+            return {
+                columns: [
+                    { key: 'source', label: Locale.t('canvasChart.source') },
+                    { key: 'target', label: Locale.t('canvasChart.target') },
+                    { key: 'value', label: Locale.t('canvasChart.value'), format: 'number' }
+                ],
+                rows: data.links.filter((l) => l && typeof l === 'object')
+                    .map((l) => ({ source: nameOf(l.source), target: nameOf(l.target), value: l.value }))
+            };
+        }
+        if (data.name != null || Array.isArray(data.children)) {
+            const rows = [];
+            this._a11yWalkTree(data, (n) => n.name ?? n.label ?? n.id, (node, path) => rows.push({ path, value: node.value }));
+            return {
+                columns: [
+                    { key: 'path', label: Locale.t('canvasChart.path'), rowHeader: true },
+                    { key: 'value', label: Locale.t('canvasChart.value'), format: 'number' }
+                ],
+                rows
+            };
+        }
+        return null;
+    }
+
+    /** 資料來源參照(render() 以參照比對偵測「資料被換掉」;資料不在 options.data 的子類覆寫)。 */
+    _a11ySources() { return [this.options.data]; }
+
+    /** { labels, series } → 類別欄 + 每系列一欄(子類共用)。 */
+    _a11ySeriesTable(data, { unit = '' } = {}) {
+        const labels = data && Array.isArray(data.labels) ? data.labels : [];
+        const series = (data && Array.isArray(data.series) ? data.series : [])
+            .filter((s) => s && Array.isArray(s.data));
+        const columns = [
+            { key: 'category', label: Locale.t('canvasChart.category'), rowHeader: true },
+            ...series.map((s, i) => ({
+                key: `s${i}`,
+                label: s.name != null && s.name !== '' ? String(s.name) : Locale.t('canvasChart.series', { index: i + 1 }),
+                format: 'number',
+                unit
+            }))
+        ];
+        if (!series.length) return { columns, rows: [] };
+        const rows = labels.map((category, li) => {
+            const row = { category };
+            series.forEach((s, i) => { row[`s${i}`] = s.data[li]; });
+            return row;
+        });
+        return { columns, rows };
+    }
+
+    /**
+     * 階層前序走訪(祖先集合防環;不修改原資料)。
+     * @param {Object} root
+     * @param {(node:Object)=>*} nameOf - 路徑節段名稱
+     * @param {(node:Object, path:string, depth:number)=>void} visit - path 以「 / 」串接
+     */
+    _a11yWalkTree(root, nameOf, visit) {
+        const ancestors = new Set();
+        const walk = (node, prefix, depth) => {
+            if (!node || typeof node !== 'object' || ancestors.has(node)) return;
+            const name = nameOf(node);
+            const segment = name == null ? '' : String(name);
+            const path = depth === 0 ? segment : `${prefix} / ${segment}`;
+            visit(node, path, depth);
+            const kids = Array.isArray(node.children) ? node.children : [];
+            if (!kids.length) return;
+            ancestors.add(node);
+            for (const kid of kids) walk(kid, path, depth + 1);
+            ancestors.delete(node);
+        };
+        walk(root, '', 0);
+    }
+
+    /** render() 入口:偵測開關/模式變更與資料參照變更(參照比對 O(1),不隨動畫幀重建)。 */
+    _syncAccessibleTable() {
+        const mode = a11yMode(this.options.accessibleTable);
+        const a = this._a11y;
+        if (mode !== (a ? a.mode : null)) {
+            this._a11yApply(mode);
+            return;
+        }
+        if (a && a.sources && !sameRefs(a.sources, this._a11ySources())) this._a11yMarkDirty();
+    }
+
+    /** 建立/切換/移除資料表(mode:'hidden'|'visible'|null)。 */
+    _a11yApply(mode) {
+        if (!mode) { this._a11yTeardown(); return; }
+        if (this._destroyed || !this.element || !this.canvas) return;
+        let a = this._a11y;
+        if (!a) {
+            const tableId = nextUid('cl-chart-table');
+            const wrap = document.createElement('div');
+            wrap.className = 'cl-canvas-chart__a11y';
+            const table = document.createElement('table');
+            table.id = tableId;
+            table.className = 'cl-canvas-chart__table';
+            wrap.appendChild(table);
+            this.element.appendChild(wrap);             // 根元素內、canvas(繪圖區)之後
+            a = this._a11y = {
+                mode: null, wrap, table, tableId, captionId: `${tableId}-caption`,
+                dirty: false, queued: false, sources: null, pin: null,
+                addedRole: false, addedLabel: false, onLocale: null
+            };
+            // 語系切換 → 重建標題/表頭/數字格式(只在資料表存在期間監聽,teardown 移除)
+            a.onLocale = () => this._a11yMarkDirty();
+            if (typeof window !== 'undefined') window.addEventListener('locale-changed', a.onLocale);
+            // canvas:保留既有 role / aria-label(基底預設即有),只補缺;aria-describedby 指向資料表
+            const c = this.canvas;
+            if (!c.getAttribute('role')) { c.setAttribute('role', 'img'); a.addedRole = true; }
+            if (!c.getAttribute('aria-label')) { c.setAttribute('aria-label', this._a11yCaption(null)); a.addedLabel = true; }
+            const ids = (c.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean);
+            if (!ids.includes(tableId)) c.setAttribute('aria-describedby', [...ids, tableId].join(' '));
+        }
+        if (a.mode === mode) return;
+        if (a.mode === 'visible') this._a11yUnpin(a);
+        a.mode = mode;
+        const w = a.wrap;
+        w.dataset.mode = mode;
+        if (mode === 'visible') {
+            w.style.cssText = A11Y_VISIBLE_CSS;
+            w.setAttribute('role', 'region');            // 可捲動區:可聚焦 + 以 caption 命名
+            w.setAttribute('tabindex', '0');
+            w.setAttribute('aria-labelledby', a.captionId);
+            a.table.style.cssText = A11Y_TABLE_CSS;
+        } else {
+            w.style.cssText = A11Y_HIDDEN_CSS;
+            w.removeAttribute('role');                   // 隱藏時不可成為 Tab 停駐點
+            w.removeAttribute('tabindex');
+            w.removeAttribute('aria-labelledby');
+            a.table.style.cssText = '';
+        }
+        this._a11yMarkDirty();                           // 儲存格樣式依模式而異 → 重建
+    }
+
+    /** 移除資料表、語系監聽、可見模式的高度固定,並還原 canvas ARIA(destroy / 關閉時)。 */
+    _a11yTeardown() {
+        const a = this._a11y;
+        if (!a) return;
+        this._a11y = null;
+        this._a11yUnpin(a);
+        if (typeof window !== 'undefined' && a.onLocale) window.removeEventListener('locale-changed', a.onLocale);
+        if (a.wrap.parentNode) a.wrap.parentNode.removeChild(a.wrap);
+        const c = this.canvas;
+        if (!c) return;
+        const ids = (c.getAttribute('aria-describedby') || '').split(/\s+/).filter((id) => id && id !== a.tableId);
+        if (ids.length) c.setAttribute('aria-describedby', ids.join(' '));
+        else c.removeAttribute('aria-describedby');
+        if (a.addedRole) c.removeAttribute('role');
+        if (a.addedLabel) c.removeAttribute('aria-label');
+    }
+
+    /** 標記資料表需重建;同一輪事件內多次變更以微任務合併為一次(與繪製排程脫鉤,離視口亦同步)。 */
+    _a11yMarkDirty() {
+        const a = this._a11y;
+        if (!a || this._destroyed) return;
+        a.dirty = true;
+        if (a.queued) return;
+        a.queued = true;
+        const run = () => {
+            a.queued = false;
+            if (this._destroyed || this._a11y !== a || !a.dirty) return;
+            a.dirty = false;
+            this._a11yBuild(a);
+        };
+        if (typeof queueMicrotask === 'function') queueMicrotask(run);
+        else Promise.resolve().then(run);
+    }
+
+    /** caption:getDataTable().caption → title → ariaLabel → Locale 預設。 */
+    _a11yCaption(model) {
+        const o = this.options;
+        const text = (v) => (v != null && v !== '' ? String(v) : '');
+        return text(model && model.caption) || text(o.title) || text(o.ariaLabel) || Locale.t('canvasChart.tableCaption');
+    }
+
+    /** 依 getDataTable() 重建 caption / thead / tbody(一律 textContent;超過上限以末列註明省略筆數)。 */
+    _a11yBuild(a) {
+        let model = null;
+        try {
+            model = this.getDataTable();
+        } catch (e) {
+            console.error('[CanvasChart] getDataTable 失敗:', e);
+        }
+        a.sources = this._a11ySources();
+        const lang = Locale.getLang();
+        const visible = a.mode === 'visible';
+        const columns = (model && Array.isArray(model.columns) ? model.columns : [])
+            .filter((c) => c && c.key != null && c.key !== '');
+        const rows = model && Array.isArray(model.rows) ? model.rows : [];
+        let max = Number(this.options.accessibleTableMaxRows);
+        if (Number.isNaN(max) || max < 0) max = A11Y_DEFAULT_MAX_ROWS;
+        const shown = Math.min(rows.length, Math.floor(max));
+        const span = String(Math.max(1, columns.length));
+
+        const table = a.table;
+        table.textContent = '';
+        const caption = document.createElement('caption');
+        caption.id = a.captionId;
+        caption.textContent = this._a11yCaption(model);
+        if (visible) caption.style.cssText = A11Y_CAPTION_CSS;
+        table.appendChild(caption);
+        if (a.addedLabel && this.canvas) this.canvas.setAttribute('aria-label', caption.textContent);
+
+        if (columns.length) {
+            const thead = document.createElement('thead');
+            const tr = document.createElement('tr');
+            for (const col of columns) {
+                const th = document.createElement('th');
+                th.setAttribute('scope', 'col');
+                th.textContent = col.label != null && col.label !== '' ? String(col.label) : String(col.key);
+                if (visible) th.style.cssText = A11Y_TH_COL_CSS + (a11yNumericColumn(col) ? A11Y_NUM_CSS : '');
+                tr.appendChild(th);
+            }
+            thead.appendChild(tr);
+            table.appendChild(thead);
+        }
+
+        const tbody = document.createElement('tbody');
+        const note = (text) => {
+            const tr = document.createElement('tr');
+            tr.className = 'cl-canvas-chart__table-note';
+            const td = document.createElement('td');
+            td.setAttribute('colspan', span);
+            td.textContent = text;
+            if (visible) td.style.cssText = A11Y_NOTE_CSS;
+            tr.appendChild(td);
+            return tr;
+        };
+        if (!columns.length || !rows.length) {
+            tbody.appendChild(note(Locale.t('canvasChart.empty')));
+        } else {
+            for (let i = 0; i < shown; i++) {
+                const row = rows[i] && typeof rows[i] === 'object' ? rows[i] : {};
+                const tr = document.createElement('tr');
+                for (const col of columns) {
+                    const value = row[col.key];
+                    const cell = document.createElement(col.rowHeader ? 'th' : 'td');
+                    if (col.rowHeader) cell.setAttribute('scope', 'row');
+                    cell.textContent = a11yCellText(value, col, lang);
+                    if (visible) {
+                        const numeric = a11yNumericColumn(col) || typeof value === 'number';
+                        cell.style.cssText = (col.rowHeader ? A11Y_TH_ROW_CSS : A11Y_TD_CSS) + (numeric ? A11Y_NUM_CSS : '');
+                    }
+                    tr.appendChild(cell);
+                }
+                tbody.appendChild(tr);
+            }
+            if (rows.length > shown) {
+                const count = a11yFormatter('number', lang).format(rows.length - shown);
+                tbody.appendChild(note(Locale.t('canvasChart.truncated', { count })));
+            }
+        }
+        table.appendChild(tbody);
+    }
+
+    /**
+     * 可見模式:把繪圖區高度固定為目前像素高、根元素改 height:auto,資料表接在下方撐高根元素,
+     * 圖表本身不被擠壓。量測時暫時隱藏資料表;尚未排版(離線/隱藏)時略過,下次量測再試。
+     */
+    _a11yPin() {
+        const a = this._a11y;
+        const body = this._canvasWrap;
+        if (!a || !this.element || !body || !body.clientHeight) return;
+        const prevDisplay = a.wrap.style.display;
+        a.wrap.style.display = 'none';
+        const h = body.clientHeight;
+        a.wrap.style.display = prevDisplay;
+        if (!(h > 0)) return;
+        a.pin = { rootHeight: this.element.style.height, bodyFlex: body.style.flex, bodyHeight: body.style.height };
+        this.element.style.height = 'auto';
+        body.style.flex = '0 0 auto';
+        body.style.height = `${h}px`;
+    }
+
+    _a11yUnpin(a = this._a11y) {
+        if (!a || !a.pin) return;
+        const pin = a.pin;
+        a.pin = null;
+        if (this.element) this.element.style.height = pin.rootHeight;
+        if (this._canvasWrap) {
+            this._canvasWrap.style.flex = pin.bodyFlex;
+            this._canvasWrap.style.height = pin.bodyHeight;
+        }
+    }
+
     /* ── 匯出 ── */
 
     /**
@@ -406,12 +822,14 @@ export class CanvasChart {
     /** 更新資料/選項後重繪(子類可覆寫吸收 options)。 */
     update(patch = {}) {
         Object.assign(this.options, patch);
-        this.render();
+        if (this._a11y) this._a11yMarkDirty();   // 選項/資料更新 → 資料表重建一次(同一輪合併)
+        this.render();                            // render() 內含 accessibleTable 開關偵測
     }
 
     destroy() {
         this._destroyed = true;
         _pending.delete(this);
+        this._a11yTeardown();
         if (this._offTheme) this._offTheme();
         if (this._resizeObserver) this._resizeObserver.disconnect();
         if (this._io) this._io.disconnect();

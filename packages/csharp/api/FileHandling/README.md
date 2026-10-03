@@ -1,5 +1,9 @@
 # File Handling Module
 
+> ⚠ Reference code: this folder has no .csproj, is not compiled or referenced by any project, and is not built by CI; the content below is not build-verified.
+>
+> Known not to compile: `FileUploadService.cs` and `UploadRuleController.cs` use `Bricks4Agent.Database.Repository` / `IGenericRepository<>` (and `GenericRepository<>` below), which do not exist in this repo.
+
 A comprehensive file upload system with configurable path templates, upload rules, and batch upload support.
 
 ## Features
@@ -64,7 +68,9 @@ Add to `appsettings.json`:
 
 ### 3. Database Migration
 
-Create entity configurations for `FileRecord` and `UploadPathRule`:
+Create entity configurations for `FileRecord` and `UploadPathRule`.
+
+> The snippet below uses EF Core `IEntityTypeConfiguration<T>`, which contradicts this repo's data-access convention (BaseOrm, no EF Core). It is illustrative only; nothing in the repo provides or references these classes.
 
 ```csharp
 public class FileRecordConfiguration : IEntityTypeConfiguration<FileRecord>
@@ -100,7 +106,9 @@ public class UploadPathRuleConfiguration : IEntityTypeConfiguration<UploadPathRu
 | Method | Endpoint | Description |
 |---|---|---|
 | POST | `/api/files/upload` | Upload a single file |
+| POST | `/api/files/upload-single` | Upload a single file (form-bound `FileUploadRequest`) |
 | POST | `/api/files/upload-batch` | Upload multiple files |
+| POST | `/api/files/upload-batch-form` | Upload multiple files (form-bound `BatchUploadRequest`) |
 | GET | `/api/files` | Query file records |
 | GET | `/api/files/{id}` | Get file by ID |
 | DELETE | `/api/files/{id}` | Delete a file |
@@ -277,6 +285,8 @@ Authorization: Bearer <token>
 4. **Path Traversal**: Prevention of `..` patterns in paths
 
 5. **Authentication**: All endpoints require authentication
+
+   **No ownership check**: authentication is the only gate. Any authenticated user can list any user's files (`GET /api/files?uploadedBy=...`), read any record by ID (`GET /api/files/{id}`) and delete any file, including the physical file (`DELETE /api/files/{id}?physicalDelete=true`). Add per-record authorization before exposing these endpoints.
 
 6. **Authorization**: Rule management requires Admin role
 

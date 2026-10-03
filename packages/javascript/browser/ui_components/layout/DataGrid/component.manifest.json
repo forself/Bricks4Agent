@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "component_id": "layout.data_grid",
+  "registry_name": "DataGrid",
+  "display_name": "DataGrid",
+  "category": "layout",
+  "kind": "composite",
+  "source_path": "ui_components/layout/DataGrid/DataGrid.js",
+  "docs_path": "ui_components/layout/DataGrid/README.md",
+  "maturity": "beta",
+  "generator": {
+    "usable": false,
+    "usage_mode": "manual_only",
+    "supported_field_types": [],
+    "supported_page_types": [],
+    "definition_runtime": false
+  },
+  "composition": {
+    "role": "data_view",
+    "requires_form_field_wrapper": false,
+    "manual_only": true
+  },
+  "binding": {
+    "value_io": true,
+    "listener_events": [
+      "change"
+    ],
+    "target_actions": [
+      "clear",
+      "setValue"
+    ]
+  },
+  "styling": {
+    "theme_token_only": true,
+    "style_knobs": [
+      "disabled",
+      "height"
+    ]
+  }
+}

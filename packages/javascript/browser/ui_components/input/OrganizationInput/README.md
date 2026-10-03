@@ -10,7 +10,7 @@
 new OrganizationInput(options?)
 ```
 
-繼承 `ChainedInput` 所有選項（`onChange`、`layout`、`gap`），`fields` 已預設為；另需提供 `loadUnits` 資料載入函式 `async (parentId) => [{value|id, label|name}]`（未提供時載入單位會擲出錯誤）：
+繼承 `ChainedInput` 的選項（`onChange`、`layout`），`fields` 已預設為下表，`gap` 固定為 `'8px'`（傳入的 `gap` 會被覆蓋）；另需提供 `loadUnits` 資料載入函式 `async (parentId) => [{value|id, label|name}]`（未提供時，載入錯誤會被 ChainedInput 捕捉並以 `console.error` 記錄，下拉選單維持空白）：
 
 | 欄位 name | type | 說明 |
 |---|---|---|
@@ -30,7 +30,7 @@ new OrganizationInput(options?)
 ## 使用範例
 
 ```js
-import { OrganizationInput } from './input/OrganizationInput/index.js';
+import { OrganizationInput } from './index.js';
 
 const org = new OrganizationInput({
     loadUnits: async (parentId) => fetchUnits(parentId),

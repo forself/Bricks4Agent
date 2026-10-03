@@ -6,8 +6,8 @@
   "category": "common",
   "kind": "atomic",
   "source_path": "ui_components/common/Progress/Progress.js",
-  "docs_path": "",
-  "maturity": "beta",
+  "docs_path": "ui_components/common/Progress/README.md",
+  "maturity": "stable",
   "generator": {
     "usable": false,
     "usage_mode": "manual_only",

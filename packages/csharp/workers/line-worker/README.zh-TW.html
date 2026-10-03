@@ -29,37 +29,77 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <p><code>LINE webhook -&gt; ngrok public URL -&gt; line-worker -&gt; broker /api/v1/high-level/line/process</code></p>
 <h2>Worker 驗證</h2>
 <ul>
-<li>broker 的 <code>/api/v1/high-level/line/process</code> 現在是 plain JSON，但不再是 trusted bypass。</li>
-<li><code>line-worker</code> 必須使用 <code>Worker.Auth.WorkerType</code>、<code>Worker.Auth.KeyId</code>、<code>Worker.Auth.SharedSecret</code> 對 broker HTTP 請求簽章。</li>
-<li><code>verify-high-level-process.ps1</code> 會優先讀取本機 <code>appsettings.json</code> 的 <code>Worker.Auth</code> 設定，自動附上簽章標頭。</li>
+<li>
+<p>broker 的 <code>/api/v1/high-level/line/process</code> 現在是 plain JSON，但不再是 trusted bypass。</p>
+</li>
+<li>
+<p><code>line-worker</code> 必須使用 <code>Worker.Auth.WorkerType</code>、<code>Worker.Auth.KeyId</code>、<code>Worker.Auth.SharedSecret</code> 對 broker HTTP 請求簽章。</p>
+</li>
+<li>
+<p><code>verify-high-level-process.ps1</code> 會優先讀取本機 <code>appsettings.json</code> 的 <code>Worker.Auth</code> 設定，自動附上簽章標頭。</p>
+</li>
 </ul>
 <p>完整操作手冊：</p>
 <ul>
-<li><a href="../../../../docs/manuals/line-sidecar-runbook.zh-TW.html">line-sidecar-runbook.zh-TW.md</a></li>
-<li><a href="../../../../docs/manuals/line-sidecar-runbook.html">line-sidecar-runbook.md</a></li>
+<li>
+<p><a href="../../../../docs/manuals/line-sidecar-runbook.zh-TW.html">line-sidecar-runbook.zh-TW.md</a></p>
+</li>
+<li>
+<p><a href="../../../../docs/manuals/line-sidecar-runbook.html">line-sidecar-runbook.md</a></p>
+</li>
 </ul>
-<p><code>line-worker</code> 只是 ingress bridge。<br>
-對話、需求澄清、查詢/production 分流、確認流程，屬於 broker 的 high-level layer，並透過 <code>HighLevelLlm</code> 與 execution/runtime LLM 設定分離。</p>
+<p><code>line-worker</code> 只是 ingress bridge。</p>
+<p>對話、需求澄清、查詢/production 分流、確認流程，屬於 broker 的 high-level layer，並透過 <code>HighLevelLlm</code> 與 execution/runtime LLM 設定分離。</p>
 <p>已驗證現況：</p>
 <ul>
-<li>canonical local sidecar 埠號為 <code>5357/5361</code></li>
-<li>signed live webhook verification 可回 <code>200</code></li>
-<li>sidecar 啟動流程現在會自動補齊本機 ngrok agent</li>
-<li><code>line-sidecar.ps1</code> 是 canonical operator entrypoint</li>
+<li>
+<p>canonical local sidecar 埠號為 <code>5357/5361</code></p>
+</li>
+<li>
+<p>signed live webhook verification 可回 <code>200</code></p>
+</li>
+<li>
+<p>sidecar 啟動流程現在會自動補齊本機 ngrok agent</p>
+</li>
+<li>
+<p><code>line-sidecar.ps1</code> 是 canonical operator entrypoint</p>
+</li>
 </ul>
 <p>目前查詢邊界：</p>
 <ul>
-<li>明確 broker-mediated search 可用：<code>?search &lt;keywords&gt;</code></li>
-<li>一般 <code>?query</code> 仍走高階對話路徑</li>
-<li>任意 query 尚未全面自動切成即時工具查詢，現行受控 live 路徑仍以顯式子命令為主</li>
+<li>
+<p>明確 broker-mediated search 可用：<code>?search &lt;keywords&gt;</code>（別名 <code>?s</code>）</p>
+</li>
+<li>
+<p>明確交通查詢由 broker 經 <code>transport.query</code> 工具處理：<code>?rail</code>（別名 <code>?r</code>、<code>?train</code>、<code>?tra</code>）、<code>?hsr</code>（<code>?thsr</code>）、<code>?bus</code>（<code>?b</code>）、<code>?flight</code>（<code>?f</code>、<code>?flights</code>）</p>
+</li>
+<li>
+<p><code>?profile</code>（別名 <code>?p</code>、<code>?me</code>、<code>?whoami</code>）由 broker 依已儲存的高階使用者 profile 直接回覆，不呼叫工具</p>
+</li>
+<li>
+<p>不帶上述子命令的一般 <code>?query</code> 仍走高階對話路徑</p>
+</li>
+<li>
+<p>任意 query 尚未全面自動切成即時工具查詢，現行受控 live 路徑仍以上述顯式子命令為主</p>
+</li>
 </ul>
 <p>建議 sidecar 流程：</p>
 <ol>
-<li>複製 <code>appsettings.sidecar.example.json</code> 為本機 <code>appsettings.json</code>，填入真實 LINE 憑證。</li>
-<li>確認 <code>%LOCALAPPDATA%\ngrok\ngrok.yml</code> 存在，且內含有效 ngrok authtoken。</li>
-<li>執行 <code>line-sidecar.ps1 up</code>。</li>
-<li>執行 <code>line-sidecar.ps1 verify</code> 送出帶簽章的測試 webhook。</li>
-<li>用 <code>line-sidecar.ps1 status</code>、<code>line-sidecar.ps1 restart</code>、<code>line-sidecar.ps1 down</code> 管理執行狀態。</li>
+<li>
+<p>複製 <code>appsettings.sidecar.example.json</code> 為本機 <code>appsettings.json</code>，填入真實 LINE 憑證。</p>
+</li>
+<li>
+<p>確認 <code>%LOCALAPPDATA%\ngrok\ngrok.yml</code> 存在，且內含有效 ngrok authtoken。</p>
+</li>
+<li>
+<p>執行 <code>line-sidecar.ps1 up</code>。</p>
+</li>
+<li>
+<p>執行 <code>line-sidecar.ps1 verify</code> 送出帶簽章的測試 webhook。</p>
+</li>
+<li>
+<p>用 <code>line-sidecar.ps1 status</code>、<code>line-sidecar.ps1 restart</code>、<code>line-sidecar.ps1 down</code> 管理執行狀態。</p>
+</li>
 </ol>
 <p>單一命令入口：</p>
 <pre><code class="language-powershell">powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\line-sidecar.ps1 up
@@ -72,28 +112,60 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\l
 <p>這個統一腳本是 canonical 操作入口。它仍然會啟動獨立的 broker、line-worker、ngrok 程序，但已不再要求操作人員先手動把 ngrok admin API 撐起來。</p>
 <p>預設 sidecar 埠號：</p>
 <ul>
-<li>broker：<code>5361</code></li>
-<li>line-worker webhook：<code>5357</code></li>
+<li>
+<p>broker：<code>5361</code></p>
+</li>
+<li>
+<p>line-worker webhook：<code>5357</code></p>
+</li>
 </ul>
 <p>選 <code>5357</code> 的原因：</p>
 <ul>
-<li>這台機器已有可重用的 <code>http://*:5357/</code> URL ACL</li>
-<li>可避開舊的長駐 <code>19090</code> worker</li>
-<li>也避開較容易撞埠的 <code>8xxx</code> 區段</li>
-<li>sidecar 因此在這個埠上使用 <code>WebhookHost=\"*\"</code></li>
+<li>
+<p>這台機器已有可重用的 <code>http://*:5357/</code> URL ACL</p>
+</li>
+<li>
+<p>可避開舊的長駐 <code>19090</code> worker</p>
+</li>
+<li>
+<p>也避開較容易撞埠的 <code>8xxx</code> 區段</p>
+</li>
+<li>
+<p>sidecar 因此在這個埠上使用 <code>WebhookHost=\"*\"</code></p>
+</li>
 </ul>
 <p>補充：</p>
 <ul>
-<li><code>appsettings.json</code> 是本機檔案，不進 git。</li>
-<li><code>line-sidecar.ps1</code> 是目前 Windows sidecar 的 canonical operator entrypoint。</li>
-<li><code>start-sidecar-stack.ps1</code> 會建立 <code>.run/line-sidecar</code> 工作區，並將 LINE webhook 更新到目前 tunnel URL，除非使用 <code>-SkipWebhookUpdate</code>。</li>
-<li>sidecar 模式下，常見 managed workspace root 是 <code>.run/line-sidecar/broker/managed-workspaces</code>；正式 broker 設定可改成其他絕對 <code>HighLevelCoordinator:AccessRoot</code>。</li>
-<li><code>verify-live-webhook.ps1</code> 會優先從 LINE API 讀目前 webhook endpoint，再 fallback 到 <code>.last-tunnel-url</code>。</li>
-<li>broker 與 webhook 驗證都應以 UTF-8 為準；shell 編碼不穩時，優先用 <code>-MessageFile</code> 或 <code>-MessageBase64Utf8</code>。</li>
-<li><code>start-sidecar-stack.ps1</code>、<code>status-sidecar-stack.ps1</code>、<code>stop-sidecar-stack.ps1</code>、<code>verify-live-webhook.ps1</code>、<code>verify-high-level-process.ps1</code> 仍是 <code>line-sidecar.ps1</code> 背後的低階腳本。</li>
-<li><code>line-sidecar.ps1 restart</code> 是 broker 或 worker 變更後的 canonical reload path。</li>
-<li><code>start-with-tunnel.ps1</code> 是 legacy tunnel launcher，不是 canonical sidecar flow。</li>
-<li>目前 canonical sidecar pair 是 webhook <code>5357</code> 與 broker <code>5361</code>。</li>
+<li>
+<p><code>appsettings.json</code> 是本機檔案，不進 git。</p>
+</li>
+<li>
+<p><code>line-sidecar.ps1</code> 是目前 Windows sidecar 的 canonical operator entrypoint。</p>
+</li>
+<li>
+<p><code>start-sidecar-stack.ps1</code> 會建立 <code>.run/line-sidecar</code> 工作區，並將 LINE webhook 更新到目前 tunnel URL，除非使用 <code>-SkipWebhookUpdate</code>。</p>
+</li>
+<li>
+<p>sidecar 模式下，常見 managed workspace root 是 <code>.run/line-sidecar/broker/managed-workspaces</code>；正式 broker 設定可改成其他絕對 <code>HighLevelCoordinator:AccessRoot</code>。</p>
+</li>
+<li>
+<p><code>verify-live-webhook.ps1</code> 會優先從 LINE API 讀目前 webhook endpoint，再 fallback 到 <code>.last-tunnel-url</code>。</p>
+</li>
+<li>
+<p>broker 與 webhook 驗證都應以 UTF-8 為準；shell 編碼不穩時，優先用 <code>-MessageFile</code> 或 <code>-MessageBase64Utf8</code>。</p>
+</li>
+<li>
+<p><code>start-sidecar-stack.ps1</code>、<code>status-sidecar-stack.ps1</code>、<code>stop-sidecar-stack.ps1</code>、<code>verify-live-webhook.ps1</code>、<code>verify-high-level-process.ps1</code> 仍是 <code>line-sidecar.ps1</code> 背後的低階腳本。</p>
+</li>
+<li>
+<p><code>line-sidecar.ps1 restart</code> 是 broker 或 worker 變更後的 canonical reload path。</p>
+</li>
+<li>
+<p><code>start-with-tunnel.ps1</code> 是 legacy tunnel launcher，不是 canonical sidecar flow。</p>
+</li>
+<li>
+<p>目前 canonical sidecar pair 是 webhook <code>5357</code> 與 broker <code>5361</code>。</p>
+</li>
 </ul>
 </main>
 </body>

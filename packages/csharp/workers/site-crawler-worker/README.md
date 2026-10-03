@@ -33,11 +33,11 @@ dotnet run --project packages/csharp/workers/site-crawler-worker -- \
 | `--visual` | `true` | Playwright DOM render (needs Chromium) |
 | `--archive` | `true` | Also write a deterministic `.zip` |
 | `--quality-gate` | `false` | Fail if any component gap / generated component |
-| `--json` | `false` | Also print the full `SiteReconstructPackageResult` JSON |
+| `--json` | `false` | Also print the full `SiteReconstructPackageResult` JSON. Pass a value (`--json true`): flags are read via `AddCommandLine`, so a bare trailing `--json` is ignored, and a bare `--json` followed by another flag takes that flag as its value and fails the bool conversion (`InvalidOperationException` wrapping a `FormatException`) |
 | `--timeout-seconds` | `240` | Crawl wall-clock budget |
 
 Output package: `index.html`, `runtime.js`, `styles.css`, `site.json`,
-`components/{manifest.json, b-binding.json}`, `README.md`. `b-binding.json` is the flat
+`components/{manifest.json, b-binding.json}`, `README.html`. `b-binding.json` is the flat
 `type -> b_component` index proving the output's vocabulary is a closed projection of B.
 
 > Visual mode launches headless Chromium via Microsoft.Playwright (browsers auto-download on

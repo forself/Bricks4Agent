@@ -21,15 +21,30 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <body>
 <main>
 <h1>BaseController - API Controller Base Class</h1>
+<blockquote>
+<p>⚠ Reference code: this folder has no .csproj, is not compiled or referenced by any project, and is not built by CI; the content below is not build-verified.</p>
+</blockquote>
 <p>Base controller class that provides common functionality for all API controllers.</p>
 <h2>Features</h2>
 <ul>
-<li>Unified response format using ApiResponse</li>
-<li>Built-in user authentication helpers</li>
-<li>Common HTTP response methods (200, 201, 400, 401, 403, 404, 409, 500)</li>
-<li>ModelState validation helpers</li>
-<li>Action execution wrappers with error handling</li>
-<li>Automatic trace ID assignment</li>
+<li>
+<p>Unified response format using ApiResponse</p>
+</li>
+<li>
+<p>Built-in user authentication helpers</p>
+</li>
+<li>
+<p>Common HTTP response methods (200, 201, 400, 401, 403, 404, 409, 500)</p>
+</li>
+<li>
+<p>ModelState validation helpers</p>
+</li>
+<li>
+<p>Action execution wrappers with error handling</p>
+</li>
+<li>
+<p>Automatic trace ID assignment</p>
+</li>
 </ul>
 <h2>Usage</h2>
 <h3>Basic Controller Implementation</h3>
@@ -182,54 +197,123 @@ public IActionResult ValidateModel([FromBody] DataDto dto)
 <h2>Available Response Methods</h2>
 <h3>Success Responses</h3>
 <ul>
-<li><code>Success&lt;T&gt;(T data, string message)</code> - 200 OK with data</li>
-<li><code>Success(string message)</code> - 200 OK without data</li>
-<li><code>Created&lt;T&gt;(T data, string message)</code> - 201 Created with data</li>
-<li><code>NoContent()</code> - 204 No Content</li>
+<li>
+<p><code>Success&lt;T&gt;(T data, string message)</code> - 200 OK with data</p>
+</li>
+<li>
+<p><code>Success(string message)</code> - 200 OK without data</p>
+</li>
+<li>
+<p><code>Created&lt;T&gt;(T data, string message)</code> - 201 Created with data</p>
+</li>
+<li>
+<p><code>NoContent()</code> - 204 No Content</p>
+</li>
 </ul>
 <h3>Error Responses</h3>
 <ul>
-<li><code>BadRequest(string message)</code> - 400 Bad Request</li>
-<li><code>BadRequest(List&lt;string&gt; errors, string message)</code> - 400 with validation errors</li>
-<li><code>Unauthorized(string message)</code> - 401 Unauthorized</li>
-<li><code>Forbidden(string message)</code> - 403 Forbidden</li>
-<li><code>NotFound(string message)</code> - 404 Not Found</li>
-<li><code>Conflict(string message)</code> - 409 Conflict</li>
-<li><code>InternalServerError(string message)</code> - 500 Internal Server Error</li>
-<li><code>InternalServerError(Exception ex)</code> - 500 with exception details</li>
+<li>
+<p><code>BadRequest(string message)</code> - 400 Bad Request</p>
+</li>
+<li>
+<p><code>BadRequest(List&lt;string&gt; errors, string message)</code> - 400 with validation errors</p>
+</li>
+<li>
+<p><code>Unauthorized(string message)</code> - 401 Unauthorized</p>
+</li>
+<li>
+<p><code>Forbidden(string message)</code> - 403 Forbidden</p>
+</li>
+<li>
+<p><code>NotFound(string message)</code> - 404 Not Found</p>
+</li>
+<li>
+<p><code>Conflict(string message)</code> - 409 Conflict</p>
+</li>
+<li>
+<p><code>InternalServerError(string message)</code> - 500 Internal Server Error</p>
+</li>
+<li>
+<p><code>InternalServerError(Exception ex)</code> - 500 with exception details. This leaks exception text: <code>ex.Message</code> is returned to the client in Release builds too (only the stack trace is behind <code>#if DEBUG</code>), and every <code>Execute*</code> helper routes caught exceptions through this method</p>
+</li>
 </ul>
 <h2>Available Properties</h2>
 <ul>
-<li><code>CurrentUserId</code> - Get current user ID from JWT claims</li>
-<li><code>CurrentUsername</code> - Get current username from JWT claims</li>
-<li><code>CurrentUserEmail</code> - Get current user email from JWT claims</li>
-<li><code>CurrentUserRoles</code> - Get current user roles from JWT claims</li>
-<li><code>TraceId</code> - Get request trace ID for logging</li>
+<li>
+<p><code>CurrentUserId</code> - Get current user ID from JWT claims</p>
+</li>
+<li>
+<p><code>CurrentUsername</code> - Get current username from JWT claims</p>
+</li>
+<li>
+<p><code>CurrentUserEmail</code> - Get current user email from JWT claims</p>
+</li>
+<li>
+<p><code>CurrentUserRoles</code> - Get current user roles from JWT claims</p>
+</li>
+<li>
+<p><code>TraceId</code> - Get request trace ID for logging</p>
+</li>
 </ul>
 <h2>Available Helper Methods</h2>
 <ul>
-<li><code>HasRole(string role)</code> - Check if current user has specific role</li>
-<li><code>GetModelStateErrors()</code> - Get all ModelState validation errors</li>
-<li><code>BadRequestWithModelState()</code> - Return 400 with ModelState errors</li>
-<li><code>ExecuteAction(Action action, string successMessage)</code> - Execute action with error handling</li>
-<li><code>ExecuteActionAsync(Func&lt;Task&gt; action, string successMessage)</code> - Execute async action with error handling</li>
-<li><code>ExecuteFunction&lt;T&gt;(Func&lt;T&gt; func, string successMessage)</code> - Execute function with error handling</li>
-<li><code>ExecuteFunctionAsync&lt;T&gt;(Func&lt;Task&lt;T&gt;&gt; func, string successMessage)</code> - Execute async function with error handling</li>
+<li>
+<p><code>HasRole(string role)</code> - Check if current user has specific role</p>
+</li>
+<li>
+<p><code>GetModelStateErrors()</code> - Get all ModelState validation errors</p>
+</li>
+<li>
+<p><code>BadRequestWithModelState()</code> - Return 400 with ModelState errors</p>
+</li>
+<li>
+<p><code>ExecuteAction(Action action, string successMessage)</code> - Execute action with error handling</p>
+</li>
+<li>
+<p><code>ExecuteActionAsync(Func&lt;Task&gt; action, string successMessage)</code> - Execute async action with error handling</p>
+</li>
+<li>
+<p><code>ExecuteFunction&lt;T&gt;(Func&lt;T&gt; func, string successMessage)</code> - Execute function with error handling</p>
+</li>
+<li>
+<p><code>ExecuteFunctionAsync&lt;T&gt;(Func&lt;Task&lt;T&gt;&gt; func, string successMessage)</code> - Execute async function with error handling</p>
+</li>
 </ul>
+<blockquote>
+<p>All four <code>Execute*</code> helpers catch every exception and return <code>InternalServerError(ex)</code>, so the raw exception message reaches the client.</p>
+</blockquote>
 <h2>Dependencies</h2>
 <ul>
-<li>Microsoft.AspNetCore.Mvc (ASP.NET Core)</li>
-<li>ApiResponse component</li>
-<li>.NET 6.0 or higher</li>
+<li>
+<p>Microsoft.AspNetCore.Mvc (ASP.NET Core)</p>
+</li>
+<li>
+<p>ApiResponse component</p>
+</li>
+<li>
+<p>.NET 10 (<code>net10.0</code>, the repo's target framework)</p>
+</li>
 </ul>
 <h2>Benefits</h2>
 <ol>
-<li><strong>DRY Principle</strong> - Eliminate repetitive response code</li>
-<li><strong>Consistency</strong> - All controllers return uniform responses</li>
-<li><strong>Error Handling</strong> - Built-in exception handling</li>
-<li><strong>User Context</strong> - Easy access to authenticated user information</li>
-<li><strong>Trace ID</strong> - Automatic request tracking for debugging</li>
-<li><strong>Type Safety</strong> - Strongly-typed responses</li>
+<li>
+<p><strong>DRY Principle</strong> - Eliminate repetitive response code</p>
+</li>
+<li>
+<p><strong>Consistency</strong> - All controllers return uniform responses</p>
+</li>
+<li>
+<p><strong>Error Handling</strong> - Built-in exception handling</p>
+</li>
+<li>
+<p><strong>User Context</strong> - Easy access to authenticated user information</p>
+</li>
+<li>
+<p><strong>Trace ID</strong> - Automatic request tracking for debugging</p>
+</li>
+<li>
+<p><strong>Type Safety</strong> - Strongly-typed responses</p>
+</li>
 </ol>
 </main>
 </body>

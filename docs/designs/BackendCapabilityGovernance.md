@@ -168,7 +168,7 @@ The generator should never be asked to:
 
 ## Excel report example
 
-The reporting abstraction in [Reporting.Abstractions.csproj](/d:/Bricks4Agent/packages/csharp/reporting/Reporting.Abstractions.csproj)
+The reporting abstraction in [Reporting.Abstractions.csproj](../../packages/csharp/reporting/Reporting.Abstractions.csproj)
 shows the intended pattern:
 
 - generated code composes `ExcelReportRequest`
@@ -179,13 +179,13 @@ shows the intended pattern:
 
 See:
 
-- [README.md](/d:/Bricks4Agent/packages/csharp/reporting/README.html)
+- [README.md](../../packages/csharp/reporting/README.md)
 
-- [IExcelReportService.cs](/d:/Bricks4Agent/packages/csharp/reporting/Services/IExcelReportService.cs)
+- [IExcelReportService.cs](../../packages/csharp/reporting/Services/IExcelReportService.cs)
 
-- [ExportEmployeesReportUseCase.cs](/d:/Bricks4Agent/packages/csharp/reporting/Examples/ExportEmployeesReportUseCase.cs)
+- [ExportEmployeesReportUseCase.cs](../../packages/csharp/reporting/Examples/ExportEmployeesReportUseCase.cs)
 
-- [excel-report.enterprise.json](/d:/Bricks4Agent/packages/csharp/reporting/CapabilitySchemas/excel-report.enterprise.json)
+- [excel-report.enterprise.json](../../packages/csharp/reporting/CapabilitySchemas/excel-report.enterprise.json)
 
 ## Suggested enforcement
 
@@ -204,34 +204,36 @@ See:
 The first enforcement pass is intentionally small and explicit.
 
 - policy file:
- [dotnet-dependency-policy.json](/d:/Bricks4Agent/tools/scripts/dotnet-dependency-policy.json)
+ [dotnet-dependency-policy.json](../../tools/scripts/dotnet-dependency-policy.json)
 
 - validator:
- [validate-dotnet-dependencies.mjs](/d:/Bricks4Agent/tools/scripts/validate-dotnet-dependencies.mjs)
+ [validate-dotnet-dependencies.mjs](../../tools/scripts/validate-dotnet-dependencies.mjs)
 
 - API usage policy:
- [dotnet-api-usage-policy.json](/d:/Bricks4Agent/tools/scripts/dotnet-api-usage-policy.json)
+ [dotnet-api-usage-policy.json](../../tools/scripts/dotnet-api-usage-policy.json)
 
 - API usage validator:
- [validate-dotnet-api-usage.mjs](/d:/Bricks4Agent/tools/scripts/validate-dotnet-api-usage.mjs)
+ [validate-dotnet-api-usage.mjs](../../tools/scripts/validate-dotnet-api-usage.mjs)
 
 Current policy coverage includes:
 
-- [Broker.csproj](/d:/Bricks4Agent/packages/csharp/broker/Broker.csproj)
+- [Broker.csproj](../../packages/csharp/broker/Broker.csproj)
 
-- [BrokerCore.csproj](/d:/Bricks4Agent/packages/csharp/broker-core/BrokerCore.csproj)
+- [BrokerCore.csproj](../../packages/csharp/broker-core/BrokerCore.csproj)
 
-- [Reporting.Abstractions.csproj](/d:/Bricks4Agent/packages/csharp/reporting/Reporting.Abstractions.csproj)
+- [Reporting.Abstractions.csproj](../../packages/csharp/reporting/Reporting.Abstractions.csproj)
 
-- [ClosedXmlAdapter.csproj](/d:/Bricks4Agent/packages/csharp/reporting/ClosedXmlAdapter/ClosedXmlAdapter.csproj)
+- [ClosedXmlAdapter.csproj](../../packages/csharp/reporting/ClosedXmlAdapter/ClosedXmlAdapter.csproj)
 
-- [ReportingExampleHost.csproj](/d:/Bricks4Agent/packages/csharp/reporting/ExampleHost/ReportingExampleHost.csproj)
+- [ReportingExampleHost.csproj](../../packages/csharp/reporting/ExampleHost/ReportingExampleHost.csproj)
 
-- [SpaApi.csproj](/d:/Bricks4Agent/templates/spa/backend/SpaApi.csproj)
+- [SpaApi.csproj](../../templates/spa/backend/SpaApi.csproj)
 
-- [spa-generator.csproj](/d:/Bricks4Agent/tools/spa-generator/backend/spa-generator.csproj)
+- [spa-generator.csproj](../../tools/spa-generator/backend/spa-generator.csproj)
 
-- [ShopBricks.csproj](/d:/Bricks4Agent/projects/ShopBricks-Gen/backend/ShopBricks.csproj)
+- `projects/ShopBricks-Gen/backend/ShopBricks.csproj` — never committed to
+  this repository; the policy marks this rule (and its API-usage scopes) as
+  optional, so the validators skip it when the project is absent
 
 Run it with:
 
@@ -259,12 +261,13 @@ The current API usage policy is intentionally narrow. It now covers:
 
 - SPA generator backend service/model/data layers
 
-- generated ShopBricks backend service/model/data layers
+- generated ShopBricks backend service/model/data layers (optional scopes;
+  the ShopBricks project is not in this repository)
 
 - selected generated backend host `Program.cs` files
 
 For a concrete host/composition example, see:
 
-- [Program.cs](/d:/Bricks4Agent/packages/csharp/reporting/ExampleHost/Program.cs)
+- [Program.cs](../../packages/csharp/reporting/ExampleHost/Program.cs)
 
-- [README.md](/d:/Bricks4Agent/packages/csharp/reporting/ExampleHost/README.html)
+- [README.md](../../packages/csharp/reporting/ExampleHost/README.md)

@@ -24,18 +24,34 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <p>Crawls a confirmed public URL, converts rendered visual/function cues into a component-library <code>site.json</code>, enforces generation quality, and writes a local static website package.</p>
 <h2>Capability</h2>
 <ul>
-<li>Tool ID: <code>site.reconstruct.package</code></li>
-<li>Capability ID: <code>site.reconstruct_package</code></li>
-<li>Route: <code>site_reconstruct_package</code></li>
-<li>Status: <code>beta</code></li>
-<li>Risk: medium</li>
+<li>
+<p>Tool ID: <code>site.reconstruct.package</code></p>
+</li>
+<li>
+<p>Capability ID: <code>site.reconstruct_package</code></p>
+</li>
+<li>
+<p>Route: <code>site_reconstruct_package</code></p>
+</li>
+<li>
+<p>Status: <code>beta</code></p>
+</li>
+<li>
+<p>Risk: medium</p>
+</li>
 </ul>
 <h2>Required Pre-Execution Confirmation</h2>
 <p>Before execution, the user must confirm crawl depth as link depth:</p>
 <ul>
-<li>entry page links: <code>max_depth = 1</code></li>
-<li>within two link hops: <code>max_depth = 2</code></li>
-<li>N link hops: <code>max_depth = N</code></li>
+<li>
+<p>entry page links: <code>max_depth = 1</code></p>
+</li>
+<li>
+<p>within two link hops: <code>max_depth = 2</code></p>
+</li>
+<li>
+<p>N link hops: <code>max_depth = N</code></p>
+</li>
 </ul>
 <p>Root/current page only, <code>max_depth = 0</code>, is supported as an explicit diagnostic/manual mode.</p>
 <p>The crawl is breadth-first for <code>link_depth</code>: lower layers must be completed before deeper layers when any safety budget is reached. URL path depth is not used as the website layer definition.</p>
@@ -43,58 +59,128 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <p>Rendered visual snapshots may be bounded for performance, but this bound must not be used as the page/route crawl limit.</p>
 <h2>Flow</h2>
 <ol>
-<li>Crawl only the confirmed public HTTP/HTTPS scope.</li>
-<li>Prefer rendered visual/function cues when available; use source HTML as auxiliary evidence.</li>
-<li>Convert the site intent into template slots and component-library nodes.</li>
-<li>Enforce the quality gate by default.</li>
-<li>Write a package whose entry point is <code>index.html</code>.</li>
-<li>Write a portable zip archive by default for artifact delivery.</li>
-<li>Verify the package files, <code>site.json</code> renderability, and archive contents.</li>
+<li>
+<p>Crawl only the confirmed public HTTP/HTTPS scope.</p>
+</li>
+<li>
+<p>Prefer rendered visual/function cues when available; use source HTML as auxiliary evidence.</p>
+</li>
+<li>
+<p>Convert the site intent into template slots and component-library nodes.</p>
+</li>
+<li>
+<p>Enforce the quality gate by default.</p>
+</li>
+<li>
+<p>Write a package whose entry point is <code>index.html</code>.</p>
+</li>
+<li>
+<p>Write a portable zip archive by default for artifact delivery.</p>
+</li>
+<li>
+<p>Verify the package files, <code>site.json</code> renderability, and archive contents.</p>
+</li>
 </ol>
 <p>The package runtime loads <code>site.json</code> and <code>components/manifest.json</code>, then renders the component tree. It must not write arbitrary page HTML or a DOM-equivalent clone.</p>
 <h2>Strict Quality Gate</h2>
 <p>Strict mode is enabled by default. It blocks package creation when:</p>
 <ul>
-<li>the document contains unresolved <code>component_requests</code>;</li>
-<li>the manifest declares generated components;</li>
-<li>routes use unknown component types;</li>
-<li>route paths are duplicated;</li>
-<li>a route root is not <code>PageShell</code>.</li>
+<li>
+<p>the document contains unresolved <code>component_requests</code>;</p>
+</li>
+<li>
+<p>the manifest declares generated components;</p>
+</li>
+<li>
+<p>routes use unknown component types;</p>
+</li>
+<li>
+<p>route paths are duplicated;</p>
+</li>
+<li>
+<p>a route root is not <code>PageShell</code>.</p>
+</li>
 </ul>
 <p>On failure the tool returns a structured <code>quality_report</code> and does not write the package.</p>
 <p>Strict mode also blocks delivery when package verification fails. The tool returns a structured <code>verification_report</code>, and failed package artifacts are removed when possible.</p>
 <h2>Package Verification</h2>
 <p>Successful output includes <code>package.verification_report</code>. The verifier checks:</p>
 <ul>
-<li><code>index.html</code></li>
-<li><code>runtime.js</code></li>
-<li><code>styles.css</code></li>
-<li><code>site.json</code></li>
-<li><code>components/manifest.json</code></li>
-<li><code>README.md</code></li>
-<li><code>index.html</code> declares <code>#app</code> and loads <code>./runtime.js</code></li>
-<li><code>runtime.js</code> loads <code>./site.json</code> and <code>./components/manifest.json</code></li>
-<li><code>components/manifest.json</code> declares every component type used by <code>site.json</code></li>
-<li>every non-generated component type used by <code>site.json</code> has a <code>runtime.js</code> renderer</li>
-<li>generated component types have local <code>components/generated/&lt;Type&gt;.js</code> and <code>.json</code> assets</li>
-<li>zip archive entries</li>
+<li>
+<p><code>index.html</code></p>
+</li>
+<li>
+<p><code>runtime.js</code></p>
+</li>
+<li>
+<p><code>styles.css</code></p>
+</li>
+<li>
+<p><code>site.json</code></p>
+</li>
+<li>
+<p><code>components/manifest.json</code></p>
+</li>
+<li>
+<p><code>README.html</code></p>
+</li>
+<li>
+<p><code>index.html</code> declares <code>#app</code> and loads <code>./runtime.js</code></p>
+</li>
+<li>
+<p><code>runtime.js</code> loads <code>./site.json</code> and <code>./components/manifest.json</code></p>
+</li>
+<li>
+<p><code>components/manifest.json</code> declares every component type used by <code>site.json</code></p>
+</li>
+<li>
+<p>every non-generated component type used by <code>site.json</code> has a <code>runtime.js</code> renderer</p>
+</li>
+<li>
+<p>generated component types have local <code>components/generated/&lt;Type&gt;.js</code> and <code>.json</code> assets</p>
+</li>
+<li>
+<p>zip archive entries</p>
+</li>
 </ul>
 <p>For normal user delivery, both <code>package.quality_report.is_passed</code> and <code>package.verification_report.is_passed</code> must be true.</p>
 <p>The <code>package.verification_report.runtime_renderer_types</code> field lists renderer keys parsed from <code>runtime.js</code>.</p>
 <h2>Output</h2>
 <p>The success result includes:</p>
 <ul>
-<li><code>crawl_run_id</code></li>
-<li><code>page_count</code></li>
-<li><code>excluded_count</code></li>
-<li><code>package.output_directory</code></li>
-<li><code>package.entry_point</code></li>
-<li><code>package.site_json_path</code></li>
-<li><code>package.manifest_path</code></li>
-<li><code>package.archive_path</code></li>
-<li><code>package.files</code></li>
-<li><code>package.quality_report</code></li>
-<li><code>package.verification_report</code></li>
+<li>
+<p><code>crawl_run_id</code></p>
+</li>
+<li>
+<p><code>page_count</code></p>
+</li>
+<li>
+<p><code>excluded_count</code></p>
+</li>
+<li>
+<p><code>package.output_directory</code></p>
+</li>
+<li>
+<p><code>package.entry_point</code></p>
+</li>
+<li>
+<p><code>package.site_json_path</code></p>
+</li>
+<li>
+<p><code>package.manifest_path</code></p>
+</li>
+<li>
+<p><code>package.archive_path</code></p>
+</li>
+<li>
+<p><code>package.files</code></p>
+</li>
+<li>
+<p><code>package.quality_report</code></p>
+</li>
+<li>
+<p><code>package.verification_report</code></p>
+</li>
 </ul>
 <p>The result is a reusable reconstruction package, not an equivalent clone of the source website.</p>
 </main>

@@ -4,6 +4,11 @@ Date: 2026-06-14
 Status: **三項皆已實作 + 驗證(#3 ✅ → #1 ✅ → #2 ✅)**
 範圍: 三個展示用功能的「特別強化」。先三個一起規劃,再依序測試先行實作。
 
+> **實作現況(2026-09-26 核對)**:各項對照程式如下。
+> - **#3 已完成**:主題 token 改 `SortedDictionary(Ordinal)`(`packages/csharp/workers/site-crawler-worker/Models/GeneratorSiteContracts.cs:41-44`、`packages/csharp/workers/site-crawler-worker/Models/SiteCrawlContracts.cs:479-482`);元件清單穩定排序(`packages/csharp/workers/site-crawler-worker/Services/StaticSitePackageGenerator.cs:48-49`);`WriteDeterministicArchive`(同檔 :95、:173);兩個決定性測試在 `packages/csharp/tests/unit/Workers/SiteCrawler/StaticSitePackageGeneratorTests.cs:1222`、`:1256`。**未做**:強化步驟 5(選)的跨行程自動化測試 —— 目前僅由 §1 補充中的 `reconstruct` CLI 兩次實跑人工驗證。
+> - **#1 已完成**:撞名(最長優先 + span 遮罩,`packages/csharp/workers/transport-tdx-worker/Services/TransportQueryContextResolver.cs:282`)、絕對時段(:441)、相對日期(:373)、無結果情境提示(`packages/csharp/workers/transport-tdx-worker/Services/TdxTransportProvider.cs:349-352`)、`TransportQueryContextResolverTests`(14 例)。**未做**:站點清單擴充(仍為 curated 硬編表,:18-61,未接 TDX 站點 API)、時區說明。
+> - **#2 已完成**:`WebReportSynthesisService` / `WebReportComposer` / `IWebContentProvider`・`IWebReportLlm`(`packages/csharp/broker/Services/WebReportContracts.cs`)/ 正式實作(`packages/csharp/broker/Services/WebReportProviders.cs`)、DI 註冊(`packages/csharp/broker/Program.cs:236-238`)、`POST /local-admin/web-report`(`packages/csharp/broker/Endpoints/LocalAdminEndpoints.cs:327`)、交付走 `LineArtifactDeliveryService`(含 Google Drive 上傳選項)、`WebReportTests`(10 例)。**未做**:「後續(非阻斷)」的 `報告 <主題>` LINE 對話指令 —— `HighLevelCommandParser` / `HighLevelCoordinator` 尚未引用此服務。
+
 ## 0. 三個展示功能
 
 1. **交通查詢** —— 日期/時間範圍、出發地、目的地、方式(rail/HSR/bus/flight)。

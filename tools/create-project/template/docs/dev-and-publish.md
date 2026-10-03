@@ -8,7 +8,7 @@
 
 | 階段 | `lib\` 是什麼 | 建立方式 |
 |---|---|---|
-| 開發 | **NTFS junction** → `Bricks4Agent\packages\javascript\browser\{ui_components,page-generator}`(活腳手架) | `node scripts/dev-link.mjs` |
+| 開發 | Windows **NTFS junction**／POSIX symlink → `Bricks4Agent\packages\javascript\browser\{ui_components,page-generator,custom_components}`(活腳手架) | `node scripts/dev-link.mjs` |
 | 無腳手架的機器 | 真實複本(手動同步) | `node scripts/sync-lib.mjs`(複本模式後備,junction 護欄拒跑) |
 | 發佈 | `dist\lib\` 真實快照(cpSync dereference 穿透連結取實體檔) | `node scripts/publish.mjs` |
 

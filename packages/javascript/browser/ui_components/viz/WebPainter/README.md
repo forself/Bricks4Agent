@@ -8,9 +8,9 @@
 
 - **多圖層管理**：新增、刪除、隱藏、切換圖層。
 
-- **豐富的繪圖工具**：文字、畫筆（自由繪製）、矩形、圓形、線條、箭頭、打點標記。
+- **豐富的繪圖工具**：文字、畫筆（自由繪製）、矩形、圓形、線條、箭頭（程式另支援打點標記 `marker`，但工具列未提供對應按鈕）。
 
-- **物件編輯**：選取移動、刪除、修改屬性（顏色、字型、線寬）。
+- **物件編輯**：選取移動、刪除；字型選單可套用到選取的文字，顏色與線寬設定只影響之後新增的圖形。
 
 - **歷史記錄**：支援 Undo/Redo (Ctrl+Z / Ctrl+Y)。
 
@@ -23,7 +23,7 @@
 ## Usage
 
 ```javascript
-import { WebPainter } from "./components/viz/WebPainter/WebPainter.js";
+import { WebPainter } from "./WebPainter.js";
 
 // 初始化
 const painter = new WebPainter({

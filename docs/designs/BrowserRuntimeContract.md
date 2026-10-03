@@ -135,17 +135,17 @@ Current implementation direction:
 
 - shared contracts exist in `BrokerCore.Contracts`
 
-- the contract is canonical before the first real browser worker is introduced
+- the contract was made canonical before the first real browser worker was introduced
+
+- request builder from tool specs (implemented: `packages/csharp/broker/Services/BrowserExecutionRequestBuilder.cs`)
+
+- browser worker runtime (implemented: `packages/csharp/workers/browser-worker`; its `browser.navigate` handler reads a subset of these request fields, see `BrowserActionRequest` in `Handlers/GovernedBrowserActionHandler.cs`)
+
+- session lease manager (implemented as broker records with issue / revoke / touch: `packages/csharp/broker/Services/BrowserBindingService.cs:161-205`)
 
 Not yet implemented:
 
-- request builder from tool specs
-
-- browser worker runtime
-
 - result normalization adapters
-
-- session lease manager
 
 - DOM/action replay
 

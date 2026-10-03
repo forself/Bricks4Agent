@@ -1,6 +1,6 @@
 # Bricks4Agent 目前版本技術手冊
 
-Date: 2026-06-18
+Date: 2026-09-26
 
 Status: current technical manual
 
@@ -74,7 +74,7 @@ PowerShell line-sidecar.ps1
   -> provision worker-auth.json
   -> start broker on 127.0.0.1:5361
   -> start line-worker webhook on 127.0.0.1:5357
-  -> start/reuse public tunnel (ngrok 優先；不可用時改用 localhost.run，必要時重試 cloudflared)
+  -> start/reuse public tunnel (ngrok 優先；不可用時改用 localhost.run，webhook 更新失敗時重建 localhost.run；腳本內的 cloudflared 分支目前不可達)
   -> update LINE webhook
 ```
 
@@ -833,6 +833,7 @@ Validation:
 
 ```powershell
 cd packages/javascript/browser
+npm ci   # 首次或 lockfile 變更後：安裝 vitest / jsdom devDependencies
 npm run metadata:check
 npm test
 cd ..\..\..
@@ -1366,10 +1367,11 @@ npm run audit:csp
 
 `audit:csp`（`tools/scripts/audit-csp.mjs`）是動 `ui_components` 前必過的硬門檻：它同時掃 CSP 違規（`<style>` 注入、`setAttribute('style')`、HTML 字串內 `style=` / `on*=`、`eval` / `new Function`、`javascript:` URL）與 Canvas-only 政策的 SVG 硬零（`<svg`、`createElementNS`、`data:image/svg`）。任一命中即 exit 1；`tools/scripts/svg-baseline.json` 只是盤點快照，不能豁免 SVG 命中。
 
-Browser package:
+Browser package（根目錄 `npm test` 也會執行 `npm --prefix packages/javascript/browser run test:vitest`，所以同樣需要先在此目錄 `npm ci`）:
 
 ```powershell
 cd packages/javascript/browser
+npm ci   # 首次或 lockfile 變更後：安裝 vitest / jsdom devDependencies
 npm run metadata:check
 npm test
 cd ..\..\..

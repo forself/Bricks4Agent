@@ -5,6 +5,7 @@
 
 import { PanelManager } from './PanelManager.js';
 import { Icon } from '../../common/Icon/index.js';
+import Locale from '../../i18n/index.js';
 
 let panelIdCounter = 0;
 
@@ -155,7 +156,7 @@ export class BasePanel {
                 const closeBtn = document.createElement('button');
                 closeBtn.className = 'panel__close';
                 closeBtn.type = 'button';
-                closeBtn.setAttribute('aria-label', '關閉');
+                closeBtn.setAttribute('aria-label', Locale.t('basePanel.close'));
                 this._closeIcon = new Icon({
                     name: 'close',
                     size: 16,

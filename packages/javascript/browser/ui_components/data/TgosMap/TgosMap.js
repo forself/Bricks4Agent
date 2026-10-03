@@ -115,6 +115,8 @@ function markerIcon(kind) {
     canvas.width = 24 * scale;
     canvas.height = 32 * scale;
     const ctx = canvas.getContext('2d');
+    // 無 Canvas（瀏覽器停用或非瀏覽器環境）時回傳 null，由呼叫端改用 TGOS 預設標記
+    if (!ctx) return null;
     ctx.setTransform(scale, 0, 0, scale, 0, 0);
     const pin = new Path2D(MARKER_PATH);
     ctx.fillStyle = fill;
@@ -376,7 +378,10 @@ export class TgosMap {
 
         for (const item of located) {
             const color = this.options.markerColorBuilder?.(item.row) || 'red';
-            const image = new TGOS.TGImage(markerIcon(color), new TGOS.TGSize(24, 32), new TGOS.TGPoint(0, 0), new TGOS.TGPoint(10, 31));
+            const iconUrl = markerIcon(color);
+            const image = iconUrl
+                ? new TGOS.TGImage(iconUrl, new TGOS.TGSize(24, 32), new TGOS.TGPoint(0, 0), new TGOS.TGPoint(10, 31))
+                : undefined;
             const point = new TGOS.TGPoint(item.x, item.y);
             const marker = new TGOS.TGMarker(this.map, point, String(item.row?.Name || item.row?.CarNo || ''), image);
             marker.__b4aRow = item.row;

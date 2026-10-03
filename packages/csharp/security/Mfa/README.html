@@ -22,25 +22,41 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <main>
 <h1>MFA Authentication 多因子驗證模組</h1>
 <p>完整的多因子驗證 (MFA) 解決方案，支援 TOTP、Email OTP 與復原碼。</p>
+<blockquote>
+<p>目前 repo 內只有 <code>tests/unit/Unit.Tests.csproj</code> 引用 <code>Mfa.csproj</code>；本模組只提供服務層，不含 Controller（HTTP 端點見下方說明）。</p>
+</blockquote>
 <h2>特點</h2>
 <ul>
-<li><strong>TOTP 支援</strong> - 相容 Google Authenticator、Microsoft Authenticator、Authy 等</li>
-<li><strong>Email OTP</strong> - 透過電子郵件發送一次性驗證碼</li>
-<li><strong>復原碼</strong> - 10 組一次性備用碼，用於緊急存取</li>
-<li><strong>安全設計</strong> - 常數時間比較、帳號鎖定、速率限制</li>
-<li><strong>兩步驟登入</strong> - 先驗證密碼，再驗證 MFA</li>
-<li><strong>彈性整合</strong> - 可自訂儲存庫與郵件服務</li>
+<li>
+<p><strong>TOTP 支援</strong> - 相容 Google Authenticator、Microsoft Authenticator、Authy 等</p>
+</li>
+<li>
+<p><strong>Email OTP</strong> - 透過電子郵件發送一次性驗證碼</p>
+</li>
+<li>
+<p><strong>復原碼</strong> - 10 組一次性備用碼，用於緊急存取</p>
+</li>
+<li>
+<p><strong>安全設計</strong> - 常數時間比較、帳號鎖定、速率限制</p>
+</li>
+<li>
+<p><strong>兩步驟登入</strong> - 先驗證密碼，再驗證 MFA</p>
+</li>
+<li>
+<p><strong>彈性整合</strong> - 可自訂儲存庫與郵件服務</p>
+</li>
 </ul>
 <h2>快速開始</h2>
 <h3>1. 服務註冊 (Program.cs)</h3>
-<pre><code class="language-csharp">using YourNamespace.Security.Mfa;
+<pre><code class="language-csharp">using Bricks4Agent.Security.Mfa;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // MFA 服務
 builder.Services.AddSingleton&lt;IMfaRepository, InMemoryMfaRepository&gt;();
 builder.Services.AddSingleton&lt;IUserRepository, InMemoryUserRepository&gt;();
-builder.Services.AddSingleton&lt;IEmailService, SmtpEmailService&gt;(); // 或自訂實作
+builder.Services.AddSingleton&lt;IEmailService, ConsoleEmailService&gt;(); // 僅輸出到 Console；正式環境請自行實作 IEmailService（見下方「郵件服務」）
+builder.Services.AddSingleton(new MfaOptions { AppName = &quot;MyApp&quot; });  // 驗證器 App 顯示名稱，只能透過 DI 提供
 builder.Services.AddSingleton&lt;IMfaService, MfaService&gt;();
 builder.Services.AddSingleton&lt;IMfaAuthService, MfaAuthService&gt;();
 
@@ -60,13 +76,17 @@ app.Run();
     &quot;ExpirationMinutes&quot;: 60
   },
   &quot;Mfa&quot;: {
-    &quot;AppName&quot;: &quot;MyApp&quot;,
-    &quot;TokenExpirationMinutes&quot;: 5,
-    &quot;EnforceMfa&quot;: false
+    &quot;TokenExpirationMinutes&quot;: 5
   }
 }
 </code></pre>
+<blockquote>
+<p>設定檔中只有 <code>Jwt:Key</code>、<code>Jwt:Issuer</code>、<code>Jwt:ExpirationMinutes</code>、<code>Mfa:TokenExpirationMinutes</code> 會被讀取。<code>Mfa:AppName</code> 與 <code>Mfa:EnforceMfa</code> 不會被讀取：<code>AppName</code> 來自 DI 註冊的 <code>MfaOptions</code> 物件（見上方），<code>MfaOptions.EnforceMfa</code> 目前沒有任何程式使用。</p>
+</blockquote>
 <h2>API 端點</h2>
+<blockquote>
+<p>以下所有 HTTP 端點都定義在未建置的參考程式碼 <code>api/Auth</code>（<code>MfaAuthController</code> / <code>RateLimitedAuthController</code>，沒有 .csproj），repo 內沒有任何主機提供這些端點。</p>
+</blockquote>
 <h3>註冊</h3>
 <pre><code class="language-http">POST /api/auth/register
 Content-Type: application/json
@@ -222,16 +242,28 @@ QRCode.toDataURL(qrCodeUri, (err, url) =&gt; {
 <h3>手動輸入</h3>
 <p>如果使用者無法掃描 QR Code，可以手動輸入:</p>
 <ul>
-<li><strong>帳號</strong>: 使用者 Email</li>
-<li><strong>金鑰</strong>: <code>totpSecret</code> (Base32 編碼)</li>
-<li><strong>時間基礎</strong>: 30 秒</li>
-<li><strong>演算法</strong>: SHA1</li>
+<li>
+<p><strong>帳號</strong>: 使用者 Email</p>
+</li>
+<li>
+<p><strong>金鑰</strong>: <code>totpSecret</code> (Base32 編碼)</p>
+</li>
+<li>
+<p><strong>時間基礎</strong>: 30 秒</p>
+</li>
+<li>
+<p><strong>演算法</strong>: SHA1</p>
+</li>
 </ul>
 <h2>安全機制</h2>
 <h3>帳號鎖定</h3>
 <ul>
-<li>連續失敗 5 次後鎖定 15 分鐘</li>
-<li>成功驗證後重置計數器</li>
+<li>
+<p>連續失敗 5 次後鎖定 15 分鐘</p>
+</li>
+<li>
+<p>成功驗證後重置計數器</p>
+</li>
 </ul>
 <h3>常數時間比較</h3>
 <p>所有驗證碼比較都使用常數時間演算法，防止計時攻擊:</p>
@@ -256,10 +288,18 @@ QRCode.toDataURL(qrCodeUri, (err, url) =&gt; {
 </code></pre>
 <h3>復原碼</h3>
 <ul>
-<li>10 組一次性復原碼</li>
-<li>格式: <code>XXXX-XXXX-XXXX</code> (12 個英數字)</li>
-<li>使用後立即失效</li>
-<li>儲存時使用 SHA256 雜湊</li>
+<li>
+<p>10 組一次性復原碼</p>
+</li>
+<li>
+<p>格式: <code>XXXX-XXXX-XXXX</code> (12 個英數字)</p>
+</li>
+<li>
+<p>使用後立即失效</p>
+</li>
+<li>
+<p>儲存時使用 SHA256 雜湊</p>
+</li>
 </ul>
 <h2>自訂實作</h2>
 <h3>資料庫儲存</h3>
@@ -292,7 +332,7 @@ QRCode.toDataURL(qrCodeUri, (err, url) =&gt; {
 }
 </code></pre>
 <h3>郵件服務</h3>
-<p>實作 <code>IEmailService</code> 介面:</p>
+<p>本模組只內建 <code>ConsoleEmailService</code>（開發用，只寫到 Console）；下方 <code>SmtpEmailService</code> 是自行實作的範例，不包含在模組中。實作 <code>IEmailService</code> 介面:</p>
 <pre><code class="language-csharp">public class SmtpEmailService : IEmailService
 {
     private readonly SmtpClient _client;

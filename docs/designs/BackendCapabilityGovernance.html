@@ -28,55 +28,109 @@ libraries.</p>
 <p>The rule is not "generated code may only use the standard library".
 The rule is:</p>
 <ul>
-<li>generated code may use the standard library</li>
-<li>generated code may use approved Bricks4Agent platform abstractions</li>
-<li>third-party libraries are allowed only inside adapter implementations</li>
+<li>
+<p>generated code may use the standard library</p>
+</li>
+<li>
+<p>generated code may use approved Bricks4Agent platform abstractions</p>
+</li>
+<li>
+<p>third-party libraries are allowed only inside adapter implementations</p>
+</li>
 </ul>
 <h2>Layering</h2>
 <h3>1. Generated application layer</h3>
 <p>This layer includes:</p>
 <ul>
-<li>controllers</li>
-<li>request and response DTOs</li>
-<li>use cases</li>
-<li>query orchestration</li>
-<li>report request composition</li>
+<li>
+<p>controllers</p>
+</li>
+<li>
+<p>request and response DTOs</p>
+</li>
+<li>
+<p>use cases</p>
+</li>
+<li>
+<p>query orchestration</p>
+</li>
+<li>
+<p>report request composition</p>
+</li>
 </ul>
 <p>Allowed dependencies:</p>
 <ul>
-<li><code>System.*</code></li>
-<li>approved Bricks4Agent abstraction packages</li>
-<li>application query interfaces</li>
+<li>
+<p><code>System.*</code></p>
+</li>
+<li>
+<p>approved Bricks4Agent abstraction packages</p>
+</li>
+<li>
+<p>application query interfaces</p>
+</li>
 </ul>
 <p>Forbidden dependencies:</p>
 <ul>
-<li>direct third-party SDK usage</li>
-<li>direct filesystem writes for export features</li>
-<li>direct message-bus or cache client construction</li>
-<li>direct cryptography or auth protocol implementations</li>
+<li>
+<p>direct third-party SDK usage</p>
+</li>
+<li>
+<p>direct filesystem writes for export features</p>
+</li>
+<li>
+<p>direct message-bus or cache client construction</p>
+</li>
+<li>
+<p>direct cryptography or auth protocol implementations</p>
+</li>
 </ul>
 <h3>2. Platform abstraction layer</h3>
 <p>This layer defines narrow contracts for generated code.</p>
 <p>Examples:</p>
 <ul>
-<li><code>IExcelReportService</code></li>
-<li><code>IPdfReportService</code></li>
-<li><code>IObjectStorage</code></li>
-<li><code>IMessagePublisher</code></li>
-<li><code>IIdentityProvider</code></li>
-<li><code>IClock</code></li>
-<li><code>IIdGenerator</code></li>
+<li>
+<p><code>IExcelReportService</code></p>
+</li>
+<li>
+<p><code>IPdfReportService</code></p>
+</li>
+<li>
+<p><code>IObjectStorage</code></p>
+</li>
+<li>
+<p><code>IMessagePublisher</code></p>
+</li>
+<li>
+<p><code>IIdentityProvider</code></p>
+</li>
+<li>
+<p><code>IClock</code></p>
+</li>
+<li>
+<p><code>IIdGenerator</code></p>
+</li>
 </ul>
 <p>Generated code should call these abstractions and nothing below them.</p>
 <h3>3. Adapter layer</h3>
 <p>This layer owns the actual third-party library integration.</p>
 <p>Examples:</p>
 <ul>
-<li><code>ClosedXmlExcelReportAdapter</code></li>
-<li><code>QuestPdfReportAdapter</code></li>
-<li><code>S3ObjectStorageAdapter</code></li>
-<li><code>RabbitMqMessagePublisher</code></li>
-<li><code>OpenIdConnectIdentityAdapter</code></li>
+<li>
+<p><code>ClosedXmlExcelReportAdapter</code></p>
+</li>
+<li>
+<p><code>QuestPdfReportAdapter</code></p>
+</li>
+<li>
+<p><code>S3ObjectStorageAdapter</code></p>
+</li>
+<li>
+<p><code>RabbitMqMessagePublisher</code></p>
+</li>
+<li>
+<p><code>OpenIdConnectIdentityAdapter</code></p>
+</li>
 </ul>
 <p>This is the only layer allowed to reference third-party implementation
 packages directly.</p>
@@ -84,27 +138,51 @@ packages directly.</p>
 <p>This layer wires the system together.</p>
 <p>Responsibilities:</p>
 <ul>
-<li>dependency injection registration</li>
-<li>profile selection</li>
-<li>environment configuration</li>
-<li>feature toggles</li>
+<li>
+<p>dependency injection registration</p>
+</li>
+<li>
+<p>profile selection</p>
+</li>
+<li>
+<p>environment configuration</p>
+</li>
+<li>
+<p>feature toggles</p>
+</li>
 </ul>
 <h2>Capability profiles</h2>
 <p>Generated backend systems should be assigned a capability profile instead of
 having unrestricted access to every backend feature.</p>
 <p>Suggested profiles:</p>
 <ul>
-<li><code>core</code></li>
-<li><code>enterprise</code></li>
-<li><code>government</code></li>
-<li><code>internet_facing</code></li>
+<li>
+<p><code>core</code></p>
+</li>
+<li>
+<p><code>enterprise</code></p>
+</li>
+<li>
+<p><code>government</code></p>
+</li>
+<li>
+<p><code>internet_facing</code></p>
+</li>
 </ul>
 <p>Example:</p>
 <ul>
-<li><code>core</code>: CRUD, logging, validation, persistence</li>
-<li><code>enterprise</code>: <code>core</code> plus Excel, PDF, mail, workflow, directory integration</li>
-<li><code>government</code>: <code>enterprise</code> plus audit, document signing, certificate-backed flows</li>
-<li><code>internet_facing</code>: <code>core</code> plus public auth, antiforgery, rate limiting, storage</li>
+<li>
+<p><code>core</code>: CRUD, logging, validation, persistence</p>
+</li>
+<li>
+<p><code>enterprise</code>: <code>core</code> plus Excel, PDF, mail, workflow, directory integration</p>
+</li>
+<li>
+<p><code>government</code>: <code>enterprise</code> plus audit, document signing, certificate-backed flows</p>
+</li>
+<li>
+<p><code>internet_facing</code>: <code>core</code> plus public auth, antiforgery, rate limiting, storage</p>
+</li>
 </ul>
 <h2>Generator-friendly design rules</h2>
 <p>To keep low-level AI and rule-based generators effective, platform contracts
@@ -117,63 +195,129 @@ must stay narrow and stable.</p>
 </code></pre>
 <p>The generator should only do these steps:</p>
 <ol>
-<li>query business data</li>
-<li>map rows into a contract object</li>
-<li>call a platform abstraction</li>
-<li>return or persist the result</li>
+<li>
+<p>query business data</p>
+</li>
+<li>
+<p>map rows into a contract object</p>
+</li>
+<li>
+<p>call a platform abstraction</p>
+</li>
+<li>
+<p>return or persist the result</p>
+</li>
 </ol>
 <p>The generator should never be asked to:</p>
 <ol>
-<li>choose an Excel library</li>
-<li>manage workbook styling APIs</li>
-<li>handle OpenXML details</li>
-<li>decide infrastructure wiring</li>
+<li>
+<p>choose an Excel library</p>
+</li>
+<li>
+<p>manage workbook styling APIs</p>
+</li>
+<li>
+<p>handle OpenXML details</p>
+</li>
+<li>
+<p>decide infrastructure wiring</p>
+</li>
 </ol>
 <h2>Excel report example</h2>
-<p>The reporting abstraction in <a href="/d:/Bricks4Agent/packages/csharp/reporting/Reporting.Abstractions.csproj">Reporting.Abstractions.csproj</a>
+<p>The reporting abstraction in <a href="../../packages/csharp/reporting/Reporting.Abstractions.csproj">Reporting.Abstractions.csproj</a>
 shows the intended pattern:</p>
 <ul>
-<li>generated code composes <code>ExcelReportRequest</code></li>
-<li>generated code calls <code>IExcelReportService</code></li>
-<li>the adapter package owns the third-party Excel library</li>
+<li>
+<p>generated code composes <code>ExcelReportRequest</code></p>
+</li>
+<li>
+<p>generated code calls <code>IExcelReportService</code></p>
+</li>
+<li>
+<p>the adapter package owns the third-party Excel library</p>
+</li>
 </ul>
 <p>See:</p>
 <ul>
-<li><a href="/d:/Bricks4Agent/packages/csharp/reporting/README.html">README.md</a></li>
-<li><a href="/d:/Bricks4Agent/packages/csharp/reporting/Services/IExcelReportService.cs">IExcelReportService.cs</a></li>
-<li><a href="/d:/Bricks4Agent/packages/csharp/reporting/Examples/ExportEmployeesReportUseCase.cs">ExportEmployeesReportUseCase.cs</a></li>
-<li><a href="/d:/Bricks4Agent/packages/csharp/reporting/CapabilitySchemas/excel-report.enterprise.json">excel-report.enterprise.json</a></li>
+<li>
+<p><a href="../../packages/csharp/reporting/README.html">README.md</a></p>
+</li>
+<li>
+<p><a href="../../packages/csharp/reporting/Services/IExcelReportService.cs">IExcelReportService.cs</a></p>
+</li>
+<li>
+<p><a href="../../packages/csharp/reporting/Examples/ExportEmployeesReportUseCase.cs">ExportEmployeesReportUseCase.cs</a></p>
+</li>
+<li>
+<p><a href="../../packages/csharp/reporting/CapabilitySchemas/excel-report.enterprise.json">excel-report.enterprise.json</a></p>
+</li>
 </ul>
 <h2>Suggested enforcement</h2>
 <ol>
-<li>Use <code>.csproj</code> dependency policies to restrict project references.</li>
-<li>Add package version governance with a central props file.</li>
-<li>Add banned API rules for direct filesystem, clock, and third-party usage.</li>
-<li>Add architecture tests for generated layer -&gt; abstraction layer -&gt; adapter layer boundaries.</li>
-<li>Emit capability schema metadata for low-level AI and rule-based generators.</li>
+<li>
+<p>Use <code>.csproj</code> dependency policies to restrict project references.</p>
+</li>
+<li>
+<p>Add package version governance with a central props file.</p>
+</li>
+<li>
+<p>Add banned API rules for direct filesystem, clock, and third-party usage.</p>
+</li>
+<li>
+<p>Add architecture tests for generated layer -&gt; abstraction layer -&gt; adapter layer boundaries.</p>
+</li>
+<li>
+<p>Emit capability schema metadata for low-level AI and rule-based generators.</p>
+</li>
 </ol>
 <h2>Initial enforcement assets in this repo</h2>
 <p>The first enforcement pass is intentionally small and explicit.</p>
 <ul>
-<li>policy file:
-  <a href="/d:/Bricks4Agent/tools/scripts/dotnet-dependency-policy.json">dotnet-dependency-policy.json</a></li>
-<li>validator:
-  <a href="/d:/Bricks4Agent/tools/scripts/validate-dotnet-dependencies.mjs">validate-dotnet-dependencies.mjs</a></li>
-<li>API usage policy:
-  <a href="/d:/Bricks4Agent/tools/scripts/dotnet-api-usage-policy.json">dotnet-api-usage-policy.json</a></li>
-<li>API usage validator:
-  <a href="/d:/Bricks4Agent/tools/scripts/validate-dotnet-api-usage.mjs">validate-dotnet-api-usage.mjs</a></li>
+<li>
+<p>policy file:
+ <a href="../../tools/scripts/dotnet-dependency-policy.json">dotnet-dependency-policy.json</a></p>
+</li>
+<li>
+<p>validator:
+ <a href="../../tools/scripts/validate-dotnet-dependencies.mjs">validate-dotnet-dependencies.mjs</a></p>
+</li>
+<li>
+<p>API usage policy:
+ <a href="../../tools/scripts/dotnet-api-usage-policy.json">dotnet-api-usage-policy.json</a></p>
+</li>
+<li>
+<p>API usage validator:
+ <a href="../../tools/scripts/validate-dotnet-api-usage.mjs">validate-dotnet-api-usage.mjs</a></p>
+</li>
 </ul>
 <p>Current policy coverage includes:</p>
 <ul>
-<li><a href="/d:/Bricks4Agent/packages/csharp/broker/Broker.csproj">Broker.csproj</a></li>
-<li><a href="/d:/Bricks4Agent/packages/csharp/broker-core/BrokerCore.csproj">BrokerCore.csproj</a></li>
-<li><a href="/d:/Bricks4Agent/packages/csharp/reporting/Reporting.Abstractions.csproj">Reporting.Abstractions.csproj</a></li>
-<li><a href="/d:/Bricks4Agent/packages/csharp/reporting/ClosedXmlAdapter/ClosedXmlAdapter.csproj">ClosedXmlAdapter.csproj</a></li>
-<li><a href="/d:/Bricks4Agent/packages/csharp/reporting/ExampleHost/ReportingExampleHost.csproj">ReportingExampleHost.csproj</a></li>
-<li><a href="/d:/Bricks4Agent/templates/spa/backend/SpaApi.csproj">SpaApi.csproj</a></li>
-<li><a href="/d:/Bricks4Agent/tools/spa-generator/backend/spa-generator.csproj">spa-generator.csproj</a></li>
-<li><a href="/d:/Bricks4Agent/projects/ShopBricks-Gen/backend/ShopBricks.csproj">ShopBricks.csproj</a></li>
+<li>
+<p><a href="../../packages/csharp/broker/Broker.csproj">Broker.csproj</a></p>
+</li>
+<li>
+<p><a href="../../packages/csharp/broker-core/BrokerCore.csproj">BrokerCore.csproj</a></p>
+</li>
+<li>
+<p><a href="../../packages/csharp/reporting/Reporting.Abstractions.csproj">Reporting.Abstractions.csproj</a></p>
+</li>
+<li>
+<p><a href="../../packages/csharp/reporting/ClosedXmlAdapter/ClosedXmlAdapter.csproj">ClosedXmlAdapter.csproj</a></p>
+</li>
+<li>
+<p><a href="../../packages/csharp/reporting/ExampleHost/ReportingExampleHost.csproj">ReportingExampleHost.csproj</a></p>
+</li>
+<li>
+<p><a href="../../templates/spa/backend/SpaApi.csproj">SpaApi.csproj</a></p>
+</li>
+<li>
+<p><a href="../../tools/spa-generator/backend/spa-generator.csproj">spa-generator.csproj</a></p>
+</li>
+<li>
+<p><code>projects/ShopBricks-Gen/backend/ShopBricks.csproj</code> — never committed to
+  this repository; the policy marks this rule (and its API-usage scopes) as
+  optional, so the validators skip it when the project is absent</p>
+</li>
 </ul>
 <p>Run it with:</p>
 <pre><code class="language-bash">node tools/scripts/validate-dotnet-dependencies.mjs
@@ -186,16 +330,31 @@ shows the intended pattern:</p>
 </code></pre>
 <p>The current API usage policy is intentionally narrow. It now covers:</p>
 <ul>
-<li>reporting abstraction, adapter, and host layers</li>
-<li>template SPA backend service/model/data layers</li>
-<li>SPA generator backend service/model/data layers</li>
-<li>generated ShopBricks backend service/model/data layers</li>
-<li>selected generated backend host <code>Program.cs</code> files</li>
+<li>
+<p>reporting abstraction, adapter, and host layers</p>
+</li>
+<li>
+<p>template SPA backend service/model/data layers</p>
+</li>
+<li>
+<p>SPA generator backend service/model/data layers</p>
+</li>
+<li>
+<p>generated ShopBricks backend service/model/data layers (optional scopes;
+  the ShopBricks project is not in this repository)</p>
+</li>
+<li>
+<p>selected generated backend host <code>Program.cs</code> files</p>
+</li>
 </ul>
 <p>For a concrete host/composition example, see:</p>
 <ul>
-<li><a href="/d:/Bricks4Agent/packages/csharp/reporting/ExampleHost/Program.cs">Program.cs</a></li>
-<li><a href="/d:/Bricks4Agent/packages/csharp/reporting/ExampleHost/README.html">README.md</a></li>
+<li>
+<p><a href="../../packages/csharp/reporting/ExampleHost/Program.cs">Program.cs</a></p>
+</li>
+<li>
+<p><a href="../../packages/csharp/reporting/ExampleHost/README.html">README.md</a></p>
+</li>
 </ul>
 </main>
 </body>

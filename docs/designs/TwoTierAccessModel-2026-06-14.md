@@ -4,6 +4,12 @@ Date: 2026-06-14
 Status: **已實作 + 驗證(2026-06-14)** —— 模型/遮罩/註冊閘門/晉升/後台 UI 完成;Unit.Tests 376 全綠、broker-tests 192、方案 0 error。
 範圍: 把「註冊核准即給多數權限」改成清楚的兩層存取模型。
 
+> **實作現況（2026-09-26 核對）**
+>
+> - 本文 §1(L11 自助成為 Tier 1)、§2(自助註冊)、§3 註冊閘門(新使用者 → Basic + Approved)與 §5 驗收(新使用者發訊即可問答)所述「任何人發訊即自動成為 Tier 1」已不成立:在設定 `PortalLineVerificationService` 時,原始 LINE user id(`U` + 32 hex)在完成 Web Portal 註冊並於 LINE 送出 `/verify <user_id> <code>` 之前,一律回 `line_verification_required`,不會進入 Tier 1 問答(`packages/csharp/broker/Services/HighLevelCoordinator.cs:597-605`)。
+> - 驗證成功後,LINE id 對應到 Portal user id(`HighLevelCoordinator.cs:590-595`),之後才以該 id 走本文的註冊閘門與 Tier 1 / Tier 2 流程(`HighLevelCoordinator.cs:147,170`)。
+> - 設計見 [2026-07-01-line-portal-verification-design.md](../superpowers/specs/2026-07-01-line-portal-verification-design.md)。
+
 ## 1. 目標模型(經使用者確認)
 
 | 層級 | 取得方式 | 能做什麼 |

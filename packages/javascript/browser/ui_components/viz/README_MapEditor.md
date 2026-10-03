@@ -12,7 +12,7 @@
 
 - 自動適應畫布大小
 
-- 支援拖放操作
+- 不支援拖放上傳，需透過工具列選擇檔案
 
 ### 📝 文字工具
 
@@ -38,11 +38,11 @@
 
 - 自訂線條顏色與粗細
 
-- 自訂填充顏色（支援透明度）
+- 自訂填充顏色（預設填色為半透明；以顏色選擇器改色後為不透明色）
 
 ### 🔧 編輯功能
 
-- **選擇工具**：選中元素進行移動
+- **選擇工具**：選中元素進行移動（僅文字、矩形、圓形可被選取；線條與箭頭無法選取）
 
 - **拖動**：直接拖動元素調整位置
 
@@ -225,6 +225,8 @@ python -m http.server 5500
 
 訪問：`http://localhost:5500/packages/javascript/browser/ui_components/viz/demo_map_editor.html`
 
+> 注意：`demo_map_editor.html` 實際建立的是 `WebPainter`，不是 `MapEditor`；repo 內目前沒有直接建立 `MapEditor` 的示範頁面。
+
 ### 方法 2：使用 VS Code Live Server
 
 1. 安裝 Live Server 擴充功能
@@ -251,7 +253,7 @@ http-server -p 5500
 
 3. **畫布區域**：顯示圖片與標註元素
 
-4. **快捷鍵提示**：方便記憶常用操作
+4. **快捷鍵提示**：屬於示範頁面的內容，MapEditor 本身不提供
 
 ## 📦 檔案結構
 
@@ -259,7 +261,7 @@ http-server -p 5500
 packages/javascript/browser/ui_components/viz/
 ├── MapEditor.js           # 核心編輯器類別
 ├── MapEditorV2.js         # 進階版（圖層面板、重做、複製貼上）
-├── demo_map_editor.html   # 完整示範頁面
+├── demo_map_editor.html   # 示範頁面（實際建立 WebPainter）
 └── README_MapEditor.md    # 說明文件（本檔案）
 ```
 
@@ -281,13 +283,13 @@ packages/javascript/browser/ui_components/viz/
 
 ## 💡 未來擴展
 
-- [ ] 增加重做（Redo）功能
+- [x] 增加重做（Redo）功能（已於 `MapEditorV2` 提供）
 
-- [ ] 支援圖層管理
+- [x] 支援圖層管理（已於 `MapEditorV2` 提供）
 
 - [ ] 文字樣式預設（粗體、斜體）
 
-- [ ] 更多形狀（多邊形、自由繪圖）
+- [ ] 更多形狀（多邊形；自由繪圖已於 `MapEditorV2` 的畫筆工具提供）
 
 - [ ] 濾鏡與特效
 

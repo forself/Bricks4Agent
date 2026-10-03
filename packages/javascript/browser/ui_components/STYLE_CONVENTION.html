@@ -23,9 +23,15 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <h1>Bricks4Agent UI 元件庫樣式規範</h1>
 <h2>核心原則</h2>
 <ol>
-<li><strong>所有元件必須使用 <code>theme.css</code> 定義的 CSS 變數</strong>（<code>--cl-*</code> 前綴），禁止硬編碼色碼</li>
-<li><strong>深色主題由 <code>[data-theme="dark"]</code> 統一處理</strong>，元件禁止自行實作 <code>@media (prefers-color-scheme: dark)</code></li>
-<li><strong>非色碼 Token（圓角、陰影、字型大小、過渡）也必須引用 CSS 變數</strong></li>
+<li>
+<p><strong>所有元件必須使用 <code>theme.css</code> 定義的 CSS 變數</strong>（<code>--cl-*</code> 前綴），禁止硬編碼色碼</p>
+</li>
+<li>
+<p><strong>深色主題由 <code>[data-theme="dark"]</code> 統一處理</strong>，元件禁止自行實作 <code>@media (prefers-color-scheme: dark)</code></p>
+</li>
+<li>
+<p><strong>非色碼 Token（圓角、陰影、字型大小、過渡）也必須引用 CSS 變數</strong></p>
+</li>
 </ol>
 <hr>
 <h2>色碼對應表</h2>
@@ -87,11 +93,12 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <td><code>var(--cl-warning-light)</code></td>
 </tr>
 <tr>
-<td><code>#03A9F4</code></td>
+<td><code>#2196F3</code>（info 用途）</td>
 <td><code>var(--cl-info)</code></td>
 </tr>
 </tbody>
 </table>
+<p>註：<code>--cl-info</code> 為 <code>var(--cl-blue-500)</code>（<code>#2196F3</code>），與 <code>--cl-primary</code> 同色；<code>#03A9F4</code> 沒有對應 token。</p>
 <h3>Material 擴充色</h3>
 <table>
 <thead>
@@ -566,60 +573,99 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <hr>
 <h2>保留不替換的值</h2>
 <ul>
-<li><code>transparent</code> — 保留</li>
-<li><code>currentColor</code> — 保留</li>
-<li><code>inherit</code> — 保留</li>
-<li><code>rgba(0,0,0,0.08)</code> 等低透明度 hover 效果 — 保留（無對應變數）</li>
-<li><code>rgba(255,255,255,0.15)</code> 等反色 hover 效果 — 保留</li>
-<li><code>border-bottom-color: #fff</code> 用於 tab active 技巧 — 改為 <code>var(--cl-bg)</code></li>
-<li><code>linear-gradient(...)</code> 中的色碼 — 也應換成 CSS 變數</li>
+<li>
+<p><code>transparent</code> — 保留</p>
+</li>
+<li>
+<p><code>currentColor</code> — 保留</p>
+</li>
+<li>
+<p><code>inherit</code> — 保留</p>
+</li>
+<li>
+<p><code>rgba()</code> 只有下列完全相符的字串可保留（<code>tools/scripts/audit-ui-style-rules.mjs</code> 的白名單，逐字比對；其他寫法如無空格的 <code>rgba(0,0,0,0.08)</code> 仍會被標記）：</p>
+</li>
+<li>低透明度 hover：<code>rgba(0, 0, 0, 0.08)</code>（含空格）</li>
+<li>
+<p>反色 hover：<code>rgba(255, 255, 255, 0.15)</code>、<code>rgba(255,255,255,0.15)</code>、<code>rgba(255, 255, 255, 0.2)</code>、<code>rgba(255,255,255,0.2)</code></p>
+</li>
+<li>
+<p><code>border-bottom-color: #fff</code> 用於 tab active 技巧 — 改為 <code>var(--cl-bg)</code></p>
+</li>
+<li>
+<p><code>linear-gradient(...)</code> 中的色碼 — 也應換成 CSS 變數</p>
+</li>
 </ul>
 <hr>
 <h2>深色主題規則</h2>
 <ol>
-<li><code>theme.css</code> 已在 <code>[data-theme="dark"]</code> 中覆寫所有 <code>--cl-*</code> 變數</li>
-<li>元件使用 CSS 變數後，切換主題自動生效</li>
-<li><strong>移除</strong>所有元件中的 <code>@media (prefers-color-scheme: dark) { ... }</code> 區塊</li>
-<li><strong>移除</strong>元件中用硬編碼色碼實作的深色模式邏輯</li>
+<li>
+<p><code>theme.css</code> 已在 <code>[data-theme="dark"]</code> 中覆寫所有 <code>--cl-*</code> 變數</p>
+</li>
+<li>
+<p>元件使用 CSS 變數後，切換主題自動生效</p>
+</li>
+<li>
+<p><strong>移除</strong>所有元件中的 <code>@media (prefers-color-scheme: dark) { ... }</code> 區塊</p>
+</li>
+<li>
+<p><strong>移除</strong>元件中用硬編碼色碼實作的深色模式邏輯</p>
+</li>
 </ol>
 <hr>
 <h2>元件結構規範</h2>
 <h3>原子化設計（Atomic Design）</h3>
-<p>元件按複雜度分為三層：</p>
+<p>元件分類以 <code>metadata/component-catalog.json</code> 的 <code>kind</code>（<code>by_kind</code>）為準，共四類：</p>
 <ol>
 <li>
-<p><strong>原子（Atoms）</strong> — 最小可重用單位，不依賴其他元件
-   - 按鈕類：BasicButton, ActionButton, EditorButton, AuthButton, SortButton, UploadButton, DownloadButton
-   - 輸入類：TextInput, NumberInput, Checkbox, Radio, ToggleSwitch, ColorPicker, Dropdown
-   - 展示類：Badge, Tag, Tooltip, Progress, Divider, LoadingSpinner, Avatar
-   - 回饋類：Notification</p>
+<p><strong>原子（atomic）</strong> — 最小可重用單位（可使用 Icon 等基礎元件）
+ - 按鈕類：BasicButton, EditorButton, SortButton, UploadButton, DownloadButton
+ - 輸入類：TextInput, TextArea, NumberInput, Checkbox, Radio, ToggleSwitch, ColorPicker, Dropdown, MultiSelectDropdown, DatePicker, TimePicker, Slider
+ - 表單：FormField
+ - 展示類：Badge, Tag, Tooltip, Progress, Divider, LoadingSpinner, Avatar
+ - 回饋類：Notification</p>
 </li>
 <li>
-<p><strong>分子（Molecules）</strong> — 由原子組合而成
-   - FormField（Label + 任意輸入原子）
-   - SearchForm（TextInput + BasicButton）
-   - DatePicker / TimePicker / DateTimeInput
-   - Breadcrumb, Pagination, ButtonGroup</p>
+<p><strong>組合（composite）</strong> — 由其他元件組合而成
+ - ActionButton, AuthButton
+ - SearchForm（TextInput、Dropdown、MultiSelectDropdown、DatePicker、NumberInput + 原生按鈕）
+ - DateTimeInput
+ - Breadcrumb, Pagination, ButtonGroup</p>
 </li>
 <li>
-<p><strong>有機體（Organisms）</strong> — 由分子/原子組合的複雜元件
-   - DataTable, TabContainer, FunctionMenu, SideMenu
-   - Panel 系統（PanelManager + 多種 Panel 變體）
-   - InfoPanel, WorkflowPanel, DocumentWall, PhotoWall</p>
+<p><strong>容器（container）</strong> — 承載其他內容的版面型元件
+ - DataTable, TabContainer, FunctionMenu, SideMenu
+ - PanelManager
+ - InfoPanel, WorkflowPanel, DocumentWall, PhotoWall</p>
+</li>
+<li>
+<p><strong>視覺化（visualizer）</strong> — <code>viz/</code> 下的 Canvas 圖表、地圖與繪圖元件</p>
 </li>
 </ol>
 <h3>新元件開發規範</h3>
 <ol>
-<li><strong>每個元件一個資料夾</strong>：<code>{category}/{ComponentName}/</code></li>
-<li><strong>必要檔案</strong>：
-   - <code>ComponentName.js</code> — 主元件類別
-   - <code>index.js</code> — 重新匯出（<code>export { X } from './X.js';</code>）
-   - <code>demo.html</code> — 完整展示頁面（含深色主題切換）</li>
-<li><strong>註冊流程</strong>：
-   - 加入 <code>{category}/index.js</code> 匯出
-   - 加入 <code>binding/ComponentFactory.js</code> 工廠註冊</li>
-<li><strong>樣式方式</strong>：使用 <code>_injectStyles()</code> 動態注入 CSS，或獨立 <code>.css</code> 檔案</li>
-<li><strong>所有樣式值必須使用 <code>--cl-*</code> CSS 變數</strong>，零硬編碼</li>
+<li>
+<p><strong>每個元件一個資料夾</strong>：<code>{category}/{ComponentName}/</code>（例外：<code>viz/</code> 的圖表元件與 <code>analytics/DataExplorer</code> 為扁平檔案 <code>&lt;Name&gt;.js</code> + <code>&lt;Name&gt;.manifest.json</code>）</p>
+</li>
+<li>
+<p><strong>必要檔案</strong>：
+ - <code>ComponentName.js</code> — 主元件類別
+ - <code>index.js</code> — 重新匯出（<code>export { X } from './X.js';</code>）
+ - <code>ComponentName.manifest.json</code>（或 <code>component.manifest.json</code>）— 元件 metadata（schema 見 <code>metadata/manifest-schema.js</code>）
+ - 建議另提供 <code>demo.html</code> — 完整展示頁面（含深色主題切換）</p>
+</li>
+<li>
+<p><strong>註冊流程</strong>：
+ - 加入 <code>{category}/index.js</code> 匯出
+ - 加入 <code>binding/ComponentFactory.js</code> 工廠註冊
+ - 重建並檢查 metadata：<code>node packages/javascript/browser/ui_components/metadata/build-metadata.mjs --check</code></p>
+</li>
+<li>
+<p><strong>樣式方式</strong>：以 CSSOM 指派（<code>element.style.cssText</code> / <code>setProperty</code>），或用同目錄 <code>.css</code> 搭配同源 <code>&lt;link&gt;</code> 載入；嚴格 CSP 下禁止動態注入 <code>&lt;style&gt;</code>。<code>tools/scripts/audit-csp.mjs</code> 另對 HTML 字串內的 <code>on*=</code> 事件、<code>eval</code> / <code>new Function</code>、<code>javascript:</code> URL 與 SVG 使用採零容忍</p>
+</li>
+<li>
+<p><strong>所有樣式值必須使用 <code>--cl-*</code> CSS 變數</strong>，零硬編碼。Canvas 的顏色回退值必須使用 <code>utils/theme-bus.js</code> 的 <code>FALLBACK_PAINT</code>，元件內不得散寫 hex；唯一允許直寫的 hex 是文字對比遮罩常數 <code>#00000099</code>、<code>#ffffffcc</code>、<code>#000000aa</code>、<code>#ffffffdd</code></p>
+</li>
 </ol>
 </main>
 </body>

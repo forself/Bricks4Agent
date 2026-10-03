@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TimeRangePicker 時間範圍選擇器</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>TimeRangePicker 時間範圍選擇器</h1>
+<p>以兩個 <a href="../TimePicker/README.html">TimePicker</a> 組成的時間範圍輸入元件：選擇開始與結束時間，兩端互相約束，支援跨午夜（隔日）、最短／最長時間長度、驗證、欄位錯誤標示與完整鍵盤操作。</p>
+<ul>
+<li>值的格式：<code>{ start: 'HH:mm' | null, end: 'HH:mm' | null }</code>（24 小時制、兩位數小時）</li>
+<li>沿用 TimePicker 的選項名稱 <code>minuteStep</code></li>
+<li>不修改 TimePicker 原始碼；鍵盤、ARIA 與「不可選時間」由本元件從外部補上</li>
+</ul>
+<hr>
+<h2>建構選項</h2>
+<pre><code class="language-javascript">const picker = new TimeRangePicker({
+    value: null,               // 初始值 { start, end }；格式或順序不合時 console.warn 並以空值開始
+    minuteStep: 1,             // 分鐘欄間隔（同 TimePicker）；須為 1–60 的整數，否則警告並用 1
+    allowOvernight: false,     // true：結束早於開始代表隔日（例 22:00 至 06:00）
+    minDurationMinutes: 0,     // 最短時間長度（分鐘）
+    maxDurationMinutes: null,  // 最長時間長度（分鐘）；null 不限
+    required: false,           // 必填；只影響 isValid() / getValidationError()
+    startPlaceholder: '開始時間', // 預設 Locale timeRangePicker.startPlaceholder；也是開始端的無障礙名稱
+    endPlaceholder: '結束時間',   // 預設 Locale timeRangePicker.endPlaceholder；也是結束端的無障礙名稱
+    separator: '至',            // 兩端之間的文字；預設 Locale timeRangePicker.separator
+    label: '',                 // 可見標籤；有值時群組以 aria-labelledby 指向它
+    ariaLabel: '',             // 沒有可見標籤時的群組名稱；空值用 Locale timeRangePicker.groupLabel
+    clearable: true,           // 有值時顯示「清除」按鈕
+    disabled: false,           // 停用
+    width: '100%',             // 元件寬度（CSS 長度字串，或數字代表 px）
+    onChange: null             // (value) =&gt; {}：使用者確定變更時觸發一次
+});
+</code></pre>
+<hr>
+<h2>方法</h2>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>回傳</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>mount(container)</code></td>
+<td><code>this</code></td>
+<td>掛載到元素或 CSS 選擇器</td>
+</tr>
+<tr>
+<td><code>getValue()</code></td>
+<td><code>{ start, end }</code></td>
+<td>目前的值（每次回傳新物件）</td>
+</tr>
+<tr>
+<td><code>setValue(value)</code></td>
+<td><code>this</code></td>
+<td>設定值，<strong>不觸發</strong> <code>onChange</code>；<code>null</code> / <code>undefined</code> / <code>''</code> 代表清空。格式不合、<code>allowOvernight: false</code> 時結束不晚於開始、或結束等於開始時，<code>console.warn</code> 並保持原值</td>
+</tr>
+<tr>
+<td><code>clear()</code></td>
+<td><code>this</code></td>
+<td>清空兩端；值真的改變時才觸發 <code>onChange</code></td>
+</tr>
+<tr>
+<td><code>setDisabled(disabled)</code></td>
+<td><code>this</code></td>
+<td>停用／啟用兩端與清除按鈕</td>
+</tr>
+<tr>
+<td><code>isValid()</code></td>
+<td><code>boolean</code></td>
+<td>目前的值是否通過驗證</td>
+</tr>
+<tr>
+<td><code>getValidationError()</code></td>
+<td><code>string</code></td>
+<td>驗證失敗的原因（依目前語系）；通過時為空字串</td>
+</tr>
+<tr>
+<td><code>setError(message, { display = true })</code></td>
+<td><code>this</code></td>
+<td>兩端都標示紅框與 <code>aria-invalid</code>，訊息只顯示一則、位於範圍列下方；空訊息等同 <code>clearError()</code>；<code>display: false</code> 只標示狀態</td>
+</tr>
+<tr>
+<td><code>clearError()</code></td>
+<td><code>this</code></td>
+<td>清除 <code>setError</code> 的標示與文字</td>
+</tr>
+<tr>
+<td><code>snapshot()</code></td>
+<td><code>object</code></td>
+<td>內部狀態快照（<code>lifecycle</code>、<code>availability</code>、<code>start</code>、<code>end</code>）</td>
+</tr>
+<tr>
+<td><code>destroy()</code></td>
+<td>—</td>
+<td>銷毀兩個 TimePicker（含浮在 <code>document.body</code> 的面板）、移除所有監聽與 DOM；可重複呼叫</td>
+</tr>
+</tbody>
+</table>
+<p><code>startPicker</code> / <code>endPicker</code> 屬性是內部的 TimePicker 實例，僅供檢查，請勿直接呼叫它們的 <code>setValue</code>。</p>
+<hr>
+<h2>事件</h2>
+<p><code>onChange(value)</code>：使用者在面板按「確認」、按「清除」或呼叫 <code>clear()</code> 而<strong>值真的改變</strong>時觸發一次；只挑小時或分鐘（尚未確認）不會觸發；<code>setValue()</code> 與建構時的 <code>value</code> 也不會觸發。</p>
+<hr>
+<h2>規則與設計取捨</h2>
+<p><strong>時間長度的算法。</strong> <code>allowOvernight: false</code> 時長度 = 結束 − 開始，且結束必須晚於開始；<code>allowOvernight: true</code> 時結束早於開始代表隔日，長度 = (結束 − 開始 + 24 小時) mod 24 小時。兩種模式下結束都不可等於開始（零長度沒有意義，24 小時又有歧義）。跨午夜時結束端旁顯示「隔日」，結束端的無障礙名稱也變成「結束時間（隔日）」。</p>
+<p><strong>兩端互相約束。</strong> 選了開始時間後，結束端面板中不符合規則（順序、<code>minDurationMinutes</code>、<code>maxDurationMinutes</code>）的時間會標成不可選：某小時的所有分鐘都不可選時，該小時變淡且點不了；選定小時後，該小時內不可選的分鐘同樣變淡。反之亦然。</p>
+<p><strong>順序錯誤一律拒絕，不自動對調。</strong> 面板中的草稿時間不合規則時（例如先選了分鐘、再換到一個會讓時間不合規則的小時），「確認」會被擋下，面板內以 <code>role="alert"</code> 顯示原因，值不變。<code>setValue()</code> 收到順序錯誤的值時 <code>console.warn</code> 並保持原值。</p>
+<p><strong><code>setValue()</code> 對時間長度不設防。</strong> 格式與順序正確、但違反最短／最長時間長度的值會照樣顯示（保留既有資料），由 <code>isValid()</code> / <code>getValidationError()</code> 回報。</p>
+<p><strong>必填與半開區間。</strong> <code>required: false</code> 時只填一端視為有效；<code>required: true</code> 時兩端都要填。</p>
+<p><strong>驗證訊息</strong>（<code>timeRangePicker.errors.*</code>）：<code>required</code> 請選擇時間範圍、<code>startRequired</code> / <code>endRequired</code>、<code>order</code> 結束時間必須晚於開始時間、<code>sameTime</code> 結束時間不可與開始時間相同、<code>minDuration</code> 時間長度不可少於 {duration}、<code>maxDuration</code> 時間長度不可超過 {duration}。<code>{duration}</code> 以「1 小時 30 分鐘」（英文 <code>1 h 30 min</code>）顯示，單位字串在 <code>timeRangePicker.units</code>。</p>
+<hr>
+<h2>鍵盤與無障礙</h2>
+<table>
+<thead>
+<tr>
+<th>位置</th>
+<th>按鍵</th>
+<th>行為</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>觸發框</td>
+<td><code>Tab</code></td>
+<td>依序到達開始端、結束端、清除按鈕</td>
+</tr>
+<tr>
+<td>觸發框</td>
+<td><code>Enter</code> / <code>Space</code> / <code>↓</code></td>
+<td>開啟面板，焦點移到「小時」清單</td>
+</tr>
+<tr>
+<td>觸發框</td>
+<td><code>Esc</code></td>
+<td>關閉面板</td>
+</tr>
+<tr>
+<td>小時／分鐘清單</td>
+<td><code>↑</code> / <code>↓</code></td>
+<td>上／下一個<strong>可選</strong>的值（跳過不可選的時間）</td>
+</tr>
+<tr>
+<td>小時／分鐘清單</td>
+<td><code>Home</code> / <code>End</code></td>
+<td>第一個／最後一個可選的值</td>
+</tr>
+<tr>
+<td>小時／分鐘清單</td>
+<td><code>PageUp</code> / <code>PageDown</code></td>
+<td>往前／往後 5 個可選的值</td>
+</tr>
+<tr>
+<td>小時／分鐘清單</td>
+<td><code>←</code> / <code>→</code></td>
+<td>切換到小時欄／分鐘欄</td>
+</tr>
+<tr>
+<td>小時／分鐘清單</td>
+<td><code>Enter</code></td>
+<td>確認；關閉後焦點回到觸發框</td>
+</tr>
+<tr>
+<td>面板</td>
+<td><code>Esc</code></td>
+<td>關閉面板（不變更值），焦點回到觸發框</td>
+</tr>
+<tr>
+<td>面板</td>
+<td><code>Tab</code> / <code>Shift+Tab</code></td>
+<td>在「小時、分鐘、確認」之間循環</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>外層 <code>role="group"</code>，以 <code>aria-labelledby</code>（有 <code>label</code> 時）或 <code>aria-label</code> 命名。</li>
+<li>觸發框：<code>role="combobox"</code>、<code>aria-haspopup="dialog"</code>、<code>aria-expanded</code>、<code>aria-controls</code>、<code>aria-label</code>、必填時 <code>aria-required</code>，停用時 <code>tabindex="-1"</code> 與 <code>aria-disabled</code>；取得焦點時以 box-shadow 顯示外框。</li>
+<li>面板：<code>role="dialog"</code>；小時、分鐘欄為 <code>role="listbox"</code>（<code>aria-label</code> 取自 TimePicker 的「小時」「分鐘」字串），項目為 <code>role="option"</code>，以 <code>aria-selected</code> 與 <code>aria-activedescendant</code> 表示目前選擇，不可選的項目 <code>aria-disabled="true"</code>。</li>
+<li>以 <code>Tab</code> 從觸發框移到其他元素時，已開啟的面板會自動關閉。</li>
+</ul>
+<hr>
+<h2>範例</h2>
+<pre><code class="language-html">&lt;!DOCTYPE html&gt;
+&lt;html lang=&quot;zh-TW&quot; data-theme=&quot;light&quot;&gt;
+&lt;head&gt;
+    &lt;meta charset=&quot;UTF-8&quot;&gt;
+    &lt;title&gt;TimeRangePicker 範例&lt;/title&gt;
+    &lt;link rel=&quot;stylesheet&quot; href=&quot;../../theme.css&quot;&gt;
+&lt;/head&gt;
+&lt;body&gt;
+    &lt;div id=&quot;shift&quot;&gt;&lt;/div&gt;
+    &lt;button type=&quot;button&quot; id=&quot;check&quot;&gt;檢查&lt;/button&gt;
+    &lt;p id=&quot;result&quot;&gt;&lt;/p&gt;
+
+    &lt;script type=&quot;module&quot;&gt;
+        import { TimeRangePicker } from './TimeRangePicker.js';
+
+        const result = document.getElementById('result');
+        const picker = new TimeRangePicker({
+            label: '值班時段',
+            required: true,
+            minuteStep: 30,
+            allowOvernight: true,
+            minDurationMinutes: 60,
+            maxDurationMinutes: 12 * 60,
+            value: { start: '22:00', end: '06:00' },
+            onChange: (value) =&gt; {
+                picker.clearError();
+                result.textContent = `${value.start ?? '—'} ~ ${value.end ?? '—'}`;
+            }
+        }).mount('#shift');
+
+        document.getElementById('check').addEventListener('click', () =&gt; {
+            if (picker.isValid()) picker.clearError();
+            else picker.setError(picker.getValidationError());
+        });
+    &lt;/script&gt;
+&lt;/body&gt;
+&lt;/html&gt;
+</code></pre>
+</main>
+</body>
+</html>

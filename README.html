@@ -26,10 +26,18 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <p><code>Bricks4Agent</code> is a <strong>zero-runtime-dependency Vanilla JS UI component library</strong> plus a
 <strong>page/SPA generator</strong> that turns a JSON <code>PageDefinition</code> into working pages.</p>
 <ul>
-<li><strong>UI component library</strong> — 116 components (form, layout, common, input, viz, social, editor, sections, data, analytics), pure vanilla JS, theme-token styling, built-in XSS protection and i18n.</li>
-<li><strong>Page generator</strong> — a <code>PageDefinition</code> (JSON) becomes a page in one of two ways: <strong>static code generation</strong> (emits <code>.js</code> page files) or <strong>dynamic rendering</strong> (renders at runtime from the JSON).</li>
-<li><strong>SPA tooling</strong> — a CLI and a Web UI that scaffold full-stack CRUD (frontend pages + optional .NET 10 backend).</li>
-<li><strong>Form application studio</strong> — imports a table schema, visually arranges fields, and generates a form <code>PageDefinition</code>, .NET 10 Minimal API/BaseOrm code, and database SQL. A blank connection string targets local SQLite.</li>
+<li>
+<p><strong>UI component library</strong> — 116 components (form, layout, common, input, viz, social, editor, sections, data, analytics), pure vanilla JS, theme-token styling, built-in XSS protection and i18n.</p>
+</li>
+<li>
+<p><strong>Page generator</strong> — a <code>PageDefinition</code> (JSON) becomes a page in one of two ways: <strong>static code generation</strong> (emits <code>.js</code> page files) or <strong>dynamic rendering</strong> (renders at runtime from the JSON).</p>
+</li>
+<li>
+<p><strong>SPA tooling</strong> — a CLI and a Web UI that scaffold full-stack CRUD (frontend pages + optional .NET 10 backend).</p>
+</li>
+<li>
+<p><strong>Form application studio</strong> — imports a table schema, visually arranges fields, and generates a form <code>PageDefinition</code>, .NET 10 Minimal API/BaseOrm code, and database SQL. A blank connection string targets local SQLite.</p>
+</li>
 </ul>
 <blockquote>
 <p>Building on top of this library? Read <a href="AGENT-UI-GUIDE.html">AGENT-UI-GUIDE.md</a> first — it is the calling-convention entry point for both humans and AI agents.</p>
@@ -37,24 +45,48 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <h2>Main areas</h2>
 <h3>UI component library</h3>
 <ul>
-<li><a href="packages/javascript/browser/ui_components">ui_components</a> — the components</li>
-<li><a href="packages/javascript/browser/ui_components/index.js">ui_components/index.js</a> — single import barrel</li>
-<li><a href="packages/javascript/browser/ui_components/metadata/component-catalog.json">metadata/component-catalog.json</a> — the authoritative component list</li>
-<li><a href="packages/javascript/browser/ui_components/STYLE_CONVENTION.html">STYLE_CONVENTION.md</a> — theming / token rules</li>
+<li>
+<p><a href="packages/javascript/browser/ui_components">ui_components</a> — the components</p>
+</li>
+<li>
+<p><a href="packages/javascript/browser/ui_components/index.js">ui_components/index.js</a> — single import barrel</p>
+</li>
+<li>
+<p><a href="packages/javascript/browser/ui_components/metadata/component-catalog.json">metadata/component-catalog.json</a> — the authoritative component list</p>
+</li>
+<li>
+<p><a href="packages/javascript/browser/ui_components/STYLE_CONVENTION.html">STYLE_CONVENTION.md</a> — theming / token rules</p>
+</li>
 </ul>
 <h3>Page generator</h3>
 <ul>
-<li><a href="packages/javascript/browser/page-generator">page-generator</a> — engine (static + dynamic)</li>
-<li><a href="packages/javascript/browser/page-generator/README.html">page-generator/README.md</a></li>
+<li>
+<p><a href="packages/javascript/browser/page-generator">page-generator</a> — engine (static + dynamic)</p>
+</li>
+<li>
+<p><a href="packages/javascript/browser/page-generator/README.html">page-generator/README.md</a></p>
+</li>
 </ul>
 <h3>SPA scaffolding</h3>
 <ul>
-<li><a href="templates/spa">templates/spa</a> — SPA project template (frontend core + .NET 10 backend)</li>
-<li><a href="templates/spa/scripts">templates/spa/scripts</a> — <code>spa-cli.js</code>, <code>generate-page.js</code>, <code>generate-api.js</code></li>
-<li><a href="tools/spa-generator">tools/spa-generator</a> — generator Web UI (port 3080)</li>
-<li><a href="tools/page-gen.js">tools/page-gen.js</a> — standalone PageDefinition CLI (<a href="tools/page-gen.README.html">docs</a>)</li>
-<li><a href="tools/static-server">tools/static-server</a> — static file server for previewing</li>
-<li><a href="tools/form-application-studio">tools/form-application-studio</a> — JSON-self-hosted form/API/database designer</li>
+<li>
+<p><a href="templates/spa">templates/spa</a> — SPA project template (frontend core + .NET 10 backend)</p>
+</li>
+<li>
+<p><a href="templates/spa/scripts">templates/spa/scripts</a> — <code>spa-cli.js</code>, <code>generate-page.js</code>, <code>generate-api.js</code></p>
+</li>
+<li>
+<p><a href="tools/spa-generator">tools/spa-generator</a> — generator Web UI (port 3080)</p>
+</li>
+<li>
+<p><a href="tools/page-gen.js">tools/page-gen.js</a> — standalone PageDefinition CLI (<a href="tools/page-gen.README.html">docs</a>)</p>
+</li>
+<li>
+<p><a href="tools/static-server">tools/static-server</a> — static file server for previewing</p>
+</li>
+<li>
+<p><a href="tools/form-application-studio">tools/form-application-studio</a> — JSON-self-hosted form/API/database designer</p>
+</li>
 </ul>
 <h2>Quick start</h2>
 <p>Use Node.js 22 and the .NET 10 SDK. The checked-in <code>global.json</code> accepts the latest installed .NET 10 feature band.</p>
@@ -91,7 +123,8 @@ npm run serve                        # static frontend only, also on port 3080
 </code></pre>
 <p>The Node server binds loopback and rejects non-loopback <code>Host</code>/<code>Origin</code> requests.</p>
 <h2>Tests</h2>
-<pre><code class="language-bash">npm test                        # page-generator test suite
+<pre><code class="language-bash">npm --prefix packages/javascript/browser install  # once: vitest/jsdom devDependencies needed by npm test
+npm test                        # generator examples + test:ui-components + test:custom-components + Vitest component suites
 npm run validate:ui-library     # UI library checks
 npm run audit:ui-styles         # style-token audit
 npm run test:studio:self-host   # one authoritative JSON + component provenance
@@ -105,21 +138,38 @@ dotnet test templates/spa/backend.Tests/SpaApi.Template.Tests.csproj
 </code></pre>
 <p>Pull requests targeting <code>main</code> and pushes to <code>main</code> run the portable JavaScript, policy,
 metadata, warning-free .NET 10 project matrix and generated-backend checks through
-<a href=".github/workflows/ci.yml">GitHub Actions</a>. The real Edge interaction harness remains
-a local acceptance gate because it intentionally uses the repository's pre-existing
-external Playwright/Edge runtime instead of adding npm dependencies.</p>
+<a href=".github/workflows/ci.yml">GitHub Actions</a>. <a href=".github/workflows/quality-gates.yml"><code>quality-gates.yml</code></a>
+also installs <code>playwright-core</code> with <code>--no-save</code> and runs six self-hosted smokes in system Edge
+(<code>validate:ui-library:browser</code>, <code>test:spa-template:browser</code>, <code>test:theme-studio:browser</code>,
+<code>test:custom-components:browser</code>, <code>test:studio:browser</code>, <code>test:form-designer:browser</code>).
+Only the harnesses that need a <code>python -m http.server 8124</code> server (canvas chart, wave 2/3,
+data explorer, cluster graph, icon) remain local-only.</p>
 <p>The .NET 10 migration preserves the existing PBKDF2 password storage formats. Fixed
 compatibility vectors cover Broker, MFA and the SPA template, so existing hashes remain
 verifiable while new builds use the current static PBKDF2 API.</p>
 <h2>Documentation</h2>
 <ul>
-<li><a href="AGENT-UI-GUIDE.html">AGENT-UI-GUIDE.md</a> — component calling convention + React-rewrite playbook (for AI agents)</li>
-<li><a href="CUSTOM-COMPONENTS.html">CUSTOM-COMPONENTS.md</a> — JSON-generated self-host Studio, three-tier custom components and folder loading</li>
-<li><a href="tools/form-application-studio/README.html">tools/form-application-studio/README.md</a> — schema-to-form/API/database designer and connection policy</li>
-<li><a href="AGENT.html">AGENT.md</a> — SPA generator operation manual (for AI agents)</li>
-<li><a href="CLAUDE.html">CLAUDE.md</a> — Claude Code rules for this repo</li>
-<li><a href="packages/javascript/browser/page-generator/README.html">page-generator/README.md</a> — page generator details</li>
-<li><a href="templates/spa/README.html">templates/spa/README.md</a> — SPA template</li>
+<li>
+<p><a href="AGENT-UI-GUIDE.html">AGENT-UI-GUIDE.md</a> — component calling convention + React-rewrite playbook (for AI agents)</p>
+</li>
+<li>
+<p><a href="CUSTOM-COMPONENTS.html">CUSTOM-COMPONENTS.md</a> — JSON-generated self-host Studio, three-tier custom components and folder loading</p>
+</li>
+<li>
+<p><a href="tools/form-application-studio/README.html">tools/form-application-studio/README.md</a> — schema-to-form/API/database designer and connection policy</p>
+</li>
+<li>
+<p><a href="AGENT.html">AGENT.md</a> — SPA generator operation manual (for AI agents)</p>
+</li>
+<li>
+<p><a href="CLAUDE.html">CLAUDE.md</a> — Claude Code rules for this repo</p>
+</li>
+<li>
+<p><a href="packages/javascript/browser/page-generator/README.html">page-generator/README.md</a> — page generator details</p>
+</li>
+<li>
+<p><a href="templates/spa/README.html">templates/spa/README.md</a> — SPA template</p>
+</li>
 </ul>
 </main>
 </body>

@@ -26,59 +26,125 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <h2>✨ 主要功能</h2>
 <h3>🖼️ 圖片管理</h3>
 <ul>
-<li>上傳本地圖片作為底圖</li>
-<li>自動適應畫布大小</li>
-<li>支援拖放操作</li>
+<li>
+<p>上傳本地圖片作為底圖</p>
+</li>
+<li>
+<p>自動適應畫布大小</p>
+</li>
+<li>
+<p>不支援拖放上傳，需透過工具列選擇檔案</p>
+</li>
 </ul>
 <h3>📝 文字工具</h3>
 <ul>
-<li>點擊畫布添加文字</li>
-<li>雙擊文字可編輯內容</li>
-<li>拖動調整文字位置</li>
-<li>自訂字體大小（10-72px）</li>
-<li>自訂文字顏色</li>
+<li>
+<p>點擊畫布添加文字</p>
+</li>
+<li>
+<p>雙擊文字可編輯內容</p>
+</li>
+<li>
+<p>拖動調整文字位置</p>
+</li>
+<li>
+<p>自訂字體大小（10-72px）</p>
+</li>
+<li>
+<p>自訂文字顏色</p>
+</li>
 </ul>
 <h3>🎨 形狀工具</h3>
 <ul>
-<li><strong>矩形</strong>：拖曳繪製矩形框</li>
-<li><strong>圓形</strong>：拖曳繪製橢圓/圓形</li>
-<li><strong>線條</strong>：繪製直線</li>
-<li><strong>箭頭</strong>：繪製帶箭頭的直線</li>
-<li>自訂線條顏色與粗細</li>
-<li>自訂填充顏色（支援透明度）</li>
+<li>
+<p><strong>矩形</strong>：拖曳繪製矩形框</p>
+</li>
+<li>
+<p><strong>圓形</strong>：拖曳繪製橢圓/圓形</p>
+</li>
+<li>
+<p><strong>線條</strong>：繪製直線</p>
+</li>
+<li>
+<p><strong>箭頭</strong>：繪製帶箭頭的直線</p>
+</li>
+<li>
+<p>自訂線條顏色與粗細</p>
+</li>
+<li>
+<p>自訂填充顏色（預設填色為半透明；以顏色選擇器改色後為不透明色）</p>
+</li>
 </ul>
 <h3>🔧 編輯功能</h3>
 <ul>
-<li><strong>選擇工具</strong>：選中元素進行移動</li>
-<li><strong>拖動</strong>：直接拖動元素調整位置</li>
-<li><strong>刪除</strong>：刪除選中的元素</li>
-<li><strong>清空</strong>：一鍵清除所有標註</li>
-<li><strong>復原</strong>：支援 Ctrl+Z 復原操作（歷史記錄上限 50 步，超出後自動丟棄最舊的一筆）</li>
+<li>
+<p><strong>選擇工具</strong>：選中元素進行移動（僅文字、矩形、圓形可被選取；線條與箭頭無法選取）</p>
+</li>
+<li>
+<p><strong>拖動</strong>：直接拖動元素調整位置</p>
+</li>
+<li>
+<p><strong>刪除</strong>：刪除選中的元素</p>
+</li>
+<li>
+<p><strong>清空</strong>：一鍵清除所有標註</p>
+</li>
+<li>
+<p><strong>復原</strong>：支援 Ctrl+Z 復原操作（歷史記錄上限 50 步，超出後自動丟棄最舊的一筆）</p>
+</li>
 </ul>
 <h3>💾 匯出功能</h3>
 <ul>
-<li><strong>PNG 圖片</strong>：將編輯後的結果匯出為 PNG 格式</li>
-<li><strong>JSON 配置</strong>：保存所有標註資料為 JSON</li>
-<li><strong>載入配置</strong>：從 JSON 還原標註狀態</li>
-<li><strong>🔥 PNG 元數據嵌入</strong>：匯出的 PNG 自動包含座標、文字、顏色等所有標註資訊</li>
+<li>
+<p><strong>PNG 圖片</strong>：將編輯後的結果匯出為 PNG 格式</p>
+</li>
+<li>
+<p><strong>JSON 配置</strong>：保存所有標註資料為 JSON</p>
+</li>
+<li>
+<p><strong>載入配置</strong>：從 JSON 還原標註狀態</p>
+</li>
+<li>
+<p><strong>🔥 PNG 元數據嵌入</strong>：匯出的 PNG 自動包含座標、文字、顏色等所有標註資訊</p>
+</li>
 </ul>
 <h3>🔐 PNG 元數據功能（重要特色）</h3>
 <p><strong>匯出的 PNG 圖片會自動嵌入完整元數據</strong>，使用 PNG tEXt chunk 標準格式：</p>
 <p><strong>包含資訊：</strong></p>
 <ul>
-<li>✅ 所有標註元素（文字、形狀、箭頭等）</li>
-<li>✅ 完整座標資訊 (x, y, x2, y2)</li>
-<li>✅ 文字內容與樣式（字體、大小、顏色）</li>
-<li>✅ 形狀屬性（線條顏色、填充、粗細）</li>
-<li>✅ 時間戳與版本資訊</li>
-<li>✅ 畫布尺寸</li>
+<li>
+<p>✅ 所有標註元素（文字、形狀、箭頭等）</p>
+</li>
+<li>
+<p>✅ 完整座標資訊 (x, y, x2, y2)</p>
+</li>
+<li>
+<p>✅ 文字內容與樣式（字體、大小、顏色）</p>
+</li>
+<li>
+<p>✅ 形狀屬性（線條顏色、填充、粗細）</p>
+</li>
+<li>
+<p>✅ 時間戳與版本資訊</p>
+</li>
+<li>
+<p>✅ 畫布尺寸</p>
+</li>
 </ul>
 <p><strong>優點：</strong></p>
 <ul>
-<li>📸 圖片與數據一體化，不需要分開保存</li>
-<li>🔄 隨時重新載入 PNG 即可恢復所有編輯</li>
-<li>📤 分享 PNG 時同時分享標註資訊</li>
-<li>💯 符合 PNG 標準，任何圖片查看器都可正常顯示圖片本身</li>
+<li>
+<p>📸 圖片與數據一體化，不需要分開保存</p>
+</li>
+<li>
+<p>🔄 隨時重新載入 PNG 即可恢復所有編輯</p>
+</li>
+<li>
+<p>📤 分享 PNG 時同時分享標註資訊</p>
+</li>
+<li>
+<p>💯 符合 PNG 標準，任何圖片查看器都可正常顯示圖片本身</p>
+</li>
 </ul>
 <p><strong>使用方式：</strong></p>
 <pre><code class="language-javascript">// 匯出 PNG（自動嵌入元數據）
@@ -142,39 +208,73 @@ editor.destroy();
 </code></pre>
 <h2>⌨️ 快捷鍵</h2>
 <ul>
-<li><strong>Delete</strong>: 刪除選中元素</li>
-<li><strong>Ctrl+Z</strong>: 復原上一步操作</li>
-<li><strong>雙擊文字</strong>: 編輯文字內容</li>
+<li>
+<p><strong>Delete</strong>: 刪除選中元素</p>
+</li>
+<li>
+<p><strong>Ctrl+Z</strong>: 復原上一步操作</p>
+</li>
+<li>
+<p><strong>雙擊文字</strong>: 編輯文字內容</p>
+</li>
 </ul>
 <p>快捷鍵綁在 <code>document</code> 上，輸入框（<code>INPUT</code> / <code>TEXTAREA</code>）內的按鍵一律忽略。</p>
 <h3>MapEditorV2（<code>MapEditorV2.js</code>）</h3>
 <p>進階版另有 <strong>Ctrl+Y / Ctrl+Shift+Z</strong>（重做）、<strong>Ctrl+C</strong>（複製選中元素）、<strong>Ctrl+V</strong>（貼上）。其中 Ctrl+C 僅在有選中元素時攔截、Ctrl+V 僅在編輯器本身有剪貼內容時攔截，其餘情況交還瀏覽器原生複製／貼上。V2 同樣提供 <code>destroy()</code>，並會一併銷毀內部使用的子元件與待執行的計時器。</p>
 <h2>🎯 應用場景</h2>
 <ul>
-<li>地圖標註與說明</li>
-<li>圖片講解與教學</li>
-<li>流程圖繪製</li>
-<li>簡報圖片編輯</li>
-<li>產品功能標示</li>
+<li>
+<p>地圖標註與說明</p>
+</li>
+<li>
+<p>圖片講解與教學</p>
+</li>
+<li>
+<p>流程圖繪製</p>
+</li>
+<li>
+<p>簡報圖片編輯</p>
+</li>
+<li>
+<p>產品功能標示</p>
+</li>
 </ul>
 <h2>🛠️ 技術細節</h2>
 <h3>零依賴</h3>
 <ul>
-<li>純 JavaScript 實現</li>
-<li>使用原生 Canvas API</li>
-<li>無需任何第三方函式庫</li>
+<li>
+<p>純 JavaScript 實現</p>
+</li>
+<li>
+<p>使用原生 Canvas API</p>
+</li>
+<li>
+<p>無需任何第三方函式庫</p>
+</li>
 </ul>
 <h3>瀏覽器支援</h3>
 <ul>
-<li>Chrome/Edge 90+</li>
-<li>Firefox 88+</li>
-<li>Safari 14+</li>
-<li>需要支援 ES6 模組</li>
+<li>
+<p>Chrome/Edge 90+</p>
+</li>
+<li>
+<p>Firefox 88+</p>
+</li>
+<li>
+<p>Safari 14+</p>
+</li>
+<li>
+<p>需要支援 ES6 模組</p>
+</li>
 </ul>
 <h3>高 DPI 支持</h3>
 <ul>
-<li>自動適配高解析度螢幕</li>
-<li>使用 devicePixelRatio 確保清晰度</li>
+<li>
+<p>自動適配高解析度螢幕</p>
+</li>
+<li>
+<p>使用 devicePixelRatio 確保清晰度</p>
+</li>
 </ul>
 <h2>📝 啟動 Demo</h2>
 <h3>方法 1：使用 Python</h3>
@@ -182,11 +282,20 @@ editor.destroy();
 python -m http.server 5500
 </code></pre>
 <p>訪問：<code>http://localhost:5500/packages/javascript/browser/ui_components/viz/demo_map_editor.html</code></p>
+<blockquote>
+<p>注意：<code>demo_map_editor.html</code> 實際建立的是 <code>WebPainter</code>，不是 <code>MapEditor</code>；repo 內目前沒有直接建立 <code>MapEditor</code> 的示範頁面。</p>
+</blockquote>
 <h3>方法 2：使用 VS Code Live Server</h3>
 <ol>
-<li>安裝 Live Server 擴充功能</li>
-<li>在 <code>demo_map_editor.html</code> 上點右鍵</li>
-<li>選擇「Open with Live Server」</li>
+<li>
+<p>安裝 Live Server 擴充功能</p>
+</li>
+<li>
+<p>在 <code>demo_map_editor.html</code> 上點右鍵</p>
+</li>
+<li>
+<p>選擇「Open with Live Server」</p>
+</li>
 </ol>
 <h3>方法 3：使用 Node.js http-server</h3>
 <pre><code class="language-bash">npm install -g http-server
@@ -196,37 +305,70 @@ http-server -p 5500
 <h2>🎨 介面預覽</h2>
 <p>編輯器提供完整的工具列介面：</p>
 <ol>
-<li><strong>工具列</strong>：檔案上傳、工具選擇、刪除、清空、匯出</li>
-<li><strong>設定面板</strong>：字體大小、顏色、線條粗細等</li>
-<li><strong>畫布區域</strong>：顯示圖片與標註元素</li>
-<li><strong>快捷鍵提示</strong>：方便記憶常用操作</li>
+<li>
+<p><strong>工具列</strong>：檔案上傳、工具選擇、刪除、清空、匯出</p>
+</li>
+<li>
+<p><strong>設定面板</strong>：字體大小、顏色、線條粗細等</p>
+</li>
+<li>
+<p><strong>畫布區域</strong>：顯示圖片與標註元素</p>
+</li>
+<li>
+<p><strong>快捷鍵提示</strong>：屬於示範頁面的內容，MapEditor 本身不提供</p>
+</li>
 </ol>
 <h2>📦 檔案結構</h2>
 <pre><code>packages/javascript/browser/ui_components/viz/
 ├── MapEditor.js           # 核心編輯器類別
-├── demo_map_editor.html   # 完整示範頁面
+├── MapEditorV2.js         # 進階版（圖層面板、重做、複製貼上）
+├── demo_map_editor.html   # 示範頁面（實際建立 WebPainter）
 └── README_MapEditor.md    # 說明文件（本檔案）
 </code></pre>
 <h2>🔒 安全性考量</h2>
 <ul>
-<li>所有圖片僅在客戶端處理</li>
-<li>無資料上傳至伺服器</li>
-<li>匯出的 PNG/JSON 完全本地生成</li>
+<li>
+<p>所有圖片僅在客戶端處理</p>
+</li>
+<li>
+<p>無資料上傳至伺服器</p>
+</li>
+<li>
+<p>匯出的 PNG/JSON 完全本地生成</p>
+</li>
 </ul>
 <h2>🐛 已知限制</h2>
 <ol>
-<li><strong>ES Module 限制</strong>：必須透過 HTTP 伺服器執行，無法直接開啟 HTML 檔案（<code>file://</code> 協議）</li>
-<li><strong>大圖片效能</strong>：極大圖片可能影響渲染效能</li>
-<li><strong>歷史記錄</strong>：復原功能目前僅支援單向復原（無重做）</li>
+<li>
+<p><strong>ES Module 限制</strong>：必須透過 HTTP 伺服器執行，無法直接開啟 HTML 檔案（<code>file://</code> 協議）</p>
+</li>
+<li>
+<p><strong>大圖片效能</strong>：極大圖片可能影響渲染效能</p>
+</li>
+<li>
+<p><strong>歷史記錄</strong>：<code>MapEditor</code> 僅支援單向復原（無重做），且上限 50 步；重做請改用 <code>MapEditorV2</code></p>
+</li>
 </ol>
 <h2>💡 未來擴展</h2>
 <ul>
-<li>[ ] 增加重做（Redo）功能</li>
-<li>[ ] 支援圖層管理</li>
-<li>[ ] 文字樣式預設（粗體、斜體）</li>
-<li>[ ] 更多形狀（多邊形、自由繪圖）</li>
-<li>[ ] 濾鏡與特效</li>
-<li>[ ] 觸控裝置支援</li>
+<li>
+<p>[x] 增加重做（Redo）功能（已於 <code>MapEditorV2</code> 提供）</p>
+</li>
+<li>
+<p>[x] 支援圖層管理（已於 <code>MapEditorV2</code> 提供）</p>
+</li>
+<li>
+<p>[ ] 文字樣式預設（粗體、斜體）</p>
+</li>
+<li>
+<p>[ ] 更多形狀（多邊形；自由繪圖已於 <code>MapEditorV2</code> 的畫筆工具提供）</p>
+</li>
+<li>
+<p>[ ] 濾鏡與特效</p>
+</li>
+<li>
+<p>[ ] 觸控裝置支援</p>
+</li>
 </ul>
 <h2>📄 授權</h2>
 <p>本組件遵循專案整體授權條款。</p>

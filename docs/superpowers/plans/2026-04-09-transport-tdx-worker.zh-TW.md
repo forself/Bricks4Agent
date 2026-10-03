@@ -861,8 +861,7 @@ git commit -m "refactor: forward legacy travel routes to transport query"
 - Modify: `packages/csharp/broker/verify/Program.cs`
 - Modify: `docs/manuals/line-sidecar-runbook.md`
 - Modify: `docs/manuals/line-sidecar-runbook.zh-TW.md`
-- Modify: `docs/0329/01-broker.md`
-- Modify: `docs/0329/07-tests.md`
+- Modify: `docs/manuals/current-technical-manual.zh-TW.md`
 
 - [ ] **Step 1: Add failing verify coverage**
 
@@ -914,7 +913,7 @@ Expected:
 - [ ] **Step 5: Commit**
 
 ```bash
-git add packages/csharp/broker/verify/Program.cs docs/manuals/line-sidecar-runbook.md docs/manuals/line-sidecar-runbook.zh-TW.md docs/0329/01-broker.md docs/0329/07-tests.md
+git add packages/csharp/broker/verify/Program.cs docs/manuals/line-sidecar-runbook.md docs/manuals/line-sidecar-runbook.zh-TW.md docs/manuals/current-technical-manual.zh-TW.md
 git commit -m "test: verify transport query worker flow"
 ```
 

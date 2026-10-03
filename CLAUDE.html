@@ -25,24 +25,57 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <p>A zero-runtime-dependency Vanilla JS <strong>UI component library</strong> plus a <strong>page/SPA generator</strong>
 that turns a JSON <code>PageDefinition</code> into working pages (static code generation or dynamic runtime rendering).</p>
 <ul>
-<li>Authoritative component list: <a href="packages/javascript/browser/ui_components/metadata/component-catalog.json">component-catalog.json</a> (116 components)</li>
-<li>Component calling convention (read this before building): <a href="AGENT-UI-GUIDE.html">AGENT-UI-GUIDE.md</a></li>
+<li>
+<p>Authoritative component list: <a href="packages/javascript/browser/ui_components/metadata/component-catalog.json">component-catalog.json</a> (134 components)</p>
+</li>
+<li>
+<p>Component calling convention (read this before building): <a href="AGENT-UI-GUIDE.html">AGENT-UI-GUIDE.md</a></p>
+</li>
 </ul>
 <h2>Build &amp; Test</h2>
 <ul>
-<li>Page-generator tests: <code>npm test</code></li>
-<li>UI library checks: <code>npm run validate:ui-library</code> (add <code>:browser</code> for a real browser)</li>
-<li>Style-token audit: <code>npm run audit:ui-styles</code></li>
-<li>All SDK-style .NET 10 projects, with every warning treated as an error: <code>npm run test:dotnet10</code></li>
-<li>.NET tests: <code>dotnet test packages/csharp/tests/unit/Unit.Tests.csproj</code>, <code>dotnet test packages/csharp/tests/integration/Integration.Tests.csproj</code>, <code>dotnet test templates/spa/backend.Tests/SpaApi.Template.Tests.csproj</code></li>
-<li>CSP + SVG hard-zero gate (must pass before any commit touching ui_components): <code>node tools/scripts/audit-csp.mjs</code></li>
-<li>Browser smoke harnesses (need <code>python -m http.server 8124</code> at repo root; Edge via tim-web/poc playwright-core):
-  <code>node tools/theme-studio/run.mjs</code>, <code>node tools/scripts/canvas-chart-smoke.mjs</code>,
-  <code>node tools/scripts/wave2-stage-sweep.mjs</code>, <code>node tools/scripts/data-explorer-smoke.mjs</code>,
-  <code>node tools/scripts/cluster-graph-perf.mjs</code></li>
-<li>Generated .NET 10 backend (SPA template): <code>dotnet build templates/spa/backend/SpaApi.csproj</code></li>
-<li>Rebuild component metadata after adding/changing a component:
-  <code>node packages/javascript/browser/ui_components/metadata/build-metadata.mjs</code> (<code>--check</code> to validate only)</li>
+<li>
+<p>Full JS gate: <code>npm test</code> (runs <code>test-all.js</code> generator examples, then <code>test:ui-components</code>, <code>test:custom-components</code> and the Vitest component suites via <code>npm --prefix packages/javascript/browser run test:vitest</code>; run <code>npm --prefix packages/javascript/browser install</code> once first to get the vitest/jsdom devDependencies)</p>
+</li>
+<li>
+<p>UI library checks: <code>npm run validate:ui-library</code> (add <code>:browser</code> for a real browser)</p>
+</li>
+<li>
+<p>Component/renderer unit tests: <code>npm run test:ui-components</code> (node:test; covers <code>ui_components/**/*.test.mjs</code>, <code>page-generator/**/*.test.mjs</code>, and the DOM-equivalence utility)</p>
+</li>
+<li>
+<p>Style-token audit: <code>npm run audit:ui-styles</code></p>
+</li>
+<li>
+<p>All SDK-style .NET 10 projects, with every warning treated as an error: <code>npm run test:dotnet10</code></p>
+</li>
+<li>
+<p>.NET tests: <code>dotnet test packages/csharp/tests/unit/Unit.Tests.csproj</code>, <code>dotnet test packages/csharp/tests/integration/Integration.Tests.csproj</code>, <code>dotnet test templates/spa/backend.Tests/SpaApi.Template.Tests.csproj</code></p>
+</li>
+<li>
+<p>CSP + SVG hard-zero gate (must pass before any commit touching ui_components): <code>node tools/scripts/audit-csp.mjs</code></p>
+</li>
+<li>
+<p>Browser smoke harnesses (need <code>python -m http.server 8124</code> at repo root; they hard-import playwright-core from <code>../../../tim-web/poc</code>):
+ <code>node tools/scripts/canvas-chart-smoke.mjs</code>,
+ <code>node tools/scripts/wave2-stage-sweep.mjs</code>, <code>node tools/scripts/data-explorer-smoke.mjs</code>,
+ <code>node tools/scripts/cluster-graph-perf.mjs</code></p>
+</li>
+<li>
+<p>Studio browser smoke (self-hosted on a random port, no 8124 server needed): <code>npm run test:studio:browser</code>; <code>node tools/theme-studio/run.mjs</code> is a compatibility alias that runs the same <code>tools/scripts/studio-integration-smoke.mjs</code></p>
+</li>
+<li>
+<p>Generated .NET 10 backend (SPA template): <code>dotnet build templates/spa/backend/SpaApi.csproj</code></p>
+</li>
+<li>
+<p>Rebuild component metadata after adding/changing a component:
+ <code>node packages/javascript/browser/ui_components/metadata/build-metadata.mjs</code> (<code>--check</code> to validate only)</p>
+</li>
+<li>
+<p>Generate pages from a definition: <code>node tools/page-gen.js --def page.json --mode static --output ./out/</code>.
+ The input must be the page-gen format <code>{ page: {...}, fields: [{ fieldName, fieldType, ... }] }</code> or a DefinitionTemplate; a plain PageDefinition <code>{ name, type, fields }</code> is rejected (<code>缺少 page 區塊</code>).
+ For a DefinitionTemplate: <code>--page &lt;id&gt;</code> for one page, or <code>--pages &lt;id,id,...&gt;</code> / <code>--all</code> to generate many in a single process (aggregated JSON result; all selected pages are validated before any is written).</p>
+</li>
 </ul>
 <h2>Test Artifacts and Cleanup</h2>
 <p><strong>Rule: all test-generated files must be tracked and cleaned up.</strong></p>
@@ -70,29 +103,73 @@ that turns a JSON <code>PageDefinition</code> into working pages (static code ge
 <p>When adding tests that produce files: add the pattern to this table, ensure it is in <code>.gitignore</code>, and clean it up in the test.</p>
 <h2>Code Conventions</h2>
 <ul>
-<li>Frontend: JavaScript, ES modules, vanilla — <strong>no third-party runtime UI dependency</strong> (the only exceptions are vendored copies under <code>ui_components/vendor/</code>: Leaflet 1.9.4 and html2canvas, loaded locally first with CDN fallback only when the local file is missing).</li>
-<li>Styling: theme tokens only (<code>var(--cl-*)</code>); no hard-coded colors. Dark mode via <code>[data-theme="dark"]</code>, not per-component media queries. See <a href="packages/javascript/browser/ui_components/STYLE_CONVENTION.html">STYLE_CONVENTION.md</a>.</li>
-<li>Strict CSP (machine-enforced by <code>tools/scripts/audit-csp.mjs</code>): no <code>&lt;style&gt;</code> injection, no <code>style=</code>/<code>on*=</code> inside innerHTML templates, no eval / <code>javascript:</code> URLs. Style via CSSOM (<code>cssText</code>/<code>setProperty</code>) or a co-located <code>.css</code> + same-origin <code>&lt;link&gt;</code>.</li>
-<li><strong>SVG is banned — Canvas only</strong>. <code>audit-csp.mjs</code> enforces hard zero; <code>tools/scripts/svg-baseline.json</code> is an empty inventory snapshot and cannot waive findings. Chart base = <code>viz/CanvasChart.js</code> (DPR, hit-regions, tooltip, exportPNG); theme reactivity via <code>utils/theme-bus.js</code>; <code>Path2D</code> accepts SVG path strings directly. Canvas color fallbacks must use <code>FALLBACK_PAINT</code> from theme-bus — no loose hex in components.</li>
-<li>Security: escape all dynamic HTML with <code>escapeHtml()</code>; opt into raw HTML explicitly with <code>raw()</code> (see <a href="packages/javascript/browser/ui_components/utils/security.js">utils/security.js</a>).</li>
-<li>i18n: user-facing strings go through <code>Locale.t()</code> (see <a href="packages/javascript/browser/ui_components/i18n/index.js">i18n/index.js</a>).</li>
-<li>Component contract: <code>new X(options)</code> → <code>.mount(container)</code> → <code>.destroy()</code>; value components expose <code>getValue/setValue/setDisabled/clear</code> (form ones also <code>setError/clearError</code>).</li>
-<li>Generated backend: .NET 10 Minimal API, BaseOrm (lightweight, no EF Core).</li>
-<li>Password hashing: use the static <code>Rfc2898DeriveBytes.Pbkdf2</code> API without changing the existing iteration/salt/hash sizes or stored formats; compatibility vectors live in the unit and SPA template test projects.</li>
+<li>
+<p>Frontend: JavaScript, ES modules, vanilla — <strong>no third-party runtime UI dependency</strong> (the only exceptions are vendored copies under <code>ui_components/vendor/</code>: Leaflet 1.9.4 and html2canvas, loaded locally first with CDN fallback only when the local file is missing).</p>
+</li>
+<li>
+<p>Styling: theme tokens only (<code>var(--cl-*)</code>); no hard-coded colors. Dark mode via <code>[data-theme="dark"]</code>, not per-component media queries. See <a href="packages/javascript/browser/ui_components/STYLE_CONVENTION.html">STYLE_CONVENTION.md</a>.</p>
+</li>
+<li>
+<p>Strict CSP (machine-enforced by <code>tools/scripts/audit-csp.mjs</code>): no <code>&lt;style&gt;</code> injection, no <code>style=</code>/<code>on*=</code> inside innerHTML templates, no eval / <code>javascript:</code> URLs. Style via CSSOM (<code>cssText</code>/<code>setProperty</code>) or a co-located <code>.css</code> + same-origin <code>&lt;link&gt;</code>.</p>
+</li>
+<li>
+<p><strong>SVG is banned — Canvas only</strong>. <code>audit-csp.mjs</code> enforces hard zero; <code>tools/scripts/svg-baseline.json</code> is an empty inventory snapshot and cannot waive findings. Chart base = <code>viz/CanvasChart.js</code> (DPR, hit-regions, tooltip, exportPNG); theme reactivity via <code>utils/theme-bus.js</code>; <code>Path2D</code> accepts SVG path strings directly. Canvas color fallbacks must use <code>FALLBACK_PAINT</code> from theme-bus — no loose hex in components.</p>
+</li>
+<li>
+<p>Security: escape all dynamic HTML with <code>escapeHtml()</code>; opt into raw HTML explicitly with <code>raw()</code> (see <a href="packages/javascript/browser/ui_components/utils/security.js">utils/security.js</a>). <code>isRawHtml()</code> only accepts the <code>Symbol.for('bricks4agent.rawHtml')</code> own property that <code>raw()</code> brands (a plain <code>{ __html }</code> logs a one-time console warning naming <code>raw()</code> rather than failing silently) — a hand-written or <code>JSON.parse</code>d <code>{ __html }</code> is no longer an opt-in and falls back to escaping/<code>sanitizeHTML()</code>, so API data cannot forge it. <code>__html</code> survives on the marker for readers, not as authorisation.</p>
+</li>
+<li>
+<p>i18n: user-facing strings go through <code>Locale.t()</code> (see <a href="packages/javascript/browser/ui_components/i18n/index.js">i18n/index.js</a>).</p>
+</li>
+<li>
+<p>Component contract: <code>new X(options)</code> → <code>.mount(container)</code> → <code>.destroy()</code>; value components expose <code>getValue/setValue/setDisabled/clear</code> (form ones also <code>setError(msg, { display })/clearError</code>, delegating to <code>utils/field-error.js</code>; <code>display: false</code> marks the control invalid without rendering text, and <code>FormField</code> <code>markControl</code> / <code>SearchForm</code> <code>markInvalidFields</code> forward errors to inner components only when opted in). <code>destroy()</code> is mandatory, not optional. <code>ModalPanel.confirm/alert/prompt</code> pass <code>destroyOnClose: true</code> so the dialog self-destructs after <code>close()</code>; a direct <code>new ModalPanel</code> keeps <code>destroyOnClose: false</code> and stays reusable across <code>close()</code>/<code>open()</code>. ModalPanel carries <code>role="dialog"</code>/<code>aria-modal</code>, and one Escape closes only the topmost modal (an Escape an inner control already handled is ignored); focus trapping/restoring is off by default for compatibility — new projects should set <code>ModalPanel.defaults.manageFocus = true</code> at startup.</p>
+</li>
+<li>
+<p>Generator definitions: <code>definition.name</code>, <code>field.name</code> and <code>behaviors.*</code> (<code>onInit</code>/<code>onSave</code>/<code>onDelete</code>/<code>fieldTriggers</code> values, all handler-method names) are emitted as bare JavaScript identifiers, so <code>PageGenerator</code> validates them as real <code>IdentifierName</code> — CJK names such as <code>姓名</code> pass; reserved words are rejected only in binding positions (<code>definition.name</code>). Failures come back through the normal <code>{ code: null, errors: [...] }</code> contract.</p>
+</li>
+<li>
+<p><code>DynamicToolRenderer</code> skips a binding whose value is unchanged since the last one pushed to that component (deep compare; key order counts as a change). Consumers that re-<code>setState</code> every leaf path on each sync no longer re-apply every setter — and a bound option with no <code>set&lt;Option&gt;</code> setter no longer destroys and recreates the component on every sync. One intended consequence: an unrelated <code>setState</code> no longer resets a component's own state (uncommitted input, scroll position) back to the bound value.</p>
+</li>
+<li>
+<p>Tool pages (<code>type: 'tool'</code> / <code>DynamicToolRenderer</code>) default to <a href="packages/javascript/browser/ui_components/binding/LazyComponentFactory.js">LazyComponentFactory</a>, which loads only the components a definition names: <code>create()</code> stays synchronous, <code>preload(names)</code> is awaited inside <code>init()</code>. The eager <code>ComponentFactory</code> is unchanged for direct callers.</p>
+</li>
+<li>
+<p>Detail pages default to <code>lazyTabs: true</code> (<code>DynamicPageRenderer</code> / <code>DynamicDetailRenderer</code>): a tab's content is built on first activation, so components in never-activated tabs do not exist yet. Pass <code>lazyTabs: false</code> to build everything up front. An unpopulated panel carries <code>data-tab-pending="true"</code> until first activation (removed once populated), so DOM inspection can tell "not built yet" from "definition is wrong".</p>
+</li>
+<li>
+<p>Generated backend: .NET 10 Minimal API, BaseOrm (lightweight, no EF Core).</p>
+</li>
+<li>
+<p>Password hashing: use the static <code>Rfc2898DeriveBytes.Pbkdf2</code> API without changing the existing iteration/salt/hash sizes or stored formats; compatibility vectors live in the unit and SPA template test projects.</p>
+</li>
 </ul>
 <h2>Adding a Component</h2>
 <ol>
-<li>Create <code>ui_components/&lt;category&gt;/&lt;Name&gt;/</code> with <code>&lt;Name&gt;.js</code>, <code>index.js</code>, and <code>&lt;Name&gt;.manifest.json</code> (schema: <a href="packages/javascript/browser/ui_components/metadata/manifest-schema.js">manifest-schema.js</a>).</li>
-<li>Export it from the category <code>index.js</code>.</li>
-<li>Register it in <a href="packages/javascript/browser/ui_components/binding/ComponentFactory.js">ComponentFactory.js</a> if it should be usable by name/generator.</li>
-<li>Rebuild metadata: <code>node packages/javascript/browser/ui_components/metadata/build-metadata.mjs --check</code>.</li>
+<li>
+<p>Create <code>ui_components/&lt;category&gt;/&lt;Name&gt;/</code> with <code>&lt;Name&gt;.js</code>, <code>index.js</code> and, for new components, a self-registering <code>locale.js</code> (<code>Locale.register(lang, namespace, strings)</code>). Other components import it only through its <code>index.js</code> (<code>validate-ui-library</code> rejects cross-component implementation imports). Its <code>component.manifest.json</code> is generated in step 4 (schema: <a href="packages/javascript/browser/ui_components/metadata/manifest-schema.js">manifest-schema.js</a>); do not hand-edit it — adjust inferred kind/role/maturity through the override tables in <code>metadata/renderer.js</code>.</p>
+</li>
+<li>
+<p>Export it from the category <code>index.js</code>.</p>
+</li>
+<li>
+<p>Register it in <a href="packages/javascript/browser/ui_components/binding/ComponentFactory.js">ComponentFactory.js</a> if it should be usable by name/generator.</p>
+</li>
+<li>
+<p>Rebuild metadata: <code>node packages/javascript/browser/ui_components/metadata/build-metadata.mjs</code>, then verify with <code>--check</code> (read-only; it fails when a manifest exists without a ComponentFactory registration).</p>
+</li>
 </ol>
 <p>Full details: <a href="AGENT-UI-GUIDE.html">AGENT-UI-GUIDE.md</a> §8.</p>
 <h2>Documentation</h2>
 <ul>
-<li>Component calling convention + React-rewrite playbook: <a href="AGENT-UI-GUIDE.html">AGENT-UI-GUIDE.md</a></li>
-<li>SPA generator manual: <a href="AGENT.html">AGENT.md</a></li>
-<li>Page generator: <a href="packages/javascript/browser/page-generator/README.html">page-generator/README.md</a></li>
+<li>
+<p>Component calling convention + React-rewrite playbook: <a href="AGENT-UI-GUIDE.html">AGENT-UI-GUIDE.md</a></p>
+</li>
+<li>
+<p>SPA generator manual: <a href="AGENT.html">AGENT.md</a></p>
+</li>
+<li>
+<p>Page generator: <a href="packages/javascript/browser/page-generator/README.html">page-generator/README.md</a></p>
+</li>
 </ul>
 </main>
 </body>

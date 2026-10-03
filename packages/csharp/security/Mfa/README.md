@@ -2,6 +2,8 @@
 
 完整的多因子驗證 (MFA) 解決方案，支援 TOTP、Email OTP 與復原碼。
 
+> 目前 repo 內只有 `tests/unit/Unit.Tests.csproj` 引用 `Mfa.csproj`；本模組只提供服務層，不含 Controller（HTTP 端點見下方說明）。
+
 ## 特點
 
 - **TOTP 支援** - 相容 Google Authenticator、Microsoft Authenticator、Authy 等
@@ -21,14 +23,15 @@
 ### 1. 服務註冊 (Program.cs)
 
 ```csharp
-using YourNamespace.Security.Mfa;
+using Bricks4Agent.Security.Mfa;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // MFA 服務
 builder.Services.AddSingleton<IMfaRepository, InMemoryMfaRepository>();
 builder.Services.AddSingleton<IUserRepository, InMemoryUserRepository>();
-builder.Services.AddSingleton<IEmailService, SmtpEmailService>(); // 或自訂實作
+builder.Services.AddSingleton<IEmailService, ConsoleEmailService>(); // 僅輸出到 Console；正式環境請自行實作 IEmailService（見下方「郵件服務」）
+builder.Services.AddSingleton(new MfaOptions { AppName = "MyApp" });  // 驗證器 App 顯示名稱，只能透過 DI 提供
 builder.Services.AddSingleton<IMfaService, MfaService>();
 builder.Services.AddSingleton<IMfaAuthService, MfaAuthService>();
 
@@ -51,14 +54,16 @@ app.Run();
     "ExpirationMinutes": 60
   },
   "Mfa": {
-    "AppName": "MyApp",
-    "TokenExpirationMinutes": 5,
-    "EnforceMfa": false
+    "TokenExpirationMinutes": 5
   }
 }
 ```
 
+> 設定檔中只有 `Jwt:Key`、`Jwt:Issuer`、`Jwt:ExpirationMinutes`、`Mfa:TokenExpirationMinutes` 會被讀取。`Mfa:AppName` 與 `Mfa:EnforceMfa` 不會被讀取：`AppName` 來自 DI 註冊的 `MfaOptions` 物件（見上方），`MfaOptions.EnforceMfa` 目前沒有任何程式使用。
+
 ## API 端點
+
+> 以下所有 HTTP 端點都定義在未建置的參考程式碼 `api/Auth`（`MfaAuthController` / `RateLimitedAuthController`，沒有 .csproj），repo 內沒有任何主機提供這些端點。
 
 ### 註冊
 
@@ -358,7 +363,7 @@ public class SqlMfaRepository : IMfaRepository
 
 ### 郵件服務
 
-實作 `IEmailService` 介面:
+本模組只內建 `ConsoleEmailService`（開發用，只寫到 Console）；下方 `SmtpEmailService` 是自行實作的範例，不包含在模組中。實作 `IEmailService` 介面:
 
 ```csharp
 public class SmtpEmailService : IEmailService

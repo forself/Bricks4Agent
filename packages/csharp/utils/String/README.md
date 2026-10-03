@@ -1,11 +1,13 @@
 # String
 
+> ⚠ 參考程式碼：此目錄沒有 .csproj，未被任何專案編譯或引用，CI 也不建置它；以下說明未經建置驗證。
+
 字串擴充方法工具類別 — 提供空值檢查、大小寫轉換、截斷、遮罩、驗證、擷取、比較、雜湊、編碼等常用字串操作。
 
 ## 初始化方式
 
 ```csharp
-using YourNamespace.Utils.String;
+using Bricks4Agent.Utils.String;
 // 靜態類別，直接以擴充方法呼叫
 ```
 
@@ -100,7 +102,7 @@ using YourNamespace.Utils.String;
 ## 使用範例
 
 ```csharp
-using YourNamespace.Utils.String;
+using Bricks4Agent.Utils.String;
 
 // 空值安全
 string name = null;

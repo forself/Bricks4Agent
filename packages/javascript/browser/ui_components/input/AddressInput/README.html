@@ -26,7 +26,7 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <h3>Constructor</h3>
 <pre><code class="language-js">new AddressInput(options?)
 </code></pre>
-<p>繼承 <code>ChainedInput</code> 所有選項（<code>onChange</code>、<code>layout</code>、<code>gap</code>），<code>fields</code> 已預設；另需提供 <code>loadCities: async () =&gt; [...]</code> 與 <code>loadDistricts: async (city) =&gt; [...]</code> 資料載入函式（未提供時載入選項會擲出錯誤）：</p>
+<p>繼承 <code>ChainedInput</code> 的選項（<code>onChange</code>、<code>layout</code>），<code>fields</code> 已預設，<code>gap</code> 固定為 <code>'8px'</code>（傳入的 <code>gap</code> 會被覆蓋）；另需提供 <code>loadCities: async () =&gt; [...]</code> 與 <code>loadDistricts: async (city) =&gt; [...]</code> 資料載入函式（未提供時，載入選項的錯誤會被 ChainedInput 捕捉並以 <code>console.error</code> 記錄，下拉選單維持空白）：</p>
 <table>
 <thead>
 <tr>
@@ -65,12 +65,12 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <tbody>
 <tr>
 <td><code>getFullAddress()</code></td>
-<td>回傳完整地址字串（自動將縣市代碼轉為中文名稱）</td>
+<td>回傳完整地址字串。目前行為：直接串接 <code>city</code>、<code>district</code>、<code>address</code> 的原始值（即 loader 回傳的 <code>value</code>），不會把縣市代碼轉為中文名稱</td>
 </tr>
 </tbody>
 </table>
 <h2>使用範例</h2>
-<pre><code class="language-js">import { AddressInput } from './input/AddressInput/index.js';
+<pre><code class="language-js">import { AddressInput } from './index.js';
 
 const addr = new AddressInput({
     loadCities: async () =&gt; fetchCities(),
@@ -80,7 +80,7 @@ const addr = new AddressInput({
 addr.mount('#container');
 
 // 取得完整地址
-const full = addr.getFullAddress(); // &quot;台北市中正區忠孝東路一段1號&quot;
+const full = addr.getFullAddress(); // city/district 的 value + 詳細地址，例如 value 為中文名稱時得到 &quot;台北市中正區忠孝東路一段1號&quot;
 </code></pre>
 <h2>Demo</h2>
 <p><code>packages/javascript/browser/ui_components/input/demo.html</code></p>

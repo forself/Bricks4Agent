@@ -21,7 +21,7 @@ const card = new StatCard(options);
 | `value` | `number\|string` | `0` | 數值 |
 | `trend` | `string\|null` | `null` | 趨勢方向：`'up'` / `'down'` / `null` |
 | `trendValue` | `string` | `''` | 趨勢文字（如 `'+5'`、`'-3%'`） |
-| `color` | `string` | `'var(--cl-primary)'` | 主題色（用於圖示背景和文字色） |
+| `color` | `string` | `'var(--cl-primary)'` | 主題色（用於圖示背景和文字色）；可用語意名稱 `'primary'` / `'success'` / `'warning'` / `'danger'` / `'info'`（對應 `var(--cl-*)`）或 CSS 色值 |
 | `onClick` | `Function\|null` | `null` | 點擊回調 |
 
 ### 方法
@@ -36,7 +36,7 @@ const card = new StatCard(options);
 ### 使用範例
 
 ```js
-import { StatCard } from '../packages/javascript/browser/ui_components/social/StatCard/StatCard.js';
+import { StatCard } from './StatCard.js';
 
 const card = new StatCard({
     icon: '👥',
@@ -44,7 +44,7 @@ const card = new StatCard({
     value: 42,
     trend: 'up',
     trendValue: '+5',
-    color: '#4A90D9'
+    color: 'var(--cl-primary)'
 });
 card.mount('#stat-container');
 ```

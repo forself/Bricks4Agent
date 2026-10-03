@@ -30,11 +30,15 @@ Verified on 2026-03-22:
 
 Current verified query boundary:
 
-- explicit broker-mediated search is available through `?search <keywords>`
+- explicit broker-mediated search is available through `?search <keywords>` (alias `?s`)
 
-- plain `?query` messages still go through the high-level dialogue path
+- explicit transport queries are routed by the broker through the `transport.query` tool: `?rail` (aliases `?r`, `?train`, `?tra`), `?hsr` (`?thsr`), `?bus` (`?b`), `?flight` (`?f`, `?flights`)
 
-- real-time query tooling is not yet auto-selected for arbitrary query text; the current controlled live path is the explicit `?search` subcommand
+- `?profile` (aliases `?p`, `?me`, `?whoami`) is answered by the broker from the stored high-level user profile, without a tool call
+
+- plain `?query` messages without one of these subcommands still go through the high-level dialogue path
+
+- real-time query tooling is not yet auto-selected for arbitrary query text; the current controlled live paths are the explicit subcommands above
 
 Recommended sidecar flow:
 

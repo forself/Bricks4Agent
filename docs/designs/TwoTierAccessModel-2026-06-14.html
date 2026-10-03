@@ -24,6 +24,14 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <p>Date: 2026-06-14
 Status: <strong>已實作 + 驗證(2026-06-14)</strong> —— 模型/遮罩/註冊閘門/晉升/後台 UI 完成;Unit.Tests 376 全綠、broker-tests 192、方案 0 error。
 範圍: 把「註冊核准即給多數權限」改成清楚的兩層存取模型。</p>
+<blockquote>
+<p><strong>實作現況（2026-09-26 核對）</strong></p>
+<ul>
+<li>本文 §1(L11 自助成為 Tier 1)、§2(自助註冊)、§3 註冊閘門(新使用者 → Basic + Approved)與 §5 驗收(新使用者發訊即可問答)所述「任何人發訊即自動成為 Tier 1」已不成立:在設定 <code>PortalLineVerificationService</code> 時,原始 LINE user id(<code>U</code> + 32 hex)在完成 Web Portal 註冊並於 LINE 送出 <code>/verify &lt;user_id&gt; &lt;code&gt;</code> 之前,一律回 <code>line_verification_required</code>,不會進入 Tier 1 問答(<code>packages/csharp/broker/Services/HighLevelCoordinator.cs:597-605</code>)。</li>
+<li>驗證成功後,LINE id 對應到 Portal user id(<code>HighLevelCoordinator.cs:590-595</code>),之後才以該 id 走本文的註冊閘門與 Tier 1 / Tier 2 流程(<code>HighLevelCoordinator.cs:147,170</code>)。</li>
+<li>設計見 <a href="../superpowers/specs/2026-07-01-line-portal-verification-design.html">2026-07-01-line-portal-verification-design.md</a>。</li>
+</ul>
+</blockquote>
 <h2>1. 目標模型(經使用者確認)</h2>
 <table>
 <thead>
@@ -59,20 +67,36 @@ Status: <strong>已實作 + 驗證(2026-06-14)</strong> —— 模型/遮罩/註
 <h2>3. 實作要點</h2>
 <h3>模型(<code>HighLevelCoordinator.cs</code>)</h3>
 <ul>
-<li><code>HighLevelAccessTier</code> 常數類:<code>Basic = "basic"</code>、<code>Member = "member"</code>。</li>
-<li><code>HighLevelUserProfile.AccessTier</code>(預設 Basic)、<code>HighLevelLineUserSummary.AccessTier</code>。</li>
-<li><code>HighLevelUserPermissions</code>:<code>AllowProduction</code> 預設改 <strong>false</strong>;新增純函式 <code>EffectiveForTier(accessTier)</code> —— 回傳遮罩副本:Tier-2 三旗標 <code>AND isMember</code>,query/transport 照原值。</li>
+<li>
+<p><code>HighLevelAccessTier</code> 常數類:<code>Basic = "basic"</code>、<code>Member = "member"</code>。</p>
+</li>
+<li>
+<p><code>HighLevelUserProfile.AccessTier</code>(預設 Basic)、<code>HighLevelLineUserSummary.AccessTier</code>。</p>
+</li>
+<li>
+<p><code>HighLevelUserPermissions</code>:<code>AllowProduction</code> 預設改 <strong>false</strong>;新增純函式 <code>EffectiveForTier(accessTier)</code> —— 回傳遮罩副本:Tier-2 三旗標 <code>AND isMember</code>,query/transport 照原值。</p>
+</li>
 </ul>
 <h3>強制點(用 effective,而非 raw)</h3>
 <ul>
-<li><code>GetEffectivePermissions(profile) = EnsurePermissions(profile).EffectiveForTier(profile.AccessTier)</code>。</li>
-<li>建議查詢閘門(<code>ShouldSuggestControlledSearch</code> 區)、<code>EnforcePermissionGate</code>、<code>BuildPermissionSummary</code> 改用 effective。</li>
-<li>編輯(<code>SetLineUserPermissions</code>)維持寫 raw 旗標(管理員指派的意圖),由 effective 遮罩決定是否生效。</li>
+<li>
+<p><code>GetEffectivePermissions(profile) = EnsurePermissions(profile).EffectiveForTier(profile.AccessTier)</code>。</p>
+</li>
+<li>
+<p>建議查詢閘門(<code>ShouldSuggestControlledSearch</code> 區)、<code>EnforcePermissionGate</code>、<code>BuildPermissionSummary</code> 改用 effective。</p>
+</li>
+<li>
+<p>編輯(<code>SetLineUserPermissions</code>)維持寫 raw 旗標(管理員指派的意圖),由 effective 遮罩決定是否生效。</p>
+</li>
 </ul>
 <h3>註冊閘門(<code>TryHandleRegistrationGate</code>)</h3>
 <ul>
-<li>新使用者:<code>deny_all</code> → 擋;否則 → Basic + Approved,放行。</li>
-<li>既有使用者:只在 Rejected/DeniedByPolicy 時擋。</li>
+<li>
+<p>新使用者:<code>deny_all</code> → 擋;否則 → Basic + Approved,放行。</p>
+</li>
+<li>
+<p>既有使用者:只在 Rejected/DeniedByPolicy 時擋。</p>
+</li>
 </ul>
 <h3>晉升(<code>ReviewLineUserRegistration</code>)</h3>
 <ul>
@@ -84,14 +108,24 @@ Status: <strong>已實作 + 驗證(2026-06-14)</strong> —— 模型/遮罩/註
 </ul>
 <h2>4. 測試(先行)</h2>
 <ul>
-<li><code>HighLevelUserPermissions.EffectiveForTier</code>:Basic 遮罩 production/browser/deployment 為 false(即使 raw true);Member 照原值;query/transport 不受層級影響。</li>
-<li>預設值:<code>CreateDefault()</code> 的 production/browser/deployment 為 false、query/transport 為 true。</li>
+<li>
+<p><code>HighLevelUserPermissions.EffectiveForTier</code>:Basic 遮罩 production/browser/deployment 為 false(即使 raw true);Member 照原值;query/transport 不受層級影響。</p>
+</li>
+<li>
+<p>預設值:<code>CreateDefault()</code> 的 production/browser/deployment 為 false、query/transport 為 true。</p>
+</li>
 </ul>
 <h2>5. 驗收</h2>
 <ul>
-<li>新使用者發訊 → 立即可問答 + 查詢,但不能建 production / 動檔案。</li>
-<li>管理員升 Member 後,可逐項分配私有資料夾權限;未分配前仍不能用。</li>
-<li><code>deny_all</code> 可完全凍結註冊。</li>
+<li>
+<p>新使用者發訊 → 立即可問答 + 查詢,但不能建 production / 動檔案。</p>
+</li>
+<li>
+<p>管理員升 Member 後,可逐項分配私有資料夾權限;未分配前仍不能用。</p>
+</li>
+<li>
+<p><code>deny_all</code> 可完全凍結註冊。</p>
+</li>
 </ul>
 </main>
 </body>

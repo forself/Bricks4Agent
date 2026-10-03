@@ -15,6 +15,7 @@ import { DatePicker } from '../DatePicker/index.js';
 import { NumberInput } from '../NumberInput/index.js';
 
 import Locale from '../../i18n/index.js';
+import { FIELD_ERROR_CONTRACT } from '../../utils/field-error.js';
 export class SearchForm {
     static FIELD_TYPES = {
         TEXT: 'text',
@@ -39,6 +40,7 @@ export class SearchForm {
      * @param {Function} options.onSearch - 搜尋回調 (values)
      * @param {Function} options.onReset - 重設回調
      * @param {Function} options.onChange - 值變更回調 (key, value, allValues)
+     * @param {boolean} options.markInvalidFields - 驗證失敗時一併標示欄位元件的錯誤狀態（預設 false）
      */
     constructor(options = {}) {
         this.options = {
@@ -55,6 +57,7 @@ export class SearchForm {
             onReset: null,
             onChange: null,
             onValidationError: null,
+            markInvalidFields: false,
             ...options
         };
 
@@ -414,7 +417,11 @@ export class SearchForm {
 
     _setFieldError(key, message) {
         const component = this._fieldComponents.get(key);
-        if (component?.setError) {
+        if (this.options.markInvalidFields) {
+            // 文字由 SearchForm 顯示在欄位下方；元件只標示錯誤狀態，避免同一個錯誤出現兩次
+            component?.setError?.(message, { display: false });
+        } else if (component?.setError && !component[FIELD_ERROR_CONTRACT]) {
+            // 預設維持既有畫面：只呼叫原本就有 setError 的元件（例如 TextInput）
             component.setError(message);
         }
         const errorEl = this._fieldErrorElements.get(key);
@@ -426,7 +433,7 @@ export class SearchForm {
 
     _clearFieldError(key) {
         const component = this._fieldComponents.get(key);
-        if (component?.clearError) {
+        if (component?.clearError && (this.options.markInvalidFields || !component[FIELD_ERROR_CONTRACT])) {
             component.clearError();
         }
         const errorEl = this._fieldErrorElements.get(key);

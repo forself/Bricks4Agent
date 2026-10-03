@@ -1,26 +1,33 @@
 # Auth
 
+> ⚠ 參考程式碼：此目錄沒有 .csproj，未被任何專案編譯或引用，CI 也不建置它；以下說明未經建置驗證。
+
 認證 API 控制器模組 — 提供兩種認證控制器：MFA 認證（MfaAuthController）與 IP 速率限制認證（RateLimitedAuthController）。
 
 ## 初始化方式
 
 ```csharp
 // 基本 MFA 認證
+// （MfaAuthService 另需註冊 IUserRepository、IMfaRepository、IMfaService，見 security/Mfa/README.md）
 builder.Services.AddScoped<IMfaAuthService, MfaAuthService>();
 
-// 含速率限制的認證（推薦用於生產環境）
+// 含速率限制的認證
 builder.Services.AddScoped<IMfaAuthService, MfaAuthService>();
-builder.Services.AddScoped<IIpRateLimiter, IpRateLimiter>();
-builder.Services.AddScoped<IConnectionInfoService, ConnectionInfoService>();
-builder.Services.AddScoped<IUserSessionService, UserSessionService>();
+// IpRateLimiter 與 UserSessionService 把計數與工作階段存在記憶體中，必須是 Singleton；
+// 用 AddScoped 會在每個請求重建，限流與工作階段都不會生效
+builder.Services.AddSingleton<IIpRateLimiter, IpRateLimiter>();
+builder.Services.AddSingleton<IConnectionInfoService, ConnectionInfoService>();
+builder.Services.AddSingleton<IUserSessionService, UserSessionService>();
 ```
+
+> 兩個控制器都宣告 `[Route("api/auth")]`，且 `register`、`login`、`login/mfa` 路由重複；同一個應用程式只能註冊其中一個，否則這些端點會發生路由衝突（AmbiguousMatchException）。
 
 ## 檔案說明
 
 | 檔案 | 說明 |
 |---|---|
 | `MfaAuthController.cs` | 基本 MFA 認證控制器（註冊、登入、MFA 設定） |
-| `RateLimitedAuthController.cs` | 進階認證控制器（在 MFA 基礎上加入 IP 速率限制、工作階段管理） |
+| `RateLimitedAuthController.cs` | 獨立的進階認證控制器（直接繼承 `ControllerBase`，不繼承 MfaAuthController；提供含 IP 速率限制的註冊/登入與工作階段管理） |
 
 ## API 列表
 
@@ -31,7 +38,7 @@ builder.Services.AddScoped<IUserSessionService, UserSessionService>();
 | `POST` | `/api/auth/register` | 註冊新使用者（可選啟用 MFA） | 匿名 |
 | `POST` | `/api/auth/login` | 登入第一步 — 驗證帳密 | 匿名 |
 | `POST` | `/api/auth/login/mfa` | 登入第二步 — 驗證 MFA 碼 | 匿名 |
-| `POST` | `/api/auth/login/mfa/email` | 請求 Email OTP | 匿名 |
+| `POST` | `/api/auth/login/mfa/email` | 請求 Email OTP（尚未實作：stub，不驗證 token、不寄信，一律回傳成功訊息） | 匿名 |
 | `GET` | `/api/auth/mfa/status` | 取得 MFA 狀態 | `[Authorize]` |
 | `POST` | `/api/auth/mfa/enable` | 啟用 MFA | `[Authorize]` |
 | `POST` | `/api/auth/mfa/verify` | 驗證 MFA 設定（回傳復原碼） | `[Authorize]` |
@@ -40,7 +47,7 @@ builder.Services.AddScoped<IUserSessionService, UserSessionService>();
 
 ### RateLimitedAuthController — 進階認證
 
-繼承 MfaAuthController 的所有端點，額外加入：
+不繼承 MfaAuthController，只提供下列端點（沒有 `login/mfa/email` 與 `mfa/*`）：
 
 | 方法 | 路由 | 說明 | 權限 |
 |---|---|---|---|
@@ -55,8 +62,8 @@ builder.Services.AddScoped<IUserSessionService, UserSessionService>();
 
 **速率限制行為：**
 - 觸發速率限制時回傳 `429 Too Many Requests`
-- 回應標頭含 `X-RateLimit-Limit`、`X-RateLimit-Remaining`、`X-RateLimit-Reset`、`Retry-After`
-- 連續 15 次以上失敗登入的 IP 會被標記為可疑（封鎖 24 小時）
+- 回應標頭含 `X-RateLimit-Limit`、`X-RateLimit-Remaining`、`X-RateLimit-Reset`（ISO-8601 時間）、`Retry-After`
+- 登入被限流時，若該 IP 最近 20 次登入嘗試中有 15 次以上失敗，會被標記為可疑 24 小時（套用較嚴格的限流，並非封鎖）
 - 被封鎖的 IP 回傳 `403 Forbidden`
 
 ## 使用範例

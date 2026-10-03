@@ -4,6 +4,15 @@
 狀態：approved design draft
 範圍：從使用者在 LINE 指定網站，到產出可由現有 generator 消費的網站定義 JSON；若現有元件庫無法覆蓋，產生新元件與元件 manifest。
 
+> **實作現況（2026-09-26 核對）**
+>
+> - 沒有 `site-generator-agent-worker`，也沒有 `site.convert_to_generator_json` capability；`SiteGeneratorConverter` 位於 crawler worker 內（`packages/csharp/workers/site-crawler-worker/Services/SiteGeneratorConverter.cs`），worker 註冊的是 `site.crawl_source`、`site.generate_package`、`site.reconstruct_package`（`packages/csharp/workers/site-crawler-worker/Handlers/*.cs`）。
+> - §4.1 的 `SiteCloneCoordinator`、`ComponentResolver`、`GeneratedComponentSynthesizer`、`GeneratorBundleValidator` 均不存在；broker 端實作是 `HighLevelSiteRebuildService`，以 `SiteGenerationQualityAnalyzer` 做品質閘（`packages/csharp/broker/Services/HighLevelSiteRebuildService.cs:102-103`）。
+> - 沒有 `/clone` 命令，也沒有回問爬取範圍的流程；`site_rebuild` 由關鍵字判定（`packages/csharp/broker/Services/HighLevelCoordinator.cs:2198`），深度從訊息解析、預設 1 層（`packages/csharp/broker/Services/HighLevelSiteRebuildService.cs:26`）。
+> - `site_rebuild` 路徑的上限為 `MaxPages = int.MaxValue`、逾時 1800 秒（`packages/csharp/broker/Services/HighLevelSiteRebuildService.cs:27-28`），不是 §3／§5／§11 的 50 頁／180 秒（50／180 只是 `packages/csharp/workers/site-crawler-worker/Models/SiteCrawlContracts.cs:68`、`:77` 的類別預設值）。
+> - §12 的 artifacts 未由此路徑產出；`site_rebuild` 交付的是 zip 靜態網站套件（`packages/csharp/broker/Services/HighLevelSiteRebuildService.cs:121-128`）。`crawl-source-bundle.json`、`component-resolution.json`、`generated-components/` 在程式中皆不存在；只有另一條 Node 路徑 `tools/scripts/crawl-site-to-generator-json.mjs:872-875` 會寫出 `site-generator-bundle.json`、`extracted-site-model.json`、`validation-report.json`。
+> - broker 不是透過 worker 派工爬取，而是以 ProjectReference 引用 crawler worker 專案（`packages/csharp/broker/Broker.csproj:21`），在程序內直接呼叫 `SiteCrawlerService`（`packages/csharp/broker/Services/HighLevelSiteRebuildService.cs:195`）。
+
 ## 1. 問題定義
 
 使用者希望提供一個網址，系統爬取該網址範圍內的網站程式碼與資產，並轉換成可以直接交給既有 SPA/page generator 使用的 JSON。此流程不能讓 LLM 自由猜測網站結構，因為輸出必須能落到現有 generator、元件庫與可驗證的 artifacts。

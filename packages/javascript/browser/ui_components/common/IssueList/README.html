@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>IssueList</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>IssueList</h1>
+<p>驗證／衝突問題清單（複合元件）。把表單驗證、資料衝突、匯入檢查等結果列成清單，使用者可以依嚴重度篩選，並點選某一列跳回問題來源。每筆問題的 <code>source</code> 由呼叫端自訂（欄位名稱、列號、節點 id…），元件不解讀，只在 <code>onSelect</code> 時原樣交回。</p>
+<ul>
+<li>嚴重度同時以圖示、文字標籤與顏色呈現，不單靠顏色。</li>
+<li>資料變動後以 polite live region 播報摘要（節流），螢幕報讀器使用者不必離開目前位置也知道結果。</li>
+<li>全部以 <code>createElement</code> + <code>textContent</code> 建構、樣式走 CSSOM，符合嚴格 CSP；資料一律當文字輸出。</li>
+</ul>
+<h2>建構</h2>
+<pre><code class="language-js">import { IssueList } from './index.js';
+
+const list = new IssueList({
+    issues: [],              // 問題陣列：[{ id, severity: 'error'|'warning'|'info', title, message?, source?, meta? }]
+    sort: 'severity',        // 'severity'：依 error → warning → info 穩定排序；'none'：維持輸入順序
+    groupBy: null,           // null：單一清單；'severity'：依嚴重度分組並顯示組標題
+    showSummary: true,       // 顯示各嚴重度計數；點擊計數即篩選
+    filter: null,            // null：顯示全部；['error', ...]：只顯示指定嚴重度
+    dismissible: false,      // 每列顯示「忽略」按鈕（在列上按 Delete／Backspace 亦可）
+    emptyText: null,         // 沒有問題時的文字；null 使用 Locale issueList.empty
+    maxHeight: null,         // 清單最大高度（數字為 px，或 CSS 長度字串如 '50vh'）；超過時捲動
+    ariaLabel: null,         // 清單的無障礙名稱；null 使用 Locale issueList.label
+    announceDelay: 1000,     // live region 播報節流間隔（ms）
+    onSelect: null,          // (issue) =&gt; void：使用者點選或按 Enter／Space
+    onDismiss: null          // (issue) =&gt; void：使用者忽略某列（該列已從清單移除）
+});
+list.mount('#issues');
+</code></pre>
+<h3>issue 物件</h3>
+<table>
+<thead>
+<tr>
+<th>欄位</th>
+<th>型別</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>id</code></td>
+<td><code>string | number</code></td>
+<td>識別碼；<code>addIssue</code>／<code>removeIssue</code> 以它比對（<code>'1'</code> 與 <code>1</code> 視為相同）</td>
+</tr>
+<tr>
+<td><code>severity</code></td>
+<td><code>'error' | 'warning' | 'info'</code></td>
+<td>嚴重度；其他值視為 <code>info</code></td>
+</tr>
+<tr>
+<td><code>title</code></td>
+<td><code>string</code></td>
+<td>標題</td>
+</tr>
+<tr>
+<td><code>message</code></td>
+<td><code>string?</code></td>
+<td>說明文字（保留換行）</td>
+</tr>
+<tr>
+<td><code>source</code></td>
+<td><code>any?</code></td>
+<td>不透明的定位資訊，<code>onSelect</code> 原樣交回</td>
+</tr>
+<tr>
+<td><code>meta</code></td>
+<td><code>string?</code></td>
+<td>列右側的小字（例如欄位名稱、列號）</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><code>sort: 'severity'</code> 是穩定排序：同一嚴重度內維持輸入順序。</li>
+<li>摘要計數永遠是全部問題的數量，不受篩選影響。</li>
+<li><code>filter</code> 的空陣列、無效值或三種全選都等同 <code>null</code>（全部）。</li>
+</ul>
+<h2>方法</h2>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>回傳</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>setIssues(issues)</code></td>
+<td><code>this</code></td>
+<td>取代全部問題。同 id 的問題保留焦點與 Tab 位置；摘要有變動時節流播報</td>
+</tr>
+<tr>
+<td><code>addIssue(issue)</code></td>
+<td><code>this</code></td>
+<td>新增一筆；<code>id</code> 已存在時就地取代該筆</td>
+</tr>
+<tr>
+<td><code>removeIssue(id)</code></td>
+<td><code>this</code></td>
+<td>以 <code>id</code> 移除（不觸發 <code>onDismiss</code>）</td>
+</tr>
+<tr>
+<td><code>clear()</code></td>
+<td><code>this</code></td>
+<td>清空全部問題</td>
+</tr>
+<tr>
+<td><code>getIssues()</code></td>
+<td><code>object[]</code></td>
+<td>目前的問題（輸入順序；新陣列，元素為呼叫端原物件）</td>
+</tr>
+<tr>
+<td><code>setFilter(severities)</code></td>
+<td><code>this</code></td>
+<td>設定篩選；<code>null</code>、空陣列或三種全選＝全部，也接受單一字串</td>
+</tr>
+<tr>
+<td><code>getFilter()</code></td>
+<td><code>string[] | null</code></td>
+<td>目前的篩選</td>
+</tr>
+<tr>
+<td><code>focusFirst()</code></td>
+<td><code>this</code></td>
+<td>聚焦第一個可見列（沒有列時不動作）</td>
+</tr>
+<tr>
+<td><code>snapshot()</code></td>
+<td><code>object</code></td>
+<td>狀態機快照：<code>{ lifecycle, filter }</code></td>
+</tr>
+<tr>
+<td><code>mount(container)</code></td>
+<td><code>this</code></td>
+<td>掛載到元素或 CSS 選擇器</td>
+</tr>
+<tr>
+<td><code>destroy()</code></td>
+<td><code>void</code></td>
+<td>移除 DOM、<code>locale-changed</code> 監聽與播報計時器；可重複呼叫，之後呼叫其他方法不會拋錯</td>
+</tr>
+</tbody>
+</table>
+<p>靜態屬性：<code>IssueList.SEVERITIES</code> = <code>['error', 'warning', 'info']</code>。</p>
+<h2>事件（callback）</h2>
+<table>
+<thead>
+<tr>
+<th>Callback</th>
+<th>參數</th>
+<th>觸發時機</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>onSelect</code></td>
+<td><code>issue</code>（呼叫端原物件）</td>
+<td>點擊列、在列上按 Enter 或 Space</td>
+</tr>
+<tr>
+<td><code>onDismiss</code></td>
+<td><code>issue</code>（呼叫端原物件）</td>
+<td>點「忽略」按鈕或在列上按 Delete／Backspace；呼叫時該列已移除</td>
+</tr>
+</tbody>
+</table>
+<p>程式呼叫 <code>setIssues</code>／<code>removeIssue</code>／<code>clear</code> 不會觸發 callback。</p>
+<h2>鍵盤與無障礙</h2>
+<table>
+<thead>
+<tr>
+<th>按鍵</th>
+<th>行為</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Tab</td>
+<td>整份清單只佔一個停駐點（roving tabindex）；<code>dismissible</code> 時下一個停駐點是目前列的「忽略」按鈕</td>
+</tr>
+<tr>
+<td>↑ ／ ↓</td>
+<td>移到上一列／下一列（分組時可跨組）</td>
+</tr>
+<tr>
+<td>Home ／ End</td>
+<td>移到第一列／最後一列</td>
+</tr>
+<tr>
+<td>Enter</td>
+<td>觸發 <code>onSelect</code>（keydown）</td>
+</tr>
+<tr>
+<td>Space</td>
+<td>觸發 <code>onSelect</code>（keyup，與原生按鈕一致；keydown 只防止捲動）</td>
+</tr>
+<tr>
+<td>Delete ／ Backspace</td>
+<td><code>dismissible</code> 時忽略目前列，焦點移到同位置的下一列；最後一筆被忽略時移到「全部」計數按鈕</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>每列是 <code>role="button"</code>；嚴重度圖示 <code>aria-hidden="true"</code>，另有可見的文字標籤（錯誤／警告／提示）。</li>
+<li>摘要列為 <code>role="group"</code>（<code>aria-label</code> 取自 Locale），每個計數是帶 <code>aria-pressed</code> 的切換按鈕，無障礙名稱例如「錯誤 2」：點「錯誤」只看錯誤，再點一次或點「全部」恢復。</li>
+<li>清單外層為 <code>role="group"</code> 並有 <code>aria-label</code>；分組時每組的 <code>&lt;ul&gt;</code> 以 <code>aria-labelledby</code> 指向組標題。</li>
+<li>live region（<code>role="status"</code>、<code>aria-live="polite"</code>、<code>aria-atomic="true"</code>）在 <code>setIssues</code>／<code>addIssue</code>／<code>removeIssue</code>／<code>clear</code>／忽略之後，依 <code>announceDelay</code> 節流播報摘要（例如「共 3 項：錯誤 1、警告 1、提示 1」）；只播報與上次不同的內容，初始資料與語言切換本身不播報。</li>
+<li><code>Locale.setLang()</code> 會即時更新所有文字。</li>
+<li>在列上按住修飾鍵（Ctrl／Alt／⌘）時不攔截，保留瀏覽器快捷鍵。</li>
+</ul>
+<h2>Locale（namespace：<code>issueList</code>）</h2>
+<p><code>label</code>、<code>empty</code>、<code>filteredEmpty</code>、<code>all</code>、<code>summaryLabel</code>、<code>severity.error</code>、<code>severity.warning</code>、<code>severity.info</code>、<code>countLabel</code>（<code>{label}</code>、<code>{count}</code>）、<code>groupHeading</code>（<code>{label}</code>、<code>{count}</code>）、<code>dismiss</code>（<code>{title}</code>）、<code>announceSummary</code>（<code>{total}</code>、<code>{error}</code>、<code>{warning}</code>、<code>{info}</code>）、<code>announceEmpty</code>。字串由同目錄 <code>locale.js</code> 註冊 zh-TW 與 en。</p>
+<h2>可執行範例</h2>
+<p>把下列內容存成本目錄的 <code>example.html</code>，以 HTTP 伺服器開啟（例如在 repo 根目錄執行 <code>python -m http.server 8124</code>，再開 <code>http://localhost:8124/packages/javascript/browser/ui_components/common/IssueList/example.html</code>；ES module 不能用 <code>file://</code>）。</p>
+<pre><code class="language-html">&lt;!DOCTYPE html&gt;
+&lt;html lang=&quot;zh-TW&quot; data-theme=&quot;light&quot;&gt;
+&lt;head&gt;
+    &lt;meta charset=&quot;UTF-8&quot;&gt;
+    &lt;title&gt;IssueList 範例&lt;/title&gt;
+    &lt;link rel=&quot;stylesheet&quot; href=&quot;../../theme.css&quot;&gt;
+&lt;/head&gt;
+&lt;body&gt;
+    &lt;label&gt;會議室 &lt;input id=&quot;room&quot; value=&quot;A 室&quot;&gt;&lt;/label&gt;
+    &lt;label&gt;主持人 &lt;input id=&quot;host&quot;&gt;&lt;/label&gt;
+    &lt;div id=&quot;issues&quot;&gt;&lt;/div&gt;
+    &lt;script type=&quot;module&quot;&gt;
+        import { IssueList } from './index.js';
+
+        const list = new IssueList({
+            issues: [
+                { id: 'room-overlap', severity: 'error', title: '會議室時段重疊', message: 'A 室 10:00–11:00 已被預約', source: { field: 'room' } },
+                { id: 'host-missing', severity: 'error', title: '缺少主持人', source: { field: 'host' } },
+                { id: 'size', severity: 'warning', title: '參與人數超過建議上限', meta: '上限 8 人' },
+                { id: 'note', severity: 'info', title: '尚未填寫備註' }
+            ],
+            groupBy: 'severity',
+            dismissible: true,
+            maxHeight: 320,
+            onSelect: (issue) =&gt; document.getElementById(issue.source?.field)?.focus(),
+            onDismiss: (issue) =&gt; console.log('忽略', issue.id)
+        }).mount('#issues');
+
+        // 重新驗證後更新（同 id 的問題保留焦點）
+        setTimeout(() =&gt; list.removeIssue('host-missing'), 3000);
+    &lt;/script&gt;
+&lt;/body&gt;
+&lt;/html&gt;
+</code></pre>
+</main>
+</body>
+</html>

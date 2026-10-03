@@ -20,6 +20,7 @@ import { CanvasChart } from './CanvasChart.js';
 import { categoricalColor } from '../utils/color-scale.js';
 import { ModalPanel } from '../layout/Panel/index.js';
 import { FALLBACK_PAINT } from '../utils/theme-bus.js';
+import Locale from '../i18n/index.js';
 
 /** 火焰圖專用熱色相序(橘→紅→紫,視覺對應「溫度/深度」) */
 const FLAME_HUES = ['orange', 'deep-orange', 'red', 'pink', 'purple', 'indigo', 'blue', 'teal'];
@@ -59,6 +60,24 @@ export class FlameChart extends CanvasChart {
 
     /** 更新資料並重繪(舊 API 相容)。 */
     setData(data) { this.data = data; this.render(); }
+
+    /** 無障礙資料表(accessibleTable):路徑 / 數值,前序列出每個框(含根;數值取節點原值)。 */
+    getDataTable() {
+        const data = this.data;
+        const rows = [];
+        if (data && data.name) {
+            this._a11yWalkTree(data, (n) => n.name, (node, path) => rows.push({ path, value: node.value }));
+        }
+        return {
+            columns: [
+                { key: 'path', label: Locale.t('canvasChart.path'), rowHeader: true },
+                { key: 'value', label: Locale.t('canvasChart.value'), format: 'number' }
+            ],
+            rows
+        };
+    }
+
+    _a11ySources() { return [this.data]; }
 
     /** 展平樹狀資料為帶位置的節點陣列。 */
     _flatten(w) {

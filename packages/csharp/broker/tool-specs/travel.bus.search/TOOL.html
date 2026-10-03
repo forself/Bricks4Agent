@@ -23,11 +23,23 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <h1>travel.bus.search</h1>
 <p>Purpose: broker-mediated bus and coach schedule lookup.</p>
 <p>Current status: active.</p>
+<p>Implementation:</p>
+<ul>
+<li>
+<p>TDX only (source label <code>TDX 公車預估到站 API</code>); there is no public-web fallback. If TDX is not configured, fails, or returns nothing, the tool returns an empty result</p>
+</li>
+<li>
+<p>high-level LINE <code>?bus</code> queries are routed through <code>transport.query</code>, not directly through this tool</p>
+</li>
+</ul>
 <p>Rules:</p>
 <ul>
-<li>responses must identify source and retrieval time</li>
-<li>returned options are candidate schedules, not guaranteed final ticket availability</li>
-<li>the tool may surface public timetable snippets and detected time candidates from public sources</li>
+<li>
+<p>responses must identify source and retrieval time</p>
+</li>
+<li>
+<p>returned options are candidate schedules, not guaranteed final ticket availability</p>
+</li>
 </ul>
 </main>
 </body>

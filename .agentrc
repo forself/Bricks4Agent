@@ -1,17 +1,13 @@
 # Bricks4Agent — 通用 AI Agent 進入指引
 #
 # 本檔案適用於任何 AI Agent 框架（包含離線地端模型）。
-# 若你的框架不讀取此檔案，請直接閱讀 AGENT.html。
+# 若你的框架不讀取此檔案，請直接閱讀 AGENTS.md。
 #
-# 支援的 Agent 框架入口：
-#   .cursorrules          → Cursor IDE
-#   .windsurfrules        → Windsurf (Codeium)
-#   .github/copilot-instructions.md → GitHub Copilot
-#   .clinerules           → Cline
-#   .claude/CLAUDE.md     → Claude Code
-#   .aider.conf.yml       → Aider
+# 實際存在的 Agent 框架入口：
+#   CLAUDE.md             → Claude Code
+#   AGENTS.md             → Codex / 通用
 #   .agentrc              → 通用（本檔案）
 #
-# 所有入口都指向同一份操作手冊：AGENT.html
+# CLAUDE.md 與 AGENTS.md 都連到 AGENT-UI-GUIDE.md（元件調用約定）與 AGENT.md（生成器操作手冊）。
 
-entrypoint: AGENT.html
+entrypoint: AGENTS.md

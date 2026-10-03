@@ -49,7 +49,7 @@
 ### 基本使用
 
 ```javascript
-import { DrawingBoard } from './DrawingBoard/index.js';
+import { DrawingBoard } from './index.js';
 
 const board = new DrawingBoard({
     container: '#drawing-container',
@@ -117,7 +117,7 @@ board.destroy();
 
 ### 畫筆
 
-預設工具，自由繪製平滑曲線。使用二次貝茲曲線讓筆觸更自然。
+預設工具，自由繪製。筆觸以 `lineTo` 逐點直線連接（未使用貝茲曲線平滑）。
 
 ### 橡皮擦
 
@@ -159,9 +159,12 @@ board.destroy();
 
 ```
 DrawingBoard/
-├── DrawingBoard.js   # 核心元件類別
-├── index.js          # 模組匯出
-└── README.md         # 說明文件（本檔案）
+├── DrawingBoard.js           # 核心元件類別
+├── index.js                  # 模組匯出
+├── component.manifest.json   # 元件 metadata
+├── demo.html                 # 示範頁面
+├── README.md                 # 說明文件（本檔案）
+└── README.html               # 說明文件 HTML 版
 ```
 
 ---

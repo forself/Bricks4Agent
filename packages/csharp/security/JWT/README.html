@@ -21,16 +21,34 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <body>
 <main>
 <h1>JwtHelper - JWT Token Management</h1>
+<blockquote>
+<p>⚠ Reference code: this folder has no .csproj, is not compiled or referenced by any project, and is not built by CI; the content below is not build-verified.</p>
+<p>Known not to compile as-is: <code>JwtHelper.cs</code> needs <code>System.IdentityModel.Tokens.Jwt</code> / <code>Microsoft.IdentityModel.Tokens</code>, and no project here provides them for this folder.</p>
+</blockquote>
 <p>Helper class for generating and validating JWT (JSON Web Tokens) for authentication and authorization.</p>
 <h2>Features</h2>
 <ul>
-<li>JWT access token generation</li>
-<li>Refresh token generation</li>
-<li>Token validation</li>
-<li>Claims extraction (user ID, username, email, roles)</li>
-<li>Token expiration checking</li>
-<li>Custom claims support</li>
-<li>Configurable via appsettings.json</li>
+<li>
+<p>JWT access token generation</p>
+</li>
+<li>
+<p>Refresh token generation</p>
+</li>
+<li>
+<p>Token validation</p>
+</li>
+<li>
+<p>Claims extraction (user ID, username, email, roles)</p>
+</li>
+<li>
+<p>Token expiration checking</p>
+</li>
+<li>
+<p>Custom claims support</p>
+</li>
+<li>
+<p>Configurable via appsettings.json</p>
+</li>
 </ul>
 <h2>Setup</h2>
 <h3>1. Install Required NuGet Packages</h3>
@@ -38,6 +56,9 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 dotnet add package Microsoft.AspNetCore.Authentication.JwtBearer
 </code></pre>
 <h3>2. Configure appsettings.json</h3>
+<blockquote>
+<p><code>JwtHelper</code> reads <code>Jwt:SecretKey</code>. That conflicts with the repo convention <code>Jwt:Key</code> used by the SPA template (<code>templates/spa/backend/appsettings.json</code>) and <code>security/Mfa</code> (<code>MfaAuthService</code>); a host configured with <code>Jwt:Key</code> only will make <code>JwtHelper</code> throw at construction.</p>
+</blockquote>
 <pre><code class="language-json">{
   &quot;Jwt&quot;: {
     &quot;SecretKey&quot;: &quot;your-super-secret-key-that-is-at-least-32-characters-long&quot;,
@@ -131,7 +152,7 @@ var token = _jwtHelper.GenerateToken(
 );
 </code></pre>
 <h3>Generate Refresh Token</h3>
-<pre><code class="language-csharp">public (string accessToken, string refreshToken) Login(User user)
+<pre><code class="language-csharp">public async Task&lt;(string accessToken, string refreshToken)&gt; Login(User user)
 {
     var accessToken = _jwtHelper.GenerateToken(
         userId: user.Id,
@@ -311,30 +332,66 @@ public class UsersController : ControllerBase
 - Custom claims (if provided)</p>
 <h2>Security Best Practices</h2>
 <ol>
-<li><strong>Secret Key</strong>: Use a strong, randomly generated secret key (at least 32 characters)</li>
-<li><strong>HTTPS Only</strong>: Always use HTTPS in production</li>
-<li><strong>Token Expiration</strong>: Set reasonable expiration times (15-60 minutes for access tokens)</li>
-<li><strong>Refresh Tokens</strong>: Use refresh tokens for long-lived sessions</li>
-<li><strong>Token Storage</strong>: Store tokens securely on client (HttpOnly cookies recommended)</li>
-<li><strong>Token Revocation</strong>: Implement blacklist or database check for revoked tokens</li>
-<li><strong>Environment Variables</strong>: Store secret key in environment variables, not appsettings.json</li>
+<li>
+<p><strong>Secret Key</strong>: Use a strong, randomly generated secret key (at least 32 characters)</p>
+</li>
+<li>
+<p><strong>HTTPS Only</strong>: Always use HTTPS in production</p>
+</li>
+<li>
+<p><strong>Token Expiration</strong>: Set reasonable expiration times (15-60 minutes for access tokens)</p>
+</li>
+<li>
+<p><strong>Refresh Tokens</strong>: Use refresh tokens for long-lived sessions</p>
+</li>
+<li>
+<p><strong>Token Storage</strong>: Store tokens securely on client (HttpOnly cookies recommended)</p>
+</li>
+<li>
+<p><strong>Token Revocation</strong>: Implement blacklist or database check for revoked tokens</p>
+</li>
+<li>
+<p><strong>Environment Variables</strong>: Store secret key in environment variables, not appsettings.json</p>
+</li>
 </ol>
 <h2>Dependencies</h2>
 <ul>
-<li>System.IdentityModel.Tokens.Jwt</li>
-<li>Microsoft.IdentityModel.Tokens</li>
-<li>Microsoft.AspNetCore.Authentication.JwtBearer</li>
-<li>.NET 6.0 or higher</li>
+<li>
+<p>System.IdentityModel.Tokens.Jwt</p>
+</li>
+<li>
+<p>Microsoft.IdentityModel.Tokens</p>
+</li>
+<li>
+<p>Microsoft.AspNetCore.Authentication.JwtBearer</p>
+</li>
+<li>
+<p>.NET 10 (<code>net10.0</code>, the repo's target framework)</p>
+</li>
 </ul>
 <h2>Benefits</h2>
 <ol>
-<li><strong>Stateless Authentication</strong> - No server-side session storage needed</li>
-<li><strong>Scalability</strong> - Works well with distributed systems</li>
-<li><strong>Cross-Domain</strong> - Can be used across different domains</li>
-<li><strong>Mobile-Friendly</strong> - Easy to implement in mobile apps</li>
-<li><strong>Type Safety</strong> - Strongly-typed claim extraction</li>
-<li><strong>Flexible</strong> - Support for custom claims</li>
-<li><strong>Secure</strong> - Industry-standard token format</li>
+<li>
+<p><strong>Stateless Authentication</strong> - No server-side session storage needed</p>
+</li>
+<li>
+<p><strong>Scalability</strong> - Works well with distributed systems</p>
+</li>
+<li>
+<p><strong>Cross-Domain</strong> - Can be used across different domains</p>
+</li>
+<li>
+<p><strong>Mobile-Friendly</strong> - Easy to implement in mobile apps</p>
+</li>
+<li>
+<p><strong>Type Safety</strong> - Strongly-typed claim extraction</p>
+</li>
+<li>
+<p><strong>Flexible</strong> - Support for custom claims</p>
+</li>
+<li>
+<p><strong>Secure</strong> - Industry-standard token format</p>
+</li>
 </ol>
 </main>
 </body>

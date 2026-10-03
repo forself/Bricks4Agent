@@ -1,12 +1,15 @@
 # Google Drive Share Delivery
 
+Status: `beta`
+
 Purpose:
 - upload a broker-generated artifact to a broker-configured Google Drive folder
 - return a governed share link suitable for delivery back to the requesting user
 
 Identity:
-- first implementation uses a broker-owned Google service account
-- no user-delegated Drive access is assumed
+- supported identity modes: `system_account` (broker-owned Google service account), `user_delegated` (OAuth credential of the requesting channel user), `shared_delegated` (one broker-configured OAuth credential, `GoogleDriveDelivery:SharedDelegatedChannel` / `SharedDelegatedUserId`)
+- default is `shared_delegated` (`GoogleDriveDelivery:DefaultIdentityMode`); any other value is rejected
+- delegated credentials are obtained through the broker's loopback-only OAuth callback (`/api/v1/google-drive/oauth/callback`)
 
 Input:
 - `file_path`: absolute path to a local file

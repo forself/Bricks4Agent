@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>修改與遺留問題 — 2026-09-01</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>修改與遺留問題 — 2026-09-01</h1>
+<blockquote>
+<p>2026-09-02 更新：本文件保留為 9/1 的歷史交接快照。其後已新增通用 lazy module loader，並將原本未納入主閘門的 Vitest 元件套件修至 210/210 通過且併入 <code>npm test</code>；請以目前 Git 與測試輸出判定最新狀態。</p>
+<p>2026-09-26 更新：§2 中已由 <code>6495133</code>（2026-09-01）處理的項目已就地標註「✅ 已解決」，原文保留作為歷史紀錄；§3 建議順序同步更新。</p>
+<p>本文件自足，不依賴先前對話。涵蓋 <code>11e8e95..df2c31a</code> 這四個提交的內容，以及當下經覆核的遺留問題。
+每一項遺留問題都附可自行驗證的證據（檔案:行號或指令），請勿只憑本文件的敘述行動——先覆核再動手。
+基準：分支 <code>main</code>，工作樹狀態另查 <code>git status</code>。</p>
+</blockquote>
+<hr>
+<h2>1. 本次修改</h2>
+<p>四個提交，全部直接在 <code>main</code>，未開分支。閘門全過（見 §1.5）。</p>
+<h3>1.1 <code>4b6a654</code> — 讓三個「靜默」行為可被診斷</h3>
+<p>前次修復把三處行為改成「安全但沉默」：結果是對的，但看結果的人查不出原因。</p>
+<table>
+<thead>
+<tr>
+<th>行為</th>
+<th>原本</th>
+<th>現在</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>raw()</code> 標記</td>
+<td>未加品牌的 <code>{ __html }</code> 被當一般文字跳脫（刻意，JSON 可偽造），但完全無聲</td>
+<td>提示一次並指名 <code>raw()</code>，回傳值不變、不在渲染迴圈洗版</td>
+</tr>
+<tr>
+<td>延後分頁</td>
+<td>未啟用分頁的面板是空的，外觀與「定義有誤」相同</td>
+<td>未填充的面板帶 <code>data-tab-pending="true"</code>，首次啟用後移除</td>
+</tr>
+<tr>
+<td>定向更新</td>
+<td>無工具可證明與完整重建等價</td>
+<td>新增 <code>tools/scripts/lib/dom-equivalence.mjs</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>dom-equivalence.mjs</code> 涵蓋 <code>:checked</code> / <code>:value</code> / <code>:disabled</code> / <code>:hidden</code> 等 <code>innerHTML</code> 看不到的 live property。
+驗證：真實瀏覽器 DataTable 選取，正向等價通過，三項負向對照（注入 class、只改 property、還原）全部如預期。</p>
+<blockquote>
+<p>該工具第一版是<strong>假通過</strong>——序列化出空樹，<code>空 === 空</code> 當然相等。是負向對照抓到的。
+根因是 <code>fake-dom.mjs</code> 不解析 <code>innerHTML</code>；此陷阱已寫入該檔檔頭註解。</p>
+</blockquote>
+<h3>1.2 <code>6e13e09</code> — 兩處「驗了什麼都沒驗到」的閘門</h3>
+<p><strong>展示廊的 TreeList 從來沒渲染過任何節點。</strong> <code>sample-data.js</code> 傳 <code>items</code>，元件讀 <code>options.data</code>；且節點沒有 <code>id</code>，而 TreeList 以 <code>node.id</code> 作 dataset / <code>expandedIds</code> / <code>activeId</code> 的鍵，補了 <code>data</code> 卻沒 id 會讓 <code>String(node.id)</code> 成為字面 <code>undefined</code>、所有節點共用展開狀態。兩者一起修。</p>
+<p>瀏覽器負向對照：</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>元素數</th>
+<th>文字</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>修正前（<code>items</code>）</td>
+<td><strong>0</strong></td>
+<td>空</td>
+</tr>
+<tr>
+<td>修正後（<code>data</code> + id）</td>
+<td>2</td>
+<td>節點1</td>
+</tr>
+<tr>
+<td>展開後</td>
+<td>4</td>
+<td>節點1子節點</td>
+</tr>
+</tbody>
+</table>
+<p><strong><code>serializeDom</code> 看不見逐屬性 style 賦值。</strong> 真實 DOM 會把逐屬性賦值回寫進 <code>cssText</code>，但兩套 fake DOM 的 <code>style</code> 是只有 <code>cssText</code> 的普通物件，因此 <code>el.style.background = ...</code> 對序列化完全隱形。EditableTable 正是逐屬性寫法，所以這不是理論問題。改為兩個來源都收、正規化成排序後的 <code>prop: value</code> 清單。</p>
+<p><strong>驗證進得了 CI。</strong> <code>ui_components</code> 底下 7 個 <code>*.test.mjs</code> 原本沒有任何 npm script 會執行，新增的 <code>dom-equivalence.mjs</code> 也零 import。新增 <code>npm run test:ui-components</code>（後於 <code>738be65</code> 擴及 <code>page-generator</code>）。</p>
+<blockquote>
+<p>陷阱：<code>node --test</code> 給<strong>目錄</strong>參數時，會把有 <code>index.js</code> 的目錄當模組載入，載入成功就報 <code>ok</code>。
+<code>ui_components</code> 正是如此——看到 <code>ok 1 - ui_components</code> 時，7 個測試檔一個都沒跑。<strong>必須用 glob。</strong></p>
+</blockquote>
+<h3>1.3 <code>738be65</code> — 綁定值沒變就不重推</h3>
+<p><code>DynamicToolRenderer._applyBindings</code> 過去無條件套用：每次 <code>setState</code> 都深拷貝並呼叫 setter，而沒有對應 <code>set&lt;Option&gt;</code> setter 的綁定會走 <code>_replaceComponent</code>，也就是整個元件銷毀重建。消費端（如 Custom Component Studio 的 <code>syncUi</code>）習慣每次同步把整份 state 攤平後對每個葉路徑呼叫 <code>setState</code>。</p>
+<p>實測（真實頁面，57 條綁定 / 98 個元件，同頁內還原 <code>applied</code> 旗標模擬改動前）：</p>
+<table>
+<thead>
+<tr>
+<th>一次無變動的同步</th>
+<th>DOM 變動</th>
+<th>耗時</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>改動前</td>
+<td><strong>1900 次</strong></td>
+<td>182.2ms</td>
+</tr>
+<tr>
+<td>改動後</td>
+<td><strong>0 次</strong></td>
+<td>3.8ms</td>
+</tr>
+</tbody>
+</table>
+<p>負向對照確認沒有把 UI 凍住：真的改值 → 122 次 DOM 變動；還原 → 121 次；再送同值 → 0 次。</p>
+<p>設計要點：</p>
+<ul>
+<li><code>sameData()</code> 的值域與 <code>cloneData</code> 一致（JSON 相容、無函式、無迴圈、數值有限），故不必處理 Date / Map，也不會遇到 NaN。物件連鍵順序一起比——順序變了就當作變了，寧可多推一次，也不要漏掉「元件依 <code>Object.entries</code> 順序渲染」的情形。</li>
+<li>比較對象刻意是<strong>上次推給元件的值</strong>，不是元件現值。拿現值比會在每次同步把使用者尚未提交的輸入蓋回去。</li>
+</ul>
+<p><strong>刻意的行為變更（唯一對外可觀察的語意差異）：</strong> 不相關的 <code>setState</code> 不再把元件自身狀態（未提交輸入、捲動位置）重設回綁定值。已記入 <code>CLAUDE.md</code>。</p>
+<h3>1.4 <code>df2c31a</code> — 預建實例不再帶著 mount 前的舊值進畫面</h3>
+<p>factory 無法回答「有沒有這個元件」時（<code>_factoryHas</code> 回 <code>null</code>），<code>init()</code> 會先用當時的 state 把實例建出來。<code>init()</code> 與 <code>mount()</code> 之間若呼叫 <code>setState</code>，<code>_applyBindings</code> 因尚未 mounted 而跳過；<code>mount()</code> 雖重算了一份 options，重用預建實例時卻把新值丟棄，舊值就這樣進入畫面，直到之後剛好有人動到同一條路徑為止。</p>
+<p>修正三處，各自都有必要：<code>_prepareComponent</code> 記下建構當時實際用到的綁定值；<code>_renderComponent</code> 重用時以<strong>那份舊值</strong>當種子（種成新算的 options 會把舊值標記為已套用，該綁定將永遠收不到更新，等於把偶發的過時變成永久的過時）；<code>mount()</code> 收尾補一次 <code>_applyBindings()</code>，值沒變的會被相等性檢查跳過。</p>
+<p>這不是新的失敗模式：綁定路徑若在 mount 時消失，<code>_renderComponent</code> 內的 <code>_createComponentOptions</code> 本來就會拋錯。</p>
+<h3>1.5 驗證狀態</h3>
+<table>
+<thead>
+<tr>
+<th>閘門</th>
+<th>結果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>npm test</code></td>
+<td>PASS</td>
+</tr>
+<tr>
+<td><code>npm run test:ui-components</code></td>
+<td>25 / 25</td>
+</tr>
+<tr>
+<td><code>npm run test:custom-components</code></td>
+<td>14 / 14</td>
+</tr>
+<tr>
+<td><code>node tools/scripts/audit-csp.mjs</code></td>
+<td>304 檔，CSP 0 / SVG 0</td>
+</tr>
+<tr>
+<td><code>npm run validate:ui-library</code></td>
+<td>全過（browser smoke 未要求）</td>
+</tr>
+<tr>
+<td><code>build-metadata.mjs --check</code></td>
+<td>exit 0</td>
+</tr>
+<tr>
+<td><code>npm run test:theme-studio:browser</code></td>
+<td><strong>未跑成</strong>——本機 Edge 起不來（見 §2.7）；✅ 已解決（6495133, 2026-09-01），2026-09-26 覆跑 16/16 通過</td>
+</tr>
+</tbody>
+</table>
+<p>新增的測試都做過「對修正前版本執行」的負向對照，確認不是空過：</p>
+<ul>
+<li>綁定相等性檢查：7 個案例中 5 個在改動前失敗，2 個兩邊都過（那兩個是「行為不得改變」的守門：<code>options</code> 同步、綁定路徑消失仍須拋錯）。</li>
+<li>預建實例修正：新增的 3 個案例中,正好是預期的 2 個在改動前失敗，對照組「mount 前沒有變更時不得平白套用或重建」兩邊都過。</li>
+</ul>
+<hr>
+<h2>2. 遺留問題</h2>
+<p>依「值得先做的程度」排序，理由見 §3。</p>
+<h3>結構性 — 「修了但沒生效」</h3>
+<p><strong>2.1 <code>templates/</code> 不在資安閘門的掃描範圍內。</strong>
+✅ 已解決（6495133, 2026-09-01）：<code>audit-csp.mjs</code> 的 <code>roots</code> 已加入 <code>templates/spa/frontend</code> 與 <code>templates/spa/scripts</code>（第 20–21 行），這兩處的 HTML 也一併納入檢查。以下為原始紀錄。
+<code>tools/scripts/audit-csp.mjs</code> 的 <code>roots</code>（第 14 行起）只有 5 個：<code>ui_components</code>、<code>page-generator</code>、<code>custom_components</code>、<code>tools/custom-component-studio</code>、<code>tools/theme-studio</code>。<strong>不含 <code>templates/</code>。</strong>
+而 <code>templates/spa/frontend/components/Panel/</code>（<code>BasePanel.js</code> / <code>ModalPanel.js</code> / <code>PanelManager.js</code> / <code>ToastPanel.js</code>）是 <code>core/BasePage.js</code> 實際 import 的第二份副本。也就是說，真正出貨到生成專案的那份程式碼是沒有閘門的。</p>
+<p><strong>2.2 tim-web 內嵌了約 6 份元件庫快照。</strong>
+<code>qa-publish-20260817</code>、<code>qa-live-fixed-20260817</code>、<code>qa-debug-20260817</code>、<code>outputs/validation/iis-fixed</code>、<code>outputs/validation/iis-fixed-final</code>、<code>artifacts/icon-guard-iis</code>，各自的 <code>wwwroot/lib/ui_components/</code>。上游修補（含本次的 <code>raw()</code> 品牌檢查、ModalPanel 洩漏修復）不會自動到達，要重新發佈才會。
+（仍開放。<code>6495133</code> 新增 <code>node tools/scripts/verify-consumer-snapshots.mjs --consumer-root &lt;已發佈根目錄&gt;</code>，可檢出快照與目前 Git tree 不一致，但既有快照仍須重新發佈。）</p>
+<h3>驗證覆蓋</h3>
+<p><strong>2.3 沒有 CI。</strong> 無 <code>.github/workflows</code>；所有閘門靠人記得跑。
+✅ 已解決（6495133, 2026-09-01）：<code>6495133</code> 新增 <code>.github/workflows/quality-gates.yml</code>；另 <code>.github/workflows/ci.yml</code> 其實自 <code>9e877f3</code>（2026-08-24）即存在。稀疏檢出不含 <code>.github/</code>，請以 <code>git ls-files .github</code> 確認，而非看磁碟。</p>
+<p><strong>2.4 必跑的 <code>tools/theme-studio/run.mjs</code> 對 outline / palette / TreeList 零覆蓋。</strong> 只斷言 gallery 的 116 與 <code>failed === 0</code>。§1.2 修好之後，gallery 對 TreeList 才第一次有渲染驗證價值；outline 面板仍無覆蓋。
+（仍開放。<code>6495133</code> 後 <code>run.mjs</code> 改為委派 <code>tools/scripts/studio-integration-smoke.mjs</code>，其中仍無 outline / palette / TreeList 斷言。）</p>
+<p><strong>2.5 fake DOM 的能力缺口。</strong> <code>scrollTop</code>、<code>customElements</code>、<code>MutationObserver</code>、<code>requestAnimationFrame</code> 在兩套 fake DOM 都不存在。因此「捲動位置保存」「Icon 連上 DOM 後重畫」「theme-bus 通知與訂閱洩漏」這幾類斷言在 Node 裡只能空過——寫了也是恆綠。要驗這些只能上真實瀏覽器。</p>
+<p><strong>2.6 <code>4a5efe8</code> 宣稱的 100.3ms → 1.9ms 沒有對應腳本進版控</strong>，無法覆核。本文件 §1.3 的量測同理——是在瀏覽器 console 手動跑的，沒有進版控的 benchmark。</p>
+<p><strong>2.7 本機 Edge 起不來。</strong> <code>node tools/theme-studio/run.mjs</code> 回報 <code>Could not connect to Edge DevTools pipe: Edge exited unexpectedly (code=0)</code>。本次改用內建瀏覽器手動驗證替代。原因未查（可能是既有實例佔著設定檔）。
+✅ 已解決（6495133, 2026-09-01）：<code>run.mjs</code> 不再使用自寫的 DevTools pipe，改為委派 <code>tools/scripts/studio-integration-smoke.mjs</code>（Playwright 的 Edge launcher）；2026-09-26 覆跑 <code>node tools/theme-studio/run.mjs</code> 16/16 通過。</p>
+<h3>metadata 品質（這份 catalog 是對代理公開的產品本體）</h3>
+<p><strong>2.8 <code>EditableTable</code> 的 manifest 在說謊。</strong>
+✅ 已解決（6495133, 2026-09-01）：manifest 已改為 <code>value_io: false</code>、<code>target_actions: []</code>。以下為原始紀錄。
+<code>component.manifest.json</code> 宣告 <code>binding: { value_io: true, target_actions: ["clear", "setValue"] }</code>，但 <code>EditableTable.js</code> 這些方法<strong>一個都沒有</strong>（公開成員只有 <code>constructor</code> / <code>snapshot</code> / <code>send</code> / <code>mount</code> / <code>getRows</code> / <code>destroy</code>）。旗標來自 <code>this._cellInputs.clear()</code> 與對子元件 TextInput 的 <code>setValue</code> / <code>getValue</code> 呼叫。</p>
+<p><strong>2.9 推導方式是整檔正則。</strong>
+✅ 已解決（6495133, 2026-09-01）：<code>inferBinding</code> 改以內省得到的公開方法集合判斷（<code>metadata/renderer.js</code> 第 279–285 行），不再對整份原始碼做正則比對。以下為原始紀錄。
+<code>metadata/renderer.js</code> 的 <code>inferBinding</code> 對整份 source text 做 <code>/clear\s*\(/</code>、<code>/(?:reload|refresh)\s*\(/</code>、<code>/setItems\s*\(/</code> 等比對，因此<strong>把方法命名成 <code>clear(</code> / <code>refresh(</code> / <code>setItems(</code> 就會污染 catalog</strong>，且 <code>build-metadata --check</code> 是逐位元組比對，會直接失敗。
+19 個元件檔含 <code>setData(</code>；若要讓 <code>inferBinding</code> 認得 <code>setData</code>，那是一次 19 個元件的 catalog diff，不是一個。</p>
+<h3>元件層（已評估，建議維持不做）</h3>
+<p><strong>2.10 TreeList <code>setData()</code> 無條件整棵重建</strong>（<code>container.innerHTML = ''</code>）；不修剪 <code>expandedIds</code>、不驗證 <code>activeId</code> 仍存在於新資料、不保存 <code>scrollTop</code>。<code>_visibleSignature()</code> 已存在，可用來做 early-return。
+唯一真實消費端是 Custom Component Studio 的結構 Outline 面板（<code>tools/theme-studio/studio.page.json</code> 的 <code>outline-tree</code>），版控中的四個 custom component 定義節點數為 1 / 3 / 3 / 5、深度 ≤2，因此上述三個缺陷有兩個實際觸發不到、一個無感。</p>
+<p><strong>2.11 EditableTable SORT 一律全表重繪</strong> → 抹掉未提交輸入、驗證錯誤訊息、焦點與游標；且沒有公開 API 可更新列。目前沒有真實使用者會點到那個排序表頭。</p>
+<p><strong>2.12 DataTable <code>setSelectedRows()</code> 仍是整體重繪</strong>（<code>DataTable.js:312-315</code> 直接 <code>this.render()</code>），排序 / 分頁 / <code>setData</code> 亦然。先前的定向更新只覆蓋 checkbox 的 change 事件路徑。</p>
+<p><strong>2.13 完整清單協調（新增 / 刪除 / 重排）：不建議做。</strong>
+評估為 450–750 行實作 + 400–600 行測試。成本驅動因子不是 diff 演算法，是不變式數量：TreeList 把 <code>level</code> 烘進樣式字串，使「搬移子樹」無法用純 DOM 搬移完成（這正是現行程式碼寧可摧毀重建的原因）；每列固定 2 個 Icon 各自訂閱 theme-bus，漏 <code>destroy</code> 就是新的洩漏。
+且兩個元件都在 <code>generator-support-matrix.json</code> 的 <code>manual_only_components</code>（<code>generator.usable = false</code>），欄位驅動的產生器在架構上永遠吐不出它們——使用量不會自然長出來。</p>
+<h3>其他</h3>
+<p><strong>2.14 studio 主控台三個既有錯誤</strong>：<code>AddressInput requires a real loadCities data loader</code>、<code>OrganizationInput requires a real loadUnits data loader</code>。展示用資料載入器缺失，與綁定層無關，但代表這幾個元件在 studio 裡是壞的。
+✅ 已解決（6495133, 2026-09-01）：<code>tools/theme-studio/sample-data.js</code> 新增 <code>SAMPLE_RUNTIME_OPTIONS</code>（AddressInput / AddressListInput 的 <code>loadCities</code> / <code>loadDistricts</code>、OrganizationInput 的 <code>loadUnits</code>），由 <code>controller.js</code> 在展示廊建立元件時併入。</p>
+<p><strong>2.15 <code>_replaceComponent</code> 的節省目前是潛在的。</strong> studio 那 57 條綁定的 setter 恰好都存在，所以 §1.3 量到的收益全部來自 setter 側。一旦有 tool page 綁到沒有 setter 的選項，省下的就是整個元件的銷毀重建。</p>
+<hr>
+<h2>3. 建議順序</h2>
+<ol>
+<li>~~<strong>2.1（<code>templates/</code> 沒有資安閘門）</strong> — 這是資安閘門有洞，而且洞的另一邊正是出貨給下游的程式碼。~~ ✅ 已解決（6495133, 2026-09-01）</li>
+<li>~~<strong>2.3（沒有 CI）</strong> — 所有閘門都靠人記得跑；上面每一項驗證的長期價值都繫於此。~~ ✅ 已解決（6495133, 2026-09-01）</li>
+<li>~~<strong>2.8 / 2.9（catalog 說謊）</strong> — 這份 metadata 是 AI 代理選用元件的輸入，錯誤宣告會直接誤導產生的頁面。~~ ✅ 已解決（6495133, 2026-09-01）</li>
+</ol>
+<p>上列三項（以及 2.7、2.14）均已處理。目前仍開放、值得接著做的是：2.2（tim-web 內嵌快照需重新發佈）、2.4（outline / palette / TreeList 無瀏覽器斷言）、2.5（fake DOM 能力缺口）、2.6（效能量測沒有進版控的 benchmark）。</p>
+<p>2.10 – 2.13 維持不做，理由如各項所述：改的是沒人走的路，而風險類別（元件回收洩漏）恰好是近期才付出代價修好的。</p>
+<hr>
+<h2>4. 本次新增 / 變更的檔案</h2>
+<table>
+<thead>
+<tr>
+<th>檔案</th>
+<th>動作</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>packages/javascript/browser/ui_components/utils/security.js</code></td>
+<td><code>raw()</code> 未加品牌時提示一次</td>
+</tr>
+<tr>
+<td><code>packages/javascript/browser/page-generator/DynamicDetailRenderer.js</code></td>
+<td><code>data-tab-pending</code> 標記</td>
+</tr>
+<tr>
+<td><code>packages/javascript/browser/page-generator/DynamicToolRenderer.js</code></td>
+<td><code>sameData</code> + 綁定相等性檢查 + 預建實例種子 + mount 收尾套用</td>
+</tr>
+<tr>
+<td><code>packages/javascript/browser/page-generator/DynamicToolRenderer.bindings.test.mjs</code></td>
+<td>新增，10 個案例</td>
+</tr>
+<tr>
+<td><code>packages/javascript/browser/ui_components/common/TreeList/test-dom.mjs</code></td>
+<td><code>FakeClassList</code> 補 <code>add</code> / <code>remove</code> / <code>toggle</code></td>
+</tr>
+<tr>
+<td><code>tools/scripts/lib/dom-equivalence.mjs</code></td>
+<td>新增，DOM 等價比對</td>
+</tr>
+<tr>
+<td><code>tools/scripts/lib/dom-equivalence.test.mjs</code></td>
+<td>新增，5 個案例（含負向對照）</td>
+</tr>
+<tr>
+<td><code>tools/theme-studio/sample-data.js</code></td>
+<td>TreeList sample 由 <code>items</code> 改 <code>data</code> 並補 <code>id</code></td>
+</tr>
+<tr>
+<td><code>package.json</code></td>
+<td>新增 <code>test:ui-components</code></td>
+</tr>
+<tr>
+<td><code>CLAUDE.md</code> / <code>AGENTS.md</code> / <code>AGENT-UI-GUIDE.md</code></td>
+<td>對應說明</td>
+</tr>
+<tr>
+<td><code>.gitignore</code></td>
+<td>忽略 160MB 的 <code>.codegraph-cache/</code></td>
+</tr>
+</tbody>
+</table>
+</main>
+</body>
+</html>

@@ -24,31 +24,55 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <p>在已確認的連結深度範圍內安全爬取公開 HTTP/HTTPS 網站，回傳渲染後的視覺與功能線索，以及供下游生成器重製用的輔助原始碼提示。</p>
 <h2>能力</h2>
 <ul>
-<li>Tool ID: <code>site.crawl.source</code></li>
-<li>Capability ID: <code>site.crawl_source</code></li>
-<li>Route: <code>site_crawl_source</code></li>
-<li>Status: <code>beta</code></li>
-<li>Risk: medium</li>
+<li>
+<p>Tool ID: <code>site.crawl.source</code></p>
+</li>
+<li>
+<p>Capability ID: <code>site.crawl_source</code></p>
+</li>
+<li>
+<p>Route: <code>site_crawl_source</code></p>
+</li>
+<li>
+<p>Status: <code>beta</code></p>
+</li>
+<li>
+<p>Risk: medium</p>
+</li>
 </ul>
 <h2>執行前必要確認</h2>
 <p>執行前必須由使用者確認爬取深度：</p>
 <ul>
-<li>入口頁連結：<code>max_depth = 1</code></li>
-<li>兩次連結跳轉以內：<code>max_depth = 2</code></li>
-<li>N 次連結跳轉以內：<code>max_depth = N</code></li>
+<li>
+<p>入口頁連結：<code>max_depth = 1</code></p>
+</li>
+<li>
+<p>兩次連結跳轉以內：<code>max_depth = 2</code></p>
+</li>
+<li>
+<p>N 次連結跳轉以內：<code>max_depth = N</code></p>
+</li>
 </ul>
 <p>只爬根頁或目前頁面時，<code>max_depth = 0</code> 只在使用者明確要求的手動或安全診斷模式下使用。</p>
 <p>範圍以連結跳數為準，URL 實體路徑深度不作為網站層級定義。<code>link_depth</code> 會以廣度優先逐層爬取；若遇到安全預算限制，必須先保留較低層的完整性，再進入更深層。</p>
 <p>對學校、機構或多子網域網站，可用 <code>scope.allowed_host_suffixes</code> 納入公開的同站子網域，例如 <code>["ntub.edu.tw"]</code>。這仍會套用公開 HTTP/HTTPS 與私網阻擋規則，但允許 <code>www.ntub.edu.tw</code>、<code>sec.ntub.edu.tw</code> 等子網域被視為同一個爬取範圍。不得用來擴大到無關網域。</p>
 <h2>安全規則</h2>
 <ul>
-<li>只允許公開 HTTP/HTTPS URL。</li>
-<li>不使用登入、委派憑證、cookies、私人 session、localhost、loopback、link-local 或私有網路目標。</li>
-<li>執行中不得超出已確認的 same-origin 或 allowed same-site host-suffix 範圍。</li>
-<li>budgets 是安全限制，不可替代使用者確認的爬取深度。</li>
+<li>
+<p>只允許公開 HTTP/HTTPS URL。</p>
+</li>
+<li>
+<p>不使用登入、委派憑證、cookies、私人 session、localhost、loopback、link-local 或私有網路目標。</p>
+</li>
+<li>
+<p>執行中不得超出已確認的 same-origin 或 allowed same-site host-suffix 範圍。</p>
+</li>
+<li>
+<p>budgets 是安全限制，不可替代使用者確認的爬取深度。</p>
+</li>
 </ul>
 <h2>輸出契約</h2>
-<p>結果是 <code>SiteCrawlResult</code>，包含 <code>crawl_run_id</code>、<code>status</code>、<code>root</code>、<code>pages</code>、<code>excluded</code>、<code>extracted_model</code> 與 <code>limits</code>。</p>
+<p>結果是 <code>SiteCrawlResult</code>，包含 <code>crawl_run_id</code>、<code>status</code>、<code>root</code>、<code>pages</code>、<code>assets</code>、<code>excluded</code>、<code>redirects</code>、<code>extracted_model</code> 與 <code>limits</code>。</p>
 <p>頁面可包含渲染後的 visual snapshots：可見區塊、版面座標、文字階層、媒體、連結、表單與來源 selector。爬取可以包含比 visual snapshots 更多的頁面與 routes；<code>html</code>、<code>text_excerpt</code>、<code>links</code>、<code>forms</code> 等原始碼導向欄位仍只是輔助證據。</p>
 <p>輸出是渲染版面線索擷取，不是完整 CSS/assets 擷取、完整 JavaScript 行為擷取、登入流程擷取或等價 clone。</p>
 <h2>下游生成器規則</h2>

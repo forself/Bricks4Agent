@@ -86,6 +86,18 @@ const KIND_OVERRIDES = {
     Form: 'composite',
     TagInput: 'composite',
     EditableTable: 'composite',
+    // Generic component expansion (2026-09).
+    TimeGrid: 'composite',
+    DataGrid: 'composite',
+    ImportWizard: 'composite',
+    DateRangePicker: 'composite',
+    TimeRangePicker: 'composite',
+    Transfer: 'composite',
+    ConditionBuilder: 'composite',
+    Popover: 'container',
+    IssueList: 'composite',
+    NotificationCenter: 'composite',
+    ConflictNotice: 'composite',
 };
 
 const ROLE_OVERRIDES = {
@@ -145,7 +157,41 @@ const ROLE_OVERRIDES = {
     Alert: 'feedback',
     Form: 'container',
     EditableTable: 'data_view',
+    // Generic component expansion (2026-09).
+    TimeGrid: 'data_view',
+    DataGrid: 'data_view',
+    ImportWizard: 'workflow',
+    PrintLayout: 'layout',
+    Popover: 'container',
+    Countdown: 'feedback',
+    IssueList: 'feedback',
+    ApprovalTimeline: 'workflow',
+    NotificationCenter: 'feedback',
+    ConflictNotice: 'feedback',
 };
+
+// Components added in the 2026-09 expansion stay 'beta' until they have been used in production,
+// even though they ship with a README (which otherwise marks a component 'stable').
+const BETA_COMPONENTS = new Set([
+    'TimeGrid',
+    'DataGrid',
+    'ImportWizard',
+    'PrintLayout',
+    'RemoteSelect',
+    'DateRangePicker',
+    'TimeRangePicker',
+    'Transfer',
+    'ConditionBuilder',
+    'DateTimeRangePicker',
+    'Popover',
+    'Countdown',
+    'IssueList',
+    'ApprovalTimeline',
+    'NotificationCenter',
+    'ConflictNotice',
+    'QrCode',
+    'Barcode',
+]);
 
 const RUNTIME_ONLY_COMPONENTS = new Set(['PanelManager']);
 const MANUAL_ONLY_COMPONENTS = new Set([
@@ -258,7 +304,8 @@ function inferPageTypes(category, usageMode) {
     return DEFAULT_PAGE_TYPES;
 }
 
-function inferMaturity(location) {
+function inferMaturity(location, registryName) {
+    if (BETA_COMPONENTS.has(registryName)) return 'beta';
     return location?.docs_path ? 'stable' : 'beta';
 }
 
@@ -331,7 +378,7 @@ export function createManifestSkeleton(introspection, componentName) {
         kind: inferKind(location.category, componentName),
         source_path: location.source_path,
         docs_path: location.docs_path,
-        maturity: inferMaturity(location),
+        maturity: inferMaturity(location, componentName),
         generator: {
             usable: usageMode === 'field_direct' || usageMode === 'definition_explicit',
             usage_mode: usageMode,

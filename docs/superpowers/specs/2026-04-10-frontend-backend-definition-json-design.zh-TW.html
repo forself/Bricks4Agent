@@ -21,79 +21,169 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <body>
 <main>
 <h1>前後端 Definition JSON 設計</h1>
-<p>日期：2026-04-10<br>
-狀態：draft<br>
-來源：由 <code>templates/spa</code> 會員商務網站 proof 反推</p>
+<p>日期：2026-04-10  </p>
+<p>狀態：draft  </p>
+<p>來源：由 <code>templates/spa</code> 會員商務網站 proof 反推</p>
+<blockquote>
+<p><strong>實作現況（2026-09-26 核對）</strong></p>
+<ul>
+<li>實際 <code>modules</code> 為 <code>["authentication", "commerce"]</code>（<code>templates/spa/backend/definition/backend-definition.json:26-29</code>），不是下文的 <code>auth / shop_catalog / shop_order / admin_product</code>；materializer 只濾掉空字串、未做白名單檢查，空陣列時 N2/N3 預設補成 <code>["authentication", "commerce"]</code>（<code>templates/spa/backend/Generated/DefinitionBackendMaterializer.cs:38</code>、<code>:76</code>、<code>:103-111</code>）。</li>
+<li><code>backend.definition_file</code> 實際為相對路徑 <code>../../backend/definition/backend-definition.json</code>（<code>templates/spa/frontend/definition/architecture.json:14</code>）；三份檔案分別位於 <code>templates/spa/frontend/definition/</code> 與 <code>templates/spa/backend/definition/</code>。</li>
+<li><code>project.id</code> 實際為 <code>spa-commerce-proof</code>（<code>templates/spa/frontend/definition/architecture.json:4</code>），不是 <code>commerce-proof</code>。</li>
+</ul>
+</blockquote>
 <h2>1. 目標</h2>
 <p>本設計定義一組可機械化處理的 JSON contract，用來描述：</p>
 <ul>
-<li>前端 SPA 如何以既有元件庫與 generator/runtime 建立頁面</li>
-<li>後端如何以 <code>N1/N2/N3</code> 模板與白名單模組 materialize</li>
-<li>前後端如何在技術模型上解耦，但仍可作為單一整包交付</li>
+<li>
+<p>前端 SPA 如何以既有元件庫與 generator/runtime 建立頁面</p>
+</li>
+<li>
+<p>後端如何以 <code>N1/N2/N3</code> 模板與白名單模組 materialize</p>
+</li>
+<li>
+<p>前後端如何在技術模型上解耦，但仍可作為單一整包交付</p>
+</li>
 </ul>
 <p>本設計明確不追求：</p>
 <ul>
-<li>讓前端全站都自動由單一 page form/list/detail JSON 自然長出</li>
-<li>讓後端由自由文字 spec 直接產生</li>
-<li>讓 Markdown 擔任 canonical source</li>
+<li>
+<p>讓前端全站都自動由單一 page form/list/detail JSON 自然長出</p>
+</li>
+<li>
+<p>讓後端由自由文字 spec 直接產生</p>
+</li>
+<li>
+<p>讓 Markdown 擔任 canonical source</p>
+</li>
 </ul>
 <p>canonical source 應為：</p>
 <ul>
-<li><code>architecture.json</code></li>
-<li><code>frontend-definition.json</code></li>
-<li><code>backend-definition.json</code></li>
+<li>
+<p><code>architecture.json</code></p>
+</li>
+<li>
+<p><code>frontend-definition.json</code></p>
+</li>
+<li>
+<p><code>backend-definition.json</code></p>
+</li>
 </ul>
 <p>人類可讀文件如 <code>ARCHITECTURE.md</code>、<code>IMPLEMENTATION_PLAN.md</code>、<code>DEPLOYMENT.md</code> 應由上述 JSON 與固定規則衍生，不反向作為真相來源。</p>
 <h2>2. 設計依據</h2>
 <p>此設計不是憑空發明，而是由目前已可運作的 proof 反推而來。</p>
 <p>已驗證的 proof 具備：</p>
 <ul>
-<li>會員註冊 / 登入</li>
-<li>商品列表</li>
-<li>內嵌下單表單</li>
-<li>訂單歷史</li>
-<li>管理員登入</li>
-<li>後台商品列表</li>
-<li>後台新增商品</li>
-<li>資料持久化</li>
+<li>
+<p>會員註冊 / 登入</p>
+</li>
+<li>
+<p>商品列表</p>
+</li>
+<li>
+<p>內嵌下單表單</p>
+</li>
+<li>
+<p>訂單歷史</p>
+</li>
+<li>
+<p>管理員登入</p>
+</li>
+<li>
+<p>後台商品列表</p>
+</li>
+<li>
+<p>後台新增商品</p>
+</li>
+<li>
+<p>資料持久化</p>
+</li>
 </ul>
 <p>對應現有檔案：</p>
 <ul>
-<li>前端頁面：</li>
-<li><code>templates/spa/frontend/pages/HomePage.js</code></li>
-<li><code>templates/spa/frontend/pages/LoginPage.js</code></li>
-<li><code>templates/spa/frontend/pages/RegisterPage.js</code></li>
-<li><code>templates/spa/frontend/pages/products/ProductListPage.js</code></li>
-<li><code>templates/spa/frontend/pages/orders/OrderListPage.js</code></li>
-<li><code>templates/spa/frontend/pages/admin/AdminProductPage.js</code></li>
-<li><code>templates/spa/frontend/pages/admin/AdminProductCreatePage.js</code></li>
-<li><code>templates/spa/frontend/pages/admin/AdminProductEditPage.js</code></li>
-<li>runtime 定義頁：</li>
-<li><code>templates/spa/frontend/runtime/DefinitionRuntimePage.js</code></li>
-<li><code>templates/spa/frontend/pages/admin/productFormDefinition.js</code></li>
-<li>後端：</li>
-<li><code>templates/spa/backend/Program.cs</code></li>
-<li><code>templates/spa/backend/Data/AppDbContext.cs</code></li>
-<li><code>templates/spa/backend/Data/DbInitializer.cs</code></li>
+<li>
+<p>前端頁面：</p>
+</li>
+<li>
+<p><code>templates/spa/frontend/pages/HomePage.js</code></p>
+</li>
+<li>
+<p><code>templates/spa/frontend/pages/LoginPage.js</code></p>
+</li>
+<li>
+<p><code>templates/spa/frontend/pages/RegisterPage.js</code></p>
+</li>
+<li>
+<p><code>templates/spa/frontend/pages/products/ProductListPage.js</code></p>
+</li>
+<li>
+<p><code>templates/spa/frontend/pages/orders/OrderListPage.js</code></p>
+</li>
+<li>
+<p><code>templates/spa/frontend/pages/admin/AdminProductPage.js</code></p>
+</li>
+<li>
+<p><code>templates/spa/frontend/pages/admin/AdminProductCreatePage.js</code></p>
+</li>
+<li>
+<p><code>templates/spa/frontend/pages/admin/AdminProductEditPage.js</code></p>
+</li>
+<li>
+<p>runtime 定義頁：</p>
+</li>
+<li>
+<p><code>templates/spa/frontend/runtime/DefinitionRuntimePage.js</code></p>
+</li>
+<li>
+<p><code>templates/spa/frontend/pages/admin/productFormDefinition.js</code></p>
+</li>
+<li>
+<p>後端：</p>
+</li>
+<li>
+<p><code>templates/spa/backend/Program.cs</code></p>
+</li>
+<li>
+<p><code>templates/spa/backend/Data/AppDbContext.cs</code></p>
+</li>
+<li>
+<p><code>templates/spa/backend/Data/DbInitializer.cs</code></p>
+</li>
 </ul>
 <p>此 proof 已證明：</p>
 <ul>
-<li>前端不是全站都能只靠目前 <code>form/list/detail</code> page definition</li>
-<li>但後台表單類頁面已能由 definition runtime 支撐</li>
-<li>後端已能以簡單模板與 BaseOrm 完成 N2 類型的小型商務站</li>
+<li>
+<p>前端不是全站都能只靠目前 <code>form/list/detail</code> page definition</p>
+</li>
+<li>
+<p>但後台表單類頁面已能由 definition runtime 支撐</p>
+</li>
+<li>
+<p>後端已能以簡單模板與 BaseOrm 完成 N2 類型的小型商務站</p>
+</li>
 </ul>
 <p>因此 v1 JSON contract 必須同時容納：</p>
 <ul>
-<li>前端的 <code>route + surfaces</code> 模型</li>
-<li>後端的 <code>tier + template + modules</code> 模型</li>
+<li>
+<p>前端的 <code>route + surfaces</code> 模型</p>
+</li>
+<li>
+<p>後端的 <code>tier + template + modules</code> 模型</p>
+</li>
 </ul>
 <h2>3. Canonical 文件集合</h2>
 <h3>3.1 <code>architecture.json</code></h3>
 <p>用途：</p>
 <ul>
-<li>定義專案交付的最外層邊界</li>
-<li>指出是否有前端 / 後端</li>
-<li>指出對應 definition 檔案</li>
+<li>
+<p>定義專案交付的最外層邊界</p>
+</li>
+<li>
+<p>指出是否有前端 / 後端</p>
+</li>
+<li>
+<p>指出對應 definition 檔案</p>
+</li>
 </ul>
 <p>最小格式：</p>
 <pre><code class="language-json">{
@@ -119,8 +209,12 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 </code></pre>
 <p>固定規則：</p>
 <ul>
-<li><code>architecture.json</code> 不承載頁面、欄位、ORM、API 細節</li>
-<li>細節下沉到 frontend/backend definition</li>
+<li>
+<p><code>architecture.json</code> 不承載頁面、欄位、ORM、API 細節</p>
+</li>
+<li>
+<p>細節下沉到 frontend/backend definition</p>
+</li>
 </ul>
 <h3>3.2 <code>frontend-definition.json</code></h3>
 <p>用途：</p>
@@ -134,23 +228,45 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 </ul>
 <h2>4. 前端 Definition 模型</h2>
 <h3>4.1 核心原則</h3>
-<p>前端 definition 不應再侷限於單一 <code>form/list/detail/dashboard</code> page type。<br>
-從 proof 反推，真正需要的是：</p>
+<p>前端 definition 不應再侷限於單一 <code>form/list/detail/dashboard</code> page type。  </p>
+<p>從 proof 反推，真正需要的是：</p>
 <ul>
-<li><code>system_shell</code></li>
-<li><code>content_page</code></li>
-<li><code>auth_form_page</code></li>
-<li><code>resource_list_page</code></li>
-<li><code>resource_form_page</code></li>
-<li><code>embedded_action_form</code></li>
+<li>
+<p><code>system_shell</code></p>
+</li>
+<li>
+<p><code>content_page</code></p>
+</li>
+<li>
+<p><code>auth_form_page</code></p>
+</li>
+<li>
+<p><code>resource_list_page</code></p>
+</li>
+<li>
+<p><code>resource_form_page</code></p>
+</li>
+<li>
+<p><code>embedded_action_form</code></p>
+</li>
 </ul>
 <p>因此 v1 frontend definition 採：</p>
 <ul>
-<li><code>app</code></li>
-<li><code>auth</code></li>
-<li><code>navigation</code></li>
-<li><code>shared_resources</code></li>
-<li><code>routes[]</code></li>
+<li>
+<p><code>app</code></p>
+</li>
+<li>
+<p><code>auth</code></p>
+</li>
+<li>
+<p><code>navigation</code></p>
+</li>
+<li>
+<p><code>shared_resources</code></p>
+</li>
+<li>
+<p><code>routes[]</code></p>
+</li>
 </ul>
 <h3>4.2 最外層格式</h3>
 <pre><code class="language-json">{
@@ -186,8 +302,12 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 </code></pre>
 <p>固定規則：</p>
 <ul>
-<li><code>visible_for</code> 必須明確列出 role</li>
-<li>shell renderer 不自行猜測</li>
+<li>
+<p><code>visible_for</code> 必須明確列出 role</p>
+</li>
+<li>
+<p>shell renderer 不自行猜測</p>
+</li>
 </ul>
 <h3>4.4 <code>routes[]</code></h3>
 <p>每個 route 最小欄位：</p>
@@ -206,24 +326,46 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 </code></pre>
 <h4><code>page_kind</code> 固定枚舉</h4>
 <ul>
-<li><code>content_page</code></li>
-<li><code>auth_form_page</code></li>
-<li><code>resource_list_page</code></li>
-<li><code>resource_form_page</code></li>
-<li><code>detail_page</code></li>
+<li>
+<p><code>content_page</code></p>
+</li>
+<li>
+<p><code>auth_form_page</code></p>
+</li>
+<li>
+<p><code>resource_list_page</code></p>
+</li>
+<li>
+<p><code>resource_form_page</code></p>
+</li>
+<li>
+<p><code>detail_page</code></p>
+</li>
 </ul>
 <p><code>embedded_action_form</code> 不是獨立 route，而是 surface kind。</p>
 <h3>4.5 <code>surfaces[]</code></h3>
-<p><code>surfaces</code> 是本設計的核心。<br>
-因為像商品列表頁不是單一 widget，而是數個可獨立 materialize 的 UI 區塊。</p>
+<p><code>surfaces</code> 是本設計的核心。  </p>
+<p>因為像商品列表頁不是單一 widget，而是數個可獨立 materialize 的 UI 區塊。</p>
 <p><code>surface_kind</code> v1 固定枚舉：</p>
 <ul>
-<li><code>message_panel</code></li>
-<li><code>search_form</code></li>
-<li><code>data_table</code></li>
-<li><code>detail_panel</code></li>
-<li><code>embedded_action_form</code></li>
-<li><code>content_block</code></li>
+<li>
+<p><code>message_panel</code></p>
+</li>
+<li>
+<p><code>search_form</code></p>
+</li>
+<li>
+<p><code>data_table</code></p>
+</li>
+<li>
+<p><code>detail_panel</code></p>
+</li>
+<li>
+<p><code>embedded_action_form</code></p>
+</li>
+<li>
+<p><code>content_block</code></p>
+</li>
 </ul>
 <h4>4.5.1 <code>message_panel</code></h4>
 <pre><code class="language-json">{
@@ -323,41 +465,91 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <h3>5.1 核心原則</h3>
 <p>後端不是 JSON runtime 渲染，而是：</p>
 <ul>
-<li>選 <code>N1/N2/N3</code></li>
-<li>選 template</li>
-<li>套白名單模組</li>
-<li>materialize 成專案骨架</li>
+<li>
+<p>選 <code>N1/N2/N3</code></p>
+</li>
+<li>
+<p>選 template</p>
+</li>
+<li>
+<p>套白名單模組</p>
+</li>
+<li>
+<p>materialize 成專案骨架</p>
+</li>
 </ul>
 <h3>5.2 tier taxonomy</h3>
 <h4><code>N1</code></h4>
 <ul>
-<li>無持久化</li>
-<li>單層</li>
-<li>固定帶最小公開安全基線：</li>
-<li>validation</li>
-<li>exception handling</li>
-<li>audit/logging</li>
-<li>rate limit</li>
+<li>
+<p>無持久化</p>
+</li>
+<li>
+<p>單層</p>
+</li>
+<li>
+<p>固定帶最小公開安全基線：</p>
+</li>
+<li>
+<p>validation</p>
+</li>
+<li>
+<p>exception handling</p>
+</li>
+<li>
+<p>audit/logging</p>
+</li>
+<li>
+<p>rate limit</p>
+</li>
 </ul>
 <h4><code>N2</code></h4>
 <ul>
-<li>有持久化</li>
-<li>微型兩層</li>
-<li><code>BO + DAO</code> 壓在一起</li>
-<li>固定帶完整高資安基線：</li>
-<li>controller/API</li>
-<li>service</li>
-<li>repository/dao</li>
-<li>model/schema</li>
-<li>config</li>
-<li>auth</li>
-<li>validation</li>
-<li>security middleware</li>
+<li>
+<p>有持久化</p>
+</li>
+<li>
+<p>微型兩層</p>
+</li>
+<li>
+<p><code>BO + DAO</code> 壓在一起</p>
+</li>
+<li>
+<p>固定帶完整高資安基線：</p>
+</li>
+<li>
+<p>controller/API</p>
+</li>
+<li>
+<p>service</p>
+</li>
+<li>
+<p>repository/dao</p>
+</li>
+<li>
+<p>model/schema</p>
+</li>
+<li>
+<p>config</p>
+</li>
+<li>
+<p>auth</p>
+</li>
+<li>
+<p>validation</p>
+</li>
+<li>
+<p>security middleware</p>
+</li>
 </ul>
 <h4><code>N3</code></h4>
 <ul>
-<li>一般三層</li>
-<li>與 <code>N2</code> 相同安全基線，但分層更完整</li>
+<li>
+<p>一般三層</p>
+</li>
+<li>
+<p>與 <code>N2</code> 相同安全基線，但分層更完整</p>
+</li>
 </ul>
 <h3>5.3 最外層格式</h3>
 <pre><code class="language-json">{
@@ -383,27 +575,51 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <h3>5.4 <code>orm</code> 規則</h3>
 <p>固定規則：</p>
 <ul>
-<li>預設 ORM：<code>BaseOrm</code></li>
-<li>僅在業務邏輯足夠複雜且經明確判定時，才允許其他 ORM</li>
-<li>因此一般後端模組不應反覆審批 ORM 選型</li>
+<li>
+<p>預設 ORM：<code>BaseOrm</code></p>
+</li>
+<li>
+<p>僅在業務邏輯足夠複雜且經明確判定時，才允許其他 ORM</p>
+</li>
+<li>
+<p>因此一般後端模組不應反覆審批 ORM 選型</p>
+</li>
 </ul>
 <h3>5.5 <code>modules[]</code></h3>
-<p><code>modules</code> 為白名單集合，不接受自由字串語意發明。<br>
-此 proof 最小集合：</p>
+<p><code>modules</code> 為白名單集合，不接受自由字串語意發明。  </p>
+<p>此 proof 最小集合：</p>
 <ul>
-<li><code>auth</code></li>
-<li><code>shop_catalog</code></li>
-<li><code>shop_order</code></li>
-<li><code>admin_product</code></li>
+<li>
+<p><code>auth</code></p>
+</li>
+<li>
+<p><code>shop_catalog</code></p>
+</li>
+<li>
+<p><code>shop_order</code></p>
+</li>
+<li>
+<p><code>admin_product</code></p>
+</li>
 </ul>
 <h3>5.6 <code>entities[]</code></h3>
 <p>此 proof 的 N2 commerce 後端至少需要：</p>
 <ul>
-<li><code>User</code></li>
-<li><code>Category</code></li>
-<li><code>Product</code></li>
-<li><code>Order</code></li>
-<li><code>OrderItem</code></li>
+<li>
+<p><code>User</code></p>
+</li>
+<li>
+<p><code>Category</code></p>
+</li>
+<li>
+<p><code>Product</code></p>
+</li>
+<li>
+<p><code>Order</code></p>
+</li>
+<li>
+<p><code>OrderItem</code></p>
+</li>
 </ul>
 <h3>5.7 <code>seed</code></h3>
 <pre><code class="language-json">{
@@ -575,66 +791,126 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <h2>7. 與現有 generator/runtime 的關係</h2>
 <h3>7.1 可直接沿用的部分</h3>
 <ul>
-<li><code>resource_form_page</code></li>
-<li>可映射到既有 <code>DefinitionRuntimePage</code></li>
-<li>現有元件庫的 field types</li>
-<li>metadata 正規化後的 component catalog</li>
+<li>
+<p><code>resource_form_page</code></p>
+</li>
+<li>
+<p>可映射到既有 <code>DefinitionRuntimePage</code></p>
+</li>
+<li>
+<p>現有元件庫的 field types</p>
+</li>
+<li>
+<p>metadata 正規化後的 component catalog</p>
+</li>
 </ul>
 <h3>7.2 需要補強的部分</h3>
 <ul>
-<li><code>resource_list_page</code> 目前不是完整 JSON runtime page</li>
-<li>仍需要 <code>search_form + data_table + row_actions</code> 的 surface materializer</li>
-<li><code>embedded_action_form</code></li>
-<li>目前是手寫頁面邏輯，需要 JSON 化</li>
-<li><code>system_shell</code></li>
-<li>目前由 layout/page JS 寫死，需要抽成可描述的 shell contract</li>
+<li>
+<p><code>resource_list_page</code> 目前不是完整 JSON runtime page</p>
+</li>
+<li>
+<p>仍需要 <code>search_form + data_table + row_actions</code> 的 surface materializer</p>
+</li>
+<li>
+<p><code>embedded_action_form</code></p>
+</li>
+<li>
+<p>目前是手寫頁面邏輯，需要 JSON 化</p>
+</li>
+<li>
+<p><code>system_shell</code></p>
+</li>
+<li>
+<p>目前由 layout/page JS 寫死，需要抽成可描述的 shell contract</p>
+</li>
 </ul>
 <h2>8. 不採用的方向</h2>
 <h3>8.1 不採單一 page JSON 包打天下</h3>
 <p>理由：</p>
 <ul>
-<li>proof 已顯示真實頁面是多 surface，而不是單一 form/list/detail</li>
-<li>若硬塞進單一 page type，只會把 schema 變得又亂又假</li>
+<li>
+<p>proof 已顯示真實頁面是多 surface，而不是單一 form/list/detail</p>
+</li>
+<li>
+<p>若硬塞進單一 page type，只會把 schema 變得又亂又假</p>
+</li>
 </ul>
 <h3>8.2 不採 Markdown 作 canonical source</h3>
 <p>理由：</p>
 <ul>
-<li>難以機械驗證</li>
-<li>容易漂移</li>
-<li>不適合 deterministic materialization</li>
+<li>
+<p>難以機械驗證</p>
+</li>
+<li>
+<p>容易漂移</p>
+</li>
+<li>
+<p>不適合 deterministic materialization</p>
+</li>
 </ul>
 <h3>8.3 不讓 backend 走 JSON runtime render</h3>
 <p>理由：</p>
 <ul>
-<li>後端更適合 template + module composition</li>
-<li>與現有 <code>templates/spa/backend</code> 的真實能力一致</li>
+<li>
+<p>後端更適合 template + module composition</p>
+</li>
+<li>
+<p>與現有 <code>templates/spa/backend</code> 的真實能力一致</p>
+</li>
 </ul>
 <h2>9. 下一步</h2>
 <p>下一步應分成三件事：</p>
 <ol>
-<li>凍結 <code>architecture.json</code> / <code>frontend-definition.json</code> / <code>backend-definition.json</code> schema</li>
-<li>寫 <code>resource_list_page</code> 與 <code>embedded_action_form</code> 的 deterministic materializer</li>
-<li>讓這次會員商務站 proof 可以直接改由這三份 JSON materialize 出來，而不是混合手寫頁面</li>
+<li>
+<p>凍結 <code>architecture.json</code> / <code>frontend-definition.json</code> / <code>backend-definition.json</code> schema</p>
+</li>
+<li>
+<p>寫 <code>resource_list_page</code> 與 <code>embedded_action_form</code> 的 deterministic materializer</p>
+</li>
+<li>
+<p>讓這次會員商務站 proof 可以直接改由這三份 JSON materialize 出來，而不是混合手寫頁面</p>
+</li>
 </ol>
 <h2>10. 評價</h2>
 <p>這套 contract 的價值在於：</p>
 <ul>
-<li>它不是理想化 DSL</li>
-<li>它是從已能跑通的會員商務站 proof 反推</li>
-<li>它保留前後端非對稱模型</li>
-<li>它給未來代理一個真實可落地的結構化目標</li>
+<li>
+<p>它不是理想化 DSL</p>
+</li>
+<li>
+<p>它是從已能跑通的會員商務站 proof 反推</p>
+</li>
+<li>
+<p>它保留前後端非對稱模型</p>
+</li>
+<li>
+<p>它給未來代理一個真實可落地的結構化目標</p>
+</li>
 </ul>
 <p>它目前的弱點也很清楚：</p>
 <ul>
-<li>前端 list/shell/action 還需要補 deterministic materializer</li>
-<li>現有 runtime 仍偏 form-oriented</li>
+<li>
+<p>前端 list/shell/action 還需要補 deterministic materializer</p>
+</li>
+<li>
+<p>現有 runtime 仍偏 form-oriented</p>
+</li>
 </ul>
 <h2>Implementation Status</h2>
 <ul>
-<li><code>architecture.json</code> 已作為 proof app 的 bootstrap 入口，前端在啟動時會先載入 architecture 與 frontend definition。</li>
-<li><code>frontend-definition.json</code> 已接入 proof app 的 shell、導航、route bootstrap 與 shared resources。</li>
-<li><code>backend-definition.json</code> 已接入 backend startup，會被 materialize 後註冊進 DI，並參與 seed/bootstrap 基線。</li>
-<li>目前 proof 已驗證前後端定義檔可支撐小型會員商務網站，但 frontend <code>route + surfaces</code> 仍是 proof 導向的最小 materialization，尚未覆蓋完整通用頁型。</li>
+<li>
+<p><code>architecture.json</code> 已作為 proof app 的 bootstrap 入口，前端在啟動時會先載入 architecture 與 frontend definition。</p>
+</li>
+<li>
+<p><code>frontend-definition.json</code> 已接入 proof app 的 shell、導航、route bootstrap 與 shared resources。</p>
+</li>
+<li>
+<p><code>backend-definition.json</code> 已接入 backend startup，會被 materialize 後註冊進 DI，並參與 seed/bootstrap 基線。</p>
+</li>
+<li>
+<p>目前 proof 已驗證前後端定義檔可支撐小型會員商務網站，但 frontend <code>route + surfaces</code> 仍是 proof 導向的最小 materialization，尚未覆蓋完整通用頁型。</p>
+</li>
 </ul>
 <p>但即使如此，這套 JSON contract 已比目前單純 <code>PageDefinition</code> 更接近真實網站開發需求。</p>
 </main>

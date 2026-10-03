@@ -1,12 +1,20 @@
 # 受控自主 AI 系統技術設計
 
-來源文件：[受控自主AI系統設計.docx](/c:/Users/Lenovo/Downloads/受控自主AI系統設計.docx)
+來源文件：`受控自主AI系統設計.docx`(作者本機文件,未納入本 repo)
 
 版本：v0.1
 
 日期：2026-03-13
 
 狀態：Draft
+
+> **實作現況（2026-09-26 核對）**:本文是設計基線,broker 實作(`packages/csharp/broker`、`packages/csharp/broker-core`)在以下幾點與本文不同,以程式為準:
+>
+> - **API(§10)**:全部掛在 `/api/v1` 群組下([Program.cs:601](../../packages/csharp/broker/Program.cs)),且以 POST 動詞路由為主,而非 REST 資源路徑 —— 例如 `tasks/create|query|cancel`([TaskEndpoints.cs:12-64](../../packages/csharp/broker/Endpoints/TaskEndpoints.cs))、`sessions/register|heartbeat|close`([SessionEndpoints.cs:16-161](../../packages/csharp/broker/Endpoints/SessionEndpoints.cs),不是 `container-sessions/{id}/…`)、`execution-requests/submit|query`([ExecutionEndpoints.cs:12-46](../../packages/csharp/broker/Endpoints/ExecutionEndpoints.cs))、`context/write|read|read-by-key|list|history`([ContextEndpoints.cs:12-90](../../packages/csharp/broker/Endpoints/ContextEndpoints.cs))、`audit/query|trace|verify`([AuditEndpoints.cs:11-54](../../packages/csharp/broker/Endpoints/AuditEndpoints.cs))。**沒有** `work-items` API、`approval-requests` API 與 `audit/replay`;審批改由簽章連結驅動的 `user/approvals`(列表 / `approve` / `reject`,[UserApprovalEndpoints.cs:16-42](../../packages/csharp/broker/Endpoints/UserApprovalEndpoints.cs))與管理員層的 `local-admin/approvals`([LocalAdminEndpoints.cs:933-953](../../packages/csharp/broker/Endpoints/LocalAdminEndpoints.cs))。
+> - **資料表(§11.1)**:實際清單見 [BrokerDbInitializer.cs:34-71](../../packages/csharp/broker-core/Data/BrokerDbInitializer.cs)。沒有 `principal_credentials`、`task_assignments`、`context_documents`/`context_versions`(改為單一 `SharedContextEntry`)、`artifacts`;另有本文未列的 Plan/Checkpoint/Observation、Browser 綁定、Portal/LocalAdmin 憑證與 session、Google Drive、向量索引、`SystemEpoch` 等表。
+> - **PDP 輸出(§6.2)**:`PolicyDecision` 只有 `Allow` / `Deny` / `RequireApproval`([Enums.cs:31-36](../../packages/csharp/broker-core/Models/Enums.cs)),沒有 `require_elevation` / `degraded_allow`。
+> - **Token 格式(§12.3)**:採 HMAC-SHA256(HS256)簽章的短時效 JWT([ScopedTokenService.cs:83](../../packages/csharp/broker-core/Services/ScopedTokenService.cs)),未使用 PASETO;撤銷走 `Revocation` 表 + epoch claim。
+> - **部署 / 儲存(§16)**:broker 以 BaseOrm 的 `BrokerDb` 接 SQLite([Program.cs:27-29](../../packages/csharp/broker/Program.cs)),非 PostgreSQL;政策引擎為自研 [PolicyEngine.cs](../../packages/csharp/broker-core/Services/PolicyEngine.cs),非 OPA;worker 容器以 Docker/Podman CLI 管理([ContainerManager.cs](../../packages/csharp/function-pool/Container/ContainerManager.cs)),非 Kubernetes。
 
 ## 1. 目的
 

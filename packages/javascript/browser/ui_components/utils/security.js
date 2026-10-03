@@ -232,6 +232,14 @@ export function sanitizeHTML(html) {
                     node.remove();
                     return;
                 } else {
+                    // 先清洗子節點再拆殼：拆殼後子節點會移到本節點之前，而呼叫端的
+                    // 迭代已越過該位置，若不先清洗就會原樣留下（例如 <section><img onerror>）。
+                    let inner = node.firstChild;
+                    while (inner) {
+                        const nextInner = inner.nextSibling;
+                        clean(inner);
+                        inner = nextInner;
+                    }
                     while (node.firstChild) {
                         node.parentNode.insertBefore(node.firstChild, node);
                     }

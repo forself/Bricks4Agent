@@ -2,7 +2,25 @@
 
 ## Status
 
-Draft repository design note.
+Repository design note — Phases 0–4 implemented; Phase 5 open.
+
+### Implementation status (checked 2026-09-26)
+
+- Phases 0–4 are migrated: the shared helper
+  [`utils/component-state.js`](../../packages/javascript/browser/ui_components/utils/component-state.js)
+  exists, and every Phase 1–4 component listed below (plus `PhoneListInput`)
+  is gated by `npm run validate:ui-state`
+  ([tools/scripts/validate-ui-state.mjs](../../tools/scripts/validate-ui-state.mjs)).
+
+- Phase 5 (`BatchUploader`, `WebTextEditor`, `WebPainter`, `OSMMapEditor`) is
+  not migrated: none of them uses `createComponentState` or exposes
+  `snapshot()` / `send()`.
+
+- The validator's test labels number the phases one lower than this document:
+  `NumberInput`/`Checkbox` are labelled "phase 1"
+  (validate-ui-state.mjs:137, :178), `Dropdown`…`MultiSelectDropdown`
+  "phase 2" (:218–:359), and the composite inputs "phase 3" (:411–:551); the
+  Phase 1 pilots are labelled "pilot".
 
 This document describes how `ui_components` may evolve toward explicit
 state-machine-based components without overreaching into generator, app, or

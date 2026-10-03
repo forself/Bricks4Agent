@@ -73,8 +73,12 @@ const avatar = new Avatar(options);
 </table>
 <h3>靜態屬性</h3>
 <ul>
-<li><code>Avatar.SIZES</code> — 尺寸對應 px 映射表</li>
-<li><code>Avatar.COLORS</code> — 回退色彩池（依名稱 hash 選色）</li>
+<li>
+<p><code>Avatar.SIZES</code> — 尺寸對應 px 映射表</p>
+</li>
+<li>
+<p><code>Avatar.COLORS</code> — 回退色彩池（依名稱 hash 選色）</p>
+</li>
 </ul>
 <h3>方法</h3>
 <table>
@@ -89,7 +93,7 @@ const avatar = new Avatar(options);
 <tr>
 <td><code>toHTML()</code></td>
 <td><code>string</code></td>
-<td>產生 HTML 字串，可直接嵌入 template</td>
+<td>產生 HTML 字串，可嵌入 template；嵌入 DOM 後需呼叫 <code>Avatar.applyStyles(container)</code> 套用樣式，且不會綁定 <code>onClick</code></td>
 </tr>
 <tr>
 <td><code>mount(container)</code></td>
@@ -109,7 +113,7 @@ const avatar = new Avatar(options);
 </tbody>
 </table>
 <h3>使用範例</h3>
-<pre><code class="language-js">import { Avatar } from '../packages/javascript/browser/ui_components/social/Avatar/Avatar.js';
+<pre><code class="language-js">import { Avatar } from './Avatar.js';
 
 const avatar = new Avatar({
     src: '/photos/user1.jpg',

@@ -6,6 +6,12 @@
 
 語言：繁體中文
 
+> **實作現況（2026-09-26 核對）**
+>
+> - broker 仍在程序內直接做 TDX 查詢：broker 自己註冊 `TdxApiService`（`packages/csharp/broker/Program.cs:203`），`InProcessDispatcher` 處理 `transport_query` 與舊的 `travel_*_search` routes（`packages/csharp/broker/Adapters/InProcessDispatcher.cs:110-114`），`transport_query` 經 `TransportQueryCompatibilityService` 呼叫 TDX（`packages/csharp/broker/Adapters/InProcessDispatcher.cs:1995`）；非 strict 模式下無 worker 時由 `FallbackDispatcher` 降級到此路徑（`packages/csharp/broker/Program.cs:340`）。`packages/csharp/workers/transport-tdx-worker/` 雖已存在，但並未取代 broker 內的 TDX 邏輯。
+> - worker 註冊 payload 沒有 `provider`、`supported_modes` 欄位，只有 `worker_id/worker_type/capabilities/max_concurrent` 與簽章欄位（`packages/csharp/worker-sdk/WorkerHost.cs:157-167`）；broker registry 也不記錄這兩項。
+> - `transport.resolve` 未實作；worker 只註冊 `transport.query`（`packages/csharp/workers/transport-tdx-worker/Handlers/TransportQueryHandler.cs:16`）。
+
 ## 1. 目標
 
 本規格定義 `transport-tdx worker` 的架構邊界、broker contract、查詢充分性判定、缺資訊追問、範圍回答、以及第一階段導入方式。

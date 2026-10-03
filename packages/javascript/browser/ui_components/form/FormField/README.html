@@ -33,7 +33,8 @@ const field = new FormField({
     error: '',                  // 錯誤訊息
     hint: '請輸入 3-20 字元',    // 提示文字
     component: textInputInstance, // 內部元件實例（需有 mount/destroy）
-    col: 6                      // CSS grid span 欄寬 1-12，null=不設定
+    col: 6,                     // CSS grid span 欄寬 1-12，null=不設定
+    markControl: false          // true 時 setError 也標示內部元件（紅框、aria-invalid），文字仍只由 FormField 顯示
 });
 </code></pre>
 <h3>方法</h3>
@@ -55,7 +56,7 @@ const field = new FormField({
 </tr>
 <tr>
 <td><code>setError(msg)</code></td>
-<td>設定錯誤訊息，空字串清除</td>
+<td>設定錯誤訊息，空字串清除；<code>markControl: true</code> 時一併呼叫內部元件的 <code>setError(msg, { display: false })</code></td>
 </tr>
 <tr>
 <td><code>clearError()</code></td>

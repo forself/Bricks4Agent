@@ -48,7 +48,7 @@ const timeline = new Timeline(options);
 ### 使用範例
 
 ```js
-import { Timeline } from '../packages/javascript/browser/ui_components/social/Timeline/Timeline.js';
+import { Timeline } from './Timeline.js';
 
 const timeline = new Timeline({
     items: [

@@ -22,21 +22,53 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <main>
 <h1>Component State Contract</h1>
 <h2>Status</h2>
-<p>Draft repository design note.</p>
+<p>Repository design note — Phases 0–4 implemented; Phase 5 open.</p>
+<h3>Implementation status (checked 2026-09-26)</h3>
+<ul>
+<li>
+<p>Phases 0–4 are migrated: the shared helper
+  <a href="../../packages/javascript/browser/ui_components/utils/component-state.js"><code>utils/component-state.js</code></a>
+  exists, and every Phase 1–4 component listed below (plus <code>PhoneListInput</code>)
+  is gated by <code>npm run validate:ui-state</code>
+  (<a href="../../tools/scripts/validate-ui-state.mjs">tools/scripts/validate-ui-state.mjs</a>).</p>
+</li>
+<li>
+<p>Phase 5 (<code>BatchUploader</code>, <code>WebTextEditor</code>, <code>WebPainter</code>, <code>OSMMapEditor</code>) is
+  not migrated: none of them uses <code>createComponentState</code> or exposes
+  <code>snapshot()</code> / <code>send()</code>.</p>
+</li>
+<li>
+<p>The validator's test labels number the phases one lower than this document:
+  <code>NumberInput</code>/<code>Checkbox</code> are labelled "phase 1"
+  (validate-ui-state.mjs:137, :178), <code>Dropdown</code>…<code>MultiSelectDropdown</code>
+  "phase 2" (:218–:359), and the composite inputs "phase 3" (:411–:551); the
+  Phase 1 pilots are labelled "pilot".</p>
+</li>
+</ul>
 <p>This document describes how <code>ui_components</code> may evolve toward explicit
 state-machine-based components without overreaching into generator, app, or
 agent policy.</p>
 <h2>Scope</h2>
 <p>This document applies only to:</p>
 <ul>
-<li><code>packages/javascript/browser/ui_components</code></li>
-<li>the internal implementation model of components owned by the library</li>
+<li>
+<p><code>packages/javascript/browser/ui_components</code></p>
+</li>
+<li>
+<p>the internal implementation model of components owned by the library</p>
+</li>
 </ul>
 <p>This document does not define:</p>
 <ul>
-<li>how applications must use components</li>
-<li>how generators must emit component calls</li>
-<li>how agents must invoke components</li>
+<li>
+<p>how applications must use components</p>
+</li>
+<li>
+<p>how generators must emit component calls</p>
+</li>
+<li>
+<p>how agents must invoke components</p>
+</li>
 </ul>
 <p>Those concerns belong to other layers.</p>
 <h2>Core Position</h2>
@@ -44,15 +76,27 @@ agent policy.</p>
 <p>That does not mean every component must use the same heavyweight FSM pattern.
 It means each component must have:</p>
 <ul>
-<li>a current state</li>
-<li>explicit transitions</li>
-<li>render output that is a projection of that state</li>
+<li>
+<p>a current state</p>
+</li>
+<li>
+<p>explicit transitions</p>
+</li>
+<li>
+<p>render output that is a projection of that state</p>
+</li>
 </ul>
 <p>The main difference between components is complexity:</p>
 <ul>
-<li>some components are mostly externally driven</li>
-<li>some components are internally interactive</li>
-<li>some components orchestrate child component state</li>
+<li>
+<p>some components are mostly externally driven</p>
+</li>
+<li>
+<p>some components are internally interactive</p>
+</li>
+<li>
+<p>some components orchestrate child component state</p>
+</li>
 </ul>
 <h2>Non-Negotiable Constraints</h2>
 <h3>1. State-machine work must not reduce component self-containment</h3>
@@ -62,15 +106,27 @@ component or of library-owned local helpers.</p>
 or external machine registries just to use a component.</p>
 <p>Accepted:</p>
 <ul>
-<li>component-local transitions</li>
-<li>library-owned shared state helpers</li>
-<li>same-folder helpers when they reduce duplication without hiding behavior</li>
+<li>
+<p>component-local transitions</p>
+</li>
+<li>
+<p>library-owned shared state helpers</p>
+</li>
+<li>
+<p>same-folder helpers when they reduce duplication without hiding behavior</p>
+</li>
 </ul>
 <p>Not accepted:</p>
 <ul>
-<li>consumer-supplied machine schema as a requirement for normal use</li>
-<li>remote registries or app-owned machine orchestration as a prerequisite</li>
-<li>thin wrapper components whose real behavior lives somewhere else</li>
+<li>
+<p>consumer-supplied machine schema as a requirement for normal use</p>
+</li>
+<li>
+<p>remote registries or app-owned machine orchestration as a prerequisite</p>
+</li>
+<li>
+<p>thin wrapper components whose real behavior lives somewhere else</p>
+</li>
 </ul>
 <h3>2. Early phases must preserve generator compatibility</h3>
 <p>For the migration waves that touch generator-facing components, existing public
@@ -78,12 +134,24 @@ methods remain the compatibility layer.</p>
 <p>At minimum, migrated field components must keep working through the current
 generator/runtime call surface:</p>
 <ul>
-<li><code>mount</code></li>
-<li><code>destroy</code></li>
-<li><code>getValue</code></li>
-<li><code>setValue</code></li>
-<li><code>setDisabled</code></li>
-<li><code>clear</code></li>
+<li>
+<p><code>mount</code></p>
+</li>
+<li>
+<p><code>destroy</code></p>
+</li>
+<li>
+<p><code>getValue</code></p>
+</li>
+<li>
+<p><code>setValue</code></p>
+</li>
+<li>
+<p><code>setDisabled</code></p>
+</li>
+<li>
+<p><code>clear</code></p>
+</li>
 </ul>
 <p>New state-machine methods such as <code>snapshot()</code> and <code>send()</code> may be added, but
 the generator must not need to know them in the early phases.</p>
@@ -97,83 +165,157 @@ generator or application layer.</p>
 <p>All migrated components should use the smallest honest subset of these state
 regions:</p>
 <ul>
-<li><code>lifecycle</code>: <code>created | mounted | destroyed</code></li>
-<li><code>visibility</code>: <code>visible | hidden</code></li>
-<li><code>availability</code>: <code>enabled | disabled</code></li>
-<li><code>interaction</code>: such as <code>idle | focused | open | active</code></li>
-<li><code>value</code></li>
-<li><code>validation</code></li>
-<li><code>async</code></li>
+<li>
+<p><code>lifecycle</code>: <code>created | mounted | destroyed</code></p>
+</li>
+<li>
+<p><code>visibility</code>: <code>visible | hidden</code></p>
+</li>
+<li>
+<p><code>availability</code>: <code>enabled | disabled</code></p>
+</li>
+<li>
+<p><code>interaction</code>: such as <code>idle | focused | open | active</code></p>
+</li>
+<li>
+<p><code>value</code></p>
+</li>
+<li>
+<p><code>validation</code></p>
+</li>
+<li>
+<p><code>async</code></p>
+</li>
 </ul>
 <p>Not every component needs every region.</p>
 <h2>Required Public Contract For Migrated Components</h2>
 <p>Each migrated component should expose:</p>
 <ul>
-<li><code>snapshot()</code></li>
-<li><code>send(event, payload?)</code></li>
+<li>
+<p><code>snapshot()</code></p>
+</li>
+<li>
+<p><code>send(event, payload?)</code></p>
+</li>
 </ul>
 <p>But legacy public methods remain valid and should map to those transitions.</p>
 <p>Examples:</p>
 <ul>
-<li><code>setValue(value)</code> -&gt; <code>send('SET_VALUE', { value })</code></li>
-<li><code>setDisabled(true)</code> -&gt; <code>send('SET_DISABLED', { disabled: true })</code></li>
-<li><code>clear()</code> -&gt; <code>send('CLEAR')</code></li>
-<li><code>mount(container)</code> -&gt; append DOM + <code>send('MOUNT')</code></li>
+<li>
+<p><code>setValue(value)</code> -&gt; <code>send('SET_VALUE', { value })</code></p>
+</li>
+<li>
+<p><code>setDisabled(true)</code> -&gt; <code>send('SET_DISABLED', { disabled: true })</code></p>
+</li>
+<li>
+<p><code>clear()</code> -&gt; <code>send('CLEAR')</code></p>
+</li>
+<li>
+<p><code>mount(container)</code> -&gt; append DOM + <code>send('MOUNT')</code></p>
+</li>
 </ul>
 <h2>Migration Strategy</h2>
 <h3>Phase 0</h3>
 <ul>
-<li>define the contract</li>
-<li>add a minimal library-owned state helper</li>
-<li>add baseline tests for the helper and pilot components</li>
+<li>
+<p>define the contract</p>
+</li>
+<li>
+<p>add a minimal library-owned state helper</p>
+</li>
+<li>
+<p>add baseline tests for the helper and pilot components</p>
+</li>
 </ul>
 <h3>Phase 1</h3>
 <p>Pilot components:</p>
 <ul>
-<li>one simple display component</li>
-<li>one generator-facing field component</li>
+<li>
+<p>one simple display component</p>
+</li>
+<li>
+<p>one generator-facing field component</p>
+</li>
 </ul>
 <p>Current pilot choice:</p>
 <ul>
-<li><code>Badge</code></li>
-<li><code>TextInput</code></li>
+<li>
+<p><code>Badge</code></p>
+</li>
+<li>
+<p><code>TextInput</code></p>
+</li>
 </ul>
 <h3>Phase 2</h3>
 <p>Simple field components:</p>
 <ul>
-<li><code>NumberInput</code></li>
-<li><code>Checkbox</code></li>
+<li>
+<p><code>NumberInput</code></p>
+</li>
+<li>
+<p><code>Checkbox</code></p>
+</li>
 </ul>
 <h3>Phase 3</h3>
 <p>Interactive field components:</p>
 <ul>
-<li><code>Dropdown</code></li>
-<li><code>DatePicker</code></li>
-<li><code>TimePicker</code></li>
-<li><code>MultiSelectDropdown</code></li>
+<li>
+<p><code>Dropdown</code></p>
+</li>
+<li>
+<p><code>DatePicker</code></p>
+</li>
+<li>
+<p><code>TimePicker</code></p>
+</li>
+<li>
+<p><code>MultiSelectDropdown</code></p>
+</li>
 </ul>
 <h3>Phase 4</h3>
 <p>Composite orchestrators:</p>
 <ul>
-<li><code>ChainedInput</code></li>
-<li><code>DateTimeInput</code></li>
-<li><code>ListInput</code></li>
-<li>related composite inputs</li>
+<li>
+<p><code>ChainedInput</code></p>
+</li>
+<li>
+<p><code>DateTimeInput</code></p>
+</li>
+<li>
+<p><code>ListInput</code></p>
+</li>
+<li>
+<p>related composite inputs</p>
+</li>
 </ul>
 <h3>Phase 5</h3>
 <p>High-complexity async/editor components:</p>
 <ul>
-<li><code>BatchUploader</code></li>
-<li><code>WebTextEditor</code></li>
-<li><code>WebPainter</code></li>
-<li><code>OSMMapEditor</code></li>
+<li>
+<p><code>BatchUploader</code></p>
+</li>
+<li>
+<p><code>WebTextEditor</code></p>
+</li>
+<li>
+<p><code>WebPainter</code></p>
+</li>
+<li>
+<p><code>OSMMapEditor</code></p>
+</li>
 </ul>
 <h2>Checkpoints</h2>
 <p>Every phase must keep these gates green:</p>
 <ul>
-<li>existing UI library validation</li>
-<li>explicit state tests for newly migrated components</li>
-<li>legacy API compatibility checks for generator-facing components</li>
+<li>
+<p>existing UI library validation</p>
+</li>
+<li>
+<p>explicit state tests for newly migrated components</p>
+</li>
+<li>
+<p>legacy API compatibility checks for generator-facing components</p>
+</li>
 </ul>
 <p>If a phase needs generator changes just to keep current behavior working, it is
 too early or too broad.</p>

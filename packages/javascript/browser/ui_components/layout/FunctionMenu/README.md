@@ -18,7 +18,7 @@
 
 - ✅ **工具提示**: 支援 tooltip 提示文字
 
-- ✅ **響應式設計**: 自動適配不同螢幕尺寸
+- ✅ **響應式設計**: 水平布局在小螢幕改為直向排列（grid 欄數由 inline style 固定為 `columns`，不會隨螢幕縮減）
 
 - ✅ **深色模式**: 支援深色模式
 
@@ -30,13 +30,15 @@
 <!DOCTYPE html>
 <html>
 <head>
+    <link rel="stylesheet" href="../../theme.css">
     <link rel="stylesheet" href="FunctionMenu.css">
 </head>
 <body>
     <div id="my-menu"></div>
 
-    <script src="FunctionMenu.js"></script>
-    <script>
+    <script type="module">
+        import { FunctionMenu } from './FunctionMenu.js';
+
         const menu = new FunctionMenu({
             containerId: 'my-menu',
             layout: 'horizontal',
@@ -65,7 +67,7 @@
 
 ```javascript
 const menu = new FunctionMenu({
-    // 容器元素 ID（必填）
+    // 容器元素 ID（預設: 'function-menu'）
     containerId: 'my-menu',
 
     // 布局方式: 'horizontal', 'vertical', 'grid'（預設: 'horizontal'）
@@ -341,17 +343,17 @@ if (!hasPermission('delete')) {
 ```css
 /* 自訂按鈕背景 */
 .menu-item-button {
-    background: #f0f0f0;
+    background: var(--cl-bg-subtle);
 }
 
 /* 自訂懸停效果 */
 .menu-item-button:hover {
-    background: #e0e0e0;
+    background: var(--cl-bg-hover);
 }
 
 /* 自訂圖示顏色 */
 .menu-item-icon i {
-    color: #ff6b6b;
+    color: var(--cl-danger);
 }
 ```
 
@@ -375,7 +377,7 @@ if (!hasPermission('delete')) {
 
 2. **圖示依賴**: 使用圖示需引入 Font Awesome
 
-3. **響應式**: 在小螢幕上自動調整布局
+3. **響應式**: 水平布局在小螢幕改為直向排列；grid 布局的欄數由 inline style 固定為 `columns`，CSS 的斷點欄數不會生效
 
 4. **點擊事件**: 支援單個項目回調和全域回調
 

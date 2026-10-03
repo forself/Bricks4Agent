@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Barcode 條碼產生器</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Barcode 條碼產生器</h1>
+<p>把文字畫成一維條碼。純 Canvas、零依賴，編碼器自行實作。</p>
+<table>
+<thead>
+<tr><th>格式</th><th>可編碼的內容</th><th>常見用途</th></tr>
+</thead>
+<tbody>
+<tr><td><code>code128</code>（預設）</td><td>ASCII 0～127；連續數字自動用 C 字集縮短</td><td>學號、單據編號、資產標籤</td></tr>
+<tr><td><code>code39</code></td><td>0-9、大寫 A-Z、<code>-</code> <code>.</code> 空白 <code>$</code> <code>/</code> <code>+</code> <code>%</code>；可附 mod 43 檢查字元</td><td>台灣超商代收與郵局劃撥的繳費單</td></tr>
+<tr><td><code>ean13</code></td><td>12 碼自動補檢查碼，或 13 碼驗證檢查碼</td><td>商品條碼、書籍</td></tr>
+<tr><td><code>ean8</code></td><td>7 碼自動補檢查碼，或 8 碼驗證檢查碼</td><td>小型商品</td></tr>
+</tbody>
+</table>
+<ul>
+<li>預設以固定模組寬（<code>moduleWidth</code>）畫出自然寬度；給 <code>width</code> 時縮放到該寬度</li>
+<li>條邊對齊整數像素；<code>exportPNG(scale)</code> 輸出高倍率圖檔供列印</li>
+<li>EAN 依標準把護線延伸到數字列，數字分組排在條下</li>
+<li>顏色預設取主題 token；深色主題下自動對調，條永遠比底色暗</li>
+<li>內容不合格式時不擲錯，改在畫面上顯示訊息，<code>getError()</code> 取得原因</li>
+</ul>
+<p>繳費單的條碼內容（例如超商代收的三段條碼各段要放什麼、檢查碼怎麼算）由代收單位的規格決定，請在呼叫端依規格組好字串再交給本元件，本元件只負責畫出符合 Code 39 的條碼。</p>
+<h2>建構子</h2>
+<pre><code class="language-javascript">import { Barcode } from './index.js';
+
+const barcode = new Barcode({
+    value: '',                 // 要編碼的內容；空字串時不畫
+    format: 'code128',         // 'code128' | 'code39' | 'ean13' | 'ean8'
+    checkDigit: false,         // Code 39 是否附 mod 43 檢查字元
+    wideRatio: 3,              // Code 39 寬窄比（2～3）
+    moduleWidth: 2,            // 最窄條的寬度（px）
+    width: undefined,          // 指定寬度時縮放到此寬（例如 '100%'）；未指定時依內容的自然寬度
+    height: 80,                // 總高度（px，含數字列）
+    showText: true,            // 是否在條下顯示可讀文字
+    fontSize: 14,              // 可讀文字的字級（px）
+    quietZone: null,           // 左右留白的模組數 { left, right }；預設依格式
+    darkColor: '--cl-text',    // 條色：token 名稱或 CSS 顏色
+    lightColor: '--cl-bg',     // 底色：token 名稱或 CSS 顏色
+    ensureContrast: true,      // 依亮度自動對調，確保條比底色暗
+    ariaLabel: '',             // 無障礙名稱；預設為「條碼（格式）：內容」
+    onError: null              // 編碼失敗時呼叫 (error) =&gt; void
+});
+barcode.mount(container);</code></pre>
+<h2>方法</h2>
+<table>
+<thead>
+<tr><th>方法</th><th>說明</th></tr>
+</thead>
+<tbody>
+<tr><td><code>mount(container)</code></td><td>掛到容器，回傳自己</td></tr>
+<tr><td><code>getValue()</code></td><td>目前的內容（呼叫端給的原文）</td></tr>
+<tr><td><code>setValue(value)</code></td><td>更換內容並重繪；未指定 <code>width</code> 時寬度跟著內容調整</td></tr>
+<tr><td><code>clear()</code></td><td>清空內容</td></tr>
+<tr><td><code>update(patch)</code></td><td>同時更新多個選項，例如 <code>{ value, format }</code></td></tr>
+<tr><td><code>getError()</code></td><td>最近一次編碼失敗的原因 <code>{ code, message, detail }</code>，成功時為 <code>null</code>；<code>code</code> 為 <code>empty</code>、<code>invalid_char</code>、<code>invalid_length</code>、<code>bad_check_digit</code> 或 <code>invalid_option</code></td></tr>
+<tr><td><code>getInfo()</code></td><td>編碼結果 <code>{ format, data, modules }</code>；<code>data</code> 含自動補上的檢查碼</td></tr>
+<tr><td><code>exportPNG(scale = 2)</code></td><td>以 <code>scale</code> 倍率輸出 PNG 的 data URL</td></tr>
+<tr><td><code>destroy()</code></td><td>移除元件並釋放監聽</td></tr>
+<tr><td><code>Barcode.formats</code></td><td>支援的格式清單</td></tr>
+</tbody>
+</table>
+<h2>只要編碼結果</h2>
+<pre><code class="language-javascript">import { encodeBarcode } from './index.js';
+
+const { widths, modules } = encodeBarcode('ABC-123', { format: 'code39' });
+// widths 是「條、空、條、空…」交錯的寬度（單位為模組，第一個一定是條）</code></pre>
+<h2>列印建議</h2>
+<ul>
+<li>最窄條至少 0.25 公釐；用 <code>exportPNG(4)</code> 以上的倍率輸出再放進文件</li>
+<li>左右留白不可省；Code 128 與 Code 39 至少 10 個模組，EAN-13 左 11、右 7 個模組</li>
+<li>Code 39 的寬窄比在最窄條小於 0.5 公釐時不得低於 2.2，建議維持預設的 3</li>
+</ul>
+<h2>測試</h2>
+<p><code>barcode-encoder.test.mjs</code> 檢查 Code 128 符號表（107 個、模組數、條寬奇偶性）、Code 39 字元表（與標準寫法逐字比對）、EAN 檢查碼的已知例子，並以另外寫的解碼器把 Code 128 與 EAN-13 的結果讀回比對。</p>
+</main>
+</body>
+</html>

@@ -82,7 +82,7 @@ strict mode 也會在 package verification 失敗時阻止交付。工具會回�
 
 - `components/manifest.json`
 
-- `README.md`
+- `README.html`
 
 - `index.html` 宣告 `#app` 並載入 `./runtime.js`
 

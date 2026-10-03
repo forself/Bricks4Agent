@@ -25,19 +25,37 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <p>Provide a broker-governed delivery path that uploads a generated artifact to Google Drive and returns a share link that can be sent back to the requesting user.</p>
 <h2>First implementation</h2>
 <ul>
-<li>identity modes:</li>
-<li><code>shared_delegated</code></li>
-<li><code>user_delegated</code></li>
-<li><code>system_account</code></li>
-<li>credential sources:</li>
-<li>a single broker-owned delegated OAuth credential for one Google account</li>
-<li>per-user delegated OAuth credentials</li>
-<li>Google service account JSON</li>
-<li>delivery pattern:
+<li>
+<p>identity modes:</p>
+</li>
+<li>
+<p><code>shared_delegated</code></p>
+</li>
+<li>
+<p><code>user_delegated</code></p>
+</li>
+<li>
+<p><code>system_account</code></p>
+</li>
+<li>
+<p>credential sources:</p>
+</li>
+<li>
+<p>a single broker-owned delegated OAuth credential for one Google account</p>
+</li>
+<li>
+<p>per-user delegated OAuth credentials</p>
+</li>
+<li>
+<p>Google service account JSON</p>
+</li>
+<li>
+<p>delivery pattern:
   1. generate file under the user's managed workspace
   2. upload file to a broker-configured Drive folder
   3. create a share link
-  4. send the share link back through LINE or another broker-mediated channel</li>
+  4. send the share link back through LINE or another broker-mediated channel</p>
+</li>
 </ul>
 <h2>Current preferred live mode</h2>
 <p>For the current local LINE sidecar, the preferred default is:</p>
@@ -46,10 +64,18 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 </ul>
 <p>That means:</p>
 <ul>
-<li>broker stores one delegated OAuth credential for the operator's Google account</li>
-<li>all LINE users can have their generated artifacts uploaded into that one Google Drive</li>
-<li>broker metadata still records which LINE user owns the artifact</li>
-<li>Google Drive itself does not need to know each LINE user identity</li>
+<li>
+<p>broker stores one delegated OAuth credential for the operator's Google account</p>
+</li>
+<li>
+<p>all LINE users can have their generated artifacts uploaded into that one Google Drive</p>
+</li>
+<li>
+<p>broker metadata still records which LINE user owns the artifact</p>
+</li>
+<li>
+<p>Google Drive itself does not need to know each LINE user identity</p>
+</li>
 </ul>
 <p>This is the correct mode when all generated files should go into one Google Drive account.</p>
 <p>Use <code>user_delegated</code> only when each end user should upload into their own Drive.</p>
@@ -57,8 +83,12 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <p>Google service accounts do not have personal Drive storage quota for ordinary My Drive uploads.</p>
 <p>This means the first implementation should use one of these:</p>
 <ul>
-<li>a Shared Drive folder, with the service account granted access</li>
-<li>OAuth-delegated user Drive access</li>
+<li>
+<p>a Shared Drive folder, with the service account granted access</p>
+</li>
+<li>
+<p>OAuth-delegated user Drive access</p>
+</li>
 </ul>
 <p>If a normal My Drive folder is used, Google may return:</p>
 <ul>
@@ -67,44 +97,113 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <p>even when authentication is otherwise valid.</p>
 <h2>Current broker surface</h2>
 <ul>
-<li>tool spec: <code>delivery.google-drive.share</code></li>
-<li>local admin status:</li>
-<li><code>GET /api/v1/local-admin/delivery/google-drive/status</code></li>
-<li>local admin share:</li>
-<li><code>POST /api/v1/local-admin/delivery/google-drive/share</code></li>
+<li>
+<p>tool spec: <code>delivery.google-drive.share</code></p>
+</li>
+<li>
+<p>local admin status:</p>
+</li>
+<li>
+<p><code>GET /api/v1/local-admin/delivery/google-drive/status</code></p>
+</li>
+<li>
+<p>local admin share:</p>
+</li>
+<li>
+<p><code>POST /api/v1/local-admin/delivery/google-drive/share</code></p>
+</li>
+<li>
+<p>local admin delegated OAuth (<code>packages/csharp/broker/Endpoints/LocalAdminEndpoints.cs:754-778</code>):</p>
+</li>
+<li>
+<p><code>GET /api/v1/local-admin/delivery/google-drive/oauth/status</code></p>
+</li>
+<li>
+<p><code>GET /api/v1/local-admin/delivery/google-drive/oauth/credentials</code></p>
+</li>
+<li>
+<p><code>POST /api/v1/local-admin/delivery/google-drive/oauth/start</code></p>
+</li>
+<li>
+<p>OAuth callback (loopback only): <code>GET /api/v1/google-drive/oauth/callback</code> (<code>packages/csharp/broker/Endpoints/GoogleDriveOAuthEndpoints.cs:13</code>)</p>
+</li>
 </ul>
 <h2>Required configuration</h2>
 <ul>
-<li><code>GoogleDriveDelivery:ServiceAccountJsonPath</code></li>
-<li><code>GoogleDriveDelivery:DefaultFolderId</code></li>
-<li>optional:</li>
-<li><code>GoogleDriveDelivery:DefaultShareMode</code></li>
-<li><code>GoogleDriveDelivery:DefaultPermissionRole</code></li>
-<li><code>GoogleDriveDelivery:DefaultIdentityMode</code></li>
-<li><code>GoogleDriveDelivery:SharedDelegatedChannel</code></li>
-<li><code>GoogleDriveDelivery:SharedDelegatedUserId</code></li>
+<li>
+<p><code>GoogleDriveDelivery:ServiceAccountJsonPath</code> (for <code>system_account</code>) and/or <code>GoogleDriveDelivery:OAuthClientJsonPath</code> (for <code>shared_delegated</code> / <code>user_delegated</code>); delivery is enabled when either file exists</p>
+</li>
+<li>
+<p><code>GoogleDriveDelivery:DefaultFolderId</code></p>
+</li>
+<li>
+<p>optional:</p>
+</li>
+<li>
+<p><code>GoogleDriveDelivery:DelegatedRedirectUri</code> (default <code>http://127.0.0.1:5361/api/v1/google-drive/oauth/callback</code>)</p>
+</li>
+<li>
+<p><code>GoogleDriveDelivery:DefaultShareMode</code></p>
+</li>
+<li>
+<p><code>GoogleDriveDelivery:DefaultPermissionRole</code></p>
+</li>
+<li>
+<p><code>GoogleDriveDelivery:DefaultIdentityMode</code></p>
+</li>
+<li>
+<p><code>GoogleDriveDelivery:SharedDelegatedChannel</code></p>
+</li>
+<li>
+<p><code>GoogleDriveDelivery:SharedDelegatedUserId</code></p>
+</li>
 </ul>
 <h2>Current operator reality</h2>
-<p>There is currently no end-user frontend for artifact browsing or downloading.</p>
+<p>An end-user frontend for artifact browsing and downloading now exists (checked 2026-09-26).</p>
 <p>What exists today:</p>
 <ul>
-<li>local admin console</li>
-<li>LINE notification links</li>
-<li>broker-managed artifact records</li>
+<li>
+<p>local admin console</p>
+</li>
+<li>
+<p>LINE notification links</p>
+</li>
+<li>
+<p>broker-managed artifact records</p>
+</li>
+<li>
+<p>signed artifact download API: <code>GET /api/v1/artifacts/download/{artifactId}?exp=&amp;sig=</code> (HMAC link signed with <code>ArtifactDownload:SigningSecret</code>; <code>packages/csharp/broker/Endpoints/ArtifactDownloadEndpoints.cs:9</code>)</p>
+</li>
+<li>
+<p>user portal served at <code>/portal</code> (<code>packages/javascript/browser/user-portal</code>), which lists the signed-in user's own artifacts with download links via <code>GET /api/v1/portal/artifacts</code> (<code>packages/csharp/broker/Endpoints/PortalEndpoints.cs:139-176</code>, owner check on the single-artifact route)</p>
+</li>
 </ul>
-<p>What should exist later as a frontend feature:</p>
+<p>Originally planned as later frontend features (now covered by the portal session-authenticated listing plus HMAC-signed download links above):</p>
 <ul>
-<li>an authenticated public-facing artifact download API</li>
-<li>user-facing artifact history and download page</li>
-<li>broker-governed access checks before file delivery</li>
+<li>
+<p>an authenticated public-facing artifact download API</p>
+</li>
+<li>
+<p>user-facing artifact history and download page</p>
+</li>
+<li>
+<p>broker-governed access checks before file delivery</p>
+</li>
 </ul>
-<p>This is intentionally recorded here as a missing frontend capability, not as a completed feature.</p>
 <h2>Next steps</h2>
 <ul>
-<li>add shared-drive-oriented target metadata to the admin console</li>
-<li>add artifact registry integration so generated files can be tracked and re-delivered</li>
-<li>support broker-governed notification back to the user after upload</li>
-<li>add authenticated frontend download API for direct external service scenarios</li>
+<li>
+<p>add shared-drive-oriented target metadata to the admin console</p>
+</li>
+<li>
+<p>add artifact registry integration so generated files can be tracked and re-delivered</p>
+</li>
+<li>
+<p>support broker-governed notification back to the user after upload</p>
+</li>
+<li>
+<p>add authenticated frontend download API for direct external service scenarios</p>
+</li>
 </ul>
 </main>
 </body>

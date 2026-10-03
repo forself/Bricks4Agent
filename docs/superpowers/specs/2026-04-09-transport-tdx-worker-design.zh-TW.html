@@ -21,110 +21,222 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <body>
 <main>
 <h1>Transport-TDX Worker 設計規格</h1>
-<p>日期：2026-04-09<br>
-狀態：draft-approved-for-spec-review<br>
-語言：繁體中文</p>
+<p>日期：2026-04-09  </p>
+<p>狀態：draft-approved-for-spec-review  </p>
+<p>語言：繁體中文</p>
+<blockquote>
+<p><strong>實作現況（2026-09-26 核對）</strong></p>
+<ul>
+<li>broker 仍在程序內直接做 TDX 查詢：broker 自己註冊 <code>TdxApiService</code>（<code>packages/csharp/broker/Program.cs:203</code>），<code>InProcessDispatcher</code> 處理 <code>transport_query</code> 與舊的 <code>travel_*_search</code> routes（<code>packages/csharp/broker/Adapters/InProcessDispatcher.cs:110-114</code>），<code>transport_query</code> 經 <code>TransportQueryCompatibilityService</code> 呼叫 TDX（<code>packages/csharp/broker/Adapters/InProcessDispatcher.cs:1995</code>）；非 strict 模式下無 worker 時由 <code>FallbackDispatcher</code> 降級到此路徑（<code>packages/csharp/broker/Program.cs:340</code>）。<code>packages/csharp/workers/transport-tdx-worker/</code> 雖已存在，但並未取代 broker 內的 TDX 邏輯。</li>
+<li>worker 註冊 payload 沒有 <code>provider</code>、<code>supported_modes</code> 欄位，只有 <code>worker_id/worker_type/capabilities/max_concurrent</code> 與簽章欄位（<code>packages/csharp/worker-sdk/WorkerHost.cs:157-167</code>）；broker registry 也不記錄這兩項。</li>
+<li><code>transport.resolve</code> 未實作；worker 只註冊 <code>transport.query</code>（<code>packages/csharp/workers/transport-tdx-worker/Handlers/TransportQueryHandler.cs:16</code>）。</li>
+</ul>
+</blockquote>
 <h2>1. 目標</h2>
 <p>本規格定義 <code>transport-tdx worker</code> 的架構邊界、broker contract、查詢充分性判定、缺資訊追問、範圍回答、以及第一階段導入方式。</p>
 <p>本規格的核心修正是：</p>
 <ul>
-<li><code>TDX</code> 能力不應整合為 broker 內建業務邏輯。</li>
-<li><code>broker</code> 只負責能力管理、派工、權限、審計、request/response schema。</li>
-<li><code>transport-tdx worker</code> 才是可選、可抽換的 transport provider worker。</li>
-<li><code>agent container</code> 永遠只調用 broker 公布的統一能力，不直接碰 TDX。</li>
+<li>
+<p><code>TDX</code> 能力不應整合為 broker 內建業務邏輯。</p>
+</li>
+<li>
+<p><code>broker</code> 只負責能力管理、派工、權限、審計、request/response schema。</p>
+</li>
+<li>
+<p><code>transport-tdx worker</code> 才是可選、可抽換的 transport provider worker。</p>
+</li>
+<li>
+<p><code>agent container</code> 永遠只調用 broker 公布的統一能力，不直接碰 TDX。</p>
+</li>
 </ul>
 <h2>2. 問題定義</h2>
 <p>目前 transport 查詢路徑雖然已收斂成 TDX-only，但 provider-specific 邏輯仍殘留在 broker 內：</p>
 <ul>
-<li>broker 仍直接理解 <code>travel_rail_search</code>、<code>travel_hsr_search</code>、<code>travel_bus_search</code>、<code>travel_flight_search</code></li>
-<li>broker 仍直接承載部分交通查詢語意與 TDX 結果格式化</li>
-<li>自然語言查詢常缺少必要資訊，但現行路徑對 <code>缺資訊 -&gt; 追問 -&gt; 範圍回答</code> 的規則還不完整</li>
+<li>
+<p>broker 仍直接理解 <code>travel_rail_search</code>、<code>travel_hsr_search</code>、<code>travel_bus_search</code>、<code>travel_flight_search</code></p>
+</li>
+<li>
+<p>broker 仍直接承載部分交通查詢語意與 TDX 結果格式化</p>
+</li>
+<li>
+<p>自然語言查詢常缺少必要資訊，但現行路徑對 <code>缺資訊 -&gt; 追問 -&gt; 範圍回答</code> 的規則還不完整</p>
+</li>
 </ul>
 <p>這些現況的問題是：</p>
 <ul>
-<li>provider 與 broker 耦合</li>
-<li>未來難以替換成其他 transport provider</li>
-<li>agent container 容易被 provider-specific route 與 schema 汙染</li>
-<li>對一般使用者的自然語言入口，在資訊不完整時容易表現僵硬</li>
+<li>
+<p>provider 與 broker 耦合</p>
+</li>
+<li>
+<p>未來難以替換成其他 transport provider</p>
+</li>
+<li>
+<p>agent container 容易被 provider-specific route 與 schema 汙染</p>
+</li>
+<li>
+<p>對一般使用者的自然語言入口，在資訊不完整時容易表現僵硬</p>
+</li>
 </ul>
 <h2>3. 設計原則</h2>
 <h3>3.1 單一能力邊界</h3>
 <p>對代理容器與高階協調器而言，交通查詢是一個 broker 能力族，而不是多個 provider-specific route。</p>
 <ul>
-<li>對外能力：<code>transport.query</code></li>
-<li>內部 provider：<code>tdx</code></li>
-<li>未來可替換 provider：其他 transport worker</li>
+<li>
+<p>對外能力：<code>transport.query</code></p>
+</li>
+<li>
+<p>內部 provider：<code>tdx</code></p>
+</li>
+<li>
+<p>未來可替換 provider：其他 transport worker</p>
+</li>
 </ul>
 <h3>3.2 Worker 可抽換</h3>
 <p><code>transport-tdx worker</code> 必須是獨立 worker，而不是 broker 內建模組。</p>
 <ul>
-<li>broker 只認 capability，不認 TDX 細節</li>
-<li>provider-specific query parsing、follow-up、TDX adapter 都在 worker 內</li>
-<li>未來若新增 <code>transport-other-provider worker</code>，broker contract 不需重寫</li>
+<li>
+<p>broker 只認 capability，不認 TDX 細節</p>
+</li>
+<li>
+<p>provider-specific query parsing、follow-up、TDX adapter 都在 worker 內</p>
+</li>
+<li>
+<p>未來若新增 <code>transport-other-provider worker</code>，broker contract 不需重寫</p>
+</li>
 </ul>
 <h3>3.3 自然語言不足資訊是常態</h3>
 <p>交通查詢不應假設使用者會一次提供所有必要欄位。</p>
 <p>系統必須支援：</p>
 <ul>
-<li>sufficiency analysis</li>
-<li>缺資訊追問</li>
-<li>範圍回答</li>
-<li>假設明示</li>
-<li>使用者不知道時的引導</li>
+<li>
+<p>sufficiency analysis</p>
+</li>
+<li>
+<p>缺資訊追問</p>
+</li>
+<li>
+<p>範圍回答</p>
+</li>
+<li>
+<p>假設明示</p>
+</li>
+<li>
+<p>使用者不知道時的引導</p>
+</li>
 </ul>
 <h3>3.4 同步回覆優先</h3>
 <p>第一版 worker 先做單次同步查詢：</p>
 <ul>
-<li>直接答案 <code>final_answer</code></li>
-<li>追問 <code>need_follow_up</code></li>
-<li>範圍答案 <code>range_answer</code></li>
+<li>
+<p>直接答案 <code>final_answer</code></p>
+</li>
+<li>
+<p>追問 <code>need_follow_up</code></p>
+</li>
+<li>
+<p>範圍答案 <code>range_answer</code></p>
+</li>
 </ul>
 <p>第一版不引入長生命週期 transport session orchestration。</p>
 <h2>4. 系統邊界</h2>
 <h3>4.1 Broker 責任</h3>
 <p>broker 只負責：</p>
 <ul>
-<li>公布能力與 request/response schema</li>
-<li>capability routing / worker selection</li>
-<li>grant / auth / quota / audit</li>
-<li>request validation</li>
-<li>response validation</li>
-<li>將 worker 結果交回 agent container / LINE / web console</li>
+<li>
+<p>公布能力與 request/response schema</p>
+</li>
+<li>
+<p>capability routing / worker selection</p>
+</li>
+<li>
+<p>grant / auth / quota / audit</p>
+</li>
+<li>
+<p>request validation</p>
+</li>
+<li>
+<p>response validation</p>
+</li>
+<li>
+<p>將 worker 結果交回 agent container / LINE / web console</p>
+</li>
 </ul>
 <p>broker 不負責：</p>
 <ul>
-<li>TDX API mapping</li>
-<li>TDX token 流程</li>
-<li>缺資訊追問策略</li>
-<li>provider-specific entity resolution</li>
-<li>provider-specific range-answer 策略</li>
+<li>
+<p>TDX API mapping</p>
+</li>
+<li>
+<p>TDX token 流程</p>
+</li>
+<li>
+<p>缺資訊追問策略</p>
+</li>
+<li>
+<p>provider-specific entity resolution</p>
+</li>
+<li>
+<p>provider-specific range-answer 策略</p>
+</li>
 </ul>
 <h3>4.2 Transport-TDX Worker 責任</h3>
 <p><code>transport-tdx worker</code> 負責：</p>
 <ul>
-<li>transport query sufficiency analysis</li>
-<li>missing-info follow-up policy</li>
-<li>range-answer policy</li>
-<li>assumption disclosure policy</li>
-<li>TDX OAuth token 取得與快取</li>
-<li>站名 / 城市 / 機場 / 路線 normalization</li>
-<li>TDX API call orchestration</li>
-<li>provider-specific 結果整形</li>
+<li>
+<p>transport query sufficiency analysis</p>
+</li>
+<li>
+<p>missing-info follow-up policy</p>
+</li>
+<li>
+<p>range-answer policy</p>
+</li>
+<li>
+<p>assumption disclosure policy</p>
+</li>
+<li>
+<p>TDX OAuth token 取得與快取</p>
+</li>
+<li>
+<p>站名 / 城市 / 機場 / 路線 normalization</p>
+</li>
+<li>
+<p>TDX API call orchestration</p>
+</li>
+<li>
+<p>provider-specific 結果整形</p>
+</li>
 </ul>
 <h3>4.3 Agent Container 責任</h3>
 <p>agent container 只負責：</p>
 <ul>
-<li>呼叫 broker 的 <code>transport.query</code></li>
-<li>接收 broker 回傳的標準回覆</li>
-<li>若結果為追問，顯示 worker 提供的追問選項</li>
-<li>若結果為範圍回答，向使用者清楚說明目前假設</li>
+<li>
+<p>呼叫 broker 的 <code>transport.query</code></p>
+</li>
+<li>
+<p>接收 broker 回傳的標準回覆</p>
+</li>
+<li>
+<p>若結果為追問，顯示 worker 提供的追問選項</p>
+</li>
+<li>
+<p>若結果為範圍回答，向使用者清楚說明目前假設</p>
+</li>
 </ul>
 <p>agent container 不應理解：</p>
 <ul>
-<li>TDX endpoint</li>
-<li>TDX path</li>
-<li>provider-specific query parameter</li>
-<li>provider-specific result schema</li>
+<li>
+<p>TDX endpoint</p>
+</li>
+<li>
+<p>TDX path</p>
+</li>
+<li>
+<p>provider-specific query parameter</p>
+</li>
+<li>
+<p>provider-specific result schema</p>
+</li>
 </ul>
 <h2>5. 架構圖</h2>
 <pre><code class="language-mermaid">flowchart LR
@@ -144,30 +256,58 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 </ul>
 <p>後續可擴：</p>
 <ul>
-<li><code>transport.resolve</code></li>
-<li><code>transport.route_plan</code></li>
-<li><code>transport.nearby</code></li>
-<li><code>transport.status</code></li>
+<li>
+<p><code>transport.resolve</code></p>
+</li>
+<li>
+<p><code>transport.route_plan</code></p>
+</li>
+<li>
+<p><code>transport.nearby</code></p>
+</li>
+<li>
+<p><code>transport.status</code></p>
+</li>
 </ul>
 <h3>6.1 為何不再使用 travel_rail_search 等 route</h3>
 <p>現有：</p>
 <ul>
-<li><code>travel_rail_search</code></li>
-<li><code>travel_hsr_search</code></li>
-<li><code>travel_bus_search</code></li>
-<li><code>travel_flight_search</code></li>
+<li>
+<p><code>travel_rail_search</code></p>
+</li>
+<li>
+<p><code>travel_hsr_search</code></p>
+</li>
+<li>
+<p><code>travel_bus_search</code></p>
+</li>
+<li>
+<p><code>travel_flight_search</code></p>
+</li>
 </ul>
 <p>在新模型下應逐步退場，原因是：</p>
 <ul>
-<li>route 名稱把 transport mode 與 provider-specific 行為綁死</li>
-<li>對 agent container 來說，mode 應該是 request 欄位，不是 route identity</li>
-<li>對 broker 而言，dispatch 應以 capability 為單位，而不是 provider-specific route</li>
+<li>
+<p>route 名稱把 transport mode 與 provider-specific 行為綁死</p>
+</li>
+<li>
+<p>對 agent container 來說，mode 應該是 request 欄位，不是 route identity</p>
+</li>
+<li>
+<p>對 broker 而言，dispatch 應以 capability 為單位，而不是 provider-specific route</p>
+</li>
 </ul>
 <p>第一版可採漸進遷移：</p>
 <ul>
-<li>broker 對外新增 <code>transport.query</code></li>
-<li>舊 route 保留為 compatibility path</li>
-<li>實際邏輯逐步轉移到 <code>transport-tdx worker</code></li>
+<li>
+<p>broker 對外新增 <code>transport.query</code></p>
+</li>
+<li>
+<p>舊 route 保留為 compatibility path</p>
+</li>
+<li>
+<p>實際邏輯逐步轉移到 <code>transport-tdx worker</code></p>
+</li>
 </ul>
 <h2>7. Request / Response Contract</h2>
 <h3>7.1 Request</h3>
@@ -195,14 +335,30 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 </code></pre>
 <p>欄位說明：</p>
 <ul>
-<li><code>transport_mode</code></li>
-<li><code>auto | rail | hsr | bus | flight | ship | bike</code></li>
-<li><code>user_query</code></li>
-<li>原始自然語言輸入</li>
-<li><code>context</code></li>
-<li>broker 或上游目前已知欄位</li>
-<li><code>interaction</code></li>
-<li>若本輪是回覆上一輪追問，用來承接 follow-up</li>
+<li>
+<p><code>transport_mode</code></p>
+</li>
+<li>
+<p><code>auto | rail | hsr | bus | flight | ship | bike</code></p>
+</li>
+<li>
+<p><code>user_query</code></p>
+</li>
+<li>
+<p>原始自然語言輸入</p>
+</li>
+<li>
+<p><code>context</code></p>
+</li>
+<li>
+<p>broker 或上游目前已知欄位</p>
+</li>
+<li>
+<p><code>interaction</code></p>
+</li>
+<li>
+<p>若本輪是回覆上一輪追問，用來承接 follow-up</p>
+</li>
 </ul>
 <h3>7.2 Response</h3>
 <pre><code class="language-json">{
@@ -238,12 +394,24 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 </code></pre>
 <h3>7.3 三種回覆型態</h3>
 <ul>
-<li><code>final_answer</code></li>
-<li>資訊足夠，直接查並回精確結果</li>
-<li><code>need_follow_up</code></li>
-<li>缺少關鍵欄位，不能安全查</li>
-<li><code>range_answer</code></li>
-<li>可查，但必須基於較寬假設或較大範圍</li>
+<li>
+<p><code>final_answer</code></p>
+</li>
+<li>
+<p>資訊足夠，直接查並回精確結果</p>
+</li>
+<li>
+<p><code>need_follow_up</code></p>
+</li>
+<li>
+<p>缺少關鍵欄位，不能安全查</p>
+</li>
+<li>
+<p><code>range_answer</code></p>
+</li>
+<li>
+<p>可查，但必須基於較寬假設或較大範圍</p>
+</li>
 </ul>
 <h2>8. Sufficiency Analysis</h2>
 <p><code>transport-tdx worker</code> 每次收到請求後，必須先做 <code>query sufficiency analysis</code>。</p>
@@ -251,64 +419,136 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <h4>必要欄位</h4>
 <p>不足就不能做精確查詢。</p>
 <ul>
-<li><code>rail / hsr</code></li>
-<li><code>origin</code></li>
-<li><code>destination</code></li>
-<li><code>bus</code></li>
-<li><code>city</code></li>
-<li><code>route</code></li>
-<li><code>flight</code></li>
-<li><code>origin</code></li>
-<li><code>destination</code></li>
-<li><code>ship</code></li>
-<li><code>origin</code></li>
-<li><code>destination</code></li>
-<li><code>bike</code></li>
-<li><code>city</code> 或 <code>geo_point</code></li>
+<li>
+<p><code>rail / hsr</code></p>
+</li>
+<li>
+<p><code>origin</code></p>
+</li>
+<li>
+<p><code>destination</code></p>
+</li>
+<li>
+<p><code>bus</code></p>
+</li>
+<li>
+<p><code>city</code></p>
+</li>
+<li>
+<p><code>route</code></p>
+</li>
+<li>
+<p><code>flight</code></p>
+</li>
+<li>
+<p><code>origin</code></p>
+</li>
+<li>
+<p><code>destination</code></p>
+</li>
+<li>
+<p><code>ship</code></p>
+</li>
+<li>
+<p><code>origin</code></p>
+</li>
+<li>
+<p><code>destination</code></p>
+</li>
+<li>
+<p><code>bike</code></p>
+</li>
+<li>
+<p><code>city</code> 或 <code>geo_point</code></p>
+</li>
 </ul>
 <h4>重要欄位</h4>
 <p>缺少時，可能只能給範圍答案或先追問。</p>
 <ul>
-<li><code>date</code></li>
-<li><code>time_range</code></li>
-<li><code>direction</code></li>
-<li><code>station</code></li>
-<li><code>departure_or_arrival</code></li>
+<li>
+<p><code>date</code></p>
+</li>
+<li>
+<p><code>time_range</code></p>
+</li>
+<li>
+<p><code>direction</code></p>
+</li>
+<li>
+<p><code>station</code></p>
+</li>
+<li>
+<p><code>departure_or_arrival</code></p>
+</li>
 </ul>
 <h4>偏好欄位</h4>
 <p>只影響排序與展示，不影響能不能查。</p>
 <ul>
-<li>最早班</li>
-<li>最快到達</li>
-<li>直達優先</li>
-<li>特定車種</li>
+<li>
+<p>最早班</p>
+</li>
+<li>
+<p>最快到達</p>
+</li>
+<li>
+<p>直達優先</p>
+</li>
+<li>
+<p>特定車種</p>
+</li>
 </ul>
 <h3>8.2 判定結果</h3>
 <p>worker 只產生三種 sufficiency verdict：</p>
 <ul>
-<li><code>sufficient</code></li>
-<li><code>partially_sufficient</code></li>
-<li><code>insufficient</code></li>
+<li>
+<p><code>sufficient</code></p>
+</li>
+<li>
+<p><code>partially_sufficient</code></p>
+</li>
+<li>
+<p><code>insufficient</code></p>
+</li>
 </ul>
 <p>對應：</p>
 <ul>
-<li><code>sufficient -&gt; final_answer</code></li>
-<li><code>partially_sufficient -&gt; range_answer</code></li>
-<li><code>insufficient -&gt; need_follow_up</code></li>
+<li>
+<p><code>sufficient -&gt; final_answer</code></p>
+</li>
+<li>
+<p><code>partially_sufficient -&gt; range_answer</code></p>
+</li>
+<li>
+<p><code>insufficient -&gt; need_follow_up</code></p>
+</li>
 </ul>
 <h2>9. 缺資訊追問策略</h2>
 <p>追問必須：</p>
 <ul>
-<li>短</li>
-<li>明確</li>
-<li>選項化</li>
-<li>不要求使用者理解 schema</li>
+<li>
+<p>短</p>
+</li>
+<li>
+<p>明確</p>
+</li>
+<li>
+<p>選項化</p>
+</li>
+<li>
+<p>不要求使用者理解 schema</p>
+</li>
 </ul>
 <h3>9.1 追問原則</h3>
 <ul>
-<li>先補最關鍵、最能縮小查詢範圍的欄位</li>
-<li>一次只問一個主問題</li>
-<li>永遠提供保守出口</li>
+<li>
+<p>先補最關鍵、最能縮小查詢範圍的欄位</p>
+</li>
+<li>
+<p>一次只問一個主問題</p>
+</li>
+<li>
+<p>永遠提供保守出口</p>
+</li>
 </ul>
 <h3>9.2 追問範例</h3>
 <h4>模式不明確</h4>
@@ -337,16 +577,28 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <h3>10.1 範圍回答條件</h3>
 <p>可以先回範圍答案的情況：</p>
 <ul>
-<li>缺的是 <code>重要欄位</code>，不是 <code>必要欄位</code></li>
-<li>以較寬時間窗或合理預設可獲得有價值結果</li>
-<li>不會誤導使用者以為這是唯一正確答案</li>
+<li>
+<p>缺的是 <code>重要欄位</code>，不是 <code>必要欄位</code></p>
+</li>
+<li>
+<p>以較寬時間窗或合理預設可獲得有價值結果</p>
+</li>
+<li>
+<p>不會誤導使用者以為這是唯一正確答案</p>
+</li>
 </ul>
 <h3>10.2 範圍回答要求</h3>
 <p>範圍回答必須：</p>
 <ul>
-<li>明講目前假設</li>
-<li>明講查詢範圍</li>
-<li>告知可如何繼續縮小</li>
+<li>
+<p>明講目前假設</p>
+</li>
+<li>
+<p>明講查詢範圍</p>
+</li>
+<li>
+<p>告知可如何繼續縮小</p>
+</li>
 </ul>
 <p>範例：</p>
 <pre><code class="language-text">我先用今天可查到的班次幫你整理前幾班。
@@ -354,9 +606,15 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 </code></pre>
 <h3>10.3 不可做的事</h3>
 <ul>
-<li>不得默默腦補關鍵欄位</li>
-<li>不得把範圍結果包裝成精確結果</li>
-<li>不得在缺少必要欄位時硬查</li>
+<li>
+<p>不得默默腦補關鍵欄位</p>
+</li>
+<li>
+<p>不得把範圍結果包裝成精確結果</p>
+</li>
+<li>
+<p>不得在缺少必要欄位時硬查</p>
+</li>
 </ul>
 <h2>11. Worker 註冊與宣告</h2>
 <p><code>transport-tdx worker</code> 註冊時應宣告：</p>
@@ -369,12 +627,24 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 </code></pre>
 <p>broker registry 需能記錄：</p>
 <ul>
-<li>worker type</li>
-<li>provider</li>
-<li>capabilities</li>
-<li>supported modes</li>
-<li>health</li>
-<li>availability</li>
+<li>
+<p>worker type</p>
+</li>
+<li>
+<p>provider</p>
+</li>
+<li>
+<p>capabilities</p>
+</li>
+<li>
+<p>supported modes</p>
+</li>
+<li>
+<p>health</p>
+</li>
+<li>
+<p>availability</p>
+</li>
 </ul>
 <h2>12. Capability / Dispatch 圖</h2>
 <pre><code class="language-mermaid">sequenceDiagram
@@ -407,116 +677,232 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <h3>Phase 1</h3>
 <p>建立最小可運作版本：</p>
 <ul>
-<li>新增 <code>transport.query</code> contract</li>
-<li>新增 <code>transport-tdx worker</code></li>
-<li>將現有 <code>rail / hsr / bus / flight</code> 移入 worker</li>
-<li>實作：</li>
-<li>sufficiency analysis</li>
-<li>need_follow_up</li>
-<li>range_answer</li>
-<li>final_answer</li>
-<li>broker 僅保留 capability schema / dispatch / audit</li>
+<li>
+<p>新增 <code>transport.query</code> contract</p>
+</li>
+<li>
+<p>新增 <code>transport-tdx worker</code></p>
+</li>
+<li>
+<p>將現有 <code>rail / hsr / bus / flight</code> 移入 worker</p>
+</li>
+<li>
+<p>實作：</p>
+</li>
+<li>
+<p>sufficiency analysis</p>
+</li>
+<li>
+<p>need_follow_up</p>
+</li>
+<li>
+<p>range_answer</p>
+</li>
+<li>
+<p>final_answer</p>
+</li>
+<li>
+<p>broker 僅保留 capability schema / dispatch / audit</p>
+</li>
 </ul>
 <h3>Phase 2</h3>
 <p>擴充 TDX domain：</p>
 <ul>
-<li><code>ship</code></li>
-<li><code>bike</code></li>
-<li><code>transport.resolve</code></li>
-<li>模式判定與更完整的 entity normalization</li>
+<li>
+<p><code>ship</code></p>
+</li>
+<li>
+<p><code>bike</code></p>
+</li>
+<li>
+<p><code>transport.resolve</code></p>
+</li>
+<li>
+<p>模式判定與更完整的 entity normalization</p>
+</li>
 </ul>
 <h3>Phase 3</h3>
 <p>擴充進階能力：</p>
 <ul>
-<li>MaaS routing</li>
-<li>停車 / 充電樁 / 路況</li>
-<li>歷史與進階資料</li>
-<li>provider policy 與多 provider 選擇</li>
+<li>
+<p>MaaS routing</p>
+</li>
+<li>
+<p>停車 / 充電樁 / 路況</p>
+</li>
+<li>
+<p>歷史與進階資料</p>
+</li>
+<li>
+<p>provider policy 與多 provider 選擇</p>
+</li>
 </ul>
 <h2>14. 第一批實作切片</h2>
 <p>第一批只做：</p>
 <ol>
-<li>broker 新增 <code>transport.query</code> capability 與 schema</li>
-<li>新增 <code>transport-tdx worker</code> 專案骨架</li>
-<li>將現有 rail / hsr / bus / flight 查詢從 broker 遷至 worker</li>
-<li>worker 內實作：
+<li>
+<p>broker 新增 <code>transport.query</code> capability 與 schema</p>
+</li>
+<li>
+<p>新增 <code>transport-tdx worker</code> 專案骨架</p>
+</li>
+<li>
+<p>將現有 rail / hsr / bus / flight 查詢從 broker 遷至 worker</p>
+</li>
+<li>
+<p>worker 內實作：
    - 模式判定
    - 必要欄位分析
    - 缺資訊追問
    - 範圍回答
-   - TDX API 查詢</li>
-<li>broker 改由 capability dispatch 調用 worker</li>
+   - TDX API 查詢</p>
+</li>
+<li>
+<p>broker 改由 capability dispatch 調用 worker</p>
+</li>
 </ol>
 <p>不在第一批做：</p>
 <ul>
-<li>MaaS routing</li>
-<li>停車/道路/POI 全量整合</li>
-<li>長生命週期 transport session orchestration</li>
-<li>多 provider 自動切換</li>
+<li>
+<p>MaaS routing</p>
+</li>
+<li>
+<p>停車/道路/POI 全量整合</p>
+</li>
+<li>
+<p>長生命週期 transport session orchestration</p>
+</li>
+<li>
+<p>多 provider 自動切換</p>
+</li>
 </ul>
 <h2>15. 測試策略</h2>
 <h3>Unit</h3>
 <ul>
-<li>sufficiency analysis</li>
-<li>follow-up question selection</li>
-<li>range-answer assumption disclosure</li>
-<li>request/response validation</li>
+<li>
+<p>sufficiency analysis</p>
+</li>
+<li>
+<p>follow-up question selection</p>
+</li>
+<li>
+<p>range-answer assumption disclosure</p>
+</li>
+<li>
+<p>request/response validation</p>
+</li>
 </ul>
 <h3>Integration</h3>
 <ul>
-<li>broker <code>transport.query</code> dispatch</li>
-<li>worker registration / selection</li>
-<li><code>need_follow_up</code> round-trip</li>
-<li><code>range_answer</code> round-trip</li>
-<li><code>final_answer</code> round-trip</li>
+<li>
+<p>broker <code>transport.query</code> dispatch</p>
+</li>
+<li>
+<p>worker registration / selection</p>
+</li>
+<li>
+<p><code>need_follow_up</code> round-trip</p>
+</li>
+<li>
+<p><code>range_answer</code> round-trip</p>
+</li>
+<li>
+<p><code>final_answer</code> round-trip</p>
+</li>
 </ul>
 <h3>Verify</h3>
 <p>至少覆蓋：</p>
 <ul>
-<li><code>?rail 板橋到高雄</code></li>
-<li>缺日期時可回範圍或追問</li>
-<li><code>?rail 明天上午板橋到高雄</code></li>
-<li>精確回覆</li>
-<li><code>?bus 307</code></li>
-<li>缺城市時追問</li>
-<li><code>?bus 台北市 307</code></li>
-<li>精確回覆</li>
+<li>
+<p><code>?rail 板橋到高雄</code></p>
+</li>
+<li>
+<p>缺日期時可回範圍或追問</p>
+</li>
+<li>
+<p><code>?rail 明天上午板橋到高雄</code></p>
+</li>
+<li>
+<p>精確回覆</p>
+</li>
+<li>
+<p><code>?bus 307</code></p>
+</li>
+<li>
+<p>缺城市時追問</p>
+</li>
+<li>
+<p><code>?bus 台北市 307</code></p>
+</li>
+<li>
+<p>精確回覆</p>
+</li>
 </ul>
 <h2>16. 風險與緩解</h2>
 <h3>風險 1：broker 與 worker contract 漂移</h3>
 <p>緩解：</p>
 <ul>
-<li>capability schema versioning</li>
-<li>broker response validation</li>
-<li>integration tests 固定 contract</li>
+<li>
+<p>capability schema versioning</p>
+</li>
+<li>
+<p>broker response validation</p>
+</li>
+<li>
+<p>integration tests 固定 contract</p>
+</li>
 </ul>
 <h3>風險 2：自然語言模式判定誤差</h3>
 <p>緩解：</p>
 <ul>
-<li><code>transport_mode=auto</code> 但 worker 必須可回 <code>need_follow_up</code></li>
-<li>不確定時不要強行查錯 provider path</li>
+<li>
+<p><code>transport_mode=auto</code> 但 worker 必須可回 <code>need_follow_up</code></p>
+</li>
+<li>
+<p>不確定時不要強行查錯 provider path</p>
+</li>
 </ul>
 <h3>風險 3：範圍回答造成誤解</h3>
 <p>緩解：</p>
 <ul>
-<li>明示假設</li>
-<li>明示範圍</li>
-<li>提供縮小選項</li>
+<li>
+<p>明示假設</p>
+</li>
+<li>
+<p>明示範圍</p>
+</li>
+<li>
+<p>提供縮小選項</p>
+</li>
 </ul>
 <h3>風險 4：第一批遷移期間舊 route 與新 capability 並存</h3>
 <p>緩解：</p>
 <ul>
-<li>明確 compatibility layer</li>
-<li>分階段移除 <code>travel_*</code> route</li>
-<li>保持 verify 覆蓋舊新兩路</li>
+<li>
+<p>明確 compatibility layer</p>
+</li>
+<li>
+<p>分階段移除 <code>travel_*</code> route</p>
+</li>
+<li>
+<p>保持 verify 覆蓋舊新兩路</p>
+</li>
 </ul>
 <h2>17. 結論</h2>
 <p>本規格確立：</p>
 <ul>
-<li>transport 查詢能力由 <code>broker-managed</code> 改成 <code>worker-implemented</code></li>
-<li>broker 只做能力與派工，不承載 TDX 業務語意</li>
-<li><code>transport-tdx worker</code> 是獨立、可抽換的 provider worker</li>
-<li>自然語言交通查詢必須先做 sufficiency analysis，並支援追問與範圍回答</li>
+<li>
+<p>transport 查詢能力由 <code>broker-managed</code> 改成 <code>worker-implemented</code></p>
+</li>
+<li>
+<p>broker 只做能力與派工，不承載 TDX 業務語意</p>
+</li>
+<li>
+<p><code>transport-tdx worker</code> 是獨立、可抽換的 provider worker</p>
+</li>
+<li>
+<p>自然語言交通查詢必須先做 sufficiency analysis，並支援追問與範圍回答</p>
+</li>
 </ul>
 <p>這個模型比目前把 transport provider 細節放在 broker 內更符合長期擴充性，也與 worker-centered 執行邊界一致。</p>
 </main>

@@ -30,13 +30,15 @@
 <!DOCTYPE html>
 <html>
 <head>
+    <link rel="stylesheet" href="../../theme.css">
     <link rel="stylesheet" href="TabContainer.css">
 </head>
 <body>
     <div id="my-tabs"></div>
 
-    <script src="TabContainer.js"></script>
-    <script>
+    <script type="module">
+        import { TabContainer } from './TabContainer.js';
+
         const tabs = new TabContainer({
             containerId: 'my-tabs',
             position: 'top',
@@ -61,11 +63,13 @@
 </html>
 ```
 
+TabContainer 沒有 `mount()`：建構時即渲染到 `containerId` 指定的元素。
+
 ### 配置選項
 
 ```javascript
 const tabs = new TabContainer({
-    // 容器元素 ID（必填）
+    // 容器元素 ID（預設: 'tab-container'；找不到元素時只會 console.error，不會拋錯）
     containerId: 'my-tabs',
 
     // 頁籤位置: 'top', 'bottom', 'left', 'right'（預設: 'top'）
@@ -82,14 +86,14 @@ const tabs = new TabContainer({
         {
             id: 'tab1',              // 頁籤唯一 ID（必填）
             title: '頁籤標題',        // 頁籤標題（必填）
-            content: '<div>內容</div>', // 頁籤內容（選填）
+            content: '<div>內容</div>', // 頁籤內容（選填；字串經 sanitizeHTML 清洗，可信 HTML 需用 raw()；也可傳 DOM 元素）
             icon: 'fas fa-home',     // 圖示類名（選填）
             badge: 5,                // 徽章數字（選填）
             closable: true           // 是否可關閉（選填，覆蓋全域設定）
         }
     ],
 
-    // 頁籤切換回調
+    // 頁籤切換回調（建構時啟用第一個頁籤也會觸發一次，此時 previousTabId 為 null）
     onTabChange: (event) => {
         console.log('切換到頁籤:', event.tabId);
         console.log('前一個頁籤:', event.previousTabId);
@@ -162,6 +166,8 @@ tabs.updateTitle('tab1', '新標題');
 
 更新頁籤內容
 
+> ⚠️ 目前行為：與 `addTab()` 不同，`updateContent()` 會把字串**直接寫入 innerHTML，未經 sanitizeHTML 清洗**；傳入 `raw()` 物件則不會渲染任何內容。內容若可能含不可信資料，請傳入 DOM 元素。
+
 ```javascript
 // 使用 HTML 字串
 tabs.updateContent('tab1', '<h3>新內容</h3>');
@@ -201,7 +207,7 @@ console.log('頁籤數量:', count);
 
 ### removeAllTabs()
 
-移除所有頁籤
+移除所有頁籤（對每個頁籤呼叫 `closeTab()`，因此會逐一觸發 `onTabClose` 與 `onTabChange`；`onTabClose` 回傳 `false` 的頁籤不會被移除）
 
 ```javascript
 tabs.removeAllTabs();
@@ -209,7 +215,7 @@ tabs.removeAllTabs();
 
 ### destroy()
 
-銷毀容器
+銷毀容器（先呼叫 `removeAllTabs()`，同樣會觸發 `onTabClose` 與 `onTabChange`，再清空容器）
 
 ```javascript
 tabs.destroy();
@@ -407,7 +413,7 @@ const callbackTabs = new TabContainer({
 
 2. **圖示依賴**: 如使用圖示，需引入 Font Awesome 或其他圖示庫
 
-3. **內容格式**: 頁籤內容可以是 HTML 字串或 DOM 元素
+3. **內容格式**: 頁籤內容可以是 HTML 字串或 DOM 元素。透過 `tabs` / `addTab()` 傳入的字串會經 `sanitizeHTML` 清洗（`style` 屬性、`on*` 事件及 `button` / `input` / `form` 等標籤會被移除），已知安全的 HTML 需以 `raw()` 包裝；`updateContent()` 的例外見上方說明
 
 4. **響應式**: 在小螢幕上，頁籤列表會自動顯示滾動條
 

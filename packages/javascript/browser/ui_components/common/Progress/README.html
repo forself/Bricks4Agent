@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Progress</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Progress</h1>
+<p>進度指示器。提供線性條（<code>bar</code>，DOM）與圓環（<code>circle</code>，Canvas）兩種外觀，支援確定值、不確定（indeterminate）動畫，以及<strong>多段堆疊（segments）</strong>：把「完成／進行中／受阻」之類的組成畫在同一條（或同一圈）進度上，可選配圖例。分段模式預設關閉；未使用時輸出與舊版逐字相同。</p>
+<h2>建構</h2>
+<pre><code class="language-js">import { Progress } from './Progress.js';
+
+const progress = new Progress({
+    value: 0,               // 目前數值（0–max）；單一數值模式使用
+    max: 100,               // 最大值；分段的數值也是 max 的一部分
+    variant: 'primary',     // 單一數值模式的色彩：'primary' | 'success' | 'warning' | 'danger'
+    type: 'bar',            // 'bar'（線性，DOM）| 'circle'（圓環，Canvas）
+    size: 'medium',         // 'small' | 'medium' | 'large'（bar 高 4/8/12px；circle 直徑 48/80/120px）
+    showText: false,        // 顯示百分比文字；分段模式顯示各段合計
+    indeterminate: false,   // 不確定動畫（bar：WAAPI；circle：rAF 旋轉）；分段模式忽略
+    segments: null,         // 分段陣列 [{ value, variant?, color?, label? }]；給陣列即進入分段模式
+    showLegend: false       // 分段模式下在圖形下方顯示圖例（標籤＋數值／百分比）
+});
+progress.mount('#host');   // 與 render('#host') 相同
+</code></pre>
+<h3>分段物件</h3>
+<table>
+<thead>
+<tr>
+<th>欄位</th>
+<th>型別</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>value</code></td>
+<td><code>number</code></td>
+<td>這一段的數值，是 <code>max</code> 的一部分。負數、非數字視為 0</td>
+</tr>
+<tr>
+<td><code>variant</code></td>
+<td><code>string</code></td>
+<td><code>'primary'</code>、<code>'success'</code>、<code>'warning'</code>、<code>'danger'</code>、<code>'info'</code>、<code>'neutral'</code>（<code>--cl-grey</code>）。未指定或不認得時依序輪替上列六色，讓相鄰段落可區分</td>
+</tr>
+<tr>
+<td><code>color</code></td>
+<td><code>string</code></td>
+<td>只接受<strong>單一 token 參照</strong>，例如 <code>'var(--cl-purple)'</code>；其他寫法（具名色、多個值、含分號等）一律忽略並改用 <code>variant</code> 的顏色</td>
+</tr>
+<tr>
+<td><code>label</code></td>
+<td><code>string</code></td>
+<td>純文字名稱（<code>textContent</code>），用於圖例與 <code>aria-label</code>；未提供時用 Locale 的「區段 {index}」</td>
+</tr>
+</tbody>
+</table>
+<p>規則：</p>
+<ul>
+<li><strong>截斷</strong>：依陣列順序累加，累計值不會超過 <code>max</code>；超出的部分從後面的段落截掉（例如 <code>max: 100</code> 時 <code>[70, 50, 10]</code> 會畫成 70、30、0）。<code>max &lt;= 0</code> 時每段都是 0%。</li>
+<li><strong>bar</strong>：軌道內每段是一個絕對定位的 <code>.cl-progress-bar-segment</code>，依序由左往右堆疊；更新時重用既有元素，寬度變化會套用 <code>--cl-transition</code>。</li>
+<li><strong>circle</strong>：Canvas 從 12 點鐘方向依序畫多段弧（端點平切，0% 的段落略過），顏色在繪製時經 <code>theme-bus</code> 的 <code>resolveTokens</code> 解析；主題變更（<code>data-theme</code>、<code>&lt;html&gt;</code> 的 style/class 變化或 <code>notifyThemeChange()</code>）與掛載後都會重繪。token 解析不到時使用 <code>FALLBACK_PAINT</code>。</li>
+<li>分段一律為確定值：進入分段模式時停止 indeterminate 動畫，<code>setSegments(null)</code> 回到單一數值模式時恢復。</li>
+<li>空陣列也是分段模式：圖形為空，<code>aria-label</code> 為「無資料」。</li>
+</ul>
+<h2>方法</h2>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>回傳</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>render(container)</code></td>
+<td><code>this</code></td>
+<td>掛到元素或 CSS 選擇器對應的容器；circle 會在掛載後重繪一次，讓顏色取自實際文件的 token</td>
+</tr>
+<tr>
+<td><code>mount(container)</code></td>
+<td><code>this</code></td>
+<td>元件契約用的別名，同 <code>render</code></td>
+</tr>
+<tr>
+<td><code>setValue(value)</code></td>
+<td><code>this</code></td>
+<td>更新單一數值（夾在 0–max）。分段模式中只記住數值，回到單一模式時才顯示</td>
+</tr>
+<tr>
+<td><code>setVariant(variant)</code></td>
+<td><code>this</code></td>
+<td>切換單一數值模式的色彩；不認得的值忽略。分段各自保有顏色</td>
+</tr>
+<tr>
+<td><code>setSegments(segments)</code></td>
+<td><code>this</code></td>
+<td>陣列（含空陣列）→ 進入或更新分段模式；<code>null</code>／非陣列 → 還原單一數值模式（DOM、ARIA、文字、動畫都回到原狀）</td>
+</tr>
+<tr>
+<td><code>destroy()</code></td>
+<td><code>void</code></td>
+<td>取消動畫與 rAF、解除主題訂閱、移除 DOM（含圖例）；可重複呼叫，之後呼叫其他方法不會拋錯</td>
+</tr>
+</tbody>
+</table>
+<p>沒有事件或回呼；Progress 是純顯示元件。</p>
+<h2>圖例（<code>showLegend</code>）</h2>
+<p>只在分段模式出現：<code>ul.cl-progress-legend</code>，每段一個 <code>li.cl-progress-legend-item</code>（<code>data-segment-index</code>），內含</p>
+<ul>
+<li><code>.cl-progress-legend-swatch</code>：色塊，<code>aria-hidden="true"</code>；</li>
+<li><code>.cl-progress-legend-label</code>：標籤；</li>
+<li><code>.cl-progress-legend-value</code>：<code>{value}（{percent}%）</code>，數值依目前語系格式化（最多兩位小數）。</li>
+</ul>
+<p>bar 的圖例換到下一行（外層加上 <code>flex-wrap: wrap</code>，軌道改為自動伸縮，讓進度條與百分比文字維持同一行）；circle 會把 canvas 與中央文字包進 <code>.cl-progress-circle-ring</code>，圖例排在圓環下方。回到單一數值模式時這些版面調整全部還原。</p>
+<h2>鍵盤與 ARIA</h2>
+<p>Progress 不可聚焦、沒有鍵盤操作，也不在 Tab 順序中。</p>
+<table>
+<thead>
+<tr>
+<th>模式</th>
+<th>語意</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>單一數值（bar）</td>
+<td>軌道 <code>role="progressbar"</code>，<code>aria-valuemin="0"</code>、<code>aria-valuemax</code>、<code>aria-valuenow</code>（indeterminate 時不帶 <code>aria-valuenow</code>）</td>
+</tr>
+<tr>
+<td>單一數值（circle）</td>
+<td>外層 wrapper 同上</td>
+</tr>
+<tr>
+<td>分段（bar）</td>
+<td>軌道 <code>role="img"</code> + <code>aria-label</code>，移除 <code>aria-value*</code></td>
+</tr>
+<tr>
+<td>分段（circle）</td>
+<td><code>canvas</code> <code>role="img"</code> + <code>aria-label</code>；wrapper 移除 <code>progressbar</code> 語意</td>
+</tr>
+</tbody>
+</table>
+<p>分段模式採用 <strong><code>role="img"</code></strong> 而非 group：堆疊條是一個整體圖形，內部色塊沒有個別語意（<code>img</code> 的子元素一律視為展示用）；摘要放在 <code>aria-label</code>，格式為每段 <code>{label}：{percent}%</code>，以 <code>，</code> 串接（英文為 <code>{label}: {percent}%</code>，以 <code>,</code> 串接）。圖例與百分比文字在圖形之外，仍是可被輔助技術讀取的一般文字。</p>
+<h2>語系</h2>
+<p>命名空間 <code>progress</code>（zh-TW／en）：<code>segmentSummary</code>、<code>segmentSeparator</code>、<code>segmentFallbackLabel</code>、<code>noSegments</code>、<code>legendValue</code>。元件不監聽 <code>locale-changed</code>；切換語系後於下一次 <code>setSegments()</code> 生效。</p>
+<h2>DOM 結構（class）</h2>
+<ul>
+<li>bar：<code>.cl-progress-wrapper</code> › <code>.cl-progress-bar-track</code>（分段時加 <code>.cl-progress-bar-track--segmented</code>）› <code>.cl-progress-bar-fill</code>（<code>--indeterminate</code>）或多個 <code>.cl-progress-bar-segment</code>；<code>.cl-progress-text</code>；<code>.cl-progress-legend</code>。</li>
+<li>circle：<code>.cl-progress-circle-wrapper</code> › <code>canvas</code> + <code>.cl-progress-circle-text</code>（有圖例時兩者包在 <code>.cl-progress-circle-ring</code> 內）；<code>.cl-progress-legend</code>。</li>
+</ul>
+<p>顏色一律來自主題 token（<code>var(--cl-*)</code>），深色模式由 <code>[data-theme="dark"]</code> 的 token 值提供。</p>
+<h2>範例</h2>
+<pre><code class="language-html">&lt;!DOCTYPE html&gt;
+&lt;html lang=&quot;zh-TW&quot;&gt;
+&lt;head&gt;
+    &lt;meta charset=&quot;UTF-8&quot;&gt;
+    &lt;link rel=&quot;stylesheet&quot; href=&quot;../../theme.css&quot;&gt;
+&lt;/head&gt;
+&lt;body&gt;
+    &lt;div id=&quot;orders-bar&quot;&gt;&lt;/div&gt;
+    &lt;div id=&quot;orders-ring&quot;&gt;&lt;/div&gt;
+    &lt;button id=&quot;refresh&quot; type=&quot;button&quot;&gt;更新&lt;/button&gt;
+
+    &lt;script type=&quot;module&quot;&gt;
+        import { Progress } from './Progress.js';
+
+        const snapshot = () =&gt; [
+            { value: 42, variant: 'success', label: '已出貨' },
+            { value: 18, variant: 'warning', label: '備貨中' },
+            { value: 5, color: 'var(--cl-danger)', label: '缺貨' }
+        ];
+
+        // 線性堆疊條 + 圖例（max 為訂單總數）
+        const bar = new Progress({ max: 80, showText: true, showLegend: true, segments: snapshot() })
+            .mount('#orders-bar');
+
+        // 圓環多段弧
+        const ring = new Progress({ type: 'circle', size: 'large', max: 80, showText: true, segments: snapshot() })
+            .mount('#orders-ring');
+
+        document.getElementById('refresh').addEventListener('click', () =&gt; {
+            const next = snapshot().map((s) =&gt; ({ ...s, value: s.value + Math.round(Math.random() * 5) }));
+            bar.setSegments(next);
+            ring.setSegments(next);
+        });
+
+        // 回到單一數值模式：bar.setSegments(null); bar.setValue(60);
+        // 離開頁面前：bar.destroy(); ring.destroy();
+    &lt;/script&gt;
+&lt;/body&gt;
+&lt;/html&gt;
+</code></pre>
+</main>
+</body>
+</html>

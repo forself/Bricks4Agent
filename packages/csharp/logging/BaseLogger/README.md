@@ -2,6 +2,8 @@
 
 輕量級日誌元件，支援多種輸出目標。可與 BaseCache、BaseOrm 整合。
 
+> `broker/Broker.csproj` 有 ProjectReference 引用此專案，但 broker 原始碼沒有使用其中任何型別。
+
 ## 特點
 
 - **零依賴** - 核心功能不需要任何 NuGet 套件
@@ -89,12 +91,14 @@ var logger = new Logger()
 using BaseCache;
 using BaseLogger;
 
-var cache = new BaseCache();
-var logger = new Logger()
-    .AddMemoryCache(cache, "log:", maxEntries: 1000);
+var cache = new BaseCache.BaseCache();  // 命名空間與類別同名，需寫完整名稱（否則 CS0118）
+
+// Logger 沒有公開 Targets 屬性；要讀取日誌需自行建立並保留 target 參照
+var options = new LoggerOptions();
+var target = new MemoryCacheLogTarget(cache, "log:", 1000, options);
+var logger = new Logger(options).AddTarget(target);
 
 // 取得最近的日誌
-var target = logger.Targets.OfType<MemoryCacheLogTarget>().First();
 var recentLogs = target.GetRecentLogs(100);
 
 // 訂閱即時日誌串流
@@ -242,19 +246,21 @@ using BaseOrm;
 using BaseLogger;
 
 // 建立依賴
-var cache = new BaseCache();
+var cache = new BaseCache.BaseCache();
 var db = new BaseDb("Data Source=app.db");
 
 // 配置日誌
-var logger = new Logger(new LoggerOptions
+var options = new LoggerOptions
 {
     MinLevel = LogLevel.Debug,
     EnableColors = true,
     AsyncFlush = true
-})
+};
+var cacheTarget = new MemoryCacheLogTarget(cache, "log:", 1000, options);  // 保留參照供之後讀取統計
+var logger = new Logger(options)
 .AddFile("logs/app.log")
 .AddFile("logs/errors.log", LogLevel.Error)
-.AddMemoryCache(cache, "log:", 1000)
+.AddTarget(cacheTarget)
 .AddDatabase(db, "Logs");
 
 // 設為預設
@@ -280,7 +286,6 @@ catch (Exception ex)
 }
 
 // 取得即時統計
-var cacheTarget = logger.Targets.OfType<MemoryCacheLogTarget>().First();
 var stats = cacheTarget.GetStats();
 Console.WriteLine($"Errors: {stats["Error"]}, Warnings: {stats["Warn"]}");
 

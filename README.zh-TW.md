@@ -102,7 +102,8 @@ Node 伺服器預設綁 loopback,並拒絕非 loopback 的 `Host`/`Origin` 請�
 ## 測試
 
 ```bash
-npm test                        # 頁面生成器測試
+npm --prefix packages/javascript/browser install  # 首次：安裝 npm test 需要的 vitest/jsdom
+npm test                        # 生成器範例 + test:ui-components + test:custom-components + Vitest 元件套件
 npm run validate:ui-library     # UI 元件庫檢查
 npm run audit:ui-styles         # 樣式 token 稽核
 npm run test:studio:self-host   # 唯一權威 JSON + 正式元件 provenance
@@ -117,8 +118,10 @@ dotnet test templates/spa/backend.Tests/SpaApi.Template.Tests.csproj
 
 PR 目標為 `main` 或推送至 `main` 時，[GitHub Actions](.github/workflows/ci.yml)
 會執行可攜式 JavaScript、政策、metadata、零警告 .NET 10 專案矩陣與生成後端檢查。
-真實 Edge 互動 harness 仍是本機驗收守門，因其刻意沿用既有外部
-Playwright／Edge runtime，不為 CI 增加 npm dependency。
+[`quality-gates.yml`](.github/workflows/quality-gates.yml) 另以 `--no-save` 安裝 `playwright-core`，
+在系統 Edge 跑六支自架 smoke（`validate:ui-library:browser`、`test:spa-template:browser`、
+`test:theme-studio:browser`、`test:custom-components:browser`、`test:studio:browser`、`test:form-designer:browser`）。
+只有需要 `python -m http.server 8124` 的 harness（canvas chart、波 2／3、data explorer、cluster graph、icon）仍只在本機驗收。
 
 .NET 10 遷移保留既有 PBKDF2 密碼儲存格式；Broker、MFA 與 SPA 範本都有固定
 相容性向量，確保既有雜湊仍可驗證，同時改用目前的靜態 PBKDF2 API。

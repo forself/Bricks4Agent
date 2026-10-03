@@ -82,7 +82,7 @@ Successful output includes `package.verification_report`. The verifier checks:
 
 - `components/manifest.json`
 
-- `README.md`
+- `README.html`
 
 - `index.html` declares `#app` and loads `./runtime.js`
 

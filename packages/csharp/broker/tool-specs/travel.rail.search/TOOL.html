@@ -23,13 +23,32 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <h1>travel.rail.search</h1>
 <p>Purpose: broker-mediated Taiwan Railways timetable and ticket lookup.</p>
 <p>Current status: active.</p>
+<p>Implementation:</p>
+<ul>
+<li>
+<p>TDX only (source label <code>TDX 台鐵時刻表 API</code>); there is no public-web fallback. If TDX is not configured, fails, or returns nothing, the tool returns an empty result</p>
+</li>
+<li>
+<p>high-level LINE <code>?rail</code> queries are routed through <code>transport.query</code>, not directly through this tool</p>
+</li>
+</ul>
 <p>Rules:</p>
 <ul>
-<li>sources must be declared in source policy</li>
-<li>this tool is for TRA / 台鐵 / 火車 lookups, not THSR / 高鐵</li>
-<li>schedule results must be treated as time-sensitive</li>
-<li>responses must identify source and retrieval time</li>
-<li>returned options are candidate schedules and may include detected time candidates from public timetable pages</li>
+<li>
+<p>sources must be declared in source policy</p>
+</li>
+<li>
+<p>this tool is for TRA / 台鐵 / 火車 lookups, not THSR / 高鐵</p>
+</li>
+<li>
+<p>schedule results must be treated as time-sensitive</p>
+</li>
+<li>
+<p>responses must identify source and retrieval time</p>
+</li>
+<li>
+<p>returned options are candidate schedules from the TDX timetable</p>
+</li>
 </ul>
 </main>
 </body>

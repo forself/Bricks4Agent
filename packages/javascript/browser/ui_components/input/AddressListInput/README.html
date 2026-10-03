@@ -26,7 +26,27 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <h3>Constructor</h3>
 <pre><code class="language-js">new AddressListInput(options?)
 </code></pre>
-<p>繼承 <code>ListInput</code> 所有選項，預設值：</p>
+<p>繼承 <code>ListInput</code> 所有選項，並<strong>必須</strong>提供每筆 <code>AddressInput</code> 使用的資料載入函式：</p>
+<table>
+<thead>
+<tr>
+<th>參數</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>loadCities</code></td>
+<td><code>async () =&gt; [...]</code>，載入縣市選項（必填）</td>
+</tr>
+<tr>
+<td><code>loadDistricts</code></td>
+<td><code>async (city) =&gt; [...]</code>，依縣市載入行政區選項（必填）</td>
+</tr>
+</tbody>
+</table>
+<p>未提供時，各筆地址的縣市/行政區下拉選單不會有資料（錯誤由 ChainedInput 以 <code>console.error</code> 記錄）。</p>
+<p>預設值：</p>
 <table>
 <thead>
 <tr>
@@ -61,9 +81,11 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <h3>方法</h3>
 <p>繼承 <code>ListInput</code> 所有方法：<code>mount(container)</code>、<code>getValues()</code>、<code>setValues(items)</code>。</p>
 <h2>使用範例</h2>
-<pre><code class="language-js">import { AddressListInput } from './input/AddressListInput/index.js';
+<pre><code class="language-js">import { AddressListInput } from './index.js';
 
 const list = new AddressListInput({
+    loadCities: async () =&gt; fetchCities(),
+    loadDistricts: async (city) =&gt; fetchDistricts(city),
     maxItems: 5,
     onChange: (items) =&gt; console.log(items)
 });

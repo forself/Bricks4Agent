@@ -21,7 +21,7 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <body>
 <main>
 <h1>page-gen CLI</h1>
-<p><code>tools/page-gen.js</code> 會把 PageDefinition 轉成靜態頁面程式碼，或輸出動態定義 JSON。</p>
+<p><code>tools/page-gen.js</code> 會把頁面定義轉成靜態頁面程式碼，或輸出動態定義 JSON。輸入須為 page-gen 格式 <code>{ page: {...}, fields: [{ fieldName, fieldType, ... }] }</code>，或 DefinitionTemplate 內的 pages；一般 PageDefinition <code>{ name, type, fields }</code> 會被拒（<code>缺少 page 區塊</code>）。</p>
 <h2>Usage</h2>
 <pre><code class="language-bash">node tools/page-gen.js [options]
 </code></pre>
@@ -34,6 +34,13 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 </code></pre>
 <h3>List supported types</h3>
 <pre><code class="language-bash">node tools/page-gen.js --list-types
+</code></pre>
+<h3>Generate from a DefinitionTemplate</h3>
+<p>單頁需以 <code>--page</code> 指定；批次則用 <code>--pages</code> 或 <code>--all</code>，在同一個 Node 行程內完成
+（模板只解析與驗證一次，輸出與逐頁執行逐位相同），並輸出彙總 JSON。</p>
+<pre><code class="language-bash">node tools/page-gen.js --def site-definition.json --page products-list --mode static --output ./output/
+node tools/page-gen.js --def site-definition.json --pages products-list,orders-list --mode static --output ./output/
+node tools/page-gen.js --def site-definition.json --all --mode both --output ./output/
 </code></pre>
 <h2>Options</h2>
 <table>
@@ -49,6 +56,21 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <td><code>--def &lt;path&gt;</code></td>
 <td>Input definition file</td>
 <td>-</td>
+</tr>
+<tr>
+<td><code>--page &lt;id&gt;</code></td>
+<td>DefinitionTemplate 內要選用的單一 page id</td>
+<td>-</td>
+</tr>
+<tr>
+<td><code>--pages &lt;ids&gt;</code></td>
+<td>DefinitionTemplate 內要批次處理的 page id（逗號分隔）</td>
+<td>-</td>
+</tr>
+<tr>
+<td><code>--all</code></td>
+<td>批次處理 DefinitionTemplate 內所有 pages</td>
+<td><code>false</code></td>
 </tr>
 <tr>
 <td><code>--mode &lt;mode&gt;</code></td>
@@ -67,7 +89,7 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 </tr>
 <tr>
 <td><code>--list-types</code></td>
-<td>Print supported field, trigger, and optionsSource types</td>
+<td>Print supported field (34; no <code>rocDate</code>, <code>slider</code>, <code>memo</code>), trigger, and optionsSource types</td>
 <td><code>false</code></td>
 </tr>
 <tr>
@@ -112,15 +134,27 @@ node packages/javascript/browser/page-generator/examples/test-generator.js
 <h2>Example Definition</h2>
 <p>可參考：</p>
 <ul>
-<li><code>packages/javascript/browser/page-generator/examples/EmployeeDefinition.js</code></li>
-<li><code>packages/javascript/browser/page-generator/examples/DiaryEditorDefinition.js</code></li>
-<li><code>packages/javascript/browser/page-generator/examples/ContactFormDefinition.js</code></li>
+<li>
+<p><code>packages/javascript/browser/page-generator/examples/EmployeeDefinition.js</code></p>
+</li>
+<li>
+<p><code>packages/javascript/browser/page-generator/examples/DiaryEditorDefinition.js</code></p>
+</li>
+<li>
+<p><code>packages/javascript/browser/page-generator/examples/ContactFormDefinition.js</code></p>
+</li>
 </ul>
 <h2>Related Files</h2>
 <ul>
-<li><code>packages/javascript/browser/page-generator/README.md</code></li>
-<li><code>packages/javascript/browser/page-generator/PageDefinitionAdapter.js</code></li>
-<li><code>packages/javascript/browser/page-generator/examples/</code></li>
+<li>
+<p><code>packages/javascript/browser/page-generator/README.md</code></p>
+</li>
+<li>
+<p><code>packages/javascript/browser/page-generator/PageDefinitionAdapter.js</code></p>
+</li>
+<li>
+<p><code>packages/javascript/browser/page-generator/examples/</code></p>
+</li>
 </ul>
 </main>
 </body>

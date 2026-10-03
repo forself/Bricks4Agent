@@ -17,6 +17,7 @@ import { CanvasChart } from './CanvasChart.js';
 import { categoricalColor } from '../utils/color-scale.js';
 import { ModalPanel } from '../layout/Panel/index.js';
 import { FALLBACK_PAINT } from '../utils/theme-bus.js';
+import Locale from '../i18n/index.js';
 
 /** hexToRgb: 與 HeatmapChart 同款亮度自適應文字色 */
 function hexToRgbArr(hex) {
@@ -43,6 +44,28 @@ export class TimelineChart extends CanvasChart {
 
     /** 更新資料並重繪(舊 API 相容)。 */
     setData(data) { this.data = data; this.render(); }
+
+    /**
+     * 無障礙資料表(accessibleTable):名稱 / [群組] / 開始 / 結束,依資料順序每事件一列;
+     * 群組(泳道)欄只在資料有 group 時出現,時間以 Intl.DateTimeFormat(目前語系)格式化。
+     */
+    getDataTable() {
+        const items = (Array.isArray(this.data) ? this.data : []).filter((d) => d && typeof d === 'object');
+        const columns = [{ key: 'name', label: Locale.t('canvasChart.name'), rowHeader: true }];
+        if (items.some((d) => d.group != null && d.group !== '')) {
+            columns.push({ key: 'group', label: Locale.t('canvasChart.group') });
+        }
+        columns.push(
+            { key: 'start', label: Locale.t('canvasChart.start'), format: 'datetime' },
+            { key: 'end', label: Locale.t('canvasChart.end'), format: 'datetime' }
+        );
+        return {
+            columns,
+            rows: items.map((d) => ({ name: d.label, group: d.group, start: d.start, end: d.end }))
+        };
+    }
+
+    _a11ySources() { return [this.data]; }
 
     draw(ctx, w, h) {
         const data = this.data;

@@ -27,6 +27,8 @@ Each tool lives in its own directory:
 
 - `TOOL.md`
 
+As of 2026-09-26 there are 18 spec directories. `TOOL.md` is optional at load time (`packages/csharp/broker/Services/ToolSpecRegistry.cs:100,136-138`): `transport.query` currently has only `tool.json`, and the `site.*` specs also carry a `TOOL.zh-TW.md`.
+
 ## Current Broker Behavior
 
 The broker now:
@@ -230,15 +232,15 @@ At this stage, the registry contains both:
 
 - active tools that already have a broker-owned execution adapter
 
-Right now:
+Right now (checked 2026-09-26 against each `tool.json`):
 
-- `web.search.google` is planned
+- `web.search.google` is active
 
 - `web.search.duckduckgo` is active
 
-- `travel.flight.search` is planned
+- `travel.flight.search` is active
 
-- `travel.rail.search` is planned
+- `travel.rail.search` is active
 
 - `commerce.price.search` is planned
 
@@ -246,11 +248,11 @@ Current execution reality:
 
 - `web.search.duckduckgo` is executable through broker mediation
 
-- `web.search.google` remains documented but not activated, because the currently observed public Google entrypoint does not produce a stable broker-owned parser path
+- `web.search.google` is executable through broker mediation and is the primary web search path; DuckDuckGo is the fallback (`packages/csharp/broker/Services/HighLevelQueryToolMediator.cs:46-74`)
 
 Current high-level usage:
 
-- `web.search.duckduckgo` is now wired into the high-level command grammar through the explicit `?search <keywords>` path
+- the explicit `?search <keywords>` path in the high-level command grammar tries `web.search.google` first and falls back to `web.search.duckduckgo`
 
 - the high-level model does not receive unrestricted web access; it must go through this broker-mediated tool path
 
@@ -258,14 +260,16 @@ Current high-level usage:
 
 Current browser identity references:
 
-- `browser.reference.anonymous.read`
+- `browser.reference.anonymous.read` (active, capability `browser.read`)
 
-- `browser.reference.system-account.read`
+- `browser.reference.anonymous.navigate` (active, capability `browser.navigate`)
 
-- `browser.reference.user-delegated.read`
+- `browser.reference.system-account.read` (planned)
 
-These are `planned` reference specs.
-They are present so the registry and capability model can carry the browser identity split before browser-worker execution is implemented.
+- `browser.reference.user-delegated.read` (planned)
+
+The anonymous specs are executed by the browser worker (`packages/csharp/workers/browser-worker`).
+The system-account and user-delegated specs remain `planned` reference specs so the registry and capability model can carry the browser identity split before those execution paths exist.
 
 ## Browser Spec Validation
 

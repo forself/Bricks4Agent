@@ -7,7 +7,38 @@ import { BasePanel } from './BasePanel.js';
 import { PanelManager } from './PanelManager.js';
 
 import Locale from '../../i18n/index.js';
+import { nextUid } from '../../utils/uid.js';
+
+// 同一個 Escape keydown 只關閉一層對話框（疊加時由最上層處理）
+const handledEscapeEvents = new WeakSet();
+
+const FOCUSABLE_SELECTOR = [
+    'a[href]',
+    'area[href]',
+    'button:not([disabled])',
+    'input:not([disabled]):not([type="hidden"])',
+    'select:not([disabled])',
+    'textarea:not([disabled])',
+    'iframe',
+    '[contenteditable="true"]',
+    '[tabindex]:not([tabindex="-1"])'
+].join(', ');
+
 export class ModalPanel extends BasePanel {
+    /**
+     * 全域預設值。`manageFocus` 預設 false 以維持既有行為；新專案建議在啟動時設為 true，
+     * 讓所有對話框開啟時把焦點移入、Tab 限制在對話框內、關閉時還原焦點。
+     */
+    static defaults = {
+        manageFocus: false
+    };
+
+    /**
+     * @param {Object} options - BasePanel 選項，另外支援：
+     * @param {boolean} [options.manageFocus] - 焦點管理；未指定時採用 ModalPanel.defaults.manageFocus
+     * @param {string|Element} [options.initialFocus] - 開啟時要聚焦的元素（選擇器或元素），預設為內容區第一個可聚焦元素
+     * @param {string} [options.ariaLabel] - 沒有標題時的對話框名稱
+     */
     constructor(options = {}) {
         const autoClose = options.autoClose !== false;
         super({
@@ -111,6 +142,7 @@ export class ModalPanel extends BasePanel {
         `;
 
         this.backdrop.appendChild(this.element);
+        this._applyDialogSemantics();
 
         // 在 pointerdown 階段先處理真正的遮罩點擊。瀏覽器中的 click
         // 可能因焦點切換、DOM 更新或後續事件攔截而不送達遮罩；click
@@ -135,13 +167,128 @@ export class ModalPanel extends BasePanel {
             this.backdrop.addEventListener('click', this._handleBackdropClick, true);
         }
 
-        // ESC 關閉
+        // ESC 關閉：疊加的對話框只由最上層處理；內部元件已處理（preventDefault）的 Escape 不再關閉對話框
         this._handleKeydown = (e) => {
-            if (e.key === 'Escape' && this.options.visibility === BasePanel.VISIBILITY.VISIBLE) {
-                this.close();
-            }
+            if (e.key !== 'Escape' || e.defaultPrevented || handledEscapeEvents.has(e)) return;
+            if (this.options.visibility !== BasePanel.VISIBILITY.VISIBLE) return;
+            const stack = PanelManager.modalStack;
+            const index = stack.lastIndexOf(this.id);
+            if (index >= 0 && index !== stack.length - 1) return;
+            handledEscapeEvents.add(e);
+            this.close();
         };
         document.addEventListener('keydown', this._handleKeydown);
+    }
+
+    /** 對話框語意：role="dialog"、aria-modal，並以標題（或 ariaLabel）命名。 */
+    _applyDialogSemantics() {
+        const panel = this.element;
+        if (!panel) return;
+        panel.setAttribute('role', 'dialog');
+        panel.setAttribute('aria-modal', 'true');
+        const titleEl = panel.querySelector('.panel__title');
+        if (titleEl) {
+            if (!titleEl.id) titleEl.id = nextUid('modal-title');
+            panel.setAttribute('aria-labelledby', titleEl.id);
+        } else if (this.options.ariaLabel) {
+            panel.setAttribute('aria-label', String(this.options.ariaLabel));
+        }
+    }
+
+    _shouldManageFocus() {
+        const value = this.options.manageFocus;
+        if (value === undefined || value === null) return ModalPanel.defaults.manageFocus === true;
+        return value === true;
+    }
+
+    _isShown(el) {
+        for (let node = el; node && node !== this.element?.parentNode; node = node.parentElement) {
+            if (node.hidden || node.hasAttribute?.('inert')) return false;
+            const style = window.getComputedStyle(node);
+            if (style.display === 'none' || style.visibility === 'hidden') return false;
+        }
+        return true;
+    }
+
+    _focusableElements() {
+        if (!this.element) return [];
+        return [...this.element.querySelectorAll(FOCUSABLE_SELECTOR)]
+            .filter((el) => el.getAttribute('aria-hidden') !== 'true' && this._isShown(el));
+    }
+
+    _focusInitial() {
+        const option = this.options.initialFocus;
+        let target = null;
+        if (option instanceof Element) {
+            target = this.element.contains(option) ? option : null;
+        } else if (typeof option === 'string' && option) {
+            target = this.element.querySelector(option);
+        }
+        if (!target) {
+            const focusables = this._focusableElements();
+            const content = this.element.querySelector('.panel__content');
+            target = focusables.find((el) => content?.contains(el)) || focusables[0] || null;
+        }
+        if (!target) {
+            if (!this.element.hasAttribute('tabindex')) this.element.setAttribute('tabindex', '-1');
+            target = this.element;
+        }
+        target.focus({ preventScroll: true });
+    }
+
+    /**
+     * Tab 循環：只在本對話框位於最上層、且焦點在對話框內或已遺失時介入；
+     * 焦點在浮到 body 的子層（例如日期面板）時交給該層自行處理。
+     */
+    _trapTab(e) {
+        if (e.key !== 'Tab' || e.defaultPrevented || !this.element) return;
+        const stack = PanelManager.modalStack;
+        if (stack.length && stack[stack.length - 1] !== this.id) return;
+        const active = document.activeElement;
+        const inside = this.element.contains(active);
+        if (!inside && active && active !== document.body) return;
+
+        const focusables = this._focusableElements();
+        if (!focusables.length) {
+            e.preventDefault();
+            this.element.focus({ preventScroll: true });
+            return;
+        }
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+        if (!inside || active === this.element) {
+            e.preventDefault();
+            (e.shiftKey ? last : first).focus({ preventScroll: true });
+        } else if (e.shiftKey && active === first) {
+            e.preventDefault();
+            last.focus({ preventScroll: true });
+        } else if (!e.shiftKey && active === last) {
+            e.preventDefault();
+            first.focus({ preventScroll: true });
+        }
+    }
+
+    _activateFocusManagement() {
+        if (this._focusTrapHandler || !this.element) return;
+        const opener = document.activeElement;
+        this._focusReturnTarget = opener && opener !== document.body && !this.element.contains(opener) ? opener : null;
+        this._focusTrapHandler = (e) => this._trapTab(e);
+        document.addEventListener('keydown', this._focusTrapHandler, true);
+        if (!this.element.contains(document.activeElement)) this._focusInitial();
+    }
+
+    _deactivateFocusManagement({ restore = true } = {}) {
+        if (!this._focusTrapHandler) return;
+        document.removeEventListener('keydown', this._focusTrapHandler, true);
+        this._focusTrapHandler = null;
+        const target = this._focusReturnTarget;
+        this._focusReturnTarget = null;
+        if (!restore || !target?.isConnected || typeof target.focus !== 'function') return;
+        // 只在焦點仍在對話框內或已遺失時還原，不搶走使用者已移往他處的焦點
+        const active = document.activeElement;
+        if (!active || active === document.body || this.element?.contains(active)) {
+            target.focus({ preventScroll: true });
+        }
     }
 
     _applyVisibility() {
@@ -198,6 +345,7 @@ export class ModalPanel extends BasePanel {
         PanelManager.enterModal(this);
         this._modalEntered = true;
         this.setVisibility(BasePanel.VISIBILITY.VISIBLE);
+        if (this._shouldManageFocus()) this._activateFocusManagement();
         return this;
     }
 
@@ -215,6 +363,7 @@ export class ModalPanel extends BasePanel {
         PanelManager.exitModal(this);
         this._modalEntered = false;
         super.close();
+        this._deactivateFocusManagement({ restore: true });
 
         if (this.options.destroyOnClose && !this._destroyed) {
             // 延後到 microtask，讓 `modal.close(); onConfirm();` 的同步尾段先跑完；
@@ -250,6 +399,7 @@ export class ModalPanel extends BasePanel {
         if (this._destroyed) return;
 
         document.removeEventListener('keydown', this._handleKeydown);
+        this._deactivateFocusManagement({ restore: true });
 
         if (this.backdrop && this._handleBackdropPointerDown) {
             this.backdrop.removeEventListener('pointerdown', this._handleBackdropPointerDown, true);
@@ -286,10 +436,12 @@ export class ModalPanel extends BasePanel {
             document.body.style.overflow = '';
         }
 
-        // 不可將 this.backdrop 置 null:mount()/_applyVisibility() 仍會讀取
         if (this.backdrop?.parentNode) {
             this.backdrop.remove();
         }
+        // 銷毀後 backdrop 為 null（既有公開契約，呼叫端以此判斷面板已拆除）。
+        // mount() 已由 _destroyed 擋下，_applyVisibility() 對 null backdrop 會改走 BasePanel 路徑。
+        this.backdrop = null;
     }
 
     static confirm(options = {}) {

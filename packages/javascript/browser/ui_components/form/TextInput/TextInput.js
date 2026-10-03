@@ -25,6 +25,7 @@ export class TextInput {
 
         this.input = null;
         this.message = null;
+        this._ariaInvalid = false;
         this.element = this._create();
         this._state = createComponentState(this._buildInitialState(), {
             MOUNT: (state) => ({ ...state, lifecycle: 'mounted' }),
@@ -55,7 +56,8 @@ export class TextInput {
                 ...state,
                 validation: {
                     status: 'error',
-                    message: String(payload?.error ?? '')
+                    message: String(payload?.error ?? ''),
+                    display: payload?.display !== false
                 }
             }),
             CLEAR_ERROR: (state) => ({
@@ -241,6 +243,14 @@ export class TextInput {
             this.input.style.color = state.availability === 'disabled' ? 'var(--cl-text-placeholder)' : 'var(--cl-text)';
             this.input.style.cursor = state.availability === 'disabled' ? 'not-allowed' : 'text';
 
+            // aria-invalid 只在錯誤狀態切換時更新
+            const invalid = state.validation.status === 'error';
+            if (invalid !== this._ariaInvalid) {
+                if (invalid) this.input.setAttribute('aria-invalid', 'true');
+                else this.input.removeAttribute('aria-invalid');
+                this._ariaInvalid = invalid;
+            }
+
             if (state.validation.status === 'error') {
                 this.input.style.borderColor = 'var(--cl-danger)';
                 this.input.style.boxShadow = '0 0 0 3px rgba(var(--cl-danger-rgb), 0.1)';
@@ -253,7 +263,8 @@ export class TextInput {
             }
         }
 
-        const messageText = state.validation.message;
+        // display:false 的錯誤只標示紅框，文字由外層（FormField、SearchForm）顯示
+        const messageText = state.validation.display === false ? '' : state.validation.message;
         if (!this.message && messageText) {
             const message = document.createElement('span');
             message.className = state.validation.status === 'error' ? 'text-input__error' : 'text-input__hint';
@@ -318,8 +329,12 @@ export class TextInput {
         this.send('SET_DISABLED', { disabled });
     }
 
-    setError(error) {
-        this.send('SET_ERROR', { error });
+    /**
+     * 設定錯誤。display:false 只標示錯誤狀態（紅框、aria-invalid），不在輸入框下方顯示文字，
+     * 供自行顯示錯誤文字的外層使用。
+     */
+    setError(error, { display = true } = {}) {
+        this.send('SET_ERROR', { error, display });
     }
 
     clearError() {

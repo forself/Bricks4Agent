@@ -24,28 +24,48 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <p>功能完整的頁籤容器組件，支援多頁籤介面、動態添加/移除、徽章顯示、圖示支援等功能。</p>
 <h2>特性</h2>
 <ul>
-<li>✅ <strong>多種位置</strong>: 支援頂部、底部、左側、右側四種頁籤位置</li>
-<li>✅ <strong>動態管理</strong>: 動態添加、移除、更新頁籤</li>
-<li>✅ <strong>徽章顯示</strong>: 顯示通知數量徽章</li>
-<li>✅ <strong>圖示支援</strong>: 支援 Font Awesome 等圖示庫</li>
-<li>✅ <strong>可關閉</strong>: 可配置頁籤是否可關閉</li>
-<li>✅ <strong>動畫效果</strong>: 平滑的切換動畫</li>
-<li>✅ <strong>回調函數</strong>: 提供切換和關閉事件回調</li>
-<li>✅ <strong>響應式設計</strong>: 適配各種螢幕尺寸</li>
-<li>✅ <strong>深色模式</strong>: 支援深色模式</li>
+<li>
+<p>✅ <strong>多種位置</strong>: 支援頂部、底部、左側、右側四種頁籤位置</p>
+</li>
+<li>
+<p>✅ <strong>動態管理</strong>: 動態添加、移除、更新頁籤</p>
+</li>
+<li>
+<p>✅ <strong>徽章顯示</strong>: 顯示通知數量徽章</p>
+</li>
+<li>
+<p>✅ <strong>圖示支援</strong>: 支援 Font Awesome 等圖示庫</p>
+</li>
+<li>
+<p>✅ <strong>可關閉</strong>: 可配置頁籤是否可關閉</p>
+</li>
+<li>
+<p>✅ <strong>動畫效果</strong>: 平滑的切換動畫</p>
+</li>
+<li>
+<p>✅ <strong>回調函數</strong>: 提供切換和關閉事件回調</p>
+</li>
+<li>
+<p>✅ <strong>響應式設計</strong>: 適配各種螢幕尺寸</p>
+</li>
+<li>
+<p>✅ <strong>深色模式</strong>: 支援深色模式</p>
+</li>
 </ul>
 <h2>使用方法</h2>
 <h3>基本使用</h3>
 <pre><code class="language-html">&lt;!DOCTYPE html&gt;
 &lt;html&gt;
 &lt;head&gt;
+    &lt;link rel=&quot;stylesheet&quot; href=&quot;../../theme.css&quot;&gt;
     &lt;link rel=&quot;stylesheet&quot; href=&quot;TabContainer.css&quot;&gt;
 &lt;/head&gt;
 &lt;body&gt;
     &lt;div id=&quot;my-tabs&quot;&gt;&lt;/div&gt;
 
-    &lt;script src=&quot;TabContainer.js&quot;&gt;&lt;/script&gt;
-    &lt;script&gt;
+    &lt;script type=&quot;module&quot;&gt;
+        import { TabContainer } from './TabContainer.js';
+
         const tabs = new TabContainer({
             containerId: 'my-tabs',
             position: 'top',
@@ -69,9 +89,10 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 &lt;/body&gt;
 &lt;/html&gt;
 </code></pre>
+<p>TabContainer 沒有 <code>mount()</code>：建構時即渲染到 <code>containerId</code> 指定的元素。</p>
 <h3>配置選項</h3>
 <pre><code class="language-javascript">const tabs = new TabContainer({
-    // 容器元素 ID（必填）
+    // 容器元素 ID（預設: 'tab-container'；找不到元素時只會 console.error，不會拋錯）
     containerId: 'my-tabs',
 
     // 頁籤位置: 'top', 'bottom', 'left', 'right'（預設: 'top'）
@@ -88,14 +109,14 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
         {
             id: 'tab1',              // 頁籤唯一 ID（必填）
             title: '頁籤標題',        // 頁籤標題（必填）
-            content: '&lt;div&gt;內容&lt;/div&gt;', // 頁籤內容（選填）
+            content: '&lt;div&gt;內容&lt;/div&gt;', // 頁籤內容（選填；字串經 sanitizeHTML 清洗，可信 HTML 需用 raw()；也可傳 DOM 元素）
             icon: 'fas fa-home',     // 圖示類名（選填）
             badge: 5,                // 徽章數字（選填）
             closable: true           // 是否可關閉（選填，覆蓋全域設定）
         }
     ],
 
-    // 頁籤切換回調
+    // 頁籤切換回調（建構時啟用第一個頁籤也會觸發一次，此時 previousTabId 為 null）
     onTabChange: (event) =&gt; {
         console.log('切換到頁籤:', event.tabId);
         console.log('前一個頁籤:', event.previousTabId);
@@ -144,6 +165,9 @@ tabs.updateBadge('tab1', 0);
 </code></pre>
 <h3>updateContent(tabId, content)</h3>
 <p>更新頁籤內容</p>
+<blockquote>
+<p>⚠️ 目前行為：與 <code>addTab()</code> 不同，<code>updateContent()</code> 會把字串<strong>直接寫入 innerHTML，未經 sanitizeHTML 清洗</strong>；傳入 <code>raw()</code> 物件則不會渲染任何內容。內容若可能含不可信資料，請傳入 DOM 元素。</p>
+</blockquote>
 <pre><code class="language-javascript">// 使用 HTML 字串
 tabs.updateContent('tab1', '&lt;h3&gt;新內容&lt;/h3&gt;');
 
@@ -168,11 +192,11 @@ console.log('所有頁籤:', allIds); // ['tab1', 'tab2', 'tab3']
 console.log('頁籤數量:', count);
 </code></pre>
 <h3>removeAllTabs()</h3>
-<p>移除所有頁籤</p>
+<p>移除所有頁籤（對每個頁籤呼叫 <code>closeTab()</code>，因此會逐一觸發 <code>onTabClose</code> 與 <code>onTabChange</code>；<code>onTabClose</code> 回傳 <code>false</code> 的頁籤不會被移除）</p>
 <pre><code class="language-javascript">tabs.removeAllTabs();
 </code></pre>
 <h3>destroy()</h3>
-<p>銷毀容器</p>
+<p>銷毀容器（先呼叫 <code>removeAllTabs()</code>，同樣會觸發 <code>onTabClose</code> 與 <code>onTabChange</code>，再清空容器）</p>
 <pre><code class="language-javascript">tabs.destroy();
 </code></pre>
 <h2>使用範例</h2>
@@ -337,36 +361,72 @@ document.getElementById('add-tab-btn').addEventListener('click', () =&gt; {
 </code></pre>
 <h2>注意事項</h2>
 <ol>
-<li><strong>頁籤 ID 必須唯一</strong>: 每個頁籤的 <code>id</code> 必須是唯一的</li>
-<li><strong>圖示依賴</strong>: 如使用圖示，需引入 Font Awesome 或其他圖示庫</li>
-<li><strong>內容格式</strong>: 頁籤內容可以是 HTML 字串或 DOM 元素</li>
-<li><strong>響應式</strong>: 在小螢幕上，頁籤列表會自動顯示滾動條</li>
-<li><strong>事件回調</strong>: <code>onTabClose</code> 返回 <code>false</code> 可取消關閉操作</li>
+<li>
+<p><strong>頁籤 ID 必須唯一</strong>: 每個頁籤的 <code>id</code> 必須是唯一的</p>
+</li>
+<li>
+<p><strong>圖示依賴</strong>: 如使用圖示，需引入 Font Awesome 或其他圖示庫</p>
+</li>
+<li>
+<p><strong>內容格式</strong>: 頁籤內容可以是 HTML 字串或 DOM 元素。透過 <code>tabs</code> / <code>addTab()</code> 傳入的字串會經 <code>sanitizeHTML</code> 清洗（<code>style</code> 屬性、<code>on*</code> 事件及 <code>button</code> / <code>input</code> / <code>form</code> 等標籤會被移除），已知安全的 HTML 需以 <code>raw()</code> 包裝；<code>updateContent()</code> 的例外見上方說明</p>
+</li>
+<li>
+<p><strong>響應式</strong>: 在小螢幕上，頁籤列表會自動顯示滾動條</p>
+</li>
+<li>
+<p><strong>事件回調</strong>: <code>onTabClose</code> 返回 <code>false</code> 可取消關閉操作</p>
+</li>
 </ol>
 <h2>瀏覽器支援</h2>
 <ul>
-<li>Chrome 90+</li>
-<li>Firefox 88+</li>
-<li>Safari 14+</li>
-<li>Edge 90+</li>
+<li>
+<p>Chrome 90+</p>
+</li>
+<li>
+<p>Firefox 88+</p>
+</li>
+<li>
+<p>Safari 14+</p>
+</li>
+<li>
+<p>Edge 90+</p>
+</li>
 </ul>
 <h2>依賴</h2>
 <ul>
-<li>無外部依賴（純 JavaScript 實作）</li>
-<li>可選：Font Awesome（用於圖示）</li>
+<li>
+<p>無外部依賴（純 JavaScript 實作）</p>
+</li>
+<li>
+<p>可選：Font Awesome（用於圖示）</p>
+</li>
 </ul>
 <h2>授權</h2>
 <p>MIT License</p>
 <h2>更新日誌</h2>
 <h3>v1.0.0 (2026-01-23)</h3>
 <ul>
-<li>初始版本</li>
-<li>支援四種頁籤位置</li>
-<li>動態添加/移除頁籤</li>
-<li>徽章顯示功能</li>
-<li>圖示支援</li>
-<li>切換動畫</li>
-<li>響應式設計</li>
+<li>
+<p>初始版本</p>
+</li>
+<li>
+<p>支援四種頁籤位置</p>
+</li>
+<li>
+<p>動態添加/移除頁籤</p>
+</li>
+<li>
+<p>徽章顯示功能</p>
+</li>
+<li>
+<p>圖示支援</p>
+</li>
+<li>
+<p>切換動畫</p>
+</li>
+<li>
+<p>響應式設計</p>
+</li>
 </ul>
 </main>
 </body>

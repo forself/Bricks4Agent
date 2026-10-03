@@ -31,6 +31,7 @@ const picker = new TimePicker({
 | `getValue()` | 取得時間字串（HH:MM）或空字串 |
 | `setValue(str)` | 設定時間（'HH:MM' 格式） |
 | `clear()` | 清除已選時間 |
+| `setError(msg, { display })` / `clearError()` | 標示 / 清除欄位錯誤：紅框、`aria-invalid` 與錯誤文字；`display: false` 只標示狀態、不顯示文字 |
 | `open()` / `close()` / `toggle()` | 開關面板 |
 
 ### 屬性

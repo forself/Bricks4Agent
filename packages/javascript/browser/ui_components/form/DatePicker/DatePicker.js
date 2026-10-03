@@ -2,6 +2,7 @@ import { escapeHtml } from '../../utils/security.js';
 import Locale from '../../i18n/index.js';
 import { createComponentState } from '../../utils/component-state.js';
 import { Icon } from '../../common/Icon/index.js';
+import { setFieldError, clearFieldError, FIELD_ERROR_CONTRACT } from '../../utils/field-error.js';
 
 function normalizeDate(value) {
     if (!value) return null;
@@ -526,7 +527,8 @@ export class DatePicker {
         });
 
         this._onDocumentClick = (event) => {
-            if (!this.element.contains(event.target)) {
+            // 月曆打開時掛在 document.body(浮出上層容器),不在 this.element 裡。
+            if (!this.element.contains(event.target) && !this.calendar?.contains(event.target)) {
                 this.close();
             }
         };
@@ -551,49 +553,59 @@ export class DatePicker {
         }
     }
 
-    _getCalendarVerticalBounds() {
-        let top = 8;
-        let bottom = Math.max(top, window.innerHeight - 8);
-        let ancestor = this.element?.parentElement;
-
-        while (ancestor && ancestor !== document.body && ancestor !== document.documentElement) {
-            const style = window.getComputedStyle(ancestor);
-            const clipsY = [style.overflow, style.overflowY]
-                .some(value => /^(auto|scroll|hidden|clip)$/.test(value));
-            if (clipsY) {
-                const rect = ancestor.getBoundingClientRect();
-                top = Math.max(top, rect.top);
-                bottom = Math.min(bottom, rect.bottom);
-            }
-            ancestor = ancestor.parentElement;
+    /**
+     * 月曆浮到最上層:打開時掛到 document.body 並以 position:fixed 依輸入框座標定位,
+     * 不再受上層容器 overflow/高度裁切,也不必調整上層元件高度;空間不足時翻到輸入框上方。
+     * 關閉時移回元件內,維持既有的 DOM 契約(this.calendar 仍屬於本元件)。
+     */
+    _portalCalendar(open) {
+        const calendar = this.calendar;
+        if (!calendar) return;
+        if (open) {
+            if (calendar.parentNode !== document.body) document.body.appendChild(calendar);
+            calendar.dataset.portal = 'body';
+        } else if (calendar.parentNode !== this.element) {
+            this.element.appendChild(calendar);
+            delete calendar.dataset.portal;
+            calendar.style.position = 'absolute';
+            calendar.style.top = '100%';
+            calendar.style.left = '0';
+            calendar.style.bottom = 'auto';
+            calendar.style.marginTop = '4px';
+            calendar.style.marginBottom = '0';
+            calendar.style.zIndex = '1000';
         }
-
-        return { top, bottom };
     }
 
     _positionCalendar() {
         if (!this.calendar || !this.inputWrapper || !this.snapshot().open) return;
+        const calendar = this.calendar;
+        const margin = 4;
+        const viewportTop = 8;
+        const viewportBottom = Math.max(viewportTop, window.innerHeight - 8);
+        const viewportRight = Math.max(0, window.innerWidth - 8);
 
-        this.calendar.style.top = '100%';
-        this.calendar.style.bottom = 'auto';
-        this.calendar.style.marginTop = '4px';
-        this.calendar.style.marginBottom = '0';
+        calendar.style.position = 'fixed';
+        calendar.style.marginTop = '0';
+        calendar.style.marginBottom = '0';
+        calendar.style.bottom = 'auto';
+        calendar.style.zIndex = '10050';
 
         const inputRect = this.inputWrapper.getBoundingClientRect();
-        const calendarRect = this.calendar.getBoundingClientRect();
-        const calendarHeight = calendarRect.height || this.calendar.scrollHeight || 0;
-        const bounds = this._getCalendarVerticalBounds();
-        const spaceBelow = bounds.bottom - inputRect.bottom - 4;
-        const spaceAbove = inputRect.top - bounds.top - 4;
+        const calendarRect = calendar.getBoundingClientRect();
+        const calendarHeight = calendarRect.height || calendar.scrollHeight || 0;
+        const calendarWidth = calendarRect.width || calendar.scrollWidth || 0;
+        const spaceBelow = viewportBottom - inputRect.bottom - margin;
+        const spaceAbove = inputRect.top - viewportTop - margin;
         const placeAbove = calendarHeight > spaceBelow && spaceAbove > spaceBelow;
 
-        if (placeAbove) {
-            this.calendar.style.top = 'auto';
-            this.calendar.style.bottom = '100%';
-            this.calendar.style.marginTop = '0';
-            this.calendar.style.marginBottom = '4px';
-        }
-        this.calendar.dataset.placement = placeAbove ? 'top' : 'bottom';
+        const top = placeAbove
+            ? Math.max(viewportTop, inputRect.top - margin - calendarHeight)
+            : inputRect.bottom + margin;
+        const left = Math.max(8, Math.min(inputRect.left, viewportRight - calendarWidth));
+        calendar.style.top = `${Math.round(top)}px`;
+        calendar.style.left = `${Math.round(left)}px`;
+        calendar.dataset.placement = placeAbove ? 'top' : 'bottom';
     }
 
     _syncLegacyFields(state) {
@@ -626,6 +638,7 @@ export class DatePicker {
         }
 
         if (this.calendar) {
+            this._portalCalendar(state.open);
             this.calendar.style.display = state.open ? 'block' : 'none';
         }
 
@@ -743,6 +756,25 @@ export class DatePicker {
         this.send('SET_DISABLED', { disabled });
     }
 
+    /**
+     * 標示欄位錯誤；空訊息等同 clearError()。
+     * display:false 只標示錯誤狀態、不顯示文字，給自行顯示錯誤文字的外層（FormField、SearchForm）使用。
+     */
+    setError(message, { display = true } = {}) {
+        setFieldError(this, message, { target: this.inputWrapper, container: this.element, display });
+        return this;
+    }
+
+    /** 清除 setError 的標示與文字。 */
+    clearError() {
+        clearFieldError(this);
+        return this;
+    }
+
+    get [FIELD_ERROR_CONTRACT]() {
+        return true;
+    }
+
     show() {
         this.send('SHOW');
     }
@@ -766,6 +798,7 @@ export class DatePicker {
             window.removeEventListener('resize', this._onViewportChange);
             window.removeEventListener('scroll', this._onViewportChange, true);
         }
+        if (this.calendar?.parentNode === document.body) this.calendar.remove();
         if (this.element?.parentNode) {
             this.element.remove();
         }

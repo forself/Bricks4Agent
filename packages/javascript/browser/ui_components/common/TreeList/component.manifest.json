@@ -6,8 +6,8 @@
   "category": "common",
   "kind": "composite",
   "source_path": "ui_components/common/TreeList/TreeList.js",
-  "docs_path": "",
-  "maturity": "beta",
+  "docs_path": "ui_components/common/TreeList/README.md",
+  "maturity": "stable",
   "generator": {
     "usable": false,
     "usage_mode": "manual_only",

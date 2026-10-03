@@ -38,7 +38,7 @@ JSON 只保存資料與可信 command ID，不包含函式、HTML 或任意 CSS�
 下列腳本都會自行啟動 random-port、no-store server 與 fresh Microsoft Edge，不依賴既有 8124 server：
 
 ```powershell
-npm run test:theme-studio:browser   # Theme、catalog 與頁內說明 18/18
+npm run test:theme-studio:browser   # 相容別名：與 test:studio:browser 跑同一支 studio-integration-smoke（16/16）
 npm run test:studio:self-host       # 單一 JSON、Link provenance、相容入口 19/19
 npm run test:studio:browser         # 說明連結、DOM identity、雙 JSON round-trip、CSS 注入拒絕 16/16
 npm run test:custom-components:browser # 客製元件安全/runtime 13/13
@@ -66,6 +66,6 @@ npm run test:custom-components:browser # 客製元件安全/runtime 13/13
 | `studio.css` | JSON node class 的外部樣式；只用 `--cl-*` tokens |
 | `sample-data.js` | catalog 預覽用 options；不是工具 UI |
 | `gen-custom-css.mjs` | 將 theme token JSON 轉為覆蓋 CSS |
-| `run.mjs` | Theme Studio fresh-Edge 回歸 |
+| `run.mjs` | 相容入口：直接執行 `tools/scripts/studio-integration-smoke.mjs`（同 `test:studio:browser`） |
 
 Theme token 的載入順序與產物用法見 [`THEME-USAGE.md`](../../packages/javascript/browser/ui_components/THEME-USAGE.html)；客製元件契約見 [`CUSTOM-COMPONENTS.md`](../../CUSTOM-COMPONENTS.md)。

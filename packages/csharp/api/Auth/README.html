@@ -21,17 +21,26 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <body>
 <main>
 <h1>Auth</h1>
+<blockquote>
+<p>⚠ 參考程式碼：此目錄沒有 .csproj，未被任何專案編譯或引用，CI 也不建置它；以下說明未經建置驗證。</p>
+</blockquote>
 <p>認證 API 控制器模組 — 提供兩種認證控制器：MFA 認證（MfaAuthController）與 IP 速率限制認證（RateLimitedAuthController）。</p>
 <h2>初始化方式</h2>
 <pre><code class="language-csharp">// 基本 MFA 認證
+// （MfaAuthService 另需註冊 IUserRepository、IMfaRepository、IMfaService，見 security/Mfa/README.md）
 builder.Services.AddScoped&lt;IMfaAuthService, MfaAuthService&gt;();
 
-// 含速率限制的認證（推薦用於生產環境）
+// 含速率限制的認證
 builder.Services.AddScoped&lt;IMfaAuthService, MfaAuthService&gt;();
-builder.Services.AddScoped&lt;IIpRateLimiter, IpRateLimiter&gt;();
-builder.Services.AddScoped&lt;IConnectionInfoService, ConnectionInfoService&gt;();
-builder.Services.AddScoped&lt;IUserSessionService, UserSessionService&gt;();
+// IpRateLimiter 與 UserSessionService 把計數與工作階段存在記憶體中，必須是 Singleton；
+// 用 AddScoped 會在每個請求重建，限流與工作階段都不會生效
+builder.Services.AddSingleton&lt;IIpRateLimiter, IpRateLimiter&gt;();
+builder.Services.AddSingleton&lt;IConnectionInfoService, ConnectionInfoService&gt;();
+builder.Services.AddSingleton&lt;IUserSessionService, UserSessionService&gt;();
 </code></pre>
+<blockquote>
+<p>兩個控制器都宣告 <code>[Route("api/auth")]</code>，且 <code>register</code>、<code>login</code>、<code>login/mfa</code> 路由重複；同一個應用程式只能註冊其中一個，否則這些端點會發生路由衝突（AmbiguousMatchException）。</p>
+</blockquote>
 <h2>檔案說明</h2>
 <table>
 <thead>
@@ -47,7 +56,7 @@ builder.Services.AddScoped&lt;IUserSessionService, UserSessionService&gt;();
 </tr>
 <tr>
 <td><code>RateLimitedAuthController.cs</code></td>
-<td>進階認證控制器（在 MFA 基礎上加入 IP 速率限制、工作階段管理）</td>
+<td>獨立的進階認證控制器（直接繼承 <code>ControllerBase</code>，不繼承 MfaAuthController；提供含 IP 速率限制的註冊/登入與工作階段管理）</td>
 </tr>
 </tbody>
 </table>
@@ -84,7 +93,7 @@ builder.Services.AddScoped&lt;IUserSessionService, UserSessionService&gt;();
 <tr>
 <td><code>POST</code></td>
 <td><code>/api/auth/login/mfa/email</code></td>
-<td>請求 Email OTP</td>
+<td>請求 Email OTP（尚未實作：stub，不驗證 token、不寄信，一律回傳成功訊息）</td>
 <td>匿名</td>
 </tr>
 <tr>
@@ -120,7 +129,7 @@ builder.Services.AddScoped&lt;IUserSessionService, UserSessionService&gt;();
 </tbody>
 </table>
 <h3>RateLimitedAuthController — 進階認證</h3>
-<p>繼承 MfaAuthController 的所有端點，額外加入：</p>
+<p>不繼承 MfaAuthController，只提供下列端點（沒有 <code>login/mfa/email</code> 與 <code>mfa/*</code>）：</p>
 <table>
 <thead>
 <tr>
@@ -183,8 +192,8 @@ builder.Services.AddScoped&lt;IUserSessionService, UserSessionService&gt;();
 </table>
 <p><strong>速率限制行為：</strong>
 - 觸發速率限制時回傳 <code>429 Too Many Requests</code>
-- 回應標頭含 <code>X-RateLimit-Limit</code>、<code>X-RateLimit-Remaining</code>、<code>X-RateLimit-Reset</code>、<code>Retry-After</code>
-- 連續 15 次以上失敗登入的 IP 會被標記為可疑（封鎖 24 小時）
+- 回應標頭含 <code>X-RateLimit-Limit</code>、<code>X-RateLimit-Remaining</code>、<code>X-RateLimit-Reset</code>（ISO-8601 時間）、<code>Retry-After</code>
+- 登入被限流時，若該 IP 最近 20 次登入嘗試中有 15 次以上失敗，會被標記為可疑 24 小時（套用較嚴格的限流，並非封鎖）
 - 被封鎖的 IP 回傳 <code>403 Forbidden</code></p>
 <h2>使用範例</h2>
 <h3>註冊</h3>
@@ -280,11 +289,21 @@ Content-Type: application/json
 </table>
 <h2>安全特性</h2>
 <ul>
-<li>IP 遮罩：日誌中的 IP 僅顯示前三組（如 <code>192.168.1.*</code>）</li>
-<li>Email 遮罩：日誌中的 Email 僅顯示首尾字元（如 <code>u***r@example.com</code>）</li>
-<li>Session ID 遮罩：僅顯示前後 4 碼</li>
-<li>登入失敗時不回傳具體錯誤原因（防止使用者列舉）</li>
-<li>MFA Token 有時效性，過期自動失效</li>
+<li>
+<p>IP 遮罩：日誌中的 IP 僅顯示前三組（如 <code>192.168.1.*</code>）</p>
+</li>
+<li>
+<p>Email 遮罩：日誌中的 Email 僅顯示首尾字元（如 <code>u***r@example.com</code>）</p>
+</li>
+<li>
+<p>Session ID 遮罩：僅顯示前後 4 碼</p>
+</li>
+<li>
+<p>登入失敗時不回傳具體錯誤原因（防止使用者列舉）</p>
+</li>
+<li>
+<p>MFA Token 有時效性，過期自動失效</p>
+</li>
 </ul>
 </main>
 </body>

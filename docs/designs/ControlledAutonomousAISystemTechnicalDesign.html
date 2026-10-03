@@ -21,47 +21,99 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <body>
 <main>
 <h1>受控自主 AI 系統技術設計</h1>
-<p>來源文件：<a href="/c:/Users/Lenovo/Downloads/受控自主AI系統設計.docx">受控自主AI系統設計.docx</a></p>
-<p>版本：v0.1<br>
-日期：2026-03-13<br>
-狀態：Draft</p>
+<p>來源文件：<code>受控自主AI系統設計.docx</code>(作者本機文件,未納入本 repo)</p>
+<p>版本：v0.1</p>
+<p>日期：2026-03-13</p>
+<p>狀態：Draft</p>
+<blockquote>
+<p><strong>實作現況（2026-09-26 核對）</strong>:本文是設計基線,broker 實作(<code>packages/csharp/broker</code>、<code>packages/csharp/broker-core</code>)在以下幾點與本文不同,以程式為準:</p>
+<ul>
+<li><strong>API(§10)</strong>:全部掛在 <code>/api/v1</code> 群組下(<a href="../../packages/csharp/broker/Program.cs">Program.cs:601</a>),且以 POST 動詞路由為主,而非 REST 資源路徑 —— 例如 <code>tasks/create|query|cancel</code>(<a href="../../packages/csharp/broker/Endpoints/TaskEndpoints.cs">TaskEndpoints.cs:12-64</a>)、<code>sessions/register|heartbeat|close</code>(<a href="../../packages/csharp/broker/Endpoints/SessionEndpoints.cs">SessionEndpoints.cs:16-161</a>,不是 <code>container-sessions/{id}/…</code>)、<code>execution-requests/submit|query</code>(<a href="../../packages/csharp/broker/Endpoints/ExecutionEndpoints.cs">ExecutionEndpoints.cs:12-46</a>)、<code>context/write|read|read-by-key|list|history</code>(<a href="../../packages/csharp/broker/Endpoints/ContextEndpoints.cs">ContextEndpoints.cs:12-90</a>)、<code>audit/query|trace|verify</code>(<a href="../../packages/csharp/broker/Endpoints/AuditEndpoints.cs">AuditEndpoints.cs:11-54</a>)。<strong>沒有</strong> <code>work-items</code> API、<code>approval-requests</code> API 與 <code>audit/replay</code>;審批改由簽章連結驅動的 <code>user/approvals</code>(列表 / <code>approve</code> / <code>reject</code>,<a href="../../packages/csharp/broker/Endpoints/UserApprovalEndpoints.cs">UserApprovalEndpoints.cs:16-42</a>)與管理員層的 <code>local-admin/approvals</code>(<a href="../../packages/csharp/broker/Endpoints/LocalAdminEndpoints.cs">LocalAdminEndpoints.cs:933-953</a>)。</li>
+<li><strong>資料表(§11.1)</strong>:實際清單見 <a href="../../packages/csharp/broker-core/Data/BrokerDbInitializer.cs">BrokerDbInitializer.cs:34-71</a>。沒有 <code>principal_credentials</code>、<code>task_assignments</code>、<code>context_documents</code>/<code>context_versions</code>(改為單一 <code>SharedContextEntry</code>)、<code>artifacts</code>;另有本文未列的 Plan/Checkpoint/Observation、Browser 綁定、Portal/LocalAdmin 憑證與 session、Google Drive、向量索引、<code>SystemEpoch</code> 等表。</li>
+<li><strong>PDP 輸出(§6.2)</strong>:<code>PolicyDecision</code> 只有 <code>Allow</code> / <code>Deny</code> / <code>RequireApproval</code>(<a href="../../packages/csharp/broker-core/Models/Enums.cs">Enums.cs:31-36</a>),沒有 <code>require_elevation</code> / <code>degraded_allow</code>。</li>
+<li><strong>Token 格式(§12.3)</strong>:採 HMAC-SHA256(HS256)簽章的短時效 JWT(<a href="../../packages/csharp/broker-core/Services/ScopedTokenService.cs">ScopedTokenService.cs:83</a>),未使用 PASETO;撤銷走 <code>Revocation</code> 表 + epoch claim。</li>
+<li><strong>部署 / 儲存(§16)</strong>:broker 以 BaseOrm 的 <code>BrokerDb</code> 接 SQLite(<a href="../../packages/csharp/broker/Program.cs">Program.cs:27-29</a>),非 PostgreSQL;政策引擎為自研 <a href="../../packages/csharp/broker-core/Services/PolicyEngine.cs">PolicyEngine.cs</a>,非 OPA;worker 容器以 Docker/Podman CLI 管理(<a href="../../packages/csharp/function-pool/Container/ContainerManager.cs">ContainerManager.cs</a>),非 Kubernetes。</li>
+</ul>
+</blockquote>
 <h2>1. 目的</h2>
 <p>本文件將概念性架構落成為可實作的技術設計，作為後續 API、資料模型、部署拓樸、權限規則、容器基線與營運流程的共同依據。</p>
 <p>本設計的核心目標不是最大化 AI 自由，而是建立一個可限制、可審核、可撤權、可重放、可替換的受控自主系統。</p>
 <h2>2. 設計範圍</h2>
 <p>本文件涵蓋：</p>
 <ul>
-<li>控制平面與執行平面的系統分層</li>
-<li>主體模型、角色模型、能力模型</li>
-<li>任務、審批、能力發放、執行請求、稽核重放</li>
-<li>Agent 容器與中介核心之間的 API 契約</li>
-<li>共享上下文儲存與證據保存</li>
-<li>安全控制、容器基線、部署建議</li>
-<li>MVP 分期與演進路徑</li>
+<li>
+<p>控制平面與執行平面的系統分層</p>
+</li>
+<li>
+<p>主體模型、角色模型、能力模型</p>
+</li>
+<li>
+<p>任務、審批、能力發放、執行請求、稽核重放</p>
+</li>
+<li>
+<p>Agent 容器與中介核心之間的 API 契約</p>
+</li>
+<li>
+<p>共享上下文儲存與證據保存</p>
+</li>
+<li>
+<p>安全控制、容器基線、部署建議</p>
+</li>
+<li>
+<p>MVP 分期與演進路徑</p>
+</li>
 </ul>
 <p>本文件不涵蓋：</p>
 <ul>
-<li>個別業務領域的任務模板細節</li>
-<li>LLM prompt 文案優化</li>
-<li>UI 視覺設計</li>
-<li>單一雲供應商專屬 IaC 模板</li>
+<li>
+<p>個別業務領域的任務模板細節</p>
+</li>
+<li>
+<p>LLM prompt 文案優化</p>
+</li>
+<li>
+<p>UI 視覺設計</p>
+</li>
+<li>
+<p>單一雲供應商專屬 IaC 模板</p>
+</li>
 </ul>
 <h2>3. 系統目標與非目標</h2>
 <h3>3.1 目標</h3>
 <ul>
-<li>所有主體都必須先被定義角色與能力，再被允許行動</li>
-<li>所有有意義的行為都必須經過單一不可迴避的控制平面</li>
-<li>所有高風險行為都必須可審批、可撤銷、可重放</li>
-<li>工作節點必須可被快速停用、替換、重建</li>
-<li>狀態、上下文與證據必須外部化</li>
-<li>AI 與人類在授權模型上採統一主體原則</li>
+<li>
+<p>所有主體都必須先被定義角色與能力，再被允許行動</p>
+</li>
+<li>
+<p>所有有意義的行為都必須經過單一不可迴避的控制平面</p>
+</li>
+<li>
+<p>所有高風險行為都必須可審批、可撤銷、可重放</p>
+</li>
+<li>
+<p>工作節點必須可被快速停用、替換、重建</p>
+</li>
+<li>
+<p>狀態、上下文與證據必須外部化</p>
+</li>
+<li>
+<p>AI 與人類在授權模型上採統一主體原則</p>
+</li>
 </ul>
 <h3>3.2 非目標</h3>
 <ul>
-<li>不追求通用型自由代理網路</li>
-<li>不允許工作節點自行擴權</li>
-<li>不允許工作節點直接接觸資料源、工具源、部署面或模型供應商</li>
-<li>不把 MCP 視為治理模型，只把它視為工具調用契約的一種參考</li>
+<li>
+<p>不追求通用型自由代理網路</p>
+</li>
+<li>
+<p>不允許工作節點自行擴權</p>
+</li>
+<li>
+<p>不允許工作節點直接接觸資料源、工具源、部署面或模型供應商</p>
+</li>
+<li>
+<p>不把 MCP 視為治理模型，只把它視為工具調用契約的一種參考</p>
+</li>
 </ul>
 <h2>4. 核心設計原則</h2>
 <h3>4.1 統一主體模型</h3>
@@ -79,13 +131,27 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <h2>5. 邏輯架構</h2>
 <h3>5.1 分層</h3>
 <ol>
-<li>使用者與外部事件層</li>
-<li>控制平面層</li>
-<li>政策與審批層</li>
-<li>共享上下文與狀態層</li>
-<li>代理容器層</li>
-<li>執行配接層</li>
-<li>證據與觀測層</li>
+<li>
+<p>使用者與外部事件層</p>
+</li>
+<li>
+<p>控制平面層</p>
+</li>
+<li>
+<p>政策與審批層</p>
+</li>
+<li>
+<p>共享上下文與狀態層</p>
+</li>
+<li>
+<p>代理容器層</p>
+</li>
+<li>
+<p>執行配接層</p>
+</li>
+<li>
+<p>證據與觀測層</p>
+</li>
 </ol>
 <h3>5.2 拓樸</h3>
 <pre><code class="language-text">+---------------------------+
@@ -143,94 +209,214 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <h3>6.1 Control Plane</h3>
 <p>控制平面是唯一的 PEP，負責：</p>
 <ul>
-<li>任務收件</li>
-<li>主體認證接入</li>
-<li>角色與能力核發</li>
-<li>執行請求收件</li>
-<li>路由與節流</li>
-<li>撤權與停用</li>
-<li>審批串接</li>
-<li>事件寫入與追蹤 ID 發放</li>
+<li>
+<p>任務收件</p>
+</li>
+<li>
+<p>主體認證接入</p>
+</li>
+<li>
+<p>角色與能力核發</p>
+</li>
+<li>
+<p>執行請求收件</p>
+</li>
+<li>
+<p>路由與節流</p>
+</li>
+<li>
+<p>撤權與停用</p>
+</li>
+<li>
+<p>審批串接</p>
+</li>
+<li>
+<p>事件寫入與追蹤 ID 發放</p>
+</li>
 </ul>
 <p>不負責：</p>
 <ul>
-<li>實際執行工具</li>
-<li>保存長期業務資料</li>
-<li>替代政策引擎做授權判定</li>
+<li>
+<p>實際執行工具</p>
+</li>
+<li>
+<p>保存長期業務資料</p>
+</li>
+<li>
+<p>替代政策引擎做授權判定</p>
+</li>
 </ul>
 <p>建議拆分服務：</p>
 <ul>
-<li><code>control-api</code></li>
-<li><code>session-service</code></li>
-<li><code>capability-issuer</code></li>
-<li><code>task-router</code></li>
-<li><code>revocation-service</code></li>
+<li>
+<p><code>control-api</code></p>
+</li>
+<li>
+<p><code>session-service</code></p>
+</li>
+<li>
+<p><code>capability-issuer</code></p>
+</li>
+<li>
+<p><code>task-router</code></p>
+</li>
+<li>
+<p><code>revocation-service</code></p>
+</li>
 </ul>
 <h3>6.2 Policy Engine / PDP</h3>
 <p>政策引擎負責確定性裁決：</p>
 <ul>
-<li>主體是否可承接某任務</li>
-<li>角色是否可申請某 capability</li>
-<li>請求參數是否符合 schema 與 scope</li>
-<li>是否需升權</li>
-<li>是否需人工批准</li>
-<li>是否觸發風險阻斷</li>
+<li>
+<p>主體是否可承接某任務</p>
+</li>
+<li>
+<p>角色是否可申請某 capability</p>
+</li>
+<li>
+<p>請求參數是否符合 schema 與 scope</p>
+</li>
+<li>
+<p>是否需升權</p>
+</li>
+<li>
+<p>是否需人工批准</p>
+</li>
+<li>
+<p>是否觸發風險阻斷</p>
+</li>
 </ul>
 <p>決策輸入：</p>
 <ul>
-<li>principal</li>
-<li>role binding</li>
-<li>task type</li>
-<li>capability definition</li>
-<li>request payload</li>
-<li>risk profile</li>
-<li>approval state</li>
-<li>environment policy</li>
+<li>
+<p>principal</p>
+</li>
+<li>
+<p>role binding</p>
+</li>
+<li>
+<p>task type</p>
+</li>
+<li>
+<p>capability definition</p>
+</li>
+<li>
+<p>request payload</p>
+</li>
+<li>
+<p>risk profile</p>
+</li>
+<li>
+<p>approval state</p>
+</li>
+<li>
+<p>environment policy</p>
+</li>
 </ul>
 <p>決策輸出：</p>
 <ul>
-<li><code>allow</code></li>
-<li><code>deny</code></li>
-<li><code>require_approval</code></li>
-<li><code>require_elevation</code></li>
-<li><code>degraded_allow</code></li>
+<li>
+<p><code>allow</code></p>
+</li>
+<li>
+<p><code>deny</code></p>
+</li>
+<li>
+<p><code>require_approval</code></p>
+</li>
+<li>
+<p><code>require_elevation</code></p>
+</li>
+<li>
+<p><code>degraded_allow</code></p>
+</li>
 </ul>
 <h3>6.3 Approval Service / Trust Anchor</h3>
 <p>高風險行為不由 agent 自決。Approval Service 負責：</p>
 <ul>
-<li>升權申請建立</li>
-<li>指派審批者</li>
-<li>記錄批准理由</li>
-<li>發放短時效升權 token</li>
-<li>逾時失效</li>
-<li>回收已核發權限</li>
+<li>
+<p>升權申請建立</p>
+</li>
+<li>
+<p>指派審批者</p>
+</li>
+<li>
+<p>記錄批准理由</p>
+</li>
+<li>
+<p>發放短時效升權 token</p>
+</li>
+<li>
+<p>逾時失效</p>
+</li>
+<li>
+<p>回收已核發權限</p>
+</li>
 </ul>
 <p>信任錨可以是：</p>
 <ul>
-<li>人工批准者</li>
-<li>簽章服務</li>
-<li>雙重批准規則</li>
-<li>預先定義的變更控制程序</li>
+<li>
+<p>人工批准者</p>
+</li>
+<li>
+<p>簽章服務</p>
+</li>
+<li>
+<p>雙重批准規則</p>
+</li>
+<li>
+<p>預先定義的變更控制程序</p>
+</li>
 </ul>
 <h3>6.4 Capability Catalog</h3>
 <p>Capability Catalog 是版本化制度物件，不只是工具清單。</p>
 <p>每個 capability 必須至少定義：</p>
 <ul>
-<li><code>capability_id</code></li>
-<li><code>display_name</code></li>
-<li><code>route</code></li>
-<li><code>action_type</code></li>
-<li><code>resource_type</code></li>
-<li><code>param_schema</code></li>
-<li><code>result_schema</code></li>
-<li><code>scope_rules</code></li>
-<li><code>risk_level</code></li>
-<li><code>approval_policy</code></li>
-<li><code>ttl_seconds</code></li>
-<li><code>quota</code></li>
-<li><code>audit_level</code></li>
-<li><code>version</code></li>
-<li><code>status</code></li>
+<li>
+<p><code>capability_id</code></p>
+</li>
+<li>
+<p><code>display_name</code></p>
+</li>
+<li>
+<p><code>route</code></p>
+</li>
+<li>
+<p><code>action_type</code></p>
+</li>
+<li>
+<p><code>resource_type</code></p>
+</li>
+<li>
+<p><code>param_schema</code></p>
+</li>
+<li>
+<p><code>result_schema</code></p>
+</li>
+<li>
+<p><code>scope_rules</code></p>
+</li>
+<li>
+<p><code>risk_level</code></p>
+</li>
+<li>
+<p><code>approval_policy</code></p>
+</li>
+<li>
+<p><code>ttl_seconds</code></p>
+</li>
+<li>
+<p><code>quota</code></p>
+</li>
+<li>
+<p><code>audit_level</code></p>
+</li>
+<li>
+<p><code>version</code></p>
+</li>
+<li>
+<p><code>status</code></p>
+</li>
 </ul>
 <p>範例：</p>
 <pre><code class="language-json">{
@@ -265,66 +451,142 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <p>共享上下文是版本化認知面，不是自由聊天通道。</p>
 <p>責任：</p>
 <ul>
-<li>保存任務上下文</li>
-<li>保存角色間共享規劃</li>
-<li>保存工作記憶與中介摘要</li>
-<li>保存系統提供給工作節點的最小充分真相</li>
-<li>保存變更版本與 ACL</li>
+<li>
+<p>保存任務上下文</p>
+</li>
+<li>
+<p>保存角色間共享規劃</p>
+</li>
+<li>
+<p>保存工作記憶與中介摘要</p>
+</li>
+<li>
+<p>保存系統提供給工作節點的最小充分真相</p>
+</li>
+<li>
+<p>保存變更版本與 ACL</p>
+</li>
 </ul>
 <p>設計要求：</p>
 <ul>
-<li>文件與區塊級 ACL</li>
-<li>版本不可覆寫，只能追加新版本</li>
-<li>支援快照、diff、回滾視圖</li>
-<li>支援引用鏈與來源追蹤</li>
+<li>
+<p>文件與區塊級 ACL</p>
+</li>
+<li>
+<p>版本不可覆寫，只能追加新版本</p>
+</li>
+<li>
+<p>支援快照、diff、回滾視圖</p>
+</li>
+<li>
+<p>支援引用鏈與來源追蹤</p>
+</li>
 </ul>
 <h3>6.6 Agent Container</h3>
 <p>Agent 容器只是一個受控主體執行殼層。</p>
 <p>可做：</p>
 <ul>
-<li>請領工作項</li>
-<li>讀取被授權的上下文</li>
-<li>呼叫模型推理</li>
-<li>產生結構化執行請求</li>
-<li>回報進度與結果</li>
+<li>
+<p>請領工作項</p>
+</li>
+<li>
+<p>讀取被授權的上下文</p>
+</li>
+<li>
+<p>呼叫模型推理</p>
+</li>
+<li>
+<p>產生結構化執行請求</p>
+</li>
+<li>
+<p>回報進度與結果</p>
+</li>
 </ul>
 <p>不可做：</p>
 <ul>
-<li>直接連 MCP 工具</li>
-<li>直接碰外部資料源</li>
-<li>直接碰代碼倉庫</li>
-<li>直接部署</li>
-<li>直接連公共模型供應商</li>
-<li>自行發放權限</li>
+<li>
+<p>直接連 MCP 工具</p>
+</li>
+<li>
+<p>直接碰外部資料源</p>
+</li>
+<li>
+<p>直接碰代碼倉庫</p>
+</li>
+<li>
+<p>直接部署</p>
+</li>
+<li>
+<p>直接連公共模型供應商</p>
+</li>
+<li>
+<p>自行發放權限</p>
+</li>
 </ul>
 <h3>6.7 Execution Adapters</h3>
 <p>Execution Adapters 是唯一真正動手的層。它們接受控制平面已核可的請求後執行工作。</p>
 <p>建議分成：</p>
 <ul>
-<li><code>repo-adapter</code></li>
-<li><code>build-adapter</code></li>
-<li><code>test-adapter</code></li>
-<li><code>doc-adapter</code></li>
-<li><code>deploy-adapter</code></li>
-<li><code>db-read-adapter</code></li>
-<li><code>db-change-adapter</code></li>
+<li>
+<p><code>repo-adapter</code></p>
+</li>
+<li>
+<p><code>build-adapter</code></p>
+</li>
+<li>
+<p><code>test-adapter</code></p>
+</li>
+<li>
+<p><code>doc-adapter</code></p>
+</li>
+<li>
+<p><code>deploy-adapter</code></p>
+</li>
+<li>
+<p><code>db-read-adapter</code></p>
+</li>
+<li>
+<p><code>db-change-adapter</code></p>
+</li>
 </ul>
 <p>可採 MCP 兼容包裝，但 MCP 只作工具調用接口，不承擔治理責任。</p>
 <h3>6.8 Audit and Forensic Replay</h3>
 <p>所有重要事件必須追加式保存，且支援事後重放。</p>
 <p>最低紀錄事件：</p>
 <ul>
-<li>task submitted</li>
-<li>session issued</li>
-<li>capability granted</li>
-<li>command requested</li>
-<li>policy evaluated</li>
-<li>approval requested</li>
-<li>approval decided</li>
-<li>command executed</li>
-<li>result accepted</li>
-<li>capability revoked</li>
-<li>container terminated</li>
+<li>
+<p>task submitted</p>
+</li>
+<li>
+<p>session issued</p>
+</li>
+<li>
+<p>capability granted</p>
+</li>
+<li>
+<p>command requested</p>
+</li>
+<li>
+<p>policy evaluated</p>
+</li>
+<li>
+<p>approval requested</p>
+</li>
+<li>
+<p>approval decided</p>
+</li>
+<li>
+<p>command executed</p>
+</li>
+<li>
+<p>result accepted</p>
+</li>
+<li>
+<p>capability revoked</p>
+</li>
+<li>
+<p>container terminated</p>
+</li>
 </ul>
 <h2>7. 主體模型</h2>
 <h3>7.1 Principal</h3>
@@ -339,29 +601,63 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <h3>7.2 Role Binding</h3>
 <p>角色綁定需明示：</p>
 <ul>
-<li>principal 與 role 的關聯</li>
-<li>生效時間</li>
-<li>可承接的任務類型</li>
-<li>預設 capabilities</li>
-<li>最大升權範圍</li>
+<li>
+<p>principal 與 role 的關聯</p>
+</li>
+<li>
+<p>生效時間</p>
+</li>
+<li>
+<p>可承接的任務類型</p>
+</li>
+<li>
+<p>預設 capabilities</p>
+</li>
+<li>
+<p>最大升權範圍</p>
+</li>
 </ul>
 <h3>7.3 Unified Principal Rule</h3>
 <p><code>actor_type</code> 只能作稽核與觀測用途，不能用來繞過授權規則。</p>
 <h2>8. 任務生命週期</h2>
 <h3>8.1 流程</h3>
 <ol>
-<li>任務建立</li>
-<li>任務分類與風險評估</li>
-<li>角色配對</li>
-<li>容器建立或指派</li>
-<li>session 與 scoped token 發放</li>
-<li>容器請領工作項</li>
-<li>容器提出宣告式執行請求</li>
-<li>控制平面送 PDP 裁決</li>
-<li>必要時進入審批</li>
-<li>核准後送 Execution Adapter</li>
-<li>結果與證據回寫</li>
-<li>完成、撤權、封存</li>
+<li>
+<p>任務建立</p>
+</li>
+<li>
+<p>任務分類與風險評估</p>
+</li>
+<li>
+<p>角色配對</p>
+</li>
+<li>
+<p>容器建立或指派</p>
+</li>
+<li>
+<p>session 與 scoped token 發放</p>
+</li>
+<li>
+<p>容器請領工作項</p>
+</li>
+<li>
+<p>容器提出宣告式執行請求</p>
+</li>
+<li>
+<p>控制平面送 PDP 裁決</p>
+</li>
+<li>
+<p>必要時進入審批</p>
+</li>
+<li>
+<p>核准後送 Execution Adapter</p>
+</li>
+<li>
+<p>結果與證據回寫</p>
+</li>
+<li>
+<p>完成、撤權、封存</p>
+</li>
 </ol>
 <h3>8.2 典型序列</h3>
 <pre><code class="language-text">Human/API -&gt; Control Plane: create task
@@ -384,11 +680,21 @@ Control Plane -&gt; Revocation Service: revoke token on completion
 <h2>9. 宣告式指令模型</h2>
 <h3>9.1 設計要求</h3>
 <ul>
-<li>指令必須結構化</li>
-<li>指令必須可驗證 schema</li>
-<li>指令必須顯示目標資源與作用範圍</li>
-<li>指令必須可映射至 capability</li>
-<li>指令必須攜帶追蹤資訊</li>
+<li>
+<p>指令必須結構化</p>
+</li>
+<li>
+<p>指令必須可驗證 schema</p>
+</li>
+<li>
+<p>指令必須顯示目標資源與作用範圍</p>
+</li>
+<li>
+<p>指令必須可映射至 capability</p>
+</li>
+<li>
+<p>指令必須攜帶追蹤資訊</p>
+</li>
 </ul>
 <h3>9.2 Agent -&gt; Control Plane Request Schema</h3>
 <pre><code class="language-json">{
@@ -431,15 +737,33 @@ Control Plane -&gt; Revocation Service: revoke token on completion
 </code></pre>
 <p>錯誤分類：</p>
 <ul>
-<li><code>SCHEMA_INVALID</code></li>
-<li><code>CAPABILITY_NOT_GRANTED</code></li>
-<li><code>CAPABILITY_SCOPE_VIOLATION</code></li>
-<li><code>QUOTA_EXCEEDED</code></li>
-<li><code>TOKEN_EXPIRED</code></li>
-<li><code>APPROVAL_REQUIRED</code></li>
-<li><code>EXECUTION_BACKEND_UNAVAILABLE</code></li>
-<li><code>POLICY_DENIED</code></li>
-<li><code>TASK_STATE_INVALID</code></li>
+<li>
+<p><code>SCHEMA_INVALID</code></p>
+</li>
+<li>
+<p><code>CAPABILITY_NOT_GRANTED</code></p>
+</li>
+<li>
+<p><code>CAPABILITY_SCOPE_VIOLATION</code></p>
+</li>
+<li>
+<p><code>QUOTA_EXCEEDED</code></p>
+</li>
+<li>
+<p><code>TOKEN_EXPIRED</code></p>
+</li>
+<li>
+<p><code>APPROVAL_REQUIRED</code></p>
+</li>
+<li>
+<p><code>EXECUTION_BACKEND_UNAVAILABLE</code></p>
+</li>
+<li>
+<p><code>POLICY_DENIED</code></p>
+</li>
+<li>
+<p><code>TASK_STATE_INVALID</code></p>
+</li>
 </ul>
 <h2>10. API 設計</h2>
 <h3>10.1 任務 API</h3>
@@ -564,57 +888,135 @@ Control Plane -&gt; Revocation Service: revoke token on completion
 <h3>11.2 <code>tasks</code></h3>
 <p>建議欄位：</p>
 <ul>
-<li><code>task_id</code></li>
-<li><code>task_type</code></li>
-<li><code>submitted_by_principal_id</code></li>
-<li><code>risk_level</code></li>
-<li><code>state</code></li>
-<li><code>scope_descriptor</code></li>
-<li><code>context_root_id</code></li>
-<li><code>created_at</code></li>
-<li><code>updated_at</code></li>
-<li><code>completed_at</code></li>
+<li>
+<p><code>task_id</code></p>
+</li>
+<li>
+<p><code>task_type</code></p>
+</li>
+<li>
+<p><code>submitted_by_principal_id</code></p>
+</li>
+<li>
+<p><code>risk_level</code></p>
+</li>
+<li>
+<p><code>state</code></p>
+</li>
+<li>
+<p><code>scope_descriptor</code></p>
+</li>
+<li>
+<p><code>context_root_id</code></p>
+</li>
+<li>
+<p><code>created_at</code></p>
+</li>
+<li>
+<p><code>updated_at</code></p>
+</li>
+<li>
+<p><code>completed_at</code></p>
+</li>
 </ul>
 <h3>11.3 <code>execution_requests</code></h3>
 <p>建議欄位：</p>
 <ul>
-<li><code>request_id</code></li>
-<li><code>task_id</code></li>
-<li><code>session_id</code></li>
-<li><code>principal_id</code></li>
-<li><code>capability_id</code></li>
-<li><code>request_payload</code></li>
-<li><code>policy_decision</code></li>
-<li><code>execution_state</code></li>
-<li><code>approval_id</code></li>
-<li><code>adapter_job_id</code></li>
-<li><code>trace_id</code></li>
-<li><code>created_at</code></li>
+<li>
+<p><code>request_id</code></p>
+</li>
+<li>
+<p><code>task_id</code></p>
+</li>
+<li>
+<p><code>session_id</code></p>
+</li>
+<li>
+<p><code>principal_id</code></p>
+</li>
+<li>
+<p><code>capability_id</code></p>
+</li>
+<li>
+<p><code>request_payload</code></p>
+</li>
+<li>
+<p><code>policy_decision</code></p>
+</li>
+<li>
+<p><code>execution_state</code></p>
+</li>
+<li>
+<p><code>approval_id</code></p>
+</li>
+<li>
+<p><code>adapter_job_id</code></p>
+</li>
+<li>
+<p><code>trace_id</code></p>
+</li>
+<li>
+<p><code>created_at</code></p>
+</li>
 </ul>
 <h3>11.4 <code>audit_events</code></h3>
 <p>建議欄位：</p>
 <ul>
-<li><code>event_id</code></li>
-<li><code>trace_id</code></li>
-<li><code>event_type</code></li>
-<li><code>principal_id</code></li>
-<li><code>task_id</code></li>
-<li><code>session_id</code></li>
-<li><code>resource_ref</code></li>
-<li><code>payload_digest</code></li>
-<li><code>occurred_at</code></li>
-<li><code>previous_event_hash</code></li>
-<li><code>event_hash</code></li>
+<li>
+<p><code>event_id</code></p>
+</li>
+<li>
+<p><code>trace_id</code></p>
+</li>
+<li>
+<p><code>event_type</code></p>
+</li>
+<li>
+<p><code>principal_id</code></p>
+</li>
+<li>
+<p><code>task_id</code></p>
+</li>
+<li>
+<p><code>session_id</code></p>
+</li>
+<li>
+<p><code>resource_ref</code></p>
+</li>
+<li>
+<p><code>payload_digest</code></p>
+</li>
+<li>
+<p><code>occurred_at</code></p>
+</li>
+<li>
+<p><code>previous_event_hash</code></p>
+</li>
+<li>
+<p><code>event_hash</code></p>
+</li>
 </ul>
 <h2>12. Scoped Delegation Token</h2>
 <h3>12.1 原則</h3>
 <ul>
-<li>短時效</li>
-<li>任務綁定</li>
-<li>scope 綁定</li>
-<li>quota 綁定</li>
-<li>capability 綁定</li>
-<li>可撤銷</li>
+<li>
+<p>短時效</p>
+</li>
+<li>
+<p>任務綁定</p>
+</li>
+<li>
+<p>scope 綁定</p>
+</li>
+<li>
+<p>quota 綁定</p>
+</li>
+<li>
+<p>capability 綁定</p>
+</li>
+<li>
+<p>可撤銷</p>
+</li>
 </ul>
 <h3>12.2 Token Claims</h3>
 <pre><code class="language-json">{
@@ -642,114 +1044,242 @@ Control Plane -&gt; Revocation Service: revoke token on completion
 <h2>13. 容器安全設計</h2>
 <h3>13.1 網路</h3>
 <ul>
-<li>容器只允許連控制平面入口</li>
-<li>容器不得直接對外連網</li>
-<li>容器不得直接連模型供應商</li>
-<li>容器不得直接連資料庫、儲存體、代碼倉庫、部署端點</li>
+<li>
+<p>容器只允許連控制平面入口</p>
+</li>
+<li>
+<p>容器不得直接對外連網</p>
+</li>
+<li>
+<p>容器不得直接連模型供應商</p>
+</li>
+<li>
+<p>容器不得直接連資料庫、儲存體、代碼倉庫、部署端點</p>
+</li>
 </ul>
 <h3>13.2 執行基線</h3>
 <ul>
-<li>non-root user</li>
-<li>read-only root filesystem</li>
-<li><code>cap-drop=ALL</code></li>
-<li><code>no-new-privileges</code></li>
-<li>seccomp / AppArmor / SELinux</li>
-<li><code>/tmp</code> 採 tmpfs</li>
-<li>禁用 Docker socket 掛載</li>
-<li>禁用 hostPath 與特權模式</li>
+<li>
+<p>non-root user</p>
+</li>
+<li>
+<p>read-only root filesystem</p>
+</li>
+<li>
+<p><code>cap-drop=ALL</code></p>
+</li>
+<li>
+<p><code>no-new-privileges</code></p>
+</li>
+<li>
+<p>seccomp / AppArmor / SELinux</p>
+</li>
+<li>
+<p><code>/tmp</code> 採 tmpfs</p>
+</li>
+<li>
+<p>禁用 Docker socket 掛載</p>
+</li>
+<li>
+<p>禁用 hostPath 與特權模式</p>
+</li>
 </ul>
 <h3>13.3 密鑰</h3>
 <ul>
-<li>容器不持有長期 API key</li>
-<li>容器只持有短時效 session credential</li>
-<li>所有 provider credential 由控制平面或專用 inference gateway 持有</li>
+<li>
+<p>容器不持有長期 API key</p>
+</li>
+<li>
+<p>容器只持有短時效 session credential</p>
+</li>
+<li>
+<p>所有 provider credential 由控制平面或專用 inference gateway 持有</p>
+</li>
 </ul>
 <h3>13.4 工作區</h3>
 <p>若需提供檔案視圖，採以下兩種模式之一：</p>
 <ul>
-<li>最嚴格：所有讀取都經控制平面代理</li>
-<li>較實用：提供唯讀快照，任何寫入仍需經控制平面請求</li>
+<li>
+<p>最嚴格：所有讀取都經控制平面代理</p>
+</li>
+<li>
+<p>較實用：提供唯讀快照，任何寫入仍需經控制平面請求</p>
+</li>
 </ul>
 <h2>14. 執行配接層設計</h2>
 <h3>14.1 原則</h3>
 <ul>
-<li>配接器只接受核可請求</li>
-<li>配接器不得自行放寬 scope</li>
-<li>配接器輸出必須附證據</li>
-<li>配接器必須支援 idempotency key</li>
+<li>
+<p>配接器只接受核可請求</p>
+</li>
+<li>
+<p>配接器不得自行放寬 scope</p>
+</li>
+<li>
+<p>配接器輸出必須附證據</p>
+</li>
+<li>
+<p>配接器必須支援 idempotency key</p>
+</li>
 </ul>
 <h3>14.2 Repository Adapter</h3>
 <p>責任：</p>
 <ul>
-<li>套用 patch</li>
-<li>驗證 base commit</li>
-<li>產出變更摘要</li>
-<li>保存 diff artifact</li>
+<li>
+<p>套用 patch</p>
+</li>
+<li>
+<p>驗證 base commit</p>
+</li>
+<li>
+<p>產出變更摘要</p>
+</li>
+<li>
+<p>保存 diff artifact</p>
+</li>
 </ul>
 <p>禁止：</p>
 <ul>
-<li>直接接受自由 shell</li>
-<li>在未授權路徑寫入</li>
-<li>隱式改寫未列入 patch 的檔案</li>
+<li>
+<p>直接接受自由 shell</p>
+</li>
+<li>
+<p>在未授權路徑寫入</p>
+</li>
+<li>
+<p>隱式改寫未列入 patch 的檔案</p>
+</li>
 </ul>
 <h3>14.3 Build/Test Adapter</h3>
 <p>責任：</p>
 <ul>
-<li>在隔離環境執行白名單命令</li>
-<li>收集 stdout/stderr</li>
-<li>產出結構化結果</li>
+<li>
+<p>在隔離環境執行白名單命令</p>
+</li>
+<li>
+<p>收集 stdout/stderr</p>
+</li>
+<li>
+<p>產出結構化結果</p>
+</li>
 </ul>
 <p>命令範圍必須白名單化，例如：</p>
 <ul>
-<li><code>npm test</code></li>
-<li><code>npm run build</code></li>
-<li><code>dotnet test</code></li>
-<li><code>pytest</code></li>
+<li>
+<p><code>npm test</code></p>
+</li>
+<li>
+<p><code>npm run build</code></p>
+</li>
+<li>
+<p><code>dotnet test</code></p>
+</li>
+<li>
+<p><code>pytest</code></p>
+</li>
 </ul>
 <h2>15. 觀測性與重放</h2>
 <h3>15.1 Trace</h3>
 <p>每個請求至少需要：</p>
 <ul>
-<li><code>trace_id</code></li>
-<li><code>task_id</code></li>
-<li><code>session_id</code></li>
-<li><code>principal_id</code></li>
-<li><code>request_id</code></li>
-<li><code>approval_id</code></li>
-<li><code>adapter_job_id</code></li>
+<li>
+<p><code>trace_id</code></p>
+</li>
+<li>
+<p><code>task_id</code></p>
+</li>
+<li>
+<p><code>session_id</code></p>
+</li>
+<li>
+<p><code>principal_id</code></p>
+</li>
+<li>
+<p><code>request_id</code></p>
+</li>
+<li>
+<p><code>approval_id</code></p>
+</li>
+<li>
+<p><code>adapter_job_id</code></p>
+</li>
 </ul>
 <h3>15.2 指標</h3>
 <ul>
-<li>任務完成率</li>
-<li>申請被拒率</li>
-<li>升權率</li>
-<li>審批延遲</li>
-<li>配接器失敗率</li>
-<li>撤權時間</li>
-<li>容器平均存活時間</li>
+<li>
+<p>任務完成率</p>
+</li>
+<li>
+<p>申請被拒率</p>
+</li>
+<li>
+<p>升權率</p>
+</li>
+<li>
+<p>審批延遲</p>
+</li>
+<li>
+<p>配接器失敗率</p>
+</li>
+<li>
+<p>撤權時間</p>
+</li>
+<li>
+<p>容器平均存活時間</p>
+</li>
 </ul>
 <h3>15.3 重放</h3>
 <p>重放輸入至少包含：</p>
 <ul>
-<li>任務時間範圍</li>
-<li>上下文快照版本</li>
-<li>容器 session</li>
-<li>原始請求 payload</li>
-<li>政策版本</li>
-<li>capability catalog 版本</li>
-<li>approval decision</li>
-<li>adapter result</li>
+<li>
+<p>任務時間範圍</p>
+</li>
+<li>
+<p>上下文快照版本</p>
+</li>
+<li>
+<p>容器 session</p>
+</li>
+<li>
+<p>原始請求 payload</p>
+</li>
+<li>
+<p>政策版本</p>
+</li>
+<li>
+<p>capability catalog 版本</p>
+</li>
+<li>
+<p>approval decision</p>
+</li>
+<li>
+<p>adapter result</p>
+</li>
 </ul>
 <h2>16. 部署拓樸</h2>
 <h3>16.1 建議部署</h3>
 <ul>
-<li><code>control-plane</code> 採多副本部署</li>
-<li><code>policy-engine</code> 可獨立水平擴展</li>
-<li><code>approval-service</code> 可獨立部署</li>
-<li><code>shared-context-store</code> 使用 PostgreSQL + object storage</li>
-<li><code>audit-store</code> 使用 append-only table + object storage + SIEM sink</li>
-<li><code>container-orchestrator</code> 使用 Kubernetes Jobs 或 Nomad batch</li>
-<li><code>execution-adapters</code> 獨立部署於受控網段</li>
+<li>
+<p><code>control-plane</code> 採多副本部署</p>
+</li>
+<li>
+<p><code>policy-engine</code> 可獨立水平擴展</p>
+</li>
+<li>
+<p><code>approval-service</code> 可獨立部署</p>
+</li>
+<li>
+<p><code>shared-context-store</code> 使用 PostgreSQL + object storage</p>
+</li>
+<li>
+<p><code>audit-store</code> 使用 append-only table + object storage + SIEM sink</p>
+</li>
+<li>
+<p><code>container-orchestrator</code> 使用 Kubernetes Jobs 或 Nomad batch</p>
+</li>
+<li>
+<p><code>execution-adapters</code> 獨立部署於受控網段</p>
+</li>
 </ul>
 <h3>16.2 邏輯元件與技術建議</h3>
 <table>
@@ -793,70 +1323,150 @@ Control Plane -&gt; Revocation Service: revoke token on completion
 <h2>17. 高可用與災難恢復</h2>
 <h3>17.1 高可用</h3>
 <ul>
-<li>控制平面需多副本與健康檢查</li>
-<li>撤權服務不可單點</li>
-<li>context store 與 audit store 需主從或多區容災</li>
+<li>
+<p>控制平面需多副本與健康檢查</p>
+</li>
+<li>
+<p>撤權服務不可單點</p>
+</li>
+<li>
+<p>context store 與 audit store 需主從或多區容災</p>
+</li>
 </ul>
 <h3>17.2 DR 要求</h3>
 <ul>
-<li>capability catalog 可版本化恢復</li>
-<li>audit log 不可遺失</li>
-<li>未完成任務可重新指派</li>
-<li>容器失效後可由共享上下文恢復工作</li>
+<li>
+<p>capability catalog 可版本化恢復</p>
+</li>
+<li>
+<p>audit log 不可遺失</p>
+</li>
+<li>
+<p>未完成任務可重新指派</p>
+</li>
+<li>
+<p>容器失效後可由共享上下文恢復工作</p>
+</li>
 </ul>
 <h2>18. MVP 分期</h2>
 <h3>18.1 第一階段</h3>
 <ul>
-<li>統一任務 API</li>
-<li>統一 principal / role / capability 模型</li>
-<li>控制平面可核發 scoped token</li>
-<li>Agent 容器只能對控制平面提請求</li>
-<li>最小共享上下文服務</li>
-<li>最小 audit trail</li>
-<li>兩個 execution adapters：<code>repo-adapter</code>、<code>build-test-adapter</code></li>
+<li>
+<p>統一任務 API</p>
+</li>
+<li>
+<p>統一 principal / role / capability 模型</p>
+</li>
+<li>
+<p>控制平面可核發 scoped token</p>
+</li>
+<li>
+<p>Agent 容器只能對控制平面提請求</p>
+</li>
+<li>
+<p>最小共享上下文服務</p>
+</li>
+<li>
+<p>最小 audit trail</p>
+</li>
+<li>
+<p>兩個 execution adapters：<code>repo-adapter</code>、<code>build-test-adapter</code></p>
+</li>
 </ul>
 <h3>18.2 第二階段</h3>
 <ul>
-<li>審批服務</li>
-<li>風險分級策略</li>
-<li>capability catalog 版本控制</li>
-<li>可重放鑑識工具</li>
-<li>context ACL 細粒度控制</li>
+<li>
+<p>審批服務</p>
+</li>
+<li>
+<p>風險分級策略</p>
+</li>
+<li>
+<p>capability catalog 版本控制</p>
+</li>
+<li>
+<p>可重放鑑識工具</p>
+</li>
+<li>
+<p>context ACL 細粒度控制</p>
+</li>
 </ul>
 <h3>18.3 第三階段</h3>
 <ul>
-<li>多租戶隔離</li>
-<li>具名操作者帳號管理與變更控制</li>
-<li>高可用撤權平面</li>
-<li>自動化策略測試</li>
-<li>灰度發布與 canary</li>
+<li>
+<p>多租戶隔離</p>
+</li>
+<li>
+<p>具名操作者帳號管理與變更控制</p>
+</li>
+<li>
+<p>高可用撤權平面</p>
+</li>
+<li>
+<p>自動化策略測試</p>
+</li>
+<li>
+<p>灰度發布與 canary</p>
+</li>
 </ul>
 <h2>19. 實作約束</h2>
 <p>為維持設計一致性，後續實作必須遵守：</p>
 <ul>
-<li>Agent runtime 不得直接持有外部工具權限</li>
-<li>所有能力都需落入 Capability Catalog</li>
-<li>所有 token 都需 task-bound 且短時效</li>
-<li>所有重大狀態變更都需有 audit event</li>
-<li>所有高風險動作都需經 PDP 與信任錨</li>
-<li>所有工作節點都必須可無狀態替換</li>
+<li>
+<p>Agent runtime 不得直接持有外部工具權限</p>
+</li>
+<li>
+<p>所有能力都需落入 Capability Catalog</p>
+</li>
+<li>
+<p>所有 token 都需 task-bound 且短時效</p>
+</li>
+<li>
+<p>所有重大狀態變更都需有 audit event</p>
+</li>
+<li>
+<p>所有高風險動作都需經 PDP 與信任錨</p>
+</li>
+<li>
+<p>所有工作節點都必須可無狀態替換</p>
+</li>
 </ul>
 <h2>20. 待確認議題</h2>
 <ul>
-<li>共享上下文是否允許唯讀快照直掛至容器</li>
-<li>模型推理是否由控制平面直管，或由專用 inference gateway 管理</li>
-<li>是否允許低風險自動批准在無人工參與下執行</li>
-<li>capability catalog 的版本升級是否允許任務中途切換</li>
-<li>audit event 是否需要鏈式雜湊與外部時間戳服務</li>
+<li>
+<p>共享上下文是否允許唯讀快照直掛至容器</p>
+</li>
+<li>
+<p>模型推理是否由控制平面直管，或由專用 inference gateway 管理</p>
+</li>
+<li>
+<p>是否允許低風險自動批准在無人工參與下執行</p>
+</li>
+<li>
+<p>capability catalog 的版本升級是否允許任務中途切換</p>
+</li>
+<li>
+<p>audit event 是否需要鏈式雜湊與外部時間戳服務</p>
+</li>
 </ul>
 <h2>21. 成功判準</h2>
 <p>當以下條件成立時，可視為本架構最小成功：</p>
 <ul>
-<li>任一 agent 容器失效時，不會遺失任務核心狀態</li>
-<li>任一 agent 容器被入侵時，無法直接存取外部工具與資料源</li>
-<li>任一高風險操作都能追溯是誰、何時、基於何種權限與批准執行</li>
-<li>任一工作可在不更換治理模型的前提下替換執行節點</li>
-<li>人類與 AI 皆走同一套授權與稽核路徑</li>
+<li>
+<p>任一 agent 容器失效時，不會遺失任務核心狀態</p>
+</li>
+<li>
+<p>任一 agent 容器被入侵時，無法直接存取外部工具與資料源</p>
+</li>
+<li>
+<p>任一高風險操作都能追溯是誰、何時、基於何種權限與批准執行</p>
+</li>
+<li>
+<p>任一工作可在不更換治理模型的前提下替換執行節點</p>
+</li>
+<li>
+<p>人類與 AI 皆走同一套授權與稽核路徑</p>
+</li>
 </ul>
 </main>
 </body>

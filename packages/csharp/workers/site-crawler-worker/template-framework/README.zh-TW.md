@@ -22,7 +22,7 @@
 
 - `features`: `MediaFeatureGrid`, `CardGrid`, 或 `AtomicSection`
 
-- `content`: `ContentArticle`, `ContentSection`, 或 `AtomicSection`
+- `content`: `TabbedNewsBoard`, `ArticleList`, `NewsGrid`, `CardGrid`, `ContentArticle`, `ContentSection`, 或 `AtomicSection`
 
 - `footer`: `InstitutionFooter` 或 `SiteFooter`
 
@@ -147,6 +147,21 @@
 - `cta_band`: `CtaBand`, `QuickLinkRibbon`, 或 `AtomicSection`
 
 - `footer`: `InstitutionFooter` 或 `SiteFooter`
+
+## 其他頁面類型
+
+除了 `home`，每個模板在 `visual_patterns.json` 中還宣告 `listing`、`article` 和/或 `unknown` 頁面類型。每個頁面類型都另有 `header` 與 `footer` slot，可接受的元件與 `home` 相同。
+
+| 模板 | 頁面類型 | 主體 slot 與可接受元件 |
+|---|---|---|
+| `hero_news_portal` | `listing` | `content`: `ArticleList`, `NewsGrid`, `CardGrid`, 或 `AtomicSection` |
+| `search_service_portal` | `listing` | `content`: `ArticleList`, `TabbedNewsBoard`, `NewsGrid`, `CardGrid`, 或 `AtomicSection` |
+| `service_action_portal` | `listing` | `content`: `TabbedNewsBoard`, `ArticleList`, `NewsGrid`, `CardGrid`, 或 `AtomicSection` |
+| `hero_news_portal`, `search_service_portal`, `service_action_portal` | `article`, `unknown` | `content`: `ContentArticle`, `ContentSection`, 或 `AtomicSection` |
+| `search_results_portal` | `unknown` | `result_list`（元件同 `home`） |
+| `report_dashboard` | `unknown` | `data_table`（元件同 `home`） |
+| `input_flow` | `unknown` | `form_fields`（元件同 `home`） |
+| `commercial_showcase` | `unknown` | `showcase_hero`（元件同 `home`） |
 
 ## 選擇規則
 

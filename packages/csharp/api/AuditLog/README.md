@@ -1,10 +1,15 @@
 # AuditLog
 
+> ⚠ 參考程式碼：此目錄沒有 .csproj，未被任何專案編譯或引用，CI 也不建置它；以下說明未經建置驗證。
+
 安全稽核日誌 API 控制器 — 提供安全事件查詢、使用者活動分析、告警管理、儀表板與 CSV 匯出功能。
 
 ## 初始化方式
 
 ```csharp
+// SecurityLogService 建構子必須取得這兩個 repository，否則 DI 解析失敗
+builder.Services.AddSingleton<ISecurityLogRepository, InMemorySecurityLogRepository>();
+builder.Services.AddSingleton<ILoginRecordRepository, InMemoryLoginRecordRepository>();
 builder.Services.AddScoped<ISecurityLogService, SecurityLogService>();
 // Controller 由 DI 自動注入
 ```
@@ -69,7 +74,7 @@ Content-Type: application/json
     "startDate": "2026-03-01T00:00:00Z",
     "endDate": "2026-03-06T23:59:59Z",
     "eventTypes": ["LoginFailed"],
-    "severities": ["Warning", "Critical"],
+    "severities": ["High", "Critical"],
     "outcome": "Failure",
     "page": 1,
     "pageSize": 50,
@@ -77,6 +82,8 @@ Content-Type: application/json
     "sortDescending": true
 }
 ```
+
+嚴重等級只有 `Info`、`Low`、`Medium`、`High`、`Critical`（沒有 `Warning`）。以字串傳送列舉（`eventTypes`、`severities`、`outcome`）需在主機加入 `JsonStringEnumConverter`，否則 System.Text.Json 只接受數值（如 `"severities": [3, 4]`）。
 
 ### 確認告警
 
@@ -108,7 +115,7 @@ Content-Type: application/json
 
 | 依賴 | 說明 |
 |---|---|
-| `ISecurityLogService` | 安全日誌服務介面（需自行實作） |
+| `ISecurityLogService` | 安全日誌服務介面（實作 `SecurityLogService` 位於 `security/AuditLog`，另需註冊 `ISecurityLogRepository`、`ILoginRecordRepository`） |
 | `ILogger<SecurityLogController>` | ASP.NET Core 日誌服務 |
 | `Microsoft.AspNetCore.Authorization` | 授權屬性 |
 | `Microsoft.AspNetCore.Mvc` | MVC 控制器基底 |

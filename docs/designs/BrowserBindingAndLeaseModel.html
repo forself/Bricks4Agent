@@ -25,110 +25,240 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <p>Move browser execution away from free-form ids and toward broker-owned records.</p>
 <p>The browser request builder now validates against real broker data for:</p>
 <ul>
-<li><code>BrowserSiteBinding</code></li>
-<li><code>BrowserSessionLease</code></li>
-<li><code>BrowserUserGrant</code></li>
-<li><code>BrowserSystemBinding</code></li>
+<li>
+<p><code>BrowserSiteBinding</code></p>
+</li>
+<li>
+<p><code>BrowserSessionLease</code></p>
+</li>
+<li>
+<p><code>BrowserUserGrant</code></p>
+</li>
+<li>
+<p><code>BrowserSystemBinding</code></p>
+</li>
 </ul>
-<p>Current implementation only actively validates site bindings.
-Session leases are introduced now so future runtime/session pooling work has a canonical record shape to target.</p>
+<p>Current implementation validates site bindings, user grants, system bindings and session leases (<code>packages/csharp/broker/Services/BrowserExecutionRequestBuilder.cs:65-157</code>).
+Session leases give future runtime/session pooling work a canonical record shape to target.</p>
 <h2>BrowserSiteBinding</h2>
 <p><code>BrowserSiteBinding</code> represents a broker-known site binding.</p>
 <p>Current fields:</p>
 <ul>
-<li><code>site_binding_id</code></li>
-<li><code>display_name</code></li>
-<li><code>identity_mode</code></li>
-<li><code>site_class</code></li>
-<li><code>origin</code></li>
-<li><code>principal_id</code></li>
-<li><code>status</code></li>
-<li><code>metadata_json</code></li>
-<li><code>created_at</code></li>
+<li>
+<p><code>site_binding_id</code></p>
+</li>
+<li>
+<p><code>display_name</code></p>
+</li>
+<li>
+<p><code>identity_mode</code></p>
+</li>
+<li>
+<p><code>site_class</code></p>
+</li>
+<li>
+<p><code>origin</code></p>
+</li>
+<li>
+<p><code>principal_id</code></p>
+</li>
+<li>
+<p><code>status</code></p>
+</li>
+<li>
+<p><code>metadata_json</code></p>
+</li>
+<li>
+<p><code>created_at</code></p>
+</li>
 </ul>
 <h3>Intended meaning</h3>
 <ul>
-<li><code>identity_mode</code></li>
-<li>must align with the browser tool identity mode</li>
-<li><code>site_class</code></li>
-<li>must be allowed by the browser site policy</li>
-<li><code>origin</code></li>
-<li>canonical origin for future origin enforcement</li>
-<li><code>principal_id</code></li>
-<li>required for user-delegated bindings</li>
+<li>
+<p><code>identity_mode</code></p>
+</li>
+<li>
+<p>must align with the browser tool identity mode</p>
+</li>
+<li>
+<p><code>site_class</code></p>
+</li>
+<li>
+<p>must be allowed by the browser site policy</p>
+</li>
+<li>
+<p><code>origin</code></p>
+</li>
+<li>
+<p>canonical origin for future origin enforcement</p>
+</li>
+<li>
+<p><code>principal_id</code></p>
+</li>
+<li>
+<p>required for user-delegated bindings</p>
+</li>
 </ul>
 <h2>BrowserSessionLease</h2>
 <p><code>BrowserSessionLease</code> represents a broker-owned runtime session lease.</p>
 <p>Current fields:</p>
 <ul>
-<li><code>session_lease_id</code></li>
-<li><code>tool_id</code></li>
-<li><code>site_binding_id</code></li>
-<li><code>principal_id</code></li>
-<li><code>identity_mode</code></li>
-<li><code>lease_state</code></li>
-<li><code>expires_at</code></li>
-<li><code>created_at</code></li>
-<li><code>last_used_at</code></li>
+<li>
+<p><code>session_lease_id</code></p>
+</li>
+<li>
+<p><code>tool_id</code></p>
+</li>
+<li>
+<p><code>site_binding_id</code></p>
+</li>
+<li>
+<p><code>principal_id</code></p>
+</li>
+<li>
+<p><code>identity_mode</code></p>
+</li>
+<li>
+<p><code>lease_state</code></p>
+</li>
+<li>
+<p><code>expires_at</code></p>
+</li>
+<li>
+<p><code>created_at</code></p>
+</li>
+<li>
+<p><code>last_used_at</code></p>
+</li>
 </ul>
 <h3>Intended meaning</h3>
-<p>This is not yet used by runtime dispatch.
+<p>The request builder validates a referenced lease (active, same principal, same identity mode, not expired, same site binding), and the broker runtime echoes the lease id in the result and touches <code>last_used_at</code> after execution (<code>packages/csharp/broker/Services/BrowserExecutionRuntimeService.cs:83,93,134-140</code>); no runtime reuses a leased browser session yet.
 It exists so future browser workers do not invent their own lease identifiers and lifecycle rules outside the broker.</p>
 <h2>BrowserUserGrant</h2>
 <p><code>BrowserUserGrant</code> represents a broker-owned delegated user authorization record.</p>
 <p>Current fields:</p>
 <ul>
-<li><code>user_grant_id</code></li>
-<li><code>principal_id</code></li>
-<li><code>site_binding_id</code></li>
-<li><code>status</code></li>
-<li><code>consent_ref</code></li>
-<li><code>scopes_json</code></li>
-<li><code>expires_at</code></li>
-<li><code>created_at</code></li>
+<li>
+<p><code>user_grant_id</code></p>
+</li>
+<li>
+<p><code>principal_id</code></p>
+</li>
+<li>
+<p><code>site_binding_id</code></p>
+</li>
+<li>
+<p><code>status</code></p>
+</li>
+<li>
+<p><code>consent_ref</code></p>
+</li>
+<li>
+<p><code>scopes_json</code></p>
+</li>
+<li>
+<p><code>expires_at</code></p>
+</li>
+<li>
+<p><code>created_at</code></p>
+</li>
 </ul>
 <h2>BrowserSystemBinding</h2>
 <p><code>BrowserSystemBinding</code> represents a broker-owned system credential binding.</p>
 <p>Current fields:</p>
 <ul>
-<li><code>system_binding_id</code></li>
-<li><code>display_name</code></li>
-<li><code>site_binding_id</code></li>
-<li><code>status</code></li>
-<li><code>secret_ref</code></li>
-<li><code>created_at</code></li>
+<li>
+<p><code>system_binding_id</code></p>
+</li>
+<li>
+<p><code>display_name</code></p>
+</li>
+<li>
+<p><code>site_binding_id</code></p>
+</li>
+<li>
+<p><code>status</code></p>
+</li>
+<li>
+<p><code>secret_ref</code></p>
+</li>
+<li>
+<p><code>created_at</code></p>
+</li>
 </ul>
 <h2>Current Builder Enforcement</h2>
 <p><code>BrowserExecutionRequestBuilder</code> now validates:</p>
 <ul>
-<li>required site binding exists when site policy requires it</li>
-<li>site binding is active</li>
-<li>site binding identity matches tool identity mode</li>
-<li>site binding class is allowed by tool site policy</li>
-<li>for user-delegated tools, the site binding principal must match the requesting principal</li>
-<li>referenced user grant exists, is active, belongs to the requesting principal, and matches the site binding when pinned</li>
-<li>referenced system binding exists, is active, and matches the site binding when pinned</li>
+<li>
+<p>required site binding exists when site policy requires it</p>
+</li>
+<li>
+<p>site binding is active</p>
+</li>
+<li>
+<p>site binding identity matches tool identity mode</p>
+</li>
+<li>
+<p>site binding class is allowed by tool site policy</p>
+</li>
+<li>
+<p>for user-delegated tools, the site binding principal must match the requesting principal</p>
+</li>
+<li>
+<p>referenced user grant exists, is active, belongs to the requesting principal, and matches the site binding when pinned</p>
+</li>
+<li>
+<p>referenced system binding exists, is active, and matches the site binding when pinned</p>
+</li>
+<li>
+<p>referenced session lease exists, is active, belongs to the requesting principal, matches the tool identity mode, is not expired, and matches the site binding when pinned</p>
+</li>
 </ul>
 <p>It still also validates:</p>
 <ul>
-<li>action level ceiling</li>
-<li>user grant requirement</li>
-<li>system binding requirement</li>
+<li>
+<p>action level ceiling</p>
+</li>
+<li>
+<p>user grant requirement</p>
+</li>
+<li>
+<p>system binding requirement</p>
+</li>
 </ul>
 <h2>Current Phase</h2>
 <p>Implemented:</p>
 <ul>
-<li>broker tables for site bindings and session leases</li>
-<li>broker tables for user grants and system bindings</li>
-<li>indexes for lookup by identity/principal/state</li>
-<li>builder validation against <code>BrowserSiteBinding</code></li>
-<li>builder validation against <code>BrowserUserGrant</code></li>
-<li>builder validation against <code>BrowserSystemBinding</code></li>
+<li>
+<p>broker tables for site bindings and session leases</p>
+</li>
+<li>
+<p>broker tables for user grants and system bindings</p>
+</li>
+<li>
+<p>indexes for lookup by identity/principal/state</p>
+</li>
+<li>
+<p>builder validation against <code>BrowserSiteBinding</code></p>
+</li>
+<li>
+<p>builder validation against <code>BrowserUserGrant</code></p>
+</li>
+<li>
+<p>builder validation against <code>BrowserSystemBinding</code></p>
+</li>
+<li>
+<p>builder validation against <code>BrowserSessionLease</code></p>
+</li>
+<li>
+<p>site-binding / user-grant / system-binding catalog management API (<code>/api/v1/browser-admin/*/list|get|upsert</code>, <code>packages/csharp/broker/Endpoints/BrowserBindingEndpoints.cs:14-137</code>; local-admin mirror under <code>/api/v1/local-admin/browser/*</code>)</p>
+</li>
+<li>
+<p>session lease issuance and revocation (<code>/api/v1/browser-admin/leases/issue|revoke</code>, <code>BrowserBindingEndpoints.cs:160-188</code>)</p>
+</li>
 </ul>
 <p>Not yet implemented:</p>
 <ul>
-<li>site-binding catalog management API</li>
-<li>session lease issuance and revocation flow</li>
 <li>browser worker reuse of lease records</li>
 </ul>
 <h2>Rule</h2>

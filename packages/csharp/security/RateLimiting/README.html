@@ -22,16 +22,30 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <main>
 <h1>IP Rate Limiting &amp; Connection Info Module</h1>
 <p>IP 限流與連線資訊模組，提供滑動視窗演算法的 IP 限流、連線資訊擷取、用戶會話管理等功能。</p>
+<blockquote>
+<p><code>broker/Broker.csproj</code> 有 ProjectReference 引用此專案，但 broker 原始碼沒有使用其中任何型別；broker 的 IP 限流由自己的 <code>BrokerIpRateLimitMiddleware</code> 負責。</p>
+</blockquote>
 <h2>功能特點</h2>
 <ul>
-<li><strong>IP 限流</strong>：滑動視窗演算法，精確控制請求頻率</li>
-<li><strong>連線資訊</strong>：自動擷取客戶端 IP、User-Agent、裝置指紋</li>
-<li><strong>會話管理</strong>：追蹤用戶登入會話與裝置</li>
-<li><strong>可疑 IP 偵測</strong>：自動標記異常行為的 IP</li>
-<li><strong>登入歷史</strong>：記錄登入嘗試供安全分析</li>
+<li>
+<p><strong>IP 限流</strong>：滑動視窗演算法，精確控制請求頻率</p>
+</li>
+<li>
+<p><strong>連線資訊</strong>：自動擷取客戶端 IP、User-Agent、裝置指紋</p>
+</li>
+<li>
+<p><strong>會話管理</strong>：追蹤用戶登入會話與裝置</p>
+</li>
+<li>
+<p><strong>可疑 IP 管理</strong>：可手動標記可疑 IP（套用較嚴格的限制）或封鎖 IP；函式庫本身不會自動標記</p>
+</li>
+<li>
+<p><strong>登入歷史</strong>：記錄登入嘗試供安全分析</p>
+</li>
 </ul>
 <h2>安裝</h2>
-<pre><code class="language-bash">dotnet add package IpRateLimiting
+<p>本 repo 不發佈此套件（<code>dotnet add package IpRateLimiting</code> 取得的若是 nuget.org 上的同名套件，也不是這份程式碼），請以專案參考（ProjectReference）引用，於 repo 根目錄執行：</p>
+<pre><code class="language-bash">dotnet add &lt;你的專案&gt;.csproj reference packages/csharp/security/RateLimiting/RateLimiting.csproj
 </code></pre>
 <h2>快速開始</h2>
 <h3>1. 註冊服務</h3>
@@ -154,12 +168,7 @@ var result = rateLimiter.CheckAndIncrement(clientIp, &quot;custom_api&quot;);
 </code></pre>
 <h2>可疑 IP 管理</h2>
 <h3>自動偵測</h3>
-<p>系統會在以下情況自動標記可疑 IP：</p>
-<ul>
-<li>連續多次登入失敗（預設 15 次）</li>
-<li>短時間內大量請求</li>
-<li>嘗試攻擊行為</li>
-</ul>
+<p>本函式庫不會自動標記可疑 IP，<code>MarkSuspicious</code> 只會由呼叫端呼叫；超過規則限制時，限流器只會依該規則的 <code>LockoutDuration</code> 暫時拒絕請求。「登入被限流時，若最近 20 次嘗試中有 15 次以上失敗就標記 24 小時」的規則只存在於未建置的參考程式碼 <code>api/Auth/RateLimitedAuthController.cs</code>（沒有 .csproj）。</p>
 <h3>手動管理</h3>
 <pre><code class="language-csharp">// 標記可疑 IP（降低限制為 50%）
 _rateLimiter.MarkSuspicious(
@@ -181,7 +190,7 @@ _rateLimiter.UnblockIp(&quot;192.168.1.100&quot;);
 var stats = _rateLimiter.GetStatistics(&quot;192.168.1.100&quot;);
 </code></pre>
 <h2>回應標頭</h2>
-<p>控制器會自動設定以下回應標頭：</p>
+<p>本函式庫不設定任何回應標頭；以下標頭由未建置的參考程式碼 <code>api/Auth/RateLimitedAuthController.cs</code> 依 <code>RateLimitResult</code> 設定：</p>
 <table>
 <thead>
 <tr>
@@ -200,7 +209,7 @@ var stats = _rateLimiter.GetStatistics(&quot;192.168.1.100&quot;);
 </tr>
 <tr>
 <td><code>X-RateLimit-Reset</code></td>
-<td>重設時間（Unix timestamp）</td>
+<td>重設時間（ISO-8601，<code>WindowReset.ToString("o")</code>）</td>
 </tr>
 <tr>
 <td><code>Retry-After</code></td>
@@ -209,7 +218,7 @@ var stats = _rateLimiter.GetStatistics(&quot;192.168.1.100&quot;);
 </tbody>
 </table>
 <h2>API 端點</h2>
-<p>使用 <code>RateLimitedAuthController</code> 提供以下端點：</p>
+<p>以下端點定義在未建置的參考程式碼 <code>api/Auth/RateLimitedAuthController.cs</code>（沒有 .csproj），repo 內沒有任何主機提供這些端點：</p>
 <h3>認證</h3>
 <table>
 <thead>
@@ -313,29 +322,56 @@ var stats = _rateLimiter.GetStatistics(&quot;192.168.1.100&quot;);
 <h2>進階設定</h2>
 <h3>IP 擷取優先順序</h3>
 <p>支援反向代理環境，IP 擷取優先順序：</p>
+<blockquote>
+<p>⚠ <code>ConnectionInfoOptions.TrustProxyHeaders</code> 預設為 <code>true</code>，且 <code>TrustedProxies</code> 從未被讀取；因此任何直接連線的客戶端都能以 <code>CF-Connecting-IP</code>、<code>X-Real-IP</code> 或 <code>X-Forwarded-For</code> 偽造 IP，繞過以 IP 為單位的限流與封鎖。未位於受信任反向代理之後時，請關閉此選項，例如註冊 <code>builder.Services.AddSingleton(new ConnectionInfoOptions { TrustProxyHeaders = false });</code>（<code>ConnectionInfoService</code> 建構子會從 DI 取得）。</p>
+</blockquote>
 <ol>
-<li><code>CF-Connecting-IP</code> (Cloudflare)</li>
-<li><code>X-Real-IP</code></li>
-<li><code>X-Forwarded-For</code> (第一個 IP)</li>
-<li><code>RemoteIpAddress</code></li>
+<li>
+<p><code>CF-Connecting-IP</code> (Cloudflare)</p>
+</li>
+<li>
+<p><code>X-Real-IP</code></p>
+</li>
+<li>
+<p><code>X-Forwarded-For</code> (第一個 IP)</p>
+</li>
+<li>
+<p><code>RemoteIpAddress</code></p>
+</li>
 </ol>
 <h3>裝置指紋生成</h3>
 <p>指紋基於以下資訊生成 SHA256 雜湊：</p>
 <ul>
-<li>IP 地址</li>
-<li>User-Agent</li>
-<li>Accept-Language</li>
-<li>Accept-Encoding</li>
+<li>
+<p>IP 地址</p>
+</li>
+<li>
+<p>User-Agent</p>
+</li>
+<li>
+<p>Accept-Language</p>
+</li>
+<li>
+<p>Accept-Encoding</p>
+</li>
 </ul>
 <h2>安全建議</h2>
 <ol>
-<li><strong>生產環境</strong>：使用 Redis 或分散式快取取代記憶體儲存</li>
-<li><strong>代理設定</strong>：確保正確設定 <code>ForwardedHeaders</code> 取得真實 IP</li>
-<li><strong>日誌脫敏</strong>：IP 地址在日誌中應部分遮蔽</li>
-<li><strong>定期清理</strong>：設定合理的過期時間避免記憶體洩漏</li>
+<li>
+<p><strong>生產環境</strong>：使用 Redis 或分散式快取取代記憶體儲存</p>
+</li>
+<li>
+<p><strong>代理設定</strong>：確保正確設定 <code>ForwardedHeaders</code> 取得真實 IP</p>
+</li>
+<li>
+<p><strong>日誌脫敏</strong>：IP 地址在日誌中應部分遮蔽</p>
+</li>
+<li>
+<p><strong>定期清理</strong>：設定合理的過期時間避免記憶體洩漏</p>
+</li>
 </ol>
 <h2>與 MFA 模組整合</h2>
-<p>此模組可與 <code>YourNamespace.Security.Mfa</code> 模組無縫整合：</p>
+<p>此模組可與 <code>Bricks4Agent.Security.Mfa</code> 模組整合（<code>RateLimitedAuthController</code> 為未建置的參考程式碼）：</p>
 <pre><code class="language-csharp">// 使用 RateLimitedAuthController 已整合 MFA + 限流
 services.AddScoped&lt;IMfaAuthService, MfaAuthService&gt;();
 services.AddSingleton&lt;IIpRateLimiter, IpRateLimiter&gt;();
@@ -344,7 +380,7 @@ services.AddSingleton&lt;IUserSessionService, UserSessionService&gt;();
 </code></pre>
 <h2>相依套件</h2>
 <ul>
-<li><code>Microsoft.AspNetCore.Http.Abstractions</code> &gt;= 2.2.0</li>
+<li>目標框架 <code>net10.0</code>，透過 <code>&lt;FrameworkReference Include="Microsoft.AspNetCore.App" /&gt;</code> 取得 ASP.NET Core API（不使用 <code>Microsoft.AspNetCore.Http.Abstractions</code> NuGet 套件）</li>
 </ul>
 <h2>授權</h2>
 <p>MIT License</p>

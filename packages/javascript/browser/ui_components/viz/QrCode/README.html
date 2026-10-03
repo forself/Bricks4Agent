@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>QrCode QR Code 產生器</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>QrCode QR Code 產生器</h1>
+<p>把文字或網址畫成 QR Code，例如繳費資訊、證明文件的查驗連結、課程大綱或教室課表的公開網址。純 Canvas、零依賴，編碼器依 ISO/IEC 18004 自行實作。</p>
+<ul>
+<li>版本 1～40，錯誤修正等級 L、M、Q、H；依內容自動選數字、英數或位元組（UTF-8）模式，中文可直接編碼</li>
+<li>模組對齊整數像素，邊緣銳利；<code>exportPNG(scale)</code> 輸出高倍率圖檔供列印</li>
+<li>顏色預設取主題 token；深色主題下自動對調，模組永遠比底色暗，換膚後仍可掃描</li>
+<li>內容過長或設定錯誤時不擲錯，改在畫面上顯示訊息，<code>getError()</code> 取得原因</li>
+<li>無障礙名稱預設為「QR Code：內容」，內容改變時同步更新</li>
+</ul>
+<h2>建構子</h2>
+<pre><code class="language-javascript">import { QrCode } from './index.js';
+
+const qr = new QrCode({
+    value: '',                // 要編碼的文字或網址；空字串時不畫
+    ecLevel: 'M',             // 'L' 7% | 'M' 15% | 'Q' 25% | 'H' 30%（可容許的損毀比例）
+    size: 160,                // 邊長（數字為 px）
+    margin: 4,                // 四周留白的模組數（標準為 4，貼在深色背景上不可省）
+    minVersion: 1,            // 最小版本（1～40）
+    maxVersion: 40,           // 最大版本；內容放不下時顯示錯誤
+    mask: 'auto',             // 0～7，預設依罰分自動選
+    boostEcl: true,           // 同一版本放得下時自動提高錯誤修正等級
+    eci: false,               // 加上 UTF-8 的 ECI 宣告（少數舊掃描器才需要）
+    darkColor: '--cl-text',   // 模組色：token 名稱或 CSS 顏色
+    lightColor: '--cl-bg',    // 底色：token 名稱或 CSS 顏色
+    ensureContrast: true,     // 依亮度自動對調，確保模組比底色暗
+    ariaLabel: '',            // 無障礙名稱；預設為「QR Code：內容」
+    onError: null             // 編碼失敗時呼叫 (error) =&gt; void
+});
+qr.mount(container);</code></pre>
+<h2>方法</h2>
+<table>
+<thead>
+<tr><th>方法</th><th>說明</th></tr>
+</thead>
+<tbody>
+<tr><td><code>mount(container)</code></td><td>掛到容器，回傳自己</td></tr>
+<tr><td><code>getValue()</code></td><td>目前的內容</td></tr>
+<tr><td><code>setValue(value)</code></td><td>更換內容並重繪</td></tr>
+<tr><td><code>clear()</code></td><td>清空內容</td></tr>
+<tr><td><code>update(patch)</code></td><td>同時更新多個選項，例如 <code>{ value, ecLevel }</code></td></tr>
+<tr><td><code>getError()</code></td><td>最近一次編碼失敗的原因 <code>{ code, message }</code>，成功時為 <code>null</code>；<code>code</code> 為 <code>too_long</code> 或 <code>invalid_option</code></td></tr>
+<tr><td><code>getInfo()</code></td><td>編碼結果 <code>{ version, size, ecLevel, mask, mode }</code>，沒有內容時為 <code>null</code></td></tr>
+<tr><td><code>exportPNG(scale = 2)</code></td><td>以 <code>scale</code> 倍率輸出 PNG 的 data URL</td></tr>
+<tr><td><code>destroy()</code></td><td>移除元件並釋放監聽</td></tr>
+</tbody>
+</table>
+<h2>只要編碼結果</h2>
+<p>不需要畫面時（例如在伺服器端產生文件），直接用編碼器：</p>
+<pre><code class="language-javascript">import { encodeQr } from './index.js';
+
+const { size, isDark } = encodeQr('https://example.edu.tw', { ecLevel: 'Q' });
+for (let y = 0; y &lt; size; y++) {
+    for (let x = 0; x &lt; size; x++) {
+        if (isDark(x, y)) { /* 畫一個模組 */ }
+    }
+}</code></pre>
+<h2>選擇錯誤修正等級</h2>
+<table>
+<thead>
+<tr><th>等級</th><th>可容許的損毀</th><th>適合</th></tr>
+</thead>
+<tbody>
+<tr><td>L</td><td>約 7%</td><td>螢幕顯示、內容很長</td></tr>
+<tr><td>M</td><td>約 15%</td><td>一般用途（預設）</td></tr>
+<tr><td>Q</td><td>約 25%</td><td>列印在紙本、可能折損</td></tr>
+<tr><td>H</td><td>約 30%</td><td>中央要放標誌，或環境惡劣</td></tr>
+</tbody>
+</table>
+<p>內容越長、等級越高，版本（邊長模組數）越大；邊長固定時每個模組就越小。列印時每個模組建議至少 0.3 公釐。</p>
+<h2>測試</h2>
+<p><code>qr-encoder.test.mjs</code> 以標準的已知數值（格式資訊、版本資訊、產生多項式、HELLO WORLD 的碼字與錯誤修正碼、對齊圖形位置、各版本容量）驗證編碼器，並以另外寫的解碼器把數字、英數、中文、長文字、八種遮罩與版本 7～40 的結果讀回比對。</p>
+</main>
+</body>
+</html>

@@ -40,3 +40,5 @@ Generated code should reference only:
 Only this adapter package should reference:
 
 - `ClosedXML`
+
+- `System.IO.Packaging` (referenced directly next to `ClosedXML` in `ClosedXmlAdapter.csproj`)

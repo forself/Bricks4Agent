@@ -332,7 +332,7 @@ semantic colours are defined indirectly against the palette layer it imports
   --cl-font-size-2xl: 18px;
   --cl-font-size-3xl: 24px;
 
-  /* Material palette ??button variants / icon colors */
+  /* Material palette — button variants / icon colors */
   --cl-purple: #9C27B0;
   --cl-teal: #009688;
   --cl-pink: #E91E63;
@@ -354,7 +354,7 @@ semantic colours are defined indirectly against the palette layer it imports
 Override `:root` variables to customize your brand theme:
 
 ```css
-/* my-theme.css ??Override brand colors to customize the theme */
+/* my-theme.css — Override brand colors to customize the theme */
 :root {
   --cl-primary: #E74C3C;
   --cl-primary-dark: #C0392B;
@@ -439,7 +439,7 @@ node tools/fix-named-colors.js --apply
 
 Form components are located in `packages/javascript/browser/ui_components/form/`, with 18 components total. The six not covered below are `Form`, `TextArea`, `Slider`, `Rating`, `TagInput` and `CommandComposer`.
 
-### 4.1 TextInput ??Text Input
+### 4.1 TextInput — Text Input
 
 ![TextInput Component](screenshots/after/form-TextInput.png)
 
@@ -463,7 +463,7 @@ const name = nameInput.getValue();
 nameInput.setValue('John Doe');
 ```
 
-### 4.2 NumberInput ??Number Input
+### 4.2 NumberInput — Number Input
 
 ![NumberInput Component](screenshots/after/form-NumberInput.png)
 
@@ -481,7 +481,7 @@ const ageInput = new NumberInput({
 ageInput.mount(document.getElementById('age-field'));
 ```
 
-### 4.3 DatePicker ??Date Picker
+### 4.3 DatePicker — Date Picker
 
 ![DatePicker Component](screenshots/after/form-DatePicker.png)
 
@@ -499,7 +499,7 @@ const datePicker = new DatePicker({
 datePicker.mount(document.getElementById('date-field'));
 ```
 
-### 4.4 TimePicker ??Time Picker
+### 4.4 TimePicker — Time Picker
 
 ![TimePicker Component](screenshots/after/form-TimePicker.png)
 
@@ -514,7 +514,7 @@ const timePicker = new TimePicker({
 timePicker.mount(document.getElementById('time-field'));
 ```
 
-### 4.5 Dropdown ??Dropdown Select
+### 4.5 Dropdown — Dropdown Select
 
 ![Dropdown Component](screenshots/after/form-Dropdown.png)
 
@@ -536,7 +536,7 @@ const cityDropdown = new Dropdown({
 cityDropdown.mount(document.getElementById('city-field'));
 ```
 
-### 4.6 MultiSelectDropdown ??Multi-Select Dropdown
+### 4.6 MultiSelectDropdown — Multi-Select Dropdown
 
 ![MultiSelectDropdown Component](screenshots/after/form-MultiSelectDropdown.png)
 
@@ -560,7 +560,7 @@ tagSelect.mount(document.getElementById('tag-field'));
 const selected = tagSelect.getValues(); // ['js', 'css']
 ```
 
-### 4.7 Checkbox ??Checkbox
+### 4.7 Checkbox — Checkbox
 
 ![Checkbox Component](screenshots/after/form-Checkbox.png)
 
@@ -576,7 +576,7 @@ const agreeCheckbox = new Checkbox({
 agreeCheckbox.mount(document.getElementById('agree-field'));
 ```
 
-### 4.8 Radio ??Radio Button
+### 4.8 Radio — Radio Button
 
 ![Radio Component](screenshots/after/form-Radio.png)
 
@@ -616,7 +616,7 @@ const selectedGender = genderGroup.getValue();
 genderGroup.setValue('female');
 ```
 
-### 4.9 ToggleSwitch ??Toggle Switch
+### 4.9 ToggleSwitch — Toggle Switch
 
 ```javascript
 import { ToggleSwitch } from './ui_components/form/ToggleSwitch/ToggleSwitch.js';
@@ -630,7 +630,7 @@ const toggle = new ToggleSwitch({
 toggle.mount(document.getElementById('toggle-field'));
 ```
 
-### 4.10 FormField ??Form Field Wrapper
+### 4.10 FormField — Form Field Wrapper
 
 ![FormField Component](screenshots/after/form-FormField.png)
 
@@ -647,7 +647,7 @@ const field = new FormField({
 field.mount(document.getElementById('email-field'));
 ```
 
-### 4.11 SearchForm ??Search Form
+### 4.11 SearchForm — Search Form
 
 ![SearchForm Component](screenshots/after/form-SearchForm.png)
 
@@ -675,7 +675,7 @@ const searchForm = new SearchForm({
 searchForm.mount(document.getElementById('search-area'));
 ```
 
-### 4.12 BatchUploader ??Batch Uploader
+### 4.12 BatchUploader — Batch Uploader
 
 ![BatchUploader Component](screenshots/after/form-BatchUploader.png)
 
@@ -703,7 +703,7 @@ Common components are located in `packages/javascript/browser/ui_components/comm
 
 ### 5.1 Button Series
 
-#### BasicButton ??Basic Button
+#### BasicButton — Basic Button
 
 ![BasicButton](screenshots/after/common-BasicButton.png)
 
@@ -723,7 +723,7 @@ const btn = new BasicButton({
 btn.mount(document.getElementById('btn-container'));
 ```
 
-#### ActionButton ??Action Button
+#### ActionButton — Action Button
 
 ![ActionButton](screenshots/after/common-ActionButton.png)
 
@@ -788,7 +788,7 @@ const uploadBtn = new UploadButton({
 });
 ```
 
-#### ButtonGroup ??Button Group
+#### ButtonGroup — Button Group
 
 ![ButtonGroup](screenshots/after/common-ButtonGroup.png)
 
@@ -806,7 +806,7 @@ const group = new ButtonGroup({
 group.mount(document.getElementById('button-area'));
 ```
 
-### 5.2 ColorPicker ??Color Picker
+### 5.2 ColorPicker — Color Picker
 
 ![ColorPicker](screenshots/after/common-ColorPicker.png)
 
@@ -822,7 +822,7 @@ const colorPicker = new ColorPicker({
 colorPicker.mount(document.getElementById('color-field'));
 ```
 
-### 5.3 Dialog / SimpleDialog ??Dialog
+### 5.3 Dialog / SimpleDialog — Dialog
 
 ![Dialog Component](screenshots/after/common-Dialog.png)
 
@@ -842,7 +842,7 @@ await SimpleDialog.alert('Data saved successfully.');
 const name = await SimpleDialog.prompt('Enter a name', 'default value');
 ```
 
-### 5.4 Notification ??Notification
+### 5.4 Notification — Notification
 
 ![Notification Component](screenshots/after/common-Notification.png)
 
@@ -873,7 +873,7 @@ new Notification({
 Notification.closeAll();
 ```
 
-### 5.5 LoadingSpinner ??Loading Spinner
+### 5.5 LoadingSpinner — Loading Spinner
 
 ![LoadingSpinner Component](screenshots/after/common-LoadingSpinner.png)
 
@@ -892,7 +892,7 @@ spinner.mount(document.getElementById('content-area'));
 spinner.destroy();
 ```
 
-### 5.6 Pagination ??Pagination
+### 5.6 Pagination — Pagination
 
 ![Pagination Component](screenshots/after/common-Pagination.png)
 
@@ -909,7 +909,7 @@ const pagination = new Pagination({
 pagination.mount(document.getElementById('pagination-area'));
 ```
 
-### 5.7 Breadcrumb ??Breadcrumb Navigation
+### 5.7 Breadcrumb — Breadcrumb Navigation
 
 ![Breadcrumb Component](screenshots/after/common-Breadcrumb.png)
 
@@ -927,7 +927,7 @@ const breadcrumb = new Breadcrumb({
 breadcrumb.mount(document.getElementById('breadcrumb-area'));
 ```
 
-### 5.8 TreeList ??Tree List
+### 5.8 TreeList — Tree List
 
 ![TreeList Component](screenshots/after/common-TreeList.png)
 
@@ -952,7 +952,7 @@ const tree = new TreeList({
 tree.mount(document.getElementById('tree-area'));
 ```
 
-### 5.9 PhotoCard / FeatureCard ??Card Components
+### 5.9 PhotoCard / FeatureCard — Card Components
 
 ![PhotoCard Component](screenshots/after/common-PhotoCard.png)
 
@@ -981,7 +981,7 @@ const featureCard = new FeatureCard({
 });
 ```
 
-### 5.10 ImageViewer ??Image Viewer
+### 5.10 ImageViewer — Image Viewer
 
 ![ImageViewer Component](screenshots/after/common-ImageViewer.png)
 
@@ -1001,9 +1001,9 @@ ImageViewer.open('/photos/1.jpg', {
 ImageViewer.close();
 ```
 
-### 5.11 SortButton ??Sort Button
+### 5.11 SortButton — Sort Button
 
-Used for table column sorting, cycling through none ??desc ??asc states.
+Used for table column sorting, cycling through none → desc → asc states.
 
 ```javascript
 import { SortButton } from './ui_components/common/SortButton/SortButton.js';
@@ -1023,7 +1023,7 @@ sortBtn.setState('asc');  // Programmatic control
 sortBtn.reset();          // Reset to none
 ```
 
-### 5.12 EditorButton ??Editor Toolbar Button
+### 5.12 EditorButton — Editor Toolbar Button
 
 Provides 70 predefined button types (bold, italic, link, image, etc.) for rich text editor toolbars.
 
@@ -1104,7 +1104,7 @@ PanelManager.getChildren(modal);
 PanelManager.unregister(modal);
 ```
 
-### 6.2 DataTable ??Data Table
+### 6.2 DataTable — Data Table
 
 ![DataTable Component](screenshots/after/layout-DataTable.png)
 
@@ -1140,7 +1140,7 @@ const table = new DataTable({
   pageSize: 20
 });
 
-// Alternative format ??Object array + key/title columns (audit mode)
+// Alternative format — Object array + key/title columns (audit mode)
 const auditTable = new DataTable({
   container: document.getElementById('audit-area'),
   columns: [
@@ -1157,7 +1157,7 @@ const auditTable = new DataTable({
 });
 ```
 
-### 6.3 SideMenu ??Side Menu
+### 6.3 SideMenu — Side Menu
 
 ![SideMenu Component](screenshots/after/layout-SideMenu.png)
 
@@ -1185,7 +1185,7 @@ const menu = new SideMenu({
 menu.mount(document.getElementById('sidebar'));
 ```
 
-### 6.4 TabContainer ??Tab Container
+### 6.4 TabContainer — Tab Container
 
 ![TabContainer Component](screenshots/after/layout-TabContainer.png)
 
@@ -1207,7 +1207,7 @@ const tabs = new TabContainer({
 });
 ```
 
-### 6.5 FormRow ??Form Row
+### 6.5 FormRow — Form Row
 
 ![FormRow Component](screenshots/after/layout-FormRow.png)
 
@@ -1229,7 +1229,7 @@ const row = new FormRow({
 row.mount(document.getElementById('form-area'));
 ```
 
-### 6.6 InfoPanel ??Info Panel
+### 6.6 InfoPanel — Info Panel
 
 ![InfoPanel Component](screenshots/after/layout-InfoPanel.png)
 
@@ -1255,7 +1255,7 @@ const infoPanel = new InfoPanel({
 
 ### 6.7 Other Layout Components
 
-#### FunctionMenu ??Function Menu
+#### FunctionMenu — Function Menu
 
 ![FunctionMenu Component](screenshots/after/layout-FunctionMenu.png)
 
@@ -1276,7 +1276,7 @@ const funcMenu = new FunctionMenu({
 });
 ```
 
-#### WorkflowPanel ??Workflow Panel
+#### WorkflowPanel — Workflow Panel
 
 ![WorkflowPanel Component](screenshots/after/layout-WorkflowPanel.png)
 
@@ -1299,7 +1299,7 @@ const workflow = new WorkflowPanel({
 workflow.mount(document.getElementById('workflow-area'));
 ```
 
-### 6.8 DocumentWall ??Document Wall
+### 6.8 DocumentWall — Document Wall
 
 Displays documents in a card grid, supports multi-select, batch ZIP download, description editing, and deletion.
 
@@ -1321,7 +1321,7 @@ wall.mount(document.getElementById('doc-area'));
 wall.removeDocument(0);
 ```
 
-### 6.9 PhotoWall ??Photo Wall
+### 6.9 PhotoWall — Photo Wall
 
 Image gallery component, supports preview browsing, multi-select, and batch ZIP download.
 
@@ -1351,7 +1351,7 @@ Advanced input components are located in `packages/javascript/browser/ui_compone
 
 ![Advanced Input Overview](screenshots/after/input-CompositeInputs.png)
 
-### 7.1 ChainedInput ??Chained Input
+### 7.1 ChainedInput — Chained Input
 
 Multi-level cascading dropdown selects, suitable for hierarchical data like country/state/city.
 
@@ -1386,7 +1386,7 @@ const region = regionInput.getValues();  // { city, district, village }
 await regionInput.setValues({ city: 'TPE' });
 ```
 
-### 7.2 AddressInput ??Address Input
+### 7.2 AddressInput — Address Input
 
 Composite component integrating region cascading and detailed address.
 
@@ -1408,7 +1408,7 @@ const address = addressInput.getValues();
 // { city: 'Taipei', district: 'Zhongzheng', address: '122 Chongqing South Rd.' }
 ```
 
-### 7.3 AddressListInput ??Multiple Address Input
+### 7.3 AddressListInput — Multiple Address Input
 
 Add/remove multiple addresses, suitable for scenarios with multiple mailing addresses.
 
@@ -1426,7 +1426,7 @@ addressList.mount(document.getElementById('address-list-field'));
 const addresses = addressList.getValues();   // array of address objects
 ```
 
-### 7.4 PersonInfoList ??Person Info List
+### 7.4 PersonInfoList — Person Info List
 
 ```javascript
 import { PersonInfoList } from './ui_components/input/PersonInfoList/PersonInfoList.js';
@@ -1442,7 +1442,7 @@ const personList = new PersonInfoList({
 personList.mount(document.getElementById('person-list'));
 ```
 
-### 7.5 PhoneListInput ??Phone List
+### 7.5 PhoneListInput — Phone List
 
 ```javascript
 import { PhoneListInput } from './ui_components/input/PhoneListInput/PhoneListInput.js';
@@ -1457,7 +1457,7 @@ phoneList.mount(document.getElementById('phone-list'));
 const phones = phoneList.getValues();   // [{ type, number }, ...]
 ```
 
-### 7.6 OrganizationInput ??Organization Input
+### 7.6 OrganizationInput — Organization Input
 
 ```javascript
 import { OrganizationInput } from './ui_components/input/OrganizationInput/OrganizationInput.js';
@@ -1475,13 +1475,13 @@ const org = orgInput.getValues();   // { level1, level2, level3 }
 
 ### 7.7 Other Advanced Inputs
 
-- **DateTimeInput** ??DateTime composite input
+- **DateTimeInput** — DateTime composite input
 
-- **ListInput** ??Generic list input (add/remove/reorder items)
+- **ListInput** — Generic list input (add/remove/reorder items)
 
-- **SocialMediaList** ??Social media account list
+- **SocialMediaList** — Social media account list
 
-- **StudentInput** ??Student information input
+- **StudentInput** — Student information input
 
 These composite inputs expose `mount`, `getValues`, `setValues` and `destroy`. They are multi-field containers, so they use the plural `getValues()` / `setValues()` accessors rather than the single-value `getValue()` / `setValue()` of the plain form components; on `ChainedInput` and its subclasses `setValues()` is async because it may have to reload dependent option lists.
 
@@ -1491,7 +1491,7 @@ These composite inputs expose `mount`, `getValues`, `setValues` and `destroy`. T
 
 Social components (`social/`) provide UI elements for social networking features including profiles, feeds, and network graphs.
 
-### 8.1 Avatar ??Avatar
+### 8.1 Avatar — Avatar
 
 ```javascript
 import { Avatar } from './ui_components/social/Avatar/Avatar.js';
@@ -1508,7 +1508,7 @@ avatar.mount(document.getElementById('avatar-container'));
 avatar.update({ badge: 5 });
 ```
 
-### 8.2 FeedCard ??Feed Card
+### 8.2 FeedCard — Feed Card
 
 ```javascript
 import { FeedCard } from './ui_components/social/FeedCard/FeedCard.js';
@@ -1534,7 +1534,7 @@ feed.mount(document.getElementById('feed'));
 const listHTML = FeedCard.listHTML(feedItems);
 ```
 
-### 8.3 ConnectionCard ??Connection Card
+### 8.3 ConnectionCard — Connection Card
 
 ```javascript
 import { ConnectionCard } from './ui_components/social/ConnectionCard/ConnectionCard.js';
@@ -1553,13 +1553,13 @@ card.mount(container);
 const gridHTML = ConnectionCard.gridHTML(contacts);
 ```
 
-### 8.4 StatCard ??Stat Card
+### 8.4 StatCard — Stat Card
 
 ```javascript
 import { StatCard } from './ui_components/social/StatCard/StatCard.js';
 
 const stat = new StatCard({
-  icon: '??',
+  icon: '📊',
   label: 'Monthly Revenue',
   value: '$120,000',
   trend: 'up',           // 'up'|'down'|null
@@ -1571,7 +1571,7 @@ const stat = new StatCard({
 stat.mount(container);
 ```
 
-### 8.5 Timeline ??Timeline
+### 8.5 Timeline — Timeline
 
 ```javascript
 import { Timeline } from './ui_components/social/Timeline/Timeline.js';
@@ -1582,7 +1582,7 @@ const timeline = new Timeline({
       timestamp: '2026-03-01T10:00:00',
       type: 'Created',
       color: 'var(--cl-success)',
-      icon: '??,
+      icon: '✅',
       title: 'Account Created',
       description: 'Account automatically created by the system',
       onClick: () => {}
@@ -1602,6 +1602,8 @@ timeline.mount(container);
 Visualization components are located in `packages/javascript/browser/ui_components/viz/`, with 23 components total. They are built on Canvas 2D plus native DOM: SVG is banned library-wide and enforced at hard zero by `node tools/scripts/audit-csp.mjs`. The only third-party code involved is the copy of Leaflet vendored under `ui_components/vendor/`, which the map components load from the same origin.
 
 ![Visualization Overview](screenshots/after/viz-Charts.png)
+
+> This screenshot predates the Canvas migration. SVG is now banned in the component library; charts and icons render with Canvas, so current output may look different.
 
 ### 9.1 Chart Series
 
@@ -1754,7 +1756,7 @@ map.destroy();
 
 Other map components: MapEditor, MapEditorV2, CanvasMap, TGOSMapEditor. `MapEditor` and `MapEditorV2` both implement `destroy()`; call it when tearing a page down so their listeners and child components are released.
 
-#### OSMMapEditor ??OSM Map Editor
+#### OSMMapEditor — OSM Map Editor
 
 A map editor extending WebPainter, using OpenStreetMap tiles with integrated drawing tools and geographic features.
 
@@ -1808,7 +1810,7 @@ board.exportPNG('drawing.png');
 board.destroy();
 ```
 
-### 9.6 WebTextEditor ??Rich Text Editor
+### 9.6 WebTextEditor — Rich Text Editor
 
 Located in `editor/WebTextEditor/`, a full WYSIWYG editor.
 
@@ -1831,7 +1833,7 @@ editor.setContent('<p>New content</p>');
 
 **Features**: Toolbar, Find/Replace (Ctrl+F/H), Export (PDF/Word/Markdown), Auto-save, History (Undo/Redo), Table editing, Image resize, Fullscreen, Word count.
 
-### 9.7 RegionMap ??Taiwan Administrative Region Map
+### 9.7 RegionMap — Taiwan Administrative Region Map
 
 Canvas map component supporting data visualization and interaction for the 22 administrative regions of Taiwan. The region outlines are SVG path strings fed to `Path2D` and painted on a canvas; no SVG element is created.
 
@@ -1840,6 +1842,8 @@ import { RegionMap } from './ui_components/data/RegionMap/RegionMap.js';
 
 const map = new RegionMap({
   data: {
+    // A per-region `color` is assigned to the canvas fillStyle as-is, so it must be
+    // a concrete color value; var(--cl-*) is not resolved here
     'TPE': { value: 2700000, label: 'Taipei', color: '#FF5722' },
     'NWT': { value: 4000000, label: 'New Taipei', color: '#4CAF50' }
   },
@@ -1847,7 +1851,7 @@ const map = new RegionMap({
   height: '400px',
   showLabels: true,
   showValues: true,
-  colorScale: RegionMap.createColorScale(0, 5000000, ['#e3f2fd', '#1565c0']),
+  colorScale: RegionMap.createColorScale(0, 5000000, ['var(--cl-primary-light)', 'var(--cl-primary-dark)']),
   onClick: (regionCode) => console.log(regionCode),
   onChange: ({ code, name }) => console.log(code, name)
 });
@@ -1861,7 +1865,7 @@ map.setData(updatedData);
 
 ## 10. Behavior Modules & Utilities
 
-### 10.1 TriggerEngine ??Trigger Engine
+### 10.1 TriggerEngine — Trigger Engine
 
 TriggerEngine provides 8 built-in atomic behaviors for field-to-field cascading logic. Triggers are declared on the source field definition and bound to live component instances; unknown actions and unknown trigger events are ignored with a `console.warn`.
 
@@ -1921,7 +1925,7 @@ engine.destroy();
 | `reload` | Reload component data | `{ on: 'upload', target: 'dataTable', action: 'reload' }` |
 | `reloadOptions` | Reload options | `{ on: 'change', target: 'cityDropdown', action: 'reloadOptions' }` |
 
-### 10.2 BehaviorDef ??Behavior Definition
+### 10.2 BehaviorDef — Behavior Definition
 
 BehaviorDef is the `behaviors` block of a PageDefinition. Every value is a **method name string**, not a function: PageGenerator emits `this._<name>()` call sites and generates matching stub methods on the page class. Because these names are written into the generated file as bare identifiers, `generate()` rejects any that is not a valid JavaScript IdentifierName.
 
@@ -1996,7 +2000,7 @@ router.navigate('/users', { query: { page: 2 }, replace: true });
 router.back();
 ```
 
-#### Store ??State Management
+#### Store — State Management
 
 ```javascript
 import { Store } from './core/Store.js';
@@ -2019,7 +2023,7 @@ store.set('user', { id: 1, name: 'John Doe' });
 const user = store.get('user');
 ```
 
-#### ApiService ??RESTful API Service
+#### ApiService — RESTful API Service
 
 ```javascript
 import { ApiService } from './core/ApiService.js';
@@ -2046,7 +2050,7 @@ api.setToken(accessToken, refreshToken);
 api.clearToken();
 ```
 
-#### BasePage ??Page Lifecycle
+#### BasePage — Page Lifecycle
 
 ```javascript
 import { BasePage } from './core/BasePage.js';
@@ -2085,7 +2089,7 @@ class UserListPage extends BasePage {
 
 ### 10.4 ComponentBinder / ComponentFactory
 
-#### ComponentBinder ??Component Data Binding
+#### ComponentBinder — Component Data Binding
 
 ```javascript
 import { ComponentBinder } from './ui_components/binding/ComponentBinder.js';
@@ -2108,7 +2112,7 @@ const nameInput = binder.getComponent('name');
 const name = nameInput.getValue();
 ```
 
-#### ComponentFactory ??Component Factory
+#### ComponentFactory — Component Factory
 
 ```javascript
 import { ComponentFactory } from './ui_components/binding/ComponentFactory.js';
@@ -2142,7 +2146,7 @@ const table = LazyComponentFactory.create('DataTable', { columns, data });
 
 ### 10.5 Utilities & Services (utils/)
 
-#### security.js ??XSS Protection
+#### security.js — XSS Protection
 
 ```javascript
 import { escapeHtml, sanitizeUrl, sanitizeHTML } from './utils/security.js';
@@ -2169,7 +2173,7 @@ isRawHtml({ __html: '<b>x</b>' });  // false
 
 > **Important**: All user input must be escaped using `escapeHtml()` when rendered to HTML, and URLs must be sanitized with `sanitizeUrl()` to prevent XSS attacks.
 
-#### GeolocationService ??Geolocation Service
+#### GeolocationService — Geolocation Service
 
 ```javascript
 import { GeolocationService } from './utils/GeolocationService.js';
@@ -2184,7 +2188,7 @@ console.log('Lat:', position.coords.latitude, 'Lng:', position.coords.longitude)
 const info = await geo.getLocationInfo();
 ```
 
-#### WeatherService ??Weather Service
+#### WeatherService — Weather Service
 
 ```javascript
 import { WeatherService } from './utils/WeatherService.js';
@@ -2556,7 +2560,7 @@ ClaimsPrincipal principal = jwtHelper.ValidateToken(token);
 ### 13.4 BaseController + Middleware
 
 ```csharp
-// Program.cs ??.NET 10 Minimal API
+// Program.cs — .NET 10 Minimal API
 var builder = WebApplication.CreateBuilder(args);
 var app = builder.Build();
 
@@ -2628,7 +2632,7 @@ var paged = await db.QueryPagedAsync<User>("SELECT * FROM Users ORDER BY Id", 1,
 return ApiResponse<PagedResult<User>>.SuccessResponse(paged);
 ```
 
-### 13.6 BaseCache ??In-Memory Cache
+### 13.6 BaseCache — In-Memory Cache
 
 Redis-style in-memory cache supporting Key-Value, Queue, Stack, List, Hash, Set, and Pub/Sub.
 
@@ -2644,7 +2648,7 @@ var cache = new BaseCache(new CachOptions {
 cache.Set("user:1", userData, ttl: TimeSpan.FromMinutes(30));
 var user = cache.Get<User>("user:1");
 
-// GetOrSet ??Cache penetration protection
+// GetOrSet — Cache penetration protection
 var data = cache.GetOrSet("report:daily", () => {
     return GenerateReport(); // Only executes on cache miss
 }, ttl: TimeSpan.FromHours(1));
@@ -2685,7 +2689,7 @@ import { escapeHtml, sanitizeUrl } from './utils/security.js';
 element.innerHTML = `<p>${escapeHtml(userInput)}</p>`;
 element.innerHTML = `<a href="${sanitizeUrl(url)}" title="${escapeHtml(title)}">Link</a>`;
 
-// Wrong approach ??NEVER do this!
+// Wrong approach — NEVER do this!
 element.innerHTML = `<p>${userInput}</p>`;         // XSS vulnerability!
 element.innerHTML = `<a href="${url}">Link</a>`;   // XSS vulnerability!
 ```
@@ -2712,8 +2716,18 @@ bool isMatch = BCryptHelper.VerifyPassword(plainPassword, storedHash);
 
 ```csharp
 // Configure JWT (in Program.cs)
-var jwtKey = builder.Configuration["Jwt:Key"]
-    ?? throw new InvalidOperationException("Jwt:Key is required");
+var jwtKey = builder.Configuration["Jwt:Key"];
+if (string.IsNullOrEmpty(jwtKey) || jwtKey.Length < 32)
+{
+    // Outside Development, a missing or short key stops startup
+    if (!builder.Environment.IsDevelopment())
+        throw new InvalidOperationException("JWT key must be configured with at least 32 characters.");
+
+    // Development only: a random key is generated per process (a warning is logged),
+    // so every issued token becomes invalid when the process restarts
+    jwtKey = Convert.ToBase64String(RandomNumberGenerator.GetBytes(48));
+    builder.Configuration["Jwt:Key"] = jwtKey;
+}
 var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "SpaApi";
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -2775,25 +2789,27 @@ app.UseRateLimiter();
 
 ```csharp
 // Backend validation example
-app.MapPost("/api/users", async (CreateUserDto dto) =>
+app.MapPost("/api/users", async (UserService service, CreateUserDto dto) =>
 {
     // Validate required fields
     if (string.IsNullOrWhiteSpace(dto.Name))
-        return ApiResponse.Error("Name is required", 400);
+        return ApiResponse<User>.ErrorResponse("Name is required", 400);
 
     // Validate format
     if (!IsValidEmail(dto.Email))
-        return ApiResponse.Error("Invalid email format", 400);
+        return ApiResponse<User>.ErrorResponse("Invalid email format", 400);
 
     // Validate length
     if (dto.Name.Length > 100)
-        return ApiResponse.Error("Name must not exceed 100 characters", 400);
+        return ApiResponse<User>.ErrorResponse("Name must not exceed 100 characters", 400);
 
     // Process after validation
     var user = await service.CreateAsync(dto);
-    return ApiResponse.Created(user);
+    return ApiResponse<User>.SuccessResponse(user, "Created", 201);
 });
 ```
+
+> `ApiResponse` has no `Error()` / `Created()` methods; see §13.5 for the real factory methods. Note that `packages/csharp/api` (including `ApiResponse.cs`) has no `.csproj` and is not built or referenced by any project in the repository, so copy the source files you need into your own project.
 
 ### 14.7 Security Checklist
 

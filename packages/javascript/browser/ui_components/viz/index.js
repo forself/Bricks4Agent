@@ -17,6 +17,10 @@ export { HeatmapChart } from './HeatmapChart.js';
 export { ScatterChart } from './ScatterChart.js';
 export { ClusterGraph } from './ClusterGraph.js';
 
+// 條碼與 QR Code（Canvas;編碼器零依賴,可單獨匯入）
+export { QrCode } from './QrCode/index.js';
+export { Barcode } from './Barcode/index.js';
+
 // 關聯/階層圖表
 export { OrgChart } from './OrgChart.js';
 export { HierarchyChart } from './HierarchyChart.js';

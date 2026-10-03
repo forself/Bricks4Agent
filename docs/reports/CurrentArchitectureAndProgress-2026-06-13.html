@@ -22,8 +22,8 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <main>
 <h1>Bricks4Agent Current Architecture And Progress</h1>
 <p>Date: 2026-06-13
-Status: current working report
-Supersedes: <a href="CurrentArchitectureAndProgress-2026-03-26.html">CurrentArchitectureAndProgress-2026-03-26.md</a></p>
+Status: dated snapshot (2026-06-13) — for the current state see <a href="../manuals/current-technical-manual.zh-TW.html">current-technical-manual.zh-TW.md</a>
+Supersedes: the 2026-03-26 architecture report (retired)</p>
 <h2>1. Executive Summary</h2>
 <p>Since the 2026-03-26 report the project went through a <strong>three-way convergence</strong>
 and the <strong>first real activation of the controlled agent container</strong>.</p>
@@ -129,11 +129,21 @@ broker is already the inference gateway for the agent path; what is missing is
 <p>Powering on the container chain for the first time exposed a chain of
 integration bugs that unit tests and mock stacks could not catch — each fixed:</p>
 <ol>
-<li>broker container build <code>NETSDK1152</code> — site-crawler-worker appsettings leaking into broker publish</li>
-<li>broker fails to boot with <code>FunctionPool=false</code> — monitoring HealthScoreService unconditionally depends on IWorkerRegistry</li>
-<li>session register 500 <code>No data exists</code> — Microsoft.Data.Sqlite <code>IsDBNull</code> Linux edge case in BaseOrm</li>
-<li><code>GET /api/v1/health</code> <code>Body was inferred</code> — health endpoints registered without their FunctionPool services</li>
-<li>real-provider responses API returns 200 but agent gets empty output — responses parser only read the top-level <code>output_text</code> SDK convenience field</li>
+<li>
+<p>broker container build <code>NETSDK1152</code> — site-crawler-worker appsettings leaking into broker publish</p>
+</li>
+<li>
+<p>broker fails to boot with <code>FunctionPool=false</code> — monitoring HealthScoreService unconditionally depends on IWorkerRegistry</p>
+</li>
+<li>
+<p>session register 500 <code>No data exists</code> — Microsoft.Data.Sqlite <code>IsDBNull</code> Linux edge case in BaseOrm</p>
+</li>
+<li>
+<p><code>GET /api/v1/health</code> <code>Body was inferred</code> — health endpoints registered without their FunctionPool services</p>
+</li>
+<li>
+<p>real-provider responses API returns 200 but agent gets empty output — responses parser only read the top-level <code>output_text</code> SDK convenience field</p>
+</li>
 </ol>
 <p>Two of these (2, 4) were regressions from integrating the monitoring layer —
 caught because the integration agent only built, never ran.</p>
@@ -145,86 +155,149 @@ site crawl source, and the agent-container governed tools (read_file etc.).</p>
 <h2>7. Hard Critique</h2>
 <h3>Stronger than March</h3>
 <ul>
-<li>main is now a live convergence of three developers' work, not a stalled baseline.</li>
-<li>The controlled-agent core — the project's central thesis — actually runs, on a real commercial model.</li>
-<li>The "language → gated structure → executed-under-governance" loop has a working demonstration end to end.</li>
+<li>
+<p>main is now a live convergence of three developers' work, not a stalled baseline.</p>
+</li>
+<li>
+<p>The controlled-agent core — the project's central thesis — actually runs, on a real commercial model.</p>
+</li>
+<li>
+<p>The "language → gated structure → executed-under-governance" loop has a working demonstration end to end.</p>
+</li>
 </ul>
 <h3>Still weak / honest limits</h3>
 <ul>
-<li>The controlled agent container is past the read-only stage: the two §18.1 execution adapters (repo-adapter, build-test-adapter) are <strong>implemented and verified end-to-end</strong> (see below), so the agent now does real work — a model drove the agent to apply a patch all the way through the governed chain and the file was actually changed. <strong>Still not done: broker <code>--integration</code> coverage of the new adapter routes.</strong> The container itself is hardened (§13.1 egress + §13 OS sandbox).</li>
-<li>Execution adapters (§18.1) — <strong>implemented + e2e-verified 2026-06-13</strong>:</li>
-<li>A dedicated hardened worker (<code>execution-adapter-worker</code>) implements <code>repo.patch.apply</code> (validate base_commit, enforce scope.allowed_paths, <code>git apply --check</code> then apply, diff-artifact evidence, idempotency) and <code>build.test.run</code> (whitelist-only, no-shell, structured stdout/stderr + exit, evidence).</li>
-<li>Verified by 38 broker unit-test assertions against <strong>real git</strong> (apply in-scope; reject base-commit mismatch / out-of-scope path / free-form shell with no write; only-patch-files-touched; idempotent replay; whitelist enforcement; truncation) — broker suite 154/154. Agent tool surface (<code>apply_patch</code>, <code>run_build_test</code>) wired; config-validation test green; the change does not regress the existing governed stack (still <code>STACK_OK</code>).</li>
-<li>The adapter is a trusted execution node: OS-hardened (§13.2, no docker socket) but with workspace-write and egress (build/test restore). The agent still cannot reach it — only the broker dispatches to it. It is profile-gated in compose (<code>--profile adapters</code>) and defaults to a throwaway workspace, never the real repo.</li>
-<li><strong>End-to-end verified</strong>: a podman stack test (<code>test-podman-execution-adapter-stack.js</code>) brings up broker + sealed agent + the adapter on the <code>adapters</code> profile, has the model drive <code>apply_patch</code> on a throwaway fixture, and asserts the file was actually patched <strong>through</strong> the governed chain (grant → policy → pool dispatch → <code>git apply</code>). This surfaced four integration bugs unit tests structurally could not (mock env wiring, git bind-mount <code>safe.directory</code>/<code>core.fileMode</code>, capability route must equal the tool name, and workspace-root scope normalization) — all fixed.</li>
-<li>Not yet: broker <code>--integration</code> HTTP coverage of the new routes (the stack test covers the real dispatch path instead).</li>
-<li>Agent container hardening (§13 + §13.1) — <strong>done and verified 2026-06-13</strong>:</li>
-<li><strong>Egress sealed</strong>: the agent sits on an <code>internal: true</code> compose network shared only with the broker — no route to host/internet (verified: a container on that network cannot reach <code>api.openai.com</code>; one on a bridge can). The commercial API still works because the broker, not the agent, makes the provider call.</li>
-<li><strong>OS sandbox</strong>: read-only rootfs (+ tmpfs <code>/tmp</code>), <code>cap_drop: ALL</code>, <code>no-new-privileges</code>, <code>pids_limit</code>, non-root uid 10001 (verified: rootfs write blocked, <code>CapEff=0</code>, <code>/tmp</code> writable, agent still completes the governed run). Seccomp is the runtime default profile (no custom profile yet).</li>
-<li>Browser runtime: action-level gating runs, but authenticated browser automation does not.</li>
-<li>Monitoring is health/metrics only; the control-plane console remains design-only (operator surface is still <code>line-admin.html</code>).</li>
-<li>README/runbook now cover the agent container path, but broader operator docs lag the code.</li>
+<li>
+<p>The controlled agent container is past the read-only stage: the two §18.1 execution adapters (repo-adapter, build-test-adapter) are <strong>implemented and verified end-to-end</strong> (see below), so the agent now does real work — a model drove the agent to apply a patch all the way through the governed chain and the file was actually changed. <strong>Still not done: broker <code>--integration</code> coverage of the new adapter routes.</strong> The container itself is hardened (§13.1 egress + §13 OS sandbox).</p>
+</li>
+<li>
+<p>Execution adapters (§18.1) — <strong>implemented + e2e-verified 2026-06-13</strong>:</p>
+</li>
+<li>
+<p>A dedicated hardened worker (<code>execution-adapter-worker</code>) implements <code>repo.patch.apply</code> (validate base_commit, enforce scope.allowed_paths, <code>git apply --check</code> then apply, diff-artifact evidence, idempotency) and <code>build.test.run</code> (whitelist-only, no-shell, structured stdout/stderr + exit, evidence).</p>
+</li>
+<li>
+<p>Verified by 38 broker unit-test assertions against <strong>real git</strong> (apply in-scope; reject base-commit mismatch / out-of-scope path / free-form shell with no write; only-patch-files-touched; idempotent replay; whitelist enforcement; truncation) — broker suite 154/154. Agent tool surface (<code>apply_patch</code>, <code>run_build_test</code>) wired; config-validation test green; the change does not regress the existing governed stack (still <code>STACK_OK</code>).</p>
+</li>
+<li>
+<p>The adapter is a trusted execution node: OS-hardened (§13.2, no docker socket) but with workspace-write and egress (build/test restore). The agent still cannot reach it — only the broker dispatches to it. It is profile-gated in compose (<code>--profile adapters</code>) and defaults to a throwaway workspace, never the real repo.</p>
+</li>
+<li>
+<p><strong>End-to-end verified</strong>: a podman stack test (<code>test-podman-execution-adapter-stack.js</code>) brings up broker + sealed agent + the adapter on the <code>adapters</code> profile, has the model drive <code>apply_patch</code> on a throwaway fixture, and asserts the file was actually patched <strong>through</strong> the governed chain (grant → policy → pool dispatch → <code>git apply</code>). This surfaced four integration bugs unit tests structurally could not (mock env wiring, git bind-mount <code>safe.directory</code>/<code>core.fileMode</code>, capability route must equal the tool name, and workspace-root scope normalization) — all fixed.</p>
+</li>
+<li>
+<p>Not yet: broker <code>--integration</code> HTTP coverage of the new routes (the stack test covers the real dispatch path instead).</p>
+</li>
+<li>
+<p>Agent container hardening (§13 + §13.1) — <strong>done and verified 2026-06-13</strong>:</p>
+</li>
+<li>
+<p><strong>Egress sealed</strong>: the agent sits on an <code>internal: true</code> compose network shared only with the broker — no route to host/internet (verified: a container on that network cannot reach <code>api.openai.com</code>; one on a bridge can). The commercial API still works because the broker, not the agent, makes the provider call.</p>
+</li>
+<li>
+<p><strong>OS sandbox</strong>: read-only rootfs (+ tmpfs <code>/tmp</code>), <code>cap_drop: ALL</code>, <code>no-new-privileges</code>, <code>pids_limit</code>, non-root uid 10001 (verified: rootfs write blocked, <code>CapEff=0</code>, <code>/tmp</code> writable, agent still completes the governed run). Seccomp is the runtime default profile (no custom profile yet).</p>
+</li>
+<li>
+<p>Browser runtime: action-level gating runs, but authenticated browser automation does not.</p>
+</li>
+<li>
+<p>Monitoring is health/metrics only; the control-plane console remains design-only (operator surface is still <code>line-admin.html</code>). (Update 2026-08-24, <code>9e877f3</code>: end users now also have a separate user portal at <code>/portal</code> — static pages from <code>packages/javascript/browser/user-portal/</code> plus <code>/api/v1/portal/*</code> in <code>packages/csharp/broker/Endpoints/PortalEndpoints.cs</code>.)</p>
+</li>
+<li>
+<p>README/runbook now cover the agent container path, but broader operator docs lag the code.</p>
+</li>
 </ul>
 <h3>Dishonest to claim</h3>
-<p>Not: a custom seccomp profile (the runtime default applies), full named-operator
-account management for dual approvals (the current local-admin approver id is
-session-derived), a fully production-hardened operator console, or
-distributed/all-capability LINE send quotas. Broker-level dual approval for
+<p>Not: a custom seccomp profile (the runtime default applies), a fully
+production-hardened operator console, or distributed/all-capability LINE send
+quotas. (Update 2026-08-24, <code>9e877f3</code>: named local-admin operator accounts now
+exist — list/create/role/disable/reset-password in <code>LocalAdminAuthService</code>, and the
+local-admin approver id is <code>local-admin:{OperatorId}</code> rather than session-derived.) Broker-level dual approval for
 Critical actions now persists <code>ApprovalRequest.required_approval_count</code> plus
 per-approver <code>approval_decisions</code> and requires two distinct approver ids. Worker-local rate
 limiting exists for <code>line.message.send</code> and <code>line.audio.send</code>; <code>line.notification.send</code>
 and distributed quota coordination are still open. Container confinement (egress + OS sandbox),
 the execution adapters (e2e-verified — a model drove <code>apply_patch</code> through the
 governed chain), and the §18.2 approval layer (decision + lifecycle + two tiers +
-both web surfaces, see §10) are all done and verified this cycle.</p>
+both web surfaces, see §9) are all done and verified this cycle.</p>
 <h3>Dishonest to deny</h3>
 <p>The controlled autonomous agent — the hardest and most central piece — went from
 "never powered on" to "runs end-to-end on real commercial and open models under
 broker governance" in this cycle.</p>
 <h2>8. Recommended Near-Term Priorities</h2>
 <ol>
-<li>~~Container security hardening (§13): read-only rootfs, cap-drop=ALL, no-new-privileges, tmpfs.~~ <strong>Done 2026-06-13</strong> — applied to the agent in all three stacks, enforcement verified (<code>CapEff=0</code>, rootfs write blocked). Custom seccomp profile still pending (runtime default in effect).</li>
-<li>~~Network isolation (§13.1): seal agent egress to an internal-only network.~~ <strong>Done 2026-06-13</strong> — agent on <code>internal: true</code> <code>agent-net</code>, egress-denial verified; broker remains the only path to model providers.</li>
-<li>~~Execution adapters (§18.1 MVP): repo-adapter, build-test-adapter.~~ <strong>Implemented + e2e-verified 2026-06-13</strong> — <code>execution-adapter-worker</code> (<code>repo.patch.apply</code> + <code>build.test.run</code>), 38 real-git unit assertions + a full podman stack test where a model drives <code>apply_patch</code> through the governed chain and the file is actually patched. Remaining: broker <code>--integration</code> HTTP coverage of the new routes.</li>
-<li>~~Approval service + risk tiering (§18.2).~~ <strong>Implemented + verified 2026-06-13</strong> — see §10.</li>
-<li>~~Control-plane console (approval surface).~~ <strong>Partially built 2026-06-13</strong> — <code>line-admin.html</code> gained an approval queue tab; the broader operator console is still design-only.</li>
-<li>Custom seccomp profile for the agent; broker <code>--integration</code> coverage of adapter + approval routes; distributed/all-capability LINE send quotas.</li>
+<li>
+<p>~~Container security hardening (§13): read-only rootfs, cap-drop=ALL, no-new-privileges, tmpfs.~~ <strong>Done 2026-06-13</strong> — applied to the agent in all three stacks, enforcement verified (<code>CapEff=0</code>, rootfs write blocked). Custom seccomp profile still pending (runtime default in effect).</p>
+</li>
+<li>
+<p>~~Network isolation (§13.1): seal agent egress to an internal-only network.~~ <strong>Done 2026-06-13</strong> — agent on <code>internal: true</code> <code>agent-net</code>, egress-denial verified; broker remains the only path to model providers.</p>
+</li>
+<li>
+<p>~~Execution adapters (§18.1 MVP): repo-adapter, build-test-adapter.~~ <strong>Implemented + e2e-verified 2026-06-13</strong> — <code>execution-adapter-worker</code> (<code>repo.patch.apply</code> + <code>build.test.run</code>), 38 real-git unit assertions + a full podman stack test where a model drives <code>apply_patch</code> through the governed chain and the file is actually patched. Remaining: broker <code>--integration</code> HTTP coverage of the new routes.</p>
+</li>
+<li>
+<p>~~Approval service + risk tiering (§18.2).~~ <strong>Implemented + verified 2026-06-13</strong> — see §9.</p>
+</li>
+<li>
+<p>~~Control-plane console (approval surface).~~ <strong>Partially built 2026-06-13</strong> — <code>line-admin.html</code> gained an approval queue tab; the broader operator console is still design-only.</p>
+</li>
+<li>
+<p>Custom seccomp profile for the agent; broker <code>--integration</code> coverage of adapter + approval routes; distributed/all-capability LINE send quotas.</p>
+</li>
 </ol>
-<h2>10. Governance approval system (§18.2) — implemented + verified 2026-06-13</h2>
+<h2>9. Governance approval system (§18.2) — implemented + verified 2026-06-13</h2>
 <p>The risk-tiering + approval layer, built test-first this cycle on a written
 definition (<a href="../designs/RiskClassificationAndApproval-2026-06-13.html">RiskClassificationAndApproval-2026-06-13.md</a>,
 <a href="../designs/ApprovalWebInterface-2026-06-13.html">ApprovalWebInterface-2026-06-13.md</a>):</p>
 <ul>
-<li><strong>Decision (PolicyEngine)</strong>: High/Critical and scope-escape no longer hard-denied — they return <code>RequireApproval</code>; <code>approval_policy</code> drives Low/Medium (<code>auto</code>, <code>auto_if_task_scope_match</code>, <code>require_approval</code>, <code>deny</code>). The primary risk discriminator is <strong>scope ownership</strong>: a user acting within their own private folder is auto; escaping it escalates.</li>
-<li><strong>Lifecycle (BrokerService)</strong>: <code>RequireApproval</code> holds the request as <code>PendingApproval</code> + creates an <code>ApprovalRequest</code>; an admin/user approve records a decision and dispatches the held request once the required threshold is met, reject denies it — all audited. Quota + dispatch shared with the normal Allow path.</li>
-<li><strong>Two tiers + thresholds</strong>: <code>User</code> (the owning user approves, in their own interface, limited to their scope) vs <code>Admin</code> (global, back-office). Broker enforces the authorization (a non-admin can only decide a User-tier approval they own). High / <code>require_approval</code> remains one approval; Critical / <code>require_dual_approval</code> requires two distinct approver ids through <code>ApprovalRequest.required_approval_count</code> and persisted per-approver <code>approval_decisions</code>.</li>
-<li><strong>Web surfaces</strong>: admin approval tab in <code>line-admin.html</code> (localhost-only) + a user page (<code>user-approvals.html</code>) authenticated by a short-lived signed link sent over LINE. Both render the request <strong>content</strong> — a <code>repo.patch.apply</code> shows its unified diff — so the approver decides on substance, not a one-line string. The link is auto-sent on User-tier creation via <code>IApprovalNotifier</code> → <code>QueueLineNotification</code>.</li>
-<li><strong>Verified</strong>: PolicyEngine 13 tests, approval lifecycle 25, link/notifier 13 — broker suite <strong>192/192</strong>, xUnit <strong>343/343</strong>, solution builds clean; a live broker smoke confirmed the endpoints serve and enforce auth (bad token → 401, admin without login → 401).</li>
-<li><strong>Not done</strong>: named operator account management for local-admin dual approvals (current approver ids are admin-session based), distributed/all-capability LINE send quotas, a full browser+LINE manual e2e, and the broader control-plane console.</li>
+<li>
+<p><strong>Decision (PolicyEngine)</strong>: High/Critical and scope-escape no longer hard-denied — they return <code>RequireApproval</code>; <code>approval_policy</code> drives Low/Medium (<code>auto</code>, <code>auto_if_task_scope_match</code>, <code>require_approval</code>, <code>deny</code>). The primary risk discriminator is <strong>scope ownership</strong>: a user acting within their own private folder is auto; escaping it escalates.</p>
+</li>
+<li>
+<p><strong>Lifecycle (BrokerService)</strong>: <code>RequireApproval</code> holds the request as <code>PendingApproval</code> + creates an <code>ApprovalRequest</code>; an admin/user approve records a decision and dispatches the held request once the required threshold is met, reject denies it — all audited. Quota + dispatch shared with the normal Allow path.</p>
+</li>
+<li>
+<p><strong>Two tiers + thresholds</strong>: <code>User</code> (the owning user approves, in their own interface, limited to their scope) vs <code>Admin</code> (global, back-office). Broker enforces the authorization (a non-admin can only decide a User-tier approval they own). High / <code>require_approval</code> remains one approval; Critical / <code>require_dual_approval</code> requires two distinct approver ids through <code>ApprovalRequest.required_approval_count</code> and persisted per-approver <code>approval_decisions</code>.</p>
+</li>
+<li>
+<p><strong>Web surfaces</strong>: admin approval tab in <code>line-admin.html</code> (localhost-only) + a user page (<code>user-approvals.html</code>) authenticated by a short-lived signed link sent over LINE. Both render the request <strong>content</strong> — a <code>repo.patch.apply</code> shows its unified diff — so the approver decides on substance, not a one-line string. The link is auto-sent on User-tier creation via <code>IApprovalNotifier</code> → <code>QueueLineNotification</code>.</p>
+</li>
+<li>
+<p><strong>Verified</strong>: PolicyEngine 13 tests, approval lifecycle 25, link/notifier 13 — broker suite <strong>192/192</strong>, xUnit <strong>343/343</strong>, solution builds clean; a live broker smoke confirmed the endpoints serve and enforce auth (bad token → 401, admin without login → 401).</p>
+</li>
+<li>
+<p><strong>Not done</strong>: distributed/all-capability LINE send quotas, a full browser+LINE manual e2e, and the broader control-plane console. (Named operator account management for local-admin dual approvals landed later — 2026-08-24, <code>9e877f3</code>; approver ids are now <code>local-admin:{OperatorId}</code>.)</p>
+</li>
 </ul>
-<h2>9. Bottom Line</h2>
+<h2>10. Bottom Line</h2>
 <p>The platform converged three developers back onto a live main, and its central
 controlled-agent core now genuinely runs — including against ChatGPT. It is past
 "serious POC" on the piece that matters most. It is not a fully production-hardened
 controlled autonomous system yet: custom seccomp, broader operator-console
 coverage, distributed/all-capability LINE send quotas, and deeper HTTP integration coverage are still
 ahead.</p>
-<h2>10. Addendum 2026-06-16 — Component-library consolidation + site-replica e2e</h2>
+<h2>11. Addendum 2026-06-16 — Component-library consolidation + site-replica e2e</h2>
 <p>The site-crawler generator's component vocabulary was a corpus-sampled "canned" schema
 (<code>HeroSection</code>, <code>NewsGrid</code>, …) masquerading as a designed library. It is now anchored to the
 canonical JS <code>ui_components</code> library (B):</p>
 <ul>
-<li><strong>Stage 1</strong> — every generator type declares a <code>b_component</code> binding into B's closed set
-  (<code>BComponentRegistry</code>); <code>ComponentLibraryLoader</code> fail-closes any manifest with a missing or
-  out-of-set binding; dead <code>HeroSection</code> dropped; <code>TemplateMatcher</code>'s arbitrary <code>.First()</code> fallback
-  removed (neutral container + recorded gap, never fabricated).</li>
-<li><strong>Stage 2</strong> — the static package is verifiably B-anchored: <code>components/manifest.json</code> carries
-  <code>b_component</code>, <code>components/b-binding.json</code> is the flat <code>type→b_component</code> index, README declares B
-  canonical. Embedded deterministic renderers are kept as B's static-export projection (a <strong>named
-  divergence</strong>, rationale in <code>docs/designs/ComponentLibraryConsolidation-2026-06-15.md</code> §9) — forcing
-  B's live-FSM ESM components through byte-stable static export would regress Demo #3.</li>
-<li><strong>Stage 3</strong> — determinism-clean instance IDs (<code>utils/uid.js</code> replaces <code>Math.random()</code>/<code>Date.now()</code>
-  in Notification/Tooltip/WebTextEditor/BatchUploader); viz/editor/map smoke tests added.</li>
+<li>
+<p><strong>Stage 1</strong> — every generator type declares a <code>b_component</code> binding into B's closed set
+ (<code>BComponentRegistry</code>); <code>ComponentLibraryLoader</code> fail-closes any manifest with a missing or
+ out-of-set binding; dead <code>HeroSection</code> dropped; <code>TemplateMatcher</code>'s arbitrary <code>.First()</code> fallback
+ removed (neutral container + recorded gap, never fabricated).</p>
+</li>
+<li>
+<p><strong>Stage 2</strong> — the static package is verifiably B-anchored: <code>components/manifest.json</code> carries
+ <code>b_component</code>, <code>components/b-binding.json</code> is the flat <code>type→b_component</code> index, README declares B
+ canonical. Embedded deterministic renderers are kept as B's static-export projection (a <strong>named
+ divergence</strong>, rationale in <code>docs/designs/ComponentLibraryConsolidation-2026-06-15.md</code> §9) — forcing
+ B's live-FSM ESM components through byte-stable static export would regress Demo #3.</p>
+</li>
+<li>
+<p><strong>Stage 3</strong> — determinism-clean instance IDs (<code>utils/uid.js</code> replaces <code>Math.random()</code>/<code>Date.now()</code>
+ in Notification/Tooltip/WebTextEditor/BatchUploader); viz/editor/map smoke tests added.</p>
+</li>
 </ul>
 <p>A new broker-free <code>reconstruct</code> CLI on <code>site-crawler-worker</code> invokes the production
 <code>SiteReconstructPackageHandler</code> locally (see the worker README). An end-to-end run against National
