@@ -119,11 +119,15 @@ public class BrokerDbInitializer
         TryExecute(@"CREATE INDEX IF NOT EXISTS idx_capability_grants_session
                       ON capability_grants(session_id, status)");
 
-        // RegistrationCredential: register 依 principal＋task 查憑證
+        // ContainerSession: 撤銷憑證時，依憑證找出以它註冊的 session
         TryExecute(@"CREATE INDEX IF NOT EXISTS idx_container_sessions_credential
                       ON container_sessions(registration_credential_id)");
+
+        // RegistrationCredential: register 依 principal＋task 查憑證
         TryExecute(@"CREATE INDEX IF NOT EXISTS idx_registration_credentials_subject
                       ON registration_credentials(principal_id, task_id, revoked_at)");
+
+        // ApprovalDecision: 依 approval 查決議
         TryExecute(@"CREATE INDEX IF NOT EXISTS idx_approval_decisions_approval
                       ON approval_decisions(approval_id, decision)");
 

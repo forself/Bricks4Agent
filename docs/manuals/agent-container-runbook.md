@@ -84,7 +84,7 @@ podman compose --env-file "$HOME/.bricks4agent/agent-stack.env" -f tools/agent/c
 - 產生器拒絕寫進 repo 內;既有檔案要加 `--force` 才覆寫(等同輪替全部金鑰,之後用 `down -v` 重建 stack)。`--self-test` 只在記憶體中檢查,不寫檔。變數清單見 `tools/agent/container/agent-stack.env.example`(只有名稱)。
 - 為什麼不能放進 repo:agent 容器已不掛 repo,但 file-worker 以唯讀方式把整個 repo 提供給 agent 經 broker 讀取;拒絕清單只擋得住 `.env`、`.env.*`、`agent-stack.env` 等固定名稱,換個檔名就擋不住。compose 也會自動讀取 compose 檔旁的 `.env`。
 - 必填變數:三個 compose 檔都要 `BROKER_SCOPED_TOKEN_SECRET`、`BROKER_MASTER_KEY_BASE64`、`BROKER_ECDH_PRIVATE_KEY_BASE64`、`BROKER_ECDH_PUBLIC_KEY_BASE64`(agent 釘選這把公鑰,必須與私鑰成對)與 `BROKER_REGISTRATION_SECRET`(種子任務的註冊密鑰,見下一點);`compose.yml` 另需 LINE、file、execution-adapter 三組 worker 的 `*_AUTH_KEY_ID` 與 `*_AUTH_SHARED_SECRET`。
-- 註冊密鑰:只知道 principal 與 task 不能註冊 session,register 的加密 payload 必須帶該任務的註冊密鑰;broker 只存雜湊。compose 的 broker 以 `DevelopmentSeed__RegistrationSecret` 種入,agent 取得同一個 `BROKER_REGISTRATION_SECRET`(entrypoint 要求它存在,但不放進 agent 的命令列參數;system prompt 只放佔位字串)。缺少、錯誤、到期、撤銷一律回同一個 401。同一把可重複使用到到期或撤銷,agent 或 broker 重啟、再次 `up` 都不需額外步驟;種子憑證在每次 broker 啟動後 `DevelopmentSeed__RegistrationSecretLifetimeHours`(預設 24)小時到期,重啟即重新起算。非 Development/Testing 環境啟用 `DevelopmentSeed` 卻沒有可用密鑰(至少 32 字元、非佔位值)時 broker 拒絕啟動。
+- 註冊密鑰:只知道 principal 與 task 不能註冊 session,register 的加密 payload 必須帶該任務的註冊密鑰;broker 只存雜湊。compose 的 broker 以 `DevelopmentSeed__RegistrationSecret` 種入,agent 取得同一個 `BROKER_REGISTRATION_SECRET`(entrypoint 要求它存在,但不放進 agent 的命令列參數;system prompt 只放佔位字串)。缺少、錯誤、到期、撤銷一律回同一個 401。同一把可重複使用到到期或撤銷,在有效期間內,agent 或 broker 重啟、再次 `up` 都不需額外步驟。種子憑證在每次 broker 啟動後 `BROKER_REGISTRATION_SECRET_LIFETIME_HOURS` 小時到期(預設 24,可設 1 到 720;compose 以 `DevelopmentSeed__RegistrationSecretLifetimeHours` 交給 broker),重啟 broker 即重新起算。broker 連續執行超過這段時效後,以種子憑證註冊一律被拒:重啟的 agent 無法註冊,執行中的 agent 在下次需要重新註冊時(例如 session 到達 `Broker:Session:MaxLifetimeMinutes`)停止;要恢復請重啟 broker 或調高時效。非 Development/Testing 環境啟用 `DevelopmentSeed` 卻沒有可用密鑰(至少 32 字元、非佔位值)時 broker 拒絕啟動。
 - broker 啟動驗證:compose 中的 broker 以 Production 執行,啟動時拒絕佔位值(空白、`CHANGE_ME*`、`REPLACE_WITH_*`)與任何曾以 compose 預設值公開過的金鑰,並檢查格式。不要在 compose 加 `ASPNETCORE_ENVIRONMENT=Development` 來繞過。
 - `WORKER_AUTH_ENFORCE` 預設 `true`:worker 註冊與 LINE worker 的 HTTP 路由都要驗證憑證;broker 端也登錄了 execution-adapter 的憑證(索引 2,同時蓋掉 `appsettings.json` 該索引的範本憑證)。
 - 對外發布的埠(broker、mock LLM、LINE webhook)只綁 `127.0.0.1`;容器之間仍經 compose 網路互通。
@@ -181,7 +181,7 @@ mock stack 已實測:套上述 hardening 後 agent 仍能完成 governed `read_f
 agent 讀得到什麼,由 file-worker 決定。file-worker 對 read、list、search、write、delete 一致套用:
 
 - 邊界:路徑先正規化,以「根目錄 + 分隔字元」做完整前綴比對,再逐段解析 symlink/junction,解析後的實際路徑也必須在 `/workspace` 內;列舉與搜尋不進入 symlink。路徑中任何一段含冒號一律拒絕(所有平台都一樣)。搜尋的 `pattern`／`file_pattern` 只能比對檔名,帶目錄部分即拒絕(目錄一律由 `directory`(或 `path`)指定並經同樣的檢查)。
-- 拒絕清單(不分大小寫,路徑任何一段命中即拒絕;列舉與搜尋直接略過):`.git`、`.claude`、`.codegraph-cache`、`.ssh`、`.env`、`.env.*`、`agent-stack.env`、`appsettings.Development.json`、`Api.txt`、`ngrok_recovery_codes.txt`、SQLite 資料庫檔(`*.db`、`*.db-wal`、`*.db-shm`、`*.db-journal`)、`*.pem`、`*.key`、`*.pfx`、`*.p12`、`id_rsa*` 等 SSH 私鑰檔名、`client_secret_*`、下載的服務帳戶金鑰檔名(`<名稱>-<12 位十六進位>.json`),以及只在該位置才擋的 `line-worker/appsettings.json`。
+- 拒絕清單(不分大小寫,路徑任何一段命中即拒絕;列舉與搜尋直接略過):`.git`、`.claude`、`.codegraph-cache`、`.ssh`、`.run`(本機啟動腳本寫入的執行期狀態,git 忽略)、`.env`、`.env.*`、`agent-stack.env`、`appsettings.Development.json`、`appsettings.Production.json`、`Api.txt`、`ngrok_recovery_codes.txt`、SQLite 資料庫檔(`*.db`、`*.db-wal`、`*.db-shm`、`*.db-journal`)、`*.pem`、`*.key`、`*.pfx`、`*.p12`、`id_rsa*` 等 SSH 私鑰檔名、`client_secret_*`、下載的服務帳戶金鑰檔名(`<名稱>-<12 位十六進位>.json`),以及只在該位置才擋的 `line-worker/appsettings.json`。
 
 拒絕清單只是過渡措施(denylist):清單外的新敏感檔仍讀得到;單元測試會確認 `.gitignore` 的 Secrets 區段都被清單涵蓋。改為只提供白名單快照的唯讀視圖列為後續(§10)。
 
@@ -193,14 +193,14 @@ file-worker 回覆的結果(含拒絕)是最終結果,broker 不會改交內建�
 
 broker 拒絕會削弱加固的設定:
 
-- `User` 為 `0` 或 `root`;網路為 `host`、`container:*`、`ns:*`。
+- `User` 任一段(含群組)為 `root` 或數值為 `0`(例如 `00`、`+0`、`10001:0`);網路為 `host`、`container:*`、`ns:*`。
 - agent 映像帶任何 `Volumes` 或 `Ports`。
 - agent 映像沒有自己的 `NetworkName`(agent 不會退回共用的 worker 網路)。只有 broker 在 host 上、沒有專用 agent 網路時才設 `AllowAgentDefaultNetwork=true`;sidecar 目前如此設定,這是 §13.1 的已知例外。
 - 其他 worker 的掛載來源是 runtime socket、系統路徑、相對路徑或不在 `AllowedHostPathRoots` 之內;發布埠沒有綁 `127.0.0.1`。
 
 `/api/v1/agents/spawn` 一律把設定中的 `AgentBrokerUrl` 交給 agent(請求的 `broker_url` 只能等於這個值),`max_iterations` 上限 50。`/api/v1/workers/spawn` 必須帶 `worker_type`、不能啟動 agent、不再接受 `environment`。需要避開行程清單的值以 `-e NAME` 傳給 runtime,值放在 CLI 行程的環境變數;runtime 的 `inspect` 仍看得到這些值。
 
-每次 `/api/v1/agents/spawn` 都為該 agent 簽發新的註冊憑證(並撤銷上一次 spawn 的),密鑰以上述方式作為 `BROKER_REGISTRATION_SECRET` 交給容器,回應只帶憑證 id。憑證有效 `Broker:RegistrationCredential:SpawnedAgentLifetimeHours`(預設 24)小時,涵蓋容器重啟;過期後要重新 spawn。spawn 失敗會撤銷剛簽發的憑證。`/api/v1/agents/stop`(以及代理的停止工具)撤銷該 agent 的憑證與 session,之後它的 token 與密鑰都不能再用。broker 的容器清單只存在程序記憶體中:broker 重啟後,`/api/v1/agents/stop` 仍會撤銷重啟前 spawn 的 agent 的憑證與 session,但不會移除它的容器,要以 `docker rm -f -v <容器 id>`(或 podman)手動移除。kill switch 只讓 token 失效。要立刻停下代理,請停止或停用它、取消任務,或以 `/api/v1/admin/registration-credentials/revoke` 撤銷憑證:撤銷憑證會一併結束以它註冊的 session,代理無法續期也無法再註冊(以 `principal_id`＋`task_id` 撤銷時,該任務的所有 session 都會結束)。只撤銷 session(`/api/v1/admin/revoke`)擋不住代理:它會以仍有效的憑證自動重新註冊。broker 拒絕重新註冊後,代理就停止(不再 heartbeat、註冊或呼叫 broker,`--run` 以錯誤結束,LINE listener 以非零碼結束;網路錯誤仍會重試)。種子憑證被管理員撤銷後,只要設定的密鑰不變,broker 重啟也不會恢復(啟動時記警告);要恢復請輪替密鑰(`gen-stack-secrets.mjs --force` 後以 `down -v` 重建)。以 `tasks/create` 建立的任務由管理員經 `/api/v1/admin/registration-credentials/issue` 簽發(密鑰只出現在該次加密回應中)。
+每次 `/api/v1/agents/spawn` 都為該 agent 簽發新的註冊憑證,密鑰以上述方式作為 `BROKER_REGISTRATION_SECRET` 交給容器,回應只帶憑證 id;容器啟動成功後,才撤銷這個 agent 先前 spawn 簽發的憑證。憑證有效 `Broker:RegistrationCredential:SpawnedAgentLifetimeHours`(預設 24)小時,涵蓋容器重啟;過期後要重新 spawn。spawn 失敗(例如該 agent 先前的容器仍在,因為容器名稱固定;或已達 `MaxContainersPerType`)只撤銷剛簽發的那一把,仍在執行的舊容器保有自己的憑證,之後仍可重新註冊。`/api/v1/agents/stop`(以及代理的停止工具)撤銷該 agent 的憑證與 session,之後它的 token 與密鑰都不能再用。broker 的容器清單只存在程序記憶體中:broker 重啟後,`/api/v1/agents/stop` 仍會撤銷重啟前 spawn 的 agent 的憑證與 session,但不會移除它的容器,要以 `docker rm -f -v <容器 id>`(或 podman)手動移除。kill switch 讓執行中的代理停止:之前簽發的 token 立即失效,代理收到 kill switch 的拒絕後就停止,不再重新註冊(token 到期後也一樣)。kill switch 不撤銷憑證,之後新啟動的程序(包括依 restart 政策重啟的容器,例如動態 spawn 的 `--restart on-failure:3`)仍可用有效憑證註冊;要讓代理不再執行,請停止或停用它、取消任務,或以 `/api/v1/admin/registration-credentials/revoke` 撤銷憑證:撤銷憑證會一併結束以它註冊的 session,代理無法續期也無法再註冊(以 `principal_id`＋`task_id` 撤銷時,該任務的所有 session 都會結束)。只撤銷 session(`/api/v1/admin/revoke`)擋不住代理:它會以仍有效的憑證自動重新註冊。broker 拒絕重新註冊後,代理就停止(不再 heartbeat、註冊或呼叫 broker,`--run` 以錯誤結束,LINE listener 以非零碼結束;網路錯誤仍會重試)。種子憑證被管理員撤銷後,只要設定的密鑰不變,broker 重啟也不會恢復(啟動時記警告);要恢復請輪替密鑰(`gen-stack-secrets.mjs --force` 後以 `down -v` 重建)。以 `tasks/create` 建立的任務由管理員經 `/api/v1/admin/registration-credentials/issue` 簽發(密鑰只出現在該次加密回應中)。
 
 升級 broker 後,要以 `tools/agent/Containerfile` 重建 `bricks4agent-agent:latest`(Windows sidecar 直接使用本機既有的映像,不會自行建置):舊版 agent 映像不會送出註冊密鑰,broker spawn 的每個代理都會註冊失敗,重啟次數用完後停止。
 

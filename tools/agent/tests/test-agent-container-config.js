@@ -595,6 +595,29 @@ for (const docPath of [
     assertIncludes(`${docPath} points at the secrets generator`, docText, 'gen-stack-secrets.mjs');
 }
 
+// 文件列出的 file-worker 拒絕清單要涵蓋 SandboxPolicy 的每一個確切名稱，種子憑證的時效變數也要寫進文件
+// （程式新增名稱或變數時，文件要同步）。
+{
+    const sandboxPolicy = read('packages/csharp/workers/file-worker/SandboxPolicy.cs');
+    const exactBlock = /SensitiveExactNames =\s*\{([\s\S]*?)\};/.exec(sandboxPolicy);
+    assert(exactBlock, 'SandboxPolicy.SensitiveExactNames not found');
+    const exactNames = [...exactBlock[1].matchAll(/"([^"]+)"/g)].map((match) => match[1]);
+    assert(exactNames.includes('.run') && exactNames.includes('.git'), `unexpected deny list ${JSON.stringify(exactNames)}`);
+    for (const docPath of [
+        'tools/agent/container/README.md',
+        'tools/agent/container/README.html',
+        'docs/manuals/agent-container-runbook.md',
+        'docs/manuals/agent-container-runbook.html',
+    ]) {
+        const docText = read(docPath);
+        for (const name of exactNames) {
+            assert(docText.includes(`\`${name}\``) || docText.includes(`<code>${name}</code>`),
+                `${docPath}: the file-worker deny list should name ${name}`);
+        }
+        assertIncludes(`${docPath} names the seeded credential lifetime variable`, docText, 'BROKER_REGISTRATION_SECRET_LIFETIME_HOURS');
+    }
+}
+
 // 文件中的手動 compose 指令：每一行（包括 down）都要帶同一份金鑰檔，因為 compose 對每個指令都會
 // 展開必填變數；路徑要加引號（使用者目錄可能含空白）；指令區塊不得混用 cmd 的 `set NAME=value`。
 const COMPOSE_COMMAND_LINE = /^(?:<pre><code[^>]*>)?\s*podman compose\b/;
