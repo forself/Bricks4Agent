@@ -1,3 +1,4 @@
+using BrokerCore.Models;
 using BrokerCore.Services;
 using Broker.Helpers;
 
@@ -14,7 +15,10 @@ namespace Broker.Middleware;
 /// 2. 驗證 Token 簽章 + 時效
 /// 3. Epoch 閘道：token.epoch &lt; current_epoch → 401
 /// 4. 撤銷檢查（JTI、Session）
-/// 5. 將已驗證的 claims 注入 HttpContext.Items
+/// 5. Session 綁定：請求不是交握信封；走加密通道時通道的 session 必須是 token 的 session；
+///    token 的 session 必須存在、為 Active、未過期，且主體、任務、角色與 session 記錄一致
+///    （Bearer／明文路徑沒有通道，只檢查 session 狀態與一致性）。任一不符一律 401。
+/// 6. 將已驗證的 claims 與 session 記錄注入 HttpContext.Items
 ///
 /// 其他政策：Public / SessionBootstrap / SignedLink / LocalAdminSession / PortalSession 交給 handler 自行驗證；
 /// WorkerSignature 必須已通過 WorkerIdentityAuthMiddleware，否則 401。
@@ -25,6 +29,7 @@ public class BrokerAuthMiddleware
     private readonly RequestDelegate _next;
     private readonly IScopedTokenService _tokenService;
     private readonly IRevocationService _revocationService;
+    private readonly ISessionService _sessionService;
     private readonly ILogger<BrokerAuthMiddleware> _logger;
 
     // HttpContext.Items 鍵名（供後續 endpoint 讀取）
@@ -35,15 +40,20 @@ public class BrokerAuthMiddleware
     public const string RoleIdKey = "broker_role_id";
     public const string EpochKey = "broker_epoch";
 
+    /// <summary>已通過綁定檢查的 <see cref="ContainerSession"/>，供 heartbeat 等端點直接使用。</summary>
+    public const string SessionRecordKey = "broker_session";
+
     public BrokerAuthMiddleware(
         RequestDelegate next,
         IScopedTokenService tokenService,
         IRevocationService revocationService,
+        ISessionService sessionService,
         ILogger<BrokerAuthMiddleware> logger)
     {
         _next = next;
         _tokenService = tokenService;
         _revocationService = revocationService;
+        _sessionService = sessionService;
         _logger = logger;
     }
 
@@ -173,7 +183,15 @@ public class BrokerAuthMiddleware
             return;
         }
 
-        // ── 5. 注入已驗證 claims ──
+        // ── 5. Session 綁定 ──
+        var session = await CheckSessionBindingAsync(context, claims, path);
+        if (session == null)
+        {
+            return;
+        }
+
+        // ── 6. 注入已驗證 claims 與 session 記錄 ──
+        context.Items[SessionRecordKey] = session;
         context.Items[ClaimsKey] = claims;
         context.Items[PrincipalIdKey] = claims.PrincipalId;
         context.Items[TaskIdKey] = claims.TaskId;
@@ -182,6 +200,60 @@ public class BrokerAuthMiddleware
         context.Items[EpochKey] = claims.Epoch;
 
         await _next(context);
+    }
+
+    /// <summary>
+    /// token 只能在自己的 session 使用：拒絕交握信封、跨通道使用，以及 session 不存在、已關閉／撤銷、已過期或與 claims 不一致。
+    /// 通過時回傳 session 記錄；失敗時已寫出 401 並回傳 null。
+    /// </summary>
+    private async Task<ContainerSession?> CheckSessionBindingAsync(HttpContext context, ScopedTokenClaims claims, string path)
+    {
+        // 交握信封只用於註冊（EncryptionMiddleware 已擋下其他端點，這裡是縱深防禦）。
+        if (context.Items.TryGetValue(EncryptionMiddleware.IsHandshakeKey, out var handshake) && handshake is true)
+        {
+            _logger.LogWarning("Scoped token presented in a handshake envelope for {Path}", path);
+            await WriteAuthError(context, 401, "Handshake envelopes are only accepted for session registration.");
+            return null;
+        }
+
+        // 走加密通道時，通道的 session 必須就是 token 的 session。
+        if (context.Items.TryGetValue(EncryptionMiddleware.SessionIdKey, out var channelObj) &&
+            channelObj is string channelSessionId &&
+            !string.IsNullOrEmpty(channelSessionId) &&
+            !string.Equals(channelSessionId, claims.SessionId, StringComparison.Ordinal))
+        {
+            _logger.LogWarning(
+                "Token of session {TokenSessionId} presented over channel {ChannelSessionId} for {Path}",
+                claims.SessionId, channelSessionId, path);
+            await WriteAuthError(context, 401, "Token does not belong to this session.");
+            return null;
+        }
+
+        var session = string.IsNullOrEmpty(claims.SessionId) ? null : _sessionService.GetSession(claims.SessionId);
+        if (session == null || session.Status != SessionStatus.Active)
+        {
+            _logger.LogWarning("Session not active: {SessionId}", claims.SessionId);
+            await WriteAuthError(context, 401, "Session is not active.");
+            return null;
+        }
+
+        if (session.ExpiresAt <= DateTime.UtcNow)
+        {
+            _logger.LogWarning("Session expired: {SessionId}", claims.SessionId);
+            await WriteAuthError(context, 401, "Session expired.");
+            return null;
+        }
+
+        if (!string.Equals(session.PrincipalId, claims.PrincipalId, StringComparison.Ordinal) ||
+            !string.Equals(session.TaskId, claims.TaskId, StringComparison.Ordinal) ||
+            !string.Equals(session.RoleId, claims.RoleId, StringComparison.Ordinal))
+        {
+            _logger.LogWarning("Token claims do not match session {SessionId}", claims.SessionId);
+            await WriteAuthError(context, 401, "Token does not match its session.");
+            return null;
+        }
+
+        return session;
     }
 
     /// <summary>

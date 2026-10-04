@@ -272,6 +272,7 @@ Broker 使用 `/api/v1` 作主要 API group。
 - `ScopedToken` 端點另有角色與擁有者檢查：`tasks/create`、`agents/*`、`workers/*`、`health/workers`、`health/score*`、`admin/*`（`admin/epoch/query` 除外）、`audit/*` 只限管理員；`tasks/query`、`tasks/cancel`、`plans/*`、`execution-requests/query` 只限任務擁有者（token 綁定的任務，或任務的提交者）或管理員。
 - `context/*` 在讀取 ACL 之外另以任務為範圍：文件屬於某任務時，`read`、`history`、`read-by-key`、`list`、`write` 只限該任務的擁有者或管理員；系統範圍 `global` 沒有對應的任務，只限管理員；沒有任務的舊文件只限原作者或管理員。`read`、`history` 對範圍外的文件與不存在的文件一律回 404；`read-by-key`、`list` 指定了無權存取的任務時回 403，`read-by-key` 未帶 `task_id` 時只查 token 綁定的任務。`history` 只回傳範圍內、而且各版本 ACL 允許讀取的版本。
 - `context/write` 未帶 `task_id` 時，既有文件沿用其任務，新文件落在 token 綁定的任務；token 沒有綁定任務時回 403。既有文件只能由能存取其範圍者追加新版本。broker 系統元件自己維護的 document_id（`hlm.`、`convlog:`、`node_output_`、`browser.execution.`、`deployment.execution.` 開頭，不分大小寫）只限管理員經由 context API 寫入。其中 `hlm.`、`convlog:` 文件由高階流程（LINE、portal）的系統元件讀取，只採信系統元件（作者以 `system:` 開頭）寫入的版本，大多數還限定在 `global` 範圍；`node_output_` 與 `browser.execution.`、`deployment.execution.` 執行證據由 broker 以執行者的身分寫入，讀取端依任務、key 或 document_id 讀取，不以系統作者為條件，保留前綴對它們的作用只是不讓非管理員經由 context API 以這些 document_id 寫入。
+- `ScopedToken` 的 token 只能在簽發它的 session 使用：走加密信封時，信封的 session 必須就是 token 的 session；不論加密信封或 Bearer，session 都必須存在、未關閉或撤銷、未過期，且主體、任務、角色與 session 記錄一致，否則回 401。因此關閉或撤銷 session、取消任務、session 到期都會讓該 session 的所有 token 立即失效。交握信封（帶 `client_ephemeral_pub`）只接受於 `sessions/register`，送往其他端點回 400。
 - `/dev/*` 不在 `/api/v1` 之下，由 `DevEndpointGuardMiddleware` 另外把關。
 
 ### 6.2 Session, task, execution
@@ -279,13 +280,15 @@ Broker 使用 `/api/v1` 作主要 API group。
 | Route group | 主要用途 |
 |---|---|
 | `POST /api/v1/sessions/register` | register session |
-| `POST /api/v1/sessions/heartbeat` | heartbeat |
+| `POST /api/v1/sessions/heartbeat` | heartbeat：延長 session 並換發 token |
 | `POST /api/v1/sessions/close` | close and cleanup |
 | `POST /api/v1/tasks/create` | create task |
 | `POST /api/v1/tasks/query` | query tasks |
 | `POST /api/v1/tasks/cancel` | cancel task |
 | `POST /api/v1/execution-requests/submit` | submit governed execution request |
 | `POST /api/v1/execution-requests/query` | query execution requests |
+
+`sessions/heartbeat` 只接受 session 自己的加密信封，回傳同一 session 的新 token（`scoped_token`、`token_expires_at`、`session_expires_at`）。舊 token 不撤銷，到期自然失效。heartbeat 只延長仍有效的 session 與它的授予：新的到期時間為「現在＋`Broker:Session:TtlMinutes`」（預設 60，必須小於 120）與「註冊時間＋`Broker:Session:MaxLifetimeMinutes`」（預設 1440）兩者較早者；已過期的 session 不會被延長，超過最長存活時間後必須重新註冊。主體已停用或任務已結束時 heartbeat 回 401 並結束該 session。agent（`governed-executor.js`）、dashboard 與 e2e-bridge 依 token 剩餘時效的三分之一（10 秒到 5 分鐘）送 heartbeat；agent 收到 401 時重新註冊一次，但 kill switch 造成的 401 不會重新註冊。
 
 ### 6.3 Capability, grants, context, audit
 

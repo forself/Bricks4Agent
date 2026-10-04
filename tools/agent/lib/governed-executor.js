@@ -26,6 +26,11 @@ const BROKER_ROUTES = {
 const RISK_LEVEL_LABELS = ['Low', 'Medium', 'High', 'Critical'];
 const GRANT_STATUS_LABELS = ['Active', 'Expired', 'Revoked', 'Exhausted'];
 
+// Heartbeats renew the scoped token, so they run well before the token expires:
+// a third of the token's remaining lifetime, at most every five minutes and at least every ten seconds.
+const HEARTBEAT_MAX_INTERVAL_MS = 5 * 60 * 1000;
+const HEARTBEAT_MIN_INTERVAL_MS = 10 * 1000;
+
 class GovernedExecutor {
     constructor(options) {
         this.brokerUrl = options.brokerUrl;
@@ -45,6 +50,8 @@ class GovernedExecutor {
         this.runtimeSpec = null;
         this.promptContext = null;
         this._heartbeatTimer = null;
+        this._heartbeatRunning = false;
+        this._reregistration = null;
     }
 
     get name() {
@@ -122,12 +129,12 @@ class GovernedExecutor {
         }
 
         try {
-            const result = await this.client.submitRequest(
+            const result = await this._callBroker((client) => client.submitRequest(
                 capabilityId,
                 payload,
                 idempotencyKey,
                 intent
-            );
+            ));
 
             if (result.success === false || result.data?.execution_state === 'denied') {
                 const reason = result.data?.policy_reason || result.message || 'Request denied';
@@ -161,7 +168,7 @@ class GovernedExecutor {
 
     async healthCheck() {
         try {
-            const response = await this.client.llmHealth();
+            const response = await this._callBroker((client) => client.llmHealth());
             const healthy = response?.data?.healthy;
             return healthy === true;
         } catch (_) {
@@ -170,7 +177,7 @@ class GovernedExecutor {
     }
 
     async listModels() {
-        const response = await this.client.llmModels();
+        const response = await this._callBroker((client) => client.llmModels());
         const models = Array.isArray(response?.data) ? response.data : [];
         return models.map((model) => ({
             name: readField(model, ['name'], ''),
@@ -212,7 +219,7 @@ class GovernedExecutor {
             });
         }
 
-        const response = await this.client.llmChat(payload);
+        const response = await this._callBroker((client) => client.llmChat(payload));
         const data = response?.data || {};
         const content = readField(data, ['content'], '');
         const toolCalls = normalizeToolCalls(readField(data, ['tool_calls', 'toolCalls'], []));
@@ -539,30 +546,127 @@ class GovernedExecutor {
         }
     }
 
+    /**
+     * Runs a broker call; when the broker rejects the session or token (HTTP 401, for example after
+     * the token expired while the process was blocked), registers again once and retries the call once.
+     * A rejection caused by the kill switch (system epoch advancement) is not retried.
+     */
+    async _callBroker(operation) {
+        try {
+            return await operation(this.client);
+        } catch (error) {
+            if (!isRecoverableSessionFailure(error)) {
+                throw error;
+            }
+
+            logWarn(`[Governed] broker rejected the session (${error.message}); registering again`);
+            await this._reregister();
+            return await operation(this.client);
+        }
+    }
+
+    /** Registers a new session with the same principal, task and role, then reloads grants and runtime spec. */
+    async _reregister() {
+        if (!this._reregistration) {
+            this._reregistration = (async () => {
+                const client = this.clientFactory(this.brokerUrl, this.brokerPubKey);
+                const sessionInfo = await client.registerSession(
+                    this.principalId,
+                    this.taskId,
+                    this.roleId
+                );
+                this.client = client;
+                this.sessionInfo = sessionInfo;
+                await this._loadGovernanceSnapshot();
+                await this._loadRuntimeSpec();
+                this.promptContext = this._buildPromptContext();
+                logInfo(`[Governed] session=${this.sessionInfo.sessionId} (registered again)`);
+                return sessionInfo;
+            })().finally(() => {
+                this._reregistration = null;
+            });
+        }
+
+        return await this._reregistration;
+    }
+
+    /** One heartbeat: renews the token; on a session or token rejection registers again once. */
+    async _heartbeatOnce() {
+        try {
+            await this.client.heartbeat();
+            if (this.verbose) {
+                logInfo('[Governed] heartbeat ok');
+            }
+            return true;
+        } catch (e) {
+            if (!isRecoverableSessionFailure(e)) {
+                logWarn(`[Governed] heartbeat failed: ${e.message}`);
+                return false;
+            }
+
+            logWarn(`[Governed] heartbeat rejected (${e.message}); registering again`);
+            try {
+                await this._reregister();
+                return true;
+            } catch (registerError) {
+                logWarn(`[Governed] registering again failed: ${registerError.message}`);
+                return false;
+            }
+        }
+    }
+
+    _heartbeatIntervalMs() {
+        const tokenExpiresAt = Date.parse(this.client?.tokenExpiresAt || this.sessionInfo?.tokenExpiresAt || '');
+        if (!Number.isFinite(tokenExpiresAt)) {
+            return HEARTBEAT_MAX_INTERVAL_MS;
+        }
+
+        const remaining = tokenExpiresAt - Date.now();
+        return Math.min(HEARTBEAT_MAX_INTERVAL_MS, Math.max(HEARTBEAT_MIN_INTERVAL_MS, Math.floor(remaining / 3)));
+    }
+
     _startHeartbeat() {
         this._stopHeartbeat();
-        this._heartbeatTimer = setInterval(async () => {
-            try {
-                await this.client.heartbeat();
-                if (this.verbose) {
-                    logInfo('[Governed] heartbeat ok');
-                }
-            } catch (e) {
-                logWarn(`[Governed] heartbeat failed: ${e.message}`);
-            }
-        }, 5 * 60 * 1000);
+        this._heartbeatRunning = true;
 
-        if (this._heartbeatTimer.unref) {
-            this._heartbeatTimer.unref();
-        }
+        const schedule = () => {
+            if (!this._heartbeatRunning) {
+                return;
+            }
+            this._heartbeatTimer = setTimeout(async () => {
+                this._heartbeatTimer = null;
+                await this._heartbeatOnce();
+                schedule();
+            }, this._heartbeatIntervalMs());
+
+            if (this._heartbeatTimer.unref) {
+                this._heartbeatTimer.unref();
+            }
+        };
+
+        schedule();
     }
 
     _stopHeartbeat() {
+        this._heartbeatRunning = false;
         if (this._heartbeatTimer) {
-            clearInterval(this._heartbeatTimer);
+            clearTimeout(this._heartbeatTimer);
             this._heartbeatTimer = null;
         }
     }
+}
+
+/**
+ * A 401 from the broker means the token or session is no longer accepted (expired, closed, revoked).
+ * Registering again recovers from expiry; a kill switch (system epoch advancement) must stay in effect.
+ */
+function isRecoverableSessionFailure(error) {
+    if (!error || error.status !== 401) {
+        return false;
+    }
+
+    const message = `${error.brokerMessage || ''} ${error.message || ''}`;
+    return !/epoch/i.test(message);
 }
 
 function toArray(response) {

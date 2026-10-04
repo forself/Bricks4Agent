@@ -12,8 +12,13 @@ public interface ISessionService
     /// <summary>取得 session</summary>
     ContainerSession? GetSession(string sessionId);
 
-    /// <summary>心跳（更新 last_heartbeat + 可選 Token 續期）</summary>
-    bool Heartbeat(string sessionId);
+    /// <summary>
+    /// 心跳：只延長仍為 Active 且尚未過期的 session（不會讓已過期的 session 復活），
+    /// 新的到期時間為「現在 + TTL」與「註冊時間 + 最長存活時間」兩者較早者，且不會比目前的到期時間早。
+    /// 有提供 <paramref name="newTokenJti"/> 時一併記錄為這個 session 最新的 token。
+    /// 回傳新的到期時間；session 不存在、非 Active 或已過期時回傳 null。
+    /// </summary>
+    DateTime? Heartbeat(string sessionId, string? newTokenJti = null);
 
     /// <summary>優雅關閉</summary>
     bool CloseSession(string sessionId, string reason);

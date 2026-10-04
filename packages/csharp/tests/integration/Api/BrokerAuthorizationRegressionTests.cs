@@ -25,7 +25,8 @@ namespace Integration.Tests.Api;
 ///     a malformed ACL is refused on write and grants nothing on read;
 ///   - session registration issues tokens only for tasks with an assigned principal and role, always with
 ///     the task's role, and administrative roles only for callers on the local host;
-///   - closing a session invalidates its token;
+///   - closing a session invalidates its token, on its own channel and as a Bearer token alike
+///     (token/session binding and renewal are covered by <see cref="SessionBindingTests"/>);
 ///   - the portal lists only the signed-in user's own artifacts;
 ///   - the public, signed-link, local-admin and worker-signed flows keep working.
 /// </summary>
@@ -413,19 +414,24 @@ public sealed class BrokerAuthorizationRegressionTests : IClassFixture<BrokerAut
         var other = _client.OpenSession(ReaderRole);
 
         var beforeClose = await _client.SendEncryptedAsync(closing, "/api/v1/admin/epoch/query", payload: null, closing.ScopedToken);
+        var beforeCloseBearer = await _client.SendPlainAsync("POST", "/api/v1/tool-specs/list", "{}", bearerToken: closing.ScopedToken);
         var close = await _client.SendEncryptedAsync(
             closing,
             "/api/v1/sessions/close",
             new { reason = "authorization regression" },
             closing.ScopedToken);
 
-        // The closed session's own channel no longer decrypts, so present its token through another open session.
-        var afterClose = await _client.SendEncryptedAsync(other, "/api/v1/admin/epoch/query", payload: null, closing.ScopedToken);
+        // A token is accepted only in its own session, so after close it is presented on the closed session's
+        // own channel and on the plain path that carries no channel (Bearer).
+        var afterCloseOwnChannel = await _client.SendEncryptedAsync(closing, "/api/v1/admin/epoch/query", payload: null, closing.ScopedToken);
+        var afterCloseBearer = await _client.SendPlainAsync("POST", "/api/v1/tool-specs/list", "{}", bearerToken: closing.ScopedToken);
         var otherToken = await _client.SendEncryptedAsync(other, "/api/v1/admin/epoch/query", payload: null, other.ScopedToken);
 
         beforeClose.StatusCode.Should().Be(HttpStatusCode.OK, "the token works before close; the response was {0}", beforeClose);
+        beforeCloseBearer.StatusCode.Should().Be(HttpStatusCode.OK, "the Bearer token works before close; the response was {0}", beforeCloseBearer);
         close.StatusCode.Should().Be(HttpStatusCode.OK, "the close response was {0}", close);
-        afterClose.StatusCode.Should().Be(HttpStatusCode.Unauthorized, "the token of a closed session must be rejected; the response was {0}", afterClose);
+        afterCloseOwnChannel.StatusCode.Should().Be(HttpStatusCode.Unauthorized, "the closed session's channel must be rejected; the response was {0}", afterCloseOwnChannel);
+        afterCloseBearer.StatusCode.Should().Be(HttpStatusCode.Unauthorized, "the token of a closed session must be rejected; the response was {0}", afterCloseBearer);
         otherToken.StatusCode.Should().Be(HttpStatusCode.OK, "other sessions are unaffected; the response was {0}", otherToken);
     }
 
@@ -497,7 +503,8 @@ public sealed class BrokerAuthorizationRegressionTests : IClassFixture<BrokerAut
     [InlineData("/api/v1/admin/epoch/query")]
     public async Task AgentRuntimeEndpoint_WithNonAdminToken_Succeeds(string path)
     {
-        var reader = _client.OpenSession(ReaderRole);
+        // A session for a real principal and task: the heartbeat renews tokens only while both are still active.
+        var reader = _fixture.OpenSeededSession(_client, ReaderRole);
 
         var reply = await _client.SendEncryptedAsync(reader, path, payload: null, reader.ScopedToken);
 

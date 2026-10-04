@@ -132,8 +132,13 @@ if (tokenExpMin <= 0) tokenExpMin = 15;
 builder.Services.AddSingleton<IScopedTokenService>(sp =>
     new ScopedTokenService(tokenSecret, tokenIssuer, tokenAudience, tokenExpMin));
 
+// Session 有效時間與最長存活時間（Broker:Session）；不合理的設定（含 TTL 不小於金鑰快取存活時間）在啟動時即失敗。
+var sessionLifetime = builder.Configuration.GetSection(SessionLifetimeOptions.SectionName).Get<SessionLifetimeOptions>()
+    ?? new SessionLifetimeOptions();
+sessionLifetime.Validate();
+builder.Services.AddSingleton(sessionLifetime);
 builder.Services.AddSingleton<ISessionService>(sp =>
-    new SessionService(sp.GetRequiredService<BrokerDb>()));
+    new SessionService(sp.GetRequiredService<BrokerDb>(), sessionLifetime));
 
 if (cacheEnabled && distributedCache != null)
 {

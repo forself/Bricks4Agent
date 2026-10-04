@@ -141,6 +141,25 @@ public class BrokerAuthorizationFixture : IAsyncLifetime
     public BrokerTask? FindTask(string taskId)
         => Services.GetRequiredService<BrokerDb>().Get<BrokerTask>(taskId);
 
+    public BrokerDb Db => Services.GetRequiredService<BrokerDb>();
+
+    public ContainerSession? FindSession(string sessionId)
+        => Services.GetRequiredService<ISessionService>().GetSession(sessionId);
+
+    /// <summary>
+    /// Seeds an active principal and a task assigned to it with <paramref name="roleId"/>, then opens a session
+    /// for them through <paramref name="client"/>, so flows that look at the principal and task records
+    /// (for example token renewal on heartbeat) see real ones.
+    /// </summary>
+    public BrokerTestSession OpenSeededSession(EncryptedBrokerClient client, string roleId, string taskType = "query")
+    {
+        var principalId = EncryptedBrokerClient.NewId("prn_authz_seeded");
+        var taskId = EncryptedBrokerClient.NewId("task_authz_seeded");
+        SeedPrincipal(principalId);
+        SeedTask(taskId, taskType, submittedBy: principalId, assignedPrincipalId: principalId, assignedRoleId: roleId);
+        return client.OpenSession(roleId, principalId, taskId);
+    }
+
     /// <summary>Creates a draft plan for <paramref name="taskId"/> through the broker's plan service.</summary>
     public Plan CreatePlan(string taskId, string submittedBy)
         => Services.GetRequiredService<IPlanService>()

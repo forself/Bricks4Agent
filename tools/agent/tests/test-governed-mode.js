@@ -2,9 +2,11 @@
 'use strict';
 
 const assert = require('assert');
+const crypto = require('crypto');
 const path = require('path');
 
 const { AgentLoop } = require('../lib/agent-loop');
+const { BrokerClient } = require('../lib/broker-client');
 
 const ROOT = path.resolve(__dirname, '..', '..', '..');
 
@@ -27,15 +29,34 @@ function createForbiddenDirectProvider() {
     };
 }
 
+function brokerHttpError(status, message) {
+    const error = new Error(`Broker error ${status}: ${message}`);
+    error.status = status;
+    error.brokerMessage = message;
+    return error;
+}
+
 function createFakeClient() {
     let submitCalls = 0;
     let llmChatCalls = 0;
+    let registerCalls = 0;
+    let heartbeatCalls = 0;
+    const pendingFailures = { submit: [], llmChat: [], heartbeat: [] };
+
+    function takeFailure(kind) {
+        const failure = pendingFailures[kind].shift();
+        if (failure) {
+            throw failure;
+        }
+    }
 
     return {
+        tokenExpiresAt: null,
         async registerSession() {
+            registerCalls += 1;
             return {
-                sessionId: 'sess_test_001',
-                scopedToken: 'scoped_token_test_001',
+                sessionId: `sess_test_00${registerCalls}`,
+                scopedToken: `scoped_token_test_00${registerCalls}`,
                 expiresAt: '2030-01-01T00:00:00Z',
             };
         },
@@ -146,6 +167,7 @@ function createFakeClient() {
         },
         async llmChat(body) {
             llmChatCalls += 1;
+            takeFailure('llmChat');
             assert.strictEqual(body.model, 'broker-model');
             return {
                 success: true,
@@ -162,6 +184,7 @@ function createFakeClient() {
         },
         async submitRequest() {
             submitCalls += 1;
+            takeFailure('submit');
             return {
                 success: true,
                 data: {
@@ -171,10 +194,15 @@ function createFakeClient() {
             };
         },
         async heartbeat() {
+            heartbeatCalls += 1;
+            takeFailure('heartbeat');
             return { success: true };
         },
         async closeSession() {
             return { success: true };
+        },
+        failNext(kind, error) {
+            pendingFailures[kind].push(error);
         },
         getSubmitCalls() {
             return submitCalls;
@@ -182,7 +210,182 @@ function createFakeClient() {
         getLlmChatCalls() {
             return llmChatCalls;
         },
+        getRegisterCalls() {
+            return registerCalls;
+        },
+        getHeartbeatCalls() {
+            return heartbeatCalls;
+        },
     };
+}
+
+/** AES-256-GCM helpers for the stubbed broker below (the wire format of broker-client.js). */
+function sealForTest(key, plaintext, aad) {
+    const nonce = crypto.randomBytes(12);
+    const cipher = crypto.createCipheriv('aes-256-gcm', key, nonce);
+    cipher.setAAD(Buffer.from(aad));
+    const ciphertext = Buffer.concat([cipher.update(Buffer.from(plaintext)), cipher.final()]);
+    return {
+        nonce: nonce.toString('base64'),
+        ciphertext: ciphertext.toString('base64'),
+        tag: cipher.getAuthTag().toString('base64'),
+    };
+}
+
+function openForTest(key, envelope, aad) {
+    const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(envelope.nonce, 'base64'));
+    decipher.setAAD(Buffer.from(aad));
+    decipher.setAuthTag(Buffer.from(envelope.tag, 'base64'));
+    return Buffer.concat([
+        decipher.update(Buffer.from(envelope.ciphertext, 'base64')),
+        decipher.final(),
+    ]).toString();
+}
+
+/**
+ * BrokerClient against a stubbed transport that speaks the encrypted envelope protocol:
+ * a request queued behind a heartbeat is sent with the renewed token, and an encrypted 401
+ * surfaces its status and the broker's message.
+ */
+async function testBrokerClientTokenRenewal() {
+    const client = new BrokerClient('http://broker.invalid', 'unused');
+    client.sessionId = 'sess_stub';
+    client.sessionKey = crypto.randomBytes(32);
+    client.scopedToken = 'token-1';
+
+    const seen = [];
+    client._postRaw = async (routePath, body) => {
+        const envelope = body.envelope;
+        const request = JSON.parse(openForTest(
+            client.sessionKey,
+            envelope,
+            `req:${body.session_id}${envelope.seq}${routePath}`
+        ));
+        seen.push({ path: routePath, seq: envelope.seq, token: request.scoped_token });
+
+        let status = 200;
+        let payload = { success: true, data: [] };
+        if (routePath === '/api/v1/sessions/heartbeat') {
+            payload = {
+                success: true,
+                data: {
+                    session_id: 'sess_stub',
+                    scoped_token: 'token-2',
+                    token_expires_at: '2030-01-01T00:15:00Z',
+                    session_expires_at: '2030-01-01T01:00:00Z',
+                },
+            };
+        } else if (request.scoped_token === 'token-expired') {
+            status = 401;
+            payload = { success: false, message: 'Session expired.' };
+        }
+
+        const sealed = sealForTest(
+            client.sessionKey,
+            JSON.stringify(payload),
+            `resp:${body.session_id}${envelope.seq}${routePath}`
+        );
+        const parsed = { v: 1, envelope: { alg: 'A256GCM', seq: envelope.seq, ...sealed } };
+        return { status, ok: status >= 200 && status < 300, text: JSON.stringify(parsed), parsed };
+    };
+
+    // Queue a heartbeat and a request together; the request must go out with the renewed token.
+    const [heartbeat, grants] = await Promise.all([client.heartbeat(), client.listGrants()]);
+    assert.strictEqual(heartbeat.data.scoped_token, 'token-2');
+    assert.deepStrictEqual(grants.data, []);
+    assert.deepStrictEqual(seen.map((item) => item.path), ['/api/v1/sessions/heartbeat', '/api/v1/grants/list']);
+    assert.deepStrictEqual(seen.map((item) => item.seq), [1, 2]);
+    assert.deepStrictEqual(seen.map((item) => item.token), ['token-1', 'token-2']);
+    assert.strictEqual(client.scopedToken, 'token-2');
+    assert.strictEqual(client.tokenExpiresAt, '2030-01-01T00:15:00Z');
+    assert.strictEqual(client.sessionExpiresAt, '2030-01-01T01:00:00Z');
+
+    client.scopedToken = 'token-expired';
+    await assert.rejects(
+        () => client.listGrants(),
+        (error) => error.status === 401 && error.brokerMessage === 'Session expired.'
+    );
+}
+
+/** Governed executor: 401 recovery by registering again once, kill switch left alone, heartbeat cadence. */
+async function testSessionRecovery() {
+    const fakeClient = createFakeClient();
+    const agent = new AgentLoop({
+        model: 'user-requested-model',
+        provider: createForbiddenDirectProvider(),
+        projectRoot: ROOT,
+        stream: false,
+        governed: {
+            brokerUrl: 'http://broker.local:5000',
+            brokerPubKey: 'fake-pub-key',
+            principalId: 'prn_test',
+            taskId: 'task_test',
+            roleId: 'role_reader',
+            clientFactory: () => fakeClient,
+        },
+    });
+    await agent.init();
+    const executor = agent.governedExecutor;
+    const context = { projectRoot: ROOT, noConfirm: true, verbose: false };
+    assert.strictEqual(fakeClient.getRegisterCalls(), 1);
+
+    // A tool request rejected with 401 (expired token or session): register again once, then retry.
+    fakeClient.failNext('submit', brokerHttpError(401, 'Session expired.'));
+    const recovered = await executor.executeTool('read_file', { path: './README.html' }, context);
+    assert.strictEqual(recovered, 'ok');
+    assert.strictEqual(fakeClient.getRegisterCalls(), 2);
+    assert.strictEqual(fakeClient.getSubmitCalls(), 2);
+    assert.strictEqual(executor.sessionInfo.sessionId, 'sess_test_002');
+    assert.strictEqual(executor.getPromptContext().session.sessionId, 'sess_test_002');
+
+    // Only once per call: a second 401 after registering again is reported, not retried again.
+    fakeClient.failNext('submit', brokerHttpError(401, 'Session expired.'));
+    fakeClient.failNext('submit', brokerHttpError(401, 'Session expired.'));
+    const twice = await executor.executeTool('read_file', { path: './README.html' }, context);
+    assert(twice.includes('broker error'), twice);
+    assert.strictEqual(fakeClient.getRegisterCalls(), 3);
+
+    // The kill switch (system epoch advancement) must stay in effect: no new registration.
+    fakeClient.failNext('submit', brokerHttpError(401, 'Token invalidated by system epoch advancement.'));
+    const killed = await executor.executeTool('read_file', { path: './README.html' }, context);
+    assert(killed.includes('broker error'), killed);
+    assert.strictEqual(fakeClient.getRegisterCalls(), 3);
+
+    // Other failures are not treated as session expiry.
+    fakeClient.failNext('submit', brokerHttpError(500, 'Internal error.'));
+    const failed = await executor.executeTool('read_file', { path: './README.html' }, context);
+    assert(failed.includes('broker error'), failed);
+    assert.strictEqual(fakeClient.getRegisterCalls(), 3);
+
+    // LLM calls recover the same way.
+    fakeClient.failNext('llmChat', brokerHttpError(401, 'Invalid or expired token.'));
+    const chat = await executor.chat({ model: 'x', messages: [{ role: 'user', content: 'hi' }], tools: [] });
+    assert.strictEqual(chat.content, 'broker chat ok');
+    assert.strictEqual(fakeClient.getRegisterCalls(), 4);
+
+    // Heartbeat: success renews; a 401 registers again; other failures only warn.
+    assert.strictEqual(await executor._heartbeatOnce(), true);
+    fakeClient.failNext('heartbeat', brokerHttpError(401, 'Session expired.'));
+    assert.strictEqual(await executor._heartbeatOnce(), true);
+    assert.strictEqual(fakeClient.getRegisterCalls(), 5);
+    fakeClient.failNext('heartbeat', brokerHttpError(503, 'Unavailable.'));
+    assert.strictEqual(await executor._heartbeatOnce(), false);
+    assert.strictEqual(fakeClient.getRegisterCalls(), 5);
+    assert.strictEqual(fakeClient.getHeartbeatCalls(), 3);
+
+    // Heartbeat cadence: a third of the token's remaining lifetime, between 10 seconds and 5 minutes.
+    fakeClient.tokenExpiresAt = null;
+    assert.strictEqual(executor._heartbeatIntervalMs(), 5 * 60 * 1000);
+    fakeClient.tokenExpiresAt = new Date(Date.now() + 20 * 60 * 1000).toISOString();
+    assert.strictEqual(executor._heartbeatIntervalMs(), 5 * 60 * 1000);
+    fakeClient.tokenExpiresAt = new Date(Date.now() + 3 * 60 * 1000).toISOString();
+    const interval = executor._heartbeatIntervalMs();
+    assert(interval > 55 * 1000 && interval <= 60 * 1000, `interval ${interval}`);
+    fakeClient.tokenExpiresAt = new Date(Date.now() + 5 * 1000).toISOString();
+    assert.strictEqual(executor._heartbeatIntervalMs(), 10 * 1000);
+
+    await agent.close();
+    assert.strictEqual(executor._heartbeatTimer, null);
 }
 
 async function main() {
@@ -262,6 +465,9 @@ async function main() {
     assert.strictEqual(fakeClient.getSubmitCalls(), 1);
 
     await agent.close();
+
+    await testBrokerClientTokenRenewal();
+    await testSessionRecovery();
     console.log('Governed mode tests passed.');
 }
 

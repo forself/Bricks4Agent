@@ -28,8 +28,12 @@ public class CacheSessionKeyStore : ISessionKeyStore
     private const string SessionKeyPrefix = "skey:";
     private const string SeqPrefix = "seq:";
 
-    // Session 預設 TTL（與 session 本身的過期時間同步）
-    private static readonly TimeSpan DefaultTtl = TimeSpan.FromHours(2);
+    /// <summary>
+    /// 快取中 session 金鑰與序號的存活時間（每次請求刷新序號的存活時間）。
+    /// Session 的有效時間（<see cref="BrokerCore.Services.SessionLifetimeOptions.TtlMinutes"/>）必須小於這個值，
+    /// 序號才會比閒置中仍有效的 session 活得久。
+    /// </summary>
+    public static readonly TimeSpan DefaultTtl = TimeSpan.FromHours(2);
 
     public CacheSessionKeyStore(IDistributedCache cache, ISessionKeyStore dbFallback)
     {

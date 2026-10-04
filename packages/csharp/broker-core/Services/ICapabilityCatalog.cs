@@ -20,4 +20,10 @@ public interface ICapabilityCatalog
 
     /// <summary>消耗配額（原子操作，回傳 true = 成功）</summary>
     bool ConsumeQuota(string grantId);
+
+    /// <summary>
+    /// 把 session 仍有效（Active 且未過期）的授予延長到 <paramref name="expiresAt"/>，與 session 的 heartbeat 同步；
+    /// 已過期、已撤銷或已耗盡的授予不會被恢復。回傳延長的筆數。
+    /// </summary>
+    int ExtendSessionGrants(string sessionId, DateTime expiresAt);
 }

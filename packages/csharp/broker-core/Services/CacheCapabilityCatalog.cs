@@ -140,6 +140,13 @@ public class CacheCapabilityCatalog : ICapabilityCatalog
     }
 
     /// <inheritdoc />
+    public int ExtendSessionGrants(string sessionId, DateTime expiresAt)
+    {
+        // 只寫 DB：快取中的 grant 帶有舊的到期時間，過期後 GetActiveGrant 會回 DB 重讀到新的到期時間。
+        return _dbCatalog.ExtendSessionGrants(sessionId, expiresAt);
+    }
+
+    /// <inheritdoc />
     public bool ConsumeQuota(string grantId)
     {
         // 先嘗試快取 DECR_POS（原子操作）

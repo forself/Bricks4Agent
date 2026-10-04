@@ -145,6 +145,15 @@ public class EncryptionMiddleware
         if (isHandshake)
         {
             // ── 初始交握（session 註冊） ──
+            // 交握信封沒有 session 通道，只能用來建立 session；送往其他端點一律拒絕，
+            // 避免 token 經由交握信封送出而繞過通道與 session 的綁定。
+            if (BrokerAuthPolicyResolver.Resolve(context) != BrokerAuthPolicy.SessionBootstrap)
+            {
+                _logger.LogWarning("Handshake envelope rejected for {Path}", path);
+                await WriteEncryptionError(context, 400, "Handshake envelopes are only accepted for session registration.");
+                return;
+            }
+
             try
             {
                 decryptedBody = _crypto.DecryptHandshake(

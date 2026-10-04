@@ -94,6 +94,14 @@ public class BrokerDbInitializer
 
         TryExecute(@"CREATE UNIQUE INDEX IF NOT EXISTS idx_approval_decisions_approver
                       ON approval_decisions(approval_id, approver_id)");
+
+        // Revocation: BrokerAuth 每個請求都以 target_id 查撤銷清單（jti 與 session_id）
+        TryExecute(@"CREATE INDEX IF NOT EXISTS idx_revocations_target
+                      ON revocations(target_id)");
+
+        // CapabilityGrant: heartbeat 依 session 延長授予
+        TryExecute(@"CREATE INDEX IF NOT EXISTS idx_capability_grants_session
+                      ON capability_grants(session_id, status)");
         TryExecute(@"CREATE INDEX IF NOT EXISTS idx_approval_decisions_approval
                       ON approval_decisions(approval_id, decision)");
 

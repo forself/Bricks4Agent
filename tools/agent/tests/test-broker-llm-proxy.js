@@ -149,6 +149,12 @@ function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** The jti claim of a scoped token (the broker issues JWTs). */
+function tokenJti(token) {
+    const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8'));
+    return payload.jti;
+}
+
 async function removeDirWithRetry(targetPath, attempts = 20, delayMs = 250) {
     let lastError = null;
     for (let index = 0; index < attempts; index += 1) {
@@ -397,6 +403,54 @@ async function main() {
             verbose: false,
         });
         assert(denied.includes('capability denied'));
+
+        // Heartbeat renews the scoped token for the same session.
+        const executor = agent.governedExecutor;
+        const client = executor.client;
+        const firstSessionId = client.sessionId;
+        const firstToken = client.scopedToken;
+        assert(Date.parse(client.tokenExpiresAt) > Date.now(), 'registration reports when the token expires');
+        const heartbeat = await client.heartbeat();
+        assert.strictEqual(heartbeat.success, true);
+        assert.strictEqual(heartbeat.data.session_id, firstSessionId);
+        assert.notStrictEqual(client.scopedToken, firstToken);
+        assert.notStrictEqual(tokenJti(client.scopedToken), tokenJti(firstToken));
+        assert(Date.parse(heartbeat.data.session_expires_at) > Date.now());
+
+        // With the previous token revoked, requests still succeed: they carry the renewed one.
+        const revokeToken = await client._encryptedPost('/api/v1/admin/revoke', {
+            target_type: 'token',
+            target_id: tokenJti(firstToken),
+            reason: 'llm proxy test: previous token',
+        });
+        assert.strictEqual(revokeToken.success, true);
+        const grantsAfterRenewal = await client.listGrants();
+        assert.deepStrictEqual(grantsAfterRenewal.data.map((grant) => grant.capabilityId), ['file.read']);
+
+        // A token presented over another session's channel is refused.
+        const otherClient = new BrokerClient(
+            `http://127.0.0.1:${brokerPort}`,
+            Buffer.from(publicKey).toString('base64')
+        );
+        await otherClient.registerSession(TEST_PRINCIPAL_ID, TEST_TASK_ID, TEST_ROLE_ID);
+        const otherToken = otherClient.scopedToken;
+        otherClient.scopedToken = client.scopedToken;
+        await assert.rejects(() => otherClient.listGrants(), (error) => error.status === 401);
+        otherClient.scopedToken = otherToken;
+        await otherClient.closeSession('llm proxy test: second session');
+
+        // Once the session is revoked, the governed executor registers again (once) and carries on.
+        const revokeSession = await client._encryptedPost('/api/v1/admin/revoke', {
+            target_type: 'session',
+            target_id: firstSessionId,
+            reason: 'llm proxy test: session',
+        });
+        assert.strictEqual(revokeSession.success, true);
+        const modelsAfterRevoke = await agent.provider.listModels();
+        assert.deepStrictEqual(modelsAfterRevoke.map((item) => item.name), [TEST_MODEL]);
+        assert.notStrictEqual(executor.client.sessionId, firstSessionId);
+        assert.notStrictEqual(executor.sessionInfo.sessionId, firstSessionId);
+        assert.deepStrictEqual(executor.getAllowedCapabilityIds(), ['file.read']);
 
         await agent.close();
         console.log('Broker LLM proxy integration test passed.');

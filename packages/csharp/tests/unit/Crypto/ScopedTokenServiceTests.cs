@@ -28,6 +28,12 @@ public class ScopedTokenServiceTests
     };
 
     [Fact]
+    public void TokenLifetime_IsTheConfiguredExpiration()
+    {
+        _sut.TokenLifetime.Should().Be(TimeSpan.FromMinutes(15));
+    }
+
+    [Fact]
     public void GenerateToken_ReturnsJwt()
     {
         var token = _sut.GenerateToken(MakeClaims());

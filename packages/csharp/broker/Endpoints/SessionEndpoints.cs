@@ -150,21 +150,71 @@ public static class SessionEndpoints
                 session_id = session.SessionId,
                 scoped_token = scopedToken,
                 broker_public_key = crypto.GetBrokerPublicKey(),
-                expires_at = session.ExpiresAt
+                expires_at = session.ExpiresAt,
+                token_expires_at = DateTime.UtcNow + tokenService.TokenLifetime
             }));
         }).WithBrokerAuthPolicy(BrokerAuthPolicy.SessionBootstrap);
 
-        sessions.MapPost("/heartbeat", (HttpContext ctx, ISessionService sessionService) =>
+        // 心跳：延長 session 與它的授予，並換發同一 session 的新 token（新 jti）。
+        // 舊 token 不撤銷、到期自然失效（排隊或並行中的請求仍可完成）；關閉或撤銷 session 則由 BrokerAuth 的 session 檢查立即生效。
+        // 只接受 session 自己的加密通道（BrokerAuth 已確認通道與 token 屬於同一 session）。
+        sessions.MapPost("/heartbeat", (HttpContext ctx,
+            ISessionService sessionService,
+            IScopedTokenService tokenService,
+            IRevocationService revocationService,
+            ICapabilityCatalog capabilityCatalog,
+            ISessionKeyStore keyStore,
+            BrokerDb db) =>
         {
-            var sessionId = ctx.Items[BrokerAuthMiddleware.SessionIdKey] as string ?? string.Empty;
-
-            var success = sessionService.Heartbeat(sessionId);
-            if (!success)
+            var claims = ctx.Items[BrokerAuthMiddleware.ClaimsKey] as ScopedTokenClaims;
+            var session = ctx.Items[BrokerAuthMiddleware.SessionRecordKey] as ContainerSession;
+            var channelSessionId = ctx.Items[EncryptionMiddleware.SessionIdKey] as string;
+            if (claims == null || session == null ||
+                string.IsNullOrEmpty(channelSessionId) ||
+                !string.Equals(channelSessionId, session.SessionId, StringComparison.Ordinal))
             {
-                return Results.BadRequest(ApiResponseHelper.Error("Session not found or inactive."));
+                return Unauthorized("Token renewal requires the session's encrypted channel.");
             }
 
-            return Results.Ok(ApiResponseHelper.Success<object>(null, "Heartbeat acknowledged."));
+            // 主體已停用或任務已結束時不再續期，並結束這個 session。
+            var principal = db.Get<Principal>(session.PrincipalId);
+            var task = db.Get<BrokerTask>(session.TaskId);
+            if (principal == null || principal.Status != EntityStatus.Active ||
+                task == null || task.State is TaskState.Cancelled or TaskState.Completed)
+            {
+                keyStore.Remove(session.SessionId);
+                sessionService.RevokeSession(session.SessionId, "Principal or task is no longer active.", "session-heartbeat");
+                return Unauthorized("Session can no longer be renewed.");
+            }
+
+            var jti = BrokerCore.IdGen.New("jti");
+            var sessionExpiresAt = sessionService.Heartbeat(session.SessionId, jti);
+            if (sessionExpiresAt == null)
+            {
+                return Unauthorized("Session is not active.");
+            }
+
+            capabilityCatalog.ExtendSessionGrants(session.SessionId, sessionExpiresAt.Value);
+
+            var scopedToken = tokenService.GenerateToken(new ScopedTokenClaims
+            {
+                PrincipalId = session.PrincipalId,
+                Jti = jti,
+                TaskId = session.TaskId,
+                SessionId = session.SessionId,
+                RoleId = session.RoleId,
+                CapabilityIds = claims.CapabilityIds,
+                Scope = claims.Scope,
+                Epoch = revocationService.GetCurrentEpoch()
+            });
+
+            return Results.Ok(ApiResponseHelper.Success(new
+            {
+                session_id = session.SessionId,
+                scoped_token = scopedToken,
+                token_expires_at = DateTime.UtcNow + tokenService.TokenLifetime,
+                session_expires_at = sessionExpiresAt.Value
+            }, "Heartbeat acknowledged."));
         });
 
         sessions.MapPost("/close", (HttpContext ctx,
@@ -206,6 +256,11 @@ public static class SessionEndpoints
             return Results.Ok(ApiResponseHelper.Success<object>(null, "Session closed."));
         });
     }
+
+    private static IResult Unauthorized(string message)
+        => Results.Json(
+            ApiResponseHelper.Error(message, StatusCodes.Status401Unauthorized),
+            statusCode: StatusCodes.Status401Unauthorized);
 
     private static bool IsRoleAllowedForTask(Role role, string taskType)
     {
