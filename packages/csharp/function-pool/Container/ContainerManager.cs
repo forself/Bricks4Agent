@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Globalization;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 
@@ -403,13 +404,18 @@ public class ContainerManager : IContainerManager
         }
     }
 
+    /// <summary>
+    /// Refuses root: a user or group part named root, or any numeric part whose value is 0
+    /// (the runtime parses numeric ids, so every spelling of 0 means root).
+    /// </summary>
     private static void ValidateUser(string user)
     {
         var parts = user.Split(':');
         foreach (var part in parts)
         {
             var value = part.Trim();
-            if (value == "0" || string.Equals(value, "root", StringComparison.OrdinalIgnoreCase))
+            var isNumericZero = long.TryParse(value, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var id) && id == 0;
+            if (isNumericZero || string.Equals(value, "root", StringComparison.OrdinalIgnoreCase))
                 throw new InvalidOperationException("Worker containers must not run as root.");
         }
     }

@@ -311,11 +311,20 @@ public static class AgentContainerTests
     {
         Console.WriteLine("--- Container configuration that is refused ---");
 
-        foreach (var user in new[] { "0", "root", "ROOT", "10001:0", "0:10001" })
+        // Every spelling of uid or gid 0 means root to the runtime, not only the literal "0".
+        foreach (var user in new[] { "0", "root", "ROOT", "10001:0", "0:10001", "00", "+0", "-0", "000", " 0 ", "10001:00", "+0:10001", "10001:root" })
         {
             var image = NewWorkerImage();
             image.User = user;
             AssertThrows($"user-{user}-refused", () => Build(NewConfig(), image, WorkerRequest()));
+        }
+
+        foreach (var user in new[] { "10001", "10001:10001", "010001", "app", "app:app" })
+        {
+            var image = NewWorkerImage();
+            image.User = user;
+            var args = Build(NewConfig(), image, WorkerRequest());
+            AssertTrue($"user-{user}-accepted", args.Contains("--user") && args.Contains(user));
         }
 
         foreach (var network in new[] { "host", "HOST", "container:other", "ns:/proc/1/ns/net" })
@@ -511,6 +520,8 @@ public static class AgentContainerTests
     {
         try
         {
+            // Pooled SQLite connections keep broker.db open (and undeletable on Windows) after the BrokerDb is disposed.
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
             if (Directory.Exists(path))
                 Directory.Delete(path, recursive: true);
         }
