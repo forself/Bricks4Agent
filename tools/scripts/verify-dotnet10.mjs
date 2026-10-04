@@ -17,7 +17,10 @@ if (configurationArg >= 0 && !configuration) {
     process.exit(2);
 }
 
+// .claude holds ignored local tool state (including agent git worktrees with
+// their own full checkout); only the repository's own projects are checked.
 const excludedDirectories = new Set([
+    '.claude',
     '.git',
     '.test-output',
     'bin',
