@@ -15,7 +15,8 @@ public static class HealthCheckEndpoints
 {
     public static void Map(RouteGroupBuilder group)
     {
-        var hc = group.MapGroup("/health");
+        // worker 健康與健康分數屬管理資訊，只限管理員（公開的 GET/POST /api/v1/health 另行註冊）。
+        var hc = group.MapGroup("/health").RequireBrokerAdmin();
 
         hc.MapGet("/workers", async (
             IWorkerRegistry registry,

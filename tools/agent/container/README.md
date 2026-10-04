@@ -68,11 +68,18 @@ npm run validate:podman-governed-stack
 
 The validation script prebuilds each image with an explicit `Containerfile`, then runs `podman compose up` without the compose build flag. This is the preferred smoke test on Windows Podman because some `podman-compose` versions do not reliably honor per-service `dockerfile:` entries during `up --build`.
 
-For manual runs:
+The validation scripts generate a fresh set of broker keys and worker credentials in memory for every run (see [Secrets](#secrets)) and pass them to both `up` and `down` through the environment. Nothing is written to disk.
 
-```bash
-podman compose -f tools/agent/container/compose.yml up --build --abort-on-container-exit --exit-code-from agent
+For manual runs, generate a secrets file outside the repository once, then pass it with `--env-file` to every `up` and `down`.
+
+The manual command blocks in this README are PowerShell, like the runbook and the environment setup guide. In bash, replace `$env:NAME = 'value'` with `export NAME='value'`; keep the double quotes around the env file path in either shell, because the home directory may contain spaces.
+
+```powershell
+node tools/agent/container/gen-stack-secrets.mjs
+podman compose --env-file "$HOME/.bricks4agent/agent-stack.env" -f tools/agent/container/compose.yml up --build --abort-on-container-exit --exit-code-from agent
 ```
+
+The generator prints the exact path it wrote; it differs from the default when `BRICKS4AGENT_SECRETS_DIR` is set.
 
 The default stack uses the bundled mock upstream and should end with the agent printing `STACK_OK`.
 
@@ -82,21 +89,21 @@ The default `npm run validate:podman-governed-stack` run also configures the moc
 
 OpenAI-compatible stack:
 
-```bash
-podman compose -f tools/agent/container/compose.openai-compatible.yml up --build --abort-on-container-exit --exit-code-from agent
+```powershell
+podman compose --env-file "$HOME/.bricks4agent/agent-stack.env" -f tools/agent/container/compose.openai-compatible.yml up --build --abort-on-container-exit --exit-code-from agent
 ```
 
 Host Ollama stack:
 
-```bash
-set STACK_MODEL=qwen3.6:latest
-podman compose -f tools/agent/container/compose.ollama-host.yml up --build --abort-on-container-exit --exit-code-from agent
+```powershell
+$env:STACK_MODEL = 'qwen3.6:latest'
+podman compose --env-file "$HOME/.bricks4agent/agent-stack.env" -f tools/agent/container/compose.ollama-host.yml up --build --abort-on-container-exit --exit-code-from agent
 ```
 
-To stop and remove a stack:
+To stop and remove a stack (`down` also needs the env file, because compose expands the required variables for every command):
 
-```bash
-podman compose -f tools/agent/container/compose.yml down -v
+```powershell
+podman compose --env-file "$HOME/.bricks4agent/agent-stack.env" -f tools/agent/container/compose.yml down -v
 ```
 
 ## Port Notes
@@ -109,14 +116,16 @@ Default exposed broker ports:
 
 - `compose.ollama-host.yml`: `5002`
 
+Every published port (broker, mock LLM, LINE worker webhook) is bound to `127.0.0.1` only. Containers still reach each other over the compose networks; only access from other machines is closed.
+
 The `5361` default in `compose.openai-compatible.yml` collides with the Windows LINE sidecar broker default. If the sidecar is running, override the compose broker port before starting:
 
-```bash
-set BROKER_PORT=5601
-podman compose -f tools/agent/container/compose.openai-compatible.yml up --build --abort-on-container-exit --exit-code-from agent
+```powershell
+$env:BROKER_PORT = '5601'
+podman compose --env-file "$HOME/.bricks4agent/agent-stack.env" -f tools/agent/container/compose.openai-compatible.yml up --build --abort-on-container-exit --exit-code-from agent
 ```
 
-The default LINE worker container webhook port in `compose.yml` is `19090`. That is a worker-container development port, not the canonical Windows sidecar ingress port `5357`.
+The default LINE worker container webhook port in `compose.yml` is `19090`. That is a worker-container development port, not the canonical Windows sidecar ingress port `5357`. Because it is bound to `127.0.0.1`, expose it to LINE through a tunnel running on the host.
 
 ## Default Development Identity
 
@@ -130,7 +139,7 @@ The compose stacks seed development principals and tasks into the broker. The de
 
 The other compose files seed their own development principal/task pairs.
 
-The ECDH keypair, broker token secret, and master key embedded in the compose files are development-only values. Do not reuse them outside local testing.
+The compose files no longer embed any keys; see [Secrets](#secrets).
 
 Each compose file also seeds a `runtime_descriptor` onto the task. That descriptor is the task architecture hook used by the broker to issue:
 
@@ -142,16 +151,36 @@ Each compose file also seeds a `runtime_descriptor` onto the task. That descript
 
 - per-grant scope overrides
 
+## Secrets
+
+The compose files have no default keys. Each secret variable uses the required form `${VAR:?...}`, so `podman compose` stops with a message that points at the generator when a value is missing.
+
+Required variables:
+
+- all three compose files: `BROKER_SCOPED_TOKEN_SECRET`, `BROKER_MASTER_KEY_BASE64`, `BROKER_ECDH_PRIVATE_KEY_BASE64`, and `BROKER_ECDH_PUBLIC_KEY_BASE64` (the agent pins this public key; it must be the pair of the private key)
+
+- `compose.yml` also: `LINE_WORKER_AUTH_KEY_ID`, `LINE_WORKER_AUTH_SHARED_SECRET`, `FILE_WORKER_AUTH_KEY_ID`, `FILE_WORKER_AUTH_SHARED_SECRET`, `EXEC_ADAPTER_AUTH_KEY_ID`, and `EXEC_ADAPTER_AUTH_SHARED_SECRET` (the broker side and the worker side read the same variables)
+
+`node tools/agent/container/gen-stack-secrets.mjs` generates all of them with `node:crypto` and writes them to `$BRICKS4AGENT_SECRETS_DIR/agent-stack.env`, or `~/.bricks4agent/agent-stack.env` when that variable is not set. It never prints the values, refuses any path inside the repository, and refuses to overwrite an existing file unless you pass `--force` (which rotates every key; recreate the stack with `down -v` afterwards). `--self-test` checks the generator without writing anything. [`agent-stack.env.example`](agent-stack.env.example) lists the variable names only.
+
+Keep the file outside the repository. The agent container mounts the repository at `/workspace` with read access, and compose also auto-loads a `.env` next to the compose files, so a key file inside the repository would be readable by the untrusted agent.
+
+The broker runs in the Production environment in these stacks and validates its keys at startup: it refuses placeholder values (empty, `CHANGE_ME*`, `REPLACE_WITH_*`) and any key that was ever published as a compose default, and it checks key formats. Do not set `ASPNETCORE_ENVIRONMENT=Development` in the compose files to get around this.
+
+`WORKER_AUTH_ENFORCE` defaults to `true`: the broker verifies worker credentials on function pool registration and on the LINE worker HTTP routes. The broker also trusts the execution adapter credential (credential index 2), which replaces the template credential at that index in `appsettings.json`.
+
 ## Overrides
 
 You can override the defaults with environment variables before starting the stack:
 
-```bash
-set BROKER_PORT=5500
-set STACK_MODEL=llama3.1
-set AGENT_RUN=Read README.md and summarize it in one sentence.
-podman compose -f tools/agent/container/compose.yml up --build --abort-on-container-exit --exit-code-from agent
+```powershell
+$env:BROKER_PORT = '5500'
+$env:STACK_MODEL = 'llama3.1'
+$env:AGENT_RUN = 'Read README.md and summarize it in one sentence.'
+podman compose --env-file "$HOME/.bricks4agent/agent-stack.env" -f tools/agent/container/compose.yml up --build --abort-on-container-exit --exit-code-from agent
 ```
+
+Required secrets have no defaults and are not overrides; see [Secrets](#secrets) for the four broker key variables and, for `compose.yml`, the six worker credential variables.
 
 Supported overrides:
 
@@ -191,15 +220,7 @@ Supported overrides:
 
 - `LINE_WEBHOOK_PORT`
 
-- `LINE_WORKER_AUTH_KEY_ID`
-
-- `LINE_WORKER_AUTH_SHARED_SECRET`
-
-- `FILE_WORKER_AUTH_KEY_ID`
-
-- `FILE_WORKER_AUTH_SHARED_SECRET`
-
-- `WORKER_AUTH_ENFORCE`
+- `WORKER_AUTH_ENFORCE` (default `true`)
 
 - `AGENT_BROKER_URL`
 
@@ -211,7 +232,15 @@ Supported overrides:
 
 - `AGENT_LINE_POLL_INTERVAL`
 
+Limits on these overrides:
+
+- `BROKER_ROLE_ID` must not name an administrator-level role (`role_admin`, or any role whose allowed task types include `*`). The broker registers administrator-level sessions only for callers on its own loopback interface; the agent registers over the compose network, so the broker refuses the registration with HTTP 403.
+
+- `WORKER_AUTH_ENFORCE=false` turns off worker credential verification. The three LINE worker routes (`POST /api/v1/high-level/line/process`, `GET /api/v1/high-level/line/notifications/pending`, `POST /api/v1/high-level/line/notifications/complete`) accept only a verified worker signature, so with verification off they answer HTTP 401 to every request and the LINE worker stops working. Keep the default `true` whenever the LINE worker runs.
+
 `AGENT_BROKER_URL` controls the HTTP broker URL injected into dynamically spawned agent containers through `/api/v1/agents/spawn`. In the compose stack the default is `http://broker:5000`; for a host-side broker, point it at the broker address reachable from the container, such as `http://host.containers.internal:5361` on Podman Desktop.
+
+`/api/v1/agents/spawn` requires an administrator scoped token (`role_admin`). The broker issues an administrator-level session only when the registration arrives over the broker host's own loopback interface and the task assigns an administrator role. The agent containers in these stacks reach the broker over the compose network, so the spawn flow is not available inside them.
 
 ## Switching To A Real Upstream
 

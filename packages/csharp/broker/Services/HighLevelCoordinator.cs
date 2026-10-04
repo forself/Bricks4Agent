@@ -1372,16 +1372,18 @@ public class HighLevelCoordinator
 
     public IReadOnlyList<HighLevelLineUserSummary> ListLineUsers()
     {
+        // 只採信系統元件在 global 範圍寫入的版本
         var entries = _db.Query<SharedContextEntry>(
-            @"SELECT e.*
+            $@"SELECT e.*
               FROM shared_context_entries e
               INNER JOIN (
                   SELECT document_id, MAX(version) AS max_version
                   FROM shared_context_entries
-                  WHERE document_id LIKE @prefix
+                  WHERE document_id LIKE @prefix AND {SystemContextDocuments.TrustedGlobalCondition()}
                   GROUP BY document_id
               ) latest
                 ON latest.document_id = e.document_id AND latest.max_version = e.version
+              WHERE {SystemContextDocuments.TrustedGlobalCondition("e")}
               ORDER BY e.created_at DESC",
             new { prefix = "hlm.profile.line.%" });
 
@@ -1553,16 +1555,18 @@ public class HighLevelCoordinator
 
     public IReadOnlyList<HighLevelLineNotification> ListPendingLineNotifications(int limit = 20)
     {
+        // 只採信系統元件在 global 範圍寫入的版本
         var entries = _db.Query<SharedContextEntry>(
-            @"SELECT e.*
+            $@"SELECT e.*
               FROM shared_context_entries e
               INNER JOIN (
                   SELECT document_id, MAX(version) AS max_version
                   FROM shared_context_entries
-                  WHERE document_id LIKE @prefix
+                  WHERE document_id LIKE @prefix AND {SystemContextDocuments.TrustedGlobalCondition()}
                   GROUP BY document_id
               ) latest
                 ON latest.document_id = e.document_id AND latest.max_version = e.version
+              WHERE {SystemContextDocuments.TrustedGlobalCondition("e")}
               ORDER BY e.created_at ASC
               LIMIT @lim",
             new { prefix = "hlm.notify.line.%", lim = Math.Max(1, limit) });
@@ -1605,9 +1609,10 @@ public class HighLevelCoordinator
         try
         {
             var entries = _db.Query<SharedContextEntry>(
-                """
+                $"""
                 SELECT * FROM shared_context_entries
                 WHERE document_id LIKE 'hlm.artifact.line.%'
+                  AND {SystemContextDocuments.TrustedGlobalCondition()}
                   AND content_ref LIKE @pattern
                 ORDER BY version DESC
                 """,
@@ -3303,8 +3308,9 @@ public class HighLevelCoordinator
 
     private T? LoadLatestJson<T>(string documentId)
     {
+        // 只採信系統元件在 global 範圍寫入的版本
         var json = _db.Scalar<string>(
-            "SELECT content_ref FROM shared_context_entries WHERE document_id = @docId ORDER BY version DESC LIMIT 1",
+            $"SELECT content_ref FROM shared_context_entries WHERE document_id = @docId AND {SystemContextDocuments.TrustedGlobalCondition()} ORDER BY version DESC LIMIT 1",
             new { docId = documentId });
 
         if (string.IsNullOrWhiteSpace(json))

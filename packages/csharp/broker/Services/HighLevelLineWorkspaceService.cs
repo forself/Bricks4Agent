@@ -7,6 +7,8 @@ namespace Broker.Services;
 
 public sealed class HighLevelLineWorkspaceService
 {
+    private const string LineArtifactDocumentIdPrefix = "hlm.artifact.line.";
+
     private readonly BrokerDb _db;
     private readonly string _accessRoot;
 
@@ -75,41 +77,42 @@ public sealed class HighLevelLineWorkspaceService
 
     public IReadOnlyList<HighLevelLineArtifactRecord> ListArtifacts(string userId, int limit = 50)
     {
-        var entries = _db.Query<SharedContextEntry>(
-            """
-            SELECT * FROM shared_context_entries
-            WHERE document_id LIKE @prefix
-            ORDER BY created_at DESC
-            LIMIT @lim
-            """,
-            new
-            {
-                prefix = $"hlm.artifact.line.{userId}.%",
-                lim = Math.Max(1, limit)
-            });
+        var take = Math.Max(1, limit);
+        // 使用者 ID 只做逐字、區分大小寫的前綴比對（不用 LIKE：LIKE 有萬用字元，ASCII 也不分大小寫）。
+        // 前綴相同的其他使用者（例如 "bob" 與 "bob.x"）再以紀錄本身的 UserId 排除；
+        // 排除發生在 LIMIT 之後，所以分頁讀到湊滿 take 筆或讀完為止。
+        var prefix = BuildLineArtifactDocumentId(userId, string.Empty);
+        var items = new List<HighLevelLineArtifactRecord>();
+        for (var offset = 0; items.Count < take; offset += take)
+        {
+            var entries = _db.Query<SharedContextEntry>(
+                $"""
+                SELECT * FROM shared_context_entries
+                WHERE substr(document_id, 1, length(@prefix)) = @prefix AND {SystemContextDocuments.TrustedGlobalCondition()}
+                ORDER BY created_at DESC, entry_id
+                LIMIT @lim OFFSET @off
+                """,
+                new { prefix, lim = take, off = offset });
 
-        return entries
-            .Select(entry =>
-            {
-                try
-                {
-                    var item = JsonSerializer.Deserialize<HighLevelLineArtifactRecord>(entry.ContentRef);
-                    if (item != null && string.IsNullOrWhiteSpace(item.DocumentId))
-                        item.DocumentId = entry.DocumentId;
-                    return item;
-                }
-                catch { return null; }
-            })
-            .Where(item => item != null)
-            .Cast<HighLevelLineArtifactRecord>()
+            items.AddRange(entries
+                .Select(TryReadArtifact)
+                .Where(item => item != null && string.Equals(item.UserId, userId, StringComparison.Ordinal))
+                .Cast<HighLevelLineArtifactRecord>());
+
+            if (entries.Count < take)
+                break;
+        }
+
+        return items
             .OrderByDescending(item => item.CreatedAt)
+            .Take(take)
             .ToList();
     }
 
     public HighLevelLineArtifactRecord? ReadArtifact(string documentId)
     {
         var entry = _db.Query<SharedContextEntry>(
-            "SELECT * FROM shared_context_entries WHERE document_id = @documentId ORDER BY version DESC LIMIT 1",
+            $"SELECT * FROM shared_context_entries WHERE document_id = @documentId AND {SystemContextDocuments.TrustedGlobalCondition()} ORDER BY version DESC LIMIT 1",
             new { documentId }).FirstOrDefault();
 
         if (entry == null || string.IsNullOrWhiteSpace(entry.ContentRef))
@@ -127,17 +130,31 @@ public sealed class HighLevelLineWorkspaceService
 
     public HighLevelLineArtifactRecord? ReadArtifactById(string artifactId)
     {
+        if (string.IsNullOrEmpty(artifactId))
+            return null;
+
+        // document_id = "hlm.artifact.line.{userId}.{artifactId}"：前綴與後綴都逐字、區分大小寫比對（不用 LIKE）
         var entries = _db.Query<SharedContextEntry>(
-            """
+            $"""
             SELECT * FROM shared_context_entries
-            WHERE document_id LIKE @prefix
+            WHERE substr(document_id, 1, length(@prefix)) = @prefix
+              AND length(document_id) >= length(@prefix) + length(@suffix)
+              AND substr(document_id, -length(@suffix)) = @suffix
+              AND {SystemContextDocuments.TrustedGlobalCondition()}
             ORDER BY version DESC
             LIMIT 1
             """,
-            new { prefix = $"hlm.artifact.line.%.{artifactId}" });
+            new { prefix = LineArtifactDocumentIdPrefix, suffix = $".{artifactId}" });
 
-        var entry = entries.FirstOrDefault();
-        if (entry == null || string.IsNullOrWhiteSpace(entry.ContentRef))
+        var item = entries.Count == 0 ? null : TryReadArtifact(entries[0]);
+        return item != null && string.Equals(item.ArtifactId, artifactId, StringComparison.Ordinal)
+            ? item
+            : null;
+    }
+
+    private static HighLevelLineArtifactRecord? TryReadArtifact(SharedContextEntry entry)
+    {
+        if (string.IsNullOrWhiteSpace(entry.ContentRef))
             return null;
 
         try
@@ -153,9 +170,9 @@ public sealed class HighLevelLineWorkspaceService
     public IReadOnlyList<HighLevelLineArtifactRecord> ListAllArtifacts(string? statusFilter, int limit = 50, int offset = 0)
     {
         var entries = _db.Query<SharedContextEntry>(
-            """
+            $"""
             SELECT * FROM shared_context_entries
-            WHERE document_id LIKE 'hlm.artifact.line.%'
+            WHERE document_id LIKE 'hlm.artifact.line.%' AND {SystemContextDocuments.TrustedGlobalCondition()}
             ORDER BY created_at DESC
             LIMIT @lim OFFSET @off
             """,
@@ -186,7 +203,7 @@ public sealed class HighLevelLineWorkspaceService
     {
         var docId = BuildLineNotificationDocumentId(notificationId);
         var entry = _db.Query<SharedContextEntry>(
-            "SELECT * FROM shared_context_entries WHERE document_id = @docId ORDER BY version DESC LIMIT 1",
+            $"SELECT * FROM shared_context_entries WHERE document_id = @docId AND {SystemContextDocuments.TrustedGlobalCondition()} ORDER BY version DESC LIMIT 1",
             new { docId }).FirstOrDefault();
 
         if (entry == null || string.IsNullOrWhiteSpace(entry.ContentRef))
@@ -212,8 +229,9 @@ public sealed class HighLevelLineWorkspaceService
 
     private HighLevelUserProfile? LoadUserProfile(string channel, string userId)
     {
+        // 只採信系統元件在 global 範圍寫入的版本
         var entry = _db.Query<SharedContextEntry>(
-            "SELECT * FROM shared_context_entries WHERE document_id = @docId ORDER BY version DESC LIMIT 1",
+            $"SELECT * FROM shared_context_entries WHERE document_id = @docId AND {SystemContextDocuments.TrustedGlobalCondition()} ORDER BY version DESC LIMIT 1",
             new { docId = BuildProfileDocumentId(channel, userId) }).FirstOrDefault();
         if (entry == null || string.IsNullOrWhiteSpace(entry.ContentRef))
             return null;
@@ -281,7 +299,10 @@ public sealed class HighLevelLineWorkspaceService
             "SELECT * FROM shared_context_entries WHERE document_id = @documentId ORDER BY version DESC LIMIT 1",
             new { documentId }).FirstOrDefault();
 
-        if (latest == null)
+        // 最新版本不是系統元件寫入的（或不存在）時另寫新版本，不覆寫他人的版本
+        if (latest == null ||
+            !latest.AuthorPrincipalId.StartsWith("system:", StringComparison.Ordinal) ||
+            !string.Equals(latest.TaskId, taskId, StringComparison.Ordinal))
         {
             _db.Insert(new SharedContextEntry
             {
@@ -293,7 +314,8 @@ public sealed class HighLevelLineWorkspaceService
                 ContentType = contentType,
                 AuthorPrincipalId = "system:high-level-workspace",
                 Acl = """{"read":["*"],"write":["system:high-level-workspace"]}""",
-                Version = 1,
+                Version = (latest?.Version ?? 0) + 1,
+                ParentVersion = latest?.Version,
                 CreatedAt = DateTime.UtcNow
             });
             return;
@@ -347,5 +369,5 @@ public sealed class HighLevelLineWorkspaceService
         => $"hlm.notify.line.{notificationId}";
 
     private static string BuildLineArtifactDocumentId(string userId, string artifactId)
-        => $"hlm.artifact.line.{userId}.{artifactId}";
+        => $"{LineArtifactDocumentIdPrefix}{userId}.{artifactId}";
 }

@@ -164,9 +164,10 @@ public class LineChatGateway
 
     public List<ConversationSummary> ListConversations()
     {
+        // 只採信系統元件在 global 範圍寫入的對話紀錄
         var entries = _db.Query<SharedContextEntry>(
-            @"SELECT * FROM shared_context_entries
-              WHERE key LIKE 'convlog:%' AND task_id = 'global'
+            $@"SELECT * FROM shared_context_entries
+              WHERE key LIKE 'convlog:%' AND {SystemContextDocuments.TrustedGlobalCondition()}
               ORDER BY created_at DESC");
 
         var result = new List<ConversationSummary>();
@@ -204,8 +205,8 @@ public class LineChatGateway
     {
         var key = $"convlog:{userId}";
         var entry = _db.Query<SharedContextEntry>(
-            @"SELECT content_ref FROM shared_context_entries
-              WHERE key = @key AND task_id = 'global'
+            $@"SELECT content_ref FROM shared_context_entries
+              WHERE key = @key AND {SystemContextDocuments.TrustedGlobalCondition()}
               ORDER BY version DESC LIMIT 1",
             new { key }).FirstOrDefault();
 
@@ -235,15 +236,15 @@ public class LineChatGateway
 
         var json = JsonSerializer.Serialize(existing);
         var existingEntry = _db.Query<SharedContextEntry>(
-            "SELECT entry_id FROM shared_context_entries WHERE key = @key AND task_id = 'global' LIMIT 1",
+            $"SELECT entry_id FROM shared_context_entries WHERE key = @key AND {SystemContextDocuments.TrustedGlobalCondition()} LIMIT 1",
             new { key }).FirstOrDefault();
 
         if (existingEntry != null)
         {
             _db.Execute(
-                @"UPDATE shared_context_entries
+                $@"UPDATE shared_context_entries
                   SET content_ref = @json, version = version + 1
-                  WHERE key = @key AND task_id = 'global'",
+                  WHERE key = @key AND {SystemContextDocuments.TrustedGlobalCondition()}",
                 new { json, key });
         }
         else

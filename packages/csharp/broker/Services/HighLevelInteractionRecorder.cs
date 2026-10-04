@@ -44,8 +44,9 @@ public sealed class HighLevelInteractionRecorder
     public List<HighLevelInteractionRecord> ReadLatest(string channel, string userId, int limit = 20)
     {
         var documentId = BuildDocumentId(channel, userId);
+        // 只採信系統元件在 global 範圍寫入的版本
         var entries = _db.Query<SharedContextEntry>(
-            "SELECT * FROM shared_context_entries WHERE document_id = @docId ORDER BY version DESC LIMIT @lim",
+            $"SELECT * FROM shared_context_entries WHERE document_id = @docId AND {SystemContextDocuments.TrustedGlobalCondition()} ORDER BY version DESC LIMIT @lim",
             new { docId = documentId, lim = Math.Max(1, limit) });
 
         var result = new List<HighLevelInteractionRecord>();

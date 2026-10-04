@@ -32,10 +32,11 @@ public sealed class HighLevelWorkflowAdminService
     public HighLevelHandoffDetail? ReadHandoff(string documentId)
         => ReadJsonDocument<HighLevelHandoffDetail>(documentId);
 
+    // 執行意圖與交接文件都由系統元件寫入；只列出、讀取系統元件寫入的版本
     private List<T> ListJsonDocuments<T>(string pattern, int limit) where T : WorkflowDocumentBase, new()
     {
         var entries = _db.Query<SharedContextEntry>(
-            "SELECT * FROM shared_context_entries WHERE document_id LIKE @pattern ORDER BY created_at DESC LIMIT @limit",
+            $"SELECT * FROM shared_context_entries WHERE document_id LIKE @pattern AND {SystemContextDocuments.SystemAuthoredCondition()} ORDER BY created_at DESC LIMIT @limit",
             new { pattern, limit = NormalizeLimit(limit) });
 
         var items = new List<T>();
@@ -56,7 +57,7 @@ public sealed class HighLevelWorkflowAdminService
     private T? ReadJsonDocument<T>(string documentId) where T : WorkflowDocumentBase, new()
     {
         var entry = _db.Query<SharedContextEntry>(
-            "SELECT * FROM shared_context_entries WHERE document_id = @docId ORDER BY version DESC LIMIT 1",
+            $"SELECT * FROM shared_context_entries WHERE document_id = @docId AND {SystemContextDocuments.SystemAuthoredCondition()} ORDER BY version DESC LIMIT 1",
             new { docId = documentId }).FirstOrDefault();
 
         return entry == null ? null : TryReadJsonDocument<T>(entry);

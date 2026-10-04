@@ -39,3 +39,11 @@ test-*.json
 *.key
 .env
 .env.*
+# 巢狀目錄的 .env 也排除（上面兩條只比對 build context 根目錄）
+**/.env
+**/.env.*
+# gen-stack-secrets.mjs 的輸出檔名；正常應放在 repo 外，萬一放進 repo 也不可進映像
+**/agent-stack.env
+# 本機密鑰設定檔（.gitignore 已忽略，但 COPY . . 仍會帶進 build context）
+packages/csharp/broker/appsettings.Development.json
+packages/csharp/workers/line-worker/appsettings.json

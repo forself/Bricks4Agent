@@ -33,8 +33,9 @@ public class DbSessionKeyStore : ISessionKeyStore
     {
         _db = db;
 
-        if (string.IsNullOrWhiteSpace(masterKeyBase64)
-            || masterKeyBase64.StartsWith("CHANGE_ME"))
+        // 佔位值規則與 ScopedTokenService、broker 啟動驗證共用（空白、CHANGE_ME*、REPLACE_WITH_*）。
+        // broker 主程式已先經 BrokerSecretsValidator 決定實際金鑰；這裡的回退只服務直接建構本類別的呼叫端。
+        if (SecretPlaceholders.IsPlaceholder(masterKeyBase64))
         {
             // 開發模式：自動生成隨機主金鑰（每次重啟不同，session 不可跨重啟）
             _masterKey = RandomNumberGenerator.GetBytes(32);

@@ -42,7 +42,7 @@ public static class TaskEndpoints
                 runtimeDescriptor);
 
             return Results.Ok(ApiResponseHelper.Success(task));
-        });
+        }).RequireBrokerAdmin(); // 可指定指派主體、角色與 runtime descriptor，只限管理員
 
         tasks.MapPost("/query", (HttpContext ctx, IBrokerService broker) =>
         {
@@ -53,6 +53,11 @@ public static class TaskEndpoints
             }
 
             var task = broker.GetTask(taskId);
+            if (!BrokerAuthorization.TryRequireTaskAccess(ctx, task, taskId, out var denied))
+            {
+                return denied;
+            }
+
             if (task == null)
             {
                 return Results.NotFound(ApiResponseHelper.Error("Task not found.", 404));
@@ -73,6 +78,11 @@ public static class TaskEndpoints
                 ? reasonProp.GetString() ?? string.Empty
                 : "Cancelled by user";
             var principalId = RequestBodyHelper.GetPrincipalId(ctx);
+
+            if (!BrokerAuthorization.TryRequireTaskAccess(ctx, broker, taskId, out var denied))
+            {
+                return denied;
+            }
 
             var success = broker.CancelTask(taskId, principalId, reason);
             if (!success)

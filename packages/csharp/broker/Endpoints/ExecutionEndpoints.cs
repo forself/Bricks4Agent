@@ -53,6 +53,10 @@ public static class ExecutionEndpoints
             if (request == null)
                 return Results.NotFound(ApiResponseHelper.Error("Execution request not found.", 404));
 
+            // 只允許該請求所屬任務的擁有者（或管理員）查詢
+            if (!BrokerAuthorization.TryRequireTaskAccess(ctx, broker, request.TaskId, out var denied))
+                return denied;
+
             return Results.Ok(ApiResponseHelper.Success(request));
         });
     }

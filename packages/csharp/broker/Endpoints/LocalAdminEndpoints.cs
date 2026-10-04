@@ -11,7 +11,9 @@ public static class LocalAdminEndpoints
 {
     public static void Map(RouteGroupBuilder group)
     {
-        var localAdmin = group.MapGroup("/local-admin");
+        // 整個群組以 local-admin cookie 工作階段驗證（下方 endpoint filter），不使用 scoped token。
+        var localAdmin = group.MapGroup("/local-admin")
+            .WithBrokerAuthPolicy(BrokerAuthPolicy.LocalAdminSession);
         localAdmin.AddEndpointFilter(async (filterContext, next) =>
         {
             var ctx = filterContext.HttpContext;

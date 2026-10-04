@@ -12,7 +12,7 @@ services:
       MOCK_TOOL_PATH: "${STACK_TOOL_PATH:-README.md}"
       MOCK_TOOL_ARGS_JSON: "${STACK_TOOL_ARGS_JSON:-}"
     ports:
-      - "${STACK_LLM_PORT:-11434}:11434"
+      - "127.0.0.1:${STACK_LLM_PORT:-11434}:11434"
     networks:
       - control-net
 
@@ -27,21 +27,30 @@ services:
       ASPNETCORE_URLS: "http://0.0.0.0:5000"
       Database__Path: "/data/broker.db"
       HighLevelCoordinator__AccessRoot: "/data/workspaces"
-      Broker__ScopedToken__Secret: "${BROKER_SCOPED_TOKEN_SECRET:-THIS_IS_A_DEVELOPMENT_ONLY_SCOPED_TOKEN_SECRET_32B}"
-      Broker__Encryption__MasterKeyBase64: "${BROKER_MASTER_KEY_BASE64:-BEjqln/N4iLKmxh5ltylZvLxax+iQc+m9T+1BkAz1+w=}"
-      Broker__Encryption__EcdhPrivateKeyBase64: "${BROKER_ECDH_PRIVATE_KEY_BASE64:-MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQg+oxf+eIdOKgNveCoXr8rgrh/9NAtuBSto3XjXjajsW+hRANCAAS8WmQxu8c1Nwb+P8uoewmd9/gHlz/2i6pUZ+/WrMD+YiKf+mkfND1V37tF9eImxrlJGpMW5NR5vuk5dLRKuFWl}"
+      # ── Secrets ── no defaults: generate an env file OUTSIDE the repo with
+      # `node tools/agent/container/gen-stack-secrets.mjs` and pass it with --env-file
+      # to both `up` and `down`. The broker runs as Production here and refuses
+      # placeholder or previously published keys at startup.
+      Broker__ScopedToken__Secret: "${BROKER_SCOPED_TOKEN_SECRET:?run node tools/agent/container/gen-stack-secrets.mjs and pass the file with --env-file}"
+      Broker__Encryption__MasterKeyBase64: "${BROKER_MASTER_KEY_BASE64:?run node tools/agent/container/gen-stack-secrets.mjs and pass the file with --env-file}"
+      Broker__Encryption__EcdhPrivateKeyBase64: "${BROKER_ECDH_PRIVATE_KEY_BASE64:?run node tools/agent/container/gen-stack-secrets.mjs and pass the file with --env-file}"
       Embedding__Enabled: "false"
       RagSeed__Enabled: "false"
       LineChatGateway__RagEnabled: "false"
-      WorkerAuth__Enforce: "${WORKER_AUTH_ENFORCE:-false}"
+      WorkerAuth__Enforce: "${WORKER_AUTH_ENFORCE:-true}"
       WorkerAuth__Credentials__0__WorkerType: "line-worker"
-      WorkerAuth__Credentials__0__KeyId: "${LINE_WORKER_AUTH_KEY_ID:-line-worker-dev-key}"
-      WorkerAuth__Credentials__0__SharedSecret: "${LINE_WORKER_AUTH_SHARED_SECRET:-line-worker-dev-shared-secret}"
+      WorkerAuth__Credentials__0__KeyId: "${LINE_WORKER_AUTH_KEY_ID:?run node tools/agent/container/gen-stack-secrets.mjs and pass the file with --env-file}"
+      WorkerAuth__Credentials__0__SharedSecret: "${LINE_WORKER_AUTH_SHARED_SECRET:?run node tools/agent/container/gen-stack-secrets.mjs and pass the file with --env-file}"
       WorkerAuth__Credentials__0__Status: "active"
       WorkerAuth__Credentials__1__WorkerType: "file-worker"
-      WorkerAuth__Credentials__1__KeyId: "${FILE_WORKER_AUTH_KEY_ID:-file-worker-dev-key}"
-      WorkerAuth__Credentials__1__SharedSecret: "${FILE_WORKER_AUTH_SHARED_SECRET:-file-worker-dev-shared-secret}"
+      WorkerAuth__Credentials__1__KeyId: "${FILE_WORKER_AUTH_KEY_ID:?run node tools/agent/container/gen-stack-secrets.mjs and pass the file with --env-file}"
+      WorkerAuth__Credentials__1__SharedSecret: "${FILE_WORKER_AUTH_SHARED_SECRET:?run node tools/agent/container/gen-stack-secrets.mjs and pass the file with --env-file}"
       WorkerAuth__Credentials__1__Status: "active"
+      # Index 2 also overrides the appsettings.json template credential at that index.
+      WorkerAuth__Credentials__2__WorkerType: "execution-adapter-worker"
+      WorkerAuth__Credentials__2__KeyId: "${EXEC_ADAPTER_AUTH_KEY_ID:?run node tools/agent/container/gen-stack-secrets.mjs and pass the file with --env-file}"
+      WorkerAuth__Credentials__2__SharedSecret: "${EXEC_ADAPTER_AUTH_SHARED_SECRET:?run node tools/agent/container/gen-stack-secrets.mjs and pass the file with --env-file}"
+      WorkerAuth__Credentials__2__Status: "active"
       # ── LLM Proxy ──
       LlmProxy__Enabled: "true"
       LlmProxy__Provider: "ollama"
@@ -87,7 +96,7 @@ services:
       # broker-spawned agents are sealed on the internal-only agent network (§13.1)
       FunctionPool__ContainerManager__WorkerImages__agent__NetworkName: "bricks4agent_agent-net"
     ports:
-      - "${BROKER_PORT:-5000}:5000"
+      - "127.0.0.1:${BROKER_PORT:-5000}:5000"
     volumes:
       - broker-data:/data
       # Mount Docker socket so broker can spawn worker containers
@@ -111,8 +120,8 @@ services:
       WORKER_Worker__MaxConcurrent: "4"
       WORKER_Worker__SandboxRoot: "/workspace"
       WORKER_Worker__Auth__WorkerType: "file-worker"
-      WORKER_Worker__Auth__KeyId: "${FILE_WORKER_AUTH_KEY_ID:-file-worker-dev-key}"
-      WORKER_Worker__Auth__SharedSecret: "${FILE_WORKER_AUTH_SHARED_SECRET:-file-worker-dev-shared-secret}"
+      WORKER_Worker__Auth__KeyId: "${FILE_WORKER_AUTH_KEY_ID:?run node tools/agent/container/gen-stack-secrets.mjs and pass the file with --env-file}"
+      WORKER_Worker__Auth__SharedSecret: "${FILE_WORKER_AUTH_SHARED_SECRET:?run node tools/agent/container/gen-stack-secrets.mjs and pass the file with --env-file}"
     volumes:
       - ../../..:/workspace:ro
     restart: "on-failure:5"
@@ -132,8 +141,8 @@ services:
       WORKER_Worker__BrokerPort: "7000"
       WORKER_Worker__MaxConcurrent: "4"
       WORKER_Worker__Auth__WorkerType: "line-worker"
-      WORKER_Worker__Auth__KeyId: "${LINE_WORKER_AUTH_KEY_ID:-line-worker-dev-key}"
-      WORKER_Worker__Auth__SharedSecret: "${LINE_WORKER_AUTH_SHARED_SECRET:-line-worker-dev-shared-secret}"
+      WORKER_Worker__Auth__KeyId: "${LINE_WORKER_AUTH_KEY_ID:?run node tools/agent/container/gen-stack-secrets.mjs and pass the file with --env-file}"
+      WORKER_Worker__Auth__SharedSecret: "${LINE_WORKER_AUTH_SHARED_SECRET:?run node tools/agent/container/gen-stack-secrets.mjs and pass the file with --env-file}"
       WORKER_Broker__ApiUrl: "http://broker:5000"
       WORKER_Line__ChannelAccessToken: "${LINE_CHANNEL_ACCESS_TOKEN}"
       WORKER_Line__ChannelSecret: "${LINE_CHANNEL_SECRET}"
@@ -142,7 +151,7 @@ services:
       WORKER_Line__WebhookHost: "0.0.0.0"
       WORKER_Line__WebhookPort: "19090"
     ports:
-      - "${LINE_WEBHOOK_PORT:-19090}:19090"
+      - "127.0.0.1:${LINE_WEBHOOK_PORT:-19090}:19090"
     restart: "on-failure:5"
     networks:
       - worker-net
@@ -168,8 +177,8 @@ services:
       WORKER_Worker__SandboxRoot: "/workspace"
       WORKER_Worker__EvidenceRoot: "/tmp/b4a-evidence"
       WORKER_Worker__Auth__WorkerType: "execution-adapter-worker"
-      WORKER_Worker__Auth__KeyId: "${EXEC_ADAPTER_AUTH_KEY_ID:-exec-adapter-dev-key}"
-      WORKER_Worker__Auth__SharedSecret: "${EXEC_ADAPTER_AUTH_SHARED_SECRET:-exec-adapter-dev-shared-secret}"
+      WORKER_Worker__Auth__KeyId: "${EXEC_ADAPTER_AUTH_KEY_ID:?run node tools/agent/container/gen-stack-secrets.mjs and pass the file with --env-file}"
+      WORKER_Worker__Auth__SharedSecret: "${EXEC_ADAPTER_AUTH_SHARED_SECRET:?run node tools/agent/container/gen-stack-secrets.mjs and pass the file with --env-file}"
       HOME: "/tmp"
     volumes:
       # A fixture/throwaway workspace by default — NOT the real repo — so an applied
@@ -198,7 +207,7 @@ services:
       - broker
     environment:
       BROKER_URL: "http://broker:5000"
-      BROKER_PUB_KEY: "${BROKER_ECDH_PUBLIC_KEY_BASE64:-MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEvFpkMbvHNTcG/j/LqHsJnff4B5c/9ouqVGfv1qzA/mIin/ppHzQ9Vd+7RfXiJsa5SRqTFuTUeb7pOXS0SrhVpQ==}"
+      BROKER_PUB_KEY: "${BROKER_ECDH_PUBLIC_KEY_BASE64:?run node tools/agent/container/gen-stack-secrets.mjs and pass the file with --env-file}"
       BROKER_PRINCIPAL_ID: "${BROKER_PRINCIPAL_ID:-prn_podman_dev}"
       BROKER_TASK_ID: "${BROKER_TASK_ID:-task_podman_dev}"
       BROKER_ROLE_ID: "${BROKER_ROLE_ID:-role_reader}"

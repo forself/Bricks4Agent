@@ -34,7 +34,8 @@ public static class AgentEndpoints
 
     public static void Map(RouteGroupBuilder group)
     {
-        var agents = group.MapGroup("/agents");
+        // Agent 生命週期與 RAG 匯入都是管理操作：整個群組只限管理員（呼叫者為以 role_admin 登入的 dashboard）。
+        var agents = group.MapGroup("/agents").RequireBrokerAdmin();
 
         // ── 1. 列出可用能力（含風險等級、分類、說明） ──
         agents.MapPost("/capabilities", (AgentSpawnService spawnService) =>

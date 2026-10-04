@@ -44,8 +44,9 @@ public sealed class HighLevelMemoryStore
     public HighLevelMemoryState? ReadLatest(string channel, string userId)
     {
         var documentId = BuildDocumentId(channel, userId);
+        // 只採信系統元件在 global 範圍寫入的版本
         var latest = _db.Query<SharedContextEntry>(
-            "SELECT * FROM shared_context_entries WHERE document_id = @docId ORDER BY version DESC LIMIT 1",
+            $"SELECT * FROM shared_context_entries WHERE document_id = @docId AND {SystemContextDocuments.TrustedGlobalCondition()} ORDER BY version DESC LIMIT 1",
             new { docId = documentId }).FirstOrDefault();
 
         if (latest == null || string.IsNullOrWhiteSpace(latest.ContentRef))

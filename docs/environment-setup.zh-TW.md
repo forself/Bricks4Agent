@@ -253,6 +253,16 @@ Common sections to override:
 
 - `ArtifactDownload:SigningSecret`
 
+The broker validates its keys at startup (`packages/csharp/broker/Configuration/BrokerSecretsValidator.cs`):
+
+- In `Development` and `Testing`, an empty or placeholder (`CHANGE_ME*`, `REPLACE_WITH_*`) `Broker:ScopedToken:Secret`, `Broker:Encryption:MasterKeyBase64`, or `Broker:Encryption:EcdhPrivateKeyBase64` is replaced with a per-process random key and logged as a warning.
+
+- In any other environment (a plain `dotnet run` without `ASPNETCORE_ENVIRONMENT` is Production) those placeholders stop the broker, unless `Broker:AllowEphemeralKeys=true` opts in to per-process random keys. The error names the setting, its environment variable (for example `Broker__ScopedToken__Secret`), and `node tools/agent/container/gen-stack-secrets.mjs`.
+
+- Keys that were published as compose defaults are refused in every environment. Formats are checked early: the ScopedToken secret needs at least 32 UTF-8 bytes, the master key must be base64 of 32 bytes, and the ECDH key must be a PKCS#8 P-256 private key.
+
+- With `WorkerAuth:Enforce=true`, placeholder worker credentials are refused outside `Development`/`Testing`. An empty `ArtifactDownload:SigningSecret` still means signed links are disabled.
+
 ## 6. Environment variables used by the repo
 
 ### 6.1 ASP.NET Core and broker
@@ -680,30 +690,42 @@ Preferred smoke test:
 npm run validate:podman-governed-stack
 ```
 
+The node stack tests generate fresh broker keys and worker credentials in memory for every run and pass them to both `up` and `down`; they write no files.
+
+The compose files have no default keys (`${VAR:?...}`). For manual runs, generate a secrets file outside the repository first, and pass the same `--env-file` to every `up` and `down`:
+
+```powershell
+node tools/agent/container/gen-stack-secrets.mjs
+```
+
+The generator writes `$env:BRICKS4AGENT_SECRETS_DIR/agent-stack.env`, or `~/.bricks4agent/agent-stack.env` when that variable is not set, prints the path but never the values, and refuses any path inside the repository (the agent container mounts the repository and can read it). See `tools/agent/container/README.md` for the variable list.
+
 Manual default stack:
 
 ```powershell
-podman compose -f tools/agent/container/compose.yml up --build --abort-on-container-exit --exit-code-from agent
+podman compose --env-file "$HOME/.bricks4agent/agent-stack.env" -f tools/agent/container/compose.yml up --build --abort-on-container-exit --exit-code-from agent
 ```
 
 OpenAI-compatible mock stack:
 
 ```powershell
-podman compose -f tools/agent/container/compose.openai-compatible.yml up --build --abort-on-container-exit --exit-code-from agent
+podman compose --env-file "$HOME/.bricks4agent/agent-stack.env" -f tools/agent/container/compose.openai-compatible.yml up --build --abort-on-container-exit --exit-code-from agent
 ```
 
 Host Ollama stack:
 
 ```powershell
 $env:STACK_MODEL = 'qwen3.6:latest'
-podman compose -f tools/agent/container/compose.ollama-host.yml up --build --abort-on-container-exit --exit-code-from agent
+podman compose --env-file "$HOME/.bricks4agent/agent-stack.env" -f tools/agent/container/compose.ollama-host.yml up --build --abort-on-container-exit --exit-code-from agent
 ```
 
-Stop and remove volumes:
+Stop and remove volumes (`down` needs the same env file):
 
 ```powershell
-podman compose -f tools/agent/container/compose.yml down -v
+podman compose --env-file "$HOME/.bricks4agent/agent-stack.env" -f tools/agent/container/compose.yml down -v
 ```
+
+In these stacks the broker runs as Production and refuses placeholder or previously published keys; do not add `ASPNETCORE_ENVIRONMENT=Development` to get around it. `WORKER_AUTH_ENFORCE` defaults to `true`.
 
 Important port note:
 
@@ -713,11 +735,13 @@ Important port note:
 
 - `compose.ollama-host.yml` broker default host port: `5002`
 
+- every published port is bound to `127.0.0.1` only
+
 Override when needed:
 
 ```powershell
 $env:BROKER_PORT = '5601'
-podman compose -f tools/agent/container/compose.openai-compatible.yml up --build --abort-on-container-exit --exit-code-from agent
+podman compose --env-file "$HOME/.bricks4agent/agent-stack.env" -f tools/agent/container/compose.openai-compatible.yml up --build --abort-on-container-exit --exit-code-from agent
 ```
 
 ## 15. Optional integrations

@@ -2,10 +2,71 @@
 'use strict';
 
 const assert = require('assert');
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const { pathToFileURL } = require('url');
 
 const ROOT = path.resolve(__dirname, '..', '..', '..');
+
+// compose 檔曾以 ${VAR:-預設值} 提交的開發金鑰，已在 git 歷史中公開。
+// 只保存 SHA-256（十六進位），不在 repo 中寫出原值。
+// 與 packages/csharp/broker/Configuration/BrokerSecretsValidator.cs 的
+// LeakedSecretFingerprints.Default（ValueSha256）必須一致，下方會比對。
+const LEAKED_SECRET_SHA256 = [
+    'd4735fc78bf0409eb9a424099eca948453529e39e8b541eaedf70fa341aa81fe', // broker ScopedToken secret
+    '5bfc312a1c45de453aa9fa235af0650488a52faf21ea66dd231af31b0269a2f1', // broker MasterKeyBase64
+    '7a5dd0ecd40874c4f914c0a49a5edbfde8136989d72e84a113025313f517f932', // broker ECDH private key
+    '3662bfe012750afdccb756357ecbf04e49f047ab409f214d3ec5cfeb52472c0f', // line-worker shared secret
+    '56d92e694fa1eec508fd8ef41ebe01aacc980e2140575797d3900b7763635283', // file-worker shared secret
+    'bbac8d268d5976b6dc3bdfd123fc86e0d1ee539210efd507c2aabead1c5c74f9', // execution-adapter shared secret
+];
+// 與上面 ECDH 私鑰成對的 broker 公鑰：本身不是密鑰，但出現代表 stack 仍在用那把私鑰。
+const LEAKED_PAIRED_PUBLIC_KEY_SHA256 = '7caae6b87a07c8f0b8edd969b473391671f1d1944d1619778818cf7397f9e3b8';
+
+const COMPOSE_FILES = [
+    'tools/agent/container/compose.yml',
+    'tools/agent/container/compose.openai-compatible.yml',
+    'tools/agent/container/compose.ollama-host.yml',
+];
+const BROKER_SECRET_VARIABLES = [
+    'BROKER_SCOPED_TOKEN_SECRET',
+    'BROKER_MASTER_KEY_BASE64',
+    'BROKER_ECDH_PRIVATE_KEY_BASE64',
+    'BROKER_ECDH_PUBLIC_KEY_BASE64',
+];
+const WORKER_SECRET_VARIABLES = [
+    'LINE_WORKER_AUTH_KEY_ID',
+    'LINE_WORKER_AUTH_SHARED_SECRET',
+    'FILE_WORKER_AUTH_KEY_ID',
+    'FILE_WORKER_AUTH_SHARED_SECRET',
+    'EXEC_ADAPTER_AUTH_KEY_ID',
+    'EXEC_ADAPTER_AUTH_SHARED_SECRET',
+];
+
+function sha256Hex(value) {
+    return crypto.createHash('sha256').update(value, 'utf8').digest('hex');
+}
+
+// 把文字切成類 base64／識別字的片段，逐一比對雜湊；回傳命中的雜湊前綴（不回傳原值）。
+function findLeakedFragments(text) {
+    const leaked = new Set([...LEAKED_SECRET_SHA256, LEAKED_PAIRED_PUBLIC_KEY_SHA256]);
+    const hits = new Set();
+    for (const match of text.matchAll(/[A-Za-z0-9+/=_-]{12,}/g)) {
+        const token = match[0];
+        const candidates = new Set([token, token.replace(/^-+/, '')]);
+        for (let index = token.indexOf('='); index !== -1; index = token.indexOf('=', index + 1)) {
+            candidates.add(token.slice(index + 1));
+        }
+        for (const candidate of candidates) {
+            const hash = sha256Hex(candidate);
+            if (leaked.has(hash)) {
+                hits.add(hash.slice(0, 12));
+            }
+        }
+    }
+    return [...hits];
+}
 
 function read(relativePath) {
     return fs.readFileSync(path.join(ROOT, relativePath), 'utf8');
@@ -35,7 +96,7 @@ assertIncludes('compose disables rag seed for smoke stack', compose, 'RagSeed__E
 assertIncludes('compose mock tool call can exercise broker dispatch', compose, 'MOCK_TOOL_CALL: "${STACK_TOOL_CALL:-}"');
 assertIncludes('compose uses container access root', compose, 'HighLevelCoordinator__AccessRoot: "/data/workspaces"');
 assertIncludes('compose line worker broker api uses service name', compose, 'WORKER_Broker__ApiUrl: "http://broker:5000"');
-assertIncludes('compose line worker has auth key', compose, 'WORKER_Worker__Auth__KeyId: "${LINE_WORKER_AUTH_KEY_ID:-line-worker-dev-key}"');
+assertIncludes('compose line worker has auth key', compose, 'WORKER_Worker__Auth__KeyId: "${LINE_WORKER_AUTH_KEY_ID:?');
 assertIncludes('compose mock ollama image tag', compose, 'image: bricks4agent-mock-ollama:latest');
 assertIncludes('compose broker image tag', compose, 'image: bricks4agent-broker:latest');
 assertIncludes('compose agent image tag', compose, 'image: bricks4agent-agent:latest');
@@ -43,6 +104,96 @@ assertIncludes('compose file worker image tag', compose, 'image: bricks4agent-fi
 assertIncludes('compose line worker image tag', compose, 'image: bricks4agent-line-worker:latest');
 assertIncludes('compose control network name', compose, 'name: bricks4agent_control-net');
 assertIncludes('compose worker network name', compose, 'name: bricks4agent_worker-net');
+
+// ── compose 密鑰：不附預設值、不含已外洩值、worker 驗證預設開啟、對外埠只綁 loopback ──
+const expectedLoopbackPorts = {
+    'tools/agent/container/compose.yml': 3,
+    'tools/agent/container/compose.openai-compatible.yml': 2,
+    'tools/agent/container/compose.ollama-host.yml': 1,
+};
+for (const composePath of COMPOSE_FILES) {
+    const text = read(composePath);
+    const requiredVariables = composePath.endsWith('/compose.yml')
+        ? [...BROKER_SECRET_VARIABLES, ...WORKER_SECRET_VARIABLES]
+        : BROKER_SECRET_VARIABLES;
+
+    for (const variable of requiredVariables) {
+        const references = [...text.matchAll(new RegExp(`[$][{]${variable}([^A-Z0-9_])`, 'g'))];
+        assert(references.length > 0, `${composePath}: expected a reference to ${variable}`);
+        for (const reference of references) {
+            assert.strictEqual(
+                reference[1] + text.charAt(reference.index + reference[0].length),
+                ':?',
+                `${composePath}: ${variable} must use the required form \${${variable}:?...} with no default`
+            );
+        }
+    }
+
+    const requiredMessages = [...text.matchAll(/[$][{]([A-Z0-9_]+):[?]([^}]*)[}]/g)];
+    assert(requiredMessages.length >= requiredVariables.length, `${composePath}: expected \${VAR:?...} entries`);
+    for (const [, variable, message] of requiredMessages) {
+        assert(
+            message.includes('gen-stack-secrets.mjs'),
+            `${composePath}: the error message for ${variable} should point at gen-stack-secrets.mjs`
+        );
+    }
+
+    assert.deepStrictEqual(findLeakedFragments(text), [], `${composePath}: contains a previously published development key`);
+    assertNotIncludes(`${composePath} keeps the broker out of Development`, text, 'ASPNETCORE_ENVIRONMENT');
+
+    const publishedPorts = [...text.matchAll(/^\s*ports:\s*\r?\n((?:\s*-\s*.*\r?\n?)+)/gm)]
+        .flatMap((block) => block[1].split(/\r?\n/).map((line) => line.trim()).filter((line) => line.startsWith('-')));
+    assert.strictEqual(
+        publishedPorts.length,
+        expectedLoopbackPorts[composePath],
+        `${composePath}: unexpected number of published ports`
+    );
+    for (const port of publishedPorts) {
+        assert(port.startsWith('- "127.0.0.1:'), `${composePath}: published port must bind 127.0.0.1 (${port})`);
+    }
+}
+assertIncludes('compose enforces worker auth by default', compose, 'WorkerAuth__Enforce: "${WORKER_AUTH_ENFORCE:-true}"');
+assertIncludes('compose broker trusts execution adapter credential', compose, 'WorkerAuth__Credentials__2__WorkerType: "execution-adapter-worker"');
+assertIncludes('compose broker execution adapter key id', compose, 'WorkerAuth__Credentials__2__KeyId: "${EXEC_ADAPTER_AUTH_KEY_ID:?');
+assertIncludes('compose broker execution adapter secret', compose, 'WorkerAuth__Credentials__2__SharedSecret: "${EXEC_ADAPTER_AUTH_SHARED_SECRET:?');
+assertIncludes('compose execution adapter worker uses the same key id', compose, 'WORKER_Worker__Auth__KeyId: "${EXEC_ADAPTER_AUTH_KEY_ID:?');
+
+const brokerSecretsValidator = read('packages/csharp/broker/Configuration/BrokerSecretsValidator.cs');
+for (const hash of LEAKED_SECRET_SHA256) {
+    assertIncludes('broker validator rejects every published compose secret', brokerSecretsValidator, `"${hash}"`);
+}
+assertNotIncludes('broker validator keeps only fingerprints', brokerSecretsValidator, 'BEGIN PRIVATE KEY');
+assertIncludes('broker startup calls the secrets validator', read('packages/csharp/broker/Program.cs'), 'BrokerSecretsValidator.Validate(');
+
+const envExample = read('tools/agent/container/agent-stack.env.example');
+for (const variable of [...BROKER_SECRET_VARIABLES, ...WORKER_SECRET_VARIABLES]) {
+    assert(
+        new RegExp(`^${variable}=$`, 'm').test(envExample),
+        `agent-stack.env.example: expected an empty ${variable}= line`
+    );
+}
+for (const line of envExample.split(/\r?\n/)) {
+    if (line.trim() === '' || line.trimStart().startsWith('#')) {
+        continue;
+    }
+    assert(/^[A-Z0-9_]+=$/.test(line), `agent-stack.env.example: values must stay empty (${line.split('=')[0]})`);
+}
+
+const podmanStackTests = [
+    'tools/agent/tests/test-podman-governed-stack.js',
+    'tools/agent/tests/test-podman-execution-adapter-stack.js',
+    'tools/agent/tests/test-podman-openai-compatible-stack.js',
+    'tools/agent/tests/test-podman-ollama-host-stack.js',
+];
+for (const testPath of podmanStackTests) {
+    const testSource = read(testPath);
+    assertIncludes(`${testPath} imports the secrets generator`, testSource, "'gen-stack-secrets.mjs'");
+    assertIncludes(`${testPath} passes generated secrets through env`, testSource, '...(await generateStackSecretsEnv()),');
+    assertNotIncludes(`${testPath} does not write an env file`, testSource, '--env-file');
+}
+
+const sidecarScript = read('packages/csharp/workers/line-worker/start-sidecar-stack.ps1');
+assertIncludes('sidecar opts in to ephemeral broker keys explicitly', sidecarScript, 'AllowEphemeralKeys = $true');
 
 const dockerignore = read('.dockerignore');
 assertIncludes('container build ignores node modules', dockerignore, 'node_modules');
@@ -127,4 +278,107 @@ assertIncludes('code prompt prioritizes custom components', codeArtifactService,
 assertIncludes('code generator copies custom component runtime', codeArtifactService, 'CopyCustomComponentRuntimeIfAvailable');
 assertIncludes('tic tac toe uses component runtime import', codeArtifactService, "import('./runtime/ui_components/index.js')");
 
-console.log('Agent container config validation passed.');
+const dockerignoreLines = new Set(dockerignore.split(/\r?\n/).map((line) => line.trim()));
+for (const pattern of [
+    '**/.env',
+    '**/.env.*',
+    '**/agent-stack.env',
+    'packages/csharp/broker/appsettings.Development.json',
+    'packages/csharp/workers/line-worker/appsettings.json',
+]) {
+    assert(dockerignoreLines.has(pattern), `.dockerignore: expected a line ${JSON.stringify(pattern)}`);
+}
+
+// 產生器的輸出檔名也不可進 git（範例檔 agent-stack.env.example 則要留在 repo）。
+const gitignoreLines = new Set(read('.gitignore').split(/\r?\n/).map((line) => line.trim()));
+assert(gitignoreLines.has('**/agent-stack.env'), '.gitignore: expected a line "**/agent-stack.env"');
+
+// 文件只能提到產生器與變數名稱，不得含已外洩值。
+for (const docPath of [
+    'tools/agent/container/README.md',
+    'tools/agent/container/README.html',
+    'docs/manuals/agent-container-runbook.md',
+    'docs/manuals/agent-container-runbook.html',
+    'docs/environment-setup.zh-TW.md',
+    'docs/environment-setup.zh-TW.html',
+    'tools/agent/container/agent-stack.env.example',
+]) {
+    const docText = read(docPath);
+    assert.deepStrictEqual(findLeakedFragments(docText), [], `${docPath}: contains a previously published development key`);
+    assertIncludes(`${docPath} points at the secrets generator`, docText, 'gen-stack-secrets.mjs');
+}
+
+// 文件中的手動 compose 指令：每一行（包括 down）都要帶同一份金鑰檔，因為 compose 對每個指令都會
+// 展開必填變數；路徑要加引號（使用者目錄可能含空白）；指令區塊不得混用 cmd 的 `set NAME=value`。
+const COMPOSE_COMMAND_LINE = /^(?:<pre><code[^>]*>)?\s*podman compose\b/;
+const QUOTED_ENV_FILE = /--env-file (?:"|&quot;)\$HOME\/\.bricks4agent\/agent-stack\.env(?:"|&quot;) /;
+const CMD_SET_LINE = /^(?:<pre><code[^>]*>)?\s*set [A-Za-z_][A-Za-z0-9_]*=/;
+for (const docPath of [
+    'tools/agent/container/README.md',
+    'tools/agent/container/README.html',
+    'docs/manuals/agent-container-runbook.md',
+    'docs/manuals/agent-container-runbook.html',
+    'docs/environment-setup.zh-TW.md',
+    'docs/environment-setup.zh-TW.html',
+    'docs/manuals/current-user-manual.zh-TW.md',
+    'docs/manuals/current-user-manual.zh-TW.html',
+    'docs/manuals/current-technical-manual.zh-TW.md',
+    'docs/manuals/current-technical-manual.zh-TW.html',
+]) {
+    let composeCommands = 0;
+    for (const line of read(docPath).split(/\r?\n/)) {
+        if (COMPOSE_COMMAND_LINE.test(line)) {
+            composeCommands += 1;
+            assert(QUOTED_ENV_FILE.test(line), `${docPath}: compose command without the quoted --env-file: ${line}`);
+        }
+        assert(!CMD_SET_LINE.test(line), `${docPath}: cmd-style "set NAME=value" line: ${line}`);
+    }
+    assert(composeCommands > 0, `${docPath}: expected at least one manual compose command`);
+}
+
+async function validateSecretsGenerator() {
+    const generatorPath = path.join(ROOT, 'tools', 'agent', 'container', 'gen-stack-secrets.mjs');
+    const generator = await import(pathToFileURL(generatorPath).href);
+
+    const secrets = generator.generateStackSecrets();
+    generator.verifyStackSecrets(secrets);
+    assert.deepStrictEqual(
+        Object.keys(secrets).sort(),
+        [...BROKER_SECRET_VARIABLES, ...WORKER_SECRET_VARIABLES].sort(),
+        'generator must produce exactly the variables the compose files require'
+    );
+    assert.deepStrictEqual([...generator.STACK_SECRET_VARIABLES].sort(), Object.keys(secrets).sort());
+    for (const [name, value] of Object.entries(secrets)) {
+        assert(!LEAKED_SECRET_SHA256.includes(sha256Hex(value)), `generator produced a published value for ${name}`);
+    }
+    const second = generator.generateStackSecrets();
+    assert.notStrictEqual(second.BROKER_SCOPED_TOKEN_SECRET, secrets.BROKER_SCOPED_TOKEN_SECRET);
+    assert.notStrictEqual(second.BROKER_ECDH_PRIVATE_KEY_BASE64, secrets.BROKER_ECDH_PRIVATE_KEY_BASE64);
+
+    // 輸出位置必須在 repo 以外：這裡只呼叫純函式，不寫任何檔案。
+    for (const insideRepo of [
+        path.join(ROOT, 'tools', 'agent', 'container', '.env'),
+        path.join(ROOT, 'tools', 'agent', 'container', 'agent-stack.env'),
+        path.join(ROOT, 'agent-stack.env'),
+    ]) {
+        assert.throws(() => generator.assertOutsideRepo(insideRepo), /outside/, `generator must refuse ${insideRepo}`);
+    }
+    assert.strictEqual(
+        generator.isInsideDirectory(
+            generator.defaultSecretsPath({ BRICKS4AGENT_SECRETS_DIR: path.join(ROOT, 'secrets') }),
+            ROOT
+        ),
+        true,
+        'BRICKS4AGENT_SECRETS_DIR inside the repository must be detected'
+    );
+    assert.strictEqual(path.basename(generator.defaultSecretsPath({})), 'agent-stack.env');
+}
+
+validateSecretsGenerator()
+    .then(() => {
+        console.log('Agent container config validation passed.');
+    })
+    .catch((error) => {
+        console.error(error);
+        process.exit(1);
+    });

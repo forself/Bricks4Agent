@@ -1,3 +1,4 @@
+using Broker.Helpers;
 using Broker.Services;
 
 namespace Broker.Endpoints;
@@ -30,6 +31,6 @@ public static class ArtifactDownloadEndpoints
                 contentType: "application/octet-stream",
                 fileDownloadName: resolved.SafeFileName,
                 enableRangeProcessing: false);
-        });
+        }).WithBrokerAuthPolicy(BrokerAuthPolicy.SignedLink); // 由 exp + sig 簽章連結驗證
     }
 }

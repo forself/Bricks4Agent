@@ -787,10 +787,10 @@ Remove-Item -Recurse -Force .\.test-output -ErrorAction SilentlyContinue
 powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\line-sidecar.ps1 down
 ```
 
-Podman stack 停止與移除 volume：
+Podman stack 停止與移除 volume。`down` 也會展開必填的金鑰變數，必須帶與 `up` 相同的那份 `--env-file`（產生方式見 `docs/manuals/agent-container-runbook.md` §3.4），否則會因缺變數而失敗：
 
 ```powershell
-podman compose -f tools/agent/container/compose.yml down -v
+podman compose --env-file "$HOME/.bricks4agent/agent-stack.env" -f tools/agent/container/compose.yml down -v
 ```
 
 ## 17. 疑難排解

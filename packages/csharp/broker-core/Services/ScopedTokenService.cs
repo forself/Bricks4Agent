@@ -36,7 +36,9 @@ public class ScopedTokenService : IScopedTokenService
 
     public ScopedTokenService(string secret, string issuer, string audience, int expirationMinutes = 15)
     {
-        if (string.IsNullOrWhiteSpace(secret) || secret.StartsWith("CHANGE_ME"))
+        // 佔位值規則與 DbSessionKeyStore、broker 啟動驗證共用（空白、CHANGE_ME*、REPLACE_WITH_*）。
+        // broker 主程式已先經 BrokerSecretsValidator 決定實際金鑰；這裡的回退只服務直接建構本類別的呼叫端。
+        if (BrokerCore.Crypto.SecretPlaceholders.IsPlaceholder(secret))
         {
             // 開發模式：使用隨機密鑰
             var randomBytes = System.Security.Cryptography.RandomNumberGenerator.GetBytes(32);

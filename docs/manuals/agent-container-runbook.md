@@ -16,6 +16,8 @@ Date: 2026-06-13
 
 - **node**(跑 stack 啟動腳本)。
 
+- **金鑰**:compose 不附任何預設金鑰。下列 node 測試腳本每次執行都自動產生;手動 `podman compose` 前要先用產生器建立金鑰檔,見 §3.4。
+
 - LLM 後端三選一:
 
 - mock(內建,無需外部)
@@ -27,6 +29,10 @@ Date: 2026-06-13
 ## 3. 三條 LLM 路徑(都已實測通過 2026-06-13)
 
 每條都是 `podman compose up` 一個 stack:build 映像 → 起 broker + worker(s) + agent → agent 註冊 session、領 capability、經 broker 裁決執行工具。
+
+每支 node 測試腳本(含 §9 的 execution-adapter 測試)都會在記憶體中產生一組新的 broker 金鑰與 worker 憑證,經環境變數同時傳給 `up` 與 `down`,不寫任何檔案。
+
+> 2026-10-04 起 compose 改為必填金鑰(`${VAR:?...}`)、`WORKER_AUTH_ENFORCE` 預設 `true`、對外埠只綁 `127.0.0.1`;這些變更之後尚未以 podman 重新實測。
 
 ### 3.1 mock(最快,離線驗證治理鏈)
 
@@ -62,6 +68,24 @@ node tools/agent/tests/test-podman-openai-compatible-stack.js
 
 `LlmProxy` 也支援 Anthropic Claude Messages API (`Provider=anthropic`, `BaseUrl=https://api.anthropic.com`, `ApiFormat=messages`, `DefaultModel=claude-sonnet-4-6`)；這條目前由 broker/sidecar 設定與單元測試覆蓋，不把既有 OpenAI-compatible compose 測試誤稱為 Claude compose stack。
 
+### 3.4 手動執行與金鑰
+
+手動跑 compose 時,先在 repo **以外**產生一份金鑰檔,之後每次 `up` 與 `down` 都帶同一份 `--env-file`(`down` 也會展開必填變數,缺值一樣失敗):
+
+```powershell
+node tools/agent/container/gen-stack-secrets.mjs
+podman compose --env-file "$HOME/.bricks4agent/agent-stack.env" -f tools/agent/container/compose.yml up --build --abort-on-container-exit --exit-code-from agent
+podman compose --env-file "$HOME/.bricks4agent/agent-stack.env" -f tools/agent/container/compose.yml down -v
+```
+
+- 輸出位置:`$env:BRICKS4AGENT_SECRETS_DIR/agent-stack.env`;未設定時為 `~/.bricks4agent/agent-stack.env`。產生器會印出實際路徑,但不印出金鑰值。
+- 產生器拒絕寫進 repo 內;既有檔案要加 `--force` 才覆寫(等同輪替全部金鑰,之後用 `down -v` 重建 stack)。`--self-test` 只在記憶體中檢查,不寫檔。變數清單見 `tools/agent/container/agent-stack.env.example`(只有名稱)。
+- 為什麼不能放進 repo:agent 容器把整個 repo 掛在 `/workspace` 且有讀取授權;compose 也會自動讀取 compose 檔旁的 `.env`。金鑰檔放在 repo 內,等於讓受控 agent 讀得到 broker 私鑰。
+- 必填變數:三個 compose 檔都要 `BROKER_SCOPED_TOKEN_SECRET`、`BROKER_MASTER_KEY_BASE64`、`BROKER_ECDH_PRIVATE_KEY_BASE64`、`BROKER_ECDH_PUBLIC_KEY_BASE64`(agent 釘選這把公鑰,必須與私鑰成對);`compose.yml` 另需 LINE、file、execution-adapter 三組 worker 的 `*_AUTH_KEY_ID` 與 `*_AUTH_SHARED_SECRET`。
+- broker 啟動驗證:compose 中的 broker 以 Production 執行,啟動時拒絕佔位值(空白、`CHANGE_ME*`、`REPLACE_WITH_*`)與任何曾以 compose 預設值公開過的金鑰,並檢查格式。不要在 compose 加 `ASPNETCORE_ENVIRONMENT=Development` 來繞過。
+- `WORKER_AUTH_ENFORCE` 預設 `true`:worker 註冊與 LINE worker 的 HTTP 路由都要驗證憑證;broker 端也登錄了 execution-adapter 的憑證(索引 2,同時蓋掉 `appsettings.json` 該索引的範本憑證)。
+- 對外發布的埠(broker、mock LLM、LINE webhook)只綁 `127.0.0.1`;容器之間仍經 compose 網路互通。
+
 > 兩條 LLM 路徑釐清:LINE 高階模型(`HighLevelLlm`)目前 sidecar 會優先讀 `ANTHROPIC_API_KEY` 並設定 `anthropic` / `claude-sonnet-4-6`;沒有該 key 時才走 OpenAI-compatible `Api.txt` fallback。受控代理容器走 broker `LlmProxy`,agent 不直接持有 provider key。
 
 ## 4. 用真實商用 API 時的注意
@@ -70,7 +94,7 @@ node tools/agent/tests/test-podman-openai-compatible-stack.js
 
 - Claude Messages API 需要 `max_tokens`;目前預設 `MaxOutputTokens=4096`。
 
-- key 不應放進 repo;Anthropic 使用 `ANTHROPIC_API_KEY`,OpenAI-compatible fallback 使用 `C:\secure\Bricks4Agent\Api.txt` 或環境變數。
+- key 不應放進 repo;Anthropic 使用 `ANTHROPIC_API_KEY`,OpenAI-compatible fallback 使用 `C:\secure\Bricks4Agent\Api.txt` 或環境變數。broker 金鑰與 worker 憑證同理,用 `gen-stack-secrets.mjs` 產生在 repo 以外(§3.4)。
 
 ## 5. FunctionPool 與健康端點
 

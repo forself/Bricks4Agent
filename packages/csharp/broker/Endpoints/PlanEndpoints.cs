@@ -14,7 +14,7 @@ public static class PlanEndpoints
         var plans = group.MapGroup("/plans");
 
         // ── 建立計畫 ──
-        plans.MapPost("/create", (HttpContext ctx, IPlanService planService) =>
+        plans.MapPost("/create", (HttpContext ctx, IPlanService planService, IBrokerService broker) =>
         {
             var body = RequestBodyHelper.GetBody(ctx);
             var principalId = RequestBodyHelper.GetPrincipalId(ctx);
@@ -27,12 +27,15 @@ public static class PlanEndpoints
             var description = body.TryGetProperty("description", out var d)
                 ? d.GetString() : null;
 
+            if (!BrokerAuthorization.TryRequireTaskAccess(ctx, broker, taskId, out var denied))
+                return denied;
+
             var plan = planService.CreatePlan(taskId, principalId, title, description);
             return Results.Ok(ApiResponseHelper.Success(plan));
         });
 
         // ── 查詢計畫 ──
-        plans.MapPost("/get", (HttpContext ctx, IPlanService planService) =>
+        plans.MapPost("/get", (HttpContext ctx, IPlanService planService, IBrokerService broker) =>
         {
             var body = RequestBodyHelper.GetBody(ctx);
             if (!RequestBodyHelper.TryGetRequired(body, "plan_id", out var planId, out var err))
@@ -42,11 +45,14 @@ public static class PlanEndpoints
             if (plan == null)
                 return Results.NotFound(ApiResponseHelper.Error("Plan not found.", 404));
 
+            if (!TryRequirePlanAccess(ctx, plan, broker, out var denied))
+                return denied;
+
             return Results.Ok(ApiResponseHelper.Success(plan));
         });
 
         // ── 新增節點 ──
-        plans.MapPost("/add-node", (HttpContext ctx, IPlanService planService) =>
+        plans.MapPost("/add-node", (HttpContext ctx, IPlanService planService, IBrokerService broker) =>
         {
             var body = RequestBodyHelper.GetBody(ctx);
             // M-1 修復：驗證必填欄位
@@ -63,6 +69,9 @@ public static class PlanEndpoints
             var maxRetries = body.TryGetProperty("max_retries", out var mr)
                 ? mr.GetInt32() : 1;
 
+            if (!TryRequirePlanAccess(ctx, planService.GetPlan(planId), broker, out var denied))
+                return denied;
+
             try
             {
                 var node = planService.AddNode(planId, capabilityId, intent,
@@ -76,7 +85,7 @@ public static class PlanEndpoints
         });
 
         // ── 新增邊 ──
-        plans.MapPost("/add-edge", (HttpContext ctx, IPlanService planService) =>
+        plans.MapPost("/add-edge", (HttpContext ctx, IPlanService planService, IBrokerService broker) =>
         {
             var body = RequestBodyHelper.GetBody(ctx);
             // M-1 修復：驗證必填欄位
@@ -94,6 +103,9 @@ public static class PlanEndpoints
             var condition = body.TryGetProperty("condition", out var cond)
                 ? cond.GetString() : null;
 
+            if (!TryRequirePlanAccess(ctx, planService.GetPlan(planId), broker, out var denied))
+                return denied;
+
             try
             {
                 var edge = planService.AddEdge(planId, fromNodeId, toNodeId,
@@ -107,11 +119,14 @@ public static class PlanEndpoints
         });
 
         // ── DAG 驗證 ──
-        plans.MapPost("/validate", (HttpContext ctx, IPlanService planService) =>
+        plans.MapPost("/validate", (HttpContext ctx, IPlanService planService, IBrokerService broker) =>
         {
             var body = RequestBodyHelper.GetBody(ctx);
             if (!RequestBodyHelper.TryGetRequired(body, "plan_id", out var planId, out var err))
                 return err!;
+
+            if (!TryRequirePlanAccess(ctx, planService.GetPlan(planId), broker, out var denied))
+                return denied;
 
             var (isValid, error) = planService.ValidateDag(planId);
 
@@ -130,7 +145,7 @@ public static class PlanEndpoints
         });
 
         // ── 提交並執行計畫 ──
-        plans.MapPost("/submit", async (HttpContext ctx, IPlanEngine planEngine) =>
+        plans.MapPost("/submit", async (HttpContext ctx, IPlanEngine planEngine, IPlanService planService, IBrokerService broker) =>
         {
             var body = RequestBodyHelper.GetBody(ctx);
             var principalId = RequestBodyHelper.GetPrincipalId(ctx);
@@ -139,6 +154,9 @@ public static class PlanEndpoints
                 return valErr!;
             var traceId = body.TryGetProperty("trace_id", out var tid)
                 ? tid.GetString() ?? IdGen.New("trace") : IdGen.New("trace");
+
+            if (!TryRequirePlanAccess(ctx, planService.GetPlan(planId), broker, out var denied))
+                return denied;
 
             // session_id 從 token claims 取得（而非 body），確保一致性
             if (string.IsNullOrEmpty(sessionId))
@@ -161,7 +179,7 @@ public static class PlanEndpoints
         });
 
         // ── 查詢執行狀態 ──
-        plans.MapPost("/status", (HttpContext ctx, IPlanService planService) =>
+        plans.MapPost("/status", (HttpContext ctx, IPlanService planService, IBrokerService broker) =>
         {
             var body = RequestBodyHelper.GetBody(ctx);
             if (!RequestBodyHelper.TryGetRequired(body, "plan_id", out var planId, out var err))
@@ -170,6 +188,9 @@ public static class PlanEndpoints
             var plan = planService.GetPlan(planId);
             if (plan == null)
                 return Results.NotFound(ApiResponseHelper.Error("Plan not found.", 404));
+
+            if (!TryRequirePlanAccess(ctx, plan, broker, out var denied))
+                return denied;
 
             var nodes = planService.GetNodes(planId);
             var edges = planService.GetEdges(planId);
@@ -193,5 +214,20 @@ public static class PlanEndpoints
                 }
             }));
         });
+    }
+
+    /// <summary>
+    /// 計畫屬於某個任務：只允許該任務的擁有者（或管理員）操作。
+    /// 計畫不存在時不在此判斷，維持各端點原本的「找不到」處理。
+    /// </summary>
+    private static bool TryRequirePlanAccess(HttpContext ctx, Plan? plan, IBrokerService broker, out IResult denied)
+    {
+        if (plan == null)
+        {
+            denied = null!;
+            return true;
+        }
+
+        return BrokerAuthorization.TryRequireTaskAccess(ctx, broker, plan.TaskId, out denied);
     }
 }

@@ -4,6 +4,7 @@
 const assert = require('assert');
 const path = require('path');
 const { spawn } = require('child_process');
+const { pathToFileURL } = require('url');
 
 const ROOT = path.resolve(__dirname, '..', '..', '..');
 const composeFile = path.join(ROOT, 'tools', 'agent', 'container', 'compose.yml');
@@ -49,6 +50,14 @@ function run(command, args, options = {}) {
     });
 }
 
+// compose 檔不附預設金鑰（${VAR:?...}）。每次執行在記憶體中產生一組新的金鑰，
+// 只放進子行程的 env，不寫檔；up 與 down 必須用同一個 env（down 也會展開 ${VAR:?...}）。
+async function generateStackSecretsEnv() {
+    const generator = path.join(ROOT, 'tools', 'agent', 'container', 'gen-stack-secrets.mjs');
+    const { generateStackSecrets } = await import(pathToFileURL(generator).href);
+    return generateStackSecrets();
+}
+
 async function buildImages(env) {
     for (const [image, dockerfile] of images) {
         const buildResult = await run('podman', [
@@ -71,6 +80,7 @@ async function buildImages(env) {
 async function main() {
     const env = {
         ...process.env,
+        ...(await generateStackSecretsEnv()),
         PYTHONIOENCODING: 'utf-8',
         PYTHONUTF8: '1',
         AGENT_RUN: 'Read README.md through the available tool, then reply with the exact text STACK_OK.',
