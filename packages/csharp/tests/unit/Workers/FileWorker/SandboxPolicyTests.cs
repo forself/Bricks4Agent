@@ -54,11 +54,14 @@ public class SandboxPolicyTests : IDisposable
     [InlineData(".claude", true)]
     [InlineData(".codegraph-cache", true)]
     [InlineData(".ssh", true)]
+    [InlineData(".run", true)]
+    [InlineData(".RUN", true)]
     [InlineData(".env", true)]
     [InlineData(".env.local", true)]
     [InlineData(".env.production", true)]
     [InlineData("appsettings.Development.json", true)]
     [InlineData("APPSETTINGS.DEVELOPMENT.JSON", true)]
+    [InlineData("appsettings.Production.json", true)]
     [InlineData("agent-stack.env", true)]
     [InlineData("server.pem", true)]
     [InlineData("app.key", true)]
@@ -82,6 +85,9 @@ public class SandboxPolicyTests : IDisposable
     [InlineData(".github", false)]
     [InlineData("README.md", false)]
     [InlineData("appsettings.json", false)]
+    [InlineData("appsettings.Production.example.json", false)]
+    [InlineData("run", false)]
+    [InlineData(".runner", false)]
     [InlineData("environment.ts", false)]
     [InlineData("monkey", false)]
     [InlineData("keys.json", false)]
@@ -103,6 +109,10 @@ public class SandboxPolicyTests : IDisposable
     [InlineData("packages/csharp/workers/line-worker/appsettings.example.json", false)]
     [InlineData("appsettings.json", false)]
     [InlineData("data/broker.db", true)]
+    [InlineData(".run/line-sidecar/broker/appsettings.Production.json", true)]
+    [InlineData(@".run\line-sidecar\broker\appsettings.Production.json", true)]
+    [InlineData(".run/line-sidecar/logs/broker.log", true)]
+    [InlineData("deploy/appsettings.Production.json", true)]
     [InlineData("src/app.js", false)]
     [InlineData(".", false)]
     public void IsSensitiveRelativePath_CoversLocationSpecificFiles(string relativePath, bool expected)
@@ -128,13 +138,15 @@ public class SandboxPolicyTests : IDisposable
             "ngrok_recovery_codes.txt",
             "packages/csharp/workers/line-worker/appsettings.json",
             "packages/csharp/broker/appsettings.Development.json",
+            // 本機執行期狀態：本機啟動腳本在這裡寫入執行期的設定覆寫檔。
+            ".run/",
         };
         lines.Select(line => line.Trim()).Should().Contain(localSecrets);
 
         foreach (var entry in secrets.Concat(databases).Concat(localSecrets))
         {
             var sample = entry.StartsWith("**/", StringComparison.Ordinal) ? entry[3..] : entry;
-            sample = sample.Replace("*", "sample", StringComparison.Ordinal);
+            sample = sample.Replace("*", "sample", StringComparison.Ordinal).TrimEnd('/');
             SandboxPolicy.IsSensitiveRelativePath(sample).Should().BeTrue($".gitignore entry '{entry}' (checked as '{sample}') must be refused by the file-worker deny list");
             new SandboxPolicy(_sandboxRoot).Resolve(sample).Error.Should().Be(SandboxPolicy.BlockedPathError, $"'{sample}' must be blocked");
         }
@@ -164,6 +176,61 @@ public class SandboxPolicyTests : IDisposable
         var content = await new SearchContentHandler(_sandboxRoot)
             .ExecuteAsync("x3", "file.search_content", Payload(new { pattern = "MARKER_TEXT", file_pattern = "*.json" }), "", default);
         content.ResultPayload.Should().NotContain("line-worker");
+    }
+
+    /// <summary>
+    /// 本機執行期狀態目錄（.run，gitignore）：本機啟動腳本在裡面寫入執行期的設定覆寫檔。
+    /// 整個目錄對 read、list、search、write 一律拒絕或略過。
+    /// </summary>
+    [Fact]
+    public async Task RuntimeStateDirectory_IsBlockedAndHiddenEverywhere()
+    {
+        var brokerState = Path.Combine(_sandboxRoot, ".run", "line-sidecar", "broker");
+        Directory.CreateDirectory(brokerState);
+        const string overridePath = ".run/line-sidecar/broker/appsettings.Production.json";
+        File.WriteAllText(Path.Combine(brokerState, "appsettings.Production.json"), "{\"MARKER_TEXT\":\"override\"}");
+        File.WriteAllText(Path.Combine(brokerState, "notes.txt"), "MARKER_TEXT notes");
+
+        var policy = new SandboxPolicy(_sandboxRoot);
+        SandboxPolicy.IsSensitiveRelativePath(overridePath).Should().BeTrue();
+        policy.Resolve(overridePath).Error.Should().Be(SandboxPolicy.BlockedPathError);
+        policy.Resolve(".run/line-sidecar/broker/notes.txt").Error.Should().Be(SandboxPolicy.BlockedPathError);
+        policy.Resolve("src/../.run/line-sidecar/broker/appsettings.Production.json").Error.Should().Be(SandboxPolicy.BlockedPathError);
+
+        var read = await new ReadFileHandler(_sandboxRoot)
+            .ExecuteAsync("q1", "file.read", Payload(new { path = overridePath }), "", default);
+        read.Success.Should().BeFalse();
+        read.Error.Should().Be(SandboxPolicy.BlockedPathError);
+        read.ResultPayload.Should().BeNull();
+
+        var root = await new ListDirHandler(_sandboxRoot)
+            .ExecuteAsync("q2", "file.list", Payload(new { path = "." }), "", default);
+        root.Success.Should().BeTrue();
+        ListedNames(root.ResultPayload!).Should().NotContain(".run");
+        var inside = await new ListDirHandler(_sandboxRoot)
+            .ExecuteAsync("q3", "file.list", Payload(new { path = ".run/line-sidecar" }), "", default);
+        inside.Error.Should().Be(SandboxPolicy.BlockedPathError);
+
+        var names = await new SearchFilesHandler(_sandboxRoot)
+            .ExecuteAsync("q4", "file.search_name", Payload(new { pattern = "*" }), "", default);
+        names.Success.Should().BeTrue();
+        Matches(names.ResultPayload!).Should().NotContain(match => match.StartsWith(".run/", StringComparison.Ordinal));
+        var byName = await new SearchFilesHandler(_sandboxRoot)
+            .ExecuteAsync("q5", "file.search_name", Payload(new { pattern = "appsettings.Production.json" }), "", default);
+        Matches(byName.ResultPayload!).Should().BeEmpty();
+
+        var content = await new SearchContentHandler(_sandboxRoot)
+            .ExecuteAsync("q6", "file.search_content", Payload(new { pattern = "MARKER_TEXT" }), "", default);
+        content.Success.Should().BeTrue();
+        content.ResultPayload.Should().NotContain(".run");
+        var contentInside = await new SearchContentHandler(_sandboxRoot)
+            .ExecuteAsync("q7", "file.search_content", Payload(new { pattern = "MARKER_TEXT", directory = ".run" }), "", default);
+        contentInside.Error.Should().Be(SandboxPolicy.BlockedPathError);
+
+        var write = await new WriteFileHandler(_sandboxRoot)
+            .ExecuteAsync("q8", "file.write", Payload(new { path = overridePath, content = "{}" }), "", default);
+        write.Error.Should().Be(SandboxPolicy.BlockedPathError);
+        File.ReadAllText(Path.Combine(brokerState, "appsettings.Production.json")).Should().Contain("override");
     }
 
     // ── 路徑段含冒號 ──

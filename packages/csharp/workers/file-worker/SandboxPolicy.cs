@@ -6,7 +6,7 @@ namespace FileWorker;
 /// - 邊界：請求路徑先正規化，再以「根目錄 + 分隔字元」做完整前綴比對；接著逐段解析
 ///   symlink／junction，解析後的實際路徑也必須留在（同樣解析過的）根目錄內。
 /// - 拒絕清單：路徑中任何一段符合 <see cref="IsSensitiveName"/>，或路徑結尾符合特定位置的本機設定檔，
-///   即拒絕（版本控制中繼資料、代理工具設定、環境變數檔、本機設定、資料庫與金鑰類檔案）。
+///   即拒絕（版本控制中繼資料、代理工具設定、本機執行期狀態、環境變數檔、本機設定、資料庫與金鑰類檔案）。
 ///   列舉與搜尋時直接略過這些項目，也不進入 symlink（避免經由連結走出 sandbox）。
 ///   拒絕清單是過渡措施；只提供白名單快照的唯讀視圖列為後續。
 /// - 路徑段含冒號一律拒絕（所有平台都一樣，與檔名 pattern 的規則一致）。
@@ -32,8 +32,11 @@ public sealed class SandboxPolicy
         ".claude",
         ".codegraph-cache",
         ".ssh",
+        // 本機執行期狀態（.gitignore）：本機啟動腳本在這裡產生執行期的設定覆寫檔。
+        ".run",
         ".env",
         "appsettings.Development.json",
+        "appsettings.Production.json",
         "agent-stack.env",
         "Api.txt",
         "ngrok_recovery_codes.txt",
@@ -213,7 +216,7 @@ public sealed class SandboxPolicy
 
     /// <summary>
     /// 搜尋用的 pattern 只能比對檔名：不得含目錄部分（任何平台的分隔字元）、磁碟代號或 NUL。
-    /// 搜尋的目錄一律由 path 參數指定，並經 <see cref="Resolve"/> 檢查。
+    /// 搜尋的目錄由 directory（或 path）參數指定，並經 <see cref="Resolve"/> 檢查。
     /// </summary>
     public static bool IsFileNamePattern(string? pattern)
     {
