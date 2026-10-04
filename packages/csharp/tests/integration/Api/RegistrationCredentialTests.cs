@@ -14,6 +14,8 @@ namespace Integration.Tests.Api;
 ///   - a credential can be used again until it expires or is revoked (container restarts, compose up again);
 ///   - administrators issue, list and revoke credentials for tasks created through tasks/create; the secret
 ///     appears only in the issue response and a listing carries no secret material;
+///   - revoking a credential also ends the sessions registered with it (tokens, channel and heartbeat stop
+///     working at once), while sessions registered with another credential of the task keep working;
 ///   - stopping an agent revokes its credentials and sessions, so neither its tokens nor its secret work.
 /// The task, role and local-host rules that apply once the credential is valid are covered by
 /// <see cref="BrokerAuthorizationRegressionTests"/>.
@@ -25,6 +27,7 @@ public sealed class RegistrationCredentialTests : IClassFixture<BrokerAuthorizat
     private const string LoopbackAddress = "127.0.0.1";
     private const string RejectedMessage = "Registration rejected.";
     private const string ToolSpecListPath = "/api/v1/tool-specs/list";
+    private const string HeartbeatPath = "/api/v1/sessions/heartbeat";
 
     private readonly BrokerAuthorizationFixture _fixture;
     private readonly EncryptedBrokerClient _client;
@@ -144,6 +147,57 @@ public sealed class RegistrationCredentialTests : IClassFixture<BrokerAuthorizat
         var afterRevoke = await _client.RegisterAsync(principalId, taskId, registrationSecret: secret);
         afterRevoke.StatusCode.Should().Be(HttpStatusCode.Unauthorized, "the register response was {0}", afterRevoke);
         WithoutTraceId(afterRevoke.Body).Should().Be(await ReferenceRejectionAsync());
+    }
+
+    [Fact]
+    public async Task RevokingACredential_EndsTheSessionsRegisteredWithIt()
+    {
+        var admin = _client.OpenSession(AdminRole);
+        var (principalId, taskId) = SeedReaderTask();
+        var first = _fixture.IssueRegistrationCredential(principalId, taskId);
+        var second = _fixture.IssueRegistrationCredential(principalId, taskId);
+
+        var firstSession = (await _client.RegisterAsync(principalId, taskId, registrationSecret: first.Secret)).Session!;
+        var secondSession = (await _client.RegisterAsync(principalId, taskId, registrationSecret: second.Secret)).Session!;
+        _fixture.FindSession(firstSession.SessionId)!.RegistrationCredentialId.Should().Be(first.CredentialId);
+        _fixture.FindSession(secondSession.SessionId)!.RegistrationCredentialId.Should().Be(second.CredentialId);
+
+        var revoke = await _client.SendEncryptedAsync(
+            admin,
+            "/api/v1/admin/registration-credentials/revoke",
+            new { credential_id = first.CredentialId },
+            admin.ScopedToken);
+        revoke.StatusCode.Should().Be(HttpStatusCode.OK, "the revoke response was {0}", revoke);
+        SessionsRevoked(revoke.Body).Should().Be(1);
+
+        // The session registered with the revoked credential ends at once: bearer, channel and heartbeat.
+        var bearer = await _client.SendPlainAsync("POST", ToolSpecListPath, "{}", bearerToken: firstSession.ScopedToken);
+        var channel = await _client.SendEncryptedAsync(firstSession, "/api/v1/grants/list", payload: null, firstSession.ScopedToken);
+        var heartbeat = await _client.SendEncryptedAsync(firstSession, HeartbeatPath, payload: null, firstSession.ScopedToken);
+        bearer.StatusCode.Should().Be(HttpStatusCode.Unauthorized, "the bearer response was {0}", bearer);
+        channel.StatusCode.Should().Be(HttpStatusCode.Unauthorized, "the channel response was {0}", channel);
+        heartbeat.StatusCode.Should().Be(HttpStatusCode.Unauthorized, "a session of a revoked credential cannot be renewed; the response was {0}", heartbeat);
+        _fixture.FindSession(firstSession.SessionId)!.Status.Should().Be(SessionStatus.Revoked);
+
+        // A session registered with another credential of the same task is left alone.
+        var other = await _client.SendEncryptedAsync(secondSession, HeartbeatPath, payload: null, secondSession.ScopedToken);
+        other.StatusCode.Should().Be(HttpStatusCode.OK, "the other session's heartbeat response was {0}", other);
+
+        // Revoking every credential of the task ends every session of the task.
+        var revokeAll = await _client.SendEncryptedAsync(
+            admin,
+            "/api/v1/admin/registration-credentials/revoke",
+            new { principal_id = principalId, task_id = taskId },
+            admin.ScopedToken);
+        revokeAll.StatusCode.Should().Be(HttpStatusCode.OK, "the revoke response was {0}", revokeAll);
+        SessionsRevoked(revokeAll.Body).Should().Be(1);
+        var afterAll = await _client.SendPlainAsync("POST", ToolSpecListPath, "{}", bearerToken: secondSession.ScopedToken);
+        afterAll.StatusCode.Should().Be(HttpStatusCode.Unauthorized, "the response was {0}", afterAll);
+        _fixture.FindSession(secondSession.SessionId)!.Status.Should().Be(SessionStatus.Revoked);
+
+        // Neither secret registers again.
+        (await _client.RegisterAsync(principalId, taskId, registrationSecret: first.Secret)).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        (await _client.RegisterAsync(principalId, taskId, registrationSecret: second.Secret)).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 
     [Theory]
@@ -311,6 +365,9 @@ public sealed class RegistrationCredentialTests : IClassFixture<BrokerAuthorizat
         _fixture.SeedTask(taskId, "query", submittedBy: "system", assignedPrincipalId: principalId, assignedRoleId: ReaderRole);
         return (principalId, taskId);
     }
+
+    private static int? SessionsRevoked(string body)
+        => JsonNode.Parse(body)?["data"]?["sessions_revoked"]?.GetValue<int>();
 
     private int CountSessions(string principalId, string taskId)
         => _fixture.Db.Query<ContainerSession>(

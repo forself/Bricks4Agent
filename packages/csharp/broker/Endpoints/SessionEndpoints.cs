@@ -113,7 +113,7 @@ public static class SessionEndpoints
             var currentEpoch = revocationService.GetCurrentEpoch();
             var jti = BrokerCore.IdGen.New("jti");
             var session = sessionService.RegisterSession(
-                taskId, principalId, roleId, jti, currentEpoch, string.Empty);
+                taskId, principalId, roleId, jti, currentEpoch, string.Empty, credential.CredentialId);
 
             var sessionKey = crypto.DeriveSessionKey(clientPub, session.SessionId);
             keyStore.Store(session.SessionId, sessionKey);

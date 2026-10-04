@@ -30,6 +30,13 @@ public class ContainerSession
     [MaxLength(200)]
     public string TokenJti { get; set; } = string.Empty;
 
+    /// <summary>
+    /// 註冊這個 session 時使用的註冊憑證 id。管理員撤銷該憑證時，以它註冊的 session 一併撤銷。
+    /// 升級前建立的 session 為空字串。
+    /// </summary>
+    [Column("registration_credential_id")]
+    public string RegistrationCredentialId { get; set; } = string.Empty;
+
     /// <summary>發行時的 system epoch（kill switch 檢查用）</summary>
     [Column("epoch_at_issue")]
     public int EpochAtIssue { get; set; }

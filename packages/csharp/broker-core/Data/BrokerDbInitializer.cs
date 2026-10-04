@@ -17,6 +17,12 @@ public class BrokerDbInitializer
         _db = db;
     }
 
+    /// <summary>
+    /// 最近一次 <see cref="Initialize(DevelopmentSeedOptions?, string)"/> 時，設定的種子密鑰曾被管理員撤銷，
+    /// 因此沒有重新種入（撤銷跨重啟保留；要恢復須更換密鑰）。呼叫端可據此記錄警告。
+    /// </summary>
+    public bool SeedCredentialHeldRevoked { get; private set; }
+
     /// <summary>初始化所有表結構 + 種子資料（種子憑證的來源為 development_seed）</summary>
     public void Initialize(DevelopmentSeedOptions? developmentSeed = null)
         => Initialize(developmentSeed, RegistrationCredentialSources.DevelopmentSeed);
@@ -27,6 +33,7 @@ public class BrokerDbInitializer
     /// </summary>
     public void Initialize(DevelopmentSeedOptions? developmentSeed, string seedCredentialSource)
     {
+        SeedCredentialHeldRevoked = false;
         EnsureTables();
         NormalizeLocalAdminBootstrap();
         SeedSystemEpoch();
@@ -113,6 +120,8 @@ public class BrokerDbInitializer
                       ON capability_grants(session_id, status)");
 
         // RegistrationCredential: register 依 principal＋task 查憑證
+        TryExecute(@"CREATE INDEX IF NOT EXISTS idx_container_sessions_credential
+                      ON container_sessions(registration_credential_id)");
         TryExecute(@"CREATE INDEX IF NOT EXISTS idx_registration_credentials_subject
                       ON registration_credentials(principal_id, task_id, revoked_at)");
         TryExecute(@"CREATE INDEX IF NOT EXISTS idx_approval_decisions_approval
@@ -213,6 +222,8 @@ public class BrokerDbInitializer
     private void EnsureColumns()
     {
         TryExecute("ALTER TABLE broker_tasks ADD COLUMN runtime_descriptor TEXT DEFAULT '{}'");
+        // 註冊 session 時使用的註冊憑證（撤銷憑證時一併結束它建立的 session）
+        TryExecute("ALTER TABLE container_sessions ADD COLUMN registration_credential_id TEXT DEFAULT ''");
 
         // VectorEntry 新增欄位（智慧分塊 + 多標籤）
         TryExecute("ALTER TABLE vector_entries ADD COLUMN tags TEXT DEFAULT '[]'");
@@ -1132,7 +1143,7 @@ public class BrokerDbInitializer
                 seed.PrincipalId,
                 seed.TaskId,
                 "Seed registration secret is not configured.",
-                "broker-startup",
+                RegistrationCredentialService.SeedStartupActor,
                 source);
             return;
         }
@@ -1141,11 +1152,12 @@ public class BrokerDbInitializer
             seed.RegistrationSecretLifetimeHours,
             1,
             RegistrationCredentialService.MaxLifetimeHours);
-        credentials.UpsertSeed(
+        var seeded = credentials.UpsertSeed(
             seed.PrincipalId,
             seed.TaskId,
             seed.RegistrationSecret,
             source,
             DateTime.UtcNow.AddHours(lifetimeHours));
+        SeedCredentialHeldRevoked = seeded == null;
     }
 }

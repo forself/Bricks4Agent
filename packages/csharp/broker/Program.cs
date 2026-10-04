@@ -47,6 +47,7 @@ using (var initDb = BrokerDb.UseSqlite(connectionString))
         builder.Environment.EnvironmentName,
         startupLogger);
     initializer.Initialize(developmentSeed, RegistrationCredentialSources.DevelopmentSeed);
+    WarnIfSeedCredentialHeldRevoked(initializer, Broker.Configuration.RegistrationSeedValidator.DevelopmentSeedSection, startupLogger);
     // Dashboard 種子（管理介面專用 Principal）：只在 Development 環境種入
     var dashboardSeed = builder.Configuration.GetSection(Broker.Configuration.RegistrationSeedValidator.DashboardSeedSection).Get<DevelopmentSeedOptions>();
     if (dashboardSeed?.Enabled == true)
@@ -59,6 +60,7 @@ using (var initDb = BrokerDb.UseSqlite(connectionString))
                 builder.Environment.EnvironmentName,
                 startupLogger);
             initializer.Initialize(dashboardSeed, RegistrationCredentialSources.DashboardSeed);
+            WarnIfSeedCredentialHeldRevoked(initializer, Broker.Configuration.RegistrationSeedValidator.DashboardSeedSection, startupLogger);
         }
         else
             startupLogger.LogWarning(
@@ -1122,6 +1124,17 @@ if (builder.Configuration.GetValue("RagSeed:Enabled", true))
 }
 
 app.Run();
+
+// 種子密鑰曾被管理員撤銷時不會重新種入（撤銷跨重啟保留）；提醒操作者要恢復須更換密鑰。
+static void WarnIfSeedCredentialHeldRevoked(BrokerDbInitializer initializer, string section, ILogger logger)
+{
+    if (initializer.SeedCredentialHeldRevoked)
+    {
+        logger.LogWarning(
+            "The {Section} registration credential was revoked by an operator and is not seeded again; rotate its RegistrationSecret to allow registration.",
+            section);
+    }
+}
 
 // Dev-only FTS result DTO
 class RagFtsResult

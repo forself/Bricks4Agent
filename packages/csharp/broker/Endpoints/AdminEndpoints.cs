@@ -126,7 +126,12 @@ public static class AdminEndpoints
             }, "Registration credential issued. The secret is shown only in this response."));
         });
 
-        admin.MapPost("/registration-credentials/revoke", (HttpContext ctx, IRegistrationCredentialService credentials) =>
+        // 撤銷憑證時，一併撤銷以它註冊、仍有效的 session（並移除通道金鑰），代理不能再以既有 session 續期。
+        // 以 principal_id＋task_id 撤銷時，這組主體與任務的所有 session 都一併結束。
+        admin.MapPost("/registration-credentials/revoke", (HttpContext ctx,
+            IRegistrationCredentialService credentials,
+            ISessionService sessionService,
+            ISessionKeyStore keyStore) =>
         {
             if (!BrokerAuthorization.TryRequireAdmin(ctx, out var denied)) return denied;
 
@@ -140,8 +145,12 @@ public static class AdminEndpoints
             if (body.TryGetProperty("credential_id", out var idEl) && idEl.ValueKind == JsonValueKind.String &&
                 !string.IsNullOrWhiteSpace(idEl.GetString()))
             {
-                var revoked = credentials.Revoke(idEl.GetString()!, reason, revokedBy);
-                return Results.Ok(ApiResponseHelper.Success(new { revoked = revoked ? 1 : 0 }));
+                var credentialId = idEl.GetString()!;
+                var revoked = credentials.Revoke(credentialId, reason, revokedBy);
+                var endedById = sessionService.RevokeSessionsByCredential(credentialId, reason, revokedBy);
+                foreach (var sessionId in endedById)
+                    keyStore.Remove(sessionId);
+                return Results.Ok(ApiResponseHelper.Success(new { revoked = revoked ? 1 : 0, sessions_revoked = endedById.Count }));
             }
 
             if (!RequestBodyHelper.TryGetRequired(body, "principal_id", out var principalId, out var err))
@@ -150,7 +159,10 @@ public static class AdminEndpoints
                 return err!;
 
             var count = credentials.RevokeFor(principalId, taskId, reason, revokedBy);
-            return Results.Ok(ApiResponseHelper.Success(new { revoked = count }));
+            var ended = sessionService.RevokeSessionsBySubject(principalId, taskId, reason, revokedBy);
+            foreach (var sessionId in ended)
+                keyStore.Remove(sessionId);
+            return Results.Ok(ApiResponseHelper.Success(new { revoked = count, sessions_revoked = ended.Count }));
         });
 
         admin.MapPost("/registration-credentials/list", (HttpContext ctx, IRegistrationCredentialService credentials) =>

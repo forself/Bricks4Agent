@@ -5,9 +5,9 @@ namespace BrokerCore.Services;
 /// <summary>Session 生命週期管理</summary>
 public interface ISessionService
 {
-    /// <summary>註冊新 session</summary>
+    /// <summary>註冊新 session；<paramref name="registrationCredentialId"/> 記錄註冊時使用的註冊憑證。</summary>
     ContainerSession RegisterSession(string taskId, string principalId, string roleId,
-        string tokenJti, int currentEpoch, string encryptedSessionKey);
+        string tokenJti, int currentEpoch, string encryptedSessionKey, string? registrationCredentialId = null);
 
     /// <summary>取得 session</summary>
     ContainerSession? GetSession(string sessionId);
@@ -28,4 +28,10 @@ public interface ISessionService
 
     /// <summary>撤銷某任務下的所有 session</summary>
     int RevokeSessionsByTask(string taskId, string reason, string revokedBy);
+
+    /// <summary>撤銷以指定註冊憑證註冊、仍為 Active 的 session，回傳被撤銷的 session id。</summary>
+    IReadOnlyList<string> RevokeSessionsByCredential(string registrationCredentialId, string reason, string revokedBy);
+
+    /// <summary>撤銷這組 principal＋task 仍為 Active 的 session，回傳被撤銷的 session id。</summary>
+    IReadOnlyList<string> RevokeSessionsBySubject(string principalId, string taskId, string reason, string revokedBy);
 }

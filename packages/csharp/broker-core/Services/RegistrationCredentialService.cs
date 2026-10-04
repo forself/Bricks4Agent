@@ -175,8 +175,11 @@ public class RegistrationCredentialService : IRegistrationCredentialService
                 parameters);
     }
 
+    /// <summary>種子啟動流程在憑證紀錄中的建立者與撤銷者；其他撤銷者（管理員等）的撤銷不會被重新種入。</summary>
+    public const string SeedStartupActor = "broker-startup";
+
     /// <inheritdoc />
-    public RegistrationCredential UpsertSeed(string principalId, string taskId, string secret, string source, DateTime expiresAt)
+    public RegistrationCredential? UpsertSeed(string principalId, string taskId, string secret, string source, DateTime expiresAt)
     {
         RequireSubject(principalId, taskId);
         if (!IsUsableSecret(secret))
@@ -205,12 +208,19 @@ public class RegistrationCredentialService : IRegistrationCredentialService
 
         foreach (var credential in active.Where(credential => !ReferenceEquals(credential, kept)))
         {
-            Revoke(credential.CredentialId, "Replaced by a new seed secret.", "broker-startup");
+            Revoke(credential.CredentialId, "Replaced by a new seed secret.", SeedStartupActor);
         }
 
         if (kept == null)
         {
-            return Insert(principalId, taskId, ComputeHash(secret), source, "broker-startup", expiresAt);
+            // 同一把密鑰曾被啟動流程以外的人（例如管理員）撤銷：撤銷跨重啟保留，不再種入；
+            // 要恢復就換一把密鑰。
+            if (IsRevokedByOperator(principalId, taskId, source, hash))
+            {
+                return null;
+            }
+
+            return Insert(principalId, taskId, ComputeHash(secret), source, SeedStartupActor, expiresAt);
         }
 
         // 同一把密鑰：每次啟動重新設定到期時間。
@@ -219,6 +229,27 @@ public class RegistrationCredentialService : IRegistrationCredentialService
             new { expiresAt, credentialId = kept.CredentialId });
         kept.ExpiresAt = expiresAt;
         return kept;
+    }
+
+    private bool IsRevokedByOperator(string principalId, string taskId, string source, byte[] hash)
+    {
+        var revoked = _db.Query<RegistrationCredential>(
+            @"SELECT * FROM registration_credentials
+              WHERE principal_id = @principalId AND task_id = @taskId AND source = @source
+                AND revoked_at IS NOT NULL AND revoked_by <> @startup
+              ORDER BY created_at DESC LIMIT 200",
+            new { principalId, taskId, source, startup = SeedStartupActor });
+
+        var found = false;
+        foreach (var credential in revoked)
+        {
+            if (CryptographicOperations.FixedTimeEquals(hash, Encoding.ASCII.GetBytes(credential.SecretHash ?? string.Empty)))
+            {
+                found = true;
+            }
+        }
+
+        return found;
     }
 
     /// <inheritdoc />

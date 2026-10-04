@@ -95,9 +95,10 @@ public interface IRegistrationCredentialService
 
     /// <summary>
     /// 依設定的種子密鑰建立或保留憑證：同一把密鑰保留原紀錄並把到期時間重設為 <paramref name="expiresAt"/>；
-    /// 密鑰換了就撤銷同來源的舊憑證並建立新的。
+    /// 密鑰換了就撤銷同來源的舊憑證並建立新的。同一把密鑰曾被種子啟動流程以外的人（例如管理員）撤銷時，
+    /// 撤銷保留、不再種入，回傳 null；要恢復必須換一把密鑰。
     /// </summary>
-    RegistrationCredential UpsertSeed(string principalId, string taskId, string secret, string source, DateTime expiresAt);
+    RegistrationCredential? UpsertSeed(string principalId, string taskId, string secret, string source, DateTime expiresAt);
 
     /// <summary>列出憑證（不含雜湊以外的密鑰資料）；預設只列仍有效者。</summary>
     IReadOnlyList<RegistrationCredential> List(string? principalId = null, string? taskId = null, bool includeInactive = false);

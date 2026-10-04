@@ -143,16 +143,16 @@ public class RegistrationCredentialServiceTests
     {
         WithService((db, service) =>
         {
-            var first = service.UpsertSeed(PrincipalId, TaskId, SeedSecret, RegistrationCredentialSources.DevelopmentSeed, DateTime.UtcNow.AddHours(1));
+            var first = service.UpsertSeed(PrincipalId, TaskId, SeedSecret, RegistrationCredentialSources.DevelopmentSeed, DateTime.UtcNow.AddHours(1))!;
             var other = service.Issue(PrincipalId, TaskId, RegistrationCredentialSources.AgentSpawn, "unit", DateTime.UtcNow.AddHours(1));
 
             var restarted = service.UpsertSeed(PrincipalId, TaskId, SeedSecret, RegistrationCredentialSources.DevelopmentSeed, DateTime.UtcNow.AddHours(5));
-            restarted.CredentialId.Should().Be(first.CredentialId, "the same secret keeps its credential across restarts");
+            restarted!.CredentialId.Should().Be(first.CredentialId, "the same secret keeps its credential across restarts");
             db.Get<RegistrationCredential>(first.CredentialId)!.ExpiresAt.Should().BeCloseTo(DateTime.UtcNow.AddHours(5), TimeSpan.FromSeconds(10));
 
             const string rotated = "rotated-seed-secret-for-unit-tests-0123456789";
             var replaced = service.UpsertSeed(PrincipalId, TaskId, rotated, RegistrationCredentialSources.DevelopmentSeed, DateTime.UtcNow.AddHours(1));
-            replaced.CredentialId.Should().NotBe(first.CredentialId);
+            replaced!.CredentialId.Should().NotBe(first.CredentialId);
             service.Verify(PrincipalId, TaskId, SeedSecret).Failure.Should().Be(RegistrationCredentialFailure.Revoked);
             service.Verify(PrincipalId, TaskId, rotated).Succeeded.Should().BeTrue();
             service.Verify(PrincipalId, TaskId, other.Secret).Succeeded.Should().BeTrue("other sources are left alone");
@@ -161,6 +161,57 @@ public class RegistrationCredentialServiceTests
             var shortSecret = () => service.UpsertSeed(PrincipalId, TaskId, "too-short", RegistrationCredentialSources.DevelopmentSeed, DateTime.UtcNow.AddHours(1));
             placeholder.Should().Throw<ArgumentException>();
             shortSecret.Should().Throw<ArgumentException>().Which.Message.Should().NotContain("too-short");
+        });
+    }
+
+    [Fact]
+    public void UpsertSeed_DoesNotRestoreACredentialAnOperatorRevoked_UntilTheSecretChanges()
+    {
+        WithService((db, service) =>
+        {
+            var seeded = service.UpsertSeed(PrincipalId, TaskId, SeedSecret, RegistrationCredentialSources.DevelopmentSeed, DateTime.UtcNow.AddHours(1))!;
+            service.Revoke(seeded.CredentialId, "Revoked by admin", "prn_admin").Should().BeTrue();
+
+            // A restart with the same configured secret keeps the operator's revocation.
+            service.UpsertSeed(PrincipalId, TaskId, SeedSecret, RegistrationCredentialSources.DevelopmentSeed, DateTime.UtcNow.AddHours(1))
+                .Should().BeNull("an operator's revocation survives a restart");
+            service.Verify(PrincipalId, TaskId, SeedSecret).Failure.Should().Be(RegistrationCredentialFailure.Revoked);
+            db.Query<RegistrationCredential>("SELECT * FROM registration_credentials WHERE revoked_at IS NULL")
+                .Should().BeEmpty("nothing is seeded again");
+
+            // The same holds for a revocation of every credential of the task.
+            const string rotated = "rotated-seed-secret-for-unit-tests-0123456789";
+            var rotatedSeed = service.UpsertSeed(PrincipalId, TaskId, rotated, RegistrationCredentialSources.DevelopmentSeed, DateTime.UtcNow.AddHours(1));
+            rotatedSeed.Should().NotBeNull("a new secret is seeded");
+            service.Verify(PrincipalId, TaskId, rotated).Succeeded.Should().BeTrue();
+            service.RevokeFor(PrincipalId, TaskId, "Revoked by admin", "prn_admin").Should().Be(1);
+            service.UpsertSeed(PrincipalId, TaskId, rotated, RegistrationCredentialSources.DevelopmentSeed, DateTime.UtcNow.AddHours(1))
+                .Should().BeNull();
+            service.Verify(PrincipalId, TaskId, rotated).Failure.Should().Be(RegistrationCredentialFailure.Revoked);
+        });
+    }
+
+    [Fact]
+    public void Initializer_ReportsASeedCredentialHeldRevoked()
+    {
+        WithService((db, service) =>
+        {
+            var seed = Seed(SeedSecret);
+            var initializer = new BrokerDbInitializer(db);
+            initializer.Initialize(seed);
+            initializer.SeedCredentialHeldRevoked.Should().BeFalse();
+            var seeded = service.Verify(PrincipalId, TaskId, SeedSecret).Credential!;
+
+            service.Revoke(seeded.CredentialId, "Revoked by admin", "prn_admin").Should().BeTrue();
+            initializer.Initialize(seed);
+            initializer.SeedCredentialHeldRevoked.Should().BeTrue();
+            service.Verify(PrincipalId, TaskId, SeedSecret).Failure.Should().Be(RegistrationCredentialFailure.Revoked);
+
+            // Rotating the secret restores registration.
+            const string rotated = "rotated-seed-secret-for-unit-tests-0123456789";
+            initializer.Initialize(Seed(rotated));
+            initializer.SeedCredentialHeldRevoked.Should().BeFalse();
+            service.Verify(PrincipalId, TaskId, rotated).Succeeded.Should().BeTrue();
         });
     }
 
