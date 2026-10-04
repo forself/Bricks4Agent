@@ -9,7 +9,9 @@ public static class HighLevelEndpoints
     public static void Map(RouteGroupBuilder group)
     {
         var highLevel = group.MapGroup("/high-level");
-        var line = highLevel.MapGroup("/line");
+        // line-worker 的三條路由（process、notifications/pending、notifications/complete）以 worker 簽章驗證；
+        // 其餘路由是管理操作，需管理員的 scoped token（RequireBrokerAdmin 不作用於 worker 簽章端點）。
+        var line = highLevel.MapGroup("/line").RequireBrokerAdmin();
 
         line.MapPost("/process", async (HttpContext ctx, HighLevelCoordinator coordinator, CancellationToken cancellationToken) =>
         {
@@ -40,7 +42,7 @@ public static class HighLevelEndpoints
                 handoff = result.Handoff,
                 rag_snippets = result.RagSnippets
             }));
-        });
+        }).WithBrokerAuthPolicy(BrokerAuthPolicy.WorkerSignature);
 
         line.MapPost("/profile", (HttpContext ctx, HighLevelCoordinator coordinator) =>
         {
@@ -170,7 +172,8 @@ public static class HighLevelEndpoints
             {
                 total = coordinator.ListPendingLineNotifications(limit).Count,
                 notifications = coordinator.ListPendingLineNotifications(limit)
-            })));
+            })))
+            .WithBrokerAuthPolicy(BrokerAuthPolicy.WorkerSignature);
 
         line.MapPost("/notifications/complete", (HttpContext ctx, HighLevelCoordinator coordinator) =>
         {
@@ -190,6 +193,6 @@ public static class HighLevelEndpoints
             }
 
             return Results.Ok(ApiResponseHelper.Success(completed));
-        });
+        }).WithBrokerAuthPolicy(BrokerAuthPolicy.WorkerSignature);
     }
 }

@@ -23,6 +23,12 @@ Console.OutputEncoding = new UTF8Encoding(false);
 using var startupLoggerFactory = LoggerFactory.Create(b => b.AddConsole());
 var startupLogger = startupLoggerFactory.CreateLogger("Program");
 
+// ── 密鑰啟動驗證（必須在讀取 ScopedToken／Encryption／WorkerAuth／ArtifactDownload 設定之前） ──
+// 已外洩值任何環境都拒絕；佔位值只在 Development／Testing（或 Broker:AllowEphemeralKeys=true）改用隨機金鑰。
+// 下方 ECDH、MasterKey、ScopedToken 一律使用驗證器解析出的實際值。
+var brokerSecrets = Broker.Configuration.BrokerSecretsValidator.Validate(
+    builder.Configuration, builder.Environment, startupLogger);
+
 // ── 資料庫 ──
 var dbPath = builder.Configuration.GetValue<string>("Database:Path") ?? "broker.db";
 var connectionString = $"Data Source={dbPath}";
@@ -34,24 +40,32 @@ using (var initDb = BrokerDb.UseSqlite(connectionString))
     var initializer = new BrokerDbInitializer(initDb);
     var developmentSeed = builder.Configuration.GetSection("DevelopmentSeed").Get<DevelopmentSeedOptions>();
     initializer.Initialize(developmentSeed);
-    // Dashboard 種子（管理介面專用 Principal）
+    // Dashboard 種子（管理介面專用 Principal）：只在 Development 環境種入
     var dashboardSeed = builder.Configuration.GetSection("DashboardSeed").Get<DevelopmentSeedOptions>();
     if (dashboardSeed?.Enabled == true)
-        initializer.Initialize(dashboardSeed);
+    {
+        if (builder.Environment.IsDevelopment())
+            initializer.Initialize(dashboardSeed);
+        else
+            startupLogger.LogWarning(
+                "DashboardSeed is enabled but ignored outside the Development environment (current: {Environment}).",
+                builder.Environment.EnvironmentName);
+    }
 }
 
 // ── Step 2: 加密基礎建設 ──
 // ECDH P-256 金鑰對（Singleton，所有 instance 共享同一金鑰）
-var ecdhPrivateKey = builder.Configuration.GetValue<string>("Broker:Encryption:EcdhPrivateKeyBase64");
-if (!string.IsNullOrEmpty(ecdhPrivateKey) && !ecdhPrivateKey.StartsWith("CHANGE_ME"))
+// 佔位值判斷與格式檢查已由 BrokerSecretsValidator 完成；佔位值時這裡拿到的是本次程序隨機產生的私鑰。
+var ecdhPrivateKey = brokerSecrets.EcdhPrivateKeyBase64;
+if (!brokerSecrets.EcdhKeyIsEphemeral)
 {
     builder.Services.AddSingleton<IEnvelopeCrypto>(sp =>
         new EnvelopeCrypto(ecdhPrivateKey));
 }
 else
 {
-    // 開發模式：自動生成金鑰對（每次重啟不同）
-    var crypto = new EnvelopeCrypto();
+    // 開發模式（或明確 opt-in 的 Broker:AllowEphemeralKeys）：金鑰對每次重啟不同
+    var crypto = new EnvelopeCrypto(ecdhPrivateKey);
     builder.Services.AddSingleton<IEnvelopeCrypto>(crypto);
     // M-3 修復：不再將完整金鑰記錄到 log（即使是 public key 也不應洩漏至 log aggregation）
     startupLogger.LogWarning(
@@ -92,7 +106,8 @@ if (cacheEnabled)
 }
 
 // Session 金鑰存儲（DB 後端，主金鑰加密）
-var masterKeyBase64 = builder.Configuration.GetValue<string>("Broker:Encryption:MasterKeyBase64") ?? "";
+// 實際主金鑰由 BrokerSecretsValidator 提供（佔位值時為本次程序的隨機金鑰）。
+var masterKeyBase64 = brokerSecrets.MasterKeyBase64;
 var dbSessionKeyStore = new Func<IServiceProvider, DbSessionKeyStore>(sp =>
     new DbSessionKeyStore(sp.GetRequiredService<BrokerDb>(), masterKeyBase64));
 
@@ -107,7 +122,8 @@ else
 }
 
 // ── Step 3: Token + Session + Epoch ──
-var tokenSecret = builder.Configuration.GetValue<string>("Broker:ScopedToken:Secret") ?? "";
+// 實際簽章密鑰由 BrokerSecretsValidator 提供（佔位值時為本次程序的隨機密鑰）。
+var tokenSecret = brokerSecrets.ScopedTokenSecret;
 var tokenIssuer = builder.Configuration.GetValue<string>("Broker:ScopedToken:Issuer") ?? "broker-control-plane";
 var tokenAudience = builder.Configuration.GetValue<string>("Broker:ScopedToken:Audience") ?? "broker-agents";
 var tokenExpMin = builder.Configuration.GetValue<int>("Broker:ScopedToken:ExpirationMinutes");
@@ -598,7 +614,10 @@ app.UseBrokerAudit();
 // Dashboard JS 內建完整 ECDH+AES-GCM 加密客戶端，所有 API 呼叫走加密 POST
 
 // ── API 路由 ──
-var api = app.MapGroup("/api/v1");
+// 驗證政策以端點 metadata 標示（Broker.Helpers.BrokerAuthPolicy）：/api/v1 預設 ScopedToken，
+// 只有明確標示的群組或端點（health、sessions/register、簽章連結、local-admin、portal、worker 簽章路由）例外。
+var api = app.MapGroup("/api/v1")
+    .WithMetadata(new Broker.Helpers.BrokerAuthPolicyMetadata(Broker.Helpers.BrokerAuthPolicy.ScopedToken));
 
 // L-7 修復：健康檢查同時支援 GET（標準 LB 探測）和 POST（向後相容）
 var brokerCrypto = app.Services.GetRequiredService<IEnvelopeCrypto>();
@@ -608,8 +627,10 @@ var healthHandler = () => Results.Ok(new
     timestamp = DateTime.UtcNow,
     broker_public_key = brokerCrypto.GetBrokerPublicKey()
 });
-api.MapGet("/health", healthHandler);
-api.MapPost("/health", healthHandler);
+api.MapGet("/health", healthHandler)
+    .WithMetadata(new Broker.Helpers.BrokerAuthPolicyMetadata(Broker.Helpers.BrokerAuthPolicy.Public));
+api.MapPost("/health", healthHandler)
+    .WithMetadata(new Broker.Helpers.BrokerAuthPolicyMetadata(Broker.Helpers.BrokerAuthPolicy.Public));
 
 // ── Dev RAG test（/dev/ 路徑已被 Encryption+Auth middleware 排除，只允許 localhost 存取） ──
 {

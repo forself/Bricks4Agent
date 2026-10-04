@@ -14,7 +14,8 @@ public static class WorkerEndpoints
 {
     public static void Map(RouteGroupBuilder group)
     {
-        var workers = group.MapGroup("/workers");
+        // worker 池的列舉與生命週期控制都是管理操作，只限管理員。
+        var workers = group.MapGroup("/workers").RequireBrokerAdmin();
 
         // ── GET /api/v1/workers — List all registered workers ──
         workers.MapGet("/", (IWorkerRegistry registry) =>

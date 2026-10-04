@@ -44,6 +44,13 @@ public class SharedContextService : ISharedContextService
                 $"SharedContext only accepts plan-related types: {string.Join(", ", AllowedContentTypes)}");
         }
 
+        // 驗證 ACL 格式：格式不符的 ACL 不寫入（讀取端也會把它視為拒絕存取）
+        if (!IsWellFormedAcl(acl))
+        {
+            throw new InvalidOperationException(
+                "ACL must be a JSON object; when it has a 'read' entry, that entry must be an array of strings.");
+        }
+
         // 使用交易確保版本號原子遞增（修復 H-6：版本 race condition）
         var entry = _db.InTransaction(() =>
         {
@@ -168,7 +175,7 @@ public class SharedContextService : ISharedContextService
             "SELECT * FROM shared_context_entries WHERE document_id = @docId ORDER BY version ASC",
             new { docId = documentId });
 
-        // ACL 檢查（用最新版本的 ACL）
+        // ACL 檢查：最新版本不可讀時整份文件不回傳；可讀時，舊版本也只回傳各自 ACL 允許讀取的版本
         if (entries.Count > 0)
         {
             var latest = entries[^1]; // 最新版本
@@ -183,7 +190,7 @@ public class SharedContextService : ISharedContextService
             }
         }
 
-        return entries;
+        return entries.FindAll(entry => CheckReadAccess(entry.Acl, readerPrincipalId));
     }
 
     public List<SharedContextEntry> ListByTask(string taskId, string readerPrincipalId)
@@ -219,7 +226,7 @@ public class SharedContextService : ISharedContextService
     /// ACL 格式：{"read":["role_reader","role_admin"],"write":["role_pm"]}
     /// "*" 表示允許所有人
     ///
-    /// 安全原則：Fail-Closed（解析失敗 → 拒絕存取）
+    /// 安全原則：Fail-Closed（解析失敗或格式不符 → 拒絕存取）
     /// </summary>
     private static bool CheckReadAccess(string acl, string readerPrincipalId)
     {
@@ -230,16 +237,18 @@ public class SharedContextService : ISharedContextService
         try
         {
             using var doc = JsonDocument.Parse(acl);
-            if (!doc.RootElement.TryGetProperty("read", out var readArray))
-                return false; // 無 read 陣列 → 拒絕（fail-closed）
+            var root = doc.RootElement;
 
-            if (readArray.ValueKind != JsonValueKind.Array)
-                return false; // read 欄位不是陣列 → 拒絕
+            // 根不是物件、read 不是字串陣列 → 拒絕（fail-closed）
+            if (!IsWellFormedAcl(root))
+                return false;
+
+            if (!root.TryGetProperty("read", out var readArray))
+                return false; // 無 read 陣列 → 拒絕（fail-closed）
 
             foreach (var item in readArray.EnumerateArray())
             {
                 var value = item.GetString();
-                if (value == null) continue;
 
                 // "*" = 允許所有人
                 if (value == "*") return true;
@@ -250,9 +259,49 @@ public class SharedContextService : ISharedContextService
 
             return false; // 不在 read 清單中
         }
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException)
+        {
+            return false; // ACL 解析失敗或型別不符 → 拒絕（fail-closed）
+        }
+    }
+
+    /// <summary>
+    /// ACL 格式：必須是 JSON 物件；有 read 時，read 必須是字串陣列。
+    /// 寫入時拒絕格式不符的 ACL；讀取時格式不符一律視為拒絕存取。
+    /// </summary>
+    public static bool IsWellFormedAcl(string? acl)
+    {
+        if (string.IsNullOrWhiteSpace(acl))
+            return false;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(acl);
+            return IsWellFormedAcl(doc.RootElement);
+        }
         catch (JsonException)
         {
-            return false; // ACL 解析失敗 → 拒絕（fail-closed）
+            return false;
         }
+    }
+
+    private static bool IsWellFormedAcl(JsonElement root)
+    {
+        if (root.ValueKind != JsonValueKind.Object)
+            return false;
+
+        if (!root.TryGetProperty("read", out var read))
+            return true;
+
+        if (read.ValueKind != JsonValueKind.Array)
+            return false;
+
+        foreach (var item in read.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.String)
+                return false;
+        }
+
+        return true;
     }
 }

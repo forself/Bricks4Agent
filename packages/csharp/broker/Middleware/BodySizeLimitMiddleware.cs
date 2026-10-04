@@ -34,8 +34,10 @@ public class BodySizeLimitMiddleware
     {
         var path = context.Request.Path.Value ?? "";
 
-        // 排除健康檢查和非 POST
-        if (ExcludedPaths.Contains(path) || context.Request.Method != "POST")
+        // 排除健康檢查和非 POST（方法比對不分大小寫，與 Encryption、BrokerAuth 一致）
+        if (!HttpMethods.IsPost(context.Request.Method)
+            || ExcludedPaths.Contains(path)
+            || BrokerAuthPolicyResolver.Resolve(context) == BrokerAuthPolicy.Public)
         {
             await _next(context);
             return;

@@ -23,7 +23,7 @@ public static class UserApprovalEndpoints
 
             var items = broker.ListPendingApprovalDetailsForApprover(userId, isAdmin: false);
             return Results.Ok(ApiResponseHelper.Success(new { user = userId, total = items.Count, items }));
-        });
+        }).WithBrokerAuthPolicy(BrokerAuthPolicy.SignedLink); // 由連結 token 驗證
 
         userApprovals.MapPost("/{approvalId}/approve", async (HttpContext ctx, ApprovalLinkService link, IBrokerService broker, string approvalId) =>
         {

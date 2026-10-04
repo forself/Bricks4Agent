@@ -211,19 +211,30 @@ async Task<string> ProcessCommand(BrokerApiClient c, string input, CancellationT
         return FormatResult("notification", result);
     }
 
-    // /workers — list registered workers
+    // /workers — the worker list (GET /api/v1/workers) accepts only an administrator scoped token.
+    // With --role role_admin the bridge calls it with its token as Bearer and passes any refusal through;
+    // with any other role it explains the requirement instead of calling the endpoint.
     if (input.StartsWith("/workers", StringComparison.OrdinalIgnoreCase))
     {
-        var result = await c.GetAsync("/api/v1/workers", ct);
-        return result.RootElement.GetRawText();
+        if (!IsAdminRole(roleId))
+            return "/workers needs administrator access: the worker list accepts only a role_admin scoped token. Start the bridge with --role role_admin for a task that assigns that role.";
+
+        var (status, body) = await c.GetWithTokenAsync("/api/v1/workers", ct);
+        return status == 200 ? body : $"/workers failed (HTTP {status}): {body}";
     }
 
     // Default: echo + basic math
     if (IsSimpleMath(input, out var mathResult))
         return $"🔢 {input} = {mathResult}";
 
-    return $"Echo: {input}\n\nCommands:\n/list [path]\n/read <file>\n/search <pattern>\n/notify <msg>\n/approve <desc>\n/workers";
+    var commands = "/list [path]\n/read <file>\n/search <pattern>\n/notify <msg>\n/approve <desc>";
+    if (IsAdminRole(roleId))
+        commands += "\n/workers";
+
+    return $"Echo: {input}\n\nCommands:\n{commands}";
 }
+
+static bool IsAdminRole(string role) => string.Equals(role, "role_admin", StringComparison.Ordinal);
 
 string FormatResult(string tool, string raw)
 {
@@ -383,6 +394,19 @@ class BrokerApiClient
         var resp = await _http.GetAsync($"{_baseUrl}{path}", ct);
         var body = await resp.Content.ReadAsStringAsync(ct);
         return JsonDocument.Parse(body);
+    }
+
+    /// <summary>GET with the session's scoped token as Bearer; returns the status code and the raw body.</summary>
+    public async Task<(int Status, string Body)> GetWithTokenAsync(string path, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(ScopedToken))
+            throw new InvalidOperationException("Session not established");
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"{_baseUrl}{path}");
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", ScopedToken);
+        using var resp = await _http.SendAsync(request, ct);
+        var body = await resp.Content.ReadAsStringAsync(ct);
+        return ((int)resp.StatusCode, body);
     }
 
     /// <summary>ECDH handshake → register session</summary>

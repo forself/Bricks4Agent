@@ -18,8 +18,8 @@ namespace Broker.Middleware;
 /// 6. 寫出加密信封
 ///
 /// 排除路徑：
-/// - /api/v1/health（load balancer 探測）
-/// - 非 POST 請求
+/// - /api/v1/health（load balancer 探測；端點政策為 Public）
+/// - 非 POST 請求（HttpMethods.IsPost，不分大小寫）
 /// </summary>
 public class EncryptionMiddleware
 {
@@ -72,10 +72,11 @@ public class EncryptionMiddleware
     {
         var path = context.Request.Path.Value ?? "";
 
-        // 排除不需加密的端點
-        if (ExcludedPaths.Contains(path)
-            || path.StartsWith("/dev/", StringComparison.OrdinalIgnoreCase)
-            || context.Request.Method != "POST")
+        // 排除不需加密的端點（方法比對不分大小寫，與 BodySizeLimit、BrokerAuth 一致）
+        if (!HttpMethods.IsPost(context.Request.Method)
+            || ExcludedPaths.Contains(path)
+            || BrokerAuthPolicyResolver.Resolve(context) == BrokerAuthPolicy.Public
+            || path.StartsWith("/dev/", StringComparison.OrdinalIgnoreCase))
         {
             await _next(context);
             return;

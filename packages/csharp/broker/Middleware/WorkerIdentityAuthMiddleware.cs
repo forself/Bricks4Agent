@@ -24,7 +24,9 @@ public sealed class WorkerIdentityAuthMiddleware
 
     public async Task InvokeAsync(HttpContext context)
     {
-        if (!_options.Enforce || !RequiresWorkerAuth(context.Request.Path.Value ?? string.Empty))
+        // Enforce=false 時不驗證、也不標記 worker 身分；
+        // WorkerSignature 端點因此會在 BrokerAuthMiddleware 被拒（不會退回 scoped token）。
+        if (!_options.Enforce || !RequiresWorkerAuth(context))
         {
             await _next(context);
             return;
@@ -52,6 +54,7 @@ public sealed class WorkerIdentityAuthMiddleware
             return;
         }
 
+        // 驗簽內容維持原樣：method、不含 query 的原始 path、body；不可改用正規化後的路徑。
         var body = context.Items[EncryptionMiddleware.DecryptedBodyKey] as string ?? string.Empty;
         var decision = _authService.ValidateHttpRequest(new WorkerHttpAuthRequest
         {
@@ -76,11 +79,29 @@ public sealed class WorkerIdentityAuthMiddleware
         await _next(context);
     }
 
-    private bool RequiresWorkerAuth(string path)
+    /// <summary>
+    /// 以已匹配的端點判斷是否為 worker 路由：端點標示 WorkerSignature 政策，
+    /// 或端點的路由樣板列在 WorkerAuth:HttpRoutes（以路由樣板比對，而非請求路徑字串）。
+    /// </summary>
+    private bool RequiresWorkerAuth(HttpContext context)
     {
+        if (BrokerAuthPolicyResolver.Resolve(context) == BrokerAuthPolicy.WorkerSignature)
+        {
+            return true;
+        }
+
+        var routePattern = BrokerAuthPolicyResolver.GetRoutePattern(context);
+        if (string.IsNullOrEmpty(routePattern))
+        {
+            return false;
+        }
+
         return _options.HttpRoutes
             .SelectMany(rule => rule.Paths)
-            .Any(allowed => string.Equals(allowed, path, StringComparison.OrdinalIgnoreCase));
+            .Any(allowed => string.Equals(
+                BrokerAuthPolicyResolver.NormalizeRoute(allowed),
+                routePattern,
+                StringComparison.OrdinalIgnoreCase));
     }
 
     private static async Task WriteAuthError(HttpContext context, int statusCode, string message)

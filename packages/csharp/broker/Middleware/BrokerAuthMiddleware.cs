@@ -6,16 +6,19 @@ namespace Broker.Middleware;
 /// <summary>
 /// 驗證中介軟體 —— 管線第二層（在 Encryption 之後，Audit 之前）
 ///
-/// 職責：
-/// 1. 從解密後的明文 body 讀取 Scoped Token（或 admin JWT）
+/// 是否需要驗證，一律由已匹配端點的 <see cref="BrokerAuthPolicy"/> metadata 決定，
+/// 不比對 HTTP 方法字串或請求路徑；沒有標示政策的 /api/v1 端點視為 ScopedToken（預設拒絕）。
+///
+/// ScopedToken 政策的職責：
+/// 1. 取得 Scoped Token：POST 取自解密後 body 的 scoped_token 或 Bearer；其他方法只取 Bearer
 /// 2. 驗證 Token 簽章 + 時效
 /// 3. Epoch 閘道：token.epoch &lt; current_epoch → 401
-/// 4. Session 狀態檢查（active、未過期）
+/// 4. 撤銷檢查（JTI、Session）
 /// 5. 將已驗證的 claims 注入 HttpContext.Items
 ///
-/// 排除路徑：
-/// - /api/v1/health（無需驗證）
-/// - /api/v1/sessions/register（初始交握，用 admin JWT 驗證）
+/// 其他政策：Public / SessionBootstrap / SignedLink / LocalAdminSession / PortalSession 交給 handler 自行驗證；
+/// WorkerSignature 必須已通過 WorkerIdentityAuthMiddleware，否則 401。
+/// 沒有匹配端點的請求（之後會 404）與 /api/v1 以外的端點（例如 /dev，由 DevEndpointGuard 管）直接放行。
 /// </summary>
 public class BrokerAuthMiddleware
 {
@@ -32,20 +35,6 @@ public class BrokerAuthMiddleware
     public const string RoleIdKey = "broker_role_id";
     public const string EpochKey = "broker_epoch";
 
-    // 排除驗證的路徑
-    private static readonly HashSet<string> ExcludedPaths = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "/api/v1/health",
-        "/api/v1/sessions/register" // 初始交握不帶 Scoped Token
-    };
-
-    private static bool IsTrustedInternalPlainJsonPath(string path)
-    {
-        return path.StartsWith("/api/v1/tool-specs/", StringComparison.OrdinalIgnoreCase)
-            || path.StartsWith("/api/v1/portal/", StringComparison.OrdinalIgnoreCase)
-            || path.StartsWith("/api/v1/local-admin/", StringComparison.OrdinalIgnoreCase);
-    }
-
     public BrokerAuthMiddleware(
         RequestDelegate next,
         IScopedTokenService tokenService,
@@ -61,27 +50,42 @@ public class BrokerAuthMiddleware
     public async Task InvokeAsync(HttpContext context)
     {
         var path = context.Request.Path.Value ?? "";
+        var policy = BrokerAuthPolicyResolver.Resolve(context);
 
-        // 排除不需驗證的端點
-        if (ExcludedPaths.Contains(path)
-            || IsTrustedInternalPlainJsonPath(path)
-            || path.StartsWith("/dev/", StringComparison.OrdinalIgnoreCase)
-            || context.Request.Method != "POST")
+        switch (policy)
         {
-            await _next(context);
-            return;
+            case null:
+            case BrokerAuthPolicy.Public:
+            case BrokerAuthPolicy.SessionBootstrap:
+            case BrokerAuthPolicy.SignedLink:
+            case BrokerAuthPolicy.LocalAdminSession:
+            case BrokerAuthPolicy.PortalSession:
+                await _next(context);
+                return;
+
+            case BrokerAuthPolicy.WorkerSignature:
+                // 只有 worker 簽章端點才因 worker 驗證通過而略過 scoped token；
+                // 未經驗證（含 WorkerAuth:Enforce=false 時）一律拒絕，不退回 scoped token。
+                if (context.Items.ContainsKey(WorkerIdentityAuthMiddleware.WorkerTypeItemKey))
+                {
+                    await _next(context);
+                    return;
+                }
+
+                _logger.LogWarning("Missing worker authentication for {Path}", path);
+                await WriteAuthError(context, 401, "Worker authentication required.");
+                return;
+
+            case BrokerAuthPolicy.ScopedToken:
+            default:
+                break;
         }
 
-        if (context.Items.ContainsKey(WorkerIdentityAuthMiddleware.WorkerTypeItemKey))
-        {
-            await _next(context);
-            return;
-        }
-
-        // ── 1. 從解密後的 body 提取 Token ──
+        // ── 1. 從解密後的 body 提取 Token（只限 POST；其他方法只接受 Bearer） ──
         // EncryptionMiddleware 已將明文注入 HttpContext.Items
         string? decryptedBody = null;
-        if (context.Items.TryGetValue(EncryptionMiddleware.DecryptedBodyKey, out var bodyObj))
+        if (HttpMethods.IsPost(context.Request.Method) &&
+            context.Items.TryGetValue(EncryptionMiddleware.DecryptedBodyKey, out var bodyObj))
         {
             decryptedBody = bodyObj as string;
         }
@@ -93,7 +97,9 @@ public class BrokerAuthMiddleware
             try
             {
                 using var doc = System.Text.Json.JsonDocument.Parse(decryptedBody);
-                if (doc.RootElement.TryGetProperty("scoped_token", out var tokenProp))
+                if (doc.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object &&
+                    doc.RootElement.TryGetProperty("scoped_token", out var tokenProp) &&
+                    tokenProp.ValueKind == System.Text.Json.JsonValueKind.String)
                 {
                     scopedToken = tokenProp.GetString();
                 }
@@ -122,7 +128,18 @@ public class BrokerAuthMiddleware
         }
 
         // ── 2. 驗證 Token ──
-        var claims = _tokenService.ValidateToken(scopedToken);
+        // 格式錯誤的 token 會由 token handler 以例外回報（ScopedTokenService 的既有契約：由呼叫端處理），
+        // 這裡一律視為無效 token 回 401，不讓例外穿過加密層變成 500 或中斷的回應。
+        ScopedTokenClaims? claims;
+        try
+        {
+            claims = _tokenService.ValidateToken(scopedToken);
+        }
+        catch (Exception ex) when (ex is ArgumentException or System.Text.Json.JsonException)
+        {
+            claims = null;
+        }
+
         if (claims == null)
         {
             _logger.LogWarning("Invalid token for {Path}", path);

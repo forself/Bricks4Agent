@@ -10,6 +10,7 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 const { spawn, execFileSync } = require('child_process');
+const { pathToFileURL } = require('url');
 
 const ROOT = path.resolve(__dirname, '..', '..', '..');
 const composeFile = path.join(ROOT, 'tools', 'agent', 'container', 'compose.yml');
@@ -36,6 +37,14 @@ function run(command, args, options = {}) {
         child.on('error', reject);
         child.on('close', (code) => resolve({ code, stdout, stderr }));
     });
+}
+
+// compose 檔不附預設金鑰（${VAR:?...}）。每次執行在記憶體中產生一組新的金鑰，
+// 只放進子行程的 env，不寫檔；up 與 down 必須用同一個 env（down 也會展開 ${VAR:?...}）。
+async function generateStackSecretsEnv() {
+    const generator = path.join(ROOT, 'tools', 'agent', 'container', 'gen-stack-secrets.mjs');
+    const { generateStackSecrets } = await import(pathToFileURL(generator).href);
+    return generateStackSecrets();
 }
 
 async function buildImages(env) {
@@ -74,6 +83,7 @@ async function main() {
     const fixture = makeFixture();
     const env = {
         ...process.env,
+        ...(await generateStackSecretsEnv()),
         PYTHONIOENCODING: 'utf-8',
         PYTHONUTF8: '1',
         ADAPTER_WORKSPACE: fixture.relForCompose,

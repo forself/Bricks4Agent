@@ -24,8 +24,9 @@ public sealed class ProjectInterviewStateService
     public async Task<ProjectInterviewTaskDocument> LoadTaskDocumentAsync(string channel, string userId, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        // 只採信系統元件在 global 範圍寫入的版本
         var latest = _db.Query<SharedContextEntry>(
-            "SELECT * FROM shared_context_entries WHERE document_id = @docId ORDER BY version DESC LIMIT 1",
+            $"SELECT * FROM shared_context_entries WHERE document_id = @docId AND {SystemContextDocuments.TrustedGlobalCondition()} ORDER BY version DESC LIMIT 1",
             new { docId = BuildTaskDocumentId(channel, userId) }).FirstOrDefault();
 
         if (latest == null || string.IsNullOrWhiteSpace(latest.ContentRef))

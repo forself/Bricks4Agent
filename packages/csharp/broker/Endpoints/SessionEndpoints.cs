@@ -15,6 +15,8 @@ public static class SessionEndpoints
     {
         var sessions = group.MapGroup("/sessions");
 
+        // 取得 token 的入口：不需 scoped token，由下列條件把關
+        // （任務須已指派主體與角色、角色以任務為準、管理員等級角色只接受本機註冊）。
         sessions.MapPost("/register", (HttpContext ctx,
             ISessionService sessionService,
             IScopedTokenService tokenService,
@@ -22,7 +24,6 @@ public static class SessionEndpoints
             IEnvelopeCrypto crypto,
             ISessionKeyStore keyStore,
             ICapabilityCatalog capabilityCatalog,
-            ITaskRouter taskRouter,
             BrokerDb db) =>
         {
             var body = RequestBodyHelper.GetBody(ctx);
@@ -49,24 +50,25 @@ public static class SessionEndpoints
                 return Results.BadRequest(ApiResponseHelper.Error("Task is not active."));
             }
 
-            if (!string.IsNullOrWhiteSpace(task.AssignedPrincipalId) &&
-                !string.Equals(task.AssignedPrincipalId, principalId, StringComparison.Ordinal))
+            // 只接受已指派主體與角色的任務；未指派者一律拒絕（不再採用請求自帶的角色）。
+            if (string.IsNullOrWhiteSpace(task.AssignedPrincipalId) ||
+                string.IsNullOrWhiteSpace(task.AssignedRoleId))
+            {
+                return Results.BadRequest(ApiResponseHelper.Error("Task has no assigned principal/role."));
+            }
+
+            if (!string.Equals(task.AssignedPrincipalId, principalId, StringComparison.Ordinal))
             {
                 return Results.BadRequest(ApiResponseHelper.Error("Task is assigned to a different principal."));
             }
 
-            if (!string.IsNullOrWhiteSpace(task.AssignedRoleId) &&
-                !string.IsNullOrWhiteSpace(requestedRoleId) &&
+            if (!string.IsNullOrWhiteSpace(requestedRoleId) &&
                 !string.Equals(task.AssignedRoleId, requestedRoleId, StringComparison.Ordinal))
             {
                 return Results.BadRequest(ApiResponseHelper.Error("Requested role does not match task-assigned role."));
             }
 
-            var roleId = ResolveRoleId(task, requestedRoleId, taskRouter);
-            if (string.IsNullOrWhiteSpace(roleId))
-            {
-                return Results.BadRequest(ApiResponseHelper.Error("Unable to resolve role for task."));
-            }
+            var roleId = task.AssignedRoleId;
 
             var role = db.Get<Role>(roleId);
             if (role == null || role.Status != EntityStatus.Active)
@@ -77,6 +79,13 @@ public static class SessionEndpoints
             if (!IsRoleAllowedForTask(role, task.TaskType))
             {
                 return Results.BadRequest(ApiResponseHelper.Error("Role is not allowed for this task type."));
+            }
+
+            if (IsAdministrativeRole(role) && !IsLoopbackRequest(ctx))
+            {
+                return Results.Json(
+                    ApiResponseHelper.Error("Administrative roles can only be registered from the local host.", StatusCodes.Status403Forbidden),
+                    statusCode: StatusCodes.Status403Forbidden);
             }
 
             var clientPub = ctx.Items[EncryptionMiddleware.ClientEphemeralPubKey] as string;
@@ -143,7 +152,7 @@ public static class SessionEndpoints
                 broker_public_key = crypto.GetBrokerPublicKey(),
                 expires_at = session.ExpiresAt
             }));
-        });
+        }).WithBrokerAuthPolicy(BrokerAuthPolicy.SessionBootstrap);
 
         sessions.MapPost("/heartbeat", (HttpContext ctx, ISessionService sessionService) =>
         {
@@ -158,16 +167,36 @@ public static class SessionEndpoints
             return Results.Ok(ApiResponseHelper.Success<object>(null, "Heartbeat acknowledged."));
         });
 
-        sessions.MapPost("/close", (HttpContext ctx, ISessionService sessionService, ISessionKeyStore keyStore) =>
+        sessions.MapPost("/close", (HttpContext ctx,
+            ISessionService sessionService,
+            ISessionKeyStore keyStore,
+            IRevocationService revocationService) =>
         {
             var body = RequestBodyHelper.GetBody(ctx);
             var sessionId = ctx.Items[BrokerAuthMiddleware.SessionIdKey] as string ?? string.Empty;
-            var reason = body.TryGetProperty("reason", out var reasonProp)
+            var principalId = RequestBodyHelper.GetPrincipalId(ctx);
+            var reason = body.TryGetProperty("reason", out var reasonProp) && reasonProp.ValueKind == JsonValueKind.String
                 ? reasonProp.GetString() ?? string.Empty
                 : "Client requested close";
 
+            // 關閉後讓這個 session 的 token 立即失效（BrokerAuth 會查撤銷清單），
+            // 不必等到 token 自然過期。jti 取自註冊時寫入 session 的紀錄，並以呼叫者 token 的 jti 補足。
+            var session = sessionService.GetSession(sessionId);
+            var callerJti = (ctx.Items[BrokerAuthMiddleware.ClaimsKey] as ScopedTokenClaims)?.Jti;
+
             keyStore.Remove(sessionId);
             var success = sessionService.CloseSession(sessionId, reason);
+
+            foreach (var jti in new[] { session?.TokenJti, callerJti }
+                         .Where(value => !string.IsNullOrWhiteSpace(value))
+                         .Distinct(StringComparer.Ordinal))
+            {
+                revocationService.Revoke(
+                    RevocationTargetType.Token,
+                    jti!,
+                    "Session closed by client.",
+                    string.IsNullOrWhiteSpace(principalId) ? "session-close" : principalId);
+            }
 
             if (!success)
             {
@@ -178,26 +207,35 @@ public static class SessionEndpoints
         });
     }
 
-    private static string ResolveRoleId(BrokerTask task, string requestedRoleId, ITaskRouter taskRouter)
-    {
-        if (!string.IsNullOrWhiteSpace(task.AssignedRoleId))
-        {
-            return task.AssignedRoleId;
-        }
-
-        if (!string.IsNullOrWhiteSpace(requestedRoleId))
-        {
-            return requestedRoleId;
-        }
-
-        return taskRouter.RecommendRole(task.TaskType) ?? string.Empty;
-    }
-
     private static bool IsRoleAllowedForTask(Role role, string taskType)
     {
         var allowedTaskTypes = ParseStringArray(role.AllowedTaskTypes);
         return allowedTaskTypes.Contains("*", StringComparer.OrdinalIgnoreCase) ||
                allowedTaskTypes.Contains(taskType, StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>管理員等級的角色：role_admin，或允許所有任務類型（"*"）的角色。</summary>
+    private static bool IsAdministrativeRole(Role role)
+    {
+        return string.Equals(role.RoleId, "role_admin", StringComparison.Ordinal) ||
+               ParseStringArray(role.AllowedTaskTypes).Contains("*", StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>來源為 loopback（含 IPv4-mapped）；RemoteIpAddress 為 null 時視為非本機。</summary>
+    private static bool IsLoopbackRequest(HttpContext ctx)
+    {
+        var ip = ctx.Connection.RemoteIpAddress;
+        if (ip == null)
+        {
+            return false;
+        }
+
+        if (System.Net.IPAddress.IsLoopback(ip))
+        {
+            return true;
+        }
+
+        return ip.IsIPv4MappedToIPv6 && System.Net.IPAddress.IsLoopback(ip.MapToIPv4());
     }
 
     private static GrantPlanEntry[] BuildGrantPlan(BrokerTask task, Role role, ICapabilityCatalog capabilityCatalog)

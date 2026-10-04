@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using Broker.Helpers;
 using Broker.Services;
 
 namespace Broker.Endpoints;
@@ -34,7 +35,7 @@ public static class GoogleDriveOAuthEndpoints
             }
 
             return Results.Content(BuildHtml(result), "text/html; charset=utf-8", Encoding.UTF8);
-        });
+        }).WithBrokerAuthPolicy(BrokerAuthPolicy.SignedLink); // OAuth 導回：限 loopback，並由 state 驗證
     }
 
     private static string BuildHtml(GoogleDriveOAuthCallbackResult result)

@@ -18,7 +18,7 @@ public static class AdminEndpoints
         // Kill Switch：epoch 遞增 → 所有舊 token 即時失效
         admin.MapPost("/kill-switch", (HttpContext ctx, IRevocationService revocationService) =>
         {
-            if (!RequireAdmin(ctx, out var denied)) return denied;
+            if (!BrokerAuthorization.TryRequireAdmin(ctx, out var denied)) return denied;
 
             var body = RequestBodyHelper.GetBody(ctx);
             var principalId = RequestBodyHelper.GetPrincipalId(ctx);
@@ -40,7 +40,7 @@ public static class AdminEndpoints
             ISessionService sessionService,
             ISessionKeyStore keyStore) =>
         {
-            if (!RequireAdmin(ctx, out var denied)) return denied;
+            if (!BrokerAuthorization.TryRequireAdmin(ctx, out var denied)) return denied;
 
             var body = RequestBodyHelper.GetBody(ctx);
             var principalId = RequestBodyHelper.GetPrincipalId(ctx);
@@ -72,7 +72,7 @@ public static class AdminEndpoints
         // 註冊主體
         admin.MapPost("/principals/create", (HttpContext ctx, BrokerDb db) =>
         {
-            if (!RequireAdmin(ctx, out var denied)) return denied;
+            if (!BrokerAuthorization.TryRequireAdmin(ctx, out var denied)) return denied;
 
             var body = RequestBodyHelper.GetBody(ctx);
             var actorType = body.GetProperty("actor_type").GetString() ?? "AI";
@@ -102,7 +102,7 @@ public static class AdminEndpoints
         // 定義角色
         admin.MapPost("/roles/create", (HttpContext ctx, BrokerDb db) =>
         {
-            if (!RequireAdmin(ctx, out var denied)) return denied;
+            if (!BrokerAuthorization.TryRequireAdmin(ctx, out var denied)) return denied;
 
             var body = RequestBodyHelper.GetBody(ctx);
             var displayName = body.GetProperty("display_name").GetString() ?? "";
@@ -136,22 +136,5 @@ public static class AdminEndpoints
             var epoch = revocationService.GetCurrentEpoch();
             return Results.Ok(ApiResponseHelper.Success(new { current_epoch = epoch }));
         });
-    }
-
-    /// <summary>
-    /// 角色授權閘道：僅 role_admin 可通過
-    /// </summary>
-    private static bool RequireAdmin(HttpContext ctx, out IResult denied)
-    {
-        if (RequestBodyHelper.IsAdmin(ctx))
-        {
-            denied = null!;
-            return true;
-        }
-
-        denied = Results.Json(
-            ApiResponseHelper.Error("Forbidden: admin role required.", 403),
-            statusCode: 403);
-        return false;
     }
 }

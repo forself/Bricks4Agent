@@ -3,12 +3,12 @@ using BrokerCore.Services;
 
 namespace Broker.Endpoints;
 
-/// <summary>POST /api/v1/audit/* — 稽核查詢（非 admin 僅可查自身紀錄）</summary>
+/// <summary>POST /api/v1/audit/* — 稽核查詢，只限管理員（query 內的自身範圍限制保留作為縱深防禦）</summary>
 public static class AuditEndpoints
 {
     public static void Map(RouteGroupBuilder group)
     {
-        var audit = group.MapGroup("/audit");
+        var audit = group.MapGroup("/audit").RequireBrokerAdmin();
 
         audit.MapPost("/query", (HttpContext ctx, IAuditService auditService) =>
         {

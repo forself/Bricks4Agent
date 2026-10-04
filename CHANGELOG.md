@@ -10,6 +10,18 @@ B4A 只收通用元件與通用能力；任何業務系統的專屬元件都不�
 
 ## 未發行
 
+### 預設行為變更：broker 驗證與授權收緊、compose 改用產生的密鑰（2026-10-04）
+
+**預設行為變更**
+
+- `/api/v1` 端點一律依匹配到的端點判斷驗證政策，預設需要 scoped token，與 HTTP 方法大小寫、尾斜線無關；公開端點只剩健康探測，簽章連結、local-admin、portal、worker 簽章路由各用自己的機制。
+- 管理性端點（建立任務、agent 與 worker 管理、稽核查詢、LINE 使用者管理等）只限管理員；任務、plan、context 的查詢與寫入只限任務擁有者或管理員。
+- `sessions/register` 只接受任務已指派的主體與角色；管理員角色只能從本機註冊。`DashboardSeed` 只在 Development 環境種入。`sessions/close` 會撤銷該 session 的 token。
+- broker 啟動時檢查密鑰：曾隨 repo 發布的開發金鑰在所有環境都拒絕；非開發環境遇到佔位值拒絕啟動，除非明確設定 `Broker:AllowEphemeralKeys=true`（LINE sidecar 已設定，維持原行為）。
+- compose 不再附預設密鑰：先執行 `node tools/agent/container/gen-stack-secrets.mjs` 在 repo 以外產生 env 檔，再以 `--env-file` 啟動；`WORKER_AUTH_ENFORCE` 預設改為 true，對外埠只綁 127.0.0.1。曾以舊預設值部署的環境請輪替所有 broker 與 worker 金鑰。
+
+驗證入口：`dotnet test packages/csharp/tests/integration/Integration.Tests.csproj`（BrokerAuthorizationRegressionTests）、`dotnet test packages/csharp/tests/unit/Unit.Tests.csproj`（BrokerSecretsValidatorTests）、`npm run validate:agent-container-config`。
+
 ### 新增：QR Code 與條碼產生器（2026-10-03）
 
 元件數由 132 增為 134。兩個元件在 catalog 中標為 `beta`、`manual_only`；字串由元件資料夾內的 `locale.js` 註冊 zh-TW 與 en。

@@ -8,7 +8,9 @@ public static class PortalEndpoints
 {
     public static void Map(RouteGroupBuilder group)
     {
-        var portal = group.MapGroup("/portal");
+        // 整個群組以 portal cookie 工作階段驗證（各 handler 內 TryRequireAuthenticated），不使用 scoped token。
+        var portal = group.MapGroup("/portal")
+            .WithBrokerAuthPolicy(BrokerAuthPolicy.PortalSession);
 
         portal.MapGet("/auth/status", (HttpContext ctx, PortalAuthService auth) =>
             Results.Ok(ApiResponseHelper.Success(auth.GetStatus(ctx))));

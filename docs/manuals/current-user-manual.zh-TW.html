@@ -987,8 +987,8 @@ Remove-Item -Recurse -Force .\.test-output -ErrorAction SilentlyContinue
 <p>若是 sidecar runtime，不要直接刪 <code>.run/line-sidecar</code>，除非你要重置 sidecar 狀態。先停止：</p>
 <pre><code class="language-powershell">powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\line-sidecar.ps1 down
 </code></pre>
-<p>Podman stack 停止與移除 volume：</p>
-<pre><code class="language-powershell">podman compose -f tools/agent/container/compose.yml down -v
+<p>Podman stack 停止與移除 volume。<code>down</code> 也會展開必填的金鑰變數，必須帶與 <code>up</code> 相同的那份 <code>--env-file</code>（產生方式見 <code>docs/manuals/agent-container-runbook.md</code> §3.4），否則會因缺變數而失敗：</p>
+<pre><code class="language-powershell">podman compose --env-file &quot;$HOME/.bricks4agent/agent-stack.env&quot; -f tools/agent/container/compose.yml down -v
 </code></pre>
 <h2>17. 疑難排解</h2>
 <h3>17.1 <code>dotnet</code> 找不到</h3>

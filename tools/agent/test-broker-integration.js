@@ -16,8 +16,17 @@
  * 9. Kill Switch（epoch 遞增 → 舊 token 失效）
  *
  * 使用方式（需要先啟動 Broker）：
- *   1. 啟動 broker: cd packages/csharp/broker && dotnet run
- *   2. 複製 broker 公鑰（啟動時顯示）
+ *   1. 以 Development 環境啟動 broker：
+ *        cd packages/csharp/broker && dotnet run -e ASPNETCORE_ENVIRONMENT=Development
+ *      （dotnet run 的 -e 是設定環境變數；--environment 也是同一個選項，要寫成 NAME=VALUE）
+ *      或先設定環境變數再 dotnet run：
+ *        PowerShell：$env:ASPNETCORE_ENVIRONMENT='Development'
+ *        bash：      export ASPNETCORE_ENVIRONMENT=Development
+ *      appsettings.json 的 broker 金鑰是佔位值；只有 Development／Testing 會改用隨機的暫時金鑰，
+ *      其他環境（未設定時為 Production）遇到佔位值會拒絕啟動。
+ *      若必須以非開發環境執行，可明確設定 Broker__AllowEphemeralKeys=true 使用暫時金鑰
+ *      （每次啟動都會換新，舊 session 隨之失效）。
+ *   2. 取得 broker 公鑰：GET /api/v1/health 回應中的 broker_public_key（啟動 log 只顯示前幾碼）
  *   3. 執行測試: node test-broker-integration.js <broker-pub-key>
  *
  * 或使用環境變數：

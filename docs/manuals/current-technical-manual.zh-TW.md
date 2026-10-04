@@ -177,37 +177,39 @@ Agent container 被設計為：
 
 Broker startup 的主要組成：
 
-1. `BrokerDb.UseSqlite(connectionString)` 建立 SQLite-backed store。
+1. `BrokerSecretsValidator` 在讀取金鑰設定之前驗證並解析三把金鑰（`Broker:ScopedToken:Secret`、`Broker:Encryption:MasterKeyBase64`、`Broker:Encryption:EcdhPrivateKeyBase64`），也檢查 `WorkerAuth` 與 `ArtifactDownload:SigningSecret`；非開發環境遇到佔位值或格式錯誤時 broker 不會啟動（規則見 [environment-setup.zh-TW.md](../environment-setup.zh-TW.md) §5.3）。
 
-2. `BrokerDbInitializer` 初始化 schema、development seed、dashboard seed。
+2. `BrokerDb.UseSqlite(connectionString)` 建立 SQLite-backed store。
 
-3. `EnvelopeCrypto` 管理 ECDH envelope crypto。
+3. `BrokerDbInitializer` 初始化 schema、development seed；dashboard seed 只在 `Development` 環境種入，其他環境只記警告。
 
-4. `ScopedTokenService` 發行 scoped delegation token。
+4. `EnvelopeCrypto` 管理 ECDH envelope crypto。
 
-5. `SessionService` 管理 container/agent session。
+5. `ScopedTokenService` 發行 scoped delegation token。
 
-6. `RevocationService` / `CacheRevocationService` 管理 token/session revocation。
+6. `SessionService` 管理 container/agent session。
 
-7. `AuditService` 記錄 audit event。
+7. `RevocationService` / `CacheRevocationService` 管理 token/session revocation。
 
-8. `CapabilityCatalog` / `CacheCapabilityCatalog` 管理 capability。
+8. `AuditService` 記錄 audit event。
 
-9. `PolicyEngine` 做 PDP decision。
+9. `CapabilityCatalog` / `CacheCapabilityCatalog` 管理 capability。
 
-10. `LlmProxyService` / `MeteredLlmProxyService` 作 broker-side inference gateway。
+10. `PolicyEngine` 做 PDP decision。
 
-11. `BrokerService` 執行 task、execution request、approval lifecycle。
+11. `LlmProxyService` / `MeteredLlmProxyService` 作 broker-side inference gateway。
 
-12. `ToolSpecRegistry` 讀取 `broker/tool-specs` 並同步 capability。
+12. `BrokerService` 執行 task、execution request、approval lifecycle。
 
-13. `LineChatGateway` 與 `HighLevelCoordinator` 管理 LINE/portal 共用高階流程。
+13. `ToolSpecRegistry` 讀取 `broker/tool-specs` 並同步 capability。
 
-14. `PortalAuthService`、`PortalEndpoints` 與 broker-served `user-portal` 提供使用者登入、指令、結果與 artifact 前台。
+14. `LineChatGateway` 與 `HighLevelCoordinator` 管理 LINE/portal 共用高階流程。
 
-15. Optional FunctionPool、container manager、worker health monitor。
+15. `PortalAuthService`、`PortalEndpoints` 與 broker-served `user-portal` 提供使用者登入、指令、結果與 artifact 前台。
 
-16. Optional Drive、Azure IIS、browser runtime、RAG/embedding services。
+16. Optional FunctionPool、container manager、worker health monitor。
+
+17. Optional Drive、Azure IIS、browser runtime、RAG/embedding services。
 
 ## 5. Core Data Models
 
@@ -245,17 +247,32 @@ Broker startup 的主要組成：
 
 Broker 使用 `/api/v1` 作主要 API group。
 
-### 6.1 Public / bootstrap / exempt routes
+### 6.1 驗證政策與例外路由
 
-| Route | 說明 |
-|---|---|
-| `GET/POST /api/v1/health` | basic health |
-| `POST /api/v1/sessions/register` | session bootstrap |
-| `/api/v1/tool-specs/*` | tool spec list/get |
-| `/api/v1/local-admin/*` | localhost admin auth surface |
-| `/api/v1/portal/*` | user portal auth, command, result and artifact surface |
-| `/api/v1/high-level/line/*` | line-worker signed request path |
-| `/api/v1/user/approvals/*` | signed-link user approval path |
+`/api/v1` 下每個端點的驗證方式由端點 metadata（`Broker.Helpers.BrokerAuthPolicy`）決定，與 HTTP 方法大小寫、尾斜線無關。沒有標示政策的端點一律是 `ScopedToken`：POST 取解密後 body 的 `scoped_token` 或 `Authorization: Bearer`，其他方法只取 Bearer；缺少或無效時回 401。下表列出**全部**不走 `ScopedToken` 的端點：
+
+| 政策 | Route | 驗證方式 |
+|---|---|---|
+| `Public` | `GET/POST /api/v1/health` | 不驗證（健康探測，回傳 broker 公鑰） |
+| `SessionBootstrap` | `POST /api/v1/sessions/register` | 不需 token；handler 驗證 ECDH 交握與任務指派：任務必須已指派主體與角色，簽發的一律是任務指派的角色，管理員等級的角色只接受本機來源 |
+| `SignedLink` | `GET /api/v1/artifacts/download/{artifactId}` | handler 驗證下載連結的 `exp` 與 `sig` |
+| `SignedLink` | `GET /api/v1/user/approvals` | handler 驗證連結 token（`?token=`） |
+| `SignedLink` | `GET /api/v1/google-drive/oauth/callback` | 只接受 loopback 來源，並由 OAuth `state` 驗證 |
+| `LocalAdminSession` | `/api/v1/local-admin/*`（整個群組） | 不需 scoped token；handler 以 `LocalAdminAuthService` 驗證 localhost 管理 cookie |
+| `PortalSession` | `/api/v1/portal/*`（整個群組） | 不需 scoped token；handler 驗證 portal 工作階段 cookie |
+| `WorkerSignature` | `POST /api/v1/high-level/line/process` | 必須通過 line-worker 簽章驗證（`WorkerAuth:Enforce=true`）；scoped token（包括管理員的）不能替代；`Enforce=false` 時一律 401 |
+| `WorkerSignature` | `GET /api/v1/high-level/line/notifications/pending` | 同上 |
+| `WorkerSignature` | `POST /api/v1/high-level/line/notifications/complete` | 同上 |
+
+補充：
+
+- `/api/v1/tool-specs/*`（`POST list`、`POST get`）走 `ScopedToken`：送明文 JSON body，以 Bearer 或 body 的 `scoped_token` 帶任一有效 session 的 token。
+- `/api/v1/high-level/line/*` 中上表三條以外的路由（`users`、`users/permissions`、`users/registration/review`、`registration-policy`、`profile`、`draft` 等）是管理操作，需要管理員（`role_admin`）的 scoped token。
+- `/api/v1/user/approvals` 只有 `GET` 是 `SignedLink`；`POST /api/v1/user/approvals/{approvalId}/approve` 與 `/reject` 走預設的 `ScopedToken`。
+- `ScopedToken` 端點另有角色與擁有者檢查：`tasks/create`、`agents/*`、`workers/*`、`health/workers`、`health/score*`、`admin/*`（`admin/epoch/query` 除外）、`audit/*` 只限管理員；`tasks/query`、`tasks/cancel`、`plans/*`、`execution-requests/query` 只限任務擁有者（token 綁定的任務，或任務的提交者）或管理員。
+- `context/*` 在讀取 ACL 之外另以任務為範圍：文件屬於某任務時，`read`、`history`、`read-by-key`、`list`、`write` 只限該任務的擁有者或管理員；系統範圍 `global` 沒有對應的任務，只限管理員；沒有任務的舊文件只限原作者或管理員。`read`、`history` 對範圍外的文件與不存在的文件一律回 404；`read-by-key`、`list` 指定了無權存取的任務時回 403，`read-by-key` 未帶 `task_id` 時只查 token 綁定的任務。`history` 只回傳範圍內、而且各版本 ACL 允許讀取的版本。
+- `context/write` 未帶 `task_id` 時，既有文件沿用其任務，新文件落在 token 綁定的任務；token 沒有綁定任務時回 403。既有文件只能由能存取其範圍者追加新版本。broker 系統元件自己維護的 document_id（`hlm.`、`convlog:`、`node_output_`、`browser.execution.`、`deployment.execution.` 開頭，不分大小寫）只限管理員經由 context API 寫入。其中 `hlm.`、`convlog:` 文件由高階流程（LINE、portal）的系統元件讀取，只採信系統元件（作者以 `system:` 開頭）寫入的版本，大多數還限定在 `global` 範圍；`node_output_` 與 `browser.execution.`、`deployment.execution.` 執行證據由 broker 以執行者的身分寫入，讀取端依任務、key 或 document_id 讀取，不以系統作者為條件，保留前綴對它們的作用只是不讓非管理員經由 context API 以這些 document_id 寫入。
+- `/dev/*` 不在 `/api/v1` 之下，由 `DevEndpointGuardMiddleware` 另外把關。
 
 ### 6.2 Session, task, execution
 
@@ -276,9 +293,9 @@ Broker 使用 `/api/v1` 作主要 API group。
 |---|---|
 | `POST /api/v1/capabilities/list` | list capabilities visible to caller |
 | `POST /api/v1/grants/list` | list grants |
-| `POST /api/v1/context/write` | write shared context |
+| `POST /api/v1/context/write` | write shared context（`acl` 必須是 JSON 物件，有 `read` 時須為字串陣列，否則 400） |
 | `POST /api/v1/context/read` | read shared context |
-| `POST /api/v1/context/read-by-key` | read by key |
+| `POST /api/v1/context/read-by-key` | read by key（未帶 `task_id` 時只查 token 綁定的任務） |
 | `POST /api/v1/context/list` | list context |
 | `POST /api/v1/context/history` | context history |
 | `POST /api/v1/audit/query` | audit query |
@@ -1480,10 +1497,10 @@ Stop sidecar cleanly:
 powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\line-sidecar.ps1 down
 ```
 
-Stop Podman stack:
+Stop Podman stack. `down` also expands the required key variables, so pass the same `--env-file` that was used for `up` (how to generate it: `docs/manuals/agent-container-runbook.md` §3.4); without it the command fails on the missing variables:
 
 ```powershell
-podman compose -f tools/agent/container/compose.yml down -v
+podman compose --env-file "$HOME/.bricks4agent/agent-stack.env" -f tools/agent/container/compose.yml down -v
 ```
 
 ## 24. Recommended Reading Order

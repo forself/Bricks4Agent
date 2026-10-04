@@ -721,6 +721,16 @@ $productionOverrideMap = @{
     Database = @{
         Path = $brokerRuntimeDbPath
     }
+    # The broker refuses placeholder ScopedToken/MasterKey/ECDH values outside the
+    # Development/Testing environments. The sidecar runs the broker as Production and
+    # does not provision those three keys, so it opts in explicitly to per-process
+    # random keys (the behaviour it always had: sessions, tokens and the broker public
+    # key change on every restart).
+    # TODO: generate and persist the three broker keys under $secureSecretsRoot
+    # (like worker-auth.json) and write them here instead of allowing ephemeral keys.
+    Broker = @{
+        AllowEphemeralKeys = $true
+    }
 }
 if (-not [string]::IsNullOrWhiteSpace($anthropicApiKey)) {
     $productionOverrideMap["HighLevelLlm"] = @{
