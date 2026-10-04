@@ -10,12 +10,16 @@ using BrokerCore.Crypto;
 ///
 /// 流程：
 /// 1. ECDH 交握 → 建立 session → 取得 scoped_token
+///    之後在背景定時 heartbeat：延長 session 並換發 token（被拒時重新註冊一次）。
+///    kill switch 造成的 401，或重新註冊被拒（400、401、403），程序即結束並回非零碼；
+///    只有網路錯誤與其他狀態（例如 5xx）會繼續重試（規則與 agent 的 governed-executor 相同）。
 /// 2. 輪詢 LINE 訊息（via broker execution: line.message.read）
 /// 3. 解析命令 → 執行（via broker execution: file.*, line.*）
 /// 4. 透過 LINE 回報結果（via broker execution: line.message.send）
 ///
 /// 用法：
 ///   dotnet run -- --broker http://localhost:5000
+/// 註冊密鑰從環境變數 BROKER_REGISTRATION_SECRET 讀取（不提供命令列參數，避免出現在程序清單）。
 /// </summary>
 
 var brokerUrl = "http://localhost:5000";
@@ -35,6 +39,15 @@ for (int i = 0; i < args.Length - 1; i++)
     }
 }
 
+// 註冊憑證的密鑰只從環境變數讀取，讀完即從本程序的環境移除。
+var registrationSecret = Environment.GetEnvironmentVariable("BROKER_REGISTRATION_SECRET") ?? string.Empty;
+Environment.SetEnvironmentVariable("BROKER_REGISTRATION_SECRET", null);
+if (string.IsNullOrWhiteSpace(registrationSecret))
+{
+    Console.Error.WriteLine("BROKER_REGISTRATION_SECRET is not set; the broker accepts a session registration only with the task's registration secret.");
+    Environment.Exit(2);
+}
+
 Console.WriteLine("=== E2E Bridge ===");
 Console.WriteLine($"  Broker: {brokerUrl}");
 Console.WriteLine($"  Principal: {principalId}");
@@ -42,7 +55,7 @@ Console.WriteLine($"  Task: {taskId}");
 Console.WriteLine($"  Role: {roleId}");
 Console.WriteLine();
 
-var client = new BrokerApiClient(brokerUrl);
+var client = new BrokerApiClient(brokerUrl, registrationSecret);
 var cts = new CancellationTokenSource();
 Console.CancelKeyPress += (_, e) => { e.Cancel = true; cts.Cancel(); };
 
@@ -55,7 +68,11 @@ Console.WriteLine($"OK ({health.RootElement.GetProperty("status").GetString()})"
 Console.Write("[2/3] Registering session (ECDH handshake)... ");
 await client.RegisterSessionAsync(principalId, taskId, roleId, brokerUrl, cts.Token);
 Console.WriteLine($"OK (session={client.SessionId?[..16]}...)");
-Console.WriteLine($"  Token: {client.ScopedToken?[..32]}...");
+Console.WriteLine($"  Token expires at: {client.TokenExpiresAt:O}");
+
+// 背景 heartbeat：token 只有短時效，長時間執行的 bridge 必須定時續發。
+// session 結束（kill switch、重新註冊被拒）時，heartbeat 迴圈會取消主流程。
+var heartbeatLoop = RunHeartbeatAsync(client, principalId, taskId, roleId, brokerUrl, cts);
 
 // ── Step 3: 測試各能力 ──
 Console.WriteLine("[3/3] Testing capabilities...");
@@ -93,7 +110,7 @@ Console.WriteLine("Commands: /list [path] | /read [path] | /search [pattern] | /
 Console.WriteLine();
 
 int pollCount = 0;
-while (!cts.Token.IsCancellationRequested)
+while (!cts.Token.IsCancellationRequested && client.EndedReason == null)
 {
     try
     {
@@ -149,6 +166,74 @@ while (!cts.Token.IsCancellationRequested)
 }
 
 Console.WriteLine("\nShutting down...");
+cts.Cancel();
+await heartbeatLoop;
+
+if (client.EndedReason != null)
+{
+    // kill switch 或重新註冊被拒：以非零碼結束，讓外部的監控或重啟策略看得到。
+    Console.Error.WriteLine($"Broker session ended: {client.EndedReason}");
+    return 1;
+}
+
+return 0;
+
+// ═══════════════════════════════════════════════
+// Heartbeat
+// ═══════════════════════════════════════════════
+
+static async Task RunHeartbeatAsync(
+    BrokerApiClient c, string principal, string task, string role, string broker, CancellationTokenSource stop)
+{
+    var ct = stop.Token;
+    while (!ct.IsCancellationRequested && c.EndedReason == null)
+    {
+        try
+        {
+            await Task.Delay(c.NextHeartbeatDelay(), ct);
+            var (status, body) = await c.HeartbeatAsync(ct);
+            if (SessionRules.IsKillSwitch(status, body))
+            {
+                // kill switch：停止，不重新註冊（token 到期後的一般 401 也不會再觸發註冊，因為迴圈已結束）。
+                c.End(SessionRules.KillSwitchReason);
+            }
+            else if (status == 401)
+            {
+                // token 或 session 已失效（例如程序被暫停太久）：重新註冊一次
+                Console.WriteLine("  Heartbeat rejected; registering the session again...");
+                try
+                {
+                    await c.RegisterSessionAsync(principal, task, role, broker, ct);
+                    Console.WriteLine($"  Registered again (session={c.SessionId?[..16]}...)");
+                }
+                catch (RegistrationRefusedException refused) when (SessionRules.IsFinalRegistrationStatus(refused.Status))
+                {
+                    // 憑證撤銷或到期、任務結束、角色不符：重試也不會成功，停止。
+                    c.End($"registering again was refused (HTTP {refused.Status})");
+                }
+            }
+            else if (status != 200)
+            {
+                Console.WriteLine($"  Heartbeat failed (HTTP {status})");
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+        catch (Exception ex)
+        {
+            // 網路錯誤與其他狀態（例如 5xx）：下次 heartbeat 再試。
+            Console.WriteLine($"  Heartbeat error: {ex.Message}");
+        }
+    }
+
+    if (c.EndedReason != null)
+    {
+        Console.WriteLine($"  Broker session ended: {c.EndedReason}; stopping.");
+        stop.Cancel();
+    }
+}
 
 // ═══════════════════════════════════════════════
 // Command Processor
@@ -363,19 +448,65 @@ class LineMessage
 }
 
 // ═══════════════════════════════════════════════
+// Session rules (same as tools/agent/lib/governed-executor.js)
+// ═══════════════════════════════════════════════
+
+/// <summary>How the bridge treats the broker's answers about its session.</summary>
+static class SessionRules
+{
+    public const string KillSwitchReason = "kill switch (system epoch advanced)";
+
+    /// <summary>The kill switch advanced the system epoch: the bridge stops and never registers again.</summary>
+    public static bool IsKillSwitch(int status, string body)
+        => status == 401 && body.Contains("epoch", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Answers to a register request that retrying will not change (credential, task or role refused).</summary>
+    public static bool IsFinalRegistrationStatus(int status) => status is 400 or 401 or 403;
+}
+
+/// <summary>The broker answered a register request with an error status.</summary>
+class RegistrationRefusedException : Exception
+{
+    public RegistrationRefusedException(int status, string body)
+        : base($"Session register failed ({status}): {body}")
+    {
+        Status = status;
+    }
+
+    public int Status { get; }
+}
+
+// ═══════════════════════════════════════════════
 // Broker API Client (with ECDH encryption)
 // ═══════════════════════════════════════════════
 
 class BrokerApiClient
 {
+    private static readonly TimeSpan MaxHeartbeatInterval = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan MinHeartbeatInterval = TimeSpan.FromSeconds(10);
+
     private readonly HttpClient _http;
     private readonly string _baseUrl;
+    // 加密請求依序送出（序號必須遞增到達）；heartbeat 換發的 token 也在同一個鎖內更新。
+    private readonly SemaphoreSlim _requestLock = new(1, 1);
     private ECDiffieHellman? _clientEcdh;
     private byte[]? _sessionKey;
     private int _seq;
 
     public string? SessionId { get; private set; }
     public string? ScopedToken { get; private set; }
+    public DateTimeOffset? TokenExpiresAt { get; private set; }
+
+    /// <summary>Set once the session ended for good (kill switch, registering again refused); later calls fail at once.</summary>
+    public string? EndedReason => Volatile.Read(ref _endedReason);
+
+    private string? _endedReason;
+
+    /// <summary>Ends the session for good: no more broker calls or registrations.</summary>
+    public void End(string reason)
+    {
+        Interlocked.CompareExchange(ref _endedReason, reason, null);
+    }
 
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
@@ -383,9 +514,12 @@ class BrokerApiClient
         PropertyNameCaseInsensitive = true
     };
 
-    public BrokerApiClient(string baseUrl)
+    private readonly string _registrationSecret;
+
+    public BrokerApiClient(string baseUrl, string registrationSecret)
     {
         _baseUrl = baseUrl.TrimEnd('/');
+        _registrationSecret = registrationSecret;
         _http = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
     }
 
@@ -413,6 +547,19 @@ class BrokerApiClient
     public async Task RegisterSessionAsync(string principalId, string taskId, string roleId,
         string brokerUrl, CancellationToken ct)
     {
+        await _requestLock.WaitAsync(ct);
+        try
+        {
+            await RegisterSessionLockedAsync(principalId, taskId, roleId, ct);
+        }
+        finally
+        {
+            _requestLock.Release();
+        }
+    }
+
+    private async Task RegisterSessionLockedAsync(string principalId, string taskId, string roleId, CancellationToken ct)
+    {
         // 1. Generate client ephemeral ECDH key pair
         _clientEcdh = ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256);
         var clientPubBase64 = Convert.ToBase64String(
@@ -423,7 +570,8 @@ class BrokerApiClient
         {
             principal_id = principalId,
             task_id = taskId,
-            role_id = roleId
+            role_id = roleId,
+            registration_secret = _registrationSecret
         });
 
         // 3. Get broker public key (from health or known)
@@ -489,7 +637,7 @@ class BrokerApiClient
         var respBody = await resp.Content.ReadAsStringAsync(ct);
 
         if (!resp.IsSuccessStatusCode)
-            throw new Exception($"Session register failed ({resp.StatusCode}): {respBody}");
+            throw new RegistrationRefusedException((int)resp.StatusCode, respBody);
 
         // 8. Parse encrypted response
         var respDoc = JsonDocument.Parse(respBody);
@@ -536,6 +684,7 @@ class BrokerApiClient
                 data.TryGetProperty("scoped_token", out var token))
             {
                 ScopedToken = token.GetString();
+                TokenExpiresAt = ReadTime(data, "token_expires_at");
             }
             else if (respData.RootElement.TryGetProperty("scoped_token", out var token2))
             {
@@ -553,25 +702,93 @@ class BrokerApiClient
     public async Task<string> ExecuteAsync(string capabilityId, string route,
         string payloadJson, CancellationToken ct)
     {
-        if (_sessionKey == null || SessionId == null || ScopedToken == null)
-            throw new InvalidOperationException("Session not established");
-
-        var seq = Interlocked.Increment(ref _seq);
-        var idempotencyKey = $"{SessionId}-{seq}-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
-
         // Build plaintext JSON without double-serializing the payload
         var payloadNode = JsonNode.Parse(payloadJson);
         var requestObj = new JsonObject
         {
-            ["scoped_token"] = ScopedToken,
             ["capability_id"] = capabilityId,
             ["intent"] = $"Execute {route}",
             ["payload"] = payloadNode,
-            ["idempotency_key"] = idempotencyKey
+            ["idempotency_key"] = $"{SessionId}-{Guid.NewGuid():N}"
         };
-        var plaintext = requestObj.ToJsonString();
 
-        var path = "/api/v1/execution-requests/submit";
+        if (EndedReason is { } ended)
+            return $"Error: broker session ended ({ended})";
+
+        var (status, body) = await PostEncryptedAsync("/api/v1/execution-requests/submit", requestObj, ct);
+        if (SessionRules.IsKillSwitch(status, body))
+            End(SessionRules.KillSwitchReason);
+        return status is >= 200 and < 300 ? body : $"Error ({status}): {body}";
+    }
+
+    /// <summary>
+    /// Heartbeat: extends the session and stores the renewed scoped token. Returns the HTTP status and the
+    /// (decrypted) body: 401 means the token or session is no longer accepted; the body tells a kill switch apart.
+    /// </summary>
+    public async Task<(int Status, string Body)> HeartbeatAsync(CancellationToken ct)
+    {
+        await _requestLock.WaitAsync(ct);
+        try
+        {
+            var (status, body) = await SendEncryptedLockedAsync("/api/v1/sessions/heartbeat", new JsonObject(), ct);
+            if (status == 200)
+            {
+                using var doc = JsonDocument.Parse(body);
+                if (doc.RootElement.TryGetProperty("data", out var data) &&
+                    data.TryGetProperty("scoped_token", out var token) &&
+                    token.ValueKind == JsonValueKind.String &&
+                    (!data.TryGetProperty("session_id", out var sid) || sid.GetString() == SessionId))
+                {
+                    ScopedToken = token.GetString();
+                    TokenExpiresAt = ReadTime(data, "token_expires_at");
+                }
+            }
+
+            return (status, body);
+        }
+        finally
+        {
+            _requestLock.Release();
+        }
+    }
+
+    /// <summary>A third of the token's remaining lifetime, between 10 seconds and 5 minutes.</summary>
+    public TimeSpan NextHeartbeatDelay()
+    {
+        if (TokenExpiresAt is not { } expiresAt)
+            return MaxHeartbeatInterval;
+
+        var third = TimeSpan.FromTicks((expiresAt - DateTimeOffset.UtcNow).Ticks / 3);
+        if (third > MaxHeartbeatInterval) return MaxHeartbeatInterval;
+        return third < MinHeartbeatInterval ? MinHeartbeatInterval : third;
+    }
+
+    private async Task<(int Status, string Body)> PostEncryptedAsync(string path, JsonObject body, CancellationToken ct)
+    {
+        await _requestLock.WaitAsync(ct);
+        try
+        {
+            return await SendEncryptedLockedAsync(path, body, ct);
+        }
+        finally
+        {
+            _requestLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Sends one encrypted request (the caller holds the request lock). The scoped token is added here, so a
+    /// request sent after a heartbeat uses the renewed token. Error responses raised after the envelope was
+    /// opened are encrypted as well, so the envelope is opened whatever the status.
+    /// </summary>
+    private async Task<(int Status, string Body)> SendEncryptedLockedAsync(string path, JsonObject body, CancellationToken ct)
+    {
+        if (_sessionKey == null || SessionId == null || ScopedToken == null)
+            throw new InvalidOperationException("Session not established");
+
+        var seq = Interlocked.Increment(ref _seq);
+        body["scoped_token"] = ScopedToken;
+        var plaintext = body.ToJsonString();
         var encrypted = EncryptRequest(plaintext, seq, path);
 
         var reqJson = JsonSerializer.Serialize(new
@@ -592,9 +809,7 @@ class BrokerApiClient
         var content = new StringContent(reqJson, Encoding.UTF8, "application/json");
         var resp = await _http.PostAsync($"{_baseUrl}{path}", content, ct);
         var respBody = await resp.Content.ReadAsStringAsync(ct);
-
-        if (!resp.IsSuccessStatusCode)
-            return $"Error ({resp.StatusCode}): {respBody}";
+        var status = (int)resp.StatusCode;
 
         // Decrypt response
         try
@@ -612,16 +827,24 @@ class BrokerApiClient
 
                 using var aes = new AesGcm(_sessionKey!, 16);
                 aes.Decrypt(respNonce, respCiphertext, respTag, respPlaintext, respAad);
-                return Encoding.UTF8.GetString(respPlaintext);
+                return (status, Encoding.UTF8.GetString(respPlaintext));
             }
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            return $"Decrypt error: {ex.Message} | Raw: {respBody}";
+            return (status, $"Decrypt error: {ex.Message} | Raw: {respBody}");
         }
 
-        return respBody;
+        return (status, respBody);
     }
+
+    private static DateTimeOffset? ReadTime(JsonElement data, string name)
+        => data.TryGetProperty(name, out var value) &&
+           value.ValueKind == JsonValueKind.String &&
+           DateTimeOffset.TryParse(value.GetString(), System.Globalization.CultureInfo.InvariantCulture,
+               System.Globalization.DateTimeStyles.AssumeUniversal, out var parsed)
+            ? parsed
+            : null;
 
     private async Task<string> GetBrokerPubKeyAsync(CancellationToken ct)
     {

@@ -10,13 +10,13 @@ namespace FileWorker.Handlers;
 /// </summary>
 public class ListDirHandler : ICapabilityHandler
 {
-    private readonly string _sandboxRoot;
+    private readonly SandboxPolicy _policy;
 
     public string CapabilityId => "file.list";
 
     public ListDirHandler(string sandboxRoot)
     {
-        _sandboxRoot = Path.GetFullPath(sandboxRoot);
+        _policy = new SandboxPolicy(sandboxRoot);
     }
 
     public Task<(bool Success, string? ResultPayload, string? Error)> ExecuteAsync(
@@ -25,30 +25,29 @@ public class ListDirHandler : ICapabilityHandler
         try
         {
             using var doc = JsonDocument.Parse(payload);
-            var root = doc.RootElement.TryGetProperty("args", out var argsEl)
-                ? argsEl : doc.RootElement;
+            var root = PayloadArgs.GetArgsElement(doc.RootElement);
             var dirPath = root.GetProperty("path").GetString() ?? "";
 
-            var fullPath = ResolveSandboxedPath(dirPath);
+            var (fullPath, pathError) = _policy.Resolve(dirPath);
             if (fullPath == null)
-                return Task.FromResult<(bool, string?, string?)>(
-                    (false, null, "Path outside sandbox."));
+                return Task.FromResult<(bool, string?, string?)>((false, null, pathError));
 
             if (!Directory.Exists(fullPath))
                 return Task.FromResult<(bool, string?, string?)>(
                     (false, null, $"Directory not found: {dirPath}"));
 
             var entries = new List<object>();
+            // 略過 symlink／junction 與拒絕清單中的項目（SandboxPolicy.EnumerateEntries）。
+            var visible = _policy.EnumerateEntries(fullPath).ToList();
 
-            foreach (var dir in Directory.GetDirectories(fullPath).Take(100))
+            foreach (var dir in visible.OfType<DirectoryInfo>().OrderBy(d => d.Name, StringComparer.Ordinal).Take(100))
             {
-                entries.Add(new { name = Path.GetFileName(dir), type = "directory" });
+                entries.Add(new { name = dir.Name, type = "directory" });
             }
 
-            foreach (var file in Directory.GetFiles(fullPath).Take(200))
+            foreach (var file in visible.OfType<FileInfo>().OrderBy(f => f.Name, StringComparer.Ordinal).Take(200))
             {
-                var info = new FileInfo(file);
-                entries.Add(new { name = Path.GetFileName(file), type = "file", size = info.Length });
+                entries.Add(new { name = file.Name, type = "file", size = file.Length });
             }
 
             var result = JsonSerializer.Serialize(new { path = dirPath, entries });
@@ -59,17 +58,5 @@ public class ListDirHandler : ICapabilityHandler
             return Task.FromResult<(bool, string?, string?)>(
                 (false, null, $"List directory error: {ex.Message}"));
         }
-    }
-
-    private string? ResolveSandboxedPath(string path)
-    {
-        try
-        {
-            var fullPath = Path.GetFullPath(Path.Combine(_sandboxRoot, path));
-            if (!fullPath.StartsWith(_sandboxRoot, StringComparison.OrdinalIgnoreCase))
-                return null;
-            return fullPath;
-        }
-        catch { return null; }
     }
 }

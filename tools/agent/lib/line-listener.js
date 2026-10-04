@@ -47,6 +47,15 @@ class LineListener {
                 logError(`Poll error: ${e.message}`);
             }
 
+            // The executor ended (kill switch, or the broker refused to register this agent again because the
+            // credential was revoked or expired or the task ended): stop polling and fail, instead of producing
+            // a rejected call or registration on every poll.
+            const executor = this.agent.governedExecutor;
+            if (executor && executor.terminated) {
+                this.running = false;
+                throw new Error(`LINE listener stopped: broker session ended (${executor.terminationReason})`);
+            }
+
             // 等待下次輪詢
             await this._sleep(this.pollIntervalMs);
         }

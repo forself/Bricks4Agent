@@ -8,7 +8,7 @@ namespace BrokerCore.Services;
 ///
 /// 職責：
 /// - 註冊 session（含加密的 session_key 儲存）
-/// - 心跳續期
+/// - 心跳續期（以 <see cref="SessionLifetimeOptions"/> 的 TTL 與最長存活時間為上限）
 /// - 優雅關閉 / 撤銷
 ///
 /// 叢集化：
@@ -18,17 +18,27 @@ namespace BrokerCore.Services;
 public class SessionService : ISessionService
 {
     private readonly BrokerDb _db;
+    private readonly SessionLifetimeOptions _lifetime;
 
     public SessionService(BrokerDb db)
+        : this(db, new SessionLifetimeOptions())
     {
+    }
+
+    public SessionService(BrokerDb db, SessionLifetimeOptions lifetime)
+    {
+        ArgumentNullException.ThrowIfNull(lifetime);
+        lifetime.Validate();
         _db = db;
+        _lifetime = lifetime;
     }
 
     /// <inheritdoc />
     public ContainerSession RegisterSession(
         string taskId, string principalId, string roleId,
-        string tokenJti, int currentEpoch, string encryptedSessionKey)
+        string tokenJti, int currentEpoch, string encryptedSessionKey, string? registrationCredentialId = null)
     {
+        var now = DateTime.UtcNow;
         var session = new ContainerSession
         {
             SessionId = IdGen.New("ses"),
@@ -36,13 +46,14 @@ public class SessionService : ISessionService
             PrincipalId = principalId,
             RoleId = roleId,
             TokenJti = tokenJti,
+            RegistrationCredentialId = registrationCredentialId ?? string.Empty,
             EpochAtIssue = currentEpoch,
             EncryptedSessionKey = encryptedSessionKey,
             LastSeenSeq = 0,
             Status = SessionStatus.Active,
-            RegisteredAt = DateTime.UtcNow,
-            LastHeartbeat = DateTime.UtcNow,
-            ExpiresAt = DateTime.UtcNow.AddHours(1) // 預設 1 小時，可透過 heartbeat 續期
+            RegisteredAt = now,
+            LastHeartbeat = now,
+            ExpiresAt = now + _lifetime.Ttl // 可透過 heartbeat 續期，最長到註冊時間 + MaxLifetime
         };
 
         _db.Insert(session);
@@ -56,16 +67,42 @@ public class SessionService : ISessionService
     }
 
     /// <inheritdoc />
-    public bool Heartbeat(string sessionId)
+    public DateTime? Heartbeat(string sessionId, string? newTokenJti = null)
     {
+        var session = GetSession(sessionId);
         var now = DateTime.UtcNow;
-        var newExpiry = now.AddHours(1);
+        if (session == null || session.Status != SessionStatus.Active || session.ExpiresAt <= now)
+        {
+            return null;
+        }
 
-        var affected = _db.Execute(
-            "UPDATE container_sessions SET last_heartbeat = @now, expires_at = @newExpiry WHERE session_id = @sid AND status = 0",
-            new { now, newExpiry, sid = sessionId });
+        var newExpiry = now + _lifetime.Ttl;
+        var lifetimeEnd = session.RegisteredAt + _lifetime.MaxLifetime;
+        if (newExpiry > lifetimeEnd)
+        {
+            newExpiry = lifetimeEnd;
+        }
 
-        return affected > 0;
+        if (newExpiry < session.ExpiresAt)
+        {
+            newExpiry = session.ExpiresAt;
+        }
+
+        // 資料庫讀回的時間沒有時區標記；所有時間都以 UTC 儲存，回傳前標記為 UTC。
+        newExpiry = DateTime.SpecifyKind(newExpiry, DateTimeKind.Utc);
+
+        // 條件更新：同時要求仍為 Active 且尚未過期，與上面的讀取之間若被關閉或撤銷也不會被延長。
+        var affected = string.IsNullOrEmpty(newTokenJti)
+            ? _db.Execute(
+                @"UPDATE container_sessions SET last_heartbeat = @now, expires_at = @newExpiry
+                  WHERE session_id = @sid AND status = 0 AND expires_at > @now",
+                new { now, newExpiry, sid = sessionId })
+            : _db.Execute(
+                @"UPDATE container_sessions SET last_heartbeat = @now, expires_at = @newExpiry, token_jti = @jti
+                  WHERE session_id = @sid AND status = 0 AND expires_at > @now",
+                new { now, newExpiry, jti = newTokenJti, sid = sessionId });
+
+        return affected > 0 ? newExpiry : null;
     }
 
     /// <inheritdoc />
@@ -96,5 +133,41 @@ public class SessionService : ISessionService
             new { revoked = (int)SessionStatus.Revoked, tid = taskId });
 
         return affected;
+    }
+
+    /// <inheritdoc />
+    public IReadOnlyList<string> RevokeSessionsByCredential(string registrationCredentialId, string reason, string revokedBy)
+    {
+        if (string.IsNullOrWhiteSpace(registrationCredentialId))
+            return Array.Empty<string>();
+
+        var sessions = _db.Query<ContainerSession>(
+            "SELECT * FROM container_sessions WHERE registration_credential_id = @credentialId AND status = 0",
+            new { credentialId = registrationCredentialId });
+        return RevokeEach(sessions, reason, revokedBy);
+    }
+
+    /// <inheritdoc />
+    public IReadOnlyList<string> RevokeSessionsBySubject(string principalId, string taskId, string reason, string revokedBy)
+    {
+        if (string.IsNullOrWhiteSpace(principalId) || string.IsNullOrWhiteSpace(taskId))
+            return Array.Empty<string>();
+
+        var sessions = _db.Query<ContainerSession>(
+            "SELECT * FROM container_sessions WHERE principal_id = @principalId AND task_id = @taskId AND status = 0",
+            new { principalId, taskId });
+        return RevokeEach(sessions, reason, revokedBy);
+    }
+
+    private List<string> RevokeEach(IEnumerable<ContainerSession> sessions, string reason, string revokedBy)
+    {
+        var revoked = new List<string>();
+        foreach (var session in sessions)
+        {
+            if (RevokeSession(session.SessionId, reason, revokedBy))
+                revoked.Add(session.SessionId);
+        }
+
+        return revoked;
     }
 }

@@ -6,17 +6,18 @@ namespace FileWorker.Handlers;
 /// <summary>
 /// file.search_name 能力處理器 — 按檔名搜尋
 ///
-/// 從 InProcessDispatcher.ExecuteSearchFiles() 搬遷
+/// 從 InProcessDispatcher.ExecuteSearchFiles() 搬遷。參數與代理工具、能力 schema 相同：
+/// 檔名 pattern（預設 *）、目錄 directory（或 path）。
 /// </summary>
 public class SearchFilesHandler : ICapabilityHandler
 {
-    private readonly string _sandboxRoot;
+    private readonly SandboxPolicy _policy;
 
     public string CapabilityId => "file.search_name";
 
     public SearchFilesHandler(string sandboxRoot)
     {
-        _sandboxRoot = Path.GetFullPath(sandboxRoot);
+        _policy = new SandboxPolicy(sandboxRoot);
     }
 
     public Task<(bool Success, string? ResultPayload, string? Error)> ExecuteAsync(
@@ -25,22 +26,22 @@ public class SearchFilesHandler : ICapabilityHandler
         try
         {
             using var doc = JsonDocument.Parse(payload);
-            var root = doc.RootElement.TryGetProperty("args", out var argsEl)
-                ? argsEl : doc.RootElement;
-            var pattern = root.GetProperty("pattern").GetString() ?? "*";
-            var basePath = root.TryGetProperty("path", out var p)
-                ? p.GetString() ?? "." : ".";
+            var root = PayloadArgs.GetArgsElement(doc.RootElement);
+            var pattern = PayloadArgs.GetString(root, "pattern") ?? "*";
+            var basePath = PayloadArgs.GetString(root, "directory", "path") ?? ".";
 
-            var fullPath = ResolveSandboxedPath(basePath);
+            if (!SandboxPolicy.IsFileNamePattern(pattern))
+                return Task.FromResult<(bool, string?, string?)>((false, null, SandboxPolicy.InvalidPatternError));
+
+            var (fullPath, pathError) = _policy.Resolve(basePath);
             if (fullPath == null)
-                return Task.FromResult<(bool, string?, string?)>(
-                    (false, null, "Path outside sandbox."));
+                return Task.FromResult<(bool, string?, string?)>((false, null, pathError));
 
             if (!Directory.Exists(fullPath))
                 return Task.FromResult<(bool, string?, string?)>(
                     (false, null, $"Directory not found: {basePath}"));
 
-            var files = Directory.GetFiles(fullPath, pattern, SearchOption.AllDirectories)
+            var files = _policy.EnumerateFilesRecursive(fullPath, pattern)
                 .Take(100)
                 .Select(f => Path.GetRelativePath(fullPath, f).Replace('\\', '/'))
                 .ToList();
@@ -53,17 +54,5 @@ public class SearchFilesHandler : ICapabilityHandler
             return Task.FromResult<(bool, string?, string?)>(
                 (false, null, $"Search files error: {ex.Message}"));
         }
-    }
-
-    private string? ResolveSandboxedPath(string path)
-    {
-        try
-        {
-            var fullPath = Path.GetFullPath(Path.Combine(_sandboxRoot, path));
-            if (!fullPath.StartsWith(_sandboxRoot, StringComparison.OrdinalIgnoreCase))
-                return null;
-            return fullPath;
-        }
-        catch { return null; }
     }
 }

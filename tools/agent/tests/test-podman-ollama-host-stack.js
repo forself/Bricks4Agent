@@ -1,53 +1,31 @@
 #!/usr/bin/env node
 'use strict';
 
+// Host-Ollama stack end-to-end: needs a real model served by Ollama on the host.
+// CONTAINER_ENGINE=docker runs it with docker / docker compose; the default is podman.
+
 const assert = require('assert');
 const http = require('http');
 const net = require('net');
 const path = require('path');
-const { spawn } = require('child_process');
 const { pathToFileURL } = require('url');
 
-const ROOT = path.resolve(__dirname, '..', '..', '..');
+const {
+    ROOT,
+    assertStackHardened,
+    buildImages: buildStackImages,
+    compose,
+    containerEngine,
+    run,
+} = require('./lib/container-stack');
+
+const engine = containerEngine();
 const composeFile = path.join(ROOT, 'tools', 'agent', 'container', 'compose.ollama-host.yml');
 const images = [
     ['bricks4agent-broker:latest', 'packages/csharp/broker/Containerfile'],
     ['bricks4agent-agent:latest', 'tools/agent/Containerfile'],
 ];
 
-function run(command, args, options = {}) {
-    return new Promise((resolve, reject) => {
-        const child = spawn(command, args, {
-            cwd: ROOT,
-            env: options.env || process.env,
-            stdio: ['ignore', 'pipe', 'pipe'],
-        });
-
-        let stdout = '';
-        let stderr = '';
-
-        child.stdout.on('data', (chunk) => {
-            const text = chunk.toString();
-            stdout += text;
-            if (options.stream) {
-                process.stdout.write(text);
-            }
-        });
-
-        child.stderr.on('data', (chunk) => {
-            const text = chunk.toString();
-            stderr += text;
-            if (options.stream) {
-                process.stderr.write(text);
-            }
-        });
-
-        child.on('error', reject);
-        child.on('close', (code) => {
-            resolve({ code, stdout, stderr });
-        });
-    });
-}
 
 function stripAnsi(text) {
     return text.replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, '');
@@ -57,7 +35,8 @@ function extractAgentReplies(output) {
     return stripAnsi(output)
         .split(/\r?\n/)
         .map((line) => {
-            const match = line.match(/\[agent\]\s+\|\s+>\s*(.+)$/);
+            // podman-compose prefixes lines with "[agent] |", docker compose with "agent-1 |"
+            const match = line.match(/(?:\[agent\]|\bagent[-_]\d+)\s+\|\s+>\s*(.+)$/);
             return match ? match[1].trim() : '';
         })
         .filter(Boolean);
@@ -72,22 +51,10 @@ async function generateStackSecretsEnv() {
 }
 
 async function buildImages(env) {
-    for (const [image, dockerfile] of images) {
-        const buildResult = await run('podman', [
-            'build',
-            '-t',
-            image,
-            '-f',
-            dockerfile,
-            '.',
-        ], { env, stream: true });
-
-        assert.strictEqual(
-            buildResult.code,
-            0,
-            `podman build failed for ${image}.\nSTDOUT:\n${buildResult.stdout}\nSTDERR:\n${buildResult.stderr}`
-        );
+    if (process.env.SKIP_IMAGE_BUILD) {
+        return;
     }
+    await buildStackImages(engine, images, env);
 }
 
 async function getFreePort() {
@@ -168,7 +135,13 @@ async function getDefaultOllamaModel() {
     return selectedModel;
 }
 
-async function getPodmanGatewayIp() {
+// The broker container reaches the host proxy through this address.
+// podman: the podman machine's default gateway; docker: host.containers.internal,
+// which compose.ollama-host.yml maps to the host gateway (extra_hosts: host-gateway).
+async function getHostGatewayAddress() {
+    if (engine === 'docker') {
+        return 'host.containers.internal';
+    }
     const result = await run('podman', [
         'machine',
         'ssh',
@@ -193,7 +166,7 @@ async function getPodmanGatewayIp() {
 async function main() {
     const modelName = process.env.STACK_MODEL || await getDefaultOllamaModel();
     const proxy = await startHostProxy('http://127.0.0.1:11434');
-    const gatewayIp = await getPodmanGatewayIp();
+    const gatewayIp = await getHostGatewayAddress();
     const env = {
         ...process.env,
         ...(await generateStackSecretsEnv()),
@@ -207,10 +180,7 @@ async function main() {
     try {
         await buildImages(env);
 
-        const upResult = await run('podman', [
-            'compose',
-            '-f',
-            composeFile,
+        const upResult = await compose(engine, composeFile, [
             'up',
             '--abort-on-container-exit',
             '--exit-code-from',
@@ -220,7 +190,7 @@ async function main() {
         assert.strictEqual(
             upResult.code,
             0,
-            `podman compose up failed.\nSTDOUT:\n${upResult.stdout}\nSTDERR:\n${upResult.stderr}`
+            `${engine} compose up failed.\nSTDOUT:\n${upResult.stdout}\nSTDERR:\n${upResult.stderr}`
         );
 
         const combinedOutput = `${upResult.stdout}\n${upResult.stderr}`;
@@ -247,15 +217,14 @@ async function main() {
             `Expected Ollama host stack to complete without broker/API errors.\n${combinedOutput}`
         );
 
-        console.log('Podman Ollama host stack integration test passed.');
+        await assertStackHardened(engine, composeFile, [], env, {
+            services: ['broker', 'agent'],
+            pidsLimits: { broker: 1024 },
+        });
+
+        console.log(`Ollama host stack integration test passed (${engine}).`);
     } finally {
-        await run('podman', [
-            'compose',
-            '-f',
-            composeFile,
-            'down',
-            '-v',
-        ], { env });
+        await compose(engine, composeFile, ['down', '-v'], { env });
         await proxy.close();
     }
 }

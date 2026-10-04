@@ -131,8 +131,20 @@ public class PoolDispatcher : IExecutionDispatcher
         return ExecutionResult.Fail(request.RequestId, "All worker dispatch attempts failed");
     }
 
-    /// <summary>解析 WORKER_RESULT payload → ExecutionResult</summary>
-    private ExecutionResult ParseExecutionResult(
+    /// <summary>
+    /// 解析 WORKER_RESULT payload → ExecutionResult。
+    /// worker 已回覆（含拒絕與無法解析的回覆）的結果都標記 <see cref="ExecutionResult.AnsweredByWorker"/>：
+    /// 請求已送達 worker，降級分派器不得再交給其他執行者。
+    /// </summary>
+    private static ExecutionResult ParseExecutionResult(
+        string requestId, byte opCode, ReadOnlyMemory<byte> payload)
+    {
+        var result = ParseWorkerReply(requestId, opCode, payload);
+        result.AnsweredByWorker = true;
+        return result;
+    }
+
+    private static ExecutionResult ParseWorkerReply(
         string requestId, byte opCode, ReadOnlyMemory<byte> payload)
     {
         if (opCode != OpCodes.WORKER_RESULT)

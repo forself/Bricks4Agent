@@ -37,10 +37,23 @@ has('adapter-no-new-privs', block, 'no-new-privileges:true');
 has('adapter-pids-limit', block, 'pids_limit: 256');
 has('adapter-sandbox-root', block, 'SandboxRoot: "/workspace"');
 has('adapter-worker-net', block, '- worker-net');
+has('adapter-tmpfs', block, 'tmpfs:\n      - /tmp');
+has('adapter-home-on-tmpfs', block, 'HOME: "/tmp"');
+has('adapter-evidence-on-tmpfs', block, 'EvidenceRoot: "/tmp/b4a-evidence"');
 // §13.2: no docker socket mounted into the adapter
 hasNot('adapter-no-docker-socket', block, 'docker.sock');
 // default workspace must not be the real repo bind mount
 hasNot('adapter-not-real-repo', block, '../../..:/workspace');
+
+// 1b) adapter image: .NET 10 SDK runtime pinned by digest, git from the SDK image, no VOLUME
+const containerfile = read('packages/csharp/workers/execution-adapter-worker/Containerfile');
+const runtimeStage = containerfile.slice(containerfile.lastIndexOf('\nFROM '));
+assert(/\nFROM mcr\.microsoft\.com\/dotnet\/sdk:10\.0@sha256:[0-9a-f]{64}\s*\n/.test(runtimeStage),
+    'adapter runtime stage must be sdk:10.0 pinned by digest');
+hasNot('adapter-no-apt-git', containerfile, 'apt-get');
+assert(!/^\s*VOLUME\b/m.test(runtimeStage), 'adapter-no-volume: the runtime stage must not declare VOLUME');
+has('adapter-non-root-user', runtimeStage, 'USER 10004:10004');
+has('adapter-home-default', runtimeStage, 'HOME=/tmp');
 
 // 2) broker capability seed
 const seed = read('packages/csharp/broker-core/Data/BrokerDbInitializer.cs');

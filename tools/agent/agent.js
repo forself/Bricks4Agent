@@ -190,6 +190,7 @@ Governed mode:
   --principal-id <id>
   --task-id <id>
   --role-id <id>
+  (the registration secret is read from BROKER_REGISTRATION_SECRET only; there is no command-line option)
 
 LINE Listener mode:
   --line-listen              Legacy direct LINE listener (development only)
@@ -224,7 +225,15 @@ function getGovernedConfig(args) {
         throw new Error('Governed mode requires --task-id or BROKER_TASK_ID');
     }
 
-    return { brokerUrl, brokerPubKey, principalId, taskId, roleId };
+    // The registration secret is accepted only from the environment (argv shows up in process listings)
+    // and is removed from this process's environment once read, so child processes do not inherit it.
+    const registrationSecret = process.env.BROKER_REGISTRATION_SECRET || '';
+    delete process.env.BROKER_REGISTRATION_SECRET;
+    if (!registrationSecret) {
+        throw new Error('Governed mode requires the BROKER_REGISTRATION_SECRET environment variable');
+    }
+
+    return { brokerUrl, brokerPubKey, principalId, taskId, roleId, registrationSecret };
 }
 
 function createAgent(args, projectRoot, governedConfig, provider) {

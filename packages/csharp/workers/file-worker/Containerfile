@@ -1,5 +1,8 @@
+# Base images are pinned by multi-arch index digest. Refresh them with
+# `node tools/agent/container/resolve-base-image-digests.mjs` (docker or podman).
+
 # ── Build Stage ──
-FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0@sha256:e70cdb7f80b0348f5cb85f19a8f670fca061f033d57eed12fa003d58b0e06317 AS build
 
 WORKDIR /src
 COPY . .
@@ -7,19 +10,22 @@ RUN dotnet publish packages/csharp/workers/file-worker/FileWorker.csproj \
     -c Release -o /app/publish /p:UseAppHost=false
 
 # ── Runtime Stage ──
-FROM mcr.microsoft.com/dotnet/aspnet:8.0
+FROM mcr.microsoft.com/dotnet/aspnet:10.0@sha256:222759b391a1aaf241166672c8f99b2d4ada452e7b5319f3c6e8f265a37b5ad4
 
 WORKDIR /app
 COPY --from=build /app/publish .
 
-RUN adduser --disabled-password --gecos "" --uid 10003 fileworker \
-    && mkdir -p /workspace \
-    && chown -R fileworker:fileworker /app /workspace
+# /app stays owned by root. /workspace is only a mount point: the sandbox root
+# comes from the mount the operator provides (read-only in compose). There is
+# no VOLUME, so a container started without a mount gets no writable anonymous volume.
+RUN groupadd --gid 10003 fileworker \
+    && useradd --uid 10003 --gid 10003 --no-create-home --shell /usr/sbin/nologin fileworker \
+    && mkdir -p /workspace
 
-USER fileworker
+USER 10003:10003
+
+# The runtime user has no home directory; anything that needs one uses /tmp.
+ENV HOME=/tmp
 
 # No port needed — worker connects outbound to broker:7000
-# /workspace is the sandboxed root for file operations
-VOLUME ["/workspace"]
-
 ENTRYPOINT ["dotnet", "FileWorker.dll"]

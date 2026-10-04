@@ -1,21 +1,30 @@
-FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+# Base images are pinned by multi-arch index digest. Refresh them with
+# `node tools/agent/container/resolve-base-image-digests.mjs` (docker or podman).
+FROM mcr.microsoft.com/dotnet/sdk:10.0@sha256:e70cdb7f80b0348f5cb85f19a8f670fca061f033d57eed12fa003d58b0e06317 AS build
 
 WORKDIR /src
 COPY . .
 RUN dotnet publish packages/csharp/broker/Broker.csproj -c Release -o /app/publish /p:UseAppHost=false
 
-FROM mcr.microsoft.com/dotnet/aspnet:8.0
+FROM mcr.microsoft.com/dotnet/aspnet:10.0@sha256:222759b391a1aaf241166672c8f99b2d4ada452e7b5319f3c6e8f265a37b5ad4
 
 WORKDIR /app
 COPY --from=build /app/publish .
 
-RUN adduser --disabled-password --gecos "" --uid 10002 broker \
+# The .NET 10 images are Ubuntu-based and ship without adduser.
+# /app stays owned by root so the runtime user cannot rewrite the broker;
+# only /data (SQLite database and workspaces, a named volume in compose) is writable.
+RUN groupadd --gid 10002 broker \
+    && useradd --uid 10002 --gid 10002 --no-create-home --shell /usr/sbin/nologin broker \
     && mkdir -p /data \
-    && chown -R broker:broker /app /data
+    && chown broker:broker /data
 
-USER broker
+USER 10002:10002
 
-ENV ASPNETCORE_URLS=http://0.0.0.0:5000
+# The runtime user has no home directory; anything that needs one uses /tmp.
+ENV ASPNETCORE_URLS=http://0.0.0.0:5000 \
+    TMPDIR=/tmp \
+    HOME=/tmp
 EXPOSE 5000
 EXPOSE 7000
 

@@ -4,6 +4,7 @@ using BrokerCore.Models;
 using BrokerCore.Services;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -44,7 +45,10 @@ public class BrokerAuthorizationFixture : IAsyncLifetime
     {
     }
 
-    protected BrokerAuthorizationFixture(bool enforceWorkerAuth)
+    /// <param name="configureTestServices">
+    /// Runs after the broker's own service registrations (for example to decorate a broker service).
+    /// </param>
+    protected BrokerAuthorizationFixture(bool enforceWorkerAuth, Action<IServiceCollection>? configureTestServices = null)
     {
         WorkerAuthEnforced = enforceWorkerAuth;
         _workDirectory = Path.Combine(Path.GetTempPath(), $"b4a-authz-{Guid.NewGuid():N}");
@@ -84,6 +88,11 @@ public class BrokerAuthorizationFixture : IAsyncLifetime
 
             builder.ConfigureServices(services =>
                 services.AddSingleton<IStartupFilter, RemoteAddressStartupFilter>());
+
+            if (configureTestServices is not null)
+            {
+                builder.ConfigureTestServices(configureTestServices);
+            }
         });
     }
 
@@ -138,8 +147,58 @@ public class BrokerAuthorizationFixture : IAsyncLifetime
         });
     }
 
+    /// <summary>
+    /// Issues a registration credential for <paramref name="principalId"/> and <paramref name="taskId"/> through
+    /// the broker's credential service and returns its secret. <paramref name="expiresAt"/> in the past marks it
+    /// expired; <paramref name="revoked"/> revokes it right away.
+    /// </summary>
+    public string SeedRegistrationCredential(string principalId, string taskId, DateTime? expiresAt = null, bool revoked = false)
+        => IssueRegistrationCredential(principalId, taskId, expiresAt, revoked).Secret;
+
+    /// <inheritdoc cref="SeedRegistrationCredential"/>
+    public IssuedRegistrationCredential IssueRegistrationCredential(string principalId, string taskId, DateTime? expiresAt = null, bool revoked = false)
+    {
+        var credentials = Services.GetRequiredService<IRegistrationCredentialService>();
+        var issued = credentials.Issue(principalId, taskId, "integration_test", "integration-test", DateTime.UtcNow.AddHours(1));
+        if (expiresAt is not null)
+        {
+            Db.Execute(
+                "UPDATE registration_credentials SET expires_at = @expiresAt WHERE credential_id = @credentialId",
+                new { expiresAt = expiresAt.Value, credentialId = issued.CredentialId });
+        }
+
+        if (revoked)
+        {
+            credentials.Revoke(issued.CredentialId, "integration test", "integration-test");
+        }
+
+        return issued;
+    }
+
+    public RegistrationCredential? FindRegistrationCredential(string credentialId)
+        => Db.Get<RegistrationCredential>(credentialId);
+
     public BrokerTask? FindTask(string taskId)
         => Services.GetRequiredService<BrokerDb>().Get<BrokerTask>(taskId);
+
+    public BrokerDb Db => Services.GetRequiredService<BrokerDb>();
+
+    public ContainerSession? FindSession(string sessionId)
+        => Services.GetRequiredService<ISessionService>().GetSession(sessionId);
+
+    /// <summary>
+    /// Seeds an active principal and a task assigned to it with <paramref name="roleId"/>, then opens a session
+    /// for them through <paramref name="client"/>, so flows that look at the principal and task records
+    /// (for example token renewal on heartbeat) see real ones.
+    /// </summary>
+    public BrokerTestSession OpenSeededSession(EncryptedBrokerClient client, string roleId, string taskType = "query")
+    {
+        var principalId = EncryptedBrokerClient.NewId("prn_authz_seeded");
+        var taskId = EncryptedBrokerClient.NewId("task_authz_seeded");
+        SeedPrincipal(principalId);
+        SeedTask(taskId, taskType, submittedBy: principalId, assignedPrincipalId: principalId, assignedRoleId: roleId);
+        return client.OpenSession(roleId, principalId, taskId);
+    }
 
     /// <summary>Creates a draft plan for <paramref name="taskId"/> through the broker's plan service.</summary>
     public Plan CreatePlan(string taskId, string submittedBy)

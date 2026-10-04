@@ -35,17 +35,33 @@ var connectionString = $"Data Source={dbPath}";
 builder.Services.AddSingleton(sp => BrokerDb.UseSqlite(connectionString));
 
 // ── 初始化資料庫（17 張表 + 種子資料） ──
+// 種子任務的註冊密鑰（RegistrationSecret）：DevelopmentSeed 在非 Development／Testing 環境缺少時拒絕啟動，
+// 其他情況只記警告且不建立憑證（見 RegistrationSeedValidator）；密鑰本身不寫進 log。
 using (var initDb = BrokerDb.UseSqlite(connectionString))
 {
     var initializer = new BrokerDbInitializer(initDb);
-    var developmentSeed = builder.Configuration.GetSection("DevelopmentSeed").Get<DevelopmentSeedOptions>();
-    initializer.Initialize(developmentSeed);
+    var developmentSeed = builder.Configuration.GetSection(Broker.Configuration.RegistrationSeedValidator.DevelopmentSeedSection).Get<DevelopmentSeedOptions>();
+    Broker.Configuration.RegistrationSeedValidator.Validate(
+        developmentSeed,
+        Broker.Configuration.RegistrationSeedValidator.DevelopmentSeedSection,
+        builder.Environment.EnvironmentName,
+        startupLogger);
+    initializer.Initialize(developmentSeed, RegistrationCredentialSources.DevelopmentSeed);
+    WarnIfSeedCredentialHeldRevoked(initializer, Broker.Configuration.RegistrationSeedValidator.DevelopmentSeedSection, startupLogger);
     // Dashboard 種子（管理介面專用 Principal）：只在 Development 環境種入
-    var dashboardSeed = builder.Configuration.GetSection("DashboardSeed").Get<DevelopmentSeedOptions>();
+    var dashboardSeed = builder.Configuration.GetSection(Broker.Configuration.RegistrationSeedValidator.DashboardSeedSection).Get<DevelopmentSeedOptions>();
     if (dashboardSeed?.Enabled == true)
     {
         if (builder.Environment.IsDevelopment())
-            initializer.Initialize(dashboardSeed);
+        {
+            Broker.Configuration.RegistrationSeedValidator.Validate(
+                dashboardSeed,
+                Broker.Configuration.RegistrationSeedValidator.DashboardSeedSection,
+                builder.Environment.EnvironmentName,
+                startupLogger);
+            initializer.Initialize(dashboardSeed, RegistrationCredentialSources.DashboardSeed);
+            WarnIfSeedCredentialHeldRevoked(initializer, Broker.Configuration.RegistrationSeedValidator.DashboardSeedSection, startupLogger);
+        }
         else
             startupLogger.LogWarning(
                 "DashboardSeed is enabled but ignored outside the Development environment (current: {Environment}).",
@@ -132,8 +148,21 @@ if (tokenExpMin <= 0) tokenExpMin = 15;
 builder.Services.AddSingleton<IScopedTokenService>(sp =>
     new ScopedTokenService(tokenSecret, tokenIssuer, tokenAudience, tokenExpMin));
 
+// Session 有效時間與最長存活時間（Broker:Session）；不合理的設定（含 TTL 不小於金鑰快取存活時間）在啟動時即失敗。
+var sessionLifetime = builder.Configuration.GetSection(SessionLifetimeOptions.SectionName).Get<SessionLifetimeOptions>()
+    ?? new SessionLifetimeOptions();
+sessionLifetime.Validate();
+builder.Services.AddSingleton(sessionLifetime);
 builder.Services.AddSingleton<ISessionService>(sp =>
-    new SessionService(sp.GetRequiredService<BrokerDb>()));
+    new SessionService(sp.GetRequiredService<BrokerDb>(), sessionLifetime));
+
+// Session 註冊憑證（只存雜湊）與 broker 簽發憑證的存活時間（Broker:RegistrationCredential）
+var registrationCredentialOptions = builder.Configuration.GetSection(RegistrationCredentialOptions.SectionName).Get<RegistrationCredentialOptions>()
+    ?? new RegistrationCredentialOptions();
+registrationCredentialOptions.Validate();
+builder.Services.AddSingleton(registrationCredentialOptions);
+builder.Services.AddSingleton<IRegistrationCredentialService>(sp =>
+    new RegistrationCredentialService(sp.GetRequiredService<BrokerDb>()));
 
 if (cacheEnabled && distributedCache != null)
 {
@@ -371,8 +400,17 @@ if (poolEnabled)
             AutoRespawn = builder.Configuration.GetValue("FunctionPool:ContainerManager:AutoRespawn", true),
             BrokerHostForWorkers = builder.Configuration.GetValue("FunctionPool:ContainerManager:BrokerHostForWorkers", "broker") ?? "broker",
             BrokerPortForWorkers = builder.Configuration.GetValue("FunctionPool:ContainerManager:BrokerPortForWorkers", 7000),
-            AgentBrokerUrl = builder.Configuration.GetValue("FunctionPool:ContainerManager:AgentBrokerUrl", "http://broker:5000") ?? "http://broker:5000"
+            AgentBrokerUrl = builder.Configuration.GetValue("FunctionPool:ContainerManager:AgentBrokerUrl", "http://broker:5000") ?? "http://broker:5000",
+            // §13.2 hardening knobs (the hardening flags themselves are always applied)
+            AllowAgentDefaultNetwork = builder.Configuration.GetValue("FunctionPool:ContainerManager:AllowAgentDefaultNetwork", false),
+            DefaultMemoryLimit = builder.Configuration.GetValue("FunctionPool:ContainerManager:DefaultMemoryLimit", "512m") ?? "512m",
+            DefaultPidsLimit = builder.Configuration.GetValue("FunctionPool:ContainerManager:DefaultPidsLimit", 256)
         };
+        foreach (var allowedRoot in builder.Configuration.GetSection("FunctionPool:ContainerManager:AllowedHostPathRoots").GetChildren())
+        {
+            if (!string.IsNullOrWhiteSpace(allowedRoot.Value))
+                containerConfig.AllowedHostPathRoots.Add(allowedRoot.Value);
+        }
 
         // Load worker image configs from configuration
         var imageSection = builder.Configuration.GetSection("FunctionPool:ContainerManager:WorkerImages");
@@ -384,7 +422,8 @@ if (poolEnabled)
                 MemoryLimit = child.GetValue<string>("MemoryLimit"),
                 CpuLimit = child.GetValue<string>("CpuLimit"),
                 User = child.GetValue<string>("User"),
-                NetworkName = child.GetValue<string>("NetworkName")
+                NetworkName = child.GetValue<string>("NetworkName"),
+                PidsLimit = child.GetValue<int?>("PidsLimit")
             };
 
             // Load environment
@@ -458,7 +497,10 @@ builder.Services.AddSingleton<IObservationService>(sp =>
 
 // ── Agent Spawn Service ──
 builder.Services.AddSingleton<AgentSpawnService>(sp =>
-    new AgentSpawnService(sp.GetRequiredService<BrokerDb>()));
+    new AgentSpawnService(
+        sp.GetRequiredService<BrokerDb>(),
+        sp.GetRequiredService<IRegistrationCredentialService>(),
+        sp.GetRequiredService<ISessionService>()));
 
 // ── Embedding Service（向量嵌入） ──
 var embeddingConfig = builder.Configuration.GetSection("Embedding").Get<BrokerCore.Services.EmbeddingOptions>()
@@ -1082,6 +1124,17 @@ if (builder.Configuration.GetValue("RagSeed:Enabled", true))
 }
 
 app.Run();
+
+// 種子密鑰曾被管理員撤銷時不會重新種入（撤銷跨重啟保留）；提醒操作者要恢復須更換密鑰。
+static void WarnIfSeedCredentialHeldRevoked(BrokerDbInitializer initializer, string section, ILogger logger)
+{
+    if (initializer.SeedCredentialHeldRevoked)
+    {
+        logger.LogWarning(
+            "The {Section} registration credential was revoked by an operator and is not seeded again; rotate its RegistrationSecret to allow registration.",
+            section);
+    }
+}
 
 // Dev-only FTS result DTO
 class RagFtsResult

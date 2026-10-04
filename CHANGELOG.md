@@ -10,6 +10,43 @@ B4A 只收通用元件與通用能力；任何業務系統的專屬元件都不�
 
 ## 未發行
 
+### 預設行為變更：session 註冊需要註冊憑證、token 綁定所屬 session 並可續發（2026-10-05）
+
+**預設行為變更**
+
+- `sessions/register` 先驗證註冊憑證：交握的加密 payload 要帶該任務的 `registration_secret`。broker 只存 SHA-256 雜湊並以常數時間比對；缺少、錯誤、到期、撤銷，以及主體或任務不存在、任務未指派給該主體，一律回同一個 401（`Registration rejected.`），原因只寫進伺服器端 log 與稽核。憑證可重複使用到到期或撤銷，每一把都有到期時間；驗證只比對仍有效的憑證，同一任務累積再多已撤銷或到期的紀錄（例如 spawn 失敗留下的），仍有效的舊憑證照樣可用；任務狀態、角色與本機來源的規則不變。
+- 憑證來源：`DevelopmentSeed:RegistrationSecret` 與 `DashboardSeed:RegistrationSecret`（每次啟動重新設定到期時間，`RegistrationSecretLifetimeHours` 預設 24，compose 以 `BROKER_REGISTRATION_SECRET_LIFETIME_HOURS` 調整；broker 連續執行超過這段時效後，以種子憑證註冊會被拒，須重啟 broker 或調高時效；非 Development／Testing 環境啟用 `DevelopmentSeed` 卻沒有可用密鑰時拒絕啟動）、`/api/v1/agents/spawn`（每次簽發新的一把，經 `SecretEnvironment` 交給容器，`Broker:RegistrationCredential:SpawnedAgentLifetimeHours` 預設 24；容器啟動成功後才撤銷上一把，spawn 失敗只撤銷新的這把，不影響仍在執行的舊容器）、管理員的 `/api/v1/admin/registration-credentials/issue`（另有 `revoke`、`list`）。停用 agent 會撤銷它的憑證與 session。kill switch 讓執行中的代理停止，但不撤銷憑證，之後新啟動的程序仍可以有效憑證註冊。
+- compose 三個檔案新增必填的 `BROKER_REGISTRATION_SECRET`，broker 以它種入、agent 以它註冊；`gen-stack-secrets.mjs` 會產生它，既有的 env 檔請以 `--force` 重新產生（之後用 `down -v` 重建 stack）。agent 只從環境變數讀取（沒有命令列參數），system prompt 只放佔位字串。dashboard 登入表單多一個註冊密鑰欄位；e2e-bridge 與手動測試 `test-broker-integration.js` 從環境變數讀取。
+- token 只能在自己的 session 使用：加密信封的 session 必須是 token 的 session；不論加密信封或 Bearer，session 關閉、撤銷、到期或任務取消後，該 session 的 token 立即失效（401）。交握信封只接受於 `sessions/register`，送往其他端點回 400。
+- heartbeat 換發同一 session 的新 token（舊 token 自然到期；新 token 沿用請求 token 的 epoch，heartbeat 處理中才發生的 kill switch 也讓代理停止，處理中發現 epoch 已前進時回與 kill switch 相同的 401），並延長 session 與其 grants，上限為註冊時間加 `Broker:Session:MaxLifetimeMinutes`（預設 1440）；`Broker:Session:TtlMinutes` 預設 60，必須小於 120。session 無效時 heartbeat 由 400 改為 401。agent、dashboard、e2e-bridge 會定時 heartbeat；agent 收到 401 時以同一把註冊密鑰重新註冊一次；kill switch 造成的 401 讓 agent 停止，之後不再重新註冊（token 到期後也一樣）。e2e-bridge 收到 kill switch 或重新註冊被拒（400、401、403）時結束並回非零碼，網路錯誤與 5xx 仍會重試。
+- 管理員以 `/api/v1/admin/registration-credentials/revoke` 撤銷憑證時，一併撤銷以該憑證註冊的 session（回應多一個 `sessions_revoked`；以 `principal_id`＋`task_id` 撤銷時，該任務的所有 session 都會結束），代理無法再續期；撤銷時正在進行的註冊回同一個 401，不留下可用的 session；heartbeat 也確認註冊這個 session 的憑證未被撤銷（憑證到期只影響之後的註冊）。session 會記錄註冊時使用的憑證（`container_sessions.registration_credential_id`，既有資料庫啟動時自動加欄位）。只撤銷 session 時，代理仍會以有效的憑證重新註冊。
+- 種子憑證被管理員撤銷後，只要設定的密鑰不變，broker 重啟不會再種入（啟動時記警告）；要恢復請輪替密鑰（`gen-stack-secrets.mjs --force`）。
+- agent 重新註冊被 broker 拒絕（400、401、403）後就停止：不再 heartbeat、註冊或呼叫 broker，`--run` 以錯誤結束，LINE listener 以非零碼結束；網路錯誤仍會重試。
+- Windows sidecar 直接使用本機既有的 `bricks4agent-agent:latest`：升級 broker 後要以 `tools/agent/Containerfile` 重建這個映像，否則舊映像不送註冊密鑰，動態 spawn 的代理都會註冊失敗。
+- 介面變更：`ISessionService.Heartbeat` 改回傳 `DateTime?`、`RegisterSession` 多一個選用的憑證 id 參數，並新增 `RevokeSessionsByCredential` 與 `RevokeSessionsBySubject`；`ICapabilityCatalog` 新增 `ExtendSessionGrants`，`IScopedTokenService` 新增 `TokenLifetime`，新增 `IRegistrationCredentialService`（`UpsertSeed` 可回傳 null，`IsRevoked` 查詢單一憑證是否已撤銷）；`AgentSpawnService` 多一個接收憑證與 session 服務的建構子。自行實作這些介面的程式要同步調整。
+
+驗證入口：`dotnet test packages/csharp/tests/integration/Integration.Tests.csproj`（SessionBindingTests、RegistrationCredentialTests、SessionLifecycleRaceTests）、`dotnet test packages/csharp/tests/unit/Unit.Tests.csproj`（SessionLifetimeTests、RegistrationCredentialServiceTests）、`npm run validate:agent-governed`、`npm run validate:broker-llm-proxy`、設 `CONTAINER_ENGINE=docker` 後執行 `npm run validate:container-spawn` 與 `npm run validate:podman-governed-stack`。
+
+### 預設行為變更：代理容器不掛 repo、所有容器加固、映像改為 .NET 10 與 Node 22（2026-10-05）
+
+**預設行為變更**
+
+- 代理容器不再掛載任何主機目錄：三個 compose 與 Windows sidecar 都拿掉 agent 的掛載，sidecar 不再把 managed-workspaces 掛給代理。專案手冊改烤進映像（`/app/AGENT.md`，經 `AGENT_MANUAL_PATH` 讀取）；專案目錄附近找得到 `AGENT.md` 時仍以專案的為準，local 模式不受影響。
+- file-worker 收緊讀取面：sandbox 邊界改以「根目錄 + 分隔字元」完整比對並解析 symlink，路徑段含冒號或屬於 8.3 短檔名形式（`~` 後接數字）一律拒絕，已存在的路徑段必須與磁碟上列舉出的實際名稱相同（非 Windows 區分大小寫：Linux 容器掛載不分大小寫的目錄時，大小寫不同的寫法會被拒絕）；`.git`、`.claude`、`.codegraph-cache`、`.run`（本機執行期狀態）、`.env`、`.env.*`、`appsettings.Development.json`、`appsettings.Production.json`、`Api.txt`、`ngrok_recovery_codes.txt`、SQLite 資料庫檔、金鑰與憑證檔、下載的服務帳戶金鑰檔名、`line-worker/appsettings.json` 等拒絕清單對讀、列、搜尋、寫、刪一致套用，列舉與搜尋不進入 symlink；搜尋的 `pattern`／`file_pattern` 只能比對檔名，帶目錄部分即拒絕。搜尋改用與代理工具相同的參數（`pattern`、`directory`、`file_pattern`；仍接受 `query`、`path`），`directory` 經同樣的 sandbox 檢查。handler 依 `args` → `tool_args` → payload 根層的順序取參數，與 broker 的 PolicyEngine 相同；PolicyEngine 檢查這三個位置的所有路徑鍵。
+- 非 strict 模式的降級分派：worker 回覆的結果（含拒絕）是最終結果，不再改交 broker 內建的 InProcess 實作重試；只有沒有可用的 worker，或分派逾時、傳輸失敗時才降級。InProcess 的搜尋套用相同的檔名 pattern 規則，sandbox 根目錄改以「根目錄 + 分隔字元」比對，只回傳根目錄內的檔案。`ExecutionResult` 新增 `AnsweredByWorker`。
+- compose 的所有服務都套 §13.2 加固（`read_only`、`/tmp` tmpfs、`cap_drop: ALL`、`no-new-privileges`、`pids_limit`；broker 1024，其餘 256）。broker 不再掛 docker socket，`CONTAINER_MANAGER_ENABLED` 維持 false；line-worker 的音訊暫存改到 `/tmp/audio_temp`；dev seed 的 `file.search` 改為實際存在的 `file.search_name` 與 `file.search_content`。
+- broker 動態啟動的容器一律帶 `--read-only`、noexec 的 `/tmp` tmpfs、`--cap-drop ALL`、`no-new-privileges`、`--pids-limit` 與記憶體上限；拒絕 root（`User` 任一部分為 `root` 或數值為 0，例如 `00`、`+0`）、`host`／`container:`／`ns:` 網路、agent 映像的掛載與發布埠、runtime socket、系統路徑與白名單外的 hostPath。非 agent worker 的發布埠必須綁 `127.0.0.1`：既有的 `WorkerImages` 設定若寫成 `8080:80`，升級後 spawn 會失敗，請改為 `127.0.0.1:8080:80`。agent 映像沒有自己的網路時預設拒絕，只有 sidecar 以 `AllowAgentDefaultNetwork=true` 明確例外。停止容器改為 `rm -f -v`。
+- `IContainerManager.SpawnWorkerAsync` 改為接收 `ContainerSpawnRequest`：`TrustedEnvironment` 放 broker 自己組出的環境變數，`SecretEnvironment` 只以 `-e NAME` 出現在 CLI 參數中。自行實作 `IContainerManager` 的程式需同步調整。
+- `/api/v1/workers/spawn` 的 `worker_type` 改為必填，不再能啟動 agent，也不再接受 `environment`；`worker_id` 只接受 1 到 64 個英數字與 `.`、`_`、`-`（第一個字元須為英數字），自動產生的 id 改為「12 個隨機字元-worker_type」；找不到 runtime CLI 時回 503，spawn 逾時回 504。`/api/v1/agents/spawn` 的 `broker_url` 只能等於設定的 `AgentBrokerUrl`，`max_iterations` 上限為 50。
+- 映像改為 `sdk:10.0`／`aspnet:10.0` 與 `node:22-bookworm-slim`，全部以多架構 index digest 釘選；`/app` 由 root 擁有；各映像 UID 不重複（line-worker 改為 10005、mock-ollama 10006、mock-openai 10007）。基底映像的修補要以 `node tools/agent/container/resolve-base-image-digests.mjs` 更新 digest 後重建才會進來。
+
+**新增**
+
+- stack 測試設 `CONTAINER_ENGINE=docker` 即改用 Docker（預設仍為 podman），`up` 之後以 `inspect` 檢查每個容器的加固；governed stack 改為證明 file-worker 真的讀到檔案，execution-adapter stack 增加實際的 `dotnet build`。
+- `npm run validate:container-images`（Containerfile 靜態檢查）、`npm run validate:container-spawn`（host broker 經 docker／podman 實際 spawn 代理容器）、`npm run validate:podman-execution-adapter-stack`。
+
+驗證入口：`npm run validate:agent-container-config`、`npm run validate:agent-governed`、`dotnet test packages/csharp/tests/unit/Unit.Tests.csproj`（SandboxPolicyTests、PayloadArgsConsistencyTests、PolicyEngineTests、InProcessDispatcherSearchTests、FallbackDispatcherTests）、`dotnet run --project packages/csharp/tests/broker-tests/Broker.Tests.csproj`（Agent Container Tests）、設 `CONTAINER_ENGINE=docker` 後執行 `npm run validate:podman-governed-stack`。
+
 ### 預設行為變更：broker 驗證與授權收緊、compose 改用產生的密鑰（2026-10-04）
 
 **預設行為變更**

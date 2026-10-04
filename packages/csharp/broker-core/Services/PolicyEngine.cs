@@ -315,21 +315,32 @@ public class PolicyEngine : IPolicyEngine
             .ToList();
     }
 
-    private static List<string> ExtractRawRequestedPaths(string payload)
+    private static readonly string[] PathKeys = { "path", "file_path", "directory", "cwd" };
+
+    /// <summary>
+    /// payload 中所有路徑鍵的值：args、tool_args（都要是物件）與根層三個位置的聯集。
+    /// worker 依 args → tool_args → 根層的順序只取其中一個位置的參數；這裡全部檢查，
+    /// 不論 worker 最後取用哪一個位置，它拿到的路徑都經過 sandbox 與 scope 檢查。
+    /// </summary>
+    internal static List<string> ExtractRawRequestedPaths(string payload)
     {
         try
         {
             using var doc = JsonDocument.Parse(payload);
-            var args = GetArgsElement(doc.RootElement);
+            var root = doc.RootElement;
             var results = new List<string>();
+            if (root.ValueKind != JsonValueKind.Object)
+                return results;
 
-            AddIfPresent(results, args, "path", "file_path", "directory", "cwd");
-
-            if (results.Count == 0)
-                AddIfPresent(results, doc.RootElement, "path", "file_path", "directory", "cwd");
+            if (root.TryGetProperty("args", out var args) && args.ValueKind == JsonValueKind.Object)
+                AddIfPresent(results, args, PathKeys);
+            if (root.TryGetProperty("tool_args", out var legacyArgs) && legacyArgs.ValueKind == JsonValueKind.Object)
+                AddIfPresent(results, legacyArgs, PathKeys);
+            AddIfPresent(results, root, PathKeys);
 
             return results
                 .Where(path => !string.IsNullOrWhiteSpace(path))
+                .Distinct(StringComparer.Ordinal)
                 .ToList();
         }
         catch

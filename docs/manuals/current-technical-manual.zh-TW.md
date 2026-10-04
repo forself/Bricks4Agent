@@ -254,7 +254,7 @@ Broker 使用 `/api/v1` 作主要 API group。
 | 政策 | Route | 驗證方式 |
 |---|---|---|
 | `Public` | `GET/POST /api/v1/health` | 不驗證（健康探測，回傳 broker 公鑰） |
-| `SessionBootstrap` | `POST /api/v1/sessions/register` | 不需 token；handler 驗證 ECDH 交握與任務指派：任務必須已指派主體與角色，簽發的一律是任務指派的角色，管理員等級的角色只接受本機來源 |
+| `SessionBootstrap` | `POST /api/v1/sessions/register` | 不需 token；handler 先驗註冊憑證（交握 payload 內該任務的 `registration_secret`；缺少、錯誤、到期、撤銷，以及主體或任務不存在、任務未指派給該主體，一律回同一個 401），再驗 ECDH 交握與任務指派：任務必須已指派主體與角色，簽發的一律是任務指派的角色，管理員等級的角色只接受本機來源 |
 | `SignedLink` | `GET /api/v1/artifacts/download/{artifactId}` | handler 驗證下載連結的 `exp` 與 `sig` |
 | `SignedLink` | `GET /api/v1/user/approvals` | handler 驗證連結 token（`?token=`） |
 | `SignedLink` | `GET /api/v1/google-drive/oauth/callback` | 只接受 loopback 來源，並由 OAuth `state` 驗證 |
@@ -272,6 +272,8 @@ Broker 使用 `/api/v1` 作主要 API group。
 - `ScopedToken` 端點另有角色與擁有者檢查：`tasks/create`、`agents/*`、`workers/*`、`health/workers`、`health/score*`、`admin/*`（`admin/epoch/query` 除外）、`audit/*` 只限管理員；`tasks/query`、`tasks/cancel`、`plans/*`、`execution-requests/query` 只限任務擁有者（token 綁定的任務，或任務的提交者）或管理員。
 - `context/*` 在讀取 ACL 之外另以任務為範圍：文件屬於某任務時，`read`、`history`、`read-by-key`、`list`、`write` 只限該任務的擁有者或管理員；系統範圍 `global` 沒有對應的任務，只限管理員；沒有任務的舊文件只限原作者或管理員。`read`、`history` 對範圍外的文件與不存在的文件一律回 404；`read-by-key`、`list` 指定了無權存取的任務時回 403，`read-by-key` 未帶 `task_id` 時只查 token 綁定的任務。`history` 只回傳範圍內、而且各版本 ACL 允許讀取的版本。
 - `context/write` 未帶 `task_id` 時，既有文件沿用其任務，新文件落在 token 綁定的任務；token 沒有綁定任務時回 403。既有文件只能由能存取其範圍者追加新版本。broker 系統元件自己維護的 document_id（`hlm.`、`convlog:`、`node_output_`、`browser.execution.`、`deployment.execution.` 開頭，不分大小寫）只限管理員經由 context API 寫入。其中 `hlm.`、`convlog:` 文件由高階流程（LINE、portal）的系統元件讀取，只採信系統元件（作者以 `system:` 開頭）寫入的版本，大多數還限定在 `global` 範圍；`node_output_` 與 `browser.execution.`、`deployment.execution.` 執行證據由 broker 以執行者的身分寫入，讀取端依任務、key 或 document_id 讀取，不以系統作者為條件，保留前綴對它們的作用只是不讓非管理員經由 context API 以這些 document_id 寫入。
+- `ScopedToken` 的 token 只能在簽發它的 session 使用：走加密信封時，信封的 session 必須就是 token 的 session；不論加密信封或 Bearer，session 都必須存在、未關閉或撤銷、未過期，且主體、任務、角色與 session 記錄一致，否則回 401。因此關閉或撤銷 session、取消任務、session 到期都會讓該 session 的所有 token 立即失效。交握信封（帶 `client_ephemeral_pub`）只接受於 `sessions/register`，送往其他端點回 400。
+- 註冊憑證：每組 principal＋task 的高熵密鑰，broker 只存 SHA-256 雜湊，以常數時間比對；可重複使用到到期或撤銷（不做一次性，容器或 broker 重啟後可再註冊），每一把都有到期時間；驗證只比對仍有效的憑證，已撤銷或到期的紀錄再多也不影響仍有效的憑證。來源有四種：`DevelopmentSeed:RegistrationSecret` 與 `DashboardSeed:RegistrationSecret`（broker 每次啟動重新設定到期時間，預設 24 小時，以 `RegistrationSecretLifetimeHours` 調整，compose 的變數是 `BROKER_REGISTRATION_SECRET_LIFETIME_HOURS`；broker 連續執行超過這段時效後，以種子憑證註冊會被拒，須重啟 broker 或調高時效；`DevelopmentSeed` 在非 Development／Testing 環境缺少可用密鑰時拒絕啟動）、`/api/v1/agents/spawn`（每次 spawn 簽發新的一把，以 `-e NAME` 交給容器，預設 24 小時；容器啟動成功後才撤銷該 agent 先前 spawn 的憑證，spawn 失敗只撤銷新的這把）、管理員的 `/api/v1/admin/registration-credentials/issue`（給以 `tasks/create` 建立的任務；密鑰只出現在該次加密回應中）。停用 agent（`agents/stop` 與代理的停止工具）會撤銷該 agent 的憑證與 session；管理員撤銷憑證時，以該憑證註冊的 session 一併撤銷（session 記錄註冊時使用的憑證；撤銷時正在進行的註冊在寫入 session 後會再確認一次憑證，已撤銷就結束該 session 並回同一個 401；heartbeat 也確認憑證未被撤銷，憑證到期則不影響既有 session）；只撤銷 session 時，代理會以仍有效的憑證重新註冊。種子憑證被管理員撤銷後，只要設定的密鑰不變，broker 重啟不會再種入，要恢復須輪替密鑰。kill switch 讓執行中的代理停止（不再重新註冊），但不撤銷憑證：之後新啟動的程序仍可以有效憑證註冊，要完全阻止須撤銷憑證。Development 的 dashboard（`wwwroot/index.html`）登入表單多一個「註冊密鑰」欄位，填 `DashboardSeed:RegistrationSecret` 的值；密鑰只放進加密的交握 payload，登入後即從表單清除，不保存在瀏覽器。
 - `/dev/*` 不在 `/api/v1` 之下，由 `DevEndpointGuardMiddleware` 另外把關。
 
 ### 6.2 Session, task, execution
@@ -279,13 +281,16 @@ Broker 使用 `/api/v1` 作主要 API group。
 | Route group | 主要用途 |
 |---|---|
 | `POST /api/v1/sessions/register` | register session |
-| `POST /api/v1/sessions/heartbeat` | heartbeat |
+| `POST /api/v1/sessions/heartbeat` | heartbeat：延長 session 並換發 token |
 | `POST /api/v1/sessions/close` | close and cleanup |
+| `POST /api/v1/admin/registration-credentials/issue`、`revoke`、`list` | 管理員簽發、撤銷、列出註冊憑證（列表不含密鑰與雜湊）；撤銷憑證時一併撤銷以它註冊的 session |
 | `POST /api/v1/tasks/create` | create task |
 | `POST /api/v1/tasks/query` | query tasks |
 | `POST /api/v1/tasks/cancel` | cancel task |
 | `POST /api/v1/execution-requests/submit` | submit governed execution request |
 | `POST /api/v1/execution-requests/query` | query execution requests |
+
+`sessions/heartbeat` 只接受 session 自己的加密信封，回傳同一 session 的新 token（`scoped_token`、`token_expires_at`、`session_expires_at`）。舊 token 不撤銷，到期自然失效。新 token 沿用請求 token 的 epoch（BrokerAuth 已驗證的值），不取簽發當下的 epoch，所以 kill switch 即使落在 heartbeat 處理期間，換發的 token 也會在下一個請求被拒；處理中發現 epoch 已前進時，heartbeat 直接回與 BrokerAuth 相同的 401。heartbeat 只延長仍有效的 session 與它的授予：新的到期時間為「現在＋`Broker:Session:TtlMinutes`」（預設 60，必須小於 120）與「註冊時間＋`Broker:Session:MaxLifetimeMinutes`」（預設 1440）兩者較早者；已過期的 session 不會被延長，超過最長存活時間後必須重新註冊。主體已停用、任務已結束或註冊這個 session 的憑證已撤銷時，heartbeat 回 401 並結束該 session。agent（`governed-executor.js`）、dashboard 與 e2e-bridge 依 token 剩餘時效的三分之一（10 秒到 5 分鐘）送 heartbeat；agent 收到 401 時重新註冊一次；kill switch 造成的 401 則讓 agent 停止，之後不再重新註冊（token 到期後的一般 401 也一樣）；若 agent 到 token 過期後才發現（例如程序曾被暫停），重新註冊取得的 token 會帶較新的 epoch（只有 kill switch 會推進 epoch），agent 即關閉這個新 session 並停止；重新註冊被拒（400、401、403）後 agent 同樣停止，不再 heartbeat、註冊或呼叫 broker。e2e-bridge 採相同規則：收到 kill switch 或重新註冊被拒時結束並回非零碼，只有網路錯誤與其他狀態（例如 5xx）會重試。
 
 ### 6.3 Capability, grants, context, audit
 
@@ -437,7 +442,7 @@ Available only when `FunctionPool:Enabled=true`：
 | Route | 用途 |
 |---|---|
 | `GET /api/v1/workers/` | list registered workers |
-| `POST /api/v1/workers/spawn` | spawn container worker |
+| `POST /api/v1/workers/spawn` | spawn a hardened worker container（`worker_type` 必填、不接受 `agent` 與 `environment`；agent 一律走 `/api/v1/agents/spawn`） |
 | `POST /api/v1/workers/stop` | stop worker container |
 | `GET /api/v1/workers/containers` | list containers |
 | `POST /api/v1/workers/logs` | fetch container logs |
@@ -639,7 +644,7 @@ Provider aliases:
 
 Governed mode contract endpoints:
 
-- `POST /api/v1/sessions/register`
+- `POST /api/v1/sessions/register`（交握 payload 帶 `principal_id`、`task_id`、`role_id` 與 `registration_secret`；agent 只從環境變數 `BROKER_REGISTRATION_SECRET` 取得密鑰，system prompt 只放佔位字串）
 
 - `POST /api/v1/runtime/spec`
 

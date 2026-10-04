@@ -18,6 +18,9 @@ require_env BROKER_URL
 require_env BROKER_PUB_KEY
 require_env BROKER_PRINCIPAL_ID
 require_env BROKER_TASK_ID
+# The registration secret stays in the environment: agent.js reads it from there and it is never
+# added to the argument list below (argv is visible in process listings).
+require_env BROKER_REGISTRATION_SECRET
 
 if [ "${BROKER_WAIT_FOR_HEALTH:-1}" = "1" ]; then
   BROKER_HEALTH_URL="${BROKER_HEALTH_URL:-$BROKER_URL/api/v1/health}"

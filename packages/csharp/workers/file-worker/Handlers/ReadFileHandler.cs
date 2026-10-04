@@ -10,13 +10,13 @@ namespace FileWorker.Handlers;
 /// </summary>
 public class ReadFileHandler : ICapabilityHandler
 {
-    private readonly string _sandboxRoot;
+    private readonly SandboxPolicy _policy;
 
     public string CapabilityId => "file.read";
 
     public ReadFileHandler(string sandboxRoot)
     {
-        _sandboxRoot = Path.GetFullPath(sandboxRoot);
+        _policy = new SandboxPolicy(sandboxRoot);
     }
 
     public Task<(bool Success, string? ResultPayload, string? Error)> ExecuteAsync(
@@ -25,14 +25,12 @@ public class ReadFileHandler : ICapabilityHandler
         try
         {
             using var doc = JsonDocument.Parse(payload);
-            var root = doc.RootElement.TryGetProperty("args", out var argsEl)
-                ? argsEl : doc.RootElement;
+            var root = PayloadArgs.GetArgsElement(doc.RootElement);
             var filePath = root.GetProperty("path").GetString() ?? "";
 
-            var fullPath = ResolveSandboxedPath(filePath);
+            var (fullPath, pathError) = _policy.Resolve(filePath);
             if (fullPath == null)
-                return Task.FromResult<(bool, string?, string?)>(
-                    (false, null, "Path outside sandbox."));
+                return Task.FromResult<(bool, string?, string?)>((false, null, pathError));
 
             if (!File.Exists(fullPath))
                 return Task.FromResult<(bool, string?, string?)>(
@@ -58,17 +56,5 @@ public class ReadFileHandler : ICapabilityHandler
             return Task.FromResult<(bool, string?, string?)>(
                 (false, null, $"Read file error: {ex.Message}"));
         }
-    }
-
-    private string? ResolveSandboxedPath(string path)
-    {
-        try
-        {
-            var fullPath = Path.GetFullPath(Path.Combine(_sandboxRoot, path));
-            if (!fullPath.StartsWith(_sandboxRoot, StringComparison.OrdinalIgnoreCase))
-                return null;
-            return fullPath;
-        }
-        catch { return null; }
     }
 }

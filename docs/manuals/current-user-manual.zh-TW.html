@@ -850,8 +850,9 @@ npm run validate:podman-openai-compatible-stack
 <p>One-shot 範例：</p>
 <pre><code class="language-powershell">node tools/agent/agent.js --run &quot;Read AGENT.md and summarize the constraints&quot;
 </code></pre>
-<p>Governed 範例：</p>
-<pre><code class="language-powershell">node tools/agent/agent.js `
+<p>Governed 範例（註冊密鑰只從環境變數 <code>BROKER_REGISTRATION_SECRET</code> 讀取，沒有命令列參數；缺少時 agent 直接結束）：</p>
+<pre><code class="language-powershell">$env:BROKER_REGISTRATION_SECRET = '&lt;該任務的註冊密鑰&gt;'
+node tools/agent/agent.js `
   --governed `
   --broker-url http://127.0.0.1:5361 `
   --broker-pub-key &lt;base64&gt; `
@@ -860,6 +861,12 @@ npm run validate:podman-openai-compatible-stack
   --role-id role_reader `
   --run &quot;Inspect the repo&quot;
 </code></pre>
+<p>註冊密鑰的來源（broker 只存雜湊；密鑰不要寫進 repo 或命令列）：</p>
+<ul>
+<li>compose stack 的種子任務：<code>node tools/agent/container/gen-stack-secrets.mjs</code> 把它產生在 repo 以外的 env 檔，compose 以 <code>--env-file</code> 同時交給 broker 與 agent。</li>
+<li><code>/api/v1/agents/spawn</code> 啟動的代理：broker 每次 spawn 簽發一把並直接交給容器，不需手動設定。</li>
+<li>以 <code>tasks/create</code> 建立的任務：管理員呼叫 <code>/api/v1/admin/registration-credentials/issue</code> 簽發，密鑰只在該次加密回應中出現一次。</li>
+</ul>
 <p>Governed mode 中，<code>--provider</code>、<code>--api-key</code>、<code>--host</code> 不是 canonical 執行路徑；LLM health、model list、chat 都會透過 broker <code>/api/v1/llm/*</code>。</p>
 <h2>14. SPA / Page Generator / UI Library</h2>
 <p>這些是平台內的生成與前端工具，不是 LINE sidecar 本身。</p>

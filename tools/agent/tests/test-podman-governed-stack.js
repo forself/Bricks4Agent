@@ -1,12 +1,39 @@
 #!/usr/bin/env node
 'use strict';
 
+// Governed stack end-to-end (mock-ollama): agent -> broker -> file-worker read_file.
+// CONTAINER_ENGINE=docker runs it with docker / docker compose; the default is podman.
+//
+// Proof that the file was really read: the mock model only answers with TOOL_RESULT_VERIFIED
+// when the tool result it receives through the broker contains text from README.html
+// (the `[governed] read_file` log line is printed before the tool runs, so it proves nothing).
+//
+// Two search steps follow, with the agent tool's own arguments (pattern, directory, file_pattern):
+// a content search in a sub-folder must be answered by the file-worker from that folder, and a
+// name search whose pattern carries a directory part must come back as the worker's refusal.
+// A refusal from the worker is final: the broker must not hand it to its built-in file routes.
+//
+// The agent registers with the seeded task's registration secret (BROKER_REGISTRATION_SECRET).
+// A second `up` restarts the broker on the same data volume: the agent must register again with
+// the same secret, and the secret must never appear in any container output. The second run also
+// sets BROKER_REGISTRATION_SECRET_LIFETIME_HOURS, which must reach the broker's seed settings.
+
 const assert = require('assert');
+const fs = require('fs');
 const path = require('path');
-const { spawn } = require('child_process');
 const { pathToFileURL } = require('url');
 
-const ROOT = path.resolve(__dirname, '..', '..', '..');
+const {
+    ROOT,
+    assertStackHardened,
+    buildImages: buildStackImages,
+    compose,
+    containerEngine,
+    inspectStack,
+    serviceOf,
+} = require('./lib/container-stack');
+
+const engine = containerEngine();
 const composeFile = path.join(ROOT, 'tools', 'agent', 'container', 'compose.yml');
 const images = [
     ['bricks4agent-mock-ollama:latest', 'tools/agent/container/mock-ollama.Containerfile'],
@@ -15,40 +42,6 @@ const images = [
     ['bricks4agent-line-worker:latest', 'packages/csharp/workers/line-worker/Containerfile'],
     ['bricks4agent-agent:latest', 'tools/agent/Containerfile'],
 ];
-
-function run(command, args, options = {}) {
-    return new Promise((resolve, reject) => {
-        const child = spawn(command, args, {
-            cwd: ROOT,
-            env: options.env || process.env,
-            stdio: ['ignore', 'pipe', 'pipe'],
-        });
-
-        let stdout = '';
-        let stderr = '';
-
-        child.stdout.on('data', (chunk) => {
-            const text = chunk.toString();
-            stdout += text;
-            if (options.stream) {
-                process.stdout.write(text);
-            }
-        });
-
-        child.stderr.on('data', (chunk) => {
-            const text = chunk.toString();
-            stderr += text;
-            if (options.stream) {
-                process.stderr.write(text);
-            }
-        });
-
-        child.on('error', reject);
-        child.on('close', (code) => {
-            resolve({ code, stdout, stderr });
-        });
-    });
-}
 
 // compose 檔不附預設金鑰（${VAR:?...}）。每次執行在記憶體中產生一組新的金鑰，
 // 只放進子行程的 env，不寫檔；up 與 down 必須用同一個 env（down 也會展開 ${VAR:?...}）。
@@ -59,25 +52,40 @@ async function generateStackSecretsEnv() {
 }
 
 async function buildImages(env) {
-    for (const [image, dockerfile] of images) {
-        const buildResult = await run('podman', [
-            'build',
-            '-t',
-            image,
-            '-f',
-            dockerfile,
-            '.',
-        ], { env, stream: true });
-
-        assert.strictEqual(
-            buildResult.code,
-            0,
-            `podman build failed for ${image}.\nSTDOUT:\n${buildResult.stdout}\nSTDERR:\n${buildResult.stderr}`
-        );
+    if (process.env.SKIP_IMAGE_BUILD) {
+        return;
     }
+    await buildStackImages(engine, images, env);
 }
 
+// Two phrases that only appear in README.html itself (not in a path or an error message).
+const README_MARKERS = ['Bricks4Agent', 'What this is'];
+
+// The agent runs with AGENT_MAX_ITERATIONS=4: three tool calls and the final answer.
+const SEARCH_FOLDER = 'tools/agent/container';
+const TOOL_SEQUENCE = [
+    { name: 'read_file', args: { path: 'README.html' } },
+    {
+        name: 'search_content',
+        args: { pattern: 'STACK_TOOL_SEQUENCE_JSON', directory: SEARCH_FOLDER, file_pattern: 'compose*.yml' },
+    },
+    { name: 'search_files', args: { pattern: 'docs/*.md', directory: '.' } },
+];
+const TOOL_EXPECTATIONS = [
+    README_MARKERS,
+    // Paths in the result are relative to the requested folder, so the folder argument was honoured.
+    [`"basePath":"${SEARCH_FOLDER}"`, '"file":"compose.yml"'],
+    ['must match file names only'],
+];
+
 async function main() {
+    const readme = fs.readFileSync(path.join(ROOT, 'README.html'), 'utf8');
+    for (const marker of README_MARKERS) {
+        assert(readme.includes(marker), `README.html no longer contains the marker ${JSON.stringify(marker)}; update the test`);
+    }
+    const composeText = fs.readFileSync(path.join(ROOT, SEARCH_FOLDER, 'compose.yml'), 'utf8');
+    assert(composeText.includes(TOOL_SEQUENCE[1].args.pattern), 'compose.yml no longer contains the searched text; update the test');
+
     const env = {
         ...process.env,
         ...(await generateStackSecretsEnv()),
@@ -85,8 +93,8 @@ async function main() {
         PYTHONUTF8: '1',
         AGENT_RUN: 'Read README.md through the available tool, then reply with the exact text STACK_OK.',
         STACK_RESPONSE_TEXT: 'STACK_OK',
-        STACK_TOOL_CALL: 'read_file',
-        STACK_TOOL_PATH: 'README.html',
+        STACK_TOOL_SEQUENCE_JSON: JSON.stringify(TOOL_SEQUENCE),
+        STACK_EXPECT_TOOL_RESULTS_JSON: JSON.stringify(TOOL_EXPECTATIONS),
         BROKER_ROLE_ID: process.env.BROKER_ROLE_ID || 'role_reader',
         BROKER_TASK_TYPE: process.env.BROKER_TASK_TYPE || 'analysis',
         LINE_CHANNEL_ACCESS_TOKEN: process.env.LINE_CHANNEL_ACCESS_TOKEN || 'stack-test-token',
@@ -100,44 +108,79 @@ async function main() {
     try {
         await buildImages(env);
 
-        upResult = await run('podman', [
-            'compose',
-            '-f',
-            composeFile,
-            'up',
-            '--abort-on-container-exit',
-            '--exit-code-from',
-            'agent',
-        ], { env, stream: true });
+        // First run on a fresh volume, then a second run that restarts every container (broker included)
+        // on the same volume: the seeded registration credential must still register the agent.
+        for (const run of ['first', 'second']) {
+            // Second run: a shorter seeded credential lifetime (the broker sets it again at every start).
+            const runEnv = run === 'second' ? { ...env, BROKER_REGISTRATION_SECRET_LIFETIME_HOURS: '2' } : env;
+            upResult = await compose(engine, composeFile, [
+                'up',
+                '--abort-on-container-exit',
+                '--exit-code-from',
+                'agent',
+            ], { env: runEnv, stream: true });
 
-        assert.strictEqual(
-            upResult.code,
-            0,
-            `podman compose up failed.\nSTDOUT:\n${upResult.stdout}\nSTDERR:\n${upResult.stderr}`
-        );
+            assert.strictEqual(
+                upResult.code,
+                0,
+                `${engine} compose up (${run} run) failed.\nSTDOUT:\n${upResult.stdout}\nSTDERR:\n${upResult.stderr}`
+            );
 
-        const combinedOutput = `${upResult.stdout}\n${upResult.stderr}`;
+            const combinedOutput = `${upResult.stdout}\n${upResult.stderr}`;
+            assert(
+                !combinedOutput.includes(env.BROKER_REGISTRATION_SECRET),
+                `The registration secret must not appear in any container output (${run} run).`
+            );
+            assert(
+                combinedOutput.includes('STACK_OK'),
+                `Expected agent output to include STACK_OK (${run} run).\n${combinedOutput}`
+            );
+            assert(
+                combinedOutput.includes('[governed] read_file'),
+                `Expected agent output to include governed read_file tool execution (${run} run).\n${combinedOutput}`
+            );
+            assert(
+                combinedOutput.includes('TOOL_RESULT_VERIFIED') && !combinedOutput.includes('TOOL_RESULT_MISMATCH'),
+                `Expected the read_file result to carry README.html content read by the file-worker, the content search ` +
+                `to find compose.yml in ${SEARCH_FOLDER}, and the name search to be refused (${run} run).\n${combinedOutput}`
+            );
+            assert(
+                combinedOutput.includes('[governed] search_content') && combinedOutput.includes('[governed] search_files'),
+                `Expected the agent to run both search tools (${run} run).\n${combinedOutput}`
+            );
+            // The searches were answered by the file-worker; its refusal was not retried in the broker.
+            assert(
+                combinedOutput.includes('Worker refused search_files'),
+                `Expected the broker to log the file-worker's refusal of the name search (${run} run).\n${combinedOutput}`
+            );
+            for (const route of ['search_files', 'search_content', 'read_file']) {
+                assert(
+                    !combinedOutput.includes(`Falling back to InProcessDispatcher for route=${route}`),
+                    `The ${route} request must not fall back to the broker's built-in file routes (${run} run).\n${combinedOutput}`
+                );
+            }
+        }
+
+        await assertStackHardened(engine, composeFile, [], env, {
+            services: ['mock-ollama', 'broker', 'file-worker', 'line-worker', 'agent'],
+            pidsLimits: { broker: 1024 },
+            readOnlyBinds: ['file-worker'],
+        });
+
+        // The lifetime override of the second run reached the broker (only this one variable is read).
+        const brokerContainer = (await inspectStack(engine, composeFile, [], env)).find((container) => serviceOf(container) === 'broker');
+        assert(brokerContainer, 'inspect: broker container not found');
         assert(
-            combinedOutput.includes('STACK_OK'),
-            `Expected agent output to include STACK_OK.\n${combinedOutput}`
-        );
-        assert(
-            combinedOutput.includes('[governed] read_file'),
-            `Expected agent output to include governed read_file tool execution.\n${combinedOutput}`
+            ((brokerContainer.Config && brokerContainer.Config.Env) || []).includes('DevelopmentSeed__RegistrationSecretLifetimeHours=2'),
+            'the broker should get BROKER_REGISTRATION_SECRET_LIFETIME_HOURS as DevelopmentSeed__RegistrationSecretLifetimeHours'
         );
 
-        console.log('Podman governed stack integration test passed.');
+        console.log(`Governed stack integration test passed (${engine}).`);
     } finally {
-        const downResult = await run('podman', [
-            'compose',
-            '-f',
-            composeFile,
-            'down',
-            '-v',
-        ], { env });
+        const downResult = await compose(engine, composeFile, ['down', '-v'], { env });
 
         if (downResult.code !== 0) {
-            console.error(`podman compose down failed.\n${downResult.stdout}\n${downResult.stderr}`);
+            console.error(`${engine} compose down failed.\n${downResult.stdout}\n${downResult.stderr}`);
         }
     }
 }

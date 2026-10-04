@@ -1,5 +1,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Globalization;
+using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 
 namespace FunctionPool.Container;
@@ -12,9 +14,27 @@ namespace FunctionPool.Container;
 /// - Container spawning is infrequent, CLI overhead is negligible
 /// - Each spawned container is tracked in-memory with ManagedContainer
 /// - Workers connect back to broker via TCP (outbound from container)
+/// - Every container gets the design §13.2 hardening (read-only rootfs, tmpfs /tmp, no
+///   capabilities, no-new-privileges, pids and memory limits); configuration that would
+///   weaken it (root user, host network, agent mounts or ports, socket or system mounts)
+///   is refused instead of being passed through.
 /// </summary>
 public class ContainerManager : IContainerManager
 {
+    public const string AgentWorkerType = "agent";
+    internal const string TmpfsMount = "/tmp:rw,noexec,nosuid,nodev,size=64m";
+    private const string FallbackMemoryLimit = "512m";
+
+    private static readonly Regex TrustedEnvNamePattern = new(@"^[A-Za-z_][A-Za-z0-9_.\-]*$", RegexOptions.CultureInvariant);
+    private static readonly Regex SecretEnvNamePattern = new(@"^[A-Za-z_][A-Za-z0-9_]*$", RegexOptions.CultureInvariant);
+    private static readonly Regex NamedVolumePattern = new(@"^[A-Za-z0-9][A-Za-z0-9_.\-]*$", RegexOptions.CultureInvariant);
+
+    private static readonly string[] ForbiddenLinuxHostRoots =
+    {
+        "/", "/etc", "/proc", "/sys", "/dev", "/run", "/var/run", "/var/lib/docker",
+        "/var/lib/containers", "/boot", "/root", "/usr", "/bin", "/sbin", "/lib", "/lib64",
+    };
+
     private readonly ContainerConfig _config;
     private readonly ILogger<ContainerManager> _logger;
     private readonly ConcurrentDictionary<string, ManagedContainer> _containers = new();
@@ -25,12 +45,12 @@ public class ContainerManager : IContainerManager
         _logger = logger;
     }
 
-    public async Task<string> SpawnWorkerAsync(
-        string workerType,
-        string workerId,
-        Dictionary<string, string>? envOverrides = null,
-        CancellationToken ct = default)
+    public async Task<string> SpawnWorkerAsync(ContainerSpawnRequest request, CancellationToken ct = default)
     {
+        ArgumentNullException.ThrowIfNull(request);
+        var workerType = request.WorkerType;
+        var workerId = request.WorkerId;
+
         if (!_config.WorkerImages.TryGetValue(workerType, out var imageConfig))
             throw new InvalidOperationException($"Unknown worker type: '{workerType}'. Configure in ContainerManager:WorkerImages.");
 
@@ -45,7 +65,7 @@ public class ContainerManager : IContainerManager
 
         var containerName = $"b4a-{workerType}-{workerId[..Math.Min(12, workerId.Length)]}";
 
-        var args = BuildRunArguments(_config, imageConfig, workerId, containerName, envOverrides);
+        var args = BuildRunArguments(_config, imageConfig, request, containerName);
 
         var managed = new ManagedContainer
         {
@@ -60,7 +80,7 @@ public class ContainerManager : IContainerManager
             workerType, workerId, imageConfig.Image);
 
         var (exitCode, stdout, stderr) = await RunCommandAsync(
-            _config.Runtime, args, _config.SpawnTimeout, ct);
+            _config.Runtime, args, _config.SpawnTimeout, ct, BuildCliEnvironment(request));
 
         if (exitCode != 0)
         {
@@ -96,9 +116,9 @@ public class ContainerManager : IContainerManager
         // Stop
         await RunCommandAsync(_config.Runtime, new[] { "stop", "-t", "10", containerId }, TimeSpan.FromSeconds(15), ct);
 
-        // Remove
+        // Remove, together with any anonymous volume
         var (exitCode, _, stderr) = await RunCommandAsync(
-            _config.Runtime, new[] { "rm", "-f", containerId }, TimeSpan.FromSeconds(10), ct);
+            _config.Runtime, BuildRemoveArguments(containerId), TimeSpan.FromSeconds(10), ct);
 
         if (_containers.TryRemove(containerId, out var removed))
             removed.State = ContainerState.Stopped;
@@ -185,8 +205,16 @@ public class ContainerManager : IContainerManager
     }
 
     /// <summary>Execute a CLI command and capture output</summary>
+    /// <param name="environment">
+    /// Extra variables for the CLI process only (secret values named by <c>-e NAME</c>);
+    /// they never appear in the argument list.
+    /// </param>
     private static async Task<(int ExitCode, string Stdout, string Stderr)> RunCommandAsync(
-        string command, IReadOnlyCollection<string> arguments, TimeSpan timeout, CancellationToken ct)
+        string command,
+        IReadOnlyCollection<string> arguments,
+        TimeSpan timeout,
+        CancellationToken ct,
+        IReadOnlyDictionary<string, string>? environment = null)
     {
         using var process = new Process();
         process.StartInfo = new ProcessStartInfo
@@ -199,6 +227,11 @@ public class ContainerManager : IContainerManager
         };
         foreach (var argument in arguments)
             process.StartInfo.ArgumentList.Add(argument);
+        if (environment != null)
+        {
+            foreach (var (name, value) in environment)
+                process.StartInfo.Environment[name] = value;
+        }
 
         process.Start();
 
@@ -218,7 +251,9 @@ public class ContainerManager : IContainerManager
         catch (OperationCanceledException)
         {
             try { process.Kill(true); } catch { }
-            throw new TimeoutException($"Command timed out after {timeout}: {command} {string.Join(' ', arguments)}");
+            // Only the sub-command: the remaining arguments carry the container environment.
+            var subCommand = arguments.Count > 0 ? arguments.First() : string.Empty;
+            throw new TimeoutException($"Command timed out after {timeout}: {command} {subCommand}");
         }
     }
 
@@ -228,13 +263,24 @@ public class ContainerManager : IContainerManager
         args.Add($"{key}={value ?? string.Empty}");
     }
 
+    internal static IReadOnlyList<string> BuildRemoveArguments(string containerId)
+        => new[] { "rm", "-f", "-v", containerId };
+
+    public static bool IsAgentWorkerType(string workerType)
+        => string.Equals(workerType, AgentWorkerType, StringComparison.OrdinalIgnoreCase);
+
     internal static IReadOnlyList<string> BuildRunArguments(
         ContainerConfig config,
         WorkerImageConfig imageConfig,
-        string workerId,
-        string containerName,
-        IReadOnlyDictionary<string, string>? envOverrides)
+        ContainerSpawnRequest request,
+        string containerName)
     {
+        ArgumentNullException.ThrowIfNull(request);
+        var isAgent = IsAgentWorkerType(request.WorkerType);
+
+        if (string.IsNullOrWhiteSpace(imageConfig.Image))
+            throw new InvalidOperationException($"No image configured for worker type '{request.WorkerType}'.");
+
         var args = new List<string>
         {
             "run",
@@ -243,42 +289,242 @@ public class ContainerManager : IContainerManager
             containerName
         };
 
-        var networkName = string.IsNullOrWhiteSpace(imageConfig.NetworkName)
-            ? config.NetworkName
-            : imageConfig.NetworkName;
-        if (!string.IsNullOrWhiteSpace(networkName))
-            args.AddRange(new[] { "--network", networkName });
+        // ── Network: agents never fall back to the shared worker network ──
+        var networkName = isAgent
+            ? imageConfig.NetworkName
+            : string.IsNullOrWhiteSpace(imageConfig.NetworkName) ? config.NetworkName : imageConfig.NetworkName;
+        if (string.IsNullOrWhiteSpace(networkName))
+        {
+            if (isAgent && !config.AllowAgentDefaultNetwork)
+                throw new InvalidOperationException(
+                    "Agent containers need a dedicated network (WorkerImages:agent:NetworkName). " +
+                    "Set ContainerManager:AllowAgentDefaultNetwork=true only for a host-run broker without one.");
+        }
+        else
+        {
+            ValidateNetwork(networkName.Trim());
+            args.AddRange(new[] { "--network", networkName.Trim() });
+        }
 
-        if (!string.IsNullOrEmpty(imageConfig.MemoryLimit))
-            args.AddRange(new[] { "--memory", imageConfig.MemoryLimit });
+        // ── Resource limits ──
+        var memoryLimit = !string.IsNullOrWhiteSpace(imageConfig.MemoryLimit)
+            ? imageConfig.MemoryLimit
+            : !string.IsNullOrWhiteSpace(config.DefaultMemoryLimit) ? config.DefaultMemoryLimit : FallbackMemoryLimit;
+        args.AddRange(new[] { "--memory", memoryLimit.Trim() });
         if (!string.IsNullOrEmpty(imageConfig.CpuLimit))
             args.AddRange(new[] { "--cpus", imageConfig.CpuLimit });
 
-        if (!string.IsNullOrEmpty(imageConfig.User))
-            args.AddRange(new[] { "--user", imageConfig.User });
+        var pidsLimit = imageConfig.PidsLimit ?? config.DefaultPidsLimit;
+        if (pidsLimit <= 0)
+            throw new InvalidOperationException($"PidsLimit must be positive for worker type '{request.WorkerType}'.");
 
-        AddEnv(args, "WORKER_Worker__BrokerHost", config.BrokerHostForWorkers);
-        AddEnv(args, "WORKER_Worker__BrokerPort", config.BrokerPortForWorkers.ToString());
-        AddEnv(args, "WORKER_Worker__WorkerId", workerId);
+        // ── Identity: the image's non-root USER applies unless overridden by a non-root user ──
+        if (!string.IsNullOrWhiteSpace(imageConfig.User))
+        {
+            ValidateUser(imageConfig.User.Trim());
+            args.AddRange(new[] { "--user", imageConfig.User.Trim() });
+        }
+
+        // ── §13.2 hardening, always on ──
+        args.Add("--read-only");
+        args.AddRange(new[] { "--tmpfs", TmpfsMount });
+        args.AddRange(new[] { "--cap-drop", "ALL" });
+        args.AddRange(new[] { "--security-opt", "no-new-privileges:true" });
+        args.AddRange(new[] { "--pids-limit", pidsLimit.ToString(System.Globalization.CultureInfo.InvariantCulture) });
+
+        // ── Environment ──
+        var plainNames = new HashSet<string>(StringComparer.Ordinal);
+        void AddPlain(string key, string? value)
+        {
+            if (!TrustedEnvNamePattern.IsMatch(key))
+                throw new InvalidOperationException($"Invalid environment variable name: '{key}'.");
+            plainNames.Add(key);
+            AddEnv(args, key, value);
+        }
+
+        AddPlain("WORKER_Worker__BrokerHost", config.BrokerHostForWorkers);
+        AddPlain("WORKER_Worker__BrokerPort", config.BrokerPortForWorkers.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        AddPlain("WORKER_Worker__WorkerId", request.WorkerId);
 
         foreach (var (key, val) in imageConfig.Environment)
-            AddEnv(args, key, val);
+            AddPlain(key, val);
 
-        if (envOverrides != null)
+        foreach (var (key, val) in request.TrustedEnvironment)
+            AddPlain(key, val);
+
+        foreach (var name in request.SecretEnvironment.Keys)
         {
-            foreach (var (key, val) in envOverrides)
-                AddEnv(args, key, val);
+            if (!SecretEnvNamePattern.IsMatch(name))
+                throw new InvalidOperationException($"Invalid secret environment variable name: '{name}'.");
+            if (plainNames.Contains(name))
+                throw new InvalidOperationException($"Secret environment variable '{name}' is also set as a plain value.");
+            // Name only: the runtime CLI copies the value from its own process environment.
+            args.Add("-e");
+            args.Add(name);
+        }
+
+        // ── Mounts and ports ──
+        if (isAgent)
+        {
+            if (imageConfig.Volumes.Count > 0)
+                throw new InvalidOperationException("Agent containers must not mount volumes (§13.4); remove WorkerImages:agent:Volumes.");
+            if (imageConfig.Ports.Count > 0)
+                throw new InvalidOperationException("Agent containers must not publish ports; remove WorkerImages:agent:Ports.");
         }
 
         foreach (var vol in imageConfig.Volumes)
+        {
+            ValidateVolume(vol, config.AllowedHostPathRoots);
             args.AddRange(new[] { "-v", vol });
+        }
 
         foreach (var port in imageConfig.Ports)
+        {
+            ValidatePort(port);
             args.AddRange(new[] { "-p", port });
+        }
 
         args.AddRange(new[] { "--restart", "on-failure:3" });
         args.Add(imageConfig.Image);
 
         return args;
+    }
+
+    /// <summary>The CLI process environment for a spawn: exactly the secret values named by <c>-e NAME</c>.</summary>
+    internal static IReadOnlyDictionary<string, string> BuildCliEnvironment(ContainerSpawnRequest request)
+        => new Dictionary<string, string>(request.SecretEnvironment, StringComparer.Ordinal);
+
+    private static void ValidateNetwork(string networkName)
+    {
+        if (string.Equals(networkName, "host", StringComparison.OrdinalIgnoreCase) ||
+            networkName.StartsWith("container:", StringComparison.OrdinalIgnoreCase) ||
+            networkName.StartsWith("ns:", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException($"Network mode '{networkName}' shares a host or container namespace and is not allowed.");
+        }
+    }
+
+    /// <summary>
+    /// Refuses root: a user or group part named root, or any numeric part whose value is 0
+    /// (the runtime parses numeric ids, so every spelling of 0 means root).
+    /// </summary>
+    private static void ValidateUser(string user)
+    {
+        var parts = user.Split(':');
+        foreach (var part in parts)
+        {
+            var value = part.Trim();
+            var isNumericZero = long.TryParse(value, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var id) && id == 0;
+            if (isNumericZero || string.Equals(value, "root", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Worker containers must not run as root.");
+        }
+    }
+
+    private static void ValidatePort(string port)
+    {
+        if (!port.StartsWith("127.0.0.1:", StringComparison.Ordinal))
+            throw new InvalidOperationException($"Published ports must bind 127.0.0.1 ('{port}').");
+    }
+
+    /// <summary>
+    /// Non-agent mounts: named volumes are allowed; host paths must be absolute, must not be a
+    /// socket or a system path, and must sit under one of the allowed host path roots.
+    /// </summary>
+    internal static void ValidateVolume(string spec, IReadOnlyCollection<string> allowedHostPathRoots)
+    {
+        var (source, target) = SplitVolume(spec);
+        if (string.IsNullOrWhiteSpace(target) || !(target.StartsWith('/')))
+            throw new InvalidOperationException($"Volume '{spec}' needs an absolute container path.");
+        if (source.Length == 0 || NamedVolumePattern.IsMatch(source))
+            return; // anonymous or named volume, not a host path
+
+        if (LooksLikeSocket(source))
+            throw new InvalidOperationException($"Mounting a runtime socket or pipe is not allowed ('{source}').");
+
+        var normalized = NormalizeHostPath(source)
+            ?? throw new InvalidOperationException($"Host path '{source}' must be absolute and must not contain '..'.");
+
+        if (IsSystemPath(normalized))
+            throw new InvalidOperationException($"Mounting system path '{source}' is not allowed.");
+
+        var allowed = allowedHostPathRoots
+            .Select(NormalizeHostPath)
+            .Where(root => root != null && !IsSystemPath(root))
+            .Any(root => IsUnder(normalized, root!));
+        if (!allowed)
+            throw new InvalidOperationException(
+                $"Host path '{source}' is not under ContainerManager:AllowedHostPathRoots.");
+    }
+
+    private static (string Source, string Target) SplitVolume(string spec)
+    {
+        var value = spec.Trim();
+        var offset = 0;
+        // Windows drive letter: "D:\dir:/target" or "D:/dir:/target"
+        if (value.Length >= 3 && char.IsAsciiLetter(value[0]) && value[1] == ':' && (value[2] == '\\' || value[2] == '/'))
+            offset = 2;
+        var separator = value.IndexOf(':', offset);
+        if (separator < 0)
+            return (string.Empty, value); // anonymous volume
+        var source = value[..separator];
+        var rest = value[(separator + 1)..];
+        var optionSeparator = rest.IndexOf(':');
+        var target = optionSeparator < 0 ? rest : rest[..optionSeparator];
+        return (source, target);
+    }
+
+    private static bool LooksLikeSocket(string source)
+    {
+        var lower = source.Replace('\\', '/').ToLowerInvariant();
+        return lower.EndsWith(".sock", StringComparison.Ordinal) ||
+               lower.Contains("docker.sock", StringComparison.Ordinal) ||
+               lower.Contains("podman.sock", StringComparison.Ordinal) ||
+               lower.Contains("containerd.sock", StringComparison.Ordinal) ||
+               lower.StartsWith("//./pipe/", StringComparison.Ordinal) ||
+               lower.StartsWith("npipe:", StringComparison.Ordinal);
+    }
+
+    /// <summary>Forward slashes, no trailing slash; Windows paths lower-cased. Null when relative or containing "..".</summary>
+    private static string? NormalizeHostPath(string path)
+    {
+        var value = path.Trim().Replace('\\', '/');
+        var isWindows = value.Length >= 3 && char.IsAsciiLetter(value[0]) && value[1] == ':' && value[2] == '/';
+        var isUnc = value.StartsWith("//", StringComparison.Ordinal);
+        if (!isWindows && !isUnc && !value.StartsWith('/'))
+            return null;
+        if (value.Split('/').Any(segment => segment == ".."))
+            return null;
+        while (value.Contains("//", StringComparison.Ordinal) && !isUnc)
+            value = value.Replace("//", "/", StringComparison.Ordinal);
+        if (value.Length > 1 && value.EndsWith('/') && !(isWindows && value.Length == 3))
+            value = value.TrimEnd('/');
+        return isWindows || isUnc ? value.ToLowerInvariant() : value;
+    }
+
+    private static bool IsSystemPath(string normalized)
+    {
+        // Windows: a drive root or the Windows directory
+        if (normalized.Length >= 2 && normalized[1] == ':')
+        {
+            var rest = normalized.Length > 2 ? normalized[2..].TrimEnd('/') : string.Empty;
+            return rest.Length == 0 || IsUnder(rest, "/windows");
+        }
+        if (normalized.StartsWith("//", StringComparison.Ordinal))
+            return false;
+
+        foreach (var forbidden in ForbiddenLinuxHostRoots)
+        {
+            if (forbidden == "/" ? normalized == "/" : IsUnder(normalized, forbidden))
+                return true;
+        }
+        return false;
+    }
+
+    private static bool IsUnder(string path, string root)
+    {
+        if (string.Equals(path, root, StringComparison.Ordinal))
+            return true;
+        var prefix = root.EndsWith('/') ? root : root + "/";
+        return path.StartsWith(prefix, StringComparison.Ordinal);
     }
 }

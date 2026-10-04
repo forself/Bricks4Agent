@@ -7,6 +7,9 @@ const fs = require('fs');
 const path = require('path');
 const { pathToFileURL } = require('url');
 
+const { isRootUserSpec } = require('../container/container-user');
+const { assertContainerHardened } = require('./lib/container-stack');
+
 const ROOT = path.resolve(__dirname, '..', '..', '..');
 
 // compose 檔曾以 ${VAR:-預設值} 提交的開發金鑰，已在 git 歷史中公開。
@@ -34,6 +37,7 @@ const BROKER_SECRET_VARIABLES = [
     'BROKER_MASTER_KEY_BASE64',
     'BROKER_ECDH_PRIVATE_KEY_BASE64',
     'BROKER_ECDH_PUBLIC_KEY_BASE64',
+    'BROKER_REGISTRATION_SECRET',
 ];
 const WORKER_SECRET_VARIABLES = [
     'LINE_WORKER_AUTH_KEY_ID',
@@ -204,7 +208,250 @@ assertIncludes('container build ignores git metadata', dockerignore, '.git');
 
 const agentContainerfile = read('tools/agent/Containerfile');
 assertIncludes('agent image workspace directory', agentContainerfile, 'mkdir -p /workspace');
-assertIncludes('agent image workspace ownership', agentContainerfile, 'chown -R agent:agent /app /workspace');
+assertIncludes('agent image bakes in the project manual', agentContainerfile, 'COPY AGENT.md /app/AGENT.md');
+assertIncludes('agent image points the prompt at the baked manual', agentContainerfile, 'ENV AGENT_MANUAL_PATH=/app/AGENT.md');
+assert(!/^\s*(?:RUN|&&).*\bchown\b.*\/app\b/m.test(agentContainerfile), 'agent image: /app must stay owned by root (no chown of /app)');
+assertNotIncludes('agent image does not chown the code', agentContainerfile, 'chown -R agent:agent /app');
+const entrypoint = read('tools/agent/container/entrypoint.sh');
+assertIncludes('agent image keeps the default project root', entrypoint, 'WORKSPACE_DIR="${AGENT_PROJECT_ROOT:-/workspace}"');
+// 註冊密鑰：entrypoint 要求它存在，但只留在環境變數，不放進 node 的參數（argv 會出現在程序清單）。
+assertIncludes('entrypoint requires the registration secret', entrypoint, 'require_env BROKER_REGISTRATION_SECRET');
+const entrypointArgvStart = entrypoint.indexOf('set -- ');
+assert(entrypointArgvStart > entrypoint.indexOf('require_env BROKER_REGISTRATION_SECRET'), 'entrypoint: set -- block not found after the env checks');
+const entrypointArgv = entrypoint.slice(entrypointArgvStart, entrypoint.lastIndexOf('exec "$@"'));
+assertNotIncludes('entrypoint keeps the registration secret out of argv', entrypointArgv, 'REGISTRATION_SECRET');
+const agentCli = read('tools/agent/agent.js');
+assertIncludes('agent reads the registration secret from the environment', agentCli, 'process.env.BROKER_REGISTRATION_SECRET');
+assertIncludes('agent drops the registration secret from its environment', agentCli, 'delete process.env.BROKER_REGISTRATION_SECRET');
+assert(!/--registration-secret/.test(agentCli), 'agent.js: the registration secret must not have a command-line option');
+const governedExecutorSource = read('tools/agent/lib/governed-executor.js');
+assertIncludes('prompt context shows only a placeholder for the registration secret', governedExecutorSource, "registration_secret: '<registration secret>'");
+
+// ── compose 每個服務的 §13.2 加固（依縮排切出服務區塊逐一檢查） ──
+function composeServices(text) {
+    const lines = text.split(/\r?\n/);
+    const start = lines.findIndex((line) => line === 'services:');
+    assert(start >= 0, 'compose file without a services: section');
+    const services = {};
+    let current = null;
+    for (const line of lines.slice(start + 1)) {
+        if (/^\S/.test(line)) {
+            break; // next top-level key (networks:, volumes:)
+        }
+        const header = /^ {2}([A-Za-z0-9_-]+):\s*$/.exec(line);
+        if (header) {
+            current = header[1];
+            services[current] = [];
+        } else if (current) {
+            services[current].push(line);
+        }
+    }
+    return Object.fromEntries(Object.entries(services).map(([name, body]) => [name, body.join('\n')]));
+}
+
+// 服務區塊中的清單值（`key:` 之下的 `- value`），略過夾在清單中的註解行與行尾註解。
+function serviceListValues(block, key) {
+    const match = new RegExp(`^ {4}${key}:\\s*\\r?\\n((?: {6}(?:- .*|#.*)\\r?\\n?)+)`, 'm').exec(block);
+    return match
+        ? match[1].split(/\r?\n/)
+            .map((line) => line.trim())
+            .filter((line) => line.startsWith('- '))
+            .map((line) => line.replace(/^- /, '').replace(/\s+#.*$/, '').replace(/^["']|["']$/g, ''))
+            .filter(Boolean)
+        : [];
+}
+
+// 服務區塊中某個純量鍵的值（去掉引號與行尾註解）；沒有這個鍵時回傳 null。
+function serviceScalar(block, key) {
+    const match = new RegExp(`^ {4}${key}:[ \\t]*(.*)$`, 'm').exec(block);
+    return match ? match[1].replace(/\s+#.*$/, '').trim().replace(/^["']|["']$/g, '') : null;
+}
+
+// 一個 compose 服務區塊的 §13.2 加固，以及不得出現的削弱設定。
+function assertServiceHardened(where, name, block) {
+    assert(/^ {4}read_only: true\b/m.test(block), `${where}: expected read_only: true`);
+    assert(serviceListValues(block, 'tmpfs').includes('/tmp'), `${where}: expected a /tmp tmpfs`);
+    assert.deepStrictEqual(serviceListValues(block, 'cap_drop'), ['ALL'], `${where}: expected cap_drop: [ALL]`);
+    const securityOpt = serviceListValues(block, 'security_opt');
+    assert(securityOpt.includes('no-new-privileges:true'), `${where}: expected no-new-privileges:true`);
+    assert(!securityOpt.some((opt) => /unconfined/i.test(opt)), `${where}: security_opt must not be unconfined`);
+    const pids = /^ {4}pids_limit: (\d+)\b/m.exec(block);
+    assert(pids, `${where}: expected pids_limit`);
+    assert.strictEqual(Number(pids[1]), name === 'broker' ? 1024 : 256, `${where}: unexpected pids_limit`);
+    // 與 ContainerManager.ValidateUser 相同的規則：任一段為 root 或數值為 0（00、+0、10001:0）即是 root。
+    const user = serviceScalar(block, 'user');
+    assert(user === null || !isRootUserSpec(user), `${where}: must not run as root (user: ${user})`);
+    for (const key of ['cap_add', 'devices', 'userns_mode', 'privileged', 'network_mode']) {
+        assert(!new RegExp(`^ {4}${key}:`, 'm').test(block), `${where}: ${key} is not allowed`);
+    }
+    for (const key of ['pid', 'ipc']) {
+        const value = serviceScalar(block, key);
+        assert(value === null || !/^(host|container:|service:)/i.test(value), `${where}: ${key}: ${value} shares a namespace`);
+    }
+}
+
+// 頂層 networks 區段中，某個網路的設定行。
+function topLevelNetwork(text, network) {
+    const lines = text.split(/\r?\n/);
+    const start = lines.findIndex((line) => line === 'networks:');
+    assert(start >= 0, 'compose file without a top-level networks: section');
+    const body = [];
+    let inside = false;
+    for (const line of lines.slice(start + 1)) {
+        if (/^\S/.test(line)) {
+            break;
+        }
+        const header = /^ {2}([A-Za-z0-9_-]+):\s*$/.exec(line);
+        if (header) {
+            inside = header[1] === network;
+            continue;
+        }
+        if (inside) {
+            body.push(line);
+        }
+    }
+    return body.join('\n');
+}
+
+// 檢查規則本身：合格的區塊通過，每一種削弱寫法都被擋下。
+{
+    const goodBlock = [
+        '    image: example:latest',
+        '    user: "10001:10001"',
+        '    read_only: true',
+        '    tmpfs:',
+        '      - /tmp',
+        '    cap_drop:',
+        '      - ALL',
+        '    security_opt:',
+        '      # comment inside the list',
+        '      - no-new-privileges:true',
+        '    pids_limit: 256',
+    ].join('\n');
+    assertServiceHardened('synthetic', 'worker', goodBlock);
+    const weakened = {
+        'user 00': goodBlock.replace('user: "10001:10001"', 'user: "00"'),
+        'user +0': goodBlock.replace('user: "10001:10001"', 'user: "+0"'),
+        'group 0': goodBlock.replace('user: "10001:10001"', 'user: "10001:0"'),
+        'named user, group 0': goodBlock.replace('user: "10001:10001"', 'user: agent:0'),
+        'group root': goodBlock.replace('user: "10001:10001"', "user: '10001:root'"),
+        'cap_add': `${goodBlock}\n    cap_add:\n      - NET_ADMIN`,
+        'devices': `${goodBlock}\n    devices:\n      - /dev/fuse`,
+        'pid host': `${goodBlock}\n    pid: host`,
+        'ipc host': `${goodBlock}\n    ipc: "host"`,
+        'ipc of another container': `${goodBlock}\n    ipc: container:other`,
+        'userns_mode': `${goodBlock}\n    userns_mode: host`,
+        'unconfined seccomp': goodBlock.replace('      - no-new-privileges:true', '      - no-new-privileges:true\n      - seccomp:unconfined'),
+        'unconfined apparmor': goodBlock.replace('      - no-new-privileges:true', '      - no-new-privileges:true\n      - apparmor=unconfined'),
+    };
+    for (const [label, block] of Object.entries(weakened)) {
+        assert.throws(() => assertServiceHardened(`synthetic ${label}`, 'worker', block), assert.AssertionError, `compose check must refuse: ${label}`);
+    }
+}
+
+// inspect 的檢查規則（docker／podman inspect 輸出，Docker 端到端測試共用）：合格的通過，每一種削弱都被擋下。
+{
+    const goodContainer = () => ({
+        Config: { User: '10001' },
+        Mounts: [],
+        HostConfig: {
+            ReadonlyRootfs: true,
+            CapDrop: ['ALL'],
+            CapAdd: null,
+            SecurityOpt: ['no-new-privileges:true'],
+            PidsLimit: 256,
+            Privileged: false,
+            NetworkMode: 'bricks4agent_agent-net',
+            PidMode: '',
+            IpcMode: 'private',
+            Tmpfs: { '/tmp': '' },
+            Devices: [],
+        },
+    });
+    assertContainerHardened('synthetic', goodContainer(), { noMounts: true });
+    const weaken = {
+        'user 00': (c) => { c.Config.User = '00'; },
+        'user 10001:0': (c) => { c.Config.User = '10001:0'; },
+        'user agent:0': (c) => { c.Config.User = 'agent:0'; },
+        'user ROOT': (c) => { c.Config.User = 'ROOT'; },
+        'no user': (c) => { c.Config.User = ''; },
+        'cap add': (c) => { c.HostConfig.CapAdd = ['NET_ADMIN']; },
+        'pid host': (c) => { c.HostConfig.PidMode = 'host'; },
+        'ipc host': (c) => { c.HostConfig.IpcMode = 'host'; },
+        'ipc of another container': (c) => { c.HostConfig.IpcMode = 'container:abc'; },
+        'network host': (c) => { c.HostConfig.NetworkMode = 'host'; },
+        'seccomp unconfined': (c) => { c.HostConfig.SecurityOpt.push('seccomp=unconfined'); },
+        'device': (c) => { c.HostConfig.Devices = [{ PathOnHost: '/dev/fuse' }]; },
+        'writable rootfs': (c) => { c.HostConfig.ReadonlyRootfs = false; },
+        'socket mount': (c) => { c.Mounts = [{ Type: 'bind', Source: '/var/run/docker.sock', Destination: '/var/run/docker.sock' }]; },
+    };
+    for (const [label, change] of Object.entries(weaken)) {
+        const container = goodContainer();
+        change(container);
+        assert.throws(() => assertContainerHardened(`synthetic ${label}`, container, { noMounts: true }), assert.AssertionError, `inspect check must refuse: ${label}`);
+    }
+}
+
+const seedOptionsSource = read('packages/csharp/broker-core/Data/DevelopmentSeedOptions.cs');
+const seedLifetimeMatch = /DefaultRegistrationSecretLifetimeHours = (\d+);/.exec(seedOptionsSource);
+assert(seedLifetimeMatch, 'DevelopmentSeedOptions.DefaultRegistrationSecretLifetimeHours not found');
+const seedLifetimeDefault = seedLifetimeMatch[1];
+
+const expectedServices = {
+    'tools/agent/container/compose.yml': ['mock-ollama', 'broker', 'file-worker', 'line-worker', 'execution-adapter-worker', 'agent'],
+    'tools/agent/container/compose.openai-compatible.yml': ['mock-openai', 'broker', 'agent'],
+    'tools/agent/container/compose.ollama-host.yml': ['broker', 'agent'],
+};
+for (const composePath of COMPOSE_FILES) {
+    const text = read(composePath);
+    assertNotIncludes(`${composePath} mounts no runtime socket`, text, 'docker.sock');
+    assertNotIncludes(`${composePath} mounts no podman socket`, text, 'podman.sock');
+    assert(!/^\s*privileged:/m.test(text), `${composePath}: no service may be privileged`);
+    assert(!/^\s*network_mode:/m.test(text), `${composePath}: no service may share the host network`);
+
+    const services = composeServices(text);
+    assert.deepStrictEqual(Object.keys(services).sort(), [...expectedServices[composePath]].sort(), `${composePath}: unexpected service list`);
+    for (const [name, block] of Object.entries(services)) {
+        assertServiceHardened(`${composePath} ${name}`, name, block);
+    }
+
+    // 種子憑證的有效時間可由 compose 調整（broker 每次啟動重新起算）；預設值與 DevelopmentSeedOptions 一致。
+    assertIncludes(`${composePath} broker exposes the seeded credential lifetime`, services.broker,
+        `DevelopmentSeed__RegistrationSecretLifetimeHours: "\${BROKER_REGISTRATION_SECRET_LIFETIME_HOURS:-${seedLifetimeDefault}}"`);
+
+    const agent = services.agent;
+    // 註冊密鑰：broker 的種子與 agent 取用同一個必填變數（${VAR:?...}，訊息指向產生器，見上方檢查）。
+    assertIncludes(`${composePath} broker seeds the registration secret`, services.broker,
+        'DevelopmentSeed__RegistrationSecret: "${BROKER_REGISTRATION_SECRET:?');
+    assertIncludes(`${composePath} agent receives the registration secret`, agent,
+        'BROKER_REGISTRATION_SECRET: "${BROKER_REGISTRATION_SECRET:?');
+    assert(!/^ {4}volumes:/m.test(agent), `${composePath} agent: the agent must not mount anything`);
+    assert(!/:\/workspace\b/.test(agent), `${composePath} agent: no :/workspace bind mount`);
+    assertIncludes(`${composePath} agent keeps the logical project root`, agent, 'AGENT_PROJECT_ROOT: "/workspace"');
+    // agent 只在 agent-net 上，且 agent-net 是 internal（沒有對外的閘道）。
+    assert.deepStrictEqual(serviceListValues(agent, 'networks'), ['agent-net'], `${composePath} agent: must join agent-net only`);
+    assert(/^ {4}internal: true\b/m.test(topLevelNetwork(text, 'agent-net')), `${composePath}: agent-net must be internal: true`);
+    assertNotIncludes(`${composePath} drops the stale file.search seed`, text, '"capability_id":"file.search"');
+}
+
+const composeServicesMain = composeServices(compose);
+assertIncludes('compose line worker writes audio to tmpfs', composeServicesMain['line-worker'], 'WORKER_Line__AudioTempPath: "/tmp/audio_temp"');
+assertIncludes('compose file worker reads the repository read-only', composeServicesMain['file-worker'], '- ../../..:/workspace:ro');
+assertIncludes('compose broker keeps its data volume', composeServicesMain.broker, '- broker-data:/data');
+assertIncludes('compose seeds file.search_name', compose, '"capability_id":"file.search_name","scope":{"paths":["/workspace"],"routes":["search_files"]}');
+assertIncludes('compose seeds file.search_content', compose, '"capability_id":"file.search_content","scope":{"paths":["/workspace"],"routes":["search_content"]}');
+assertIncludes('compose keeps container manager disabled by default', compose, 'FunctionPool__ContainerManager__Enabled: "${CONTAINER_MANAGER_ENABLED:-false}"');
+assertIncludes('compose keeps the agent block marker', compose, '# ── Agent ──');
+
+// sidecar：動態啟動的代理不掛任何主機目錄；預設網路只能明確 opt-in。
+const sidecarContainerBlock = sidecarScript.slice(
+    sidecarScript.indexOf('ContainerManager = @{'),
+    sidecarScript.indexOf('$brokerWorkerAuthCredentials = @()')
+);
+assert(sidecarContainerBlock.length > 0, 'sidecar: ContainerManager block not found');
+assert(!/^\s*Volumes\s*=/m.test(sidecarContainerBlock), 'sidecar: agent image must not configure Volumes');
+assertNotIncludes('sidecar does not mount managed workspaces into agents', sidecarContainerBlock, '$managedWorkspaceRoot');
+assertIncludes('sidecar opts in to the default network explicitly', sidecarContainerBlock, 'AllowAgentDefaultNetwork = $true');
 
 const agentSystemPrompt = read('tools/agent/lib/system-prompt.js');
 assertIncludes('agent prompt prioritizes custom components', agentSystemPrompt, 'use the custom component library first');
@@ -235,7 +482,11 @@ assertIncludes('program loads agent broker url config', program, 'AgentBrokerUrl
 
 const podmanStackTest = read('tools/agent/tests/test-podman-governed-stack.js');
 assertIncludes('podman stack prebuilds images', podmanStackTest, 'await buildImages(env);');
-assertIncludes('podman stack validates broker tool dispatch', podmanStackTest, "STACK_TOOL_CALL: 'read_file'");
+assertIncludes('podman stack validates broker tool dispatch', podmanStackTest, "{ name: 'read_file', args: { path: 'README.html' } }");
+assertIncludes('podman stack drives a tool sequence', podmanStackTest, 'STACK_TOOL_SEQUENCE_JSON: JSON.stringify(TOOL_SEQUENCE)');
+assertIncludes('podman stack checks every tool result', podmanStackTest, 'STACK_EXPECT_TOOL_RESULTS_JSON: JSON.stringify(TOOL_EXPECTATIONS)');
+assertIncludes('podman stack searches with the agent tool arguments', podmanStackTest, "name: 'search_content'");
+assertIncludes('podman stack checks that a worker refusal is final', podmanStackTest, 'Worker refused search_files');
 assertIncludes('podman stack forces utf8 compose output', podmanStackTest, "PYTHONIOENCODING: 'utf-8'");
 assertNotIncludes('podman stack avoids compose build flag', podmanStackTest, "'--build'");
 
@@ -262,8 +513,42 @@ assertIncludes('container manager uses argument list', containerManager, 'proces
 assertIncludes('container manager exposes testable run args', containerManager, 'BuildRunArguments');
 assertIncludes('container manager uses per-image network override', containerManager, 'imageConfig.NetworkName');
 assertIncludes('container manager keeps env values atomic', containerManager, 'args.Add($"{key}={value ?? string.Empty}")');
+for (const flag of ['"--read-only"', '"--cap-drop", "ALL"', '"--security-opt", "no-new-privileges:true"', '"--pids-limit"', '"--tmpfs", TmpfsMount']) {
+    assertIncludes(`container manager always adds ${flag}`, containerManager, flag);
+}
+assertIncludes('container manager tmpfs is noexec', containerManager, '"/tmp:rw,noexec,nosuid,nodev,size=64m"');
+assertIncludes('container manager removes anonymous volumes', containerManager, '"rm", "-f", "-v"');
+assertIncludes('container manager passes secrets by name only', containerManager, 'process.StartInfo.Environment[name] = value');
+assertIncludes('container manager refuses agent mounts', containerManager, 'Agent containers must not mount volumes');
+
+const containerManagerInterface = read('packages/csharp/function-pool/Container/IContainerManager.cs');
+assertIncludes('spawn takes a request object', containerManagerInterface, 'Task<string> SpawnWorkerAsync(ContainerSpawnRequest request, CancellationToken ct = default);');
+const spawnRequest = read('packages/csharp/function-pool/Container/ContainerSpawnRequest.cs');
+assertIncludes('spawn request has trusted environment', spawnRequest, 'public IReadOnlyDictionary<string, string> TrustedEnvironment');
+assertIncludes('spawn request has secret environment', spawnRequest, 'public IReadOnlyDictionary<string, string> SecretEnvironment');
+
+const workerEndpoints = read('packages/csharp/broker/Endpoints/WorkerEndpoints.cs');
+assertIncludes('workers/spawn refuses agents', workerEndpoints, 'ContainerManager.IsAgentWorkerType(workerType)');
+assertNotIncludes('workers/spawn no longer copies a request environment', workerEndpoints, 'envOverrides[prop.Name]');
+assertIncludes('workers/spawn reports a missing runtime CLI', workerEndpoints, 'catch (Win32Exception)');
+assertIncludes('agents/spawn caps max_iterations', agentEndpoints, 'ClampMaxIterations(maxIterations)');
+assertIncludes('agents/spawn only accepts the configured broker url', agentEndpoints, 'Agent broker_url must match the configured AgentBrokerUrl.');
+// 註冊憑證只經 SecretEnvironment 交給容器（參數中只有 -e NAME），不放進 TrustedEnvironment。
+assertIncludes('agents/spawn issues a registration credential', agentEndpoints, 'spawnService.SpawnWithCredentialAsync(');
+assertIncludes('agents/spawn hands the secret over as a secret environment', agentEndpoints, '[RegistrationSecretEnvironmentVariable] = secret');
+assertIncludes('agents/spawn names the container variable', agentEndpoints, 'RegistrationSecretEnvironmentVariable = "BROKER_REGISTRATION_SECRET"');
+assertNotIncludes('agents/spawn keeps the secret out of the trusted environment', agentEndpoints, 'envOverrides["BROKER_REGISTRATION_SECRET"]');
+assertNotIncludes('agents/spawn keeps the secret out of the trusted environment (indexer form)', agentEndpoints, '["BROKER_REGISTRATION_SECRET"] =');
 
 const spawnService = read('packages/csharp/broker-core/Services/AgentSpawnService.cs');
+// spawn 的憑證：先簽發新的、啟動容器，成功後才撤銷先前 spawn 的憑證（新的除外）；失敗只撤銷新的這把。
+assertIncludes('agents/spawn revokes the new credential when the spawn fails', spawnService, '_credentials.Revoke(credential.CredentialId, "Spawn failed."');
+assertIncludes('agents/spawn keeps the new credential when superseding', spawnService, 'exceptCredentialId: credential.CredentialId');
+{
+    const spawnStart = spawnService.indexOf('await spawnContainer(credential.Secret)');
+    const supersede = spawnService.indexOf('"Superseded by a new spawn."');
+    assert(spawnStart > 0 && supersede > spawnStart, 'agents/spawn: earlier spawn credentials are revoked only after the container started');
+}
 assertIncludes('agent id normalization exists', spawnService, 'public static string NormalizeAgentId');
 assertIncludes('agent runtime descriptor carries default model', spawnService, 'default_model = request.LlmDefaultModel');
 assertIncludes('agent runtime descriptor carries tool setting', spawnService, 'supports_tool_calling = request.LlmSupportsToolCalling');
@@ -272,6 +557,8 @@ assertIncludes('symbol-only agent id gets safe fallback', spawnService, 'string.
 assertIncludes('post-sanitize agent id keeps canonical prefix', spawnService, 'normalized = "agent_" + normalized');
 assertIncludes('list agents follows task/principal pair', spawnService, 'string.Equals(t.AssignedPrincipalId, $"prn_{t.TaskId[5..]}", StringComparison.Ordinal)');
 assertIncludes('deactivate normalizes requested agent id', spawnService, 'agentId = NormalizeAgentId(agentId);');
+assertIncludes('deactivate revokes registration credentials', spawnService, '_credentials.RevokeFor(principalId, taskId, "Agent deactivated."');
+assertIncludes('deactivate revokes sessions', spawnService, '_sessions.RevokeSessionsByTask(taskId, "Agent deactivated."');
 
 const codeArtifactService = read('packages/csharp/broker/Services/HighLevelCodeArtifactService.cs');
 assertIncludes('code prompt prioritizes custom components', codeArtifactService, '任何網頁程式都必須優先使用專案自訂元件庫');
@@ -306,6 +593,29 @@ for (const docPath of [
     const docText = read(docPath);
     assert.deepStrictEqual(findLeakedFragments(docText), [], `${docPath}: contains a previously published development key`);
     assertIncludes(`${docPath} points at the secrets generator`, docText, 'gen-stack-secrets.mjs');
+}
+
+// 文件列出的 file-worker 拒絕清單要涵蓋 SandboxPolicy 的每一個確切名稱，種子憑證的時效變數也要寫進文件
+// （程式新增名稱或變數時，文件要同步）。
+{
+    const sandboxPolicy = read('packages/csharp/workers/file-worker/SandboxPolicy.cs');
+    const exactBlock = /SensitiveExactNames =\s*\{([\s\S]*?)\};/.exec(sandboxPolicy);
+    assert(exactBlock, 'SandboxPolicy.SensitiveExactNames not found');
+    const exactNames = [...exactBlock[1].matchAll(/"([^"]+)"/g)].map((match) => match[1]);
+    assert(exactNames.includes('.run') && exactNames.includes('.git'), `unexpected deny list ${JSON.stringify(exactNames)}`);
+    for (const docPath of [
+        'tools/agent/container/README.md',
+        'tools/agent/container/README.html',
+        'docs/manuals/agent-container-runbook.md',
+        'docs/manuals/agent-container-runbook.html',
+    ]) {
+        const docText = read(docPath);
+        for (const name of exactNames) {
+            assert(docText.includes(`\`${name}\``) || docText.includes(`<code>${name}</code>`),
+                `${docPath}: the file-worker deny list should name ${name}`);
+        }
+        assertIncludes(`${docPath} names the seeded credential lifetime variable`, docText, 'BROKER_REGISTRATION_SECRET_LIFETIME_HOURS');
+    }
 }
 
 // 文件中的手動 compose 指令：每一行（包括 down）都要帶同一份金鑰檔，因為 compose 對每個指令都會

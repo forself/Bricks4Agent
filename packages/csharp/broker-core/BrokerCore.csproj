@@ -20,6 +20,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- 單元測試直接比對 PolicyEngine 擷取的路徑與 worker 實際取用的路徑 -->
+    <InternalsVisibleTo Include="Unit.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Scoped Token: 獨立 JWT 實作（不依賴 JwtHelper，claim 模型不同） -->
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.21.0" />
     <PackageReference Include="Microsoft.IdentityModel.Tokens" Version="8.21.0" />

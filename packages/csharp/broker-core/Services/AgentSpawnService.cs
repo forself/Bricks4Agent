@@ -19,6 +19,8 @@ namespace BrokerCore.Services;
 public class AgentSpawnService
 {
     private readonly BrokerDb _db;
+    private readonly IRegistrationCredentialService _credentials;
+    private readonly ISessionService _sessions;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -27,8 +29,15 @@ public class AgentSpawnService
     };
 
     public AgentSpawnService(BrokerDb db)
+        : this(db, new RegistrationCredentialService(db), new SessionService(db))
+    {
+    }
+
+    public AgentSpawnService(BrokerDb db, IRegistrationCredentialService credentials, ISessionService sessions)
     {
         _db = db;
+        _credentials = credentials ?? throw new ArgumentNullException(nameof(credentials));
+        _sessions = sessions ?? throw new ArgumentNullException(nameof(sessions));
     }
 
     /// <summary>取得所有可用能力清單（給前端 / Q&A 用）</summary>
@@ -242,7 +251,10 @@ public class AgentSpawnService
         };
     }
 
-    /// <summary>停用 Agent（標記 Principal 和 Task 為 Inactive）</summary>
+    /// <summary>
+    /// 停用 Agent：Principal 標為 Disabled、Task 標為 Completed，並撤銷這個 agent 的所有註冊憑證與 session，
+    /// 已發出的 token 隨 session 立即失效，容器也無法再註冊。
+    /// </summary>
     public bool DeactivateAgent(string agentId)
     {
         agentId = NormalizeAgentId(agentId);
@@ -256,6 +268,9 @@ public class AgentSpawnService
             _db.Update(principal);
         }
 
+        _credentials.RevokeFor(principalId, taskId, "Agent deactivated.", "agent-deactivate");
+        _sessions.RevokeSessionsByTask(taskId, "Agent deactivated.", "agent-deactivate");
+
         var task = _db.Get<BrokerTask>(taskId);
         if (task != null)
         {
@@ -264,6 +279,52 @@ public class AgentSpawnService
             return true;
         }
         return false;
+    }
+
+    /// <summary>
+    /// 以新簽發的註冊憑證啟動 agent 容器：先簽發新憑證，再呼叫 <paramref name="spawnContainer"/>
+    /// （傳入新憑證的明文，呼叫端以 SecretEnvironment 交給容器，回傳容器 id）。
+    /// 啟動成功後，才撤銷這個 agent 先前 spawn 時簽發的憑證（新的這把除外）；
+    /// 啟動失敗（例如同名容器仍在、已達容器數上限）時只撤銷新的這把並重新丟出例外，
+    /// 仍在執行的舊容器之後重新註冊（重啟、broker 重啟、session 到期）不受影響。
+    /// 明文不出現在回傳值中。
+    /// </summary>
+    public async Task<SpawnedAgentCredential> SpawnWithCredentialAsync(
+        AgentSummary agent,
+        string issuedBy,
+        TimeSpan lifetime,
+        Func<string, Task<string>> spawnContainer)
+    {
+        ArgumentNullException.ThrowIfNull(agent);
+        ArgumentNullException.ThrowIfNull(spawnContainer);
+
+        var credential = _credentials.Issue(
+            agent.PrincipalId,
+            agent.TaskId,
+            RegistrationCredentialSources.AgentSpawn,
+            issuedBy,
+            DateTime.UtcNow + lifetime);
+
+        string containerId;
+        try
+        {
+            containerId = await spawnContainer(credential.Secret);
+        }
+        catch
+        {
+            _credentials.Revoke(credential.CredentialId, "Spawn failed.", issuedBy);
+            throw;
+        }
+
+        _credentials.RevokeFor(
+            agent.PrincipalId,
+            agent.TaskId,
+            "Superseded by a new spawn.",
+            issuedBy,
+            RegistrationCredentialSources.AgentSpawn,
+            exceptCredentialId: credential.CredentialId);
+
+        return new SpawnedAgentCredential(credential.CredentialId, credential.ExpiresAt, containerId);
     }
 
     /// <summary>列出所有已建立的 Agent</summary>
@@ -453,3 +514,6 @@ public class AgentSummary
     public List<string> Capabilities { get; set; } = new();
     public DateTime CreatedAt { get; set; }
 }
+
+/// <summary>spawn 成功後的註冊憑證資訊（不含明文）與容器 id。</summary>
+public sealed record SpawnedAgentCredential(string CredentialId, DateTime ExpiresAt, string ContainerId);

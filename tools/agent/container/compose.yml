@@ -11,8 +11,19 @@ services:
       MOCK_TOOL_CALL: "${STACK_TOOL_CALL:-}"
       MOCK_TOOL_PATH: "${STACK_TOOL_PATH:-README.md}"
       MOCK_TOOL_ARGS_JSON: "${STACK_TOOL_ARGS_JSON:-}"
+      MOCK_TOOL_SEQUENCE_JSON: "${STACK_TOOL_SEQUENCE_JSON:-}"
+      MOCK_EXPECT_TOOL_RESULTS_JSON: "${STACK_EXPECT_TOOL_RESULTS_JSON:-}"
     ports:
       - "127.0.0.1:${STACK_LLM_PORT:-11434}:11434"
+    # ── OS-level hardening (design §13.2) ── non-root uid 10006 from the image
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
     networks:
       - control-net
 
@@ -69,16 +80,25 @@ services:
       DevelopmentSeed__TaskId: "${BROKER_TASK_ID:-task_podman_dev}"
       DevelopmentSeed__TaskType: "${BROKER_TASK_TYPE:-analysis}"
       DevelopmentSeed__AssignedRoleId: "${BROKER_ROLE_ID:-role_reader}"
+      # Registration secret for the seeded task (the broker keeps only its hash). The agent gets the
+      # same value below; it is required to register a session.
+      DevelopmentSeed__RegistrationSecret: "${BROKER_REGISTRATION_SECRET:?run node tools/agent/container/gen-stack-secrets.mjs and pass the file with --env-file}"
+      # Hours the seeded credential stays valid, counted again from every broker start (1 to 720).
+      # Once the broker has run longer than this, registrations are refused until it restarts.
+      DevelopmentSeed__RegistrationSecretLifetimeHours: "${BROKER_REGISTRATION_SECRET_LIFETIME_HOURS:-24}"
       DevelopmentSeed__RuntimeDescriptor: >-
-        {"llm":{"default_model":"${STACK_MODEL:-stack-test-model}","allow_model_override":false,"supports_tool_calling":true,"streaming_enabled":false},"capability_grants":[{"capability_id":"file.read","scope":{"paths":["/workspace"],"routes":["read_file"]},"quota":-1},{"capability_id":"file.list","scope":{"paths":["/workspace"],"routes":["list_directory"]},"quota":-1},{"capability_id":"file.search","scope":{"paths":["/workspace"],"routes":["search_files","search_content"]},"quota":-1},{"capability_id":"file.write","scope":{"paths":["/workspace"],"routes":["write_file"]},"quota":100},{"capability_id":"repo.patch.apply","scope":{"paths":["/workspace"],"routes":["apply_patch"]},"quota":-1},{"capability_id":"build.test.run","scope":{"routes":["run_build_test"]},"quota":-1},{"capability_id":"line.message.send","scope":{"routes":["send_line_message"]},"quota":-1},{"capability_id":"line.notification.send","scope":{"routes":["send_line_notification"]},"quota":-1},{"capability_id":"line.message.read","scope":{"routes":["read_line_messages"]},"quota":-1},{"capability_id":"line.approval.request","scope":{"routes":["request_line_approval"]},"quota":-1},{"capability_id":"line.audio.send","scope":{"routes":["send_line_audio"]},"quota":-1}]}
+        {"llm":{"default_model":"${STACK_MODEL:-stack-test-model}","allow_model_override":false,"supports_tool_calling":true,"streaming_enabled":false},"capability_grants":[{"capability_id":"file.read","scope":{"paths":["/workspace"],"routes":["read_file"]},"quota":-1},{"capability_id":"file.list","scope":{"paths":["/workspace"],"routes":["list_directory"]},"quota":-1},{"capability_id":"file.search_name","scope":{"paths":["/workspace"],"routes":["search_files"]},"quota":-1},{"capability_id":"file.search_content","scope":{"paths":["/workspace"],"routes":["search_content"]},"quota":-1},{"capability_id":"file.write","scope":{"paths":["/workspace"],"routes":["write_file"]},"quota":100},{"capability_id":"repo.patch.apply","scope":{"paths":["/workspace"],"routes":["apply_patch"]},"quota":-1},{"capability_id":"build.test.run","scope":{"routes":["run_build_test"]},"quota":-1},{"capability_id":"line.message.send","scope":{"routes":["send_line_message"]},"quota":-1},{"capability_id":"line.notification.send","scope":{"routes":["send_line_notification"]},"quota":-1},{"capability_id":"line.message.read","scope":{"routes":["read_line_messages"]},"quota":-1},{"capability_id":"line.approval.request","scope":{"routes":["request_line_approval"]},"quota":-1},{"capability_id":"line.audio.send","scope":{"routes":["send_line_audio"]},"quota":-1}]}
       # ── Function Pool (Worker TCP Dispatch) ──
       FunctionPool__Enabled: "true"
       FunctionPool__ListenPort: "7000"
       FunctionPool__StrictMode: "${POOL_STRICT_MODE:-false}"
-      FunctionPool__DispatchTimeoutSeconds: "30"
+      FunctionPool__DispatchTimeoutSeconds: "${POOL_DISPATCH_TIMEOUT_SECONDS:-30}"
       FunctionPool__MaxRetries: "2"
       FunctionPool__MaxWorkers: "100"
       # ── Container Manager ──
+      # Dynamic spawn is not supported inside this stack: the broker image ships no
+      # docker/podman CLI and no runtime socket is mounted (§13.2 forbids handing the
+      # socket to a container). Keep it false; spawn agents from a host-run broker instead.
       FunctionPool__ContainerManager__Enabled: "${CONTAINER_MANAGER_ENABLED:-false}"
       FunctionPool__ContainerManager__Runtime: "${CONTAINER_RUNTIME:-docker}"
       FunctionPool__ContainerManager__NetworkName: "bricks4agent_worker-net"
@@ -98,9 +118,17 @@ services:
     ports:
       - "127.0.0.1:${BROKER_PORT:-5000}:5000"
     volumes:
+      # SQLite database and workspaces; the only writable path besides /tmp
       - broker-data:/data
-      # Mount Docker socket so broker can spawn worker containers
-      - /var/run/docker.sock:/var/run/docker.sock
+    # ── OS-level hardening (design §13.2) ── non-root uid 10002 from the image
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 1024                # .NET thread pool + function-pool sockets count as pids
     networks:
       - control-net
       - worker-net
@@ -123,8 +151,20 @@ services:
       WORKER_Worker__Auth__KeyId: "${FILE_WORKER_AUTH_KEY_ID:?run node tools/agent/container/gen-stack-secrets.mjs and pass the file with --env-file}"
       WORKER_Worker__Auth__SharedSecret: "${FILE_WORKER_AUTH_SHARED_SECRET:?run node tools/agent/container/gen-stack-secrets.mjs and pass the file with --env-file}"
     volumes:
+      # Read-only view of the repository: this is what the agent can read through the
+      # broker. The worker itself refuses paths outside /workspace (symlinks included)
+      # and a deny list (.git, .claude, .env*, key files, local settings, ...).
       - ../../..:/workspace:ro
     restart: "on-failure:5"
+    # ── OS-level hardening (design §13.2) ── non-root uid 10003 from the image
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
     networks:
       - worker-net
 
@@ -150,9 +190,20 @@ services:
       WORKER_Line__AllowedUserIds: "${LINE_ALLOWED_USER_IDS}"
       WORKER_Line__WebhookHost: "0.0.0.0"
       WORKER_Line__WebhookPort: "19090"
+      # audio scratch files live on the /tmp tmpfs (the rootfs is read-only)
+      WORKER_Line__AudioTempPath: "/tmp/audio_temp"
     ports:
       - "127.0.0.1:${LINE_WEBHOOK_PORT:-19090}:19090"
     restart: "on-failure:5"
+    # ── OS-level hardening (design §13.2) ── non-root uid 10005 from the image
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
     networks:
       - worker-net
 
@@ -211,6 +262,8 @@ services:
       BROKER_PRINCIPAL_ID: "${BROKER_PRINCIPAL_ID:-prn_podman_dev}"
       BROKER_TASK_ID: "${BROKER_TASK_ID:-task_podman_dev}"
       BROKER_ROLE_ID: "${BROKER_ROLE_ID:-role_reader}"
+      # read by agent.js from the environment only (never passed as an argument)
+      BROKER_REGISTRATION_SECRET: "${BROKER_REGISTRATION_SECRET:?run node tools/agent/container/gen-stack-secrets.mjs and pass the file with --env-file}"
       BROKER_WAIT_FOR_HEALTH: "1"
       BROKER_WAIT_TIMEOUT_SECONDS: "90"
       AGENT_PROJECT_ROOT: "/workspace"
@@ -221,13 +274,15 @@ services:
       AGENT_LINE_LISTEN: "${AGENT_LINE_LISTEN:-0}"
       AGENT_LINE_POLL_INTERVAL: "${AGENT_LINE_POLL_INTERVAL:-3000}"
       AGENT_RUN: "${AGENT_RUN:-Reply with the exact text STACK_OK.}"
-    volumes:
-      - ../../..:/workspace
+    # No volumes: the repository is NOT mounted into the agent (§13.4). /workspace is an
+    # empty directory baked into the image that only serves as the logical root the
+    # broker grants are scoped to; every read and write goes through the broker. The
+    # project manual is baked in at /app/AGENT.md (AGENT_MANUAL_PATH).
     restart: "no"
     # ── OS-level hardening (design §13) ──
     # The agent is the untrusted autonomous main: sandbox it. It already runs as
     # non-root (uid 10001) and needs no Linux capabilities.
-    read_only: true                 # rootfs read-only; the /workspace bind mount stays writable
+    read_only: true                 # rootfs read-only; nothing in the container is writable but /tmp
     tmpfs:
       - /tmp                        # writable scratch (os.tmpdir) on tmpfs, not the rootfs
     cap_drop:

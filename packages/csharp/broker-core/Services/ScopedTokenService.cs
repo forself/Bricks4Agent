@@ -58,6 +58,9 @@ public class ScopedTokenService : IScopedTokenService
     }
 
     /// <inheritdoc />
+    public TimeSpan TokenLifetime => TimeSpan.FromMinutes(_expirationMinutes);
+
+    /// <inheritdoc />
     public string GenerateToken(ScopedTokenClaims claims)
     {
         var now = DateTime.UtcNow;

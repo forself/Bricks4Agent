@@ -39,6 +39,16 @@ public class InProcessDispatcher : IExecutionDispatcher
     private readonly TdxApiService? _tdxApiService;
     private static readonly HttpClient _httpClient = new() { Timeout = TimeSpan.FromSeconds(15) };
 
+    /// <summary>搜尋的檔名 pattern 帶目錄部分時的錯誤訊息（與 file-worker 相同的規則）。</summary>
+    public const string InvalidSearchPatternError =
+        "Search pattern must match file names only (no directory part); use directory for the folder to search.";
+
+    private static readonly StringComparison SandboxPathComparison = OperatingSystem.IsWindows()
+        ? StringComparison.OrdinalIgnoreCase
+        : StringComparison.Ordinal;
+
+    private static readonly char[] SandboxPathSeparators = { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar };
+
     static InProcessDispatcher()
     {
         _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("B4A-Agent/1.0");
@@ -58,7 +68,7 @@ public class InProcessDispatcher : IExecutionDispatcher
         TdxApiService? tdxApiService = null)
     {
         _logger = logger;
-        _sandboxRoot = sandboxRoot ?? Path.GetFullPath(".");
+        _sandboxRoot = NormalizeSandboxRoot(sandboxRoot ?? ".");
         _processRunner = processRunner;
         _agentSpawnService = agentSpawnService;
         _db = db;
@@ -197,6 +207,10 @@ public class InProcessDispatcher : IExecutionDispatcher
         var pattern = TryGetString(args, "pattern") ?? "*";
         var basePath = TryGetString(args, "directory", "path") ?? ".";
 
+        // pattern 只能比對檔名；目錄一律由 directory 指定並經 sandbox 檢查。
+        if (!IsFileNamePattern(pattern))
+            return ExecutionResult.Fail(request.RequestId, InvalidSearchPatternError);
+
         var fullPath = ResolveSandboxedPath(basePath);
         if (fullPath == null)
             return ExecutionResult.Fail(request.RequestId, "Path outside sandbox.");
@@ -205,6 +219,7 @@ public class InProcessDispatcher : IExecutionDispatcher
             return ExecutionResult.Fail(request.RequestId, $"Directory not found: {basePath}");
 
         var files = Directory.GetFiles(fullPath, pattern, SearchOption.AllDirectories)
+            .Where(IsWithinSandbox)
             .Take(100)
             .Select(f => Path.GetRelativePath(fullPath, f).Replace('\\', '/'))
             .ToList();
@@ -224,6 +239,10 @@ public class InProcessDispatcher : IExecutionDispatcher
         var basePath = TryGetString(args, "directory", "path") ?? ".";
         var filePattern = TryGetString(args, "file_pattern") ?? "*";
 
+        // file_pattern 只能比對檔名；目錄一律由 directory 指定並經 sandbox 檢查。
+        if (!IsFileNamePattern(filePattern))
+            return ExecutionResult.Fail(request.RequestId, InvalidSearchPatternError);
+
         var fullPath = ResolveSandboxedPath(basePath);
         if (fullPath == null)
             return ExecutionResult.Fail(request.RequestId, "Path outside sandbox.");
@@ -232,7 +251,9 @@ public class InProcessDispatcher : IExecutionDispatcher
             return ExecutionResult.Fail(request.RequestId, $"Directory not found: {basePath}");
 
         var results = new List<object>();
-        var files = Directory.GetFiles(fullPath, filePattern, SearchOption.AllDirectories).Take(500);
+        var files = Directory.GetFiles(fullPath, filePattern, SearchOption.AllDirectories)
+            .Where(IsWithinSandbox)
+            .Take(500);
 
         foreach (var file in files)
         {
@@ -2222,8 +2243,8 @@ public class InProcessDispatcher : IExecutionDispatcher
         {
             var fullPath = Path.GetFullPath(Path.Combine(_sandboxRoot, path));
 
-            // 確保結果路徑在沙箱根目錄下
-            if (!fullPath.StartsWith(_sandboxRoot, StringComparison.OrdinalIgnoreCase))
+            // 確保結果路徑在沙箱根目錄下（以「根目錄 + 分隔字元」完整比對）
+            if (!IsWithinSandbox(fullPath))
                 return null;
 
             return fullPath;
@@ -2232,5 +2253,49 @@ public class InProcessDispatcher : IExecutionDispatcher
         {
             return null;
         }
+    }
+
+    /// <summary>路徑等於 sandbox 根目錄，或以「根目錄 + 分隔字元」開頭。</summary>
+    private bool IsWithinSandbox(string path)
+    {
+        string candidate;
+        try
+        {
+            candidate = Path.GetFullPath(path);
+        }
+        catch
+        {
+            return false;
+        }
+
+        if (string.Equals(TrimTrailingSeparator(candidate), _sandboxRoot, SandboxPathComparison))
+            return true;
+
+        var prefix = _sandboxRoot.EndsWith(Path.DirectorySeparatorChar) ? _sandboxRoot : _sandboxRoot + Path.DirectorySeparatorChar;
+        return candidate.StartsWith(prefix, SandboxPathComparison);
+    }
+
+    /// <summary>
+    /// 搜尋用的 pattern 只能比對檔名，規則與 file-worker 的 SandboxPolicy.IsFileNamePattern 相同：
+    /// 不得含目錄部分（任何平台的分隔字元）、磁碟代號或 NUL，也不得是 "." 或 ".."。
+    /// </summary>
+    internal static bool IsFileNamePattern(string? pattern)
+    {
+        if (pattern == null)
+            return false;
+
+        if (pattern.IndexOfAny(new[] { '/', '\\', ':', '\0' }) >= 0)
+            return false;
+
+        return pattern != "." && pattern != "..";
+    }
+
+    private static string NormalizeSandboxRoot(string sandboxRoot)
+        => TrimTrailingSeparator(Path.GetFullPath(sandboxRoot));
+
+    private static string TrimTrailingSeparator(string path)
+    {
+        var root = Path.GetPathRoot(path) ?? string.Empty;
+        return path.Length > root.Length ? path.TrimEnd(SandboxPathSeparators) : path;
     }
 }

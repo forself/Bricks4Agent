@@ -148,7 +148,7 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <h3>1.1 Prerequisites</h3>
 <ul>
 <li>
-<p>Node.js 18+</p>
+<p>Node.js 22.13+ (the agent container images use Node 22)</p>
 </li>
 <li>
 <p>.NET 10 SDK or newer</p>
@@ -157,7 +157,7 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <p>Git</p>
 </li>
 <li>
-<p>Podman 5+ for the full governed-stack validation matrix</p>
+<p>Podman 5+ for the full governed-stack validation matrix (Docker also works: set <code>CONTAINER_ENGINE=docker</code>)</p>
 </li>
 </ul>
 <h3>1.2 Installation &amp; Startup</h3>

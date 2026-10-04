@@ -9,11 +9,17 @@ class BrokerClient {
         this.sessionId = null;
         this.sessionKey = null;
         this.scopedToken = null;
+        this.tokenExpiresAt = null;
+        this.sessionExpiresAt = null;
         this.seq = 0;
         this._requestChain = Promise.resolve();
     }
 
-    async registerSession(principalId, taskId, roleId) {
+    /**
+     * Registers a session. The registration secret is sent only inside the encrypted handshake
+     * payload (sealed with the broker's pinned public key); it is never logged or kept on the client.
+     */
+    async registerSession(principalId, taskId, roleId, registrationSecret) {
         const ecdh = crypto.createECDH('prime256v1');
         const clientPubUncompressed = ecdh.generateKeys();
         const clientPubSpki = ecdhPubToSpki(clientPubUncompressed);
@@ -23,6 +29,7 @@ class BrokerClient {
             principal_id: principalId,
             task_id: taskId,
             role_id: roleId,
+            registration_secret: registrationSecret || '',
         });
 
         const brokerPubKeyBuffer = Buffer.from(this.brokerPubKeyBase64, 'base64');
@@ -93,26 +100,27 @@ class BrokerClient {
                 throw new Error(`Failed to decrypt session/register response: ${error.message}`);
             }
             const innerData = JSON.parse(decrypted.toString());
-            this.scopedToken = innerData.data?.scoped_token || innerData.scoped_token;
-            return {
-                sessionId: this.sessionId,
-                scopedToken: this.scopedToken,
-                expiresAt: innerData.data?.expires_at || innerData.expires_at,
-            };
+            return this._acceptRegistration(innerData.data || innerData);
         }
 
-        this.scopedToken = response.data?.scoped_token;
+        return this._acceptRegistration(response.data || {});
+    }
+
+    _acceptRegistration(data) {
+        this.scopedToken = data.scoped_token || null;
+        this.tokenExpiresAt = data.token_expires_at || null;
+        this.sessionExpiresAt = data.expires_at || null;
         return {
             sessionId: this.sessionId,
             scopedToken: this.scopedToken,
-            expiresAt: response.data?.expires_at,
+            expiresAt: this.sessionExpiresAt,
+            tokenExpiresAt: this.tokenExpiresAt,
         };
     }
 
     async submitRequest(capabilityId, payload, idempotencyKey, intent = '') {
         this._ensureRegistered();
         return await this._encryptedPost('/api/v1/execution-requests/submit', {
-            scoped_token: this.scopedToken,
             capability_id: capabilityId,
             intent,
             payload,
@@ -120,17 +128,32 @@ class BrokerClient {
         });
     }
 
+    /**
+     * Keeps the session alive and renews the scoped token. The broker answers with a new token for
+     * the same session; it is stored before any request queued behind the heartbeat is sent.
+     */
     async heartbeat() {
         this._ensureRegistered();
-        return await this._encryptedPost('/api/v1/sessions/heartbeat', {
-            scoped_token: this.scopedToken,
+        return await this._encryptedPost('/api/v1/sessions/heartbeat', {}, (result, sessionId) => {
+            const data = result?.data;
+            if (!data || typeof data.scoped_token !== 'string' || !data.scoped_token) {
+                return;
+            }
+            if (data.session_id && data.session_id !== sessionId) {
+                return;
+            }
+            if (this.sessionId !== sessionId) {
+                return;
+            }
+            this.scopedToken = data.scoped_token;
+            this.tokenExpiresAt = data.token_expires_at || null;
+            this.sessionExpiresAt = data.session_expires_at || this.sessionExpiresAt;
         });
     }
 
     async closeSession(reason = 'Client closing') {
         this._ensureRegistered();
         const result = await this._encryptedPost('/api/v1/sessions/close', {
-            scoped_token: this.scopedToken,
             reason,
         });
 
@@ -140,6 +163,8 @@ class BrokerClient {
         }
         this.sessionId = null;
         this.scopedToken = null;
+        this.tokenExpiresAt = null;
+        this.sessionExpiresAt = null;
         this.seq = 0;
 
         return result;
@@ -148,56 +173,54 @@ class BrokerClient {
     async listCapabilities(filter = null) {
         this._ensureRegistered();
         return await this._encryptedPost('/api/v1/capabilities/list', {
-            scoped_token: this.scopedToken,
             filter,
         });
     }
 
     async listGrants() {
         this._ensureRegistered();
-        return await this._encryptedPost('/api/v1/grants/list', {
-            scoped_token: this.scopedToken,
-        });
+        return await this._encryptedPost('/api/v1/grants/list', {});
     }
 
     async getRuntimeSpec() {
         this._ensureRegistered();
-        return await this._encryptedPost('/api/v1/runtime/spec', {
-            scoped_token: this.scopedToken,
-        });
+        return await this._encryptedPost('/api/v1/runtime/spec', {});
     }
 
     async llmHealth() {
         this._ensureRegistered();
-        return await this._encryptedPost('/api/v1/llm/health', {
-            scoped_token: this.scopedToken,
-        });
+        return await this._encryptedPost('/api/v1/llm/health', {});
     }
 
     async llmModels() {
         this._ensureRegistered();
-        return await this._encryptedPost('/api/v1/llm/models', {
-            scoped_token: this.scopedToken,
-        });
+        return await this._encryptedPost('/api/v1/llm/models', {});
     }
 
     async llmChat(body) {
         this._ensureRegistered();
         return await this._encryptedPost('/api/v1/llm/chat', {
-            scoped_token: this.scopedToken,
             ...body,
         });
     }
 
-    async _encryptedPost(path, body) {
+    /**
+     * Sends one encrypted request. Requests are serialised so sequence numbers reach the broker in
+     * order, and the scoped token is read when the request is actually sent, so a request queued
+     * behind a heartbeat uses the renewed token. onResult runs before the next queued request.
+     */
+    async _encryptedPost(path, body, onResult = null) {
         const run = async () => {
+            this._ensureRegistered();
+            const sessionId = this.sessionId;
+            const sessionKey = this.sessionKey;
             const seq = ++this.seq;
-            const plaintext = JSON.stringify(body);
-            const aad = `req:${this.sessionId}${seq}${path}`;
+            const plaintext = JSON.stringify({ ...body, scoped_token: this.scopedToken });
+            const aad = `req:${sessionId}${seq}${path}`;
             const nonce = crypto.randomBytes(12);
 
             const { ciphertext, tag } = aesGcmEncrypt(
-                this.sessionKey,
+                sessionKey,
                 nonce,
                 Buffer.from(plaintext),
                 Buffer.from(aad)
@@ -205,7 +228,7 @@ class BrokerClient {
 
             const encryptedRequest = {
                 v: 1,
-                session_id: this.sessionId,
+                session_id: sessionId,
                 envelope: {
                     alg: 'A256GCM',
                     seq,
@@ -215,29 +238,46 @@ class BrokerClient {
                 },
             };
 
-            const rawResponse = await this._post(path, encryptedRequest);
-            if (rawResponse.envelope) {
-                const respAad = `resp:${this.sessionId}${seq}${path}`;
-                const respNonce = Buffer.from(rawResponse.envelope.nonce, 'base64');
-                const respCiphertext = Buffer.from(rawResponse.envelope.ciphertext, 'base64');
-                const respTag = Buffer.from(rawResponse.envelope.tag, 'base64');
+            // Errors raised after the envelope was opened (for example an authentication failure) come
+            // back encrypted with the session key, so the envelope is opened before the status is checked.
+            const reply = await this._postRaw(path, encryptedRequest);
+            let result = reply.parsed;
+            if (reply.parsed && reply.parsed.envelope) {
+                const respAad = `resp:${sessionId}${seq}${path}`;
+                const respNonce = Buffer.from(reply.parsed.envelope.nonce, 'base64');
+                const respCiphertext = Buffer.from(reply.parsed.envelope.ciphertext, 'base64');
+                const respTag = Buffer.from(reply.parsed.envelope.tag, 'base64');
                 let decrypted;
                 try {
                     decrypted = aesGcmDecrypt(
-                        this.sessionKey,
+                        sessionKey,
                         respNonce,
                         respCiphertext,
                         respTag,
                         Buffer.from(respAad)
                     );
                 } catch (error) {
+                    if (!reply.ok) {
+                        throw brokerError(reply.status, 'unreadable error response');
+                    }
                     throw new Error(`Failed to decrypt broker response for ${path} seq=${seq}: ${error.message}`);
                 }
 
-                return JSON.parse(decrypted.toString());
+                result = JSON.parse(decrypted.toString());
             }
 
-            return rawResponse;
+            if (!reply.ok) {
+                throw brokerError(reply.status, result?.message || reply.text);
+            }
+            if (result === null) {
+                result = JSON.parse(reply.text);
+            }
+
+            if (onResult) {
+                onResult(result, sessionId);
+            }
+
+            return result;
         };
 
         const next = this._requestChain.then(run, run);
@@ -246,6 +286,15 @@ class BrokerClient {
     }
 
     async _post(path, body) {
+        const reply = await this._postRaw(path, body);
+        if (!reply.ok) {
+            throw brokerError(reply.status, reply.parsed?.message || reply.text);
+        }
+
+        return JSON.parse(reply.text);
+    }
+
+    async _postRaw(path, body) {
         const url = `${this.brokerUrl}${path}`;
         const response = await fetch(url, {
             method: 'POST',
@@ -254,17 +303,14 @@ class BrokerClient {
         });
 
         const text = await response.text();
-        if (!response.ok) {
-            let parsed;
-            try {
-                parsed = JSON.parse(text);
-            } catch {
-                parsed = { message: text };
-            }
-            throw new Error(`Broker error ${response.status}: ${parsed.message || text}`);
+        let parsed = null;
+        try {
+            parsed = JSON.parse(text);
+        } catch {
+            parsed = null;
         }
 
-        return JSON.parse(text);
+        return { status: response.status, ok: response.ok, text, parsed };
     }
 
     _ensureRegistered() {
@@ -272,6 +318,15 @@ class BrokerClient {
             throw new Error('Session not registered. Call registerSession() first.');
         }
     }
+}
+
+/** An HTTP error from the broker; status and the broker's message are kept for callers that recover from 401. */
+function brokerError(status, message) {
+    const text = typeof message === 'string' ? message : String(message ?? '');
+    const error = new Error(`Broker error ${status}: ${text}`);
+    error.status = status;
+    error.brokerMessage = text;
+    return error;
 }
 
 function aesGcmEncrypt(key, nonce, plaintext, aad) {

@@ -18,6 +18,8 @@ const TEST_PRINCIPAL_ID = 'prn_dev_test';
 const TEST_TASK_ID = 'task_dev_test';
 const TEST_ROLE_ID = 'role_admin';
 const TEST_MODEL = 'proxy-test-model';
+// Seeded registration secret for this run (the broker stores only its hash).
+const TEST_REGISTRATION_SECRET = crypto.randomBytes(32).toString('base64url');
 const TEST_RUNTIME_DESCRIPTOR = JSON.stringify({
     llm: {
         default_model: TEST_MODEL,
@@ -147,6 +149,18 @@ async function startFakeOllamaServer() {
 
 function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** The jti claim of a scoped token (the broker issues JWTs). */
+function tokenJti(token) {
+    const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8'));
+    return payload.jti;
+}
+
+/** The system epoch claim of a scoped token (the governed executor compares it when it registers again). */
+function tokenEpoch(token) {
+    const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8'));
+    return Number(payload.epoch);
 }
 
 async function removeDirWithRetry(targetPath, attempts = 20, delayMs = 250) {
@@ -289,6 +303,7 @@ async function startBroker(brokerPort, upstreamPort, brokerPrivateKeyBase64) {
             DevelopmentSeed__TaskId: TEST_TASK_ID,
             DevelopmentSeed__TaskType: 'analysis',
             DevelopmentSeed__AssignedRoleId: TEST_ROLE_ID,
+            DevelopmentSeed__RegistrationSecret: TEST_REGISTRATION_SECRET,
             DevelopmentSeed__RuntimeDescriptor: TEST_RUNTIME_DESCRIPTOR,
         },
         stdio: ['ignore', 'pipe', 'pipe'],
@@ -343,8 +358,21 @@ async function main() {
             `http://127.0.0.1:${brokerPort}`,
             Buffer.from(publicKey).toString('base64')
         );
+        // Without the registration secret, or with a wrong one, registration is refused with the same 401.
+        for (const secret of [undefined, crypto.randomBytes(32).toString('base64url')]) {
+            const noCredentialClient = new BrokerClient(
+                `http://127.0.0.1:${brokerPort}`,
+                Buffer.from(publicKey).toString('base64')
+            );
+            await assert.rejects(
+                () => noCredentialClient.registerSession(TEST_PRINCIPAL_ID, TEST_TASK_ID, TEST_ROLE_ID, secret),
+                (error) => error.status === 401 && error.brokerMessage === 'Registration rejected.'
+            );
+        }
+
+        // With the secret, the task and role rules still apply.
         await assert.rejects(
-            () => mismatchClient.registerSession(TEST_PRINCIPAL_ID, TEST_TASK_ID, 'role_reader'),
+            () => mismatchClient.registerSession(TEST_PRINCIPAL_ID, TEST_TASK_ID, 'role_reader', TEST_REGISTRATION_SECRET),
             /task-assigned role/i
         );
 
@@ -361,6 +389,7 @@ async function main() {
                 principalId: TEST_PRINCIPAL_ID,
                 taskId: TEST_TASK_ID,
                 roleId: TEST_ROLE_ID,
+                registrationSecret: TEST_REGISTRATION_SECRET,
             },
         });
 
@@ -377,6 +406,9 @@ async function main() {
         assert.deepStrictEqual(promptContext.runtimeSpec.capabilityIds, ['file.read']);
 
         const prompt = agent.messages[0].content;
+        // The prompt goes to the model provider: it may show only a placeholder for the secret.
+        assert(!prompt.includes(TEST_REGISTRATION_SECRET), 'the system prompt must not contain the registration secret');
+        assert(!JSON.stringify(promptContext).includes(TEST_REGISTRATION_SECRET), 'the prompt context must not contain the registration secret');
         assert(prompt.includes(`/api/v1/runtime/spec`));
         assert(prompt.includes(`/api/v1/llm/chat`));
         assert(prompt.includes(`"model": "${TEST_MODEL}"`));
@@ -398,7 +430,98 @@ async function main() {
         });
         assert(denied.includes('capability denied'));
 
+        // Heartbeat renews the scoped token for the same session.
+        const executor = agent.governedExecutor;
+        const client = executor.client;
+        const firstSessionId = client.sessionId;
+        const firstToken = client.scopedToken;
+        assert(Date.parse(client.tokenExpiresAt) > Date.now(), 'registration reports when the token expires');
+        const heartbeat = await client.heartbeat();
+        assert.strictEqual(heartbeat.success, true);
+        assert.strictEqual(heartbeat.data.session_id, firstSessionId);
+        assert.notStrictEqual(client.scopedToken, firstToken);
+        assert.notStrictEqual(tokenJti(client.scopedToken), tokenJti(firstToken));
+        assert(Date.parse(heartbeat.data.session_expires_at) > Date.now());
+
+        // With the previous token revoked, requests still succeed: they carry the renewed one.
+        const revokeToken = await client._encryptedPost('/api/v1/admin/revoke', {
+            target_type: 'token',
+            target_id: tokenJti(firstToken),
+            reason: 'llm proxy test: previous token',
+        });
+        assert.strictEqual(revokeToken.success, true);
+        const grantsAfterRenewal = await client.listGrants();
+        assert.deepStrictEqual(grantsAfterRenewal.data.map((grant) => grant.capabilityId), ['file.read']);
+
+        // A token presented over another session's channel is refused.
+        const otherClient = new BrokerClient(
+            `http://127.0.0.1:${brokerPort}`,
+            Buffer.from(publicKey).toString('base64')
+        );
+        // The same registration secret registers a second session (as a restarted container would).
+        await otherClient.registerSession(TEST_PRINCIPAL_ID, TEST_TASK_ID, TEST_ROLE_ID, TEST_REGISTRATION_SECRET);
+        const otherToken = otherClient.scopedToken;
+        otherClient.scopedToken = client.scopedToken;
+        await assert.rejects(() => otherClient.listGrants(), (error) => error.status === 401);
+        otherClient.scopedToken = otherToken;
+        await otherClient.closeSession('llm proxy test: second session');
+
+        // Once the session is revoked, the governed executor registers again (once) and carries on.
+        const revokeSession = await client._encryptedPost('/api/v1/admin/revoke', {
+            target_type: 'session',
+            target_id: firstSessionId,
+            reason: 'llm proxy test: session',
+        });
+        assert.strictEqual(revokeSession.success, true);
+        const modelsAfterRevoke = await agent.provider.listModels();
+        assert.deepStrictEqual(modelsAfterRevoke.map((item) => item.name), [TEST_MODEL]);
+        assert.notStrictEqual(executor.client.sessionId, firstSessionId);
+        assert.notStrictEqual(executor.sessionInfo.sessionId, firstSessionId);
+        assert.deepStrictEqual(executor.getAllowedCapabilityIds(), ['file.read']);
+
+        // Kill switch: the running agent stops for good and does not register again (the kill switch is an
+        // emergency stop, not something a running agent recovers from). It invalidates tokens only: a newly
+        // started process can still register with a valid credential; revoking the credential stops that.
+        const clientBeforeKill = executor.client;
+        const sessionBeforeKill = executor.sessionInfo.sessionId;
+        const epochBeforeKill = tokenEpoch(executor.client.scopedToken);
+        assert(Number.isInteger(epochBeforeKill), 'scoped tokens carry the system epoch');
+        const killSwitch = await executor.client._encryptedPost('/api/v1/admin/kill-switch', {
+            reason: 'llm proxy test: kill switch',
+        });
+        assert.strictEqual(killSwitch.success, true);
+        await assert.rejects(() => agent.provider.listModels(), (error) => /session ended/.test(error.message));
+        assert.strictEqual(executor.terminated, true);
+        assert(/kill switch/.test(executor.terminationReason), executor.terminationReason);
+        assert.strictEqual(await executor._heartbeatOnce(), false);
+        const afterKill = await executor.executeTool('read_file', { path: 'README.md' }, {
+            projectRoot: ROOT,
+            noConfirm: true,
+            verbose: false,
+        });
+        assert(afterKill.includes('session ended'), afterKill);
+        assert.strictEqual(executor.client, clientBeforeKill, 'the executor must not register again after the kill switch');
+        assert.strictEqual(executor.sessionInfo.sessionId, sessionBeforeKill);
+
+        const restarted = new BrokerClient(
+            `http://127.0.0.1:${brokerPort}`,
+            Buffer.from(publicKey).toString('base64')
+        );
+        await restarted.registerSession(TEST_PRINCIPAL_ID, TEST_TASK_ID, TEST_ROLE_ID, TEST_REGISTRATION_SECRET);
+        assert.notStrictEqual(restarted.sessionId, sessionBeforeKill);
+        // A token issued after the kill switch carries a later epoch: an executor that only sees an expired-token
+        // 401 (for example after being suspended) recognises the kill switch when it registers again.
+        assert(tokenEpoch(restarted.scopedToken) > epochBeforeKill, 'the kill switch advances the epoch in new tokens');
+        const grantsAfterKill = await restarted.listGrants();
+        assert.deepStrictEqual(grantsAfterKill.data.map((grant) => grant.capabilityId), ['file.read']);
+        await restarted.closeSession('llm proxy test: process started after the kill switch');
+
         await agent.close();
+
+        // Nothing the broker logged may contain the registration secret, and the upstream model never saw it.
+        assert(!broker.logs.stdout.includes(TEST_REGISTRATION_SECRET), 'broker stdout must not contain the registration secret');
+        assert(!broker.logs.stderr.includes(TEST_REGISTRATION_SECRET), 'broker stderr must not contain the registration secret');
+        assert(!JSON.stringify(upstream.captured).includes(TEST_REGISTRATION_SECRET), 'the upstream model must not receive the registration secret');
         console.log('Broker LLM proxy integration test passed.');
     } finally {
         await broker.stop();

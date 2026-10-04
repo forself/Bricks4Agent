@@ -50,6 +50,7 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
       <el-form-item :label="t('principalId')"><el-input v-model="loginForm.principal" /></el-form-item>
       <el-form-item :label="t('taskId')"><el-input v-model="loginForm.task" /></el-form-item>
       <el-form-item :label="t('roleId')"><el-input v-model="loginForm.role" /></el-form-item>
+      <el-form-item :label="t('registrationSecret')"><el-input v-model="loginForm.secret" type="password" show-password autocomplete="off" /></el-form-item>
       <el-form-item>
         <el-button type="primary" style="width:100%" :loading="loginLoading" @click="doLogin">
           ECDH Handshake & {{t('login')}}
@@ -243,8 +244,9 @@ function dec(b){return new TextDecoder().decode(b)}
 function concat(...a){const r=new Uint8Array(a.reduce((s,x)=>s+x.byteLength,0));let o=0;for(const x of a){r.set(new Uint8Array(x),o);o+=x.byteLength}return r}
 
 class CryptoSession{
-  constructor(){this.sessionId=null;this.sessionKey=null;this.scopedToken=null;this.seq=0}
-  async handshake(url,pubB64,pid,tid,rid){
+  constructor(){this.sessionId=null;this.sessionKey=null;this.scopedToken=null;this.tokenExpiresAt=null;this.seq=0;this._chain=Promise.resolve()}
+  // The registration secret travels only inside the encrypted handshake payload; it is not stored.
+  async handshake(url,pubB64,pid,tid,rid,secret){
     const kp=await crypto.subtle.generateKey({name:'ECDH',namedCurve:'P-256'},true,['deriveBits']);
     const spki=await crypto.subtle.exportKey('spki',kp.publicKey);
     const cpb=b64e(spki);
@@ -254,7 +256,7 @@ class CryptoSession{
     const nonce=crypto.getRandomValues(new Uint8Array(12));
     const hk=await crypto.subtle.importKey('raw',shared,'HKDF',false,['deriveKey']);
     const handshakeKey=await crypto.subtle.deriveKey({name:'HKDF',hash:'SHA-256',salt:nonce,info:enc('broker-handshake-v1')},hk,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);
-    const payload=JSON.stringify({principal_id:pid,task_id:tid,role_id:rid});
+    const payload=JSON.stringify({principal_id:pid,task_id:tid,role_id:rid,registration_secret:secret||''});
     const aad=enc(cpb+'/api/v1/sessions/register');
     const ct=await crypto.subtle.encrypt({name:'AES-GCM',iv:nonce,additionalData:aad,tagLength:128},handshakeKey,enc(payload));
     const ctb=new Uint8Array(ct);
@@ -268,34 +270,51 @@ class CryptoSession{
       const ra=enc(`resp:${this.sessionId}0/api/v1/sessions/register`);
       const rc=concat(b64d(raw.envelope.ciphertext),b64d(raw.envelope.tag));
       const d=await crypto.subtle.decrypt({name:'AES-GCM',iv:b64d(raw.envelope.nonce),additionalData:ra,tagLength:128},this.sessionKey,rc);
-      const inner=JSON.parse(dec(d));this.scopedToken=inner.data?.scoped_token||inner.scoped_token;return inner;
+      const inner=JSON.parse(dec(d));const data=inner.data||inner;this.scopedToken=data.scoped_token;this.tokenExpiresAt=data.token_expires_at||null;return inner;
     }
-    this.scopedToken=raw.data?.scoped_token;return raw;
+    this.scopedToken=raw.data?.scoped_token;this.tokenExpiresAt=raw.data?.token_expires_at||null;return raw;
   }
-  async post(url,path,obj){
-    const seq=++this.seq;const plain=JSON.stringify({scoped_token:this.scopedToken,...obj});
-    const aad=enc(`req:${this.sessionId}${seq}${path}`);const nonce=crypto.getRandomValues(new Uint8Array(12));
-    const ct=await crypto.subtle.encrypt({name:'AES-GCM',iv:nonce,additionalData:aad,tagLength:128},this.sessionKey,enc(plain));
-    const ctb=new Uint8Array(ct);
-    const body={v:1,session_id:this.sessionId,envelope:{alg:'A256GCM',seq,nonce:b64e(nonce),ciphertext:b64e(ctb.slice(0,ctb.length-16)),tag:b64e(ctb.slice(ctb.length-16))}};
-    const resp=await fetch(url+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-    const raw=await resp.json();
-    if(raw.envelope){
-      const ra=enc(`resp:${this.sessionId}${seq}${path}`);
-      const rc=concat(b64d(raw.envelope.ciphertext),b64d(raw.envelope.tag));
-      const d=await crypto.subtle.decrypt({name:'AES-GCM',iv:b64d(raw.envelope.nonce),additionalData:ra,tagLength:128},this.sessionKey,rc);
-      return JSON.parse(dec(d));
-    }
-    return raw;
+  // Requests are serialised so sequence numbers reach the broker in order; the token is read when the
+  // request is sent, so requests queued behind a heartbeat use the renewed token. A non-2xx answer throws
+  // an Error carrying the HTTP status (401 means the session or token is no longer accepted).
+  post(url,path,obj,onResult){
+    const run=async()=>{
+      if(!this.sessionId||!this.sessionKey)throw new Error('No session');
+      const sid=this.sessionId,key=this.sessionKey;
+      const seq=++this.seq;const plain=JSON.stringify({...obj,scoped_token:this.scopedToken});
+      const aad=enc(`req:${sid}${seq}${path}`);const nonce=crypto.getRandomValues(new Uint8Array(12));
+      const ct=await crypto.subtle.encrypt({name:'AES-GCM',iv:nonce,additionalData:aad,tagLength:128},key,enc(plain));
+      const ctb=new Uint8Array(ct);
+      const body={v:1,session_id:sid,envelope:{alg:'A256GCM',seq,nonce:b64e(nonce),ciphertext:b64e(ctb.slice(0,ctb.length-16)),tag:b64e(ctb.slice(ctb.length-16))}};
+      const resp=await fetch(url+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+      let result=await resp.json().catch(()=>({message:'HTTP '+resp.status}));
+      if(result.envelope){
+        const ra=enc(`resp:${sid}${seq}${path}`);
+        const rc=concat(b64d(result.envelope.ciphertext),b64d(result.envelope.tag));
+        const d=await crypto.subtle.decrypt({name:'AES-GCM',iv:b64d(result.envelope.nonce),additionalData:ra,tagLength:128},key,rc);
+        result=JSON.parse(dec(d));
+      }
+      if(!resp.ok){const e=new Error(result.message||('HTTP '+resp.status));e.status=resp.status;throw e}
+      if(onResult)onResult(result,sid);
+      return result;
+    };
+    const next=this._chain.then(run,run);this._chain=next.catch(()=>{});return next;
   }
-  async close(url){if(!this.sessionId)return;try{await this.post(url,'/api/v1/sessions/close',{reason:'Dashboard logout'})}catch{};this.sessionId=null;this.sessionKey=null;this.seq=0}
+  // Renews the scoped token (same session) and extends the session.
+  heartbeat(url){
+    return this.post(url,'/api/v1/sessions/heartbeat',{},(r,sid)=>{
+      const d=r.data;if(!d||!d.scoped_token||this.sessionId!==sid||(d.session_id&&d.session_id!==sid))return;
+      this.scopedToken=d.scoped_token;this.tokenExpiresAt=d.token_expires_at||null;
+    });
+  }
+  async close(url){if(!this.sessionId)return;try{await this.post(url,'/api/v1/sessions/close',{reason:'Dashboard logout'})}catch{};this.sessionId=null;this.sessionKey=null;this.scopedToken=null;this.tokenExpiresAt=null;this.seq=0}
 }
 
 // ═══════════════════════════════════════════════
 // i18n
 // ═══════════════════════════════════════════════
 const I18N={
-  zh:{login:'登入',principalId:'Principal ID',taskId:'Task ID',roleId:'Role ID',encrypted:'加密連線',refresh:'重新整理',logout:'登出',
+  zh:{login:'登入',principalId:'Principal ID',taskId:'Task ID',roleId:'Role ID',registrationSecret:'註冊密鑰',encrypted:'加密連線',refresh:'重新整理',logout:'登出',
     overview:'總覽',agents:'代理',capabilities:'能力',capList:'能力清單',allAgents:'所有代理',
     totalAgents:'代理總數',activeAgents:'活躍中',sessionSeq:'Session 序號',
     state:'狀態',role:'角色',taskType:'任務類別',created:'建立時間',stop:'停止',
@@ -305,8 +324,9 @@ const I18N={
     category:'分類',riskLevel:'風險等級',policy:'策略',description:'說明',route:'路由',
     ttGeneral:'通用',ttCodeGen:'程式碼生成',ttReview:'審查',
     confirmStop:'確定要停止代理 "{id}" 嗎？',confirmTitle:'確認',
+    sessionExpired:'工作階段已失效，請重新登入。',
   },
-  en:{login:'Login',principalId:'Principal ID',taskId:'Task ID',roleId:'Role ID',encrypted:'Encrypted',refresh:'Refresh',logout:'Logout',
+  en:{login:'Login',principalId:'Principal ID',taskId:'Task ID',roleId:'Role ID',registrationSecret:'Registration secret',encrypted:'Encrypted',refresh:'Refresh',logout:'Logout',
     overview:'Overview',agents:'Agents',capabilities:'Capabilities',capList:'Capability List',allAgents:'All Agents',
     totalAgents:'Total Agents',activeAgents:'Active',sessionSeq:'Session Seq',
     state:'State',role:'Role',taskType:'Task Type',created:'Created',stop:'Stop',
@@ -316,6 +336,7 @@ const I18N={
     category:'Category',riskLevel:'Risk Level',policy:'Policy',description:'Description',route:'Route',
     ttGeneral:'General',ttCodeGen:'Code Gen',ttReview:'Review',
     confirmStop:'Stop agent "{id}"?',confirmTitle:'Confirm',
+    sessionExpired:'The session is no longer valid. Please log in again.',
   }
 };
 
@@ -333,9 +354,9 @@ const app=createApp({
 
     const loggedIn=ref(false);const loginLoading=ref(false);const loginError=ref('');
     const cryptoInfo=ref('Waiting for ECDH P-256 handshake...');
-    const loginForm=reactive({principal:'prn_dashboard',task:'task_dashboard',role:'role_admin'});
+    const loginForm=reactive({principal:'prn_dashboard',task:'task_dashboard',role:'role_admin',secret:''});
 
-    let session=null;let brokerUrl='';let brokerPubKey='';
+    let session=null;let brokerUrl='';let brokerPubKey='';let heartbeatTimer=null;
 
     const activeTab=ref('overview');const refreshing=ref(false);
     const agents=ref([]);const caps=ref([]);const defaultCaps=ref([]);
@@ -356,20 +377,48 @@ const app=createApp({
         if(!brokerPubKey)throw new Error('No broker_public_key in health');
         cryptoInfo.value=`Broker PK: ${brokerPubKey.substring(0,24)}...\nGenerating ECDH P-256 keypair...`;
         session=new CryptoSession();
-        await session.handshake(brokerUrl,brokerPubKey,loginForm.principal,loginForm.task,loginForm.role);
+        await session.handshake(brokerUrl,brokerPubKey,loginForm.principal,loginForm.task,loginForm.role,loginForm.secret);
+        loginForm.secret='';
         cryptoInfo.value=`Session: ${session.sessionId}\nEncryption: AES-256-GCM | Key Exchange: ECDH P-256 + HKDF-SHA256`;
         loggedIn.value=true;
+        startHeartbeat();
         await refreshAll();
       }catch(e){loginError.value=e.message;cryptoInfo.value='Handshake failed';session=null}
       loginLoading.value=false;
     }
 
     async function doLogout(){
+      stopHeartbeat();
       if(session)await session.close(brokerUrl);session=null;loggedIn.value=false;
     }
 
+    // Heartbeat renews the scoped token before it expires: a third of its remaining lifetime,
+    // at most every five minutes and at least every ten seconds.
+    function heartbeatDelay(){
+      const exp=Date.parse(session?.tokenExpiresAt||'');
+      if(!Number.isFinite(exp))return 5*60*1000;
+      return Math.min(5*60*1000,Math.max(10*1000,Math.floor((exp-Date.now())/3)));
+    }
+    function startHeartbeat(){
+      stopHeartbeat();
+      heartbeatTimer=setTimeout(async()=>{
+        heartbeatTimer=null;
+        if(!session)return;
+        try{await session.heartbeat(brokerUrl)}
+        catch(e){if(e.status===401){sessionExpired();return}console.warn('Heartbeat failed:',e.message)}
+        if(session)startHeartbeat();
+      },heartbeatDelay());
+    }
+    function stopHeartbeat(){if(heartbeatTimer){clearTimeout(heartbeatTimer);heartbeatTimer=null}}
+    function sessionExpired(){
+      stopHeartbeat();session=null;loggedIn.value=false;
+      loginError.value=t('sessionExpired');cryptoInfo.value='Session ended';
+    }
+
     async function api(path,body={}){
-      if(!session)throw new Error('No session');return await session.post(brokerUrl,path,body);
+      if(!session)throw new Error('No session');
+      try{return await session.post(brokerUrl,path,body)}
+      catch(e){if(e.status===401)sessionExpired();throw e}
     }
 
     async function loadAgents(){try{const r=await api('/api/v1/agents/list');agents.value=r.data?.agents||[]}catch{agents.value=[]}}
@@ -411,7 +460,7 @@ const app=createApp({
         await api('/api/v1/agents/stop',{agent_id:id});
         await refreshAll();
         ElementPlus.ElMessage.success('OK');
-      }catch{}
+      }catch(e){if(e instanceof Error&&e.message)ElementPlus.ElMessage.error(e.message)}
     }
 
     function fmtDate(d){if(!d)return'';try{return new Date(d).toLocaleString()}catch{return d}}

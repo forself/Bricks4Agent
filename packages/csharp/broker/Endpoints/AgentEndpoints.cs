@@ -112,7 +112,7 @@ public static class AgentEndpoints
         });
 
         // ── 4. 生成 Agent 容器 ──
-        agents.MapPost("/spawn", async (HttpContext ctx, AgentSpawnService spawnService, IContainerManager containerManager, IEnvelopeCrypto crypto, IConfiguration configuration, HighLevelLlmOptions highLevelLlmOptions) =>
+        agents.MapPost("/spawn", async (HttpContext ctx, AgentSpawnService spawnService, IContainerManager containerManager, IEnvelopeCrypto crypto, IConfiguration configuration, HighLevelLlmOptions highLevelLlmOptions, RegistrationCredentialOptions credentialOptions) =>
         {
             var body = RequestBodyHelper.GetBody(ctx);
             if (!RequestBodyHelper.TryGetRequired(body, "agent_id", out var agentId, out var err))
@@ -158,7 +158,11 @@ public static class AgentEndpoints
                 envOverrides["AGENT_MODEL"] = modelEl.GetString() ?? highLevelLlmOptions.DefaultModel;
             if (body.TryGetProperty("max_iterations", out var maxIterationsEl) &&
                 maxIterationsEl.ValueKind == JsonValueKind.Number)
-                envOverrides["AGENT_MAX_ITERATIONS"] = Math.Max(1, maxIterationsEl.GetInt32()).ToString();
+            {
+                if (!maxIterationsEl.TryGetInt32(out var maxIterations))
+                    return Results.BadRequest(ApiResponseHelper.Error("max_iterations must be an integer.", 400));
+                envOverrides["AGENT_MAX_ITERATIONS"] = ClampMaxIterations(maxIterations).ToString();
+            }
             if (body.TryGetProperty("verbose", out var verboseEl) &&
                 (verboseEl.ValueKind == JsonValueKind.True || verboseEl.ValueKind == JsonValueKind.False))
                 envOverrides["AGENT_VERBOSE"] = verboseEl.GetBoolean() ? "1" : "0";
@@ -185,17 +189,36 @@ public static class AgentEndpoints
                     : runPrompt.Trim();
             }
 
+            // 註冊憑證：每次 spawn 簽發新的一把，可重複使用到到期，讓容器重啟後仍能註冊。
+            // 容器啟動成功後才撤銷這個 agent 先前 spawn 的憑證；啟動失敗只撤銷新的這把，
+            // 不影響仍在執行的舊容器日後重新註冊。明文只經 SecretEnvironment 交給容器
+            // （CLI 參數中只有 -e NAME），不出現在回應、log 或例外訊息中。
+            var issuedBy = RequestBodyHelper.GetPrincipalId(ctx);
             try
             {
-                var containerId = await containerManager.SpawnWorkerAsync(
-                    "agent", agentId, envOverrides);
+                var spawned = await spawnService.SpawnWithCredentialAsync(
+                    agent,
+                    string.IsNullOrWhiteSpace(issuedBy) ? "agents-spawn" : issuedBy,
+                    credentialOptions.SpawnedAgentLifetime,
+                    secret => containerManager.SpawnWorkerAsync(new ContainerSpawnRequest
+                    {
+                        WorkerType = "agent",
+                        WorkerId = agentId,
+                        TrustedEnvironment = envOverrides,
+                        SecretEnvironment = new Dictionary<string, string>(StringComparer.Ordinal)
+                        {
+                            [RegistrationSecretEnvironmentVariable] = secret
+                        },
+                    }));
 
                 return Results.Ok(ApiResponseHelper.Success(new
                 {
                     agent_id = agentId,
-                    container_id = containerId,
+                    container_id = spawned.ContainerId,
                     status = "spawned",
-                    capabilities = agent.Capabilities
+                    capabilities = agent.Capabilities,
+                    registration_credential_id = spawned.CredentialId,
+                    registration_credential_expires_at = spawned.ExpiresAt
                 }));
             }
             catch (Exception ex)
@@ -544,31 +567,49 @@ public static class AgentEndpoints
         });
     }
 
+    /// <summary>
+    /// The container environment variable that carries the registration secret. It is passed through
+    /// ContainerSpawnRequest.SecretEnvironment, so only its name appears in the runtime CLI arguments.
+    /// </summary>
+    public const string RegistrationSecretEnvironmentVariable = "BROKER_REGISTRATION_SECRET";
+
+    /// <summary>Upper bound for the max_iterations a spawn request may ask for.</summary>
+    internal const int MaxSpawnIterations = 50;
+
+    internal static int ClampMaxIterations(int requested)
+        => Math.Clamp(requested, 1, MaxSpawnIterations);
+
+    /// <summary>
+    /// The agent container always talks to the configured AgentBrokerUrl. A request may repeat
+    /// that value but cannot point the agent (and the credentials handed to it) somewhere else.
+    /// </summary>
     internal static (bool Ok, string BrokerUrl, string? Error) ResolveAgentBrokerUrl(
         JsonElement body,
         IConfiguration configuration)
     {
-        var value = configuration.GetValue(
+        var configured = (configuration.GetValue(
             "FunctionPool:ContainerManager:AgentBrokerUrl",
-            "http://broker:5000") ?? "http://broker:5000";
+            "http://broker:5000") ?? "http://broker:5000").Trim().TrimEnd('/');
 
-        if (body.TryGetProperty("broker_url", out var brokerUrlEl) &&
-            brokerUrlEl.ValueKind == JsonValueKind.String)
-        {
-            value = brokerUrlEl.GetString() ?? string.Empty;
-        }
+        if (string.IsNullOrWhiteSpace(configured))
+            return (false, string.Empty, "FunctionPool:ContainerManager:AgentBrokerUrl must not be empty.");
 
-        value = value.Trim().TrimEnd('/');
-        if (string.IsNullOrWhiteSpace(value))
-            return (false, string.Empty, "Agent broker_url must not be empty.");
-
-        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) ||
+        if (!Uri.TryCreate(configured, UriKind.Absolute, out var uri) ||
             (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
         {
-            return (false, string.Empty, "Agent broker_url must be an absolute http(s) URL.");
+            return (false, string.Empty, "FunctionPool:ContainerManager:AgentBrokerUrl must be an absolute http(s) URL.");
         }
 
-        return (true, value, null);
+        if (body.ValueKind == JsonValueKind.Object && body.TryGetProperty("broker_url", out var brokerUrlEl))
+        {
+            var requested = brokerUrlEl.ValueKind == JsonValueKind.String
+                ? (brokerUrlEl.GetString() ?? string.Empty).Trim().TrimEnd('/')
+                : null;
+            if (requested == null || !string.Equals(requested, configured, StringComparison.OrdinalIgnoreCase))
+                return (false, string.Empty, "Agent broker_url must match the configured AgentBrokerUrl.");
+        }
+
+        return (true, configured, null);
     }
 
     // FTS query DTO

@@ -17,6 +17,12 @@ public class ExecutionResult
     /// <summary>證據引用（稽核用）</summary>
     public string? EvidenceRef { get; set; }
 
+    /// <summary>
+    /// 執行 worker 已收到請求並回覆（成功或拒絕）。這種結果是最終結果：
+    /// 降級分派器不得把 worker 的拒絕改交其他執行者重試。
+    /// </summary>
+    public bool AnsweredByWorker { get; set; }
+
     public static ExecutionResult Ok(string requestId, string resultPayload, string? evidenceRef = null)
         => new()
         {

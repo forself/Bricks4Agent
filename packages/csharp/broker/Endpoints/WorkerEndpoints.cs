@@ -1,3 +1,6 @@
+using System.ComponentModel;
+using System.Text.Json;
+using System.Text.RegularExpressions;
 using Broker.Helpers;
 using FunctionPool.Container;
 using FunctionPool.Registry;
@@ -35,41 +38,43 @@ public static class WorkerEndpoints
         });
 
         // ── POST /api/v1/workers/spawn — Spawn a new worker container ──
+        // Agents are spawned only through /agents/spawn (which checks the agent exists and is
+        // active). The container environment is composed by the broker; a request cannot add to it.
         workers.MapPost("/spawn", async (
             HttpContext ctx,
             IContainerManager containerMgr,
             CancellationToken ct) =>
         {
             var body = RequestBodyHelper.GetBody(ctx);
-            var workerType = body.GetProperty("worker_type").GetString();
-            var workerId = body.TryGetProperty("worker_id", out var wid)
-                ? wid.GetString()
-                : $"{workerType}-{Guid.NewGuid():N}"[..Math.Min(32, workerType!.Length + 33)];
-
-            Dictionary<string, string>? envOverrides = null;
-            if (body.TryGetProperty("environment", out var envProp))
-            {
-                envOverrides = new Dictionary<string, string>();
-                foreach (var prop in envProp.EnumerateObject())
-                    envOverrides[prop.Name] = prop.Value.GetString() ?? "";
-            }
+            var (request, error) = ParseSpawnRequest(body);
+            if (request == null)
+                return Results.BadRequest(ApiResponseHelper.Error(error!, 400));
 
             try
             {
-                var containerId = await containerMgr.SpawnWorkerAsync(
-                    workerType!, workerId!, envOverrides, ct);
+                var containerId = await containerMgr.SpawnWorkerAsync(request, ct);
 
                 return Results.Ok(ApiResponseHelper.Success(new
                 {
                     container_id = containerId,
-                    worker_id = workerId,
-                    worker_type = workerType,
+                    worker_id = request.WorkerId,
+                    worker_type = request.WorkerType,
                     status = "spawned"
                 }));
             }
             catch (InvalidOperationException ex)
             {
                 return Results.BadRequest(ApiResponseHelper.Error(ex.Message));
+            }
+            catch (Win32Exception)
+            {
+                return Results.Json(ApiResponseHelper.Error(
+                    "Container runtime CLI not found. Install docker or podman, or set FunctionPool:ContainerManager:Runtime.", 503),
+                    statusCode: 503);
+            }
+            catch (TimeoutException ex)
+            {
+                return Results.Json(ApiResponseHelper.Error(ex.Message, 504), statusCode: 504);
             }
         });
 
@@ -150,5 +155,50 @@ public static class WorkerEndpoints
                 running_containers = containers.Count(c => c.State == ContainerState.Running)
             }));
         });
+    }
+
+    private static readonly Regex WorkerIdPattern = new(@"^[A-Za-z0-9][A-Za-z0-9_.\-]{0,63}$", RegexOptions.CultureInvariant);
+
+    /// <summary>
+    /// Validates a /workers/spawn body: worker_type is required and must not be "agent";
+    /// worker_id is optional and limited to a safe character set; "environment" is no longer accepted.
+    /// </summary>
+    internal static (ContainerSpawnRequest? Request, string? Error) ParseSpawnRequest(JsonElement body)
+    {
+        if (body.ValueKind != JsonValueKind.Object)
+            return (null, "Request body must be a JSON object.");
+
+        if (!body.TryGetProperty("worker_type", out var typeEl) ||
+            typeEl.ValueKind != JsonValueKind.String ||
+            string.IsNullOrWhiteSpace(typeEl.GetString()))
+        {
+            return (null, "worker_type is required.");
+        }
+
+        var workerType = typeEl.GetString()!.Trim();
+        if (ContainerManager.IsAgentWorkerType(workerType))
+            return (null, "Agents are spawned through POST /api/v1/agents/spawn.");
+
+        if (body.TryGetProperty("environment", out _))
+            return (null, "environment is not accepted; worker environment is configured on the broker.");
+
+        string workerId;
+        if (body.TryGetProperty("worker_id", out var idEl))
+        {
+            if (idEl.ValueKind != JsonValueKind.String || !WorkerIdPattern.IsMatch(idEl.GetString() ?? string.Empty))
+                return (null, "worker_id must be 1-64 characters of letters, digits, '.', '_' or '-'.");
+            workerId = idEl.GetString()!;
+        }
+        else
+        {
+            // Random part first: the container name keeps only the first 12 characters of the id.
+            workerId = $"{Guid.NewGuid():N}"[..12] + "-" + workerType;
+            if (workerId.Length > 64)
+                workerId = workerId[..64];
+            if (!WorkerIdPattern.IsMatch(workerId))
+                return (null, "worker_type contains characters that cannot form a worker id.");
+        }
+
+        return (new ContainerSpawnRequest { WorkerType = workerType, WorkerId = workerId }, null);
     }
 }

@@ -9,8 +9,9 @@ namespace FunctionPool.Dispatch;
 ///
 /// 策略：
 /// 1. 有可用 Worker → PoolDispatcher
-/// 2. Pool 失敗且 InProcess 可處理 → InProcessDispatcher（降級）
-/// 3. 兩者都不可用 → 返回失敗
+/// 2. 沒有可用 Worker，或分派因傳輸、逾時失敗，且 InProcess 可處理 → InProcessDispatcher（降級）
+/// 3. Worker 已回覆的結果（含拒絕）是最終結果，不降級
+/// 4. 兩者都不可用 → 返回失敗
 /// </summary>
 public class FallbackDispatcher : IExecutionDispatcher
 {
@@ -49,7 +50,16 @@ public class FallbackDispatcher : IExecutionDispatcher
             if (result.Success)
                 return result;
 
-            // 失敗 → 嘗試降級
+            // worker 已回覆的拒絕是最終結果：不改交 InProcess 重試。
+            if (result.AnsweredByWorker)
+            {
+                _logger.LogInformation(
+                    "Worker refused {Route}; not falling back. Error: {Error}",
+                    request.Route, result.ErrorMessage);
+                return result;
+            }
+
+            // 傳輸或逾時失敗 → 嘗試降級
             _logger.LogWarning(
                 "Pool dispatch failed for {Route}: {Error}. Checking fallback...",
                 request.Route, result.ErrorMessage);

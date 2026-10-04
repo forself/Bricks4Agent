@@ -75,6 +75,21 @@ public class CapabilityCatalog : ICapabilityCatalog
     }
 
     /// <inheritdoc />
+    public int ExtendSessionGrants(string sessionId, DateTime expiresAt)
+    {
+        if (string.IsNullOrWhiteSpace(sessionId))
+            return 0;
+
+        return _db.Execute(
+            @"UPDATE capability_grants SET expires_at = @expiresAt
+              WHERE session_id = @sessionId
+                AND status = 0
+                AND expires_at > @now
+                AND expires_at < @expiresAt",
+            new { expiresAt, sessionId, now = DateTime.UtcNow });
+    }
+
+    /// <inheritdoc />
     public bool ConsumeQuota(string grantId)
     {
         // -1 = 無限配額

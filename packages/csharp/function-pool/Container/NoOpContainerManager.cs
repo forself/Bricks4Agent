@@ -6,10 +6,7 @@ namespace FunctionPool.Container;
 /// </summary>
 public class NoOpContainerManager : IContainerManager
 {
-    public Task<string> SpawnWorkerAsync(
-        string workerType, string workerId,
-        Dictionary<string, string>? envOverrides = null,
-        CancellationToken ct = default)
+    public Task<string> SpawnWorkerAsync(ContainerSpawnRequest request, CancellationToken ct = default)
     {
         throw new InvalidOperationException(
             "Container management is not enabled. Set FunctionPool:ContainerManager:Enabled=true.");

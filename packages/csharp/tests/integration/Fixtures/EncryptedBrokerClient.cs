@@ -166,15 +166,18 @@ public sealed class EncryptedBrokerClient
 
     /// <summary>
     /// Performs the real register handshake: a fresh client ECDH key, the broker public key from
-    /// <c>GET /api/v1/health</c>, and a handshake envelope carrying principal, task and optional role.
-    /// On success the returned session holds the derived session key and the issued scoped token.
+    /// <c>GET /api/v1/health</c>, and a handshake envelope carrying principal, task, optional role and
+    /// the registration secret. On success the returned session holds the derived session key and the
+    /// issued scoped token.
     /// </summary>
     /// <param name="remoteAddress">Caller address applied by <see cref="RemoteAddressStartupFilter"/>; null keeps the TestServer default.</param>
+    /// <param name="registrationSecret">Sent as <c>registration_secret</c> inside the sealed payload; null leaves the field out.</param>
     public async Task<HandshakeResult> RegisterAsync(
         string principalId,
         string taskId,
         string? roleId = null,
-        string? remoteAddress = null)
+        string? remoteAddress = null,
+        string? registrationSecret = null)
     {
         var brokerPublicKey = await GetBrokerPublicKeyAsync();
 
@@ -196,24 +199,12 @@ public sealed class EncryptedBrokerClient
                 payload["role_id"] = roleId;
             }
 
-            var nonce = RandomNumberGenerator.GetBytes(NonceLength);
-            var handshakeKey = HKDF.DeriveKey(HashAlgorithmName.SHA256, sharedSecret, KeyLength, nonce, HandshakeInfo);
-            JsonObject envelope;
-            try
+            if (registrationSecret is not null)
             {
-                envelope = Seal(handshakeKey, payload.ToJsonString(), clientPublicKey + RegisterPath, 0, HandshakeAlgorithm, nonce);
-            }
-            finally
-            {
-                CryptographicOperations.ZeroMemory(handshakeKey);
+                payload["registration_secret"] = registrationSecret;
             }
 
-            var wire = new JsonObject
-            {
-                ["v"] = 1,
-                ["client_ephemeral_pub"] = clientPublicKey,
-                ["envelope"] = envelope
-            };
+            var wire = SealHandshake(sharedSecret, clientPublicKey, payload);
 
             using var request = new HttpRequestMessage(HttpMethod.Post, RegisterPath)
             {
@@ -256,6 +247,39 @@ public sealed class EncryptedBrokerClient
         }
     }
 
+    /// <summary>
+    /// Sends a handshake envelope (the register wire format, sealed exactly as for registration) to
+    /// <paramref name="path"/>, with the scoped token in the sealed payload when one is given. Only the
+    /// register endpoint may accept a handshake envelope; the response is returned as received.
+    /// </summary>
+    public async Task<BrokerReply> SendHandshakeEnvelopeAsync(string path, object? payload, string? scopedToken = null)
+    {
+        var brokerPublicKey = await GetBrokerPublicKeyAsync();
+
+        using var clientKey = ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256);
+        using var brokerKey = ECDiffieHellman.Create();
+        brokerKey.ImportSubjectPublicKeyInfo(Convert.FromBase64String(brokerPublicKey), out _);
+        var clientPublicKey = Convert.ToBase64String(clientKey.ExportSubjectPublicKeyInfo());
+
+        var sharedSecret = clientKey.DeriveRawSecretAgreement(brokerKey.PublicKey);
+        try
+        {
+            var wire = SealHandshake(sharedSecret, clientPublicKey, BuildJsonObject(payload, scopedToken));
+            using var request = new HttpRequestMessage(HttpMethod.Post, path)
+            {
+                Content = new StringContent(wire.ToJsonString(), Encoding.UTF8, "application/json")
+            };
+
+            using var response = await _http.SendAsync(request);
+            var raw = await response.Content.ReadAsStringAsync();
+            return new BrokerReply(response.StatusCode, raw, decrypted: false);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(sharedSecret);
+        }
+    }
+
     public async Task<string> GetBrokerPublicKeyAsync()
     {
         using var response = await _http.GetAsync("/api/v1/health");
@@ -290,6 +314,29 @@ public sealed class EncryptedBrokerClient
         }
 
         return body;
+    }
+
+    /// <summary>Handshake wire body: the payload sealed with a key derived from the ECDH secret, bound to the register path.</summary>
+    private static JsonObject SealHandshake(byte[] sharedSecret, string clientPublicKey, JsonObject payload)
+    {
+        var nonce = RandomNumberGenerator.GetBytes(NonceLength);
+        var handshakeKey = HKDF.DeriveKey(HashAlgorithmName.SHA256, sharedSecret, KeyLength, nonce, HandshakeInfo);
+        JsonObject envelope;
+        try
+        {
+            envelope = Seal(handshakeKey, payload.ToJsonString(), clientPublicKey + RegisterPath, 0, HandshakeAlgorithm, nonce);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(handshakeKey);
+        }
+
+        return new JsonObject
+        {
+            ["v"] = 1,
+            ["client_ephemeral_pub"] = clientPublicKey,
+            ["envelope"] = envelope
+        };
     }
 
     private static JsonObject Seal(byte[] key, string plaintext, string associatedData, int seq, string algorithm, byte[] nonce)

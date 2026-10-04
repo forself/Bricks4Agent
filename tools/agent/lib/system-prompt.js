@@ -50,7 +50,7 @@ function buildSystemPrompt(options) {
         parts.push('\n## Execution Mode\n\nYou may use the locally registered tools directly.');
     }
 
-    const agentMdPath = findAgentMd(projectRoot);
+    const agentMdPath = resolveAgentManualPath(projectRoot);
     const maxChars = useReact ? MAX_AGENT_MD_CHARS_REACT : MAX_AGENT_MD_CHARS_NATIVE;
     if (agentMdPath) {
         if (verbose) logInfo(`Loading project manual: ${agentMdPath}`);
@@ -206,4 +206,24 @@ function findAgentMd(startDir) {
     return null;
 }
 
-module.exports = { buildSystemPrompt };
+/**
+ * AGENT.md near the project root wins. Only when none is found does the agent fall
+ * back to AGENT_MANUAL_PATH, which the container image sets because no repository
+ * is mounted into the agent. There is deliberately no fallback to this package's own
+ * location: in local mode an unrelated project must not receive Bricks4Agent's manual.
+ */
+function resolveAgentManualPath(projectRoot, env = process.env) {
+    const nearby = findAgentMd(projectRoot);
+    if (nearby) return nearby;
+
+    const configured = typeof env.AGENT_MANUAL_PATH === 'string' ? env.AGENT_MANUAL_PATH.trim() : '';
+    if (!configured || !path.isAbsolute(configured)) return null;
+    try {
+        fs.accessSync(configured, fs.constants.R_OK);
+        return configured;
+    } catch (_) {
+        return null;
+    }
+}
+
+module.exports = { buildSystemPrompt, resolveAgentManualPath };

@@ -6,19 +6,13 @@ namespace FunctionPool.Container;
 /// </summary>
 public interface IContainerManager
 {
-    /// <summary>Spawn a new worker container of the given type</summary>
-    /// <param name="workerType">Worker type key (e.g. "file-worker", "line-worker")</param>
-    /// <param name="workerId">Unique worker ID assigned by broker</param>
-    /// <param name="envOverrides">Additional/override environment variables</param>
+    /// <summary>Spawn a new hardened worker container</summary>
+    /// <param name="request">Worker type, id and the broker-composed environment</param>
     /// <param name="ct">Cancellation token</param>
     /// <returns>Container ID assigned by Docker/Podman</returns>
-    Task<string> SpawnWorkerAsync(
-        string workerType,
-        string workerId,
-        Dictionary<string, string>? envOverrides = null,
-        CancellationToken ct = default);
+    Task<string> SpawnWorkerAsync(ContainerSpawnRequest request, CancellationToken ct = default);
 
-    /// <summary>Stop and remove a managed container</summary>
+    /// <summary>Stop and remove a managed container (including its anonymous volumes)</summary>
     Task StopWorkerAsync(string containerId, CancellationToken ct = default);
 
     /// <summary>List all managed containers</summary>

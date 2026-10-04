@@ -11,6 +11,9 @@ public interface IScopedTokenService
 
     /// <summary>驗證並解析 Scoped Token</summary>
     ScopedTokenClaims? ValidateToken(string token);
+
+    /// <summary>新發行 token 的有效時間（回應中的 token_expires_at 以此計算）</summary>
+    TimeSpan TokenLifetime { get; }
 }
 
 /// <summary>Scoped Token 的 claim 集合</summary>
