@@ -17,6 +17,7 @@ using BrokerCore.Crypto;
 ///
 /// 用法：
 ///   dotnet run -- --broker http://localhost:5000
+/// 註冊密鑰從環境變數 BROKER_REGISTRATION_SECRET 讀取（不提供命令列參數，避免出現在程序清單）。
 /// </summary>
 
 var brokerUrl = "http://localhost:5000";
@@ -36,6 +37,15 @@ for (int i = 0; i < args.Length - 1; i++)
     }
 }
 
+// 註冊憑證的密鑰只從環境變數讀取，讀完即從本程序的環境移除。
+var registrationSecret = Environment.GetEnvironmentVariable("BROKER_REGISTRATION_SECRET") ?? string.Empty;
+Environment.SetEnvironmentVariable("BROKER_REGISTRATION_SECRET", null);
+if (string.IsNullOrWhiteSpace(registrationSecret))
+{
+    Console.Error.WriteLine("BROKER_REGISTRATION_SECRET is not set; the broker accepts a session registration only with the task's registration secret.");
+    Environment.Exit(2);
+}
+
 Console.WriteLine("=== E2E Bridge ===");
 Console.WriteLine($"  Broker: {brokerUrl}");
 Console.WriteLine($"  Principal: {principalId}");
@@ -43,7 +53,7 @@ Console.WriteLine($"  Task: {taskId}");
 Console.WriteLine($"  Role: {roleId}");
 Console.WriteLine();
 
-var client = new BrokerApiClient(brokerUrl);
+var client = new BrokerApiClient(brokerUrl, registrationSecret);
 var cts = new CancellationTokenSource();
 Console.CancelKeyPress += (_, e) => { e.Cancel = true; cts.Cancel(); };
 
@@ -56,7 +66,7 @@ Console.WriteLine($"OK ({health.RootElement.GetProperty("status").GetString()})"
 Console.Write("[2/3] Registering session (ECDH handshake)... ");
 await client.RegisterSessionAsync(principalId, taskId, roleId, brokerUrl, cts.Token);
 Console.WriteLine($"OK (session={client.SessionId?[..16]}...)");
-Console.WriteLine($"  Token: {client.ScopedToken?[..32]}...");
+Console.WriteLine($"  Token expires at: {client.TokenExpiresAt:O}");
 
 // 背景 heartbeat：token 只有短時效，長時間執行的 bridge 必須定時續發
 var heartbeatLoop = RunHeartbeatAsync(client, principalId, taskId, roleId, brokerUrl, cts.Token);
@@ -431,9 +441,12 @@ class BrokerApiClient
         PropertyNameCaseInsensitive = true
     };
 
-    public BrokerApiClient(string baseUrl)
+    private readonly string _registrationSecret;
+
+    public BrokerApiClient(string baseUrl, string registrationSecret)
     {
         _baseUrl = baseUrl.TrimEnd('/');
+        _registrationSecret = registrationSecret;
         _http = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
     }
 
@@ -484,7 +497,8 @@ class BrokerApiClient
         {
             principal_id = principalId,
             task_id = taskId,
-            role_id = roleId
+            role_id = roleId,
+            registration_secret = _registrationSecret
         });
 
         // 3. Get broker public key (from health or known)

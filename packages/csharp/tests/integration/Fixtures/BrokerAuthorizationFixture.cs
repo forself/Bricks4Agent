@@ -138,6 +138,37 @@ public class BrokerAuthorizationFixture : IAsyncLifetime
         });
     }
 
+    /// <summary>
+    /// Issues a registration credential for <paramref name="principalId"/> and <paramref name="taskId"/> through
+    /// the broker's credential service and returns its secret. <paramref name="expiresAt"/> in the past marks it
+    /// expired; <paramref name="revoked"/> revokes it right away.
+    /// </summary>
+    public string SeedRegistrationCredential(string principalId, string taskId, DateTime? expiresAt = null, bool revoked = false)
+        => IssueRegistrationCredential(principalId, taskId, expiresAt, revoked).Secret;
+
+    /// <inheritdoc cref="SeedRegistrationCredential"/>
+    public IssuedRegistrationCredential IssueRegistrationCredential(string principalId, string taskId, DateTime? expiresAt = null, bool revoked = false)
+    {
+        var credentials = Services.GetRequiredService<IRegistrationCredentialService>();
+        var issued = credentials.Issue(principalId, taskId, "integration_test", "integration-test", DateTime.UtcNow.AddHours(1));
+        if (expiresAt is not null)
+        {
+            Db.Execute(
+                "UPDATE registration_credentials SET expires_at = @expiresAt WHERE credential_id = @credentialId",
+                new { expiresAt = expiresAt.Value, credentialId = issued.CredentialId });
+        }
+
+        if (revoked)
+        {
+            credentials.Revoke(issued.CredentialId, "integration test", "integration-test");
+        }
+
+        return issued;
+    }
+
+    public RegistrationCredential? FindRegistrationCredential(string credentialId)
+        => Db.Get<RegistrationCredential>(credentialId);
+
     public BrokerTask? FindTask(string taskId)
         => Services.GetRequiredService<BrokerDb>().Get<BrokerTask>(taskId);
 

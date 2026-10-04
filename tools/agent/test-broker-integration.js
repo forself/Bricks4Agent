@@ -16,6 +16,10 @@
  * 9. Kill Switch（epoch 遞增 → 舊 token 失效）
  *
  * 使用方式（需要先啟動 Broker）：
+ *   0. 註冊需要種子任務的註冊密鑰：啟動 broker 前設定 DevelopmentSeed（Enabled、PrincipalId、TaskId、
+ *      AssignedRoleId 與至少 32 個字元的 RegistrationSecret，例如以環境變數 DevelopmentSeed__RegistrationSecret
+ *      提供），執行本測試時以同一組值設定 BROKER_PRINCIPAL_ID、BROKER_TASK_ID、BROKER_ROLE_ID
+ *      與 BROKER_REGISTRATION_SECRET（密鑰只從環境變數讀取，不放在命令列）。
  *   1. 以 Development 環境啟動 broker：
  *        cd packages/csharp/broker && dotnet run -e ASPNETCORE_ENVIRONMENT=Development
  *      （dotnet run 的 -e 是設定環境變數；--environment 也是同一個選項，要寫成 NAME=VALUE）
@@ -40,6 +44,11 @@ const crypto = require('crypto');
 
 const BROKER_URL = process.env.BROKER_URL || process.argv[3] || 'http://localhost:5000';
 const BROKER_PUB_KEY = process.env.BROKER_PUB_KEY || process.argv[2] || '';
+// 種子任務（DevelopmentSeed）的主體、任務、角色與註冊密鑰；密鑰只從環境變數讀取。
+const TEST_PRINCIPAL_ID = process.env.BROKER_PRINCIPAL_ID || '';
+const TEST_TASK_ID = process.env.BROKER_TASK_ID || '';
+const TEST_ROLE_ID = process.env.BROKER_ROLE_ID || 'role_reader';
+const REGISTRATION_SECRET = process.env.BROKER_REGISTRATION_SECRET || '';
 
 // ── 測試工具 ──
 
@@ -98,6 +107,12 @@ async function runTests() {
     console.log(`  Broker URL: ${BROKER_URL}`);
     console.log(`  Pub Key:    ${BROKER_PUB_KEY ? BROKER_PUB_KEY.substring(0, 20) + '...' : '(未提供)'}`);
 
+    if (!TEST_PRINCIPAL_ID || !TEST_TASK_ID || !REGISTRATION_SECRET) {
+        console.log('\n❌ 請以環境變數提供種子任務的 BROKER_PRINCIPAL_ID、BROKER_TASK_ID 與 BROKER_REGISTRATION_SECRET');
+        console.log('   （與 broker 的 DevelopmentSeed 設定相同；說明見檔案開頭）');
+        process.exit(1);
+    }
+
     if (!BROKER_PUB_KEY) {
         console.log('\n❌ 請提供 Broker 公鑰:');
         console.log('   node test-broker-integration.js <broker-pub-key-base64>');
@@ -115,17 +130,27 @@ async function runTests() {
             '回傳 status=ok');
     });
 
-    // ── 前置：建立測試用主體和任務 ──
-    // 注意：Admin 端點在當前實作中可能需要加密通道
-    // 這裡我們先用種子資料中已存在的資源
+    // ── 前置：使用 broker 的種子任務 ──
+    // 註冊只接受已指派主體與角色、且有註冊憑證的任務，所以不能臨時產生新的 ID。
 
-    // 種子資料中的 principal_id、task 需要動態建立
-    // 先嘗試用不加密的方式建立（因為 admin 端點可能排除加密）
-    // 如果失敗，使用硬編碼的測試值
+    const testPrincipalId = TEST_PRINCIPAL_ID;
+    const testTaskId = TEST_TASK_ID;
+    const testRoleId = TEST_ROLE_ID;
 
-    const testPrincipalId = 'prn_test_' + Date.now().toString(36);
-    const testTaskId = 'task_test_' + Date.now().toString(36);
-    const testRoleId = 'role_reader'; // 種子角色
+    // ── 測試 0：沒有註冊密鑰（或密鑰錯誤）一律被拒 ──
+
+    await test('0. 沒有或錯誤的註冊密鑰會被拒（同一個 401）', async () => {
+        for (const secret of [undefined, crypto.randomBytes(32).toString('base64url')]) {
+            const rejected = new BrokerClient(BROKER_URL, BROKER_PUB_KEY);
+            try {
+                await rejected.registerSession(testPrincipalId, testTaskId, testRoleId, secret);
+                assert(false, '預期註冊被拒');
+            } catch (e) {
+                assert(e.status === 401 && e.brokerMessage === 'Registration rejected.',
+                    `註冊被拒: ${e.message.substring(0, 60)}`);
+            }
+        }
+    });
 
     // ── 測試 1：Session 註冊（ECDH 交握） ──
 
@@ -139,7 +164,8 @@ async function runTests() {
             sessionInfo = await client.registerSession(
                 testPrincipalId,
                 testTaskId,
-                testRoleId
+                testRoleId,
+                REGISTRATION_SECRET
             );
 
             assert(sessionInfo.sessionId != null, `取得 session_id: ${sessionInfo.sessionId}`);
@@ -161,11 +187,13 @@ async function runTests() {
     // ── 測試 2：加密通訊驗證 ──
 
     await test('2. 加密信封通訊', async () => {
-        // 心跳請求（最簡單的加密端點）
+        // 心跳請求（最簡單的加密端點）：換發同一 session 的新 token
         try {
+            const tokenBefore = client.scopedToken;
             const heartbeatResult = await client.heartbeat();
             assert(heartbeatResult != null, '加密心跳成功');
-            assert(heartbeatResult.success !== false, `心跳回應: ${JSON.stringify(heartbeatResult).substring(0, 100)}`);
+            assert(heartbeatResult.success !== false, `心跳回應成功 (session=${heartbeatResult.data?.session_id})`);
+            assert(client.scopedToken && client.scopedToken !== tokenBefore, '心跳換發了新的 scoped token');
         } catch (e) {
             assert(false, `加密通訊失敗: ${e.message}`);
         }
@@ -368,13 +396,14 @@ async function runTests() {
 
     // ── 測試 12：重新建立 Session ──
 
-    await test('12. 重新建立 Session（驗證 session 可重建）', async () => {
+    await test('12. 重新建立 Session（同一把註冊密鑰可再次註冊）', async () => {
         const client2 = new BrokerClient(BROKER_URL, BROKER_PUB_KEY);
         try {
             const info = await client2.registerSession(
                 testPrincipalId,
                 testTaskId,
-                testRoleId
+                testRoleId,
+                REGISTRATION_SECRET
             );
             assert(info.sessionId != null, `新 session: ${info.sessionId}`);
             assert(info.sessionId !== sessionInfo.sessionId, '新 session_id 與舊的不同');

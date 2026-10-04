@@ -7,6 +7,10 @@
 // Proof that the file was really read: the mock model only answers with TOOL_RESULT_VERIFIED
 // when the tool result it receives through the broker contains text from README.html
 // (the `[governed] read_file` log line is printed before the tool runs, so it proves nothing).
+//
+// The agent registers with the seeded task's registration secret (BROKER_REGISTRATION_SECRET).
+// A second `up` restarts the broker on the same data volume: the agent must register again with
+// the same secret, and the secret must never appear in any container output.
 
 const assert = require('assert');
 const fs = require('fs');
@@ -78,32 +82,40 @@ async function main() {
     try {
         await buildImages(env);
 
-        upResult = await compose(engine, composeFile, [
-            'up',
-            '--abort-on-container-exit',
-            '--exit-code-from',
-            'agent',
-        ], { env, stream: true });
+        // First run on a fresh volume, then a second run that restarts every container (broker included)
+        // on the same volume: the seeded registration credential must still register the agent.
+        for (const run of ['first', 'second']) {
+            upResult = await compose(engine, composeFile, [
+                'up',
+                '--abort-on-container-exit',
+                '--exit-code-from',
+                'agent',
+            ], { env, stream: true });
 
-        assert.strictEqual(
-            upResult.code,
-            0,
-            `${engine} compose up failed.\nSTDOUT:\n${upResult.stdout}\nSTDERR:\n${upResult.stderr}`
-        );
+            assert.strictEqual(
+                upResult.code,
+                0,
+                `${engine} compose up (${run} run) failed.\nSTDOUT:\n${upResult.stdout}\nSTDERR:\n${upResult.stderr}`
+            );
 
-        const combinedOutput = `${upResult.stdout}\n${upResult.stderr}`;
-        assert(
-            combinedOutput.includes('STACK_OK'),
-            `Expected agent output to include STACK_OK.\n${combinedOutput}`
-        );
-        assert(
-            combinedOutput.includes('[governed] read_file'),
-            `Expected agent output to include governed read_file tool execution.\n${combinedOutput}`
-        );
-        assert(
-            combinedOutput.includes('TOOL_RESULT_VERIFIED') && !combinedOutput.includes('TOOL_RESULT_MISMATCH'),
-            `Expected the read_file result to carry README.html content read by the file-worker.\n${combinedOutput}`
-        );
+            const combinedOutput = `${upResult.stdout}\n${upResult.stderr}`;
+            assert(
+                !combinedOutput.includes(env.BROKER_REGISTRATION_SECRET),
+                `The registration secret must not appear in any container output (${run} run).`
+            );
+            assert(
+                combinedOutput.includes('STACK_OK'),
+                `Expected agent output to include STACK_OK (${run} run).\n${combinedOutput}`
+            );
+            assert(
+                combinedOutput.includes('[governed] read_file'),
+                `Expected agent output to include governed read_file tool execution (${run} run).\n${combinedOutput}`
+            );
+            assert(
+                combinedOutput.includes('TOOL_RESULT_VERIFIED') && !combinedOutput.includes('TOOL_RESULT_MISMATCH'),
+                `Expected the read_file result to carry README.html content read by the file-worker (${run} run).\n${combinedOutput}`
+            );
+        }
 
         await assertStackHardened(engine, composeFile, [], env, {
             services: ['mock-ollama', 'broker', 'file-worker', 'line-worker', 'agent'],

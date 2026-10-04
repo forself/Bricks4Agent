@@ -10,6 +10,19 @@ B4A 只收通用元件與通用能力；任何業務系統的專屬元件都不�
 
 ## 未發行
 
+### 預設行為變更：session 註冊需要註冊憑證、token 綁定所屬 session 並可續發（2026-10-05）
+
+**預設行為變更**
+
+- `sessions/register` 先驗證註冊憑證：交握的加密 payload 要帶該任務的 `registration_secret`。broker 只存 SHA-256 雜湊並以常數時間比對；缺少、錯誤、到期、撤銷，以及主體或任務不存在、任務未指派給該主體，一律回同一個 401（`Registration rejected.`），原因只寫進伺服器端 log 與稽核。憑證可重複使用到到期或撤銷，每一把都有到期時間；任務狀態、角色與本機來源的規則不變。
+- 憑證來源：`DevelopmentSeed:RegistrationSecret` 與 `DashboardSeed:RegistrationSecret`（每次啟動重新設定到期時間，`RegistrationSecretLifetimeHours` 預設 24；非 Development／Testing 環境啟用 `DevelopmentSeed` 卻沒有可用密鑰時拒絕啟動）、`/api/v1/agents/spawn`（每次簽發新的一把並撤銷上一把，經 `SecretEnvironment` 交給容器，`Broker:RegistrationCredential:SpawnedAgentLifetimeHours` 預設 24）、管理員的 `/api/v1/admin/registration-credentials/issue`（另有 `revoke`、`list`）。停用 agent 會撤銷它的憑證與 session；kill switch 只讓 token 失效。
+- compose 三個檔案新增必填的 `BROKER_REGISTRATION_SECRET`，broker 以它種入、agent 以它註冊；`gen-stack-secrets.mjs` 會產生它，既有的 env 檔請以 `--force` 重新產生（之後用 `down -v` 重建 stack）。agent 只從環境變數讀取（沒有命令列參數），system prompt 只放佔位字串。dashboard 登入表單多一個註冊密鑰欄位；e2e-bridge 與手動測試 `test-broker-integration.js` 從環境變數讀取。
+- token 只能在自己的 session 使用：加密信封的 session 必須是 token 的 session；不論加密信封或 Bearer，session 關閉、撤銷、到期或任務取消後，該 session 的 token 立即失效（401）。交握信封只接受於 `sessions/register`，送往其他端點回 400。
+- heartbeat 換發同一 session 的新 token（舊 token 自然到期），並延長 session 與其 grants，上限為註冊時間加 `Broker:Session:MaxLifetimeMinutes`（預設 1440）；`Broker:Session:TtlMinutes` 預設 60，必須小於 120。session 無效時 heartbeat 由 400 改為 401。agent、dashboard、e2e-bridge 會定時 heartbeat；agent 收到 401 時以同一把註冊密鑰重新註冊一次（kill switch 造成的 401 除外）。
+- 介面變更：`ISessionService.Heartbeat` 改回傳 `DateTime?`，`ICapabilityCatalog` 新增 `ExtendSessionGrants`，`IScopedTokenService` 新增 `TokenLifetime`，新增 `IRegistrationCredentialService`；`AgentSpawnService` 多一個接收憑證與 session 服務的建構子。自行實作這些介面的程式要同步調整。
+
+驗證入口：`dotnet test packages/csharp/tests/integration/Integration.Tests.csproj`（SessionBindingTests、RegistrationCredentialTests）、`dotnet test packages/csharp/tests/unit/Unit.Tests.csproj`（SessionLifetimeTests、RegistrationCredentialServiceTests）、`npm run validate:agent-governed`、`npm run validate:broker-llm-proxy`、設 `CONTAINER_ENGINE=docker` 後執行 `npm run validate:container-spawn` 與 `npm run validate:podman-governed-stack`。
+
 ### 預設行為變更：代理容器不掛 repo、所有容器加固、映像改為 .NET 10 與 Node 22（2026-10-05）
 
 **預設行為變更**

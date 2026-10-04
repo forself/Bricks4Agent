@@ -4,11 +4,14 @@
 const assert = require('assert');
 const crypto = require('crypto');
 const path = require('path');
+const util = require('util');
 
 const { AgentLoop } = require('../lib/agent-loop');
 const { BrokerClient } = require('../lib/broker-client');
 
 const ROOT = path.resolve(__dirname, '..', '..', '..');
+// A per-run value, so a match in the prompt can only come from the governed config.
+const TEST_REGISTRATION_SECRET = `test-registration-${crypto.randomBytes(24).toString('base64url')}`;
 
 function createForbiddenDirectProvider() {
     return {
@@ -41,6 +44,7 @@ function createFakeClient() {
     let llmChatCalls = 0;
     let registerCalls = 0;
     let heartbeatCalls = 0;
+    const registeredSecrets = [];
     const pendingFailures = { submit: [], llmChat: [], heartbeat: [] };
 
     function takeFailure(kind) {
@@ -52,8 +56,9 @@ function createFakeClient() {
 
     return {
         tokenExpiresAt: null,
-        async registerSession() {
+        async registerSession(principalId, taskId, roleId, registrationSecret) {
             registerCalls += 1;
+            registeredSecrets.push(registrationSecret);
             return {
                 sessionId: `sess_test_00${registerCalls}`,
                 scopedToken: `scoped_token_test_00${registerCalls}`,
@@ -213,6 +218,9 @@ function createFakeClient() {
         getRegisterCalls() {
             return registerCalls;
         },
+        getRegisteredSecrets() {
+            return registeredSecrets.slice();
+        },
         getHeartbeatCalls() {
             return heartbeatCalls;
         },
@@ -321,6 +329,7 @@ async function testSessionRecovery() {
             principalId: 'prn_test',
             taskId: 'task_test',
             roleId: 'role_reader',
+            registrationSecret: TEST_REGISTRATION_SECRET,
             clientFactory: () => fakeClient,
         },
     });
@@ -386,6 +395,18 @@ async function testSessionRecovery() {
 
     await agent.close();
     assert.strictEqual(executor._heartbeatTimer, null);
+
+    // Every registration, the first and each one after a 401, carries the registration secret.
+    assert.strictEqual(fakeClient.getRegisteredSecrets().length, fakeClient.getRegisterCalls());
+    assert(fakeClient.getRegisteredSecrets().every((secret) => secret === TEST_REGISTRATION_SECRET));
+    assertSecretNotExposed(executor.getPromptContext(), agent.messages[0].content);
+}
+
+/** The registration secret must never reach the prompt context or the system prompt (both go to the model). */
+function assertSecretNotExposed(promptContext, prompt) {
+    assert(!JSON.stringify(promptContext).includes(TEST_REGISTRATION_SECRET), 'prompt context must not contain the registration secret');
+    assert(!prompt.includes(TEST_REGISTRATION_SECRET), 'system prompt must not contain the registration secret');
+    assert.strictEqual(promptContext.requestBodies.registerOuter.plaintext.registration_secret, '<registration secret>');
 }
 
 async function main() {
@@ -401,6 +422,7 @@ async function main() {
             principalId: 'prn_test',
             taskId: 'task_test',
             roleId: 'role_reader',
+            registrationSecret: TEST_REGISTRATION_SECRET,
             clientFactory: () => fakeClient,
         },
     });
@@ -430,6 +452,12 @@ async function main() {
     assert(prompt.includes('"model": "broker-model"'));
 
     assert.strictEqual(promptContext.session.sessionId, 'sess_test_001');
+    assert.deepStrictEqual(fakeClient.getRegisteredSecrets(), [TEST_REGISTRATION_SECRET]);
+    assertSecretNotExposed(promptContext, prompt);
+    assert(
+        !util.inspect(agent.governedExecutor, { depth: 4, showHidden: true }).includes(TEST_REGISTRATION_SECRET),
+        'inspecting the executor (for example in a log line) must not reveal the registration secret'
+    );
     assert.deepStrictEqual(promptContext.allowedCapabilities.map((item) => item.capabilityId), ['file.read']);
     assert.deepStrictEqual(promptContext.allowedCapabilities[0].scopeOverride, { paths: [ROOT], routes: ['read_file'] });
     assert.strictEqual(promptContext.runtimeSpec.defaultModel, 'broker-model');

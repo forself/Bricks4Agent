@@ -32,12 +32,17 @@ const HEARTBEAT_MAX_INTERVAL_MS = 5 * 60 * 1000;
 const HEARTBEAT_MIN_INTERVAL_MS = 10 * 1000;
 
 class GovernedExecutor {
+    // The registration secret stays in a private field: it is sent only inside the encrypted register
+    // handshake and never placed in the prompt context, the system prompt or any log line.
+    #registrationSecret;
+
     constructor(options) {
         this.brokerUrl = options.brokerUrl;
         this.brokerPubKey = options.brokerPubKey;
         this.principalId = options.principalId;
         this.taskId = options.taskId;
         this.roleId = options.roleId;
+        this.#registrationSecret = options.registrationSecret || '';
         this.verbose = options.verbose || false;
         this.clientFactory = options.clientFactory || ((brokerUrl, brokerPubKey) => new BrokerClient(brokerUrl, brokerPubKey));
 
@@ -74,7 +79,8 @@ class GovernedExecutor {
             this.sessionInfo = await this.client.registerSession(
                 this.principalId,
                 this.taskId,
-                this.roleId
+                this.roleId,
+                this.#registrationSecret
             );
 
             await this._loadGovernanceSnapshot();
@@ -411,6 +417,8 @@ class GovernedExecutor {
                         principal_id: this.principalId,
                         task_id: this.taskId,
                         role_id: this.roleId,
+                        // Placeholder only: the prompt is sent to the model provider.
+                        registration_secret: '<registration secret>',
                     },
                 },
                 submitOuter: {
@@ -573,7 +581,8 @@ class GovernedExecutor {
                 const sessionInfo = await client.registerSession(
                     this.principalId,
                     this.taskId,
-                    this.roleId
+                    this.roleId,
+                    this.#registrationSecret
                 );
                 this.client = client;
                 this.sessionInfo = sessionInfo;

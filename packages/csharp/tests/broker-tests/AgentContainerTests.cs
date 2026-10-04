@@ -20,6 +20,7 @@ public static class AgentContainerTests
         Console.WriteLine();
 
         TestCreateListAndStopUseCanonicalAgentId();
+        TestSpawnCredentialAndDeactivateRevocation();
         TestNormalizeAgentIdHandlesUnsafeInput();
         TestContainerRunArgumentsAreAtomic();
         TestContainerRunArgumentsAreHardened();
@@ -74,6 +75,69 @@ public static class AgentContainerTests
             AssertTrue("agent-stop-accepts-raw-id", deactivated);
             var stopped = service.ListAgents().Single(a => a.AgentId == result.AgentId);
             AssertEqual("agent-list-state-completed", stopped.State, "Completed");
+        }
+        finally
+        {
+            TryDeleteDirectory(tempDir);
+        }
+    }
+
+    private static void TestSpawnCredentialAndDeactivateRevocation()
+    {
+        Console.WriteLine("--- Spawn registration credential and deactivation ---");
+
+        var tempDir = Path.Combine(Path.GetTempPath(), "b4a-agent-tests-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            var dbPath = Path.Combine(tempDir, "broker.db");
+            using var db = new BrokerDb($"Data Source={dbPath}");
+            new BrokerDbInitializer(db).Initialize();
+
+            var credentials = new RegistrationCredentialService(db);
+            var sessions = new SessionService(db);
+            var service = new AgentSpawnService(db, credentials, sessions);
+            var created = service.CreateAgent(new AgentSpawnRequest
+            {
+                AgentId = "credential",
+                DisplayName = "Credential Agent",
+                TaskType = "analysis",
+                RequestedBy = "agent-container-test",
+                LlmDefaultModel = "high-level-test-model"
+            });
+            AssertTrue("credential-agent-created", created.Success);
+            var agent = service.ListAgents().Single(a => a.AgentId == created.AgentId);
+
+            var first = service.IssueSpawnCredential(agent, "agent-container-test", TimeSpan.FromHours(1));
+            AssertTrue("spawn-credential-verifies", credentials.Verify(agent.PrincipalId, agent.TaskId, first.Secret).Succeeded);
+            AssertTrue("spawn-credential-to-string-hides-secret", !first.ToString().Contains(first.Secret, StringComparison.Ordinal));
+
+            // A second spawn of the same agent supersedes the first credential.
+            var second = service.IssueSpawnCredential(agent, "agent-container-test", TimeSpan.FromHours(1));
+            AssertEqual("respawn-revokes-previous",
+                credentials.Verify(agent.PrincipalId, agent.TaskId, first.Secret).Failure.ToString(),
+                RegistrationCredentialFailure.Revoked.ToString());
+            AssertTrue("respawn-credential-verifies", credentials.Verify(agent.PrincipalId, agent.TaskId, second.Secret).Succeeded);
+
+            // A failed spawn revokes the credential it was given.
+            var failed = service.IssueSpawnCredential(agent, "agent-container-test", TimeSpan.FromHours(1));
+            service.RevokeSpawnCredential(failed.CredentialId, "agent-container-test");
+            AssertEqual("failed-spawn-credential-revoked",
+                credentials.Verify(agent.PrincipalId, agent.TaskId, failed.Secret).Failure.ToString(),
+                RegistrationCredentialFailure.Revoked.ToString());
+
+            var adminIssued = credentials.Issue(agent.PrincipalId, agent.TaskId, RegistrationCredentialSources.AdminIssue, "agent-container-test", DateTime.UtcNow.AddHours(1));
+            var session = sessions.RegisterSession(agent.TaskId, agent.PrincipalId, agent.RoleId, "jti_credential", 1, string.Empty);
+
+            AssertTrue("deactivate-succeeds", service.DeactivateAgent(created.AgentId));
+            AssertEqual("deactivate-revokes-admin-issued",
+                credentials.Verify(agent.PrincipalId, agent.TaskId, adminIssued.Secret).Failure.ToString(),
+                RegistrationCredentialFailure.Revoked.ToString());
+            AssertTrue("deactivate-leaves-no-active-credential", credentials.List(agent.PrincipalId, agent.TaskId).Count == 0);
+            AssertEqual("deactivate-revokes-sessions",
+                sessions.GetSession(session.SessionId)?.Status.ToString(),
+                BrokerCore.Models.SessionStatus.Revoked.ToString());
         }
         finally
         {

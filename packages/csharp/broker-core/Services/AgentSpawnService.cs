@@ -19,6 +19,8 @@ namespace BrokerCore.Services;
 public class AgentSpawnService
 {
     private readonly BrokerDb _db;
+    private readonly IRegistrationCredentialService _credentials;
+    private readonly ISessionService _sessions;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -27,8 +29,15 @@ public class AgentSpawnService
     };
 
     public AgentSpawnService(BrokerDb db)
+        : this(db, new RegistrationCredentialService(db), new SessionService(db))
+    {
+    }
+
+    public AgentSpawnService(BrokerDb db, IRegistrationCredentialService credentials, ISessionService sessions)
     {
         _db = db;
+        _credentials = credentials ?? throw new ArgumentNullException(nameof(credentials));
+        _sessions = sessions ?? throw new ArgumentNullException(nameof(sessions));
     }
 
     /// <summary>取得所有可用能力清單（給前端 / Q&A 用）</summary>
@@ -242,7 +251,10 @@ public class AgentSpawnService
         };
     }
 
-    /// <summary>停用 Agent（標記 Principal 和 Task 為 Inactive）</summary>
+    /// <summary>
+    /// 停用 Agent：Principal 標為 Disabled、Task 標為 Completed，並撤銷這個 agent 的所有註冊憑證與 session，
+    /// 已發出的 token 隨 session 立即失效，容器也無法再註冊。
+    /// </summary>
     public bool DeactivateAgent(string agentId)
     {
         agentId = NormalizeAgentId(agentId);
@@ -256,6 +268,9 @@ public class AgentSpawnService
             _db.Update(principal);
         }
 
+        _credentials.RevokeFor(principalId, taskId, "Agent deactivated.", "agent-deactivate");
+        _sessions.RevokeSessionsByTask(taskId, "Agent deactivated.", "agent-deactivate");
+
         var task = _db.Get<BrokerTask>(taskId);
         if (task != null)
         {
@@ -265,6 +280,31 @@ public class AgentSpawnService
         }
         return false;
     }
+
+    /// <summary>
+    /// 為 spawn 出來的容器簽發註冊憑證：先撤銷這個 agent 先前 spawn 時簽發的憑證，再簽發新的一把。
+    /// 明文只在回傳值中出現一次，呼叫端以 SecretEnvironment 交給容器。
+    /// </summary>
+    public IssuedRegistrationCredential IssueSpawnCredential(AgentSummary agent, string issuedBy, TimeSpan lifetime)
+    {
+        ArgumentNullException.ThrowIfNull(agent);
+        _credentials.RevokeFor(
+            agent.PrincipalId,
+            agent.TaskId,
+            "Superseded by a new spawn.",
+            issuedBy,
+            RegistrationCredentialSources.AgentSpawn);
+        return _credentials.Issue(
+            agent.PrincipalId,
+            agent.TaskId,
+            RegistrationCredentialSources.AgentSpawn,
+            issuedBy,
+            DateTime.UtcNow + lifetime);
+    }
+
+    /// <summary>spawn 失敗時撤銷剛簽發的憑證。</summary>
+    public void RevokeSpawnCredential(string credentialId, string revokedBy)
+        => _credentials.Revoke(credentialId, "Spawn failed.", revokedBy);
 
     /// <summary>列出所有已建立的 Agent</summary>
     public List<AgentSummary> ListAgents()

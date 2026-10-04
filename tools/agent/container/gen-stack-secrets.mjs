@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // 產生 tools/agent/container/compose*.yml 需要的開發用金鑰組（零依賴，只用 node:crypto）。
 //
-// compose 檔不再附預設金鑰：broker 三把金鑰、broker 公鑰與 worker 憑證都以 ${VAR:?...} 要求呼叫端提供。
+// compose 檔不再附預設金鑰：broker 三把金鑰、broker 公鑰、種子任務的註冊密鑰與 worker 憑證
+// 都以 ${VAR:?...} 要求呼叫端提供。
 //
 // 用法：
 //   node tools/agent/container/gen-stack-secrets.mjs              寫到預設位置（repo 以外）
@@ -38,6 +39,7 @@ export const STACK_SECRET_VARIABLES = Object.freeze([
     'BROKER_MASTER_KEY_BASE64',
     'BROKER_ECDH_PRIVATE_KEY_BASE64',
     'BROKER_ECDH_PUBLIC_KEY_BASE64',
+    'BROKER_REGISTRATION_SECRET',
     'LINE_WORKER_AUTH_KEY_ID',
     'LINE_WORKER_AUTH_SHARED_SECRET',
     'FILE_WORKER_AUTH_KEY_ID',
@@ -46,14 +48,21 @@ export const STACK_SECRET_VARIABLES = Object.freeze([
     'EXEC_ADAPTER_AUTH_SHARED_SECRET',
 ]);
 
-/** 三個 compose 檔都需要的 broker 變數（另兩個 compose 檔沒有 worker）。 */
-export const BROKER_SECRET_VARIABLES = Object.freeze(STACK_SECRET_VARIABLES.slice(0, 4));
+/** 三個 compose 檔都需要的 broker 變數（另兩個 compose 檔沒有 worker）。明確列出，不依賴順序。 */
+export const BROKER_SECRET_VARIABLES = Object.freeze([
+    'BROKER_SCOPED_TOKEN_SECRET',
+    'BROKER_MASTER_KEY_BASE64',
+    'BROKER_ECDH_PRIVATE_KEY_BASE64',
+    'BROKER_ECDH_PUBLIC_KEY_BASE64',
+    'BROKER_REGISTRATION_SECRET',
+]);
 
 /**
  * 產生一組新的開發金鑰（只在記憶體中）。
  * - ScopedToken secret：48 bytes 亂數的 base64（broker 要求 ≥ 32 UTF-8 bytes）
  * - MasterKey：32 bytes 亂數的 base64（AES-256）
  * - ECDH：P-256 金鑰對；私鑰 PKCS#8 DER base64、公鑰 SPKI DER base64（agent 會釘選這把公鑰）
+ * - 註冊密鑰：32 bytes 亂數的 base64url（broker 種子任務只存其雜湊，agent 以它註冊 session）
  * - worker 共享密鑰：32 bytes 亂數的 base64；KeyId 帶亂數後綴
  */
 export function generateStackSecrets() {
@@ -69,6 +78,7 @@ export function generateStackSecrets() {
         BROKER_MASTER_KEY_BASE64: randomBytes(32).toString('base64'),
         BROKER_ECDH_PRIVATE_KEY_BASE64: privateKey.toString('base64'),
         BROKER_ECDH_PUBLIC_KEY_BASE64: publicKey.toString('base64'),
+        BROKER_REGISTRATION_SECRET: randomBytes(32).toString('base64url'),
         LINE_WORKER_AUTH_KEY_ID: `line-worker-${keySuffix}`,
         LINE_WORKER_AUTH_SHARED_SECRET: randomBytes(32).toString('base64'),
         FILE_WORKER_AUTH_KEY_ID: `file-worker-${keySuffix}`,
@@ -89,6 +99,9 @@ export function verifyStackSecrets(secrets) {
     if (problems.length === 0) {
         if (Buffer.byteLength(secrets.BROKER_SCOPED_TOKEN_SECRET, 'utf8') < 32) {
             problems.push('BROKER_SCOPED_TOKEN_SECRET must be at least 32 UTF-8 bytes');
+        }
+        if (secrets.BROKER_REGISTRATION_SECRET.length < 32) {
+            problems.push('BROKER_REGISTRATION_SECRET must be at least 32 characters');
         }
         if (Buffer.from(secrets.BROKER_MASTER_KEY_BASE64, 'base64').length !== 32) {
             problems.push('BROKER_MASTER_KEY_BASE64 must decode to 32 bytes');

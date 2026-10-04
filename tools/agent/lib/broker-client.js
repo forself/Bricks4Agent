@@ -15,7 +15,11 @@ class BrokerClient {
         this._requestChain = Promise.resolve();
     }
 
-    async registerSession(principalId, taskId, roleId) {
+    /**
+     * Registers a session. The registration secret is sent only inside the encrypted handshake
+     * payload (sealed with the broker's pinned public key); it is never logged or kept on the client.
+     */
+    async registerSession(principalId, taskId, roleId, registrationSecret) {
         const ecdh = crypto.createECDH('prime256v1');
         const clientPubUncompressed = ecdh.generateKeys();
         const clientPubSpki = ecdhPubToSpki(clientPubUncompressed);
@@ -25,6 +29,7 @@ class BrokerClient {
             principal_id: principalId,
             task_id: taskId,
             role_id: roleId,
+            registration_secret: registrationSecret || '',
         });
 
         const brokerPubKeyBuffer = Buffer.from(this.brokerPubKeyBase64, 'base64');

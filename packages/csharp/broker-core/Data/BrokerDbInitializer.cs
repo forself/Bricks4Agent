@@ -1,4 +1,5 @@
 using BrokerCore.Models;
+using BrokerCore.Services;
 using System.Text.Json;
 
 namespace BrokerCore.Data;
@@ -16,15 +17,22 @@ public class BrokerDbInitializer
         _db = db;
     }
 
-    /// <summary>初始化所有表結構 + 種子資料</summary>
+    /// <summary>初始化所有表結構 + 種子資料（種子憑證的來源為 development_seed）</summary>
     public void Initialize(DevelopmentSeedOptions? developmentSeed = null)
+        => Initialize(developmentSeed, RegistrationCredentialSources.DevelopmentSeed);
+
+    /// <summary>
+    /// 初始化所有表結構 + 種子資料。<paramref name="seedCredentialSource"/> 標示種子註冊憑證的來源
+    /// （DevelopmentSeed 與 DashboardSeed 各自管理自己的憑證，互不撤銷）。
+    /// </summary>
+    public void Initialize(DevelopmentSeedOptions? developmentSeed, string seedCredentialSource)
     {
         EnsureTables();
         NormalizeLocalAdminBootstrap();
         SeedSystemEpoch();
         SeedRoles();
         SeedCapabilities();
-        SeedDevelopmentData(developmentSeed);
+        SeedDevelopmentData(developmentSeed, seedCredentialSource);
     }
 
     /// <summary>建立 19 張表（含向量 + FTS5）</summary>
@@ -56,6 +64,7 @@ public class BrokerDbInitializer
         _db.EnsureTable<PortalUserSession>();
         _db.EnsureTable<Revocation>();
         _db.EnsureTable<SystemEpoch>();
+        _db.EnsureTable<RegistrationCredential>();
 
         // ── Phase 4：因果工作流（4 張） + 觀測（1 張） ──
         _db.EnsureTable<Plan>();
@@ -102,6 +111,10 @@ public class BrokerDbInitializer
         // CapabilityGrant: heartbeat 依 session 延長授予
         TryExecute(@"CREATE INDEX IF NOT EXISTS idx_capability_grants_session
                       ON capability_grants(session_id, status)");
+
+        // RegistrationCredential: register 依 principal＋task 查憑證
+        TryExecute(@"CREATE INDEX IF NOT EXISTS idx_registration_credentials_subject
+                      ON registration_credentials(principal_id, task_id, revoked_at)");
         TryExecute(@"CREATE INDEX IF NOT EXISTS idx_approval_decisions_approval
                       ON approval_decisions(approval_id, decision)");
 
@@ -1060,7 +1073,7 @@ public class BrokerDbInitializer
         try { _db.Execute(sql); }
         catch { /* 索引已存在等情況忽略 */ }
     }
-    private void SeedDevelopmentData(DevelopmentSeedOptions? developmentSeed)
+    private void SeedDevelopmentData(DevelopmentSeedOptions? developmentSeed, string seedCredentialSource)
     {
         if (developmentSeed?.Enabled != true)
             return;
@@ -1099,5 +1112,40 @@ public class BrokerDbInitializer
                 CreatedAt = DateTime.UtcNow
             });
         }
+
+        SeedRegistrationCredential(developmentSeed, seedCredentialSource);
+    }
+
+    /// <summary>
+    /// 種子的註冊憑證：設定了可用的密鑰就建立或保留（同一把密鑰只把到期時間重新起算），
+    /// 沒有設定就撤銷這個來源先前的憑證，讓這組 principal＋task 無法註冊。密鑰本身不寫入任何地方。
+    /// </summary>
+    private void SeedRegistrationCredential(DevelopmentSeedOptions seed, string source)
+    {
+        if (string.IsNullOrWhiteSpace(seed.PrincipalId) || string.IsNullOrWhiteSpace(seed.TaskId))
+            return;
+
+        var credentials = new RegistrationCredentialService(_db);
+        if (!RegistrationCredentialService.IsUsableSecret(seed.RegistrationSecret))
+        {
+            credentials.RevokeFor(
+                seed.PrincipalId,
+                seed.TaskId,
+                "Seed registration secret is not configured.",
+                "broker-startup",
+                source);
+            return;
+        }
+
+        var lifetimeHours = Math.Clamp(
+            seed.RegistrationSecretLifetimeHours,
+            1,
+            RegistrationCredentialService.MaxLifetimeHours);
+        credentials.UpsertSeed(
+            seed.PrincipalId,
+            seed.TaskId,
+            seed.RegistrationSecret,
+            source,
+            DateTime.UtcNow.AddHours(lifetimeHours));
     }
 }

@@ -112,7 +112,7 @@ public static class AgentEndpoints
         });
 
         // ── 4. 生成 Agent 容器 ──
-        agents.MapPost("/spawn", async (HttpContext ctx, AgentSpawnService spawnService, IContainerManager containerManager, IEnvelopeCrypto crypto, IConfiguration configuration, HighLevelLlmOptions highLevelLlmOptions) =>
+        agents.MapPost("/spawn", async (HttpContext ctx, AgentSpawnService spawnService, IContainerManager containerManager, IEnvelopeCrypto crypto, IConfiguration configuration, HighLevelLlmOptions highLevelLlmOptions, RegistrationCredentialOptions credentialOptions) =>
         {
             var body = RequestBodyHelper.GetBody(ctx);
             if (!RequestBodyHelper.TryGetRequired(body, "agent_id", out var agentId, out var err))
@@ -189,6 +189,15 @@ public static class AgentEndpoints
                     : runPrompt.Trim();
             }
 
+            // 註冊憑證：每次 spawn 簽發新的一把（並撤銷這個 agent 先前 spawn 的憑證），可重複使用到到期，
+            // 讓容器重啟後仍能註冊。明文只經 SecretEnvironment 交給容器（CLI 參數中只有 -e NAME），
+            // 不出現在回應、log 或例外訊息中。
+            var issuedBy = RequestBodyHelper.GetPrincipalId(ctx);
+            var credential = spawnService.IssueSpawnCredential(
+                agent,
+                string.IsNullOrWhiteSpace(issuedBy) ? "agents-spawn" : issuedBy,
+                credentialOptions.SpawnedAgentLifetime);
+
             try
             {
                 var containerId = await containerManager.SpawnWorkerAsync(new ContainerSpawnRequest
@@ -196,6 +205,10 @@ public static class AgentEndpoints
                     WorkerType = "agent",
                     WorkerId = agentId,
                     TrustedEnvironment = envOverrides,
+                    SecretEnvironment = new Dictionary<string, string>(StringComparer.Ordinal)
+                    {
+                        [RegistrationSecretEnvironmentVariable] = credential.Secret
+                    },
                 });
 
                 return Results.Ok(ApiResponseHelper.Success(new
@@ -203,11 +216,14 @@ public static class AgentEndpoints
                     agent_id = agentId,
                     container_id = containerId,
                     status = "spawned",
-                    capabilities = agent.Capabilities
+                    capabilities = agent.Capabilities,
+                    registration_credential_id = credential.CredentialId,
+                    registration_credential_expires_at = credential.ExpiresAt
                 }));
             }
             catch (Exception ex)
             {
+                spawnService.RevokeSpawnCredential(credential.CredentialId, "agents-spawn");
                 return Results.Json(ApiResponseHelper.Error(
                     $"Failed to spawn agent container: {ex.Message}", 500), statusCode: 500);
             }
@@ -551,6 +567,12 @@ public static class AgentEndpoints
 #pragma warning restore CS0162
         });
     }
+
+    /// <summary>
+    /// The container environment variable that carries the registration secret. It is passed through
+    /// ContainerSpawnRequest.SecretEnvironment, so only its name appears in the runtime CLI arguments.
+    /// </summary>
+    public const string RegistrationSecretEnvironmentVariable = "BROKER_REGISTRATION_SECRET";
 
     /// <summary>Upper bound for the max_iterations a spawn request may ask for.</summary>
     internal const int MaxSpawnIterations = 50;

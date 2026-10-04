@@ -18,6 +18,8 @@ const TEST_PRINCIPAL_ID = 'prn_dev_test';
 const TEST_TASK_ID = 'task_dev_test';
 const TEST_ROLE_ID = 'role_admin';
 const TEST_MODEL = 'proxy-test-model';
+// Seeded registration secret for this run (the broker stores only its hash).
+const TEST_REGISTRATION_SECRET = crypto.randomBytes(32).toString('base64url');
 const TEST_RUNTIME_DESCRIPTOR = JSON.stringify({
     llm: {
         default_model: TEST_MODEL,
@@ -295,6 +297,7 @@ async function startBroker(brokerPort, upstreamPort, brokerPrivateKeyBase64) {
             DevelopmentSeed__TaskId: TEST_TASK_ID,
             DevelopmentSeed__TaskType: 'analysis',
             DevelopmentSeed__AssignedRoleId: TEST_ROLE_ID,
+            DevelopmentSeed__RegistrationSecret: TEST_REGISTRATION_SECRET,
             DevelopmentSeed__RuntimeDescriptor: TEST_RUNTIME_DESCRIPTOR,
         },
         stdio: ['ignore', 'pipe', 'pipe'],
@@ -349,8 +352,21 @@ async function main() {
             `http://127.0.0.1:${brokerPort}`,
             Buffer.from(publicKey).toString('base64')
         );
+        // Without the registration secret, or with a wrong one, registration is refused with the same 401.
+        for (const secret of [undefined, crypto.randomBytes(32).toString('base64url')]) {
+            const noCredentialClient = new BrokerClient(
+                `http://127.0.0.1:${brokerPort}`,
+                Buffer.from(publicKey).toString('base64')
+            );
+            await assert.rejects(
+                () => noCredentialClient.registerSession(TEST_PRINCIPAL_ID, TEST_TASK_ID, TEST_ROLE_ID, secret),
+                (error) => error.status === 401 && error.brokerMessage === 'Registration rejected.'
+            );
+        }
+
+        // With the secret, the task and role rules still apply.
         await assert.rejects(
-            () => mismatchClient.registerSession(TEST_PRINCIPAL_ID, TEST_TASK_ID, 'role_reader'),
+            () => mismatchClient.registerSession(TEST_PRINCIPAL_ID, TEST_TASK_ID, 'role_reader', TEST_REGISTRATION_SECRET),
             /task-assigned role/i
         );
 
@@ -367,6 +383,7 @@ async function main() {
                 principalId: TEST_PRINCIPAL_ID,
                 taskId: TEST_TASK_ID,
                 roleId: TEST_ROLE_ID,
+                registrationSecret: TEST_REGISTRATION_SECRET,
             },
         });
 
@@ -383,6 +400,9 @@ async function main() {
         assert.deepStrictEqual(promptContext.runtimeSpec.capabilityIds, ['file.read']);
 
         const prompt = agent.messages[0].content;
+        // The prompt goes to the model provider: it may show only a placeholder for the secret.
+        assert(!prompt.includes(TEST_REGISTRATION_SECRET), 'the system prompt must not contain the registration secret');
+        assert(!JSON.stringify(promptContext).includes(TEST_REGISTRATION_SECRET), 'the prompt context must not contain the registration secret');
         assert(prompt.includes(`/api/v1/runtime/spec`));
         assert(prompt.includes(`/api/v1/llm/chat`));
         assert(prompt.includes(`"model": "${TEST_MODEL}"`));
@@ -432,7 +452,8 @@ async function main() {
             `http://127.0.0.1:${brokerPort}`,
             Buffer.from(publicKey).toString('base64')
         );
-        await otherClient.registerSession(TEST_PRINCIPAL_ID, TEST_TASK_ID, TEST_ROLE_ID);
+        // The same registration secret registers a second session (as a restarted container would).
+        await otherClient.registerSession(TEST_PRINCIPAL_ID, TEST_TASK_ID, TEST_ROLE_ID, TEST_REGISTRATION_SECRET);
         const otherToken = otherClient.scopedToken;
         otherClient.scopedToken = client.scopedToken;
         await assert.rejects(() => otherClient.listGrants(), (error) => error.status === 401);
@@ -453,6 +474,11 @@ async function main() {
         assert.deepStrictEqual(executor.getAllowedCapabilityIds(), ['file.read']);
 
         await agent.close();
+
+        // Nothing the broker logged may contain the registration secret, and the upstream model never saw it.
+        assert(!broker.logs.stdout.includes(TEST_REGISTRATION_SECRET), 'broker stdout must not contain the registration secret');
+        assert(!broker.logs.stderr.includes(TEST_REGISTRATION_SECRET), 'broker stderr must not contain the registration secret');
+        assert(!JSON.stringify(upstream.captured).includes(TEST_REGISTRATION_SECRET), 'the upstream model must not receive the registration secret');
         console.log('Broker LLM proxy integration test passed.');
     } finally {
         await broker.stop();

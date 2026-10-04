@@ -110,6 +110,8 @@ Do not assume the sidecar path and the generic agent default are the same thing.
 
 ### Start governed mode
 
+Registering a session needs the task's registration secret. The agent reads it only from the `BROKER_REGISTRATION_SECRET` environment variable (there is no command-line option, because arguments show up in process listings), sends it inside the encrypted register handshake, and removes it from its own environment. Set it before any of the commands below.
+
 Generic broker example:
 
 ```bash
@@ -144,6 +146,7 @@ $env:BROKER_PUB_KEY='MFkwEwYH...'
 $env:BROKER_PRINCIPAL_ID='prn_xxx'
 $env:BROKER_TASK_ID='task_xxx'
 $env:BROKER_ROLE_ID='role_reader'
+$env:BROKER_REGISTRATION_SECRET='<the task registration secret>'
 node tools/agent/agent.js --governed
 ```
 
@@ -232,6 +235,7 @@ podman run --rm -it \
   -e BROKER_PRINCIPAL_ID=prn_xxx \
   -e BROKER_TASK_ID=task_xxx \
   -e BROKER_ROLE_ID=role_reader \
+  -e BROKER_REGISTRATION_SECRET \
   -e AGENT_MODEL=llama3.1 \
   -e AGENT_RUN="Read README.md and summarize key points" \
   bricks4agent-agent:dev
@@ -239,7 +243,7 @@ podman run --rm -it \
 
 The container entrypoint accepts only the governed path:
 
-- `BROKER_URL`, `BROKER_PUB_KEY`, `BROKER_PRINCIPAL_ID`, and `BROKER_TASK_ID` are required
+- `BROKER_URL`, `BROKER_PUB_KEY`, `BROKER_PRINCIPAL_ID`, `BROKER_TASK_ID`, and `BROKER_REGISTRATION_SECRET` are required; the registration secret stays in the environment and is never added to the agent's arguments (`-e BROKER_REGISTRATION_SECRET` without a value passes it from your shell)
 
 - direct provider API keys are not the intended formal execution path
 

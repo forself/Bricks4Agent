@@ -24,7 +24,8 @@ namespace Integration.Tests.Api;
 ///     maintains itself are admin-only, and versions other principals left under those ids are ignored;
 ///     a malformed ACL is refused on write and grants nothing on read;
 ///   - session registration issues tokens only for tasks with an assigned principal and role, always with
-///     the task's role, and administrative roles only for callers on the local host;
+///     the task's role, and administrative roles only for callers on the local host (the registration
+///     credential itself is covered by <see cref="RegistrationCredentialTests"/>);
 ///   - closing a session invalidates its token, on its own channel and as a Bearer token alike
 ///     (token/session binding and renewal are covered by <see cref="SessionBindingTests"/>);
 ///   - the portal lists only the signed-in user's own artifacts;
@@ -182,6 +183,9 @@ public sealed class BrokerAuthorizationRegressionTests : IClassFixture<BrokerAut
     [InlineData("POST", "/api/v1/audit/trace", "{\"trace_id\":\"trace_authz_probe\"}")]
     [InlineData("POST", "/api/v1/audit/verify", "{\"trace_id\":\"trace_authz_probe\"}")]
     [InlineData("POST", "/api/v1/admin/kill-switch", "{\"reason\":\"authorization regression\"}")]
+    [InlineData("POST", "/api/v1/admin/registration-credentials/issue", "{\"principal_id\":\"prn_authz_probe\",\"task_id\":\"task_authz_probe\"}")]
+    [InlineData("POST", "/api/v1/admin/registration-credentials/revoke", "{\"principal_id\":\"prn_authz_probe\",\"task_id\":\"task_authz_probe\"}")]
+    [InlineData("POST", "/api/v1/admin/registration-credentials/list", "{}")]
     [InlineData("post", "/api/v1/tasks/create", "{\"task_type\":\"query\"}")]
     [InlineData("post", "/api/v1/agents/list", "{}")]
     public async Task AdminEndpoint_WithNonAdminToken_IsForbidden(string method, string path, string payload)
@@ -317,8 +321,9 @@ public sealed class BrokerAuthorizationRegressionTests : IClassFixture<BrokerAut
         var taskId = Id("task_authz_reg");
         _fixture.SeedPrincipal(principalId);
         _fixture.SeedTask(taskId, "query", submittedBy: "system", assignedPrincipalId: null, assignedRoleId: ReaderRole);
+        var secret = _fixture.SeedRegistrationCredential(principalId, taskId);
 
-        var result = await _client.RegisterAsync(principalId, taskId, remoteAddress: LoopbackAddress);
+        var result = await _client.RegisterAsync(principalId, taskId, remoteAddress: LoopbackAddress, registrationSecret: secret);
 
         AssertRegistrationRejected(result);
     }
@@ -330,9 +335,10 @@ public sealed class BrokerAuthorizationRegressionTests : IClassFixture<BrokerAut
         var taskId = Id("task_authz_reg");
         _fixture.SeedPrincipal(principalId);
         _fixture.SeedTask(taskId, "query", submittedBy: "system", assignedPrincipalId: principalId, assignedRoleId: null);
+        var secret = _fixture.SeedRegistrationCredential(principalId, taskId);
 
-        // Loopback caller, so only the missing task role can be the reason for the rejection.
-        var result = await _client.RegisterAsync(principalId, taskId, roleId: AdminRole, remoteAddress: LoopbackAddress);
+        // Loopback caller with a valid credential, so only the missing task role can be the reason for the rejection.
+        var result = await _client.RegisterAsync(principalId, taskId, roleId: AdminRole, remoteAddress: LoopbackAddress, registrationSecret: secret);
 
         AssertRegistrationRejected(result);
     }
@@ -344,8 +350,9 @@ public sealed class BrokerAuthorizationRegressionTests : IClassFixture<BrokerAut
         var taskId = Id("task_authz_reg");
         _fixture.SeedPrincipal(principalId);
         _fixture.SeedTask(taskId, "query", submittedBy: "system", assignedPrincipalId: principalId, assignedRoleId: ReaderRole);
+        var secret = _fixture.SeedRegistrationCredential(principalId, taskId);
 
-        var result = await _client.RegisterAsync(principalId, taskId, roleId: ExecutorRole);
+        var result = await _client.RegisterAsync(principalId, taskId, roleId: ExecutorRole, registrationSecret: secret);
 
         result.StatusCode.Should().Be(HttpStatusCode.BadRequest, "the register response was {0}", result);
         result.Body.Should().ContainEquivalentOf("task-assigned role", "the register response was {0}", result);
@@ -361,10 +368,13 @@ public sealed class BrokerAuthorizationRegressionTests : IClassFixture<BrokerAut
         var taskId = Id("task_authz_reg");
         _fixture.SeedPrincipal(principalId);
         _fixture.SeedTask(taskId, "query", submittedBy: "system", assignedPrincipalId: principalId, assignedRoleId: AdminRole);
+        var secret = _fixture.SeedRegistrationCredential(principalId, taskId);
 
-        var result = await _client.RegisterAsync(principalId, taskId, remoteAddress: remoteAddress);
+        var result = await _client.RegisterAsync(principalId, taskId, remoteAddress: remoteAddress, registrationSecret: secret);
 
         AssertRegistrationRejected(result);
+        // The credential is valid, so the rejection is the local-host rule for administrative roles.
+        result.StatusCode.Should().Be(HttpStatusCode.Forbidden, "the register response was {0}", result);
     }
 
     [Theory]
@@ -376,8 +386,9 @@ public sealed class BrokerAuthorizationRegressionTests : IClassFixture<BrokerAut
         var taskId = Id("task_authz_reg");
         _fixture.SeedPrincipal(principalId);
         _fixture.SeedTask(taskId, "query", submittedBy: "system", assignedPrincipalId: principalId, assignedRoleId: AdminRole);
+        var secret = _fixture.SeedRegistrationCredential(principalId, taskId);
 
-        var result = await _client.RegisterAsync(principalId, taskId, remoteAddress: remoteAddress);
+        var result = await _client.RegisterAsync(principalId, taskId, remoteAddress: remoteAddress, registrationSecret: secret);
 
         result.StatusCode.Should().Be(HttpStatusCode.OK, "the register response was {0}", result);
         result.Session.Should().NotBeNull("a scoped token must be issued; the register response was {0}", result);
@@ -394,8 +405,9 @@ public sealed class BrokerAuthorizationRegressionTests : IClassFixture<BrokerAut
         var taskId = Id("task_authz_reg");
         _fixture.SeedPrincipal(principalId);
         _fixture.SeedTask(taskId, "query", submittedBy: "system", assignedPrincipalId: principalId, assignedRoleId: ReaderRole);
+        var secret = _fixture.SeedRegistrationCredential(principalId, taskId);
 
-        var result = await _client.RegisterAsync(principalId, taskId, remoteAddress: NonLoopbackAddress);
+        var result = await _client.RegisterAsync(principalId, taskId, remoteAddress: NonLoopbackAddress, registrationSecret: secret);
 
         result.StatusCode.Should().Be(HttpStatusCode.OK, "the register response was {0}", result);
         result.Session.Should().NotBeNull("a scoped token must be issued; the register response was {0}", result);

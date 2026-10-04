@@ -6,9 +6,11 @@
 // container through POST /api/v1/agents/spawn. Checks:
 //   - the run arguments' §13.2 hardening is in effect (read-only rootfs, noexec /tmp tmpfs,
 //     cap-drop ALL, no-new-privileges, pids and memory limits, no mounts, dedicated network);
-//   - the agent registers with the broker, loads the baked-in manual and completes one run;
+//   - the agent registers with the registration credential the broker issued for the spawn (handed over
+//     as a secret environment variable: present in the container, absent from its arguments and from
+//     the broker's responses and logs), loads the baked-in manual and completes one run;
 //   - spawn input is constrained (broker_url, max_iterations, /workers/spawn refusals);
-//   - /agents/stop removes the container (rm -f -v).
+//   - /agents/stop removes the container (rm -f -v) and revokes the agent's registration credential.
 // CONTAINER_ENGINE=docker uses docker; the default is podman. Needs the agent image
 // (built here unless SKIP_IMAGE_BUILD is set).
 
@@ -28,6 +30,7 @@ const engine = containerEngine();
 const hostAlias = engine === 'docker' ? 'host.docker.internal' : 'host.containers.internal';
 const ADMIN_PRINCIPAL_ID = 'prn_spawn_admin';
 const ADMIN_TASK_ID = 'task_spawn_admin';
+const ADMIN_REGISTRATION_SECRET = crypto.randomBytes(32).toString('base64url');
 const TEST_MODEL = 'spawn-test-model';
 const READY_TEXT = 'AGENT_READY';
 
@@ -48,10 +51,12 @@ async function getFreePort() {
 
 async function startFakeOllama() {
     const port = await getFreePort();
+    const bodies = [];
     const server = http.createServer((req, res) => {
         let body = '';
         req.on('data', (chunk) => { body += chunk; });
         req.on('end', () => {
+            bodies.push(body);
             res.setHeader('Content-Type', 'application/json');
             if (req.method === 'GET' && req.url === '/api/tags') {
                 res.end(JSON.stringify({ models: [{ name: TEST_MODEL, size: 1 }] }));
@@ -75,7 +80,7 @@ async function startFakeOllama() {
         server.on('error', reject);
         server.listen(port, '127.0.0.1', resolve);
     });
-    return { port, close: () => new Promise((resolve) => server.close(resolve)) };
+    return { port, seen: () => bodies.join(' '), close: () => new Promise((resolve) => server.close(resolve)) };
 }
 
 async function buildBroker() {
@@ -114,6 +119,7 @@ async function startBroker({ brokerPort, poolPort, upstreamPort, privateKeyBase6
             DevelopmentSeed__TaskId: ADMIN_TASK_ID,
             DevelopmentSeed__TaskType: 'analysis',
             DevelopmentSeed__AssignedRoleId: 'role_admin',
+            DevelopmentSeed__RegistrationSecret: ADMIN_REGISTRATION_SECRET,
             FunctionPool__Enabled: 'true',
             FunctionPool__ListenPort: String(poolPort),
             FunctionPool__BindAddress: '127.0.0.1',
@@ -204,7 +210,7 @@ async function main() {
         });
 
         const admin = new BrokerClient(`http://127.0.0.1:${brokerPort}`, Buffer.from(publicKey).toString('base64'));
-        await admin.registerSession(ADMIN_PRINCIPAL_ID, ADMIN_TASK_ID, 'role_admin');
+        await admin.registerSession(ADMIN_PRINCIPAL_ID, ADMIN_TASK_ID, 'role_admin', ADMIN_REGISTRATION_SECRET);
 
         // /workers/spawn: agents and caller-supplied environments are refused.
         await assert.rejects(() => adminPost(admin, '/api/v1/workers/spawn', { worker_type: 'agent' }), /Broker error 400/);
@@ -233,6 +239,8 @@ async function main() {
         assert.strictEqual(spawned.success, true, `agents/spawn failed: ${JSON.stringify(spawned)}\n${broker.logs.stdout.slice(-4000)}`);
         containerId = spawned.data.container_id;
         assert(containerId, 'agents/spawn returned no container id');
+        assert(spawned.data.registration_credential_id, 'agents/spawn reports the id of the credential it issued');
+        assert(!('registration_secret' in spawned.data), 'agents/spawn must not return the secret');
 
         await waitForExit(containerId, 180000);
 
@@ -263,6 +271,20 @@ async function main() {
         assert(env.includes(`BROKER_URL=http://${hostAlias}:${brokerPort}`), 'BROKER_URL is the configured AgentBrokerUrl');
         assert(env.includes('AGENT_MAX_ITERATIONS=50'), 'max_iterations is capped');
 
+        // The registration secret reached the container through the CLI environment (-e NAME); the runtime's
+        // inspect output shows it, but it is not in the container's arguments, the spawn response or any log.
+        const secretEntry = env.find((entry) => entry.startsWith('BROKER_REGISTRATION_SECRET='));
+        assert(secretEntry, 'the agent container has BROKER_REGISTRATION_SECRET');
+        const agentSecret = secretEntry.slice('BROKER_REGISTRATION_SECRET='.length);
+        assert(agentSecret.length >= 32, 'the issued registration secret is long enough');
+        assert(agentSecret !== ADMIN_REGISTRATION_SECRET, 'the agent gets its own credential');
+        const containerArgs = [container.Path, ...(container.Args || []), ...((container.Config && container.Config.Cmd) || []), ...((container.Config && container.Config.Entrypoint) || [])];
+        assert(!containerArgs.some((arg) => String(arg).includes(agentSecret)), 'the secret is not in the container arguments');
+        assert(!JSON.stringify(spawned).includes(agentSecret), 'the secret is not in the spawn response');
+        assert(!output.includes(agentSecret), 'the agent does not log the secret');
+        assert(!broker.logs.stdout.includes(agentSecret) && !broker.logs.stderr.includes(agentSecret), 'the broker does not log the secret');
+        assert(!upstream.seen().includes(agentSecret), 'the model provider never receives the secret');
+
         assert(output.includes('Loading project manual: /app/AGENT.md'), `agent should load the baked-in manual\n${output}`);
         assert(output.includes(READY_TEXT), `agent should complete one run\n${output}`);
         assert(output.includes('[Governed] session closed'), `agent should close its session\n${output}`);
@@ -274,6 +296,13 @@ async function main() {
         const gone = await run(engine, ['inspect', containerId]);
         assert.notStrictEqual(gone.code, 0, 'agents/stop should remove the container');
         containerId = null;
+
+        // Stopping the agent revoked its credential: the same secret can no longer register.
+        const stoppedAgent = new BrokerClient(`http://127.0.0.1:${brokerPort}`, Buffer.from(publicKey).toString('base64'));
+        await assert.rejects(
+            () => stoppedAgent.registerSession(created.data.principal_id, created.data.task_id, created.data.role_id, agentSecret),
+            (error) => error.status === 401 && error.brokerMessage === 'Registration rejected.'
+        );
 
         console.log(`Container manager spawn test passed (${engine}).`);
     } finally {

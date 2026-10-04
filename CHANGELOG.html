@@ -29,6 +29,17 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 </ul>
 <p>B4A 只收通用元件與通用能力；任何業務系統的專屬元件都不寫入 B4A。</p>
 <h2>未發行</h2>
+<h3>預設行為變更：session 註冊需要註冊憑證、token 綁定所屬 session 並可續發（2026-10-05）</h3>
+<p><strong>預設行為變更</strong></p>
+<ul>
+<li><code>sessions/register</code> 先驗證註冊憑證：交握的加密 payload 要帶該任務的 <code>registration_secret</code>。broker 只存 SHA-256 雜湊並以常數時間比對；缺少、錯誤、到期、撤銷，以及主體或任務不存在、任務未指派給該主體，一律回同一個 401（<code>Registration rejected.</code>），原因只寫進伺服器端 log 與稽核。憑證可重複使用到到期或撤銷，每一把都有到期時間；任務狀態、角色與本機來源的規則不變。</li>
+<li>憑證來源：<code>DevelopmentSeed:RegistrationSecret</code> 與 <code>DashboardSeed:RegistrationSecret</code>（每次啟動重新設定到期時間，<code>RegistrationSecretLifetimeHours</code> 預設 24；非 Development／Testing 環境啟用 <code>DevelopmentSeed</code> 卻沒有可用密鑰時拒絕啟動）、<code>/api/v1/agents/spawn</code>（每次簽發新的一把並撤銷上一把，經 <code>SecretEnvironment</code> 交給容器，<code>Broker:RegistrationCredential:SpawnedAgentLifetimeHours</code> 預設 24）、管理員的 <code>/api/v1/admin/registration-credentials/issue</code>（另有 <code>revoke</code>、<code>list</code>）。停用 agent 會撤銷它的憑證與 session；kill switch 只讓 token 失效。</li>
+<li>compose 三個檔案新增必填的 <code>BROKER_REGISTRATION_SECRET</code>，broker 以它種入、agent 以它註冊；<code>gen-stack-secrets.mjs</code> 會產生它，既有的 env 檔請以 <code>--force</code> 重新產生（之後用 <code>down -v</code> 重建 stack）。agent 只從環境變數讀取（沒有命令列參數），system prompt 只放佔位字串。dashboard 登入表單多一個註冊密鑰欄位；e2e-bridge 與手動測試 <code>test-broker-integration.js</code> 從環境變數讀取。</li>
+<li>token 只能在自己的 session 使用：加密信封的 session 必須是 token 的 session；不論加密信封或 Bearer，session 關閉、撤銷、到期或任務取消後，該 session 的 token 立即失效（401）。交握信封只接受於 <code>sessions/register</code>，送往其他端點回 400。</li>
+<li>heartbeat 換發同一 session 的新 token（舊 token 自然到期），並延長 session 與其 grants，上限為註冊時間加 <code>Broker:Session:MaxLifetimeMinutes</code>（預設 1440）；<code>Broker:Session:TtlMinutes</code> 預設 60，必須小於 120。session 無效時 heartbeat 由 400 改為 401。agent、dashboard、e2e-bridge 會定時 heartbeat；agent 收到 401 時以同一把註冊密鑰重新註冊一次（kill switch 造成的 401 除外）。</li>
+<li>介面變更：<code>ISessionService.Heartbeat</code> 改回傳 <code>DateTime?</code>，<code>ICapabilityCatalog</code> 新增 <code>ExtendSessionGrants</code>，<code>IScopedTokenService</code> 新增 <code>TokenLifetime</code>，新增 <code>IRegistrationCredentialService</code>；<code>AgentSpawnService</code> 多一個接收憑證與 session 服務的建構子。自行實作這些介面的程式要同步調整。</li>
+</ul>
+<p>驗證入口：<code>dotnet test packages/csharp/tests/integration/Integration.Tests.csproj</code>（SessionBindingTests、RegistrationCredentialTests）、<code>dotnet test packages/csharp/tests/unit/Unit.Tests.csproj</code>（SessionLifetimeTests、RegistrationCredentialServiceTests）、<code>npm run validate:agent-governed</code>、<code>npm run validate:broker-llm-proxy</code>、設 <code>CONTAINER_ENGINE=docker</code> 後執行 <code>npm run validate:container-spawn</code> 與 <code>npm run validate:podman-governed-stack</code>。</p>
 <h3>預設行為變更：代理容器不掛 repo、所有容器加固、映像改為 .NET 10 與 Node 22（2026-10-05）</h3>
 <p><strong>預設行為變更</strong></p>
 <ul>

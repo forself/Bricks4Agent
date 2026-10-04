@@ -166,15 +166,18 @@ public sealed class EncryptedBrokerClient
 
     /// <summary>
     /// Performs the real register handshake: a fresh client ECDH key, the broker public key from
-    /// <c>GET /api/v1/health</c>, and a handshake envelope carrying principal, task and optional role.
-    /// On success the returned session holds the derived session key and the issued scoped token.
+    /// <c>GET /api/v1/health</c>, and a handshake envelope carrying principal, task, optional role and
+    /// the registration secret. On success the returned session holds the derived session key and the
+    /// issued scoped token.
     /// </summary>
     /// <param name="remoteAddress">Caller address applied by <see cref="RemoteAddressStartupFilter"/>; null keeps the TestServer default.</param>
+    /// <param name="registrationSecret">Sent as <c>registration_secret</c> inside the sealed payload; null leaves the field out.</param>
     public async Task<HandshakeResult> RegisterAsync(
         string principalId,
         string taskId,
         string? roleId = null,
-        string? remoteAddress = null)
+        string? remoteAddress = null,
+        string? registrationSecret = null)
     {
         var brokerPublicKey = await GetBrokerPublicKeyAsync();
 
@@ -194,6 +197,11 @@ public sealed class EncryptedBrokerClient
             if (roleId is not null)
             {
                 payload["role_id"] = roleId;
+            }
+
+            if (registrationSecret is not null)
+            {
+                payload["registration_secret"] = registrationSecret;
             }
 
             var wire = SealHandshake(sharedSecret, clientPublicKey, payload);

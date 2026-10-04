@@ -116,6 +116,7 @@ node tools/agent/agent.js --generate --project-path projects/PhotoDiary --valida
 </ul>
 <p>Do not assume the sidecar path and the generic agent default are the same thing.</p>
 <h3>Start governed mode</h3>
+<p>Registering a session needs the task's registration secret. The agent reads it only from the <code>BROKER_REGISTRATION_SECRET</code> environment variable (there is no command-line option, because arguments show up in process listings), sends it inside the encrypted register handshake, and removes it from its own environment. Set it before any of the commands below.</p>
 <p>Generic broker example:</p>
 <pre><code class="language-bash">node tools/agent/agent.js \
   --governed \
@@ -142,6 +143,7 @@ $env:BROKER_PUB_KEY='MFkwEwYH...'
 $env:BROKER_PRINCIPAL_ID='prn_xxx'
 $env:BROKER_TASK_ID='task_xxx'
 $env:BROKER_ROLE_ID='role_reader'
+$env:BROKER_REGISTRATION_SECRET='&lt;the task registration secret&gt;'
 node tools/agent/agent.js --governed
 </code></pre>
 <h3>Broker contract</h3>
@@ -202,13 +204,14 @@ node tools/agent/agent.js --governed
   -e BROKER_PRINCIPAL_ID=prn_xxx \
   -e BROKER_TASK_ID=task_xxx \
   -e BROKER_ROLE_ID=role_reader \
+  -e BROKER_REGISTRATION_SECRET \
   -e AGENT_MODEL=llama3.1 \
   -e AGENT_RUN=&quot;Read README.md and summarize key points&quot; \
   bricks4agent-agent:dev
 </code></pre>
 <p>The container entrypoint accepts only the governed path:</p>
 <ul>
-<li><code>BROKER_URL</code>, <code>BROKER_PUB_KEY</code>, <code>BROKER_PRINCIPAL_ID</code>, and <code>BROKER_TASK_ID</code> are required</li>
+<li><code>BROKER_URL</code>, <code>BROKER_PUB_KEY</code>, <code>BROKER_PRINCIPAL_ID</code>, <code>BROKER_TASK_ID</code>, and <code>BROKER_REGISTRATION_SECRET</code> are required; the registration secret stays in the environment and is never added to the agent's arguments (<code>-e BROKER_REGISTRATION_SECRET</code> without a value passes it from your shell)</li>
 <li>direct provider API keys are not the intended formal execution path</li>
 <li>nothing is mounted into the agent: <code>/workspace</code> is an empty logical root baked into the image, every file read or write goes through broker capabilities (the file worker or the execution adapter), and the project manual comes from <code>/app/AGENT.md</code> (<code>AGENT_MANUAL_PATH</code>)</li>
 <li>the image runs as uid 10001 and needs no writable path besides the <code>/tmp</code> tmpfs</li>

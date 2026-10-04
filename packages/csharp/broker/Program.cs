@@ -35,17 +35,31 @@ var connectionString = $"Data Source={dbPath}";
 builder.Services.AddSingleton(sp => BrokerDb.UseSqlite(connectionString));
 
 // ── 初始化資料庫（17 張表 + 種子資料） ──
+// 種子任務的註冊密鑰（RegistrationSecret）：DevelopmentSeed 在非 Development／Testing 環境缺少時拒絕啟動，
+// 其他情況只記警告且不建立憑證（見 RegistrationSeedValidator）；密鑰本身不寫進 log。
 using (var initDb = BrokerDb.UseSqlite(connectionString))
 {
     var initializer = new BrokerDbInitializer(initDb);
-    var developmentSeed = builder.Configuration.GetSection("DevelopmentSeed").Get<DevelopmentSeedOptions>();
-    initializer.Initialize(developmentSeed);
+    var developmentSeed = builder.Configuration.GetSection(Broker.Configuration.RegistrationSeedValidator.DevelopmentSeedSection).Get<DevelopmentSeedOptions>();
+    Broker.Configuration.RegistrationSeedValidator.Validate(
+        developmentSeed,
+        Broker.Configuration.RegistrationSeedValidator.DevelopmentSeedSection,
+        builder.Environment.EnvironmentName,
+        startupLogger);
+    initializer.Initialize(developmentSeed, RegistrationCredentialSources.DevelopmentSeed);
     // Dashboard 種子（管理介面專用 Principal）：只在 Development 環境種入
-    var dashboardSeed = builder.Configuration.GetSection("DashboardSeed").Get<DevelopmentSeedOptions>();
+    var dashboardSeed = builder.Configuration.GetSection(Broker.Configuration.RegistrationSeedValidator.DashboardSeedSection).Get<DevelopmentSeedOptions>();
     if (dashboardSeed?.Enabled == true)
     {
         if (builder.Environment.IsDevelopment())
-            initializer.Initialize(dashboardSeed);
+        {
+            Broker.Configuration.RegistrationSeedValidator.Validate(
+                dashboardSeed,
+                Broker.Configuration.RegistrationSeedValidator.DashboardSeedSection,
+                builder.Environment.EnvironmentName,
+                startupLogger);
+            initializer.Initialize(dashboardSeed, RegistrationCredentialSources.DashboardSeed);
+        }
         else
             startupLogger.LogWarning(
                 "DashboardSeed is enabled but ignored outside the Development environment (current: {Environment}).",
@@ -139,6 +153,14 @@ sessionLifetime.Validate();
 builder.Services.AddSingleton(sessionLifetime);
 builder.Services.AddSingleton<ISessionService>(sp =>
     new SessionService(sp.GetRequiredService<BrokerDb>(), sessionLifetime));
+
+// Session 註冊憑證（只存雜湊）與 broker 簽發憑證的存活時間（Broker:RegistrationCredential）
+var registrationCredentialOptions = builder.Configuration.GetSection(RegistrationCredentialOptions.SectionName).Get<RegistrationCredentialOptions>()
+    ?? new RegistrationCredentialOptions();
+registrationCredentialOptions.Validate();
+builder.Services.AddSingleton(registrationCredentialOptions);
+builder.Services.AddSingleton<IRegistrationCredentialService>(sp =>
+    new RegistrationCredentialService(sp.GetRequiredService<BrokerDb>()));
 
 if (cacheEnabled && distributedCache != null)
 {
@@ -473,7 +495,10 @@ builder.Services.AddSingleton<IObservationService>(sp =>
 
 // ── Agent Spawn Service ──
 builder.Services.AddSingleton<AgentSpawnService>(sp =>
-    new AgentSpawnService(sp.GetRequiredService<BrokerDb>()));
+    new AgentSpawnService(
+        sp.GetRequiredService<BrokerDb>(),
+        sp.GetRequiredService<IRegistrationCredentialService>(),
+        sp.GetRequiredService<ISessionService>()));
 
 // ── Embedding Service（向量嵌入） ──
 var embeddingConfig = builder.Configuration.GetSection("Embedding").Get<BrokerCore.Services.EmbeddingOptions>()

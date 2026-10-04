@@ -297,8 +297,9 @@ public sealed class SessionBindingTests : IClassFixture<BrokerAuthorizationFixtu
         var taskId = EncryptedBrokerClient.NewId("task_authz_binding");
         _fixture.SeedPrincipal(principalId);
         _fixture.SeedTask(taskId, "query", submittedBy: "system", assignedPrincipalId: principalId, assignedRoleId: ReaderRole);
+        var secret = _fixture.SeedRegistrationCredential(principalId, taskId);
 
-        var result = await _client.RegisterAsync(principalId, taskId);
+        var result = await _client.RegisterAsync(principalId, taskId, registrationSecret: secret);
         result.StatusCode.Should().Be(HttpStatusCode.OK, "the register response was {0}", result);
         result.Session.Should().NotBeNull("the register response was {0}", result);
         BrokerJson.ReadString(result.Body, "data", "token_expires_at").Should().NotBeNullOrEmpty(

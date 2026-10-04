@@ -34,6 +34,7 @@ const BROKER_SECRET_VARIABLES = [
     'BROKER_MASTER_KEY_BASE64',
     'BROKER_ECDH_PRIVATE_KEY_BASE64',
     'BROKER_ECDH_PUBLIC_KEY_BASE64',
+    'BROKER_REGISTRATION_SECRET',
 ];
 const WORKER_SECRET_VARIABLES = [
     'LINE_WORKER_AUTH_KEY_ID',
@@ -208,7 +209,20 @@ assertIncludes('agent image bakes in the project manual', agentContainerfile, 'C
 assertIncludes('agent image points the prompt at the baked manual', agentContainerfile, 'ENV AGENT_MANUAL_PATH=/app/AGENT.md');
 assert(!/^\s*(?:RUN|&&).*\bchown\b.*\/app\b/m.test(agentContainerfile), 'agent image: /app must stay owned by root (no chown of /app)');
 assertNotIncludes('agent image does not chown the code', agentContainerfile, 'chown -R agent:agent /app');
-assertIncludes('agent image keeps the default project root', read('tools/agent/container/entrypoint.sh'), 'WORKSPACE_DIR="${AGENT_PROJECT_ROOT:-/workspace}"');
+const entrypoint = read('tools/agent/container/entrypoint.sh');
+assertIncludes('agent image keeps the default project root', entrypoint, 'WORKSPACE_DIR="${AGENT_PROJECT_ROOT:-/workspace}"');
+// 註冊密鑰：entrypoint 要求它存在，但只留在環境變數，不放進 node 的參數（argv 會出現在程序清單）。
+assertIncludes('entrypoint requires the registration secret', entrypoint, 'require_env BROKER_REGISTRATION_SECRET');
+const entrypointArgvStart = entrypoint.indexOf('set -- ');
+assert(entrypointArgvStart > entrypoint.indexOf('require_env BROKER_REGISTRATION_SECRET'), 'entrypoint: set -- block not found after the env checks');
+const entrypointArgv = entrypoint.slice(entrypointArgvStart, entrypoint.lastIndexOf('exec "$@"'));
+assertNotIncludes('entrypoint keeps the registration secret out of argv', entrypointArgv, 'REGISTRATION_SECRET');
+const agentCli = read('tools/agent/agent.js');
+assertIncludes('agent reads the registration secret from the environment', agentCli, 'process.env.BROKER_REGISTRATION_SECRET');
+assertIncludes('agent drops the registration secret from its environment', agentCli, 'delete process.env.BROKER_REGISTRATION_SECRET');
+assert(!/--registration-secret/.test(agentCli), 'agent.js: the registration secret must not have a command-line option');
+const governedExecutorSource = read('tools/agent/lib/governed-executor.js');
+assertIncludes('prompt context shows only a placeholder for the registration secret', governedExecutorSource, "registration_secret: '<registration secret>'");
 
 // ── compose 每個服務的 §13.2 加固（依縮排切出服務區塊逐一檢查） ──
 function composeServices(text) {
@@ -264,6 +278,11 @@ for (const composePath of COMPOSE_FILES) {
     }
 
     const agent = services.agent;
+    // 註冊密鑰：broker 的種子與 agent 取用同一個必填變數（${VAR:?...}，訊息指向產生器，見上方檢查）。
+    assertIncludes(`${composePath} broker seeds the registration secret`, services.broker,
+        'DevelopmentSeed__RegistrationSecret: "${BROKER_REGISTRATION_SECRET:?');
+    assertIncludes(`${composePath} agent receives the registration secret`, agent,
+        'BROKER_REGISTRATION_SECRET: "${BROKER_REGISTRATION_SECRET:?');
     assert(!/^ {4}volumes:/m.test(agent), `${composePath} agent: the agent must not mount anything`);
     assert(!/:\/workspace\b/.test(agent), `${composePath} agent: no :/workspace bind mount`);
     assertIncludes(`${composePath} agent keeps the logical project root`, agent, 'AGENT_PROJECT_ROOT: "/workspace"');
@@ -366,6 +385,13 @@ assertNotIncludes('workers/spawn no longer copies a request environment', worker
 assertIncludes('workers/spawn reports a missing runtime CLI', workerEndpoints, 'catch (Win32Exception)');
 assertIncludes('agents/spawn caps max_iterations', agentEndpoints, 'ClampMaxIterations(maxIterations)');
 assertIncludes('agents/spawn only accepts the configured broker url', agentEndpoints, 'Agent broker_url must match the configured AgentBrokerUrl.');
+// 註冊憑證只經 SecretEnvironment 交給容器（參數中只有 -e NAME），不放進 TrustedEnvironment。
+assertIncludes('agents/spawn issues a registration credential', agentEndpoints, 'spawnService.IssueSpawnCredential(');
+assertIncludes('agents/spawn hands the secret over as a secret environment', agentEndpoints, '[RegistrationSecretEnvironmentVariable] = credential.Secret');
+assertIncludes('agents/spawn names the container variable', agentEndpoints, 'RegistrationSecretEnvironmentVariable = "BROKER_REGISTRATION_SECRET"');
+assertNotIncludes('agents/spawn keeps the secret out of the trusted environment', agentEndpoints, 'envOverrides["BROKER_REGISTRATION_SECRET"]');
+assertNotIncludes('agents/spawn keeps the secret out of the trusted environment (indexer form)', agentEndpoints, '["BROKER_REGISTRATION_SECRET"] =');
+assertIncludes('agents/spawn revokes the credential when the spawn fails', agentEndpoints, 'spawnService.RevokeSpawnCredential(credential.CredentialId');
 
 const spawnService = read('packages/csharp/broker-core/Services/AgentSpawnService.cs');
 assertIncludes('agent id normalization exists', spawnService, 'public static string NormalizeAgentId');
@@ -376,6 +402,8 @@ assertIncludes('symbol-only agent id gets safe fallback', spawnService, 'string.
 assertIncludes('post-sanitize agent id keeps canonical prefix', spawnService, 'normalized = "agent_" + normalized');
 assertIncludes('list agents follows task/principal pair', spawnService, 'string.Equals(t.AssignedPrincipalId, $"prn_{t.TaskId[5..]}", StringComparison.Ordinal)');
 assertIncludes('deactivate normalizes requested agent id', spawnService, 'agentId = NormalizeAgentId(agentId);');
+assertIncludes('deactivate revokes registration credentials', spawnService, '_credentials.RevokeFor(principalId, taskId, "Agent deactivated."');
+assertIncludes('deactivate revokes sessions', spawnService, '_sessions.RevokeSessionsByTask(taskId, "Agent deactivated."');
 
 const codeArtifactService = read('packages/csharp/broker/Services/HighLevelCodeArtifactService.cs');
 assertIncludes('code prompt prioritizes custom components', codeArtifactService, '任何網頁程式都必須優先使用專案自訂元件庫');

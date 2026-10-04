@@ -80,6 +80,9 @@ services:
       DevelopmentSeed__TaskId: "${BROKER_TASK_ID:-task_podman_dev}"
       DevelopmentSeed__TaskType: "${BROKER_TASK_TYPE:-analysis}"
       DevelopmentSeed__AssignedRoleId: "${BROKER_ROLE_ID:-role_reader}"
+      # Registration secret for the seeded task (the broker keeps only its hash). The agent gets the
+      # same value below; it is required to register a session.
+      DevelopmentSeed__RegistrationSecret: "${BROKER_REGISTRATION_SECRET:?run node tools/agent/container/gen-stack-secrets.mjs and pass the file with --env-file}"
       DevelopmentSeed__RuntimeDescriptor: >-
         {"llm":{"default_model":"${STACK_MODEL:-stack-test-model}","allow_model_override":false,"supports_tool_calling":true,"streaming_enabled":false},"capability_grants":[{"capability_id":"file.read","scope":{"paths":["/workspace"],"routes":["read_file"]},"quota":-1},{"capability_id":"file.list","scope":{"paths":["/workspace"],"routes":["list_directory"]},"quota":-1},{"capability_id":"file.search_name","scope":{"paths":["/workspace"],"routes":["search_files"]},"quota":-1},{"capability_id":"file.search_content","scope":{"paths":["/workspace"],"routes":["search_content"]},"quota":-1},{"capability_id":"file.write","scope":{"paths":["/workspace"],"routes":["write_file"]},"quota":100},{"capability_id":"repo.patch.apply","scope":{"paths":["/workspace"],"routes":["apply_patch"]},"quota":-1},{"capability_id":"build.test.run","scope":{"routes":["run_build_test"]},"quota":-1},{"capability_id":"line.message.send","scope":{"routes":["send_line_message"]},"quota":-1},{"capability_id":"line.notification.send","scope":{"routes":["send_line_notification"]},"quota":-1},{"capability_id":"line.message.read","scope":{"routes":["read_line_messages"]},"quota":-1},{"capability_id":"line.approval.request","scope":{"routes":["request_line_approval"]},"quota":-1},{"capability_id":"line.audio.send","scope":{"routes":["send_line_audio"]},"quota":-1}]}
       # ── Function Pool (Worker TCP Dispatch) ──
@@ -256,6 +259,8 @@ services:
       BROKER_PRINCIPAL_ID: "${BROKER_PRINCIPAL_ID:-prn_podman_dev}"
       BROKER_TASK_ID: "${BROKER_TASK_ID:-task_podman_dev}"
       BROKER_ROLE_ID: "${BROKER_ROLE_ID:-role_reader}"
+      # read by agent.js from the environment only (never passed as an argument)
+      BROKER_REGISTRATION_SECRET: "${BROKER_REGISTRATION_SECRET:?run node tools/agent/container/gen-stack-secrets.mjs and pass the file with --env-file}"
       BROKER_WAIT_FOR_HEALTH: "1"
       BROKER_WAIT_TIMEOUT_SECONDS: "90"
       AGENT_PROJECT_ROOT: "/workspace"

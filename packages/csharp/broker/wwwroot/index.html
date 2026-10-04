@@ -50,6 +50,7 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
       <el-form-item :label="t('principalId')"><el-input v-model="loginForm.principal" /></el-form-item>
       <el-form-item :label="t('taskId')"><el-input v-model="loginForm.task" /></el-form-item>
       <el-form-item :label="t('roleId')"><el-input v-model="loginForm.role" /></el-form-item>
+      <el-form-item :label="t('registrationSecret')"><el-input v-model="loginForm.secret" type="password" show-password autocomplete="off" /></el-form-item>
       <el-form-item>
         <el-button type="primary" style="width:100%" :loading="loginLoading" @click="doLogin">
           ECDH Handshake & {{t('login')}}
@@ -244,7 +245,8 @@ function concat(...a){const r=new Uint8Array(a.reduce((s,x)=>s+x.byteLength,0));
 
 class CryptoSession{
   constructor(){this.sessionId=null;this.sessionKey=null;this.scopedToken=null;this.tokenExpiresAt=null;this.seq=0;this._chain=Promise.resolve()}
-  async handshake(url,pubB64,pid,tid,rid){
+  // The registration secret travels only inside the encrypted handshake payload; it is not stored.
+  async handshake(url,pubB64,pid,tid,rid,secret){
     const kp=await crypto.subtle.generateKey({name:'ECDH',namedCurve:'P-256'},true,['deriveBits']);
     const spki=await crypto.subtle.exportKey('spki',kp.publicKey);
     const cpb=b64e(spki);
@@ -254,7 +256,7 @@ class CryptoSession{
     const nonce=crypto.getRandomValues(new Uint8Array(12));
     const hk=await crypto.subtle.importKey('raw',shared,'HKDF',false,['deriveKey']);
     const handshakeKey=await crypto.subtle.deriveKey({name:'HKDF',hash:'SHA-256',salt:nonce,info:enc('broker-handshake-v1')},hk,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);
-    const payload=JSON.stringify({principal_id:pid,task_id:tid,role_id:rid});
+    const payload=JSON.stringify({principal_id:pid,task_id:tid,role_id:rid,registration_secret:secret||''});
     const aad=enc(cpb+'/api/v1/sessions/register');
     const ct=await crypto.subtle.encrypt({name:'AES-GCM',iv:nonce,additionalData:aad,tagLength:128},handshakeKey,enc(payload));
     const ctb=new Uint8Array(ct);
@@ -312,7 +314,7 @@ class CryptoSession{
 // i18n
 // ═══════════════════════════════════════════════
 const I18N={
-  zh:{login:'登入',principalId:'Principal ID',taskId:'Task ID',roleId:'Role ID',encrypted:'加密連線',refresh:'重新整理',logout:'登出',
+  zh:{login:'登入',principalId:'Principal ID',taskId:'Task ID',roleId:'Role ID',registrationSecret:'註冊密鑰',encrypted:'加密連線',refresh:'重新整理',logout:'登出',
     overview:'總覽',agents:'代理',capabilities:'能力',capList:'能力清單',allAgents:'所有代理',
     totalAgents:'代理總數',activeAgents:'活躍中',sessionSeq:'Session 序號',
     state:'狀態',role:'角色',taskType:'任務類別',created:'建立時間',stop:'停止',
@@ -324,7 +326,7 @@ const I18N={
     confirmStop:'確定要停止代理 "{id}" 嗎？',confirmTitle:'確認',
     sessionExpired:'工作階段已失效，請重新登入。',
   },
-  en:{login:'Login',principalId:'Principal ID',taskId:'Task ID',roleId:'Role ID',encrypted:'Encrypted',refresh:'Refresh',logout:'Logout',
+  en:{login:'Login',principalId:'Principal ID',taskId:'Task ID',roleId:'Role ID',registrationSecret:'Registration secret',encrypted:'Encrypted',refresh:'Refresh',logout:'Logout',
     overview:'Overview',agents:'Agents',capabilities:'Capabilities',capList:'Capability List',allAgents:'All Agents',
     totalAgents:'Total Agents',activeAgents:'Active',sessionSeq:'Session Seq',
     state:'State',role:'Role',taskType:'Task Type',created:'Created',stop:'Stop',
@@ -352,7 +354,7 @@ const app=createApp({
 
     const loggedIn=ref(false);const loginLoading=ref(false);const loginError=ref('');
     const cryptoInfo=ref('Waiting for ECDH P-256 handshake...');
-    const loginForm=reactive({principal:'prn_dashboard',task:'task_dashboard',role:'role_admin'});
+    const loginForm=reactive({principal:'prn_dashboard',task:'task_dashboard',role:'role_admin',secret:''});
 
     let session=null;let brokerUrl='';let brokerPubKey='';let heartbeatTimer=null;
 
@@ -375,7 +377,8 @@ const app=createApp({
         if(!brokerPubKey)throw new Error('No broker_public_key in health');
         cryptoInfo.value=`Broker PK: ${brokerPubKey.substring(0,24)}...\nGenerating ECDH P-256 keypair...`;
         session=new CryptoSession();
-        await session.handshake(brokerUrl,brokerPubKey,loginForm.principal,loginForm.task,loginForm.role);
+        await session.handshake(brokerUrl,brokerPubKey,loginForm.principal,loginForm.task,loginForm.role,loginForm.secret);
+        loginForm.secret='';
         cryptoInfo.value=`Session: ${session.sessionId}\nEncryption: AES-256-GCM | Key Exchange: ECDH P-256 + HKDF-SHA256`;
         loggedIn.value=true;
         startHeartbeat();

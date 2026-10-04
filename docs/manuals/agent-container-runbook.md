@@ -83,7 +83,8 @@ podman compose --env-file "$HOME/.bricks4agent/agent-stack.env" -f tools/agent/c
 - 輸出位置:`$env:BRICKS4AGENT_SECRETS_DIR/agent-stack.env`;未設定時為 `~/.bricks4agent/agent-stack.env`。產生器會印出實際路徑,但不印出金鑰值。
 - 產生器拒絕寫進 repo 內;既有檔案要加 `--force` 才覆寫(等同輪替全部金鑰,之後用 `down -v` 重建 stack)。`--self-test` 只在記憶體中檢查,不寫檔。變數清單見 `tools/agent/container/agent-stack.env.example`(只有名稱)。
 - 為什麼不能放進 repo:agent 容器已不掛 repo,但 file-worker 以唯讀方式把整個 repo 提供給 agent 經 broker 讀取;拒絕清單只擋得住 `.env`、`.env.*`、`agent-stack.env` 等固定名稱,換個檔名就擋不住。compose 也會自動讀取 compose 檔旁的 `.env`。
-- 必填變數:三個 compose 檔都要 `BROKER_SCOPED_TOKEN_SECRET`、`BROKER_MASTER_KEY_BASE64`、`BROKER_ECDH_PRIVATE_KEY_BASE64`、`BROKER_ECDH_PUBLIC_KEY_BASE64`(agent 釘選這把公鑰,必須與私鑰成對);`compose.yml` 另需 LINE、file、execution-adapter 三組 worker 的 `*_AUTH_KEY_ID` 與 `*_AUTH_SHARED_SECRET`。
+- 必填變數:三個 compose 檔都要 `BROKER_SCOPED_TOKEN_SECRET`、`BROKER_MASTER_KEY_BASE64`、`BROKER_ECDH_PRIVATE_KEY_BASE64`、`BROKER_ECDH_PUBLIC_KEY_BASE64`(agent 釘選這把公鑰,必須與私鑰成對)與 `BROKER_REGISTRATION_SECRET`(種子任務的註冊密鑰,見下一點);`compose.yml` 另需 LINE、file、execution-adapter 三組 worker 的 `*_AUTH_KEY_ID` 與 `*_AUTH_SHARED_SECRET`。
+- 註冊密鑰:只知道 principal 與 task 不能註冊 session,register 的加密 payload 必須帶該任務的註冊密鑰;broker 只存雜湊。compose 的 broker 以 `DevelopmentSeed__RegistrationSecret` 種入,agent 取得同一個 `BROKER_REGISTRATION_SECRET`(entrypoint 要求它存在,但不放進 agent 的命令列參數;system prompt 只放佔位字串)。缺少、錯誤、到期、撤銷一律回同一個 401。同一把可重複使用到到期或撤銷,agent 或 broker 重啟、再次 `up` 都不需額外步驟;種子憑證在每次 broker 啟動後 `DevelopmentSeed__RegistrationSecretLifetimeHours`(預設 24)小時到期,重啟即重新起算。非 Development/Testing 環境啟用 `DevelopmentSeed` 卻沒有可用密鑰(至少 32 字元、非佔位值)時 broker 拒絕啟動。
 - broker 啟動驗證:compose 中的 broker 以 Production 執行,啟動時拒絕佔位值(空白、`CHANGE_ME*`、`REPLACE_WITH_*`)與任何曾以 compose 預設值公開過的金鑰,並檢查格式。不要在 compose 加 `ASPNETCORE_ENVIRONMENT=Development` 來繞過。
 - `WORKER_AUTH_ENFORCE` 預設 `true`:worker 註冊與 LINE worker 的 HTTP 路由都要驗證憑證;broker 端也登錄了 execution-adapter 的憑證(索引 2,同時蓋掉 `appsettings.json` 該索引的範本憑證)。
 - 對外發布的埠(broker、mock LLM、LINE webhook)只綁 `127.0.0.1`;容器之間仍經 compose 網路互通。
@@ -197,6 +198,8 @@ broker 拒絕會削弱加固的設定:
 
 `/api/v1/agents/spawn` 一律把設定中的 `AgentBrokerUrl` 交給 agent(請求的 `broker_url` 只能等於這個值),`max_iterations` 上限 50。`/api/v1/workers/spawn` 必須帶 `worker_type`、不能啟動 agent、不再接受 `environment`。需要避開行程清單的值以 `-e NAME` 傳給 runtime,值放在 CLI 行程的環境變數;runtime 的 `inspect` 仍看得到這些值。
 
+每次 `/api/v1/agents/spawn` 都為該 agent 簽發新的註冊憑證(並撤銷上一次 spawn 的),密鑰以上述方式作為 `BROKER_REGISTRATION_SECRET` 交給容器,回應只帶憑證 id。憑證有效 `Broker:RegistrationCredential:SpawnedAgentLifetimeHours`(預設 24)小時,涵蓋容器重啟;過期後要重新 spawn。spawn 失敗會撤銷剛簽發的憑證。`/api/v1/agents/stop`(以及代理的停止工具)撤銷該 agent 的憑證與 session,之後它的 token 與密鑰都不能再用。kill switch 只讓 token 失效;要讓代理無法再註冊,請停止或停用它、取消任務,或以 `/api/v1/admin/registration-credentials/revoke` 撤銷憑證。以 `tasks/create` 建立的任務由管理員經 `/api/v1/admin/registration-credentials/issue` 簽發(密鑰只出現在該次加密回應中)。
+
 驗證(host broker + docker 或 podman,實際 spawn 一個 agent 容器,檢查加固、註冊、完成一輪與移除):
 
 ```powershell
@@ -259,5 +262,7 @@ compose 中 adapter 服務以 **profile 隔離**(`--profile adapters`),預設不
 - file-worker 與 execution-adapter 的 hostPath 改為 named volume
 - sidecar 的 agent 專用網路(目前以 `AllowAgentDefaultNetwork` 明確例外,§8.2),以及在 Windows Podman sidecar 上實測新的加固旗標
 - Node 24 升級(Node 22 於 2027-04-30 EOL)
+- 以任務為單位的 quota(註冊憑證可重複使用,每次註冊都會建立新的 grants)
+- 在 Windows Podman sidecar(podman remote)上實測 `-e NAME` 能把註冊密鑰帶進容器
 
 重點:容器「關得住」已做到;危險動作的人工放行也已接上,剩客製 seccomp。

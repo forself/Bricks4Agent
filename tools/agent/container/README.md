@@ -172,7 +172,7 @@ The compose files have no default keys. Each secret variable uses the required f
 
 Required variables:
 
-- all three compose files: `BROKER_SCOPED_TOKEN_SECRET`, `BROKER_MASTER_KEY_BASE64`, `BROKER_ECDH_PRIVATE_KEY_BASE64`, and `BROKER_ECDH_PUBLIC_KEY_BASE64` (the agent pins this public key; it must be the pair of the private key)
+- all three compose files: `BROKER_SCOPED_TOKEN_SECRET`, `BROKER_MASTER_KEY_BASE64`, `BROKER_ECDH_PRIVATE_KEY_BASE64`, `BROKER_ECDH_PUBLIC_KEY_BASE64` (the agent pins this public key; it must be the pair of the private key), and `BROKER_REGISTRATION_SECRET` (the seeded task's registration secret; see [Registration Secret](#registration-secret))
 
 - `compose.yml` also: `LINE_WORKER_AUTH_KEY_ID`, `LINE_WORKER_AUTH_SHARED_SECRET`, `FILE_WORKER_AUTH_KEY_ID`, `FILE_WORKER_AUTH_SHARED_SECRET`, `EXEC_ADAPTER_AUTH_KEY_ID`, and `EXEC_ADAPTER_AUTH_SHARED_SECRET` (the broker side and the worker side read the same variables)
 
@@ -183,6 +183,15 @@ Keep the file outside the repository. The agent no longer mounts anything, but t
 The broker runs in the Production environment in these stacks and validates its keys at startup: it refuses placeholder values (empty, `CHANGE_ME*`, `REPLACE_WITH_*`) and any key that was ever published as a compose default, and it checks key formats. Do not set `ASPNETCORE_ENVIRONMENT=Development` in the compose files to get around this.
 
 `WORKER_AUTH_ENFORCE` defaults to `true`: the broker verifies worker credentials on function pool registration and on the LINE worker HTTP routes. The broker also trusts the execution adapter credential (credential index 2), which replaces the template credential at that index in `appsettings.json`.
+
+### Registration Secret
+
+Knowing a principal id and a task id is not enough to register a session: the register request must carry that task's registration secret inside the encrypted handshake payload. The broker stores only a SHA-256 hash of each secret. A missing, wrong, expired or revoked secret gets the same HTTP 401 (`Registration rejected.`), so the response does not tell which part was wrong; the broker log and audit trail record the reason, never the secret.
+
+- In these stacks the broker seeds the task's credential from `DevelopmentSeed__RegistrationSecret` and the agent gets the same `BROKER_REGISTRATION_SECRET`. The entrypoint requires the variable but keeps it out of the agent's argument list; `agent.js` reads it from the environment only and removes it from its own environment after reading. The system prompt shows only a placeholder for it.
+- A credential can be used again until it expires or is revoked, so a restarted agent, a restarted broker or a second `up` registers without any extra step. The seeded credential expires `DevelopmentSeed__RegistrationSecretLifetimeHours` (default 24) after each broker start; a broker restart sets the expiry again.
+- Outside Development and Testing the broker refuses to start when `DevelopmentSeed` is enabled without a usable secret (at least 32 characters, not a placeholder). Rotating the stack secrets with `--force` replaces the seeded credential on the next broker start.
+- The kill switch invalidates tokens only. To keep an agent from registering again, stop or deactivate it, cancel its task, or revoke its credential (`/api/v1/admin/registration-credentials/revoke`).
 
 ## Container Hardening
 
@@ -222,6 +231,8 @@ A broker running on the host can start containers itself when `FunctionPool:Cont
 - for other workers: runtime sockets, system paths, relative paths, ports not bound to `127.0.0.1`, and host paths outside `AllowedHostPathRoots`
 
 `/api/v1/agents/spawn` always hands the agent the configured `AgentBrokerUrl`; a request may repeat that value in `broker_url` but cannot replace it, and `max_iterations` is capped at 50. `/api/v1/workers/spawn` requires `worker_type`, no longer starts agents and no longer accepts an `environment` field. Values that must stay out of process listings are passed to the runtime as `-e NAME` with the value in the CLI's own environment; they still show up in the runtime's `inspect` output.
+
+Each `/api/v1/agents/spawn` issues a new registration credential for the agent (revoking the one from its previous spawn) and hands the secret to the container as `BROKER_REGISTRATION_SECRET` in that way; the response carries only the credential id. The credential lasts `Broker:RegistrationCredential:SpawnedAgentLifetimeHours` (default 24), which covers container restarts; after that the agent must be spawned again. A failed spawn revokes the credential it was given. `/api/v1/agents/stop` (and the agent stop tool) revokes the agent's credentials and sessions, so neither its tokens nor its secret work afterwards.
 
 ### Images
 
@@ -340,6 +351,8 @@ The governed agent container does not change. It still only knows about:
 - `BROKER_TASK_ID`
 
 - `BROKER_ROLE_ID`
+
+- `BROKER_REGISTRATION_SECRET`
 
 ## Relationship To The Current LINE Architecture
 
