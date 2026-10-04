@@ -81,7 +81,7 @@ npm run validate:podman-execution-adapter-stack
 npm run validate:container-spawn
 ```
 
-The first applies a patch and runs a real `dotnet build` through the execution adapter (profile `adapters`). The second starts a broker on the host with the container manager enabled, spawns an agent container through `/api/v1/agents/spawn`, and checks its hardening, its run and its removal; see [Container Hardening](#container-hardening).
+The first applies a patch and runs a real `dotnet build` through the execution adapter (profile `adapters`). The second starts a broker on the host with the container manager enabled, spawns an agent container through `/api/v1/agents/spawn`, and checks its hardening (including the runtime CLI arguments: the registration secret is passed by name only), its run and its removal. It then restarts the broker on the same database and checks that a spawned agent container, started again, registers a new session with the credential issued at spawn; see [Container Hardening](#container-hardening).
 
 The validation scripts generate a fresh set of broker keys and worker credentials in memory for every run (see [Secrets](#secrets)) and pass them to both `up` and `down` through the environment. Nothing is written to disk.
 

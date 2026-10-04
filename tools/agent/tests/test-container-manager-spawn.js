@@ -10,7 +10,9 @@
 //     as a secret environment variable: present in the container, absent from its arguments and from
 //     the broker's responses and logs), loads the baked-in manual and completes one run;
 //   - spawn input is constrained (broker_url, max_iterations, /workers/spawn refusals);
-//   - /agents/stop removes the container (rm -f -v) and revokes the agent's registration credential.
+//   - /agents/stop removes the container (rm -f -v) and revokes the agent's registration credential;
+//   - after a broker restart (same database and keys), a second spawned agent container that is started
+//     again registers a new session with the credential issued at spawn and completes another run.
 // CONTAINER_ENGINE=docker uses docker; the default is podman. Needs the agent image
 // (built here unless SKIP_IMAGE_BUILD is set).
 
@@ -89,7 +91,8 @@ async function buildBroker() {
     assert.strictEqual(result.code, 0, `Broker build failed.\n${result.stdout}\n${result.stderr}`);
 }
 
-async function startBroker({ brokerPort, poolPort, upstreamPort, privateKeyBase64, networkName, tempDir }) {
+// A restart reuses the same options (port, database, keys): only the process is new.
+async function startBroker({ brokerPort, poolPort, upstreamPort, privateKeyBase64, scopedTokenSecret, masterKeyBase64, runtime, networkName, tempDir }) {
     const logs = { stdout: '', stderr: '' };
     const child = spawn('dotnet', ['run', '--no-build', '--no-launch-profile', '--project', 'packages/csharp/broker/Broker.csproj'], {
         cwd: ROOT,
@@ -98,8 +101,8 @@ async function startBroker({ brokerPort, poolPort, upstreamPort, privateKeyBase6
             ASPNETCORE_URLS: `http://127.0.0.1:${brokerPort}`,
             Database__Path: path.join(tempDir, 'broker.db'),
             HighLevelCoordinator__AccessRoot: path.join(tempDir, 'workspaces'),
-            Broker__ScopedToken__Secret: crypto.randomBytes(48).toString('base64'),
-            Broker__Encryption__MasterKeyBase64: crypto.randomBytes(32).toString('base64'),
+            Broker__ScopedToken__Secret: scopedTokenSecret,
+            Broker__Encryption__MasterKeyBase64: masterKeyBase64,
             Broker__Encryption__EcdhPrivateKeyBase64: privateKeyBase64,
             Embedding__Enabled: 'false',
             RagSeed__Enabled: 'false',
@@ -125,7 +128,7 @@ async function startBroker({ brokerPort, poolPort, upstreamPort, privateKeyBase6
             FunctionPool__BindAddress: '127.0.0.1',
             FunctionPool__StrictMode: 'false',
             FunctionPool__ContainerManager__Enabled: 'true',
-            FunctionPool__ContainerManager__Runtime: engine,
+            FunctionPool__ContainerManager__Runtime: runtime,
             FunctionPool__ContainerManager__NetworkName: '',
             FunctionPool__ContainerManager__AgentBrokerUrl: `http://${hostAlias}:${brokerPort}`,
             FunctionPool__ContainerManager__WorkerImages__agent__Image: 'bricks4agent-agent:latest',
@@ -160,6 +163,52 @@ async function startBroker({ brokerPort, poolPort, upstreamPort, privateKeyBase6
     throw new Error(`Broker did not become healthy.\n${logs.stdout}\n${logs.stderr}`);
 }
 
+// The broker drives the runtime CLI through this wrapper, which records each invocation's arguments
+// (one line per call) and then runs the real CLI: the test can then check the CLI argv itself.
+function writeArgvRecordingRuntime(tempDir) {
+    const argvLog = path.join(tempDir, 'runtime-argv.log');
+    if (process.platform === 'win32') {
+        const wrapper = path.join(tempDir, 'runtime-argv.cmd');
+        fs.writeFileSync(wrapper, [
+            '@echo off',
+            `echo %*>>"${argvLog}"`,
+            `${engine} %*`,
+            'exit /b %ERRORLEVEL%',
+            '',
+        ].join('\r\n'));
+        return { wrapper, argvLog };
+    }
+    const wrapper = path.join(tempDir, 'runtime-argv.sh');
+    fs.writeFileSync(wrapper, [
+        '#!/bin/sh',
+        `printf '%s\\n' "$*" >> '${argvLog}'`,
+        `exec ${engine} "$@"`,
+        '',
+    ].join('\n'), { mode: 0o700 });
+    return { wrapper, argvLog };
+}
+
+function readArgvLog(argvLog) {
+    try {
+        return fs.readFileSync(argvLog, 'utf8');
+    } catch (_) {
+        return '';
+    }
+}
+
+async function waitForBrokerDown(brokerPort, timeoutMs) {
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < timeoutMs) {
+        try {
+            await fetch(`http://127.0.0.1:${brokerPort}/api/v1/health`);
+        } catch (_) {
+            return; // connection refused: the old process is gone
+        }
+        await sleep(500);
+    }
+    throw new Error(`Broker on port ${brokerPort} is still answering ${timeoutMs} ms after it was stopped`);
+}
+
 async function adminPost(client, route, body) {
     return await client._encryptedPost(route, { scoped_token: client.scopedToken, ...body });
 }
@@ -174,20 +223,27 @@ async function waitForExit(containerId, timeoutMs) {
     throw new Error(`Agent container ${containerId} did not exit within ${timeoutMs} ms`);
 }
 
+function countOccurrences(text, needle) {
+    return text.split(needle).length - 1;
+}
+
 async function main() {
     const id = crypto.randomBytes(3).toString('hex');
     const networkName = `b4a-spawn-test-${id}`;
     const agentId = `s${id}`;
+    const restartAgentId = `r${id}`;
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'b4a-spawn-test-'));
     const { privateKey, publicKey } = crypto.generateKeyPairSync('ec', {
         namedCurve: 'P-256',
         privateKeyEncoding: { type: 'pkcs8', format: 'der' },
         publicKeyEncoding: { type: 'spki', format: 'der' },
     });
+    const publicKeyBase64 = Buffer.from(publicKey).toString('base64');
 
     let upstream = null;
     let broker = null;
     let containerId = null;
+    let restartContainerId = null;
 
     try {
         if (!process.env.SKIP_IMAGE_BUILD) {
@@ -198,18 +254,23 @@ async function main() {
         const network = await run(engine, ['network', 'create', networkName]);
         assert.strictEqual(network.code, 0, `network create failed: ${network.stderr}`);
 
+        const runtimeCli = writeArgvRecordingRuntime(tempDir);
         upstream = await startFakeOllama();
         const brokerPort = await getFreePort();
-        broker = await startBroker({
+        const brokerOptions = {
             brokerPort,
             poolPort: await getFreePort(),
             upstreamPort: upstream.port,
             privateKeyBase64: Buffer.from(privateKey).toString('base64'),
+            scopedTokenSecret: crypto.randomBytes(48).toString('base64'),
+            masterKeyBase64: crypto.randomBytes(32).toString('base64'),
+            runtime: runtimeCli.wrapper,
             networkName,
             tempDir,
-        });
+        };
+        broker = await startBroker(brokerOptions);
 
-        const admin = new BrokerClient(`http://127.0.0.1:${brokerPort}`, Buffer.from(publicKey).toString('base64'));
+        let admin = new BrokerClient(`http://127.0.0.1:${brokerPort}`, publicKeyBase64);
         await admin.registerSession(ADMIN_PRINCIPAL_ID, ADMIN_TASK_ID, 'role_admin', ADMIN_REGISTRATION_SECRET);
 
         // /workers/spawn: agents and caller-supplied environments are refused.
@@ -285,6 +346,22 @@ async function main() {
         assert(!broker.logs.stdout.includes(agentSecret) && !broker.logs.stderr.includes(agentSecret), 'the broker does not log the secret');
         assert(!upstream.seen().includes(agentSecret), 'the model provider never receives the secret');
 
+        // The runtime CLI's own argv: the run command names the secret variable but never carries its value.
+        const runLines = readArgvLog(runtimeCli.argvLog).split(/\r?\n/).filter((line) => /^run\s/.test(line.trim()));
+        assert.strictEqual(runLines.length, 1, `one recorded "${engine} run" call expected, got ${runLines.length}`);
+        const runArgv = runLines[0].trim().split(/\s+/);
+        assert(!runLines[0].includes(agentSecret), 'the secret is not in the runtime CLI arguments');
+        assert(runArgv.some((arg, index) => arg === '-e' && runArgv[index + 1] === 'BROKER_REGISTRATION_SECRET'),
+            `the run command passes the secret by name only (-e BROKER_REGISTRATION_SECRET)\n${runLines[0]}`);
+        assert(!runArgv.some((arg) => /^"?BROKER_REGISTRATION_SECRET=/.test(arg)), 'no NAME=value form for the secret');
+        const imageIndex = runArgv.indexOf('bricks4agent-agent:latest');
+        for (const flag of ['--read-only', '--tmpfs', '--cap-drop', '--security-opt', '--pids-limit', '--memory', '--network']) {
+            const flagIndex = runArgv.indexOf(flag);
+            assert(flagIndex > 0 && flagIndex < imageIndex, `${flag} is passed before the image\n${runLines[0]}`);
+        }
+        assert(!runArgv.includes('-v') && !runArgv.includes('-p'), `no volume or port flags for an agent\n${runLines[0]}`);
+        console.log(`[spawn] recorded ${engine} CLI call: ${runLines[0].trim()}`);
+
         assert(output.includes('Loading project manual: /app/AGENT.md'), `agent should load the baked-in manual\n${output}`);
         assert(output.includes(READY_TEXT), `agent should complete one run\n${output}`);
         assert(output.includes('[Governed] session closed'), `agent should close its session\n${output}`);
@@ -298,15 +375,79 @@ async function main() {
         containerId = null;
 
         // Stopping the agent revoked its credential: the same secret can no longer register.
-        const stoppedAgent = new BrokerClient(`http://127.0.0.1:${brokerPort}`, Buffer.from(publicKey).toString('base64'));
+        const stoppedAgent = new BrokerClient(`http://127.0.0.1:${brokerPort}`, publicKeyBase64);
         await assert.rejects(
             () => stoppedAgent.registerSession(created.data.principal_id, created.data.task_id, created.data.role_id, agentSecret),
             (error) => error.status === 401 && error.brokerMessage === 'Registration rejected.'
         );
 
+        // ── Broker restart: a spawned agent registers again with the credential issued at spawn ──
+        const createdRestart = await adminPost(admin, '/api/v1/agents/create', {
+            agent_id: restartAgentId,
+            display_name: 'Spawn restart test',
+            task_type: 'analysis',
+        });
+        assert.strictEqual(createdRestart.success, true, `agents/create failed: ${JSON.stringify(createdRestart)}`);
+        const restartCanonicalId = createdRestart.data.agent_id;
+        const spawnedRestart = await adminPost(admin, '/api/v1/agents/spawn', {
+            agent_id: restartCanonicalId,
+            run: `Reply with the exact text ${READY_TEXT}.`,
+        });
+        assert.strictEqual(spawnedRestart.success, true, `agents/spawn failed: ${JSON.stringify(spawnedRestart)}`);
+        restartContainerId = spawnedRestart.data.container_id;
+        await waitForExit(restartContainerId, 180000);
+
+        const firstInspect = JSON.parse((await run(engine, ['inspect', restartContainerId])).stdout)[0];
+        const firstLogs = await run(engine, ['logs', restartContainerId]);
+        const firstOutput = `${firstLogs.stdout}\n${firstLogs.stderr}`;
+        assert.strictEqual(firstInspect.State.ExitCode, 0, `restart agent (before the broker restart) exited with ${firstInspect.State.ExitCode}\n${firstOutput}`);
+        assert.strictEqual(countOccurrences(firstOutput, '[Governed] session closed'), 1, `one completed run before the restart\n${firstOutput}`);
+        const restartSecretEntry = ((firstInspect.Config && firstInspect.Config.Env) || [])
+            .find((entry) => entry.startsWith('BROKER_REGISTRATION_SECRET='));
+        assert(restartSecretEntry, 'the restart agent container has BROKER_REGISTRATION_SECRET');
+        const restartSecret = restartSecretEntry.slice('BROKER_REGISTRATION_SECRET='.length);
+
+        await broker.stop();
+        await waitForBrokerDown(brokerPort, 30000);
+        broker = await startBroker(brokerOptions);
+
+        // Start the same container again (what its restart policy does): same environment, same credential.
+        const started = await run(engine, ['start', restartContainerId]);
+        assert.strictEqual(started.code, 0, `${engine} start failed: ${started.stderr}`);
+        await waitForExit(restartContainerId, 180000);
+
+        const secondInspect = JSON.parse((await run(engine, ['inspect', restartContainerId])).stdout)[0];
+        const secondLogs = await run(engine, ['logs', restartContainerId]);
+        const secondOutput = `${secondLogs.stdout}\n${secondLogs.stderr}`;
+        assert.strictEqual(secondInspect.State.ExitCode, 0, `restart agent (after the broker restart) exited with ${secondInspect.State.ExitCode}\n${secondOutput}`);
+        const sessionIds = [...secondOutput.matchAll(/\[Governed\] session=(ses_[A-Za-z0-9_]+)/g)].map((match) => match[1]);
+        assert.strictEqual(sessionIds.length, 2, `two registrations expected (before and after the restart)\n${secondOutput}`);
+        assert.notStrictEqual(sessionIds[0], sessionIds[1], 'the agent registered a new session after the restart');
+        assert.strictEqual(countOccurrences(secondOutput, '[Governed] session closed'), 2, `two completed runs expected\n${secondOutput}`);
+        assert(!secondOutput.includes(restartSecret), 'the agent does not log the secret');
+        assert(!broker.logs.stdout.includes(restartSecret) && !broker.logs.stderr.includes(restartSecret), 'the restarted broker does not log the secret');
+        console.log(`[spawn] ${engine} agent container ${restartContainerId}: registered again after a broker restart (${sessionIds.join(' -> ')}).`);
+
+        // The restarted broker still revokes the credential when the agent is stopped.
+        admin = new BrokerClient(`http://127.0.0.1:${brokerPort}`, publicKeyBase64);
+        await admin.registerSession(ADMIN_PRINCIPAL_ID, ADMIN_TASK_ID, 'role_admin', ADMIN_REGISTRATION_SECRET);
+        const stoppedRestart = await adminPost(admin, '/api/v1/agents/stop', { agent_id: restartCanonicalId });
+        assert.strictEqual(stoppedRestart.success, true, `agents/stop failed: ${JSON.stringify(stoppedRestart)}`);
+        const revokedAgent = new BrokerClient(`http://127.0.0.1:${brokerPort}`, publicKeyBase64);
+        await assert.rejects(
+            () => revokedAgent.registerSession(createdRestart.data.principal_id, createdRestart.data.task_id, createdRestart.data.role_id, restartSecret),
+            (error) => error.status === 401 && error.brokerMessage === 'Registration rejected.'
+        );
+        const stillThere = await run(engine, ['inspect', '--format', '{{.State.Status}}', restartContainerId]);
+        if (stillThere.code === 0) {
+            // The container list lives in the broker process; a restarted broker does not know this container.
+            console.log(`[spawn] note: agents/stop after the restart left container ${restartContainerId} in place (${stillThere.stdout.trim()}); the test removes it.`);
+        }
+
         console.log(`Container manager spawn test passed (${engine}).`);
     } finally {
         if (containerId) await run(engine, ['rm', '-f', '-v', containerId]);
+        if (restartContainerId) await run(engine, ['rm', '-f', '-v', restartContainerId]);
         if (broker) await broker.stop();
         if (upstream) await upstream.close();
         await run(engine, ['network', 'rm', networkName]);

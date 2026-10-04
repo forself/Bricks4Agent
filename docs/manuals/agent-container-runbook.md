@@ -198,9 +198,9 @@ broker 拒絕會削弱加固的設定:
 
 `/api/v1/agents/spawn` 一律把設定中的 `AgentBrokerUrl` 交給 agent(請求的 `broker_url` 只能等於這個值),`max_iterations` 上限 50。`/api/v1/workers/spawn` 必須帶 `worker_type`、不能啟動 agent、不再接受 `environment`。需要避開行程清單的值以 `-e NAME` 傳給 runtime,值放在 CLI 行程的環境變數;runtime 的 `inspect` 仍看得到這些值。
 
-每次 `/api/v1/agents/spawn` 都為該 agent 簽發新的註冊憑證(並撤銷上一次 spawn 的),密鑰以上述方式作為 `BROKER_REGISTRATION_SECRET` 交給容器,回應只帶憑證 id。憑證有效 `Broker:RegistrationCredential:SpawnedAgentLifetimeHours`(預設 24)小時,涵蓋容器重啟;過期後要重新 spawn。spawn 失敗會撤銷剛簽發的憑證。`/api/v1/agents/stop`(以及代理的停止工具)撤銷該 agent 的憑證與 session,之後它的 token 與密鑰都不能再用。kill switch 只讓 token 失效;要讓代理無法再註冊,請停止或停用它、取消任務,或以 `/api/v1/admin/registration-credentials/revoke` 撤銷憑證。以 `tasks/create` 建立的任務由管理員經 `/api/v1/admin/registration-credentials/issue` 簽發(密鑰只出現在該次加密回應中)。
+每次 `/api/v1/agents/spawn` 都為該 agent 簽發新的註冊憑證(並撤銷上一次 spawn 的),密鑰以上述方式作為 `BROKER_REGISTRATION_SECRET` 交給容器,回應只帶憑證 id。憑證有效 `Broker:RegistrationCredential:SpawnedAgentLifetimeHours`(預設 24)小時,涵蓋容器重啟;過期後要重新 spawn。spawn 失敗會撤銷剛簽發的憑證。`/api/v1/agents/stop`(以及代理的停止工具)撤銷該 agent 的憑證與 session,之後它的 token 與密鑰都不能再用。broker 的容器清單只存在程序記憶體中:broker 重啟後,`/api/v1/agents/stop` 仍會撤銷重啟前 spawn 的 agent 的憑證與 session,但不會移除它的容器,要以 `docker rm -f -v <容器 id>`(或 podman)手動移除。kill switch 只讓 token 失效;要讓代理無法再註冊,請停止或停用它、取消任務,或以 `/api/v1/admin/registration-credentials/revoke` 撤銷憑證。以 `tasks/create` 建立的任務由管理員經 `/api/v1/admin/registration-credentials/issue` 簽發(密鑰只出現在該次加密回應中)。
 
-驗證(host broker + docker 或 podman,實際 spawn 一個 agent 容器,檢查加固、註冊、完成一輪與移除):
+驗證(host broker + docker 或 podman,實際 spawn 一個 agent 容器,檢查加固(含 runtime CLI 本身的參數:註冊密鑰只以名稱傳遞)、註冊、完成一輪與移除,並在 broker 以同一個資料庫重啟後,確認再次啟動的代理容器以 spawn 時簽發的憑證註冊新的 session):
 
 ```powershell
 $env:CONTAINER_ENGINE = 'docker'
