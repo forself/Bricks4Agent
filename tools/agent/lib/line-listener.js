@@ -47,6 +47,14 @@ class LineListener {
                 logError(`Poll error: ${e.message}`);
             }
 
+            // The broker refused to register this agent again (credential revoked or expired, task ended):
+            // stop polling and fail, instead of producing a rejected registration on every poll.
+            const executor = this.agent.governedExecutor;
+            if (executor && executor.terminated) {
+                this.running = false;
+                throw new Error(`LINE listener stopped: broker session ended (${executor.terminationReason})`);
+            }
+
             // 等待下次輪詢
             await this._sleep(this.pollIntervalMs);
         }

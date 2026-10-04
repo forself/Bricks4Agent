@@ -8,6 +8,7 @@ const util = require('util');
 
 const { AgentLoop } = require('../lib/agent-loop');
 const { BrokerClient } = require('../lib/broker-client');
+const { LineListener } = require('../lib/line-listener');
 
 const ROOT = path.resolve(__dirname, '..', '..', '..');
 // A per-run value, so a match in the prompt can only come from the governed config.
@@ -45,7 +46,7 @@ function createFakeClient() {
     let registerCalls = 0;
     let heartbeatCalls = 0;
     const registeredSecrets = [];
-    const pendingFailures = { submit: [], llmChat: [], heartbeat: [] };
+    const pendingFailures = { submit: [], llmChat: [], heartbeat: [], register: [] };
 
     function takeFailure(kind) {
         const failure = pendingFailures[kind].shift();
@@ -59,6 +60,7 @@ function createFakeClient() {
         async registerSession(principalId, taskId, roleId, registrationSecret) {
             registerCalls += 1;
             registeredSecrets.push(registrationSecret);
+            takeFailure('register');
             return {
                 sessionId: `sess_test_00${registerCalls}`,
                 scopedToken: `scoped_token_test_00${registerCalls}`,
@@ -402,6 +404,79 @@ async function testSessionRecovery() {
     assertSecretNotExposed(executor.getPromptContext(), agent.messages[0].content);
 }
 
+/**
+ * Registering again is refused (credential revoked or expired, task ended): the executor ends for good.
+ * No heartbeat, registration or broker call follows, every later tool call fails at once, and the LINE
+ * listener stops with an error instead of producing a rejected registration on every poll.
+ * A network failure while registering again is not final.
+ */
+async function testRegistrationRefusalEndsTheExecutor() {
+    const fakeClient = createFakeClient();
+    const agent = new AgentLoop({
+        model: 'user-requested-model',
+        provider: createForbiddenDirectProvider(),
+        projectRoot: ROOT,
+        stream: false,
+        governed: {
+            brokerUrl: 'http://broker.local:5000',
+            brokerPubKey: 'fake-pub-key',
+            principalId: 'prn_test',
+            taskId: 'task_test',
+            roleId: 'role_reader',
+            registrationSecret: TEST_REGISTRATION_SECRET,
+            clientFactory: () => fakeClient,
+        },
+    });
+    await agent.init();
+    const executor = agent.governedExecutor;
+    const context = { projectRoot: ROOT, noConfirm: true, verbose: false };
+
+    // A network failure while registering again is reported but does not end the executor.
+    fakeClient.failNext('submit', brokerHttpError(401, 'Session expired.'));
+    fakeClient.failNext('register', new Error('fetch failed'));
+    const transient = await executor.executeTool('read_file', { path: './README.html' }, context);
+    assert(transient.includes('broker error'), transient);
+    assert.strictEqual(executor.terminated, false);
+    assert.strictEqual(fakeClient.getRegisterCalls(), 2);
+
+    // The broker refuses to register again: the executor ends.
+    fakeClient.failNext('submit', brokerHttpError(401, 'Session is not active.'));
+    fakeClient.failNext('register', brokerHttpError(401, 'Registration rejected.'));
+    const refused = await executor.executeTool('read_file', { path: './README.html' }, context);
+    assert(refused.includes('session ended'), refused);
+    assert.strictEqual(executor.terminated, true);
+    assert.strictEqual(executor._heartbeatRunning, false);
+    assert.strictEqual(executor._heartbeatTimer, null);
+    const registerCalls = fakeClient.getRegisterCalls();
+    const submitCalls = fakeClient.getSubmitCalls();
+    const heartbeatCalls = fakeClient.getHeartbeatCalls();
+    const llmChatCalls = fakeClient.getLlmChatCalls();
+
+    // Nothing after that reaches the broker, and nothing registers again.
+    const later = await executor.executeTool('read_file', { path: './README.html' }, context);
+    assert(later.includes('session ended'), later);
+    assert.strictEqual(await executor._heartbeatOnce(), false);
+    await assert.rejects(
+        () => executor.chat({ model: 'x', messages: [{ role: 'user', content: 'hi' }], tools: [] }),
+        (error) => /session ended/.test(error.message)
+    );
+    await assert.rejects(() => executor._reregister(), (error) => /session ended/.test(error.message));
+    assert.strictEqual(fakeClient.getRegisterCalls(), registerCalls);
+    assert.strictEqual(fakeClient.getSubmitCalls(), submitCalls);
+    assert.strictEqual(fakeClient.getHeartbeatCalls(), heartbeatCalls);
+    assert.strictEqual(fakeClient.getLlmChatCalls(), llmChatCalls);
+
+    // The LINE listener stops with an error after its first poll instead of polling on.
+    const listener = new LineListener(agent, { pollIntervalMs: 1 });
+    await assert.rejects(() => listener.start(), (error) => /broker session ended/.test(error.message));
+    assert.strictEqual(listener.running, false);
+    assert.strictEqual(fakeClient.getRegisterCalls(), registerCalls);
+
+    // The refusal message carries no secret.
+    assert(!executor.terminationReason.includes(TEST_REGISTRATION_SECRET));
+    await agent.close();
+}
+
 /** The registration secret must never reach the prompt context or the system prompt (both go to the model). */
 function assertSecretNotExposed(promptContext, prompt) {
     assert(!JSON.stringify(promptContext).includes(TEST_REGISTRATION_SECRET), 'prompt context must not contain the registration secret');
@@ -496,6 +571,7 @@ async function main() {
 
     await testBrokerClientTokenRenewal();
     await testSessionRecovery();
+    await testRegistrationRefusalEndsTheExecutor();
     console.log('Governed mode tests passed.');
 }
 

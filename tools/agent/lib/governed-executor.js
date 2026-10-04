@@ -31,6 +31,10 @@ const GRANT_STATUS_LABELS = ['Active', 'Expired', 'Revoked', 'Exhausted'];
 const HEARTBEAT_MAX_INTERVAL_MS = 5 * 60 * 1000;
 const HEARTBEAT_MIN_INTERVAL_MS = 10 * 1000;
 
+// Answers to a register request that will not change by retrying (credential rejected, task no longer
+// active, role not allowed): the executor stops instead of registering again on every call.
+const FINAL_REGISTRATION_STATUSES = new Set([400, 401, 403]);
+
 class GovernedExecutor {
     // The registration secret stays in a private field: it is sent only inside the encrypted register
     // handshake and never placed in the prompt context, the system prompt or any log line.
@@ -57,6 +61,16 @@ class GovernedExecutor {
         this._heartbeatTimer = null;
         this._heartbeatRunning = false;
         this._reregistration = null;
+        this._terminationReason = null;
+    }
+
+    /** True once the broker refused to register this principal and task again; every later call fails at once. */
+    get terminated() {
+        return this._terminationReason !== null;
+    }
+
+    get terminationReason() {
+        return this._terminationReason;
     }
 
     get name() {
@@ -106,6 +120,10 @@ class GovernedExecutor {
     }
 
     async executeTool(toolName, toolArgs, context) {
+        if (this.terminated) {
+            return `[Governed] broker session ended: ${this._terminationReason}`;
+        }
+
         const capabilityId = capabilityIdForTool(toolName);
         if (!capabilityId) {
             return `[Governed] unsupported tool: ${toolName}`;
@@ -256,7 +274,8 @@ class GovernedExecutor {
     async close() {
         this._stopHeartbeat();
 
-        if (this.client && this.client.sessionId) {
+        // After the executor ended, the broker has already refused this agent; do not contact it again.
+        if (this.client && this.client.sessionId && !this.terminated) {
             try {
                 await this.client.closeSession('Agent session ending');
                 logInfo('[Governed] session closed');
@@ -560,6 +579,10 @@ class GovernedExecutor {
      * A rejection caused by the kill switch (system epoch advancement) is not retried.
      */
     async _callBroker(operation) {
+        if (this.terminated) {
+            throw sessionEndedError(this._terminationReason);
+        }
+
         try {
             return await operation(this.client);
         } catch (error) {
@@ -573,17 +596,34 @@ class GovernedExecutor {
         }
     }
 
-    /** Registers a new session with the same principal, task and role, then reloads grants and runtime spec. */
+    /**
+     * Registers a new session with the same principal, task and role, then reloads grants and runtime spec.
+     * A final refusal (see FINAL_REGISTRATION_STATUSES) ends the executor: the heartbeat stops and every
+     * later call fails without contacting the broker. Network errors and other statuses stay retryable.
+     */
     async _reregister() {
+        if (this.terminated) {
+            throw sessionEndedError(this._terminationReason);
+        }
+
         if (!this._reregistration) {
             this._reregistration = (async () => {
                 const client = this.clientFactory(this.brokerUrl, this.brokerPubKey);
-                const sessionInfo = await client.registerSession(
-                    this.principalId,
-                    this.taskId,
-                    this.roleId,
-                    this.#registrationSecret
-                );
+                let sessionInfo;
+                try {
+                    sessionInfo = await client.registerSession(
+                        this.principalId,
+                        this.taskId,
+                        this.roleId,
+                        this.#registrationSecret
+                    );
+                } catch (error) {
+                    if (FINAL_REGISTRATION_STATUSES.has(error?.status)) {
+                        this._terminate(`registering again was refused (${error.message})`);
+                        throw sessionEndedError(this._terminationReason);
+                    }
+                    throw error;
+                }
                 this.client = client;
                 this.sessionInfo = sessionInfo;
                 await this._loadGovernanceSnapshot();
@@ -599,8 +639,22 @@ class GovernedExecutor {
         return await this._reregistration;
     }
 
+    /** Stops the executor for good: no more heartbeats, registrations or broker calls. */
+    _terminate(reason) {
+        if (this.terminated) {
+            return;
+        }
+        this._terminationReason = reason;
+        this._stopHeartbeat();
+        logError(`[Governed] broker session ended: ${reason}`);
+    }
+
     /** One heartbeat: renews the token; on a session or token rejection registers again once. */
     async _heartbeatOnce() {
+        if (this.terminated) {
+            return false;
+        }
+
         try {
             await this.client.heartbeat();
             if (this.verbose) {
@@ -663,6 +717,13 @@ class GovernedExecutor {
             this._heartbeatTimer = null;
         }
     }
+}
+
+/** The error every call raises once the executor has ended (it is not a session failure to recover from). */
+function sessionEndedError(reason) {
+    const error = new Error(`Broker session ended: ${reason}`);
+    error.sessionEnded = true;
+    return error;
 }
 
 /**
