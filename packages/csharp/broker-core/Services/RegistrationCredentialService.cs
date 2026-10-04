@@ -10,7 +10,7 @@ namespace BrokerCore.Services;
 /// Session 註冊憑證服務（見 <see cref="IRegistrationCredentialService"/>）。
 ///
 /// - 密鑰是 32 bytes 亂數的 base64url；資料庫只存 UTF-8 密鑰的 SHA-256。
-/// - 比對以 <see cref="CryptographicOperations.FixedTimeEquals"/> 逐筆進行，查無憑證時也做一次同等的比對。
+/// - 比對以 <see cref="CryptographicOperations.FixedTimeEquals"/> 逐筆進行，每次驗證固定比對相同的次數（不足的以固定雜湊補足）。
 /// - 不在任何地方記錄密鑰本身。
 /// </summary>
 public class RegistrationCredentialService : IRegistrationCredentialService
@@ -21,7 +21,8 @@ public class RegistrationCredentialService : IRegistrationCredentialService
     /// <summary>單一憑證的最長有效時間（小時）。</summary>
     public const int MaxLifetimeHours = 720;
 
-    // 驗證時最多看最近的幾筆憑證；同一組 principal＋task 正常只會有一筆有效憑證。
+    // 驗證時每一次查詢最多比對的筆數。先只比對仍有效（未撤銷、未到期）的憑證，所以已撤銷或到期的紀錄
+    //（例如 spawn 失敗留下的）再多，也不會把仍有效的舊憑證擠出比對範圍；同一組 principal＋task 正常只有少數幾把有效憑證。
     private const int MaxCandidates = 50;
 
     // 超過這個長度的輸入直接視為不符（仍做一次比對），避免以超長字串消耗雜湊時間。
@@ -71,60 +72,90 @@ public class RegistrationCredentialService : IRegistrationCredentialService
                 ? ComputeHash("registration-credential-missing")
                 : ComputeHash(secret));
 
-        var candidates = string.IsNullOrWhiteSpace(principalId) || string.IsNullOrWhiteSpace(taskId)
-            ? new List<RegistrationCredential>()
-            : _db.Query<RegistrationCredential>(
+        var hasSubject = !string.IsNullOrWhiteSpace(principalId) && !string.IsNullOrWhiteSpace(taskId);
+        var now = DateTime.UtcNow;
+
+        // 1. 比對仍有效的憑證（同一把密鑰若有多筆紀錄，例如撤銷後又以同一把重新種入，以有效的那一筆為準）。
+        var active = hasSubject
+            ? _db.Query<RegistrationCredential>(
+                $@"SELECT * FROM registration_credentials
+                   WHERE principal_id = @principalId AND task_id = @taskId
+                     AND revoked_at IS NULL AND expires_at > @now
+                   ORDER BY created_at DESC LIMIT {MaxCandidates}",
+                new { principalId, taskId, now })
+            : new List<RegistrationCredential>();
+
+        // 2. 比對最近的紀錄（不分狀態），只用來判斷失敗原因（撤銷、到期或不符），寫進 log 與稽核。
+        //    兩次查詢一律執行，每次都固定比對 MaxCandidates 次，讓各種情況的工作量相近。
+        var recent = hasSubject
+            ? _db.Query<RegistrationCredential>(
                 $@"SELECT * FROM registration_credentials
                    WHERE principal_id = @principalId AND task_id = @taskId
                    ORDER BY created_at DESC LIMIT {MaxCandidates}",
-                new { principalId, taskId });
+                new { principalId, taskId })
+            : new List<RegistrationCredential>();
 
-        // 每一筆都比對（不提早結束），查無憑證時與一個固定雜湊比對，讓各種情況的工作量相近。
-        // 同一把密鑰若有多筆紀錄（例如撤銷後又以同一把重新種入），以仍有效的那一筆為準。
-        var now = DateTime.UtcNow;
-        RegistrationCredential? matched = null;
-        if (candidates.Count == 0)
-        {
-            CryptographicOperations.FixedTimeEquals(provided, DummyHash);
-        }
-
-        foreach (var candidate in candidates)
-        {
-            var stored = Encoding.ASCII.GetBytes(candidate.SecretHash ?? string.Empty);
-            if (!CryptographicOperations.FixedTimeEquals(provided, stored))
-            {
-                continue;
-            }
-
-            if (matched == null || (!IsActive(matched, now) && IsActive(candidate, now)))
-            {
-                matched = candidate;
-            }
-        }
+        var matchedActive = FindMatch(provided, active);
+        var matchedRecent = FindMatch(provided, recent);
 
         if (string.IsNullOrEmpty(secret))
         {
             return new RegistrationCredentialCheck(RegistrationCredentialFailure.Missing, null);
         }
 
-        if (matched == null || secret.Length > MaxSecretLength)
+        if (secret.Length > MaxSecretLength)
         {
             return new RegistrationCredentialCheck(
-                candidates.Count == 0 ? RegistrationCredentialFailure.Unknown : RegistrationCredentialFailure.Mismatch,
+                recent.Count == 0 ? RegistrationCredentialFailure.Unknown : RegistrationCredentialFailure.Mismatch,
                 null);
         }
 
-        if (matched.RevokedAt != null)
+        if (matchedActive != null && IsActive(matchedActive, now))
         {
-            return new RegistrationCredentialCheck(RegistrationCredentialFailure.Revoked, matched);
+            return new RegistrationCredentialCheck(RegistrationCredentialFailure.None, matchedActive);
         }
 
-        if (matched.ExpiresAt <= now)
+        if (matchedRecent == null)
         {
-            return new RegistrationCredentialCheck(RegistrationCredentialFailure.Expired, matched);
+            return new RegistrationCredentialCheck(
+                recent.Count == 0 ? RegistrationCredentialFailure.Unknown : RegistrationCredentialFailure.Mismatch,
+                null);
         }
 
-        return new RegistrationCredentialCheck(RegistrationCredentialFailure.None, matched);
+        if (matchedRecent.RevokedAt != null)
+        {
+            return new RegistrationCredentialCheck(RegistrationCredentialFailure.Revoked, matchedRecent);
+        }
+
+        if (matchedRecent.ExpiresAt <= now)
+        {
+            return new RegistrationCredentialCheck(RegistrationCredentialFailure.Expired, matchedRecent);
+        }
+
+        // 未撤銷也未到期（第一次查詢與這裡的時間判斷在邊界上不一致時）：仍是有效的憑證。
+        return new RegistrationCredentialCheck(RegistrationCredentialFailure.None, matchedRecent);
+    }
+
+    /// <summary>
+    /// 以 <see cref="CryptographicOperations.FixedTimeEquals"/> 固定比對 <see cref="MaxCandidates"/> 次
+    /// （不足的以固定雜湊補足，不提早結束），回傳第一筆（最新的）相符的紀錄。
+    /// </summary>
+    private static RegistrationCredential? FindMatch(byte[] provided, IReadOnlyList<RegistrationCredential> candidates)
+    {
+        RegistrationCredential? matched = null;
+        for (var index = 0; index < MaxCandidates; index++)
+        {
+            var isCandidate = index < candidates.Count;
+            var stored = isCandidate
+                ? Encoding.ASCII.GetBytes(candidates[index].SecretHash ?? string.Empty)
+                : DummyHash;
+            if (CryptographicOperations.FixedTimeEquals(provided, stored) && isCandidate && matched == null)
+            {
+                matched = candidates[index];
+            }
+        }
+
+        return matched;
     }
 
     private static bool IsActive(RegistrationCredential credential, DateTime now)

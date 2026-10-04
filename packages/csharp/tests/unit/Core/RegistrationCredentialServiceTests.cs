@@ -147,6 +147,48 @@ public class RegistrationCredentialServiceTests
         });
     }
 
+    /// <summary>
+    /// Revoked and expired records (for example the ones failed spawns leave behind) never push a credential that
+    /// is still valid out of what is compared: an older valid credential keeps verifying however many newer
+    /// inactive records the same principal and task have, and the failure reasons are still told apart.
+    /// </summary>
+    [Fact]
+    public void Verify_AcceptsAnOlderValidCredentialBehindManyNewerInactiveRecords()
+    {
+        WithService((db, service) =>
+        {
+            var valid = service.Issue(PrincipalId, TaskId, RegistrationCredentialSources.AgentSpawn, "unit", DateTime.UtcNow.AddHours(1));
+            db.Execute(
+                "UPDATE registration_credentials SET created_at = @earlier WHERE credential_id = @id",
+                new { earlier = DateTime.UtcNow.AddHours(-1), id = valid.CredentialId });
+
+            IssuedRegistrationCredential? lastRevoked = null;
+            for (var attempt = 0; attempt < 60; attempt++)
+            {
+                lastRevoked = service.Issue(PrincipalId, TaskId, RegistrationCredentialSources.AgentSpawn, "unit", DateTime.UtcNow.AddHours(1));
+                service.Revoke(lastRevoked.CredentialId, "spawn failed", "unit").Should().BeTrue();
+            }
+
+            IssuedRegistrationCredential? lastExpired = null;
+            for (var attempt = 0; attempt < 10; attempt++)
+            {
+                lastExpired = service.Issue(PrincipalId, TaskId, RegistrationCredentialSources.AdminIssue, "unit", DateTime.UtcNow.AddHours(1));
+                db.Execute(
+                    "UPDATE registration_credentials SET expires_at = @past WHERE credential_id = @id",
+                    new { past = DateTime.UtcNow.AddMinutes(-1), id = lastExpired.CredentialId });
+            }
+
+            var check = service.Verify(PrincipalId, TaskId, valid.Secret);
+            check.Failure.Should().Be(RegistrationCredentialFailure.None, "the credential is neither revoked nor expired");
+            check.Credential!.CredentialId.Should().Be(valid.CredentialId);
+
+            service.Verify(PrincipalId, TaskId, lastRevoked!.Secret).Failure.Should().Be(RegistrationCredentialFailure.Revoked);
+            service.Verify(PrincipalId, TaskId, lastExpired!.Secret).Failure.Should().Be(RegistrationCredentialFailure.Expired);
+            service.Verify(PrincipalId, TaskId, RegistrationCredentialService.GenerateSecret()).Failure.Should().Be(RegistrationCredentialFailure.Mismatch);
+            service.Verify(PrincipalId, TaskId, null).Failure.Should().Be(RegistrationCredentialFailure.Missing);
+        });
+    }
+
     [Fact]
     public void Issue_RequiresAnExpiryInTheFutureWithinTheMaximumLifetime()
     {
