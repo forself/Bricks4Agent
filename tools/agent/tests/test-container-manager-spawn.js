@@ -11,6 +11,8 @@
 //     the broker's responses and logs), loads the baked-in manual and completes one run;
 //   - spawn input is constrained (broker_url, max_iterations, /workers/spawn refusals);
 //   - /agents/stop removes the container (rm -f -v) and revokes the agent's registration credential;
+//   - a second spawn of an agent whose container still exists fails without revoking that container's
+//     credential;
 //   - after a broker restart (same database and keys), a second spawned agent container that is started
 //     again registers a new session with the credential issued at spawn and completes another run.
 // CONTAINER_ENGINE=docker uses docker; the default is podman. Needs the agent image
@@ -406,6 +408,26 @@ async function main() {
             .find((entry) => entry.startsWith('BROKER_REGISTRATION_SECRET='));
         assert(restartSecretEntry, 'the restart agent container has BROKER_REGISTRATION_SECRET');
         const restartSecret = restartSecretEntry.slice('BROKER_REGISTRATION_SECRET='.length);
+
+        // Spawning the same agent again while its container still exists fails (fixed container name). The broker
+        // revokes only the credential it issued for the failed spawn: the existing container's credential stays
+        // valid, so that container registers again after the broker restart below.
+        await assert.rejects(() => adminPost(admin, '/api/v1/agents/spawn', {
+            agent_id: restartCanonicalId,
+            run: `Reply with the exact text ${READY_TEXT}.`,
+        }), /Broker error 500/);
+        const afterFailedSpawn = await adminPost(admin, '/api/v1/admin/registration-credentials/list', {
+            principal_id: createdRestart.data.principal_id,
+            task_id: createdRestart.data.task_id,
+            include_inactive: true,
+        });
+        const restartCredentials = afterFailedSpawn.data.credentials;
+        const keptCredential = restartCredentials.find((item) => item.credential_id === spawnedRestart.data.registration_credential_id);
+        assert(keptCredential && !keptCredential.revoked_at, `a failed spawn must not revoke the running container's credential\n${JSON.stringify(restartCredentials)}`);
+        assert.strictEqual(restartCredentials.length, 2, `two spawn credentials expected\n${JSON.stringify(restartCredentials)}`);
+        const failedCredential = restartCredentials.find((item) => item.credential_id !== spawnedRestart.data.registration_credential_id);
+        assert(failedCredential.revoked_at && failedCredential.revoke_reason === 'Spawn failed.', `the failed spawn's credential is revoked\n${JSON.stringify(failedCredential)}`);
+        console.log('[spawn] a failed second spawn left the running container\'s credential valid.');
 
         await broker.stop();
         await waitForBrokerDown(brokerPort, 30000);

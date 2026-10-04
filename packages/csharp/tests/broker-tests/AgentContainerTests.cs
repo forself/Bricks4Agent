@@ -109,23 +109,62 @@ public static class AgentContainerTests
             AssertTrue("credential-agent-created", created.Success);
             var agent = service.ListAgents().Single(a => a.AgentId == created.AgentId);
 
-            var first = service.IssueSpawnCredential(agent, "agent-container-test", TimeSpan.FromHours(1));
-            AssertTrue("spawn-credential-verifies", credentials.Verify(agent.PrincipalId, agent.TaskId, first.Secret).Succeeded);
-            AssertTrue("spawn-credential-to-string-hides-secret", !first.ToString().Contains(first.Secret, StringComparison.Ordinal));
+            string Verify(string? secret) => credentials.Verify(agent.PrincipalId, agent.TaskId, secret).Failure.ToString();
+            var ok = RegistrationCredentialFailure.None.ToString();
+            var revoked = RegistrationCredentialFailure.Revoked.ToString();
 
-            // A second spawn of the same agent supersedes the first credential.
-            var second = service.IssueSpawnCredential(agent, "agent-container-test", TimeSpan.FromHours(1));
-            AssertEqual("respawn-revokes-previous",
-                credentials.Verify(agent.PrincipalId, agent.TaskId, first.Secret).Failure.ToString(),
-                RegistrationCredentialFailure.Revoked.ToString());
-            AssertTrue("respawn-credential-verifies", credentials.Verify(agent.PrincipalId, agent.TaskId, second.Secret).Succeeded);
+            // A spawn issues a credential and hands its secret to the container (and nowhere else).
+            string? firstSecret = null;
+            var first = service.SpawnWithCredentialAsync(agent, "agent-container-test", TimeSpan.FromHours(1), secret =>
+            {
+                firstSecret = secret;
+                return Task.FromResult("container-1");
+            }).GetAwaiter().GetResult();
+            AssertEqual("spawn-returns-container-id", first.ContainerId, "container-1");
+            AssertTrue("spawn-hands-secret-to-container", !string.IsNullOrEmpty(firstSecret));
+            AssertEqual("spawn-credential-verifies", Verify(firstSecret), ok);
+            AssertTrue("spawn-result-hides-secret", !first.ToString().Contains(firstSecret!, StringComparison.Ordinal));
 
-            // A failed spawn revokes the credential it was given.
-            var failed = service.IssueSpawnCredential(agent, "agent-container-test", TimeSpan.FromHours(1));
-            service.RevokeSpawnCredential(failed.CredentialId, "agent-container-test");
-            AssertEqual("failed-spawn-credential-revoked",
-                credentials.Verify(agent.PrincipalId, agent.TaskId, failed.Secret).Failure.ToString(),
-                RegistrationCredentialFailure.Revoked.ToString());
+            // A spawn that fails while the first container still runs (here: the runtime's container limit;
+            // with docker, also a name conflict with the existing container) revokes only the new credential.
+            // The running container's credential stays valid, so it can still register again later
+            // (container restart, broker restart, expired session).
+            var limitedConfig = NewConfig();
+            limitedConfig.MaxContainersPerType = 0;
+            limitedConfig.WorkerImages["agent"] = NewAgentImage();
+            var limitedManager = new ContainerManager(limitedConfig, Microsoft.Extensions.Logging.Abstractions.NullLogger<ContainerManager>.Instance);
+            string? failedSecret = null;
+            try
+            {
+                service.SpawnWithCredentialAsync(agent, "agent-container-test", TimeSpan.FromHours(1), secret =>
+                {
+                    failedSecret = secret;
+                    return limitedManager.SpawnWorkerAsync(AgentRequest(secrets: new Dictionary<string, string> { ["BROKER_REGISTRATION_SECRET"] = secret }));
+                }).GetAwaiter().GetResult();
+                AssertTrue("failed-spawn-throws", false);
+            }
+            catch (InvalidOperationException)
+            {
+                AssertTrue("failed-spawn-throws", true);
+            }
+            AssertEqual("failed-spawn-revokes-its-own-credential", Verify(failedSecret), revoked);
+            AssertEqual("failed-spawn-keeps-the-running-container-credential", Verify(firstSecret), ok);
+
+            // A second spawn that succeeds supersedes the first credential, but only once its container started.
+            string? secondSecret = null;
+            string? firstWhileStarting = null;
+            var second = service.SpawnWithCredentialAsync(agent, "agent-container-test", TimeSpan.FromHours(1), secret =>
+            {
+                secondSecret = secret;
+                firstWhileStarting = Verify(firstSecret);
+                return Task.FromResult("container-2");
+            }).GetAwaiter().GetResult();
+            AssertEqual("respawn-previous-valid-until-started", firstWhileStarting, ok);
+            AssertEqual("respawn-revokes-previous", Verify(firstSecret), revoked);
+            AssertEqual("respawn-credential-verifies", Verify(secondSecret), ok);
+            AssertTrue("respawn-new-credential-id", second.CredentialId != first.CredentialId);
+            AssertTrue("respawn-leaves-one-spawn-credential",
+                credentials.List(agent.PrincipalId, agent.TaskId).Count(c => c.Source == RegistrationCredentialSources.AgentSpawn) == 1);
 
             var adminIssued = credentials.Issue(agent.PrincipalId, agent.TaskId, RegistrationCredentialSources.AdminIssue, "agent-container-test", DateTime.UtcNow.AddHours(1));
             var session = sessions.RegisterSession(agent.TaskId, agent.PrincipalId, agent.RoleId, "jti_credential", 1, string.Empty);

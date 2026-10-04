@@ -90,8 +90,11 @@ public interface IRegistrationCredentialService
     /// <summary>撤銷單一憑證；已撤銷或不存在時回傳 false。</summary>
     bool Revoke(string credentialId, string reason, string revokedBy);
 
-    /// <summary>撤銷這組 principal＋task 尚未撤銷的憑證（可限定來源），回傳撤銷筆數。</summary>
-    int RevokeFor(string principalId, string taskId, string reason, string revokedBy, string? source = null);
+    /// <summary>
+    /// 撤銷這組 principal＋task 尚未撤銷的憑證（可限定來源，可保留 <paramref name="exceptCredentialId"/> 這一把），
+    /// 回傳撤銷筆數。
+    /// </summary>
+    int RevokeFor(string principalId, string taskId, string reason, string revokedBy, string? source = null, string? exceptCredentialId = null);
 
     /// <summary>
     /// 依設定的種子密鑰建立或保留憑證：同一把密鑰保留原紀錄並把到期時間重設為 <paramref name="expiresAt"/>；

@@ -282,29 +282,50 @@ public class AgentSpawnService
     }
 
     /// <summary>
-    /// 為 spawn 出來的容器簽發註冊憑證：先撤銷這個 agent 先前 spawn 時簽發的憑證，再簽發新的一把。
-    /// 明文只在回傳值中出現一次，呼叫端以 SecretEnvironment 交給容器。
+    /// 以新簽發的註冊憑證啟動 agent 容器：先簽發新憑證，再呼叫 <paramref name="spawnContainer"/>
+    /// （傳入新憑證的明文，呼叫端以 SecretEnvironment 交給容器，回傳容器 id）。
+    /// 啟動成功後，才撤銷這個 agent 先前 spawn 時簽發的憑證（新的這把除外）；
+    /// 啟動失敗（例如同名容器仍在、已達容器數上限）時只撤銷新的這把並重新丟出例外，
+    /// 仍在執行的舊容器之後重新註冊（重啟、broker 重啟、session 到期）不受影響。
+    /// 明文不出現在回傳值中。
     /// </summary>
-    public IssuedRegistrationCredential IssueSpawnCredential(AgentSummary agent, string issuedBy, TimeSpan lifetime)
+    public async Task<SpawnedAgentCredential> SpawnWithCredentialAsync(
+        AgentSummary agent,
+        string issuedBy,
+        TimeSpan lifetime,
+        Func<string, Task<string>> spawnContainer)
     {
         ArgumentNullException.ThrowIfNull(agent);
-        _credentials.RevokeFor(
-            agent.PrincipalId,
-            agent.TaskId,
-            "Superseded by a new spawn.",
-            issuedBy,
-            RegistrationCredentialSources.AgentSpawn);
-        return _credentials.Issue(
+        ArgumentNullException.ThrowIfNull(spawnContainer);
+
+        var credential = _credentials.Issue(
             agent.PrincipalId,
             agent.TaskId,
             RegistrationCredentialSources.AgentSpawn,
             issuedBy,
             DateTime.UtcNow + lifetime);
-    }
 
-    /// <summary>spawn 失敗時撤銷剛簽發的憑證。</summary>
-    public void RevokeSpawnCredential(string credentialId, string revokedBy)
-        => _credentials.Revoke(credentialId, "Spawn failed.", revokedBy);
+        string containerId;
+        try
+        {
+            containerId = await spawnContainer(credential.Secret);
+        }
+        catch
+        {
+            _credentials.Revoke(credential.CredentialId, "Spawn failed.", issuedBy);
+            throw;
+        }
+
+        _credentials.RevokeFor(
+            agent.PrincipalId,
+            agent.TaskId,
+            "Superseded by a new spawn.",
+            issuedBy,
+            RegistrationCredentialSources.AgentSpawn,
+            exceptCredentialId: credential.CredentialId);
+
+        return new SpawnedAgentCredential(credential.CredentialId, credential.ExpiresAt, containerId);
+    }
 
     /// <summary>列出所有已建立的 Agent</summary>
     public List<AgentSummary> ListAgents()
@@ -493,3 +514,6 @@ public class AgentSummary
     public List<string> Capabilities { get; set; } = new();
     public DateTime CreatedAt { get; set; }
 }
+
+/// <summary>spawn 成功後的註冊憑證資訊（不含明文）與容器 id。</summary>
+public sealed record SpawnedAgentCredential(string CredentialId, DateTime ExpiresAt, string ContainerId);

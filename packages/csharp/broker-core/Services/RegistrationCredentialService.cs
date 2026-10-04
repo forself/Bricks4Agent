@@ -150,7 +150,7 @@ public class RegistrationCredentialService : IRegistrationCredentialService
     }
 
     /// <inheritdoc />
-    public int RevokeFor(string principalId, string taskId, string reason, string revokedBy, string? source = null)
+    public int RevokeFor(string principalId, string taskId, string reason, string revokedBy, string? source = null, string? exceptCredentialId = null)
     {
         var parameters = new
         {
@@ -159,20 +159,20 @@ public class RegistrationCredentialService : IRegistrationCredentialService
             reason = reason ?? string.Empty,
             principalId,
             taskId,
-            source = source ?? string.Empty
+            source = source ?? string.Empty,
+            exceptCredentialId = exceptCredentialId ?? string.Empty
         };
 
-        return source == null
-            ? _db.Execute(
-                @"UPDATE registration_credentials
+        // 條件只由固定片段組成，值一律以參數傳入。
+        var sql = @"UPDATE registration_credentials
                   SET revoked_at = @now, revoked_by = @revokedBy, revoke_reason = @reason
-                  WHERE principal_id = @principalId AND task_id = @taskId AND revoked_at IS NULL",
-                parameters)
-            : _db.Execute(
-                @"UPDATE registration_credentials
-                  SET revoked_at = @now, revoked_by = @revokedBy, revoke_reason = @reason
-                  WHERE principal_id = @principalId AND task_id = @taskId AND source = @source AND revoked_at IS NULL",
-                parameters);
+                  WHERE principal_id = @principalId AND task_id = @taskId AND revoked_at IS NULL";
+        if (source != null)
+            sql += " AND source = @source";
+        if (!string.IsNullOrEmpty(exceptCredentialId))
+            sql += " AND credential_id <> @exceptCredentialId";
+
+        return _db.Execute(sql, parameters);
     }
 
     /// <summary>種子啟動流程在憑證紀錄中的建立者與撤銷者；其他撤銷者（管理員等）的撤銷不會被重新種入。</summary>

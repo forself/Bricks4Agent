@@ -189,41 +189,40 @@ public static class AgentEndpoints
                     : runPrompt.Trim();
             }
 
-            // 註冊憑證：每次 spawn 簽發新的一把（並撤銷這個 agent 先前 spawn 的憑證），可重複使用到到期，
-            // 讓容器重啟後仍能註冊。明文只經 SecretEnvironment 交給容器（CLI 參數中只有 -e NAME），
-            // 不出現在回應、log 或例外訊息中。
+            // 註冊憑證：每次 spawn 簽發新的一把，可重複使用到到期，讓容器重啟後仍能註冊。
+            // 容器啟動成功後才撤銷這個 agent 先前 spawn 的憑證；啟動失敗只撤銷新的這把，
+            // 不影響仍在執行的舊容器日後重新註冊。明文只經 SecretEnvironment 交給容器
+            // （CLI 參數中只有 -e NAME），不出現在回應、log 或例外訊息中。
             var issuedBy = RequestBodyHelper.GetPrincipalId(ctx);
-            var credential = spawnService.IssueSpawnCredential(
-                agent,
-                string.IsNullOrWhiteSpace(issuedBy) ? "agents-spawn" : issuedBy,
-                credentialOptions.SpawnedAgentLifetime);
-
             try
             {
-                var containerId = await containerManager.SpawnWorkerAsync(new ContainerSpawnRequest
-                {
-                    WorkerType = "agent",
-                    WorkerId = agentId,
-                    TrustedEnvironment = envOverrides,
-                    SecretEnvironment = new Dictionary<string, string>(StringComparer.Ordinal)
+                var spawned = await spawnService.SpawnWithCredentialAsync(
+                    agent,
+                    string.IsNullOrWhiteSpace(issuedBy) ? "agents-spawn" : issuedBy,
+                    credentialOptions.SpawnedAgentLifetime,
+                    secret => containerManager.SpawnWorkerAsync(new ContainerSpawnRequest
                     {
-                        [RegistrationSecretEnvironmentVariable] = credential.Secret
-                    },
-                });
+                        WorkerType = "agent",
+                        WorkerId = agentId,
+                        TrustedEnvironment = envOverrides,
+                        SecretEnvironment = new Dictionary<string, string>(StringComparer.Ordinal)
+                        {
+                            [RegistrationSecretEnvironmentVariable] = secret
+                        },
+                    }));
 
                 return Results.Ok(ApiResponseHelper.Success(new
                 {
                     agent_id = agentId,
-                    container_id = containerId,
+                    container_id = spawned.ContainerId,
                     status = "spawned",
                     capabilities = agent.Capabilities,
-                    registration_credential_id = credential.CredentialId,
-                    registration_credential_expires_at = credential.ExpiresAt
+                    registration_credential_id = spawned.CredentialId,
+                    registration_credential_expires_at = spawned.ExpiresAt
                 }));
             }
             catch (Exception ex)
             {
-                spawnService.RevokeSpawnCredential(credential.CredentialId, "agents-spawn");
                 return Results.Json(ApiResponseHelper.Error(
                     $"Failed to spawn agent container: {ex.Message}", 500), statusCode: 500);
             }

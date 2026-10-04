@@ -122,6 +122,31 @@ public class RegistrationCredentialServiceTests
         });
     }
 
+    /// <summary>A successful respawn revokes the earlier spawn credentials but keeps the one it just issued.</summary>
+    [Fact]
+    public void RevokeFor_CanKeepOneCredential()
+    {
+        WithService((_, service) =>
+        {
+            var older = service.Issue(PrincipalId, TaskId, RegistrationCredentialSources.AgentSpawn, "unit", DateTime.UtcNow.AddHours(1));
+            var previous = service.Issue(PrincipalId, TaskId, RegistrationCredentialSources.AgentSpawn, "unit", DateTime.UtcNow.AddHours(1));
+            var current = service.Issue(PrincipalId, TaskId, RegistrationCredentialSources.AgentSpawn, "unit", DateTime.UtcNow.AddHours(1));
+            var adminIssued = service.Issue(PrincipalId, TaskId, RegistrationCredentialSources.AdminIssue, "unit", DateTime.UtcNow.AddHours(1));
+
+            service.RevokeFor(PrincipalId, TaskId, "respawn", "unit", RegistrationCredentialSources.AgentSpawn, exceptCredentialId: current.CredentialId)
+                .Should().Be(2);
+            service.Verify(PrincipalId, TaskId, older.Secret).Failure.Should().Be(RegistrationCredentialFailure.Revoked);
+            service.Verify(PrincipalId, TaskId, previous.Secret).Failure.Should().Be(RegistrationCredentialFailure.Revoked);
+            service.Verify(PrincipalId, TaskId, current.Secret).Succeeded.Should().BeTrue();
+            service.Verify(PrincipalId, TaskId, adminIssued.Secret).Succeeded.Should().BeTrue("another source is not touched");
+
+            // Without a source limit, the kept credential is still the only exception.
+            service.RevokeFor(PrincipalId, TaskId, "deactivate", "unit", exceptCredentialId: current.CredentialId).Should().Be(1);
+            service.Verify(PrincipalId, TaskId, adminIssued.Secret).Failure.Should().Be(RegistrationCredentialFailure.Revoked);
+            service.Verify(PrincipalId, TaskId, current.Secret).Succeeded.Should().BeTrue();
+        });
+    }
+
     [Fact]
     public void Issue_RequiresAnExpiryInTheFutureWithinTheMaximumLifetime()
     {

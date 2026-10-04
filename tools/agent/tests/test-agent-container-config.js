@@ -390,14 +390,21 @@ assertIncludes('workers/spawn reports a missing runtime CLI', workerEndpoints, '
 assertIncludes('agents/spawn caps max_iterations', agentEndpoints, 'ClampMaxIterations(maxIterations)');
 assertIncludes('agents/spawn only accepts the configured broker url', agentEndpoints, 'Agent broker_url must match the configured AgentBrokerUrl.');
 // 註冊憑證只經 SecretEnvironment 交給容器（參數中只有 -e NAME），不放進 TrustedEnvironment。
-assertIncludes('agents/spawn issues a registration credential', agentEndpoints, 'spawnService.IssueSpawnCredential(');
-assertIncludes('agents/spawn hands the secret over as a secret environment', agentEndpoints, '[RegistrationSecretEnvironmentVariable] = credential.Secret');
+assertIncludes('agents/spawn issues a registration credential', agentEndpoints, 'spawnService.SpawnWithCredentialAsync(');
+assertIncludes('agents/spawn hands the secret over as a secret environment', agentEndpoints, '[RegistrationSecretEnvironmentVariable] = secret');
 assertIncludes('agents/spawn names the container variable', agentEndpoints, 'RegistrationSecretEnvironmentVariable = "BROKER_REGISTRATION_SECRET"');
 assertNotIncludes('agents/spawn keeps the secret out of the trusted environment', agentEndpoints, 'envOverrides["BROKER_REGISTRATION_SECRET"]');
 assertNotIncludes('agents/spawn keeps the secret out of the trusted environment (indexer form)', agentEndpoints, '["BROKER_REGISTRATION_SECRET"] =');
-assertIncludes('agents/spawn revokes the credential when the spawn fails', agentEndpoints, 'spawnService.RevokeSpawnCredential(credential.CredentialId');
 
 const spawnService = read('packages/csharp/broker-core/Services/AgentSpawnService.cs');
+// spawn 的憑證：先簽發新的、啟動容器，成功後才撤銷先前 spawn 的憑證（新的除外）；失敗只撤銷新的這把。
+assertIncludes('agents/spawn revokes the new credential when the spawn fails', spawnService, '_credentials.Revoke(credential.CredentialId, "Spawn failed."');
+assertIncludes('agents/spawn keeps the new credential when superseding', spawnService, 'exceptCredentialId: credential.CredentialId');
+{
+    const spawnStart = spawnService.indexOf('await spawnContainer(credential.Secret)');
+    const supersede = spawnService.indexOf('"Superseded by a new spawn."');
+    assert(spawnStart > 0 && supersede > spawnStart, 'agents/spawn: earlier spawn credentials are revoked only after the container started');
+}
 assertIncludes('agent id normalization exists', spawnService, 'public static string NormalizeAgentId');
 assertIncludes('agent runtime descriptor carries default model', spawnService, 'default_model = request.LlmDefaultModel');
 assertIncludes('agent runtime descriptor carries tool setting', spawnService, 'supports_tool_calling = request.LlmSupportsToolCalling');
