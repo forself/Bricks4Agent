@@ -222,6 +222,52 @@ public class PolicyEngineTests
         result.Decision.Should().Be(PolicyDecision.Deny);
     }
 
+    // --- Paths in every argument location ---
+    // A worker takes its arguments from args, else tool_args, else the payload root. Every path key in any of
+    // these locations is checked, so a harmless value in one location cannot carry an unchecked one in another.
+
+    [Theory]
+    [InlineData("""{"route":"file.read","tool_args":{"path":"docs/a.txt"},"path":"src/b.txt"}""")]
+    [InlineData("""{"route":"file.read","args":{"path":"docs/a.txt"},"path":"src/b.txt"}""")]
+    [InlineData("""{"route":"file.read","args":{"path":"docs/a.txt"},"tool_args":{"path":"src/b.txt"}}""")]
+    [InlineData("""{"route":"file.read","args":"docs/a.txt","path":"src/b.txt"}""")]
+    [InlineData("""{"route":"file.read","tool_args":{"path":"docs/a.txt"},"directory":"src"}""")]
+    public void Evaluate_OutOfScopePathInAnyArgumentLocation_Denied(string payload)
+    {
+        var result = _sut.Evaluate(
+            MakeRequest(payload),
+            MakeCapability(RiskLevel.Low, "auto"),
+            MakeGrant("""{"paths":["docs"]}"""), MakeTask(),
+            currentEpoch: 1, tokenEpoch: 1);
+        result.Decision.Should().Be(PolicyDecision.Deny);
+    }
+
+    [Theory]
+    [InlineData("""{"route":"file.read","tool_args":{"path":"docs/a.txt"},"path":"docs/x~1/b.txt"}""")]
+    [InlineData("""{"route":"file.read","args":{"path":"docs/a.txt"},"path":"docs/../src/b.txt"}""")]
+    [InlineData("""{"route":"file.read","args":{"path":"docs/a.txt"},"tool_args":{"directory":"x~2"}}""")]
+    public void Evaluate_UnsafePathInAnotherArgumentLocation_Denied(string payload)
+    {
+        var result = _sut.Evaluate(MakeRequest(payload), MakeCapability(), MakeGrant(), MakeTask(),
+            currentEpoch: 1, tokenEpoch: 1);
+        result.Decision.Should().Be(PolicyDecision.Deny);
+        result.Reason.Should().Contain("sandbox");
+    }
+
+    [Theory]
+    [InlineData("""{"route":"file.read","args":{"path":"docs/a.txt"},"project_root":"/workspace"}""")]
+    [InlineData("""{"route":"file.read","tool_args":{"path":"docs/a.txt"}}""")]
+    [InlineData("""{"route":"file.read","path":"docs/a.txt"}""")]
+    public void Evaluate_InScopePathInItsOwnLocation_Allows(string payload)
+    {
+        var result = _sut.Evaluate(
+            MakeRequest(payload),
+            MakeCapability(RiskLevel.Low, "auto"),
+            MakeGrant("""{"paths":["docs"]}"""), MakeTask(),
+            currentEpoch: 1, tokenEpoch: 1);
+        result.Decision.Should().Be(PolicyDecision.Allow);
+    }
+
     // --- All Rules Pass ---
 
     [Fact]

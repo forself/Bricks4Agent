@@ -26,11 +26,10 @@ public class SearchContentHandler : ICapabilityHandler
         try
         {
             using var doc = JsonDocument.Parse(payload);
-            var root = doc.RootElement.TryGetProperty("args", out var argsEl)
-                ? argsEl : doc.RootElement;
-            var query = SearchArgs.GetString(root, "pattern", "query") ?? "";
-            var basePath = SearchArgs.GetString(root, "directory", "path") ?? ".";
-            var filePattern = SearchArgs.GetString(root, "file_pattern") ?? "*";
+            var root = PayloadArgs.GetArgsElement(doc.RootElement);
+            var query = PayloadArgs.GetString(root, "pattern", "query") ?? "";
+            var basePath = PayloadArgs.GetString(root, "directory", "path") ?? ".";
+            var filePattern = PayloadArgs.GetString(root, "file_pattern") ?? "*";
 
             if (!SandboxPolicy.IsFileNamePattern(filePattern))
                 return Task.FromResult<(bool, string?, string?)>((false, null, SandboxPolicy.InvalidPatternError));

@@ -10,6 +10,9 @@ namespace FileWorker;
 ///   列舉與搜尋時直接略過這些項目，也不進入 symlink（避免經由連結走出 sandbox）。
 ///   拒絕清單是過渡措施；只提供白名單快照的唯讀視圖列為後續。
 /// - 路徑段含冒號一律拒絕（所有平台都一樣，與檔名 pattern 的規則一致）。
+/// - 檔名別名：8.3 短檔名形式的路徑段（「~」後接數字）一律拒絕；已存在的每一段，名稱都必須與磁碟上
+///   列舉出來的實際名稱相同（非 Windows 區分大小寫），不接受短檔名或大小寫不同等別名寫法
+///   （例如 Linux 容器掛載的 NTFS 目錄），拒絕清單因此總是比對到實際名稱。
 /// - 搜尋：檔名 pattern 只能比對檔名（<see cref="IsFileNamePattern"/>），目錄一律由 directory（或 path）指定並經 <see cref="Resolve"/>。
 /// </summary>
 public sealed class SandboxPolicy
@@ -114,6 +117,9 @@ public sealed class SandboxPolicy
         if (HasSensitiveSegment(Path.GetRelativePath(Root, fullPath)))
             return (null, BlockedPathError);
 
+        if (!MatchesNamesOnDisk(Root, fullPath, PathComparison))
+            return (null, BlockedPathError);
+
         var realPath = ResolveRealPath(fullPath, 0);
         if (realPath == null || !IsWithin(realPath, _realRoot))
             return (null, OutsideSandboxError);
@@ -124,13 +130,13 @@ public sealed class SandboxPolicy
         return (fullPath, null);
     }
 
-    /// <summary>單一路徑段是否屬於拒絕清單（不分大小寫）；含冒號的名稱一律視為拒絕。</summary>
+    /// <summary>單一路徑段是否屬於拒絕清單（不分大小寫）；含冒號或屬於 8.3 短檔名形式的名稱一律視為拒絕。</summary>
     public static bool IsSensitiveName(string name)
     {
         if (string.IsNullOrEmpty(name))
             return false;
 
-        if (name.IndexOf(':') >= 0)
+        if (name.IndexOf(':') >= 0 || IsShortNameAlias(name))
             return true;
 
         foreach (var exact in SensitiveExactNames)
@@ -294,6 +300,99 @@ public sealed class SandboxPolicy
 
     private static bool HasSensitiveSegment(string relativePath)
         => IsSensitiveRelativePath(relativePath);
+
+    /// <summary>名稱是 8.3 短檔名的形式：含「~」且緊接著數字。</summary>
+    public static bool IsShortNameAlias(string name)
+    {
+        for (var index = name.IndexOf('~'); index >= 0 && index < name.Length - 1; index = name.IndexOf('~', index + 1))
+        {
+            if (char.IsAsciiDigit(name[index + 1]))
+                return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// <paramref name="fullPath"/> 在 <paramref name="root"/> 之下、已存在的每一段，名稱都與父目錄列舉出的實際名稱相同
+    /// （以 <paramref name="comparison"/> 比對）。檔案系統以別名（短檔名、不分大小寫的查詢）找到、
+    /// 但名稱與實際名稱不同的段落回傳 false。第一個不存在的段落之後（例如要寫入的新檔）不再檢查。
+    /// </summary>
+    public static bool MatchesNamesOnDisk(string root, string fullPath, StringComparison comparison)
+    {
+        var relative = Path.GetRelativePath(root, fullPath);
+        if (relative == ".")
+            return true;
+
+        var current = root;
+        foreach (var segment in relative.Split(Separators, StringSplitOptions.RemoveEmptyEntries))
+        {
+            var next = Path.Combine(current, segment);
+            if (!EntryExists(next))
+                return true;
+
+            if (!DirectoryHasEntryNamed(current, segment, comparison))
+                return false;
+
+            current = next;
+        }
+
+        return true;
+    }
+
+    private static bool EntryExists(string path)
+    {
+        if (File.Exists(path) || Directory.Exists(path))
+            return true;
+
+        try
+        {
+            // 指向不存在目標的連結本身仍是一個項目。
+            return new FileInfo(path).LinkTarget != null;
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    private static bool DirectoryHasEntryNamed(string directory, string name, StringComparison comparison)
+    {
+        var options = new EnumerationOptions
+        {
+            RecurseSubdirectories = false,
+            IgnoreInaccessible = true,
+            AttributesToSkip = 0,
+            ReturnSpecialDirectories = false,
+        };
+
+        try
+        {
+            var matches = new System.IO.Enumeration.FileSystemEnumerable<bool>(
+                directory,
+                static (ref System.IO.Enumeration.FileSystemEntry _) => true,
+                options)
+            {
+                ShouldIncludePredicate = (ref System.IO.Enumeration.FileSystemEntry entry) =>
+                    entry.FileName.Equals(name.AsSpan(), comparison),
+            };
+
+            foreach (var _ in matches)
+                return true;
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
+
+        return false;
+    }
 
     /// <summary>
     /// 請求路徑中含冒號（所有平台一律拒絕）。Windows 上完整路徑開頭的磁碟代號除外，

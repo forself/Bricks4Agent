@@ -25,8 +25,7 @@ public class WriteFileHandler : ICapabilityHandler
         try
         {
             using var doc = JsonDocument.Parse(payload);
-            var root = doc.RootElement.TryGetProperty("args", out var argsEl)
-                ? argsEl : doc.RootElement;
+            var root = PayloadArgs.GetArgsElement(doc.RootElement);
             var filePath = root.GetProperty("path").GetString() ?? "";
             var content = root.GetProperty("content").GetString() ?? "";
 

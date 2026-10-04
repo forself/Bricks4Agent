@@ -80,6 +80,12 @@ public class SandboxPolicyTests : IDisposable
     [InlineData("broker.db-journal", true)]
     [InlineData("sample-project-0123456789ab.json", true)]
     [InlineData("notes:part", true)]
+    [InlineData("ABCDEF~1", true)]
+    [InlineData("ABCDEF~12.TXT", true)]
+    [InlineData("name~3.json", true)]
+    [InlineData("notes~", false)]
+    [InlineData("~draft.txt", false)]
+    [InlineData("a~b.txt", false)]
     [InlineData(".gitignore", false)]
     [InlineData(".gitattributes", false)]
     [InlineData(".github", false)]
@@ -282,6 +288,100 @@ public class SandboxPolicyTests : IDisposable
 
         File.ReadAllText(Path.Combine(_sandboxRoot, ".env")).Should().Be(envBefore);
         File.ReadAllText(Path.Combine(_sandboxRoot, "README.md")).Should().Be("readme MARKER_TEXT");
+    }
+
+    // ── 檔名別名（8.3 短檔名形式、與磁碟上實際名稱不同的寫法）──
+
+    /// <summary>8.3 短檔名形式的路徑段（「~」後接數字）一律拒絕，不論它在磁碟上指到什麼。</summary>
+    [Theory]
+    [InlineData("ABCDEF~1")]
+    [InlineData("ABCDEF~1/config")]
+    [InlineData("src/ABCDEF~2.JSO")]
+    [InlineData(@"src\ABCDEF~1\app.js")]
+    public async Task ShortNameFormSegment_IsRejectedByEveryHandler(string path)
+    {
+        new SandboxPolicy(_sandboxRoot).Resolve(path).Error.Should().Be(SandboxPolicy.BlockedPathError);
+
+        var read = await new ReadFileHandler(_sandboxRoot).ExecuteAsync("h1", "file.read", Payload(new { path }), "", default);
+        read.Error.Should().Be(SandboxPolicy.BlockedPathError);
+        var list = await new ListDirHandler(_sandboxRoot).ExecuteAsync("h2", "file.list", Payload(new { path }), "", default);
+        list.Error.Should().Be(SandboxPolicy.BlockedPathError);
+        var names = await new SearchFilesHandler(_sandboxRoot).ExecuteAsync("h3", "file.search_name", Payload(new { pattern = "*", directory = path }), "", default);
+        names.Error.Should().Be(SandboxPolicy.BlockedPathError);
+        var content = await new SearchContentHandler(_sandboxRoot).ExecuteAsync("h4", "file.search_content", Payload(new { pattern = "MARKER_TEXT", directory = path }), "", default);
+        content.Error.Should().Be(SandboxPolicy.BlockedPathError);
+        var write = await new WriteFileHandler(_sandboxRoot).ExecuteAsync("h5", "file.write", Payload(new { path, content = "x" }), "", default);
+        write.Error.Should().Be(SandboxPolicy.BlockedPathError);
+        var delete = await new DeleteFileHandler(_sandboxRoot).ExecuteAsync("h6", "file.delete", Payload(new { path }), "", default);
+        delete.Error.Should().Be(SandboxPolicy.BlockedPathError);
+    }
+
+    /// <summary>
+    /// 已存在的每一段，名稱都要與父目錄列舉出的實際名稱相同。區分大小寫的比對模擬 Linux 容器掛載的
+    /// 不分大小寫目錄：檔案系統若以另一種寫法找得到檔案，那個寫法被拒絕；找不到（區分大小寫的檔案系統）就是不存在。
+    /// 尚不存在的段落（例如要寫入的新檔）不檢查。
+    /// </summary>
+    [Fact]
+    public void MatchesNamesOnDisk_RequiresTheActualNameOfEveryExistingSegment()
+    {
+        SandboxPolicy.MatchesNamesOnDisk(_sandboxRoot, _sandboxRoot, StringComparison.Ordinal).Should().BeTrue();
+        SandboxPolicy.MatchesNamesOnDisk(_sandboxRoot, Path.Combine(_sandboxRoot, "src", "app.js"), StringComparison.Ordinal).Should().BeTrue();
+        SandboxPolicy.MatchesNamesOnDisk(_sandboxRoot, Path.Combine(_sandboxRoot, "src", "new", "file.txt"), StringComparison.Ordinal)
+            .Should().BeTrue("segments that do not exist yet are not checked");
+
+        var otherSpelling = Path.Combine(_sandboxRoot, "SRC", "App.JS");
+        var foundByOtherSpelling = File.Exists(otherSpelling);
+        SandboxPolicy.MatchesNamesOnDisk(_sandboxRoot, otherSpelling, StringComparison.Ordinal)
+            .Should().Be(!foundByOtherSpelling, "a spelling the file system resolves but does not list is refused");
+        SandboxPolicy.MatchesNamesOnDisk(_sandboxRoot, otherSpelling, StringComparison.OrdinalIgnoreCase).Should().BeTrue();
+    }
+
+    /// <summary>列舉實際名稱時不略過隱藏屬性的項目，所以它們仍以實際名稱解析。</summary>
+    [Fact]
+    public void Resolve_HiddenEntry_IsFoundByItsActualName()
+    {
+        var hidden = Path.Combine(_sandboxRoot, "src", "hidden-notes.txt");
+        File.WriteAllText(hidden, "hidden");
+        File.SetAttributes(hidden, FileAttributes.Hidden);
+
+        new SandboxPolicy(_sandboxRoot).Resolve("src/hidden-notes.txt").FullPath.Should().Be(hidden);
+    }
+
+    /// <summary>
+    /// Windows 上磁碟有產生 8.3 短檔名時：以短檔名指到拒絕清單中的目錄與檔案，路徑檢查、讀與寫都被拒絕。
+    /// 磁碟沒有產生短檔名（例如已停用）時沒有別名可測，略過。Linux 容器掛載這類磁碟的情形由
+    /// 實際名稱比對（<see cref="MatchesNamesOnDisk_RequiresTheActualNameOfEveryExistingSegment"/>）與短檔名形式的規則涵蓋。
+    /// </summary>
+    [Fact]
+    public async Task ShortNamesOfDeniedEntries_AreRejectedOnWindows()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        var policy = new SandboxPolicy(_sandboxRoot);
+        var reader = new ReadFileHandler(_sandboxRoot);
+        var writer = new WriteFileHandler(_sandboxRoot);
+        foreach (var target in new[] { Path.Combine(".git", "config"), Path.Combine("src", "config", "appsettings.Development.json"), ".env.long-local-name" })
+        {
+            var full = Path.Combine(_sandboxRoot, target);
+            if (!File.Exists(full))
+                File.WriteAllText(full, "MARKER_TEXT");
+
+            var alias = ShortRelativePath(_sandboxRoot, full);
+            if (alias == null)
+                continue; // 這個磁碟沒有為它產生 8.3 短檔名。
+
+            policy.Resolve(alias).Error.Should().Be(SandboxPolicy.BlockedPathError);
+
+            var read = await reader.ExecuteAsync("w1", "file.read", Payload(new { path = alias }), "", default);
+            read.Success.Should().BeFalse();
+            read.Error.Should().Be(SandboxPolicy.BlockedPathError);
+            read.ResultPayload.Should().BeNull();
+
+            var write = await writer.ExecuteAsync("w2", "file.write", Payload(new { path = alias, content = "changed" }), "", default);
+            write.Error.Should().Be(SandboxPolicy.BlockedPathError);
+            File.ReadAllText(full).Should().Contain("MARKER_TEXT");
+        }
     }
 
     // ── 代理工具與能力 schema 的參數（pattern、directory、file_pattern）──
@@ -643,6 +743,51 @@ public class SandboxPolicyTests : IDisposable
     {
         using var doc = JsonDocument.Parse(payload);
         return doc.RootElement.GetProperty("matches").EnumerateArray().Select(e => e.GetString()!).ToList();
+    }
+
+    /// <summary>
+    /// <paramref name="fullPath"/> 相對於 <paramref name="root"/> 的路徑，其中有 8.3 短檔名的段落換成短檔名；
+    /// 沒有任何一段有不同的短檔名時回傳 null。只在 Windows 使用。
+    /// </summary>
+    private static string? ShortRelativePath(string root, string fullPath)
+    {
+        var current = root;
+        var aliased = new List<string>();
+        var changed = false;
+        foreach (var segment in Path.GetRelativePath(root, fullPath).Split(Path.DirectorySeparatorChar))
+        {
+            current = Path.Combine(current, segment);
+            var shortName = Path.GetFileName(ShortPath(current) ?? current);
+            if (!string.Equals(shortName, segment, StringComparison.OrdinalIgnoreCase))
+                changed = true;
+            aliased.Add(shortName);
+        }
+
+        return changed ? string.Join('/', aliased) : null;
+    }
+
+    /// <summary>以 cmd 的 %~s 取得 Windows 的短路徑；失敗時回傳 null。</summary>
+    private static string? ShortPath(string path)
+    {
+        try
+        {
+            using var process = Process.Start(new ProcessStartInfo
+            {
+                FileName = "cmd.exe",
+                Arguments = $"/d /c for %I in (\"{path}\") do @echo %~sI",
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true,
+            });
+            var output = process!.StandardOutput.ReadToEnd().Trim();
+            process.WaitForExit(10_000);
+            return process.ExitCode == 0 && output.Length > 0 ? output : null;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private static bool TryCreateFileLink(string link, string target)
