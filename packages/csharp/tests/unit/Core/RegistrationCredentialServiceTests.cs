@@ -190,6 +190,27 @@ public class RegistrationCredentialServiceTests
     }
 
     [Fact]
+    public void IsRevoked_ReportsRevokedAndUnknownCredentialsButNotExpiredOnes()
+    {
+        WithService((db, service) =>
+        {
+            var active = service.Issue(PrincipalId, TaskId, RegistrationCredentialSources.AdminIssue, "unit", DateTime.UtcNow.AddHours(1));
+            var revoked = service.Issue(PrincipalId, TaskId, RegistrationCredentialSources.AdminIssue, "unit", DateTime.UtcNow.AddHours(1));
+            var expired = service.Issue(PrincipalId, TaskId, RegistrationCredentialSources.AdminIssue, "unit", DateTime.UtcNow.AddHours(1));
+            service.Revoke(revoked.CredentialId, "unit", "unit");
+            db.Execute(
+                "UPDATE registration_credentials SET expires_at = @past WHERE credential_id = @id",
+                new { past = DateTime.UtcNow.AddMinutes(-1), id = expired.CredentialId });
+
+            service.IsRevoked(active.CredentialId).Should().BeFalse();
+            service.IsRevoked(revoked.CredentialId).Should().BeTrue();
+            service.IsRevoked(expired.CredentialId).Should().BeFalse("expiry only stops new registrations");
+            service.IsRevoked("rgc_unknown").Should().BeTrue("an unknown credential is treated as revoked");
+            service.IsRevoked(string.Empty).Should().BeTrue();
+        });
+    }
+
+    [Fact]
     public void Issue_RequiresAnExpiryInTheFutureWithinTheMaximumLifetime()
     {
         WithService((_, service) =>

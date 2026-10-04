@@ -4,6 +4,7 @@ using BrokerCore.Models;
 using BrokerCore.Services;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -44,7 +45,10 @@ public class BrokerAuthorizationFixture : IAsyncLifetime
     {
     }
 
-    protected BrokerAuthorizationFixture(bool enforceWorkerAuth)
+    /// <param name="configureTestServices">
+    /// Runs after the broker's own service registrations (for example to decorate a broker service).
+    /// </param>
+    protected BrokerAuthorizationFixture(bool enforceWorkerAuth, Action<IServiceCollection>? configureTestServices = null)
     {
         WorkerAuthEnforced = enforceWorkerAuth;
         _workDirectory = Path.Combine(Path.GetTempPath(), $"b4a-authz-{Guid.NewGuid():N}");
@@ -84,6 +88,11 @@ public class BrokerAuthorizationFixture : IAsyncLifetime
 
             builder.ConfigureServices(services =>
                 services.AddSingleton<IStartupFilter, RemoteAddressStartupFilter>());
+
+            if (configureTestServices is not null)
+            {
+                builder.ConfigureTestServices(configureTestServices);
+            }
         });
     }
 

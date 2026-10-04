@@ -170,6 +170,16 @@ public class RegistrationCredentialService : IRegistrationCredentialService
     }
 
     /// <inheritdoc />
+    public bool IsRevoked(string credentialId)
+    {
+        if (string.IsNullOrWhiteSpace(credentialId))
+            return true;
+
+        var credential = _db.Get<RegistrationCredential>(credentialId);
+        return credential == null || credential.RevokedAt != null;
+    }
+
+    /// <inheritdoc />
     public bool Revoke(string credentialId, string reason, string revokedBy)
     {
         var affected = _db.Execute(

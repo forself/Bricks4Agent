@@ -43,6 +43,9 @@ public class BrokerAuthMiddleware
     /// <summary>已通過綁定檢查的 <see cref="ContainerSession"/>，供 heartbeat 等端點直接使用。</summary>
     public const string SessionRecordKey = "broker_session";
 
+    /// <summary>token 的 epoch 落後系統 epoch（kill switch）時的 401 訊息；代理端依這則訊息判斷要停止，不重新註冊。</summary>
+    public const string EpochAdvancedMessage = "Token invalidated by system epoch advancement.";
+
     public BrokerAuthMiddleware(
         RequestDelegate next,
         IScopedTokenService tokenService,
@@ -164,7 +167,7 @@ public class BrokerAuthMiddleware
             _logger.LogWarning(
                 "Epoch mismatch: token.epoch={TokenEpoch}, current={CurrentEpoch}, principal={PrincipalId}",
                 claims.Epoch, currentEpoch, claims.PrincipalId);
-            await WriteAuthError(context, 401, "Token invalidated by system epoch advancement.");
+            await WriteAuthError(context, 401, EpochAdvancedMessage);
             return;
         }
 

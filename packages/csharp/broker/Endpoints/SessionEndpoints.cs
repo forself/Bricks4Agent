@@ -118,6 +118,16 @@ public static class SessionEndpoints
             var sessionKey = crypto.DeriveSessionKey(clientPub, session.SessionId);
             keyStore.Store(session.SessionId, sessionKey);
 
+            // 憑證的撤銷先標記憑證、再結束以它註冊的 session。session 寫入之後再讀一次憑證：
+            // 撤銷若落在上面的驗證與寫入之間，這裡會看到，結束剛建立的 session 並回同一個 401；
+            // 撤銷若在這次讀取之後，它結束 session 的那一步會看到這個 session。
+            if (registrationCredentials.IsRevoked(credential.CredentialId))
+            {
+                keyStore.Remove(session.SessionId);
+                sessionService.RevokeSession(session.SessionId, "Registration credential revoked during registration.", "session-register");
+                return registration.Reject("credential_revoked", credential);
+            }
+
             var plannedGrants = BuildGrantPlan(task, role, capabilityCatalog);
             var grantedCapabilityIds = plannedGrants
                 .Select(grant => grant.CapabilityId)
@@ -177,10 +187,13 @@ public static class SessionEndpoints
         // 心跳：延長 session 與它的授予，並換發同一 session 的新 token（新 jti）。
         // 舊 token 不撤銷、到期自然失效（排隊或並行中的請求仍可完成）；關閉或撤銷 session 則由 BrokerAuth 的 session 檢查立即生效。
         // 只接受 session 自己的加密通道（BrokerAuth 已確認通道與 token 屬於同一 session）。
+        // 新 token 沿用請求 token 的 epoch（BrokerAuth 已驗證過的值），不取簽發當下的 epoch：
+        // kill switch 即使落在 BrokerAuth 的檢查之後，換發的 token 也會在下一個請求被 epoch 閘道拒絕。
         sessions.MapPost("/heartbeat", (HttpContext ctx,
             ISessionService sessionService,
             IScopedTokenService tokenService,
             IRevocationService revocationService,
+            IRegistrationCredentialService registrationCredentials,
             ICapabilityCatalog capabilityCatalog,
             ISessionKeyStore keyStore,
             BrokerDb db) =>
@@ -195,14 +208,27 @@ public static class SessionEndpoints
                 return Unauthorized("Token renewal requires the session's encrypted channel.");
             }
 
-            // 主體已停用或任務已結束時不再續期，並結束這個 session。
+            // kill switch 在 BrokerAuth 檢查之後才發生：回與 BrokerAuth 相同的 epoch 401，代理即刻停止。
+            if (revocationService.GetCurrentEpoch() > claims.Epoch)
+            {
+                return Unauthorized(BrokerAuthMiddleware.EpochAdvancedMessage);
+            }
+
+            // 主體已停用、任務已結束，或註冊這個 session 的憑證已撤銷時，不再續期，並結束這個 session。
+            // （只看撤銷不看到期：憑證到期只影響之後的註冊，不結束既有的 session。）
             var principal = db.Get<Principal>(session.PrincipalId);
             var task = db.Get<BrokerTask>(session.TaskId);
+            var credentialRevoked = !string.IsNullOrEmpty(session.RegistrationCredentialId) &&
+                                    registrationCredentials.IsRevoked(session.RegistrationCredentialId);
             if (principal == null || principal.Status != EntityStatus.Active ||
-                task == null || task.State is TaskState.Cancelled or TaskState.Completed)
+                task == null || task.State is TaskState.Cancelled or TaskState.Completed ||
+                credentialRevoked)
             {
                 keyStore.Remove(session.SessionId);
-                sessionService.RevokeSession(session.SessionId, "Principal or task is no longer active.", "session-heartbeat");
+                sessionService.RevokeSession(
+                    session.SessionId,
+                    credentialRevoked ? "Registration credential revoked." : "Principal or task is no longer active.",
+                    "session-heartbeat");
                 return Unauthorized("Session can no longer be renewed.");
             }
 
@@ -224,7 +250,7 @@ public static class SessionEndpoints
                 RoleId = session.RoleId,
                 CapabilityIds = claims.CapabilityIds,
                 Scope = claims.Scope,
-                Epoch = revocationService.GetCurrentEpoch()
+                Epoch = claims.Epoch
             });
 
             return Results.Ok(ApiResponseHelper.Success(new

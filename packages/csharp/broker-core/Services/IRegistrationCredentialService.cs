@@ -87,6 +87,12 @@ public interface IRegistrationCredentialService
     /// <summary>記錄一次成功的註冊（最後使用時間與次數）。</summary>
     void RecordUse(string credentialId);
 
+    /// <summary>
+    /// 憑證是否已撤銷（找不到紀錄也視為已撤銷）。只看撤銷、不看到期：register 在寫入 session 後以它重新確認，
+    /// heartbeat 以它確認註冊這個 session 的憑證仍未撤銷。
+    /// </summary>
+    bool IsRevoked(string credentialId);
+
     /// <summary>撤銷單一憑證；已撤銷或不存在時回傳 false。</summary>
     bool Revoke(string credentialId, string reason, string revokedBy);
 
