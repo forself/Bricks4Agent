@@ -157,6 +157,12 @@ function tokenJti(token) {
     return payload.jti;
 }
 
+/** The system epoch claim of a scoped token (the governed executor compares it when it registers again). */
+function tokenEpoch(token) {
+    const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8'));
+    return Number(payload.epoch);
+}
+
 async function removeDirWithRetry(targetPath, attempts = 20, delayMs = 250) {
     let lastError = null;
     for (let index = 0; index < attempts; index += 1) {
@@ -472,6 +478,43 @@ async function main() {
         assert.notStrictEqual(executor.client.sessionId, firstSessionId);
         assert.notStrictEqual(executor.sessionInfo.sessionId, firstSessionId);
         assert.deepStrictEqual(executor.getAllowedCapabilityIds(), ['file.read']);
+
+        // Kill switch: the running agent stops for good and does not register again (the kill switch is an
+        // emergency stop, not something a running agent recovers from). It invalidates tokens only: a newly
+        // started process can still register with a valid credential; revoking the credential stops that.
+        const clientBeforeKill = executor.client;
+        const sessionBeforeKill = executor.sessionInfo.sessionId;
+        const epochBeforeKill = tokenEpoch(executor.client.scopedToken);
+        assert(Number.isInteger(epochBeforeKill), 'scoped tokens carry the system epoch');
+        const killSwitch = await executor.client._encryptedPost('/api/v1/admin/kill-switch', {
+            reason: 'llm proxy test: kill switch',
+        });
+        assert.strictEqual(killSwitch.success, true);
+        await assert.rejects(() => agent.provider.listModels(), (error) => /session ended/.test(error.message));
+        assert.strictEqual(executor.terminated, true);
+        assert(/kill switch/.test(executor.terminationReason), executor.terminationReason);
+        assert.strictEqual(await executor._heartbeatOnce(), false);
+        const afterKill = await executor.executeTool('read_file', { path: 'README.md' }, {
+            projectRoot: ROOT,
+            noConfirm: true,
+            verbose: false,
+        });
+        assert(afterKill.includes('session ended'), afterKill);
+        assert.strictEqual(executor.client, clientBeforeKill, 'the executor must not register again after the kill switch');
+        assert.strictEqual(executor.sessionInfo.sessionId, sessionBeforeKill);
+
+        const restarted = new BrokerClient(
+            `http://127.0.0.1:${brokerPort}`,
+            Buffer.from(publicKey).toString('base64')
+        );
+        await restarted.registerSession(TEST_PRINCIPAL_ID, TEST_TASK_ID, TEST_ROLE_ID, TEST_REGISTRATION_SECRET);
+        assert.notStrictEqual(restarted.sessionId, sessionBeforeKill);
+        // A token issued after the kill switch carries a later epoch: an executor that only sees an expired-token
+        // 401 (for example after being suspended) recognises the kill switch when it registers again.
+        assert(tokenEpoch(restarted.scopedToken) > epochBeforeKill, 'the kill switch advances the epoch in new tokens');
+        const grantsAfterKill = await restarted.listGrants();
+        assert.deepStrictEqual(grantsAfterKill.data.map((grant) => grant.capabilityId), ['file.read']);
+        await restarted.closeSession('llm proxy test: process started after the kill switch');
 
         await agent.close();
 

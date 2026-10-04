@@ -45,6 +45,7 @@ function createFakeClient() {
     let llmChatCalls = 0;
     let registerCalls = 0;
     let heartbeatCalls = 0;
+    let closeCalls = 0;
     const registeredSecrets = [];
     const pendingFailures = { submit: [], llmChat: [], heartbeat: [], register: [] };
 
@@ -206,6 +207,7 @@ function createFakeClient() {
             return { success: true };
         },
         async closeSession() {
+            closeCalls += 1;
             return { success: true };
         },
         failNext(kind, error) {
@@ -225,6 +227,9 @@ function createFakeClient() {
         },
         getHeartbeatCalls() {
             return heartbeatCalls;
+        },
+        getCloseCalls() {
+            return closeCalls;
         },
     };
 }
@@ -317,7 +322,7 @@ async function testBrokerClientTokenRenewal() {
     );
 }
 
-/** Governed executor: 401 recovery by registering again once, kill switch left alone, heartbeat cadence. */
+/** Governed executor: 401 recovery by registering again once, heartbeat cadence (the kill switch: see below). */
 async function testSessionRecovery() {
     const fakeClient = createFakeClient();
     const agent = new AgentLoop({
@@ -354,12 +359,6 @@ async function testSessionRecovery() {
     fakeClient.failNext('submit', brokerHttpError(401, 'Session expired.'));
     const twice = await executor.executeTool('read_file', { path: './README.html' }, context);
     assert(twice.includes('broker error'), twice);
-    assert.strictEqual(fakeClient.getRegisterCalls(), 3);
-
-    // The kill switch (system epoch advancement) must stay in effect: no new registration.
-    fakeClient.failNext('submit', brokerHttpError(401, 'Token invalidated by system epoch advancement.'));
-    const killed = await executor.executeTool('read_file', { path: './README.html' }, context);
-    assert(killed.includes('broker error'), killed);
     assert.strictEqual(fakeClient.getRegisterCalls(), 3);
 
     // Other failures are not treated as session expiry.
@@ -402,6 +401,158 @@ async function testSessionRecovery() {
     assert.strictEqual(fakeClient.getRegisteredSecrets().length, fakeClient.getRegisterCalls());
     assert(fakeClient.getRegisteredSecrets().every((secret) => secret === TEST_REGISTRATION_SECRET));
     assertSecretNotExposed(executor.getPromptContext(), agent.messages[0].content);
+}
+
+/**
+ * The kill switch (system epoch advancement) stops a running agent for good, whichever broker call sees it
+ * first (tool request, LLM call or heartbeat). Later, once the token has expired, the broker answers with a
+ * plain 401 ("Invalid or expired token."), which would otherwise look like an expired session: the executor
+ * still does not register again (the broker would accept a new registration with the still valid credential),
+ * and nothing else reaches the broker. A newly started process may still register; revoking the credential
+ * is what stops that.
+ */
+async function testKillSwitchEndsTheExecutor() {
+    const killSwitch = () => brokerHttpError(401, 'Token invalidated by system epoch advancement.');
+    const expired = () => brokerHttpError(401, 'Invalid or expired token.');
+
+    for (const via of ['submit', 'llmChat', 'heartbeat']) {
+        const fakeClient = createFakeClient();
+        const agent = new AgentLoop({
+            model: 'user-requested-model',
+            provider: createForbiddenDirectProvider(),
+            projectRoot: ROOT,
+            stream: false,
+            governed: {
+                brokerUrl: 'http://broker.local:5000',
+                brokerPubKey: 'fake-pub-key',
+                principalId: 'prn_test',
+                taskId: 'task_test',
+                roleId: 'role_reader',
+                registrationSecret: TEST_REGISTRATION_SECRET,
+                clientFactory: () => fakeClient,
+            },
+        });
+        await agent.init();
+        const executor = agent.governedExecutor;
+        const context = { projectRoot: ROOT, noConfirm: true, verbose: false };
+        assert.strictEqual(fakeClient.getRegisterCalls(), 1);
+        assert.strictEqual(executor._heartbeatRunning, true);
+
+        // The kill switch first, then (token expired) a plain 401 on every kind of call.
+        fakeClient.failNext(via, killSwitch());
+        for (const kind of ['submit', 'llmChat', 'heartbeat']) {
+            fakeClient.failNext(kind, expired());
+        }
+
+        if (via === 'submit') {
+            const killed = await executor.executeTool('read_file', { path: './README.html' }, context);
+            assert(killed.includes('session ended'), `${via}: ${killed}`);
+        } else if (via === 'llmChat') {
+            await assert.rejects(
+                () => executor.chat({ model: 'x', messages: [{ role: 'user', content: 'hi' }], tools: [] }),
+                (error) => /session ended/.test(error.message)
+            );
+        } else {
+            assert.strictEqual(await executor._heartbeatOnce(), false);
+        }
+
+        assert.strictEqual(executor.terminated, true, `${via}: the kill switch ends the executor`);
+        assert(/kill switch/.test(executor.terminationReason), `${via}: ${executor.terminationReason}`);
+        assert.strictEqual(executor._heartbeatRunning, false, `${via}: heartbeat stopped`);
+        assert.strictEqual(executor._heartbeatTimer, null, `${via}: no heartbeat scheduled`);
+        const submitCalls = fakeClient.getSubmitCalls();
+        const llmChatCalls = fakeClient.getLlmChatCalls();
+        const heartbeatCalls = fakeClient.getHeartbeatCalls();
+
+        // Every later call fails at once: no registration, no broker call, also not for the expired-token 401s.
+        const later = await executor.executeTool('read_file', { path: './README.html' }, context);
+        assert(later.includes('session ended'), `${via}: ${later}`);
+        await assert.rejects(
+            () => executor.chat({ model: 'x', messages: [{ role: 'user', content: 'hi' }], tools: [] }),
+            (error) => /session ended/.test(error.message)
+        );
+        assert.strictEqual(await executor._heartbeatOnce(), false);
+        assert.strictEqual(await executor.healthCheck(), false);
+        await assert.rejects(() => executor._reregister(), (error) => /session ended/.test(error.message));
+        assert.strictEqual(fakeClient.getRegisterCalls(), 1, `${via}: the kill switch must not lead to a new registration`);
+        assert.strictEqual(fakeClient.getSubmitCalls(), submitCalls);
+        assert.strictEqual(fakeClient.getLlmChatCalls(), llmChatCalls);
+        assert.strictEqual(fakeClient.getHeartbeatCalls(), heartbeatCalls);
+
+        // The LINE listener stops with an error after its first poll.
+        const listener = new LineListener(agent, { pollIntervalMs: 1 });
+        await assert.rejects(() => listener.start(), (error) => /broker session ended/.test(error.message));
+        assert.strictEqual(listener.running, false);
+        assert.strictEqual(fakeClient.getRegisterCalls(), 1);
+
+        // Closing does not contact the broker either.
+        await agent.close();
+        assert.strictEqual(fakeClient.getCloseCalls(), 0, `${via}: no close call after the kill switch`);
+        assert.strictEqual(fakeClient.getRegisterCalls(), 1);
+    }
+}
+
+/**
+ * The kill switch fired while the process was suspended past its token's expiry, so the first answer it gets is
+ * a plain expired-token 401 and it registers again. The new token carries a later system epoch than the previous
+ * one (only the kill switch advances it): the executor closes that new session and ends, as it would have on the
+ * kill switch rejection. Without an epoch change, a plain 401 is recovered as before.
+ */
+async function testKillSwitchSeenOnlyWhenRegisteringAgain() {
+    const fakeClient = createFakeClient();
+    let epoch = 3;
+    const token = (claims) => ['header', Buffer.from(JSON.stringify(claims), 'utf8').toString('base64url'), 'signature'].join('.');
+    const registerSession = fakeClient.registerSession.bind(fakeClient);
+    fakeClient.registerSession = async (...args) => {
+        const info = await registerSession(...args);
+        fakeClient.scopedToken = token({ epoch: String(epoch), session_id: info.sessionId });
+        return info;
+    };
+    const agent = new AgentLoop({
+        model: 'user-requested-model',
+        provider: createForbiddenDirectProvider(),
+        projectRoot: ROOT,
+        stream: false,
+        governed: {
+            brokerUrl: 'http://broker.local:5000',
+            brokerPubKey: 'fake-pub-key',
+            principalId: 'prn_test',
+            taskId: 'task_test',
+            roleId: 'role_reader',
+            registrationSecret: TEST_REGISTRATION_SECRET,
+            clientFactory: () => fakeClient,
+        },
+    });
+    await agent.init();
+    const executor = agent.governedExecutor;
+    const context = { projectRoot: ROOT, noConfirm: true, verbose: false };
+    const expired = () => brokerHttpError(401, 'Invalid or expired token.');
+
+    // Same epoch: an expired token is recovered by registering again.
+    fakeClient.failNext('submit', expired());
+    assert.strictEqual(await executor.executeTool('read_file', { path: './README.html' }, context), 'ok');
+    assert.strictEqual(fakeClient.getRegisterCalls(), 2);
+    assert.strictEqual(executor.terminated, false);
+
+    // The kill switch advanced the epoch while the process was suspended.
+    epoch = 4;
+    fakeClient.failNext('heartbeat', expired());
+    assert.strictEqual(await executor._heartbeatOnce(), false);
+    assert.strictEqual(executor.terminated, true);
+    assert(/kill switch/.test(executor.terminationReason), executor.terminationReason);
+    assert.strictEqual(fakeClient.getRegisterCalls(), 3);
+    assert.strictEqual(fakeClient.getCloseCalls(), 1, 'the session registered after the kill switch is closed again');
+    assert.strictEqual(executor.sessionInfo.sessionId, 'sess_test_002', 'the executor does not carry on with the new session');
+    assert.strictEqual(executor._heartbeatRunning, false);
+
+    const submitCalls = fakeClient.getSubmitCalls();
+    const later = await executor.executeTool('read_file', { path: './README.html' }, context);
+    assert(later.includes('session ended'), later);
+    await assert.rejects(() => executor._reregister(), (error) => /session ended/.test(error.message));
+    assert.strictEqual(fakeClient.getRegisterCalls(), 3);
+    assert.strictEqual(fakeClient.getSubmitCalls(), submitCalls);
+    await agent.close();
+    assert.strictEqual(fakeClient.getCloseCalls(), 1);
 }
 
 /**
@@ -571,6 +722,8 @@ async function main() {
 
     await testBrokerClientTokenRenewal();
     await testSessionRecovery();
+    await testKillSwitchEndsTheExecutor();
+    await testKillSwitchSeenOnlyWhenRegisteringAgain();
     await testRegistrationRefusalEndsTheExecutor();
     console.log('Governed mode tests passed.');
 }

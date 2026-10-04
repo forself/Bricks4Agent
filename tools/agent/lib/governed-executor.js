@@ -35,6 +35,9 @@ const HEARTBEAT_MIN_INTERVAL_MS = 10 * 1000;
 // active, role not allowed): the executor stops instead of registering again on every call.
 const FINAL_REGISTRATION_STATUSES = new Set([400, 401, 403]);
 
+// Termination reason after the kill switch invalidated the token (see isKillSwitchRejection).
+const KILL_SWITCH_REASON = 'kill switch (system epoch advanced)';
+
 class GovernedExecutor {
     // The registration secret stays in a private field: it is sent only inside the encrypted register
     // handshake and never placed in the prompt context, the system prompt or any log line.
@@ -64,7 +67,10 @@ class GovernedExecutor {
         this._terminationReason = null;
     }
 
-    /** True once the broker refused to register this principal and task again; every later call fails at once. */
+    /**
+     * True once the executor ended for good: the kill switch invalidated its token, or the broker refused to
+     * register this principal and task again. Every later call fails at once.
+     */
     get terminated() {
         return this._terminationReason !== null;
     }
@@ -576,7 +582,8 @@ class GovernedExecutor {
     /**
      * Runs a broker call; when the broker rejects the session or token (HTTP 401, for example after
      * the token expired while the process was blocked), registers again once and retries the call once.
-     * A rejection caused by the kill switch (system epoch advancement) is not retried.
+     * A rejection caused by the kill switch (system epoch advancement) ends the executor instead: it never
+     * registers again, also not after its token has expired and the broker answers with a plain 401.
      */
     async _callBroker(operation) {
         if (this.terminated) {
@@ -586,6 +593,10 @@ class GovernedExecutor {
         try {
             return await operation(this.client);
         } catch (error) {
+            if (isKillSwitchRejection(error)) {
+                this._terminate(KILL_SWITCH_REASON);
+                throw sessionEndedError(this._terminationReason);
+            }
             if (!isRecoverableSessionFailure(error)) {
                 throw error;
             }
@@ -600,6 +611,9 @@ class GovernedExecutor {
      * Registers a new session with the same principal, task and role, then reloads grants and runtime spec.
      * A final refusal (see FINAL_REGISTRATION_STATUSES) ends the executor: the heartbeat stops and every
      * later call fails without contacting the broker. Network errors and other statuses stay retryable.
+     * When the new token carries a later system epoch than the previous one, the kill switch fired in between
+     * (for example while the process was suspended past its token's expiry, so it only saw an expired-token
+     * 401): the new session is closed and the executor ends, as it would have on the kill switch rejection.
      */
     async _reregister() {
         if (this.terminated) {
@@ -608,6 +622,7 @@ class GovernedExecutor {
 
         if (!this._reregistration) {
             this._reregistration = (async () => {
+                const previousEpoch = tokenEpoch(this.client?.scopedToken);
                 const client = this.clientFactory(this.brokerUrl, this.brokerPubKey);
                 let sessionInfo;
                 try {
@@ -624,6 +639,16 @@ class GovernedExecutor {
                     }
                     throw error;
                 }
+                const currentEpoch = tokenEpoch(client.scopedToken);
+                if (previousEpoch !== null && currentEpoch !== null && currentEpoch > previousEpoch) {
+                    try {
+                        await client.closeSession('Kill switch: the agent stops');
+                    } catch (_) {
+                        // The session expires on its own; the executor ends either way.
+                    }
+                    this._terminate(KILL_SWITCH_REASON);
+                    throw sessionEndedError(this._terminationReason);
+                }
                 this.client = client;
                 this.sessionInfo = sessionInfo;
                 await this._loadGovernanceSnapshot();
@@ -639,7 +664,7 @@ class GovernedExecutor {
         return await this._reregistration;
     }
 
-    /** Stops the executor for good: no more heartbeats, registrations or broker calls. */
+    /** Stops the executor for good (kill switch, or registering again refused): no more heartbeats, registrations or broker calls. */
     _terminate(reason) {
         if (this.terminated) {
             return;
@@ -649,7 +674,10 @@ class GovernedExecutor {
         logError(`[Governed] broker session ended: ${reason}`);
     }
 
-    /** One heartbeat: renews the token; on a session or token rejection registers again once. */
+    /**
+     * One heartbeat: renews the token; on a session or token rejection registers again once.
+     * A kill switch rejection ends the executor (see _callBroker).
+     */
     async _heartbeatOnce() {
         if (this.terminated) {
             return false;
@@ -662,6 +690,10 @@ class GovernedExecutor {
             }
             return true;
         } catch (e) {
+            if (isKillSwitchRejection(e)) {
+                this._terminate(KILL_SWITCH_REASON);
+                return false;
+            }
             if (!isRecoverableSessionFailure(e)) {
                 logWarn(`[Governed] heartbeat failed: ${e.message}`);
                 return false;
@@ -727,16 +759,45 @@ function sessionEndedError(reason) {
 }
 
 /**
- * A 401 from the broker means the token or session is no longer accepted (expired, closed, revoked).
- * Registering again recovers from expiry; a kill switch (system epoch advancement) must stay in effect.
+ * The broker refused the token because the kill switch advanced the system epoch. The executor ends:
+ * a kill switch stops a running agent for good, it does not wait for the token to expire.
  */
-function isRecoverableSessionFailure(error) {
+function isKillSwitchRejection(error) {
     if (!error || error.status !== 401) {
         return false;
     }
 
     const message = `${error.brokerMessage || ''} ${error.message || ''}`;
-    return !/epoch/i.test(message);
+    return /epoch/i.test(message);
+}
+
+/**
+ * The system epoch a scoped token was issued in (its `epoch` claim), or null when the token cannot be read.
+ * Only the kill switch advances the epoch, so a later epoch on a new token means the kill switch fired.
+ */
+function tokenEpoch(token) {
+    if (typeof token !== 'string') {
+        return null;
+    }
+    const parts = token.split('.');
+    if (parts.length !== 3) {
+        return null;
+    }
+    try {
+        const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+        const epoch = Number(payload.epoch);
+        return Number.isInteger(epoch) ? epoch : null;
+    } catch (_) {
+        return null;
+    }
+}
+
+/**
+ * A 401 from the broker means the token or session is no longer accepted (expired, closed, revoked).
+ * Registering again recovers from expiry; a kill switch rejection is handled before this check and ends the executor.
+ */
+function isRecoverableSessionFailure(error) {
+    return !!error && error.status === 401 && !isKillSwitchRejection(error);
 }
 
 function toArray(response) {

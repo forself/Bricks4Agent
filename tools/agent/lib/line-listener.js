@@ -47,8 +47,9 @@ class LineListener {
                 logError(`Poll error: ${e.message}`);
             }
 
-            // The broker refused to register this agent again (credential revoked or expired, task ended):
-            // stop polling and fail, instead of producing a rejected registration on every poll.
+            // The executor ended (kill switch, or the broker refused to register this agent again because the
+            // credential was revoked or expired or the task ended): stop polling and fail, instead of producing
+            // a rejected call or registration on every poll.
             const executor = this.agent.governedExecutor;
             if (executor && executor.terminated) {
                 this.running = false;
