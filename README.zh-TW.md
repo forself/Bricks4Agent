@@ -4,9 +4,13 @@ English version: [README.md](README.md)
 
 ## 這是什麼
 
-`Bricks4Agent` 是一套**零 runtime 依賴的 Vanilla JS UI 元件庫**,加上一個把 JSON `PageDefinition` 轉成頁面的**頁面／SPA 生成器**。
+`Bricks4Agent` 的最終形態是一個 **AI 代理服務**：代理接收人類使用者或其他 AI 代理的需求，以本元件庫產生系統、頁面與功能。本 repo 同時放著服務本身與它的積木：
 
-- **UI 元件庫** — 116 個元件(form、layout、common、input、viz、social、editor、sections、data、analytics),純 Vanilla JS,以 theme token 上色,內建 XSS 防護與 i18n。
+- **AI 代理服務** — 代理執行環境；broker 核發限定範圍的工作階段、檢查權限與範圍、代理模型請求；以及 broker 調度的 worker。代理容器只能連到 broker，不持有模型服務的 API 金鑰。
+
+積木是一套**零 runtime 依賴的 Vanilla JS UI 元件庫**,加上一個把 JSON `PageDefinition` 轉成頁面的**頁面／SPA 生成器**。
+
+- **UI 元件庫** — 134 個元件(form、layout、common、input、viz、social、editor、sections、data、analytics),純 Vanilla JS,以 theme token 上色,內建 XSS 防護與 i18n。
 
 - **頁面生成器** — 一份 `PageDefinition`(JSON)有兩條路變成頁面:**靜態產碼**(產出 `.js` 頁面檔)或**動態渲染**(執行期直接依 JSON 畫出來)。
 
@@ -47,6 +51,18 @@ English version: [README.md](README.md)
 - [tools/static-server](tools/static-server) — 預覽用靜態伺服器
 
 - [tools/form-application-studio](tools/form-application-studio) — JSON 自舉的表單／API／資料庫設計工具
+
+### AI 代理服務
+
+- [tools/agent](tools/agent/README.md) — 代理執行環境（直連模型、生成管線、經 broker 受控三種模式）
+
+- [tools/agent/container](tools/agent/container/README.md) — 受控路徑的 Podman 堆疊：broker、代理、worker 與測試用的模型服務
+
+- [packages/csharp/broker](packages/csharp/broker)、[packages/csharp/broker-core](packages/csharp/broker-core) — 限定範圍的工作階段、權限與範圍規則、模型請求代理
+
+- [packages/csharp/workers](packages/csharp/workers) — broker 調度的 worker（檔案、LINE、執行轉接）
+
+- 驗證：`npm run validate:agent-container-config`、`npm run validate:podman-governed-stack`
 
 ## 快速開始
 

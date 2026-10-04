@@ -2,10 +2,13 @@
 
 ## Project Identity
 
-A zero-runtime-dependency Vanilla JS **UI component library** plus a **page/SPA generator**
-that turns a JSON `PageDefinition` into working pages (static code generation or dynamic runtime rendering).
+Bricks4Agent's end state is an **AI agent service**: it takes requests from human users or from other AI agents and generates systems, pages and features from this component library. Everything in the repo serves that goal:
 
-- Authoritative component list: [component-catalog.json](packages/javascript/browser/ui_components/metadata/component-catalog.json) (116 components)
+- **Building blocks** — a zero-runtime-dependency Vanilla JS **UI component library** plus a **page/SPA generator** that turns a JSON `PageDefinition` into working pages (static code generation or dynamic runtime rendering), the SPA scaffolding and the form application studio.
+
+- **Agent service** — the agent runtime ([tools/agent](tools/agent/README.md)), the broker that issues scoped sessions, enforces capability and scope policy and proxies model traffic (`packages/csharp/broker`, `packages/csharp/broker-core`), and the workers it dispatches (`packages/csharp/workers`). The agent container reaches only the broker and holds no provider API key; see [tools/agent/container/README.md](tools/agent/container/README.md).
+
+- Authoritative component list: [component-catalog.json](packages/javascript/browser/ui_components/metadata/component-catalog.json) (134 components)
 
 - Read before building: [AGENT-UI-GUIDE.md](AGENT-UI-GUIDE.md) (calling convention) and [AGENT.md](AGENT.md) (SPA generator manual)
 

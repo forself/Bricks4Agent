@@ -22,8 +22,15 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <main>
 <h1>Bricks4Agent — Claude Code Rules</h1>
 <h2>Project Identity</h2>
-<p>A zero-runtime-dependency Vanilla JS <strong>UI component library</strong> plus a <strong>page/SPA generator</strong>
-that turns a JSON <code>PageDefinition</code> into working pages (static code generation or dynamic runtime rendering).</p>
+<p>Bricks4Agent's end state is an <strong>AI agent service</strong>: it takes requests from human users or from other AI agents and generates systems, pages and features from this component library. Everything in the repo serves that goal:</p>
+<ul>
+<li>
+<p><strong>Building blocks</strong> — a zero-runtime-dependency Vanilla JS <strong>UI component library</strong> plus a <strong>page/SPA generator</strong> that turns a JSON <code>PageDefinition</code> into working pages (static code generation or dynamic runtime rendering), the SPA scaffolding and the form application studio.</p>
+</li>
+<li>
+<p><strong>Agent service</strong> — the agent runtime (<a href="tools/agent/README.html">tools/agent</a>), the broker that issues scoped sessions, enforces capability and scope policy and proxies model traffic (<code>packages/csharp/broker</code>, <code>packages/csharp/broker-core</code>), and the workers it dispatches (<code>packages/csharp/workers</code>). The agent container reaches only the broker and holds no provider API key; see <a href="tools/agent/container/README.html">tools/agent/container/README.md</a>.</p>
+</li>
+</ul>
 <ul>
 <li>
 <p>Authoritative component list: <a href="packages/javascript/browser/ui_components/metadata/component-catalog.json">component-catalog.json</a> (134 components)</p>
