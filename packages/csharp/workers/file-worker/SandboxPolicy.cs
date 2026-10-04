@@ -5,16 +5,18 @@ namespace FileWorker;
 ///
 /// - 邊界：請求路徑先正規化，再以「根目錄 + 分隔字元」做完整前綴比對；接著逐段解析
 ///   symlink／junction，解析後的實際路徑也必須留在（同樣解析過的）根目錄內。
-/// - 拒絕清單：路徑中任何一段符合 <see cref="IsSensitiveName"/> 即拒絕（版本控制中繼資料、
-///   代理工具設定、環境變數檔、本機設定與金鑰類檔案）。列舉與搜尋時直接略過這些項目，
-///   也不進入 symlink（避免經由連結走出 sandbox）。
-/// - 搜尋：檔名 pattern 只能比對檔名（<see cref="IsFileNamePattern"/>），目錄一律由 path 指定並經 <see cref="Resolve"/>。
+/// - 拒絕清單：路徑中任何一段符合 <see cref="IsSensitiveName"/>，或路徑結尾符合特定位置的本機設定檔，
+///   即拒絕（版本控制中繼資料、代理工具設定、環境變數檔、本機設定、資料庫與金鑰類檔案）。
+///   列舉與搜尋時直接略過這些項目，也不進入 symlink（避免經由連結走出 sandbox）。
+///   拒絕清單是過渡措施；只提供白名單快照的唯讀視圖列為後續。
+/// - 路徑段含冒號一律拒絕（所有平台都一樣，與檔名 pattern 的規則一致）。
+/// - 搜尋：檔名 pattern 只能比對檔名（<see cref="IsFileNamePattern"/>），目錄一律由 directory（或 path）指定並經 <see cref="Resolve"/>。
 /// </summary>
 public sealed class SandboxPolicy
 {
     public const string OutsideSandboxError = "Path outside sandbox.";
     public const string BlockedPathError = "Path is blocked by the sandbox policy.";
-    public const string InvalidPatternError = "Search pattern must match file names only (no directory part); use path for the directory.";
+    public const string InvalidPatternError = "Search pattern must match file names only (no directory part); use directory for the folder to search.";
 
     private const int MaxLinkHops = 40;
 
@@ -33,6 +35,8 @@ public sealed class SandboxPolicy
         ".env",
         "appsettings.Development.json",
         "agent-stack.env",
+        "Api.txt",
+        "ngrok_recovery_codes.txt",
     };
 
     private static readonly string[] SensitivePrefixes =
@@ -51,6 +55,21 @@ public sealed class SandboxPolicy
         ".key",
         ".pfx",
         ".p12",
+        ".db",
+        ".db-wal",
+        ".db-shm",
+        ".db-journal",
+    };
+
+    // 下載的雲端服務帳戶金鑰的預設檔名：<專案>-<12 位十六進位>.json。
+    private static readonly System.Text.RegularExpressions.Regex ServiceAccountKeyName = new(
+        @"^.+-[0-9a-f]{12}\.json$",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+    // 只在特定位置才算敏感的檔案：比對路徑的最後幾段（不分大小寫），不擋其他位置的同名檔。
+    private static readonly string[][] SensitivePathSuffixes =
+    {
+        new[] { "line-worker", "appsettings.json" },
     };
 
     private readonly string _realRoot;
@@ -72,6 +91,9 @@ public sealed class SandboxPolicy
         var requested = requestedPath ?? string.Empty;
         if (requested.IndexOf('\0') >= 0)
             return (null, OutsideSandboxError);
+
+        if (HasColonInPath(requested))
+            return (null, BlockedPathError);
 
         string fullPath;
         try
@@ -99,11 +121,14 @@ public sealed class SandboxPolicy
         return (fullPath, null);
     }
 
-    /// <summary>單一路徑段是否屬於拒絕清單（不分大小寫）。</summary>
+    /// <summary>單一路徑段是否屬於拒絕清單（不分大小寫）；含冒號的名稱一律視為拒絕。</summary>
     public static bool IsSensitiveName(string name)
     {
         if (string.IsNullOrEmpty(name))
             return false;
+
+        if (name.IndexOf(':') >= 0)
+            return true;
 
         foreach (var exact in SensitiveExactNames)
         {
@@ -120,6 +145,43 @@ public sealed class SandboxPolicy
         foreach (var extension in SensitiveExtensions)
         {
             if (name.EndsWith(extension, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return ServiceAccountKeyName.IsMatch(name);
+    }
+
+    /// <summary>
+    /// sandbox 內的相對路徑是否被拒絕：任何一段屬於拒絕清單，或結尾符合只在特定位置才算敏感的檔案。
+    /// </summary>
+    public static bool IsSensitiveRelativePath(string relativePath)
+    {
+        if (string.IsNullOrEmpty(relativePath) || relativePath == ".")
+            return false;
+
+        var segments = relativePath.Split(Separators, StringSplitOptions.RemoveEmptyEntries);
+        foreach (var segment in segments)
+        {
+            if (IsSensitiveName(segment))
+                return true;
+        }
+
+        foreach (var suffix in SensitivePathSuffixes)
+        {
+            if (segments.Length < suffix.Length)
+                continue;
+
+            var matched = true;
+            for (var index = 0; index < suffix.Length; index++)
+            {
+                if (!string.Equals(segments[segments.Length - suffix.Length + index], suffix[index], StringComparison.OrdinalIgnoreCase))
+                {
+                    matched = false;
+                    break;
+                }
+            }
+
+            if (matched)
                 return true;
         }
 
@@ -141,6 +203,9 @@ public sealed class SandboxPolicy
         foreach (var entry in new DirectoryInfo(directory).EnumerateFileSystemInfos("*", options))
         {
             if (entry.LinkTarget != null || IsSensitiveName(entry.Name))
+                continue;
+            var fullEntry = TrimTrailingSeparator(Path.GetFullPath(entry.FullName));
+            if (!IsWithin(fullEntry, Root) || HasSensitiveSegment(Path.GetRelativePath(Root, fullEntry)))
                 continue;
             yield return entry;
         }
@@ -225,17 +290,19 @@ public sealed class SandboxPolicy
     }
 
     private static bool HasSensitiveSegment(string relativePath)
+        => IsSensitiveRelativePath(relativePath);
+
+    /// <summary>
+    /// 請求路徑中含冒號（所有平台一律拒絕）。Windows 上完整路徑開頭的磁碟代號除外，
+    /// 那種路徑仍要通過後面的邊界檢查。
+    /// </summary>
+    private static bool HasColonInPath(string requested)
     {
-        if (relativePath == ".")
-            return false;
+        var start = 0;
+        if (OperatingSystem.IsWindows() && Path.IsPathFullyQualified(requested))
+            start = (Path.GetPathRoot(requested) ?? string.Empty).Length;
 
-        foreach (var segment in relativePath.Split(Separators, StringSplitOptions.RemoveEmptyEntries))
-        {
-            if (IsSensitiveName(segment))
-                return true;
-        }
-
-        return false;
+        return requested.IndexOf(':', start) >= 0;
     }
 
     private static bool IsWithin(string candidate, string root)

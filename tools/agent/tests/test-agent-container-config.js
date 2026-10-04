@@ -338,7 +338,11 @@ assertIncludes('program loads agent broker url config', program, 'AgentBrokerUrl
 
 const podmanStackTest = read('tools/agent/tests/test-podman-governed-stack.js');
 assertIncludes('podman stack prebuilds images', podmanStackTest, 'await buildImages(env);');
-assertIncludes('podman stack validates broker tool dispatch', podmanStackTest, "STACK_TOOL_CALL: 'read_file'");
+assertIncludes('podman stack validates broker tool dispatch', podmanStackTest, "{ name: 'read_file', args: { path: 'README.html' } }");
+assertIncludes('podman stack drives a tool sequence', podmanStackTest, 'STACK_TOOL_SEQUENCE_JSON: JSON.stringify(TOOL_SEQUENCE)');
+assertIncludes('podman stack checks every tool result', podmanStackTest, 'STACK_EXPECT_TOOL_RESULTS_JSON: JSON.stringify(TOOL_EXPECTATIONS)');
+assertIncludes('podman stack searches with the agent tool arguments', podmanStackTest, "name: 'search_content'");
+assertIncludes('podman stack checks that a worker refusal is final', podmanStackTest, 'Worker refused search_files');
 assertIncludes('podman stack forces utf8 compose output', podmanStackTest, "PYTHONIOENCODING: 'utf-8'");
 assertNotIncludes('podman stack avoids compose build flag', podmanStackTest, "'--build'");
 

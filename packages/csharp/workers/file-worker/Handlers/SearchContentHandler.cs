@@ -6,7 +6,8 @@ namespace FileWorker.Handlers;
 /// <summary>
 /// file.search_content 能力處理器 — 按內容搜尋
 ///
-/// 從 InProcessDispatcher.ExecuteSearchContent() 搬遷
+/// 從 InProcessDispatcher.ExecuteSearchContent() 搬遷。參數與代理工具、能力 schema 相同：
+/// 搜尋文字 pattern（或 query）、目錄 directory（或 path）、檔名 file_pattern。
 /// </summary>
 public class SearchContentHandler : ICapabilityHandler
 {
@@ -27,11 +28,9 @@ public class SearchContentHandler : ICapabilityHandler
             using var doc = JsonDocument.Parse(payload);
             var root = doc.RootElement.TryGetProperty("args", out var argsEl)
                 ? argsEl : doc.RootElement;
-            var query = root.GetProperty("query").GetString() ?? "";
-            var basePath = root.TryGetProperty("path", out var p)
-                ? p.GetString() ?? "." : ".";
-            var filePattern = root.TryGetProperty("file_pattern", out var fp)
-                ? fp.GetString() ?? "*" : "*";
+            var query = SearchArgs.GetString(root, "pattern", "query") ?? "";
+            var basePath = SearchArgs.GetString(root, "directory", "path") ?? ".";
+            var filePattern = SearchArgs.GetString(root, "file_pattern") ?? "*";
 
             if (!SandboxPolicy.IsFileNamePattern(filePattern))
                 return Task.FromResult<(bool, string?, string?)>((false, null, SandboxPolicy.InvalidPatternError));

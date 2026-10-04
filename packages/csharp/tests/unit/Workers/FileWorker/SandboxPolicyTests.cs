@@ -68,6 +68,15 @@ public class SandboxPolicyTests : IDisposable
     [InlineData("id_rsa.pub", true)]
     [InlineData("id_ed25519", true)]
     [InlineData("client_secret_123.json", true)]
+    [InlineData("Api.txt", true)]
+    [InlineData("API.TXT", true)]
+    [InlineData("ngrok_recovery_codes.txt", true)]
+    [InlineData("broker.db", true)]
+    [InlineData("broker.db-wal", true)]
+    [InlineData("broker.db-shm", true)]
+    [InlineData("broker.db-journal", true)]
+    [InlineData("sample-project-0123456789ab.json", true)]
+    [InlineData("notes:part", true)]
     [InlineData(".gitignore", false)]
     [InlineData(".gitattributes", false)]
     [InlineData(".github", false)]
@@ -76,9 +85,177 @@ public class SandboxPolicyTests : IDisposable
     [InlineData("environment.ts", false)]
     [InlineData("monkey", false)]
     [InlineData("keys.json", false)]
+    [InlineData("package-lock.json", false)]
+    [InlineData("api-notes.txt", false)]
+    [InlineData("dbcontext.cs", false)]
+    [InlineData("schema.dbml", false)]
+    [InlineData("sample-project-settings.json", false)]
     public void IsSensitiveName_MatchesDenyList(string name, bool expected)
     {
         SandboxPolicy.IsSensitiveName(name).Should().Be(expected);
+    }
+
+    [Theory]
+    [InlineData("packages/csharp/workers/line-worker/appsettings.json", true)]
+    [InlineData("workers/line-worker/appsettings.json", true)]
+    [InlineData(@"packages\csharp\workers\line-worker\APPSETTINGS.JSON", true)]
+    [InlineData("packages/csharp/broker/appsettings.json", false)]
+    [InlineData("packages/csharp/workers/line-worker/appsettings.example.json", false)]
+    [InlineData("appsettings.json", false)]
+    [InlineData("data/broker.db", true)]
+    [InlineData("src/app.js", false)]
+    [InlineData(".", false)]
+    public void IsSensitiveRelativePath_CoversLocationSpecificFiles(string relativePath, bool expected)
+    {
+        SandboxPolicy.IsSensitiveRelativePath(relativePath).Should().Be(expected);
+    }
+
+    /// <summary>
+    /// 每個列在 .gitignore「Secrets」區段的模式（以及 SQLite 資料庫與本機密鑰設定檔），拒絕清單都要涵蓋。
+    /// 在 .gitignore 新增密鑰類項目而沒有同步拒絕清單時，這個測試會失敗。
+    /// </summary>
+    [Fact]
+    public void GitignoreSecretEntries_AreAllCoveredByTheDenyList()
+    {
+        var lines = File.ReadAllLines(FindRepositoryFile(".gitignore"));
+
+        var secrets = SectionEntries(lines, "# Secrets");
+        secrets.Should().NotBeEmpty("the .gitignore Secrets section must exist");
+        var databases = SectionEntries(lines, "# SQLite databases").Where(entry => entry.StartsWith("*.db", StringComparison.Ordinal)).ToList();
+        databases.Should().NotBeEmpty("the .gitignore SQLite section must exist");
+        var localSecrets = new[]
+        {
+            "ngrok_recovery_codes.txt",
+            "packages/csharp/workers/line-worker/appsettings.json",
+            "packages/csharp/broker/appsettings.Development.json",
+        };
+        lines.Select(line => line.Trim()).Should().Contain(localSecrets);
+
+        foreach (var entry in secrets.Concat(databases).Concat(localSecrets))
+        {
+            var sample = entry.StartsWith("**/", StringComparison.Ordinal) ? entry[3..] : entry;
+            sample = sample.Replace("*", "sample", StringComparison.Ordinal);
+            SandboxPolicy.IsSensitiveRelativePath(sample).Should().BeTrue($".gitignore entry '{entry}' (checked as '{sample}') must be refused by the file-worker deny list");
+            new SandboxPolicy(_sandboxRoot).Resolve(sample).Error.Should().Be(SandboxPolicy.BlockedPathError, $"'{sample}' must be blocked");
+        }
+    }
+
+    [Fact]
+    public async Task LocationSpecificSecretFile_IsBlockedAndHiddenOnlyAtItsLocation()
+    {
+        var lineWorker = Path.Combine(_sandboxRoot, "packages", "csharp", "workers", "line-worker");
+        Directory.CreateDirectory(lineWorker);
+        File.WriteAllText(Path.Combine(lineWorker, "appsettings.json"), "{\"MARKER_TEXT\":\"line\"}");
+        File.WriteAllText(Path.Combine(lineWorker, "README.md"), "line worker");
+        File.WriteAllText(Path.Combine(_sandboxRoot, "src", "appsettings.json"), "{\"name\":\"app\"}");
+
+        var policy = new SandboxPolicy(_sandboxRoot);
+        policy.Resolve("packages/csharp/workers/line-worker/appsettings.json").Error.Should().Be(SandboxPolicy.BlockedPathError);
+        policy.Resolve("src/appsettings.json").Error.Should().BeNull("only that one location is refused, not every appsettings.json");
+
+        var list = await new ListDirHandler(_sandboxRoot)
+            .ExecuteAsync("x1", "file.list", Payload(new { path = "packages/csharp/workers/line-worker" }), "", default);
+        ListedNames(list.ResultPayload!).Should().Equal("README.md");
+
+        var names = await new SearchFilesHandler(_sandboxRoot)
+            .ExecuteAsync("x2", "file.search_name", Payload(new { pattern = "appsettings.json" }), "", default);
+        Matches(names.ResultPayload!).Should().Equal("src/appsettings.json");
+
+        var content = await new SearchContentHandler(_sandboxRoot)
+            .ExecuteAsync("x3", "file.search_content", Payload(new { pattern = "MARKER_TEXT", file_pattern = "*.json" }), "", default);
+        content.ResultPayload.Should().NotContain("line-worker");
+    }
+
+    // ── 路徑段含冒號 ──
+
+    [Theory]
+    [InlineData("README.md:part")]
+    [InlineData("src:alt/app.js")]
+    [InlineData("src/app.js:part")]
+    [InlineData(@"src\app.js:part")]
+    [InlineData("notes/part:1.txt")]
+    public void Resolve_SegmentWithColon_IsRejected(string path)
+    {
+        var (fullPath, error) = new SandboxPolicy(_sandboxRoot).Resolve(path);
+
+        fullPath.Should().BeNull();
+        error.Should().Be(SandboxPolicy.BlockedPathError);
+    }
+
+    [Fact]
+    public void Resolve_FullyQualifiedPathInsideTheSandbox_IsStillAllowed()
+    {
+        var policy = new SandboxPolicy(_sandboxRoot);
+
+        policy.Resolve(Path.Combine(_sandboxRoot, "README.md")).FullPath.Should().Be(Path.Combine(_sandboxRoot, "README.md"));
+    }
+
+    /// <summary>Windows（NTFS）上，路徑段含冒號的讀與寫都被拒絕，不論目標是一般檔案或拒絕清單中的檔案與目錄。</summary>
+    [Fact]
+    public async Task ReadAndWrite_WithColonInASegment_AreRejectedOnWindows()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        var reader = new ReadFileHandler(_sandboxRoot);
+        var writer = new WriteFileHandler(_sandboxRoot);
+        var envBefore = File.ReadAllText(Path.Combine(_sandboxRoot, ".env"));
+
+        foreach (var path in new[] { "README.md:part", ".env:part", "server.pem:part", ".git:part/config", "src/config/appsettings.Development.json:part" })
+        {
+            var read = await reader.ExecuteAsync("n1", "file.read", Payload(new { path }), "", default);
+            read.Success.Should().BeFalse($"reading '{path}' must be refused");
+            read.Error.Should().Be(SandboxPolicy.BlockedPathError);
+            read.ResultPayload.Should().BeNull();
+
+            var write = await writer.ExecuteAsync("n2", "file.write", Payload(new { path, content = "x" }), "", default);
+            write.Success.Should().BeFalse($"writing '{path}' must be refused");
+            write.Error.Should().Be(SandboxPolicy.BlockedPathError);
+        }
+
+        File.ReadAllText(Path.Combine(_sandboxRoot, ".env")).Should().Be(envBefore);
+        File.ReadAllText(Path.Combine(_sandboxRoot, "README.md")).Should().Be("readme MARKER_TEXT");
+    }
+
+    // ── 代理工具與能力 schema 的參數（pattern、directory、file_pattern）──
+
+    [Fact]
+    public async Task Search_AcceptsTheAgentToolArguments()
+    {
+        File.WriteAllText(Path.Combine(_sandboxRoot, "src", "config", "settings.js"), "// MARKER_TEXT settings");
+
+        var byName = await new SearchFilesHandler(_sandboxRoot).ExecuteAsync(
+            "a1", "file.search_name",
+            Payload(new { route = "search_files", args = new { pattern = "*.js", directory = "src/config" } }), "", default);
+        byName.Success.Should().BeTrue(byName.Error);
+        Matches(byName.ResultPayload!).Should().Equal("settings.js");
+
+        var byContent = await new SearchContentHandler(_sandboxRoot).ExecuteAsync(
+            "a2", "file.search_content",
+            Payload(new { route = "search_content", args = new { pattern = "MARKER_TEXT", directory = "src", file_pattern = "*.js" } }), "", default);
+        byContent.Success.Should().BeTrue(byContent.Error);
+        using (var doc = JsonDocument.Parse(byContent.ResultPayload!))
+        {
+            doc.RootElement.GetProperty("query").GetString().Should().Be("MARKER_TEXT");
+            doc.RootElement.GetProperty("basePath").GetString().Should().Be("src");
+            doc.RootElement.GetProperty("matches").EnumerateArray()
+                .Select(m => m.GetProperty("file").GetString()!).OrderBy(f => f, StringComparer.Ordinal)
+                .Should().Equal("app.js", "config/settings.js");
+        }
+
+        // Without a pattern, a name search lists every (non-sensitive) file.
+        var noPattern = await new SearchFilesHandler(_sandboxRoot).ExecuteAsync(
+            "a3", "file.search_name", Payload(new { args = new { directory = "src" } }), "", default);
+        noPattern.Success.Should().BeTrue(noPattern.Error);
+        Matches(noPattern.ResultPayload!).Should().Contain(new[] { "app.js", "config/settings.js" });
+
+        // directory goes through the same sandbox checks as path.
+        var outside = await new SearchFilesHandler(_sandboxRoot).ExecuteAsync(
+            "a4", "file.search_name", Payload(new { args = new { pattern = "*", directory = "../sandbox-evil" } }), "", default);
+        outside.Error.Should().Be(SandboxPolicy.OutsideSandboxError);
+        var blocked = await new SearchContentHandler(_sandboxRoot).ExecuteAsync(
+            "a5", "file.search_content", Payload(new { args = new { pattern = "MARKER_TEXT", directory = ".git" } }), "", default);
+        blocked.Error.Should().Be(SandboxPolicy.BlockedPathError);
     }
 
     // ── 邊界 ──
@@ -353,6 +530,39 @@ public class SandboxPolicyTests : IDisposable
             return;
 
         new SandboxPolicy(_sandboxRoot).Resolve("readme-link.md").FullPath.Should().Be(link);
+    }
+
+    /// <summary>從測試輸出目錄往上找 repo 根目錄中的檔案。</summary>
+    private static string FindRepositoryFile(string name)
+    {
+        for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory != null; directory = directory.Parent)
+        {
+            var candidate = Path.Combine(directory.FullName, name);
+            if (File.Exists(candidate) && Directory.Exists(Path.Combine(directory.FullName, "packages", "csharp")))
+                return candidate;
+        }
+
+        throw new FileNotFoundException($"Could not find {name} at the repository root above {AppContext.BaseDirectory}.");
+    }
+
+    /// <summary>某個註解標題之後、下一個空行之前的項目（略過註解）。</summary>
+    private static List<string> SectionEntries(string[] lines, string header)
+    {
+        var start = Array.FindIndex(lines, line => line.Trim().StartsWith(header, StringComparison.Ordinal));
+        if (start < 0)
+            return new List<string>();
+
+        var entries = new List<string>();
+        for (var index = start + 1; index < lines.Length; index++)
+        {
+            var line = lines[index].Trim();
+            if (line.Length == 0)
+                break;
+            if (!line.StartsWith('#'))
+                entries.Add(line);
+        }
+
+        return entries;
     }
 
     private static List<string> ListedNames(string payload)

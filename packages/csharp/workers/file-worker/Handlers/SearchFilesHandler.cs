@@ -6,7 +6,8 @@ namespace FileWorker.Handlers;
 /// <summary>
 /// file.search_name 能力處理器 — 按檔名搜尋
 ///
-/// 從 InProcessDispatcher.ExecuteSearchFiles() 搬遷
+/// 從 InProcessDispatcher.ExecuteSearchFiles() 搬遷。參數與代理工具、能力 schema 相同：
+/// 檔名 pattern（預設 *）、目錄 directory（或 path）。
 /// </summary>
 public class SearchFilesHandler : ICapabilityHandler
 {
@@ -27,9 +28,8 @@ public class SearchFilesHandler : ICapabilityHandler
             using var doc = JsonDocument.Parse(payload);
             var root = doc.RootElement.TryGetProperty("args", out var argsEl)
                 ? argsEl : doc.RootElement;
-            var pattern = root.GetProperty("pattern").GetString() ?? "*";
-            var basePath = root.TryGetProperty("path", out var p)
-                ? p.GetString() ?? "." : ".";
+            var pattern = SearchArgs.GetString(root, "pattern") ?? "*";
+            var basePath = SearchArgs.GetString(root, "directory", "path") ?? ".";
 
             if (!SandboxPolicy.IsFileNamePattern(pattern))
                 return Task.FromResult<(bool, string?, string?)>((false, null, SandboxPolicy.InvalidPatternError));
