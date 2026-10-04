@@ -23,10 +23,16 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <h1>Bricks4Agent</h1>
 <p>English version: <a href="README.html">README.md</a></p>
 <h2>這是什麼</h2>
-<p><code>Bricks4Agent</code> 是一套<strong>零 runtime 依賴的 Vanilla JS UI 元件庫</strong>,加上一個把 JSON <code>PageDefinition</code> 轉成頁面的<strong>頁面／SPA 生成器</strong>。</p>
+<p><code>Bricks4Agent</code> 的最終形態是一個 <strong>AI 代理服務</strong>：代理接收人類使用者或其他 AI 代理的需求，以本元件庫產生系統、頁面與功能。本 repo 同時放著服務本身與它的積木：</p>
 <ul>
 <li>
-<p><strong>UI 元件庫</strong> — 116 個元件(form、layout、common、input、viz、social、editor、sections、data、analytics),純 Vanilla JS,以 theme token 上色,內建 XSS 防護與 i18n。</p>
+<p><strong>AI 代理服務</strong> — 代理執行環境；broker 核發限定範圍的工作階段、檢查權限與範圍、代理模型請求；以及 broker 調度的 worker。代理容器只能連到 broker，不持有模型服務的 API 金鑰。</p>
+</li>
+</ul>
+<p>積木是一套<strong>零 runtime 依賴的 Vanilla JS UI 元件庫</strong>,加上一個把 JSON <code>PageDefinition</code> 轉成頁面的<strong>頁面／SPA 生成器</strong>。</p>
+<ul>
+<li>
+<p><strong>UI 元件庫</strong> — 134 個元件(form、layout、common、input、viz、social、editor、sections、data、analytics),純 Vanilla JS,以 theme token 上色,內建 XSS 防護與 i18n。</p>
 </li>
 <li>
 <p><strong>頁面生成器</strong> — 一份 <code>PageDefinition</code>(JSON)有兩條路變成頁面:<strong>靜態產碼</strong>(產出 <code>.js</code> 頁面檔)或<strong>動態渲染</strong>(執行期直接依 JSON 畫出來)。</p>
@@ -85,6 +91,24 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 </li>
 <li>
 <p><a href="tools/form-application-studio">tools/form-application-studio</a> — JSON 自舉的表單／API／資料庫設計工具</p>
+</li>
+</ul>
+<h3>AI 代理服務</h3>
+<ul>
+<li>
+<p><a href="tools/agent/README.html">tools/agent</a> — 代理執行環境（直連模型、生成管線、經 broker 受控三種模式）</p>
+</li>
+<li>
+<p><a href="tools/agent/container/README.html">tools/agent/container</a> — 受控路徑的 Podman 堆疊：broker、代理、worker 與測試用的模型服務</p>
+</li>
+<li>
+<p><a href="packages/csharp/broker">packages/csharp/broker</a>、<a href="packages/csharp/broker-core">packages/csharp/broker-core</a> — 限定範圍的工作階段、權限與範圍規則、模型請求代理</p>
+</li>
+<li>
+<p><a href="packages/csharp/workers">packages/csharp/workers</a> — broker 調度的 worker（檔案、LINE、執行轉接）</p>
+</li>
+<li>
+<p>驗證：<code>npm run validate:agent-container-config</code>、<code>npm run validate:podman-governed-stack</code></p>
 </li>
 </ul>
 <h2>快速開始</h2>

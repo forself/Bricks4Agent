@@ -23,11 +23,17 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <h1>Bricks4Agent</h1>
 <p>中文版本：<a href="README.zh-TW.html">README.zh-TW.md</a></p>
 <h2>What this is</h2>
-<p><code>Bricks4Agent</code> is a <strong>zero-runtime-dependency Vanilla JS UI component library</strong> plus a
+<p>The end state of <code>Bricks4Agent</code> is an <strong>AI agent service</strong>: an agent takes requests from human users or from other AI agents and generates systems, pages and features from this component library. The repo holds both the service and its building blocks:</p>
+<ul>
+<li>
+<p><strong>AI agent service</strong> — the agent runtime, a broker that issues scoped sessions, enforces capability and scope policy and proxies model traffic, and the workers it dispatches. The agent container reaches only the broker and holds no provider API key.</p>
+</li>
+</ul>
+<p>The building blocks are a <strong>zero-runtime-dependency Vanilla JS UI component library</strong> plus a
 <strong>page/SPA generator</strong> that turns a JSON <code>PageDefinition</code> into working pages.</p>
 <ul>
 <li>
-<p><strong>UI component library</strong> — 116 components (form, layout, common, input, viz, social, editor, sections, data, analytics), pure vanilla JS, theme-token styling, built-in XSS protection and i18n.</p>
+<p><strong>UI component library</strong> — 134 components (form, layout, common, input, viz, social, editor, sections, data, analytics), pure vanilla JS, theme-token styling, built-in XSS protection and i18n.</p>
 </li>
 <li>
 <p><strong>Page generator</strong> — a <code>PageDefinition</code> (JSON) becomes a page in one of two ways: <strong>static code generation</strong> (emits <code>.js</code> page files) or <strong>dynamic rendering</strong> (renders at runtime from the JSON).</p>
@@ -86,6 +92,24 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 </li>
 <li>
 <p><a href="tools/form-application-studio">tools/form-application-studio</a> — JSON-self-hosted form/API/database designer</p>
+</li>
+</ul>
+<h3>AI agent service</h3>
+<ul>
+<li>
+<p><a href="tools/agent/README.html">tools/agent</a> — agent runtime (local provider, generation pipeline and broker-governed modes)</p>
+</li>
+<li>
+<p><a href="tools/agent/container/README.html">tools/agent/container</a> — Podman stack for the governed path: broker, agent, workers and mock model upstreams</p>
+</li>
+<li>
+<p><a href="packages/csharp/broker">packages/csharp/broker</a> and <a href="packages/csharp/broker-core">packages/csharp/broker-core</a> — scoped sessions, capability and scope policy, model proxy</p>
+</li>
+<li>
+<p><a href="packages/csharp/workers">packages/csharp/workers</a> — workers the broker dispatches (file, LINE, execution adapter)</p>
+</li>
+<li>
+<p>Validation: <code>npm run validate:agent-container-config</code>, <code>npm run validate:podman-governed-stack</code></p>
 </li>
 </ul>
 <h2>Quick start</h2>

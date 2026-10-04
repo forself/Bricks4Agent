@@ -4,10 +4,14 @@
 
 ## What this is
 
-`Bricks4Agent` is a **zero-runtime-dependency Vanilla JS UI component library** plus a
+The end state of `Bricks4Agent` is an **AI agent service**: an agent takes requests from human users or from other AI agents and generates systems, pages and features from this component library. The repo holds both the service and its building blocks:
+
+- **AI agent service** — the agent runtime, a broker that issues scoped sessions, enforces capability and scope policy and proxies model traffic, and the workers it dispatches. The agent container reaches only the broker and holds no provider API key.
+
+The building blocks are a **zero-runtime-dependency Vanilla JS UI component library** plus a
 **page/SPA generator** that turns a JSON `PageDefinition` into working pages.
 
-- **UI component library** — 116 components (form, layout, common, input, viz, social, editor, sections, data, analytics), pure vanilla JS, theme-token styling, built-in XSS protection and i18n.
+- **UI component library** — 134 components (form, layout, common, input, viz, social, editor, sections, data, analytics), pure vanilla JS, theme-token styling, built-in XSS protection and i18n.
 
 - **Page generator** — a `PageDefinition` (JSON) becomes a page in one of two ways: **static code generation** (emits `.js` page files) or **dynamic rendering** (renders at runtime from the JSON).
 
@@ -48,6 +52,18 @@
 - [tools/static-server](tools/static-server) — static file server for previewing
 
 - [tools/form-application-studio](tools/form-application-studio) — JSON-self-hosted form/API/database designer
+
+### AI agent service
+
+- [tools/agent](tools/agent/README.md) — agent runtime (local provider, generation pipeline and broker-governed modes)
+
+- [tools/agent/container](tools/agent/container/README.md) — Podman stack for the governed path: broker, agent, workers and mock model upstreams
+
+- [packages/csharp/broker](packages/csharp/broker) and [packages/csharp/broker-core](packages/csharp/broker-core) — scoped sessions, capability and scope policy, model proxy
+
+- [packages/csharp/workers](packages/csharp/workers) — workers the broker dispatches (file, LINE, execution adapter)
+
+- Validation: `npm run validate:agent-container-config`, `npm run validate:podman-governed-stack`
 
 ## Quick start
 
