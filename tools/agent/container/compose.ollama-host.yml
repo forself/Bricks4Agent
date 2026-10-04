@@ -40,6 +40,15 @@ services:
       - "127.0.0.1:${BROKER_PORT:-5002}:5000"
     volumes:
       - broker-ollama-data:/data
+    # ── OS-level hardening (design §13.2) ── non-root uid 10002 from the image
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 1024                # .NET thread pool + sockets count as pids
     networks:
       # egress: reach the host's ollama via host.containers.internal (host-gateway)
       #   and publish the broker port to the host
@@ -68,8 +77,8 @@ services:
       AGENT_NO_CONFIRM: "1"
       AGENT_VERBOSE: "${AGENT_VERBOSE:-1}"
       AGENT_RUN: "${AGENT_RUN:-Reply briefly that the broker-mediated Ollama stack completed.}"
-    volumes:
-      - ../../..:/workspace
+    # No volumes: the repository is NOT mounted into the agent (§13.4); /workspace is
+    # an empty logical root baked into the image and the manual is /app/AGENT.md.
     restart: "no"
     # ── OS-level hardening (design §13) — see compose.yml for rationale ──
     read_only: true

@@ -1,5 +1,8 @@
+# Base images are pinned by multi-arch index digest. Refresh them with
+# `node tools/agent/container/resolve-base-image-digests.mjs` (docker or podman).
+
 # ── Build Stage ──
-FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0@sha256:e70cdb7f80b0348f5cb85f19a8f670fca061f033d57eed12fa003d58b0e06317 AS build
 
 WORKDIR /src
 COPY . .
@@ -7,16 +10,22 @@ RUN dotnet publish packages/csharp/workers/line-worker/LineWorker.csproj \
     -c Release -o /app/publish /p:UseAppHost=false
 
 # ── Runtime Stage ──
-FROM mcr.microsoft.com/dotnet/aspnet:8.0
+FROM mcr.microsoft.com/dotnet/aspnet:10.0@sha256:222759b391a1aaf241166672c8f99b2d4ada452e7b5319f3c6e8f265a37b5ad4
 
 WORKDIR /app
 COPY --from=build /app/publish .
 
-RUN adduser --disabled-password --gecos "" --uid 10004 lineworker \
-    && mkdir -p /app/audio_temp /app/pending_messages \
-    && chown -R lineworker:lineworker /app
+# /app stays owned by root. Audio scratch files go to /tmp (a tmpfs under the
+# hardened runtime); pending_messages is created empty for the read handler.
+RUN groupadd --gid 10005 lineworker \
+    && useradd --uid 10005 --gid 10005 --no-create-home --shell /usr/sbin/nologin lineworker \
+    && mkdir -p /app/pending_messages
 
-USER lineworker
+USER 10005:10005
+
+# The runtime user has no home directory; anything that needs one uses /tmp.
+ENV WORKER_Line__AudioTempPath=/tmp/audio_temp \
+    HOME=/tmp
 
 # Webhook receiver port (LINE platform → this container)
 EXPOSE 19090

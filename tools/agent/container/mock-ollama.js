@@ -13,6 +13,59 @@ let toolArgs = {};
 try { toolArgs = process.env.MOCK_TOOL_ARGS_JSON ? JSON.parse(process.env.MOCK_TOOL_ARGS_JSON) : {}; }
 catch (_) { toolArgs = {}; }
 
+function parseJsonArray(name) {
+    try {
+        const value = process.env[name] ? JSON.parse(process.env[name]) : [];
+        return Array.isArray(value) ? value : [];
+    } catch (_) {
+        console.error(`${name} is not valid JSON; ignoring it.`);
+        return [];
+    }
+}
+
+// Optional multi-step script: [{ "name": "apply_patch", "args": {...} }, ...]. The n-th tool
+// call is returned once n tool results are in the conversation. Without it, MOCK_TOOL_CALL
+// (one call) is used as before.
+const toolSequence = parseJsonArray('MOCK_TOOL_SEQUENCE_JSON');
+// Optional proof that tools really ran: entry i is a substring (or an array of substrings)
+// that the i-th tool result must contain. When set, the final answer is
+// "<MOCK_RESPONSE_TEXT> TOOL_RESULT_VERIFIED" or "TOOL_RESULT_MISMATCH ..." with a snippet.
+const toolResultExpectations = parseJsonArray('MOCK_EXPECT_TOOL_RESULTS_JSON');
+
+function plannedSteps() {
+    if (toolSequence.length > 0) {
+        return toolSequence.map((step) => ({ name: step.name, args: step.args || {} }));
+    }
+    if (!toolCall) {
+        return [];
+    }
+    // read_file keeps its {path} shorthand; other tools use MOCK_TOOL_ARGS_JSON.
+    return [{ name: toolCall, args: toolCall === 'read_file' ? { path: toolPath } : toolArgs }];
+}
+
+function toolResults(body) {
+    return Array.isArray(body.messages)
+        ? body.messages.filter((message) => message && message.role === 'tool')
+            .map((message) => (typeof message.content === 'string' ? message.content : JSON.stringify(message.content)))
+        : [];
+}
+
+function finalText(results) {
+    if (toolResultExpectations.length === 0) {
+        return responseText;
+    }
+    for (let index = 0; index < toolResultExpectations.length; index += 1) {
+        const expected = [].concat(toolResultExpectations[index]).map(String);
+        const actual = results[index];
+        const missing = actual === undefined ? expected : expected.filter((needle) => !actual.includes(needle));
+        if (missing.length > 0) {
+            const snippet = (actual === undefined ? '(no tool result)' : actual).replace(/\s+/g, ' ').slice(0, 400);
+            return `TOOL_RESULT_MISMATCH step=${index} missing=${JSON.stringify(missing)} result=${snippet}`;
+        }
+    }
+    return `${responseText} TOOL_RESULT_VERIFIED`;
+}
+
 function readJson(req) {
     return new Promise((resolve, reject) => {
         let data = '';
@@ -28,11 +81,6 @@ function readJson(req) {
         });
         req.on('error', reject);
     });
-}
-
-function hasToolResult(body) {
-    return Array.isArray(body.messages) &&
-        body.messages.some((message) => message && message.role === 'tool');
 }
 
 function requestIncludesTool(body, name) {
@@ -66,9 +114,10 @@ const server = http.createServer(async (req, res) => {
 
         if (req.method === 'POST' && req.url === '/api/chat') {
             const body = await readJson(req);
-            if (toolCall && !hasToolResult(body) && requestIncludesTool(body, toolCall)) {
-                // read_file keeps its {path} shorthand; other tools use MOCK_TOOL_ARGS_JSON.
-                const args = toolCall === 'read_file' ? { path: toolPath } : toolArgs;
+            const steps = plannedSteps();
+            const results = toolResults(body);
+            const next = steps[results.length];
+            if (next && requestIncludesTool(body, next.name)) {
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({
                     model: body.model || model,
@@ -76,10 +125,10 @@ const server = http.createServer(async (req, res) => {
                         content: '',
                         tool_calls: [
                             {
-                                id: `call_mock_${toolCall}`,
+                                id: `call_mock_${next.name}_${results.length}`,
                                 function: {
-                                    name: toolCall,
-                                    arguments: args,
+                                    name: next.name,
+                                    arguments: next.args,
                                 },
                             },
                         ],
@@ -95,7 +144,7 @@ const server = http.createServer(async (req, res) => {
             res.end(JSON.stringify({
                 model: body.model || model,
                 message: {
-                    content: responseText,
+                    content: finalText(results),
                     tool_calls: [],
                     thinking: '',
                 },

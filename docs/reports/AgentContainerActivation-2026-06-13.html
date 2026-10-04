@@ -22,7 +22,7 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <main>
 <h1>受控代理容器啟用計畫與驗證</h1>
 <p>Date: 2026-06-13
-Status: <strong>已完成</strong> —— V1–V7 全數通過(見「最終 e2e 驗證」)。結論段所列後續項目的現況(網路隔離、OS hardening、執行配接器、審批已實作;客製 seccomp 仍未做)與操作方式見 <a href="../manuals/agent-container-runbook.html">agent-container-runbook.md</a>。
+Status: <strong>已完成</strong> —— V1–V7 全數通過(見「最終 e2e 驗證」)。結論段所列後續項目的現況(網路隔離、OS hardening、執行配接器、審批已實作;客製 seccomp 仍未做)與操作方式見 <a href="../manuals/agent-container-runbook.html">agent-container-runbook.md</a>。本報告保留 2026-06-13 當時的內容:之後專案改為 .NET 10,當時的 .NET 8 映像已無法建置(V1);2026-10-05 起映像改為 .NET 10 與 Node 22 並以 digest 釘選,所有服務都套 §13.2 加固、agent 不再掛 repo,現況以 runbook §8 為準。
 依據規格: <a href="../designs/ControlledAutonomousAISystemTechnicalDesign.html">ControlledAutonomousAISystemTechnicalDesign.md</a></p>
 <h2>1. 目的與「完成」的定義</h2>
 <p>設計規格 §6.6 定義 Agent 容器是「受控主體執行殼層」:它<strong>只能</strong>向控制平面請領工作、讀授權上下文、呼叫模型、產生結構化執行請求、回報結果;<strong>不可</strong>直接碰工具、資料源、倉庫、部署、模型供應商,或自行發放權限。§21 列出最小成功判準。</p>

@@ -371,8 +371,17 @@ if (poolEnabled)
             AutoRespawn = builder.Configuration.GetValue("FunctionPool:ContainerManager:AutoRespawn", true),
             BrokerHostForWorkers = builder.Configuration.GetValue("FunctionPool:ContainerManager:BrokerHostForWorkers", "broker") ?? "broker",
             BrokerPortForWorkers = builder.Configuration.GetValue("FunctionPool:ContainerManager:BrokerPortForWorkers", 7000),
-            AgentBrokerUrl = builder.Configuration.GetValue("FunctionPool:ContainerManager:AgentBrokerUrl", "http://broker:5000") ?? "http://broker:5000"
+            AgentBrokerUrl = builder.Configuration.GetValue("FunctionPool:ContainerManager:AgentBrokerUrl", "http://broker:5000") ?? "http://broker:5000",
+            // §13.2 hardening knobs (the hardening flags themselves are always applied)
+            AllowAgentDefaultNetwork = builder.Configuration.GetValue("FunctionPool:ContainerManager:AllowAgentDefaultNetwork", false),
+            DefaultMemoryLimit = builder.Configuration.GetValue("FunctionPool:ContainerManager:DefaultMemoryLimit", "512m") ?? "512m",
+            DefaultPidsLimit = builder.Configuration.GetValue("FunctionPool:ContainerManager:DefaultPidsLimit", 256)
         };
+        foreach (var allowedRoot in builder.Configuration.GetSection("FunctionPool:ContainerManager:AllowedHostPathRoots").GetChildren())
+        {
+            if (!string.IsNullOrWhiteSpace(allowedRoot.Value))
+                containerConfig.AllowedHostPathRoots.Add(allowedRoot.Value);
+        }
 
         // Load worker image configs from configuration
         var imageSection = builder.Configuration.GetSection("FunctionPool:ContainerManager:WorkerImages");
@@ -384,7 +393,8 @@ if (poolEnabled)
                 MemoryLimit = child.GetValue<string>("MemoryLimit"),
                 CpuLimit = child.GetValue<string>("CpuLimit"),
                 User = child.GetValue<string>("User"),
-                NetworkName = child.GetValue<string>("NetworkName")
+                NetworkName = child.GetValue<string>("NetworkName"),
+                PidsLimit = child.GetValue<int?>("PidsLimit")
             };
 
             // Load environment

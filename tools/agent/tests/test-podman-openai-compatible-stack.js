@@ -1,12 +1,22 @@
 #!/usr/bin/env node
 'use strict';
 
+// OpenAI-compatible stack end-to-end (mock-openai): agent -> broker LLM proxy -> mock-openai.
+// CONTAINER_ENGINE=docker runs it with docker / docker compose; the default is podman.
+
 const assert = require('assert');
 const path = require('path');
-const { spawn } = require('child_process');
 const { pathToFileURL } = require('url');
 
-const ROOT = path.resolve(__dirname, '..', '..', '..');
+const {
+    ROOT,
+    assertStackHardened,
+    buildImages: buildStackImages,
+    compose,
+    containerEngine,
+} = require('./lib/container-stack');
+
+const engine = containerEngine();
 const composeFile = path.join(ROOT, 'tools', 'agent', 'container', 'compose.openai-compatible.yml');
 const images = [
     ['bricks4agent-mock-openai:latest', 'tools/agent/container/mock-openai.Containerfile'],
@@ -14,65 +24,12 @@ const images = [
     ['bricks4agent-agent:latest', 'tools/agent/Containerfile'],
 ];
 
-function run(command, args, options = {}) {
-    return new Promise((resolve, reject) => {
-        const child = spawn(command, args, {
-            cwd: ROOT,
-            env: options.env || process.env,
-            stdio: ['ignore', 'pipe', 'pipe'],
-        });
-
-        let stdout = '';
-        let stderr = '';
-
-        child.stdout.on('data', (chunk) => {
-            const text = chunk.toString();
-            stdout += text;
-            if (options.stream) {
-                process.stdout.write(text);
-            }
-        });
-
-        child.stderr.on('data', (chunk) => {
-            const text = chunk.toString();
-            stderr += text;
-            if (options.stream) {
-                process.stderr.write(text);
-            }
-        });
-
-        child.on('error', reject);
-        child.on('close', (code) => {
-            resolve({ code, stdout, stderr });
-        });
-    });
-}
-
 // compose 檔不附預設金鑰（${VAR:?...}）。每次執行在記憶體中產生一組新的金鑰，
 // 只放進子行程的 env，不寫檔；up 與 down 必須用同一個 env（down 也會展開 ${VAR:?...}）。
 async function generateStackSecretsEnv() {
     const generator = path.join(ROOT, 'tools', 'agent', 'container', 'gen-stack-secrets.mjs');
     const { generateStackSecrets } = await import(pathToFileURL(generator).href);
     return generateStackSecrets();
-}
-
-async function buildImages(env) {
-    for (const [image, dockerfile] of images) {
-        const buildResult = await run('podman', [
-            'build',
-            '-t',
-            image,
-            '-f',
-            dockerfile,
-            '.',
-        ], { env, stream: true });
-
-        assert.strictEqual(
-            buildResult.code,
-            0,
-            `podman build failed for ${image}.\nSTDOUT:\n${buildResult.stdout}\nSTDERR:\n${buildResult.stderr}`
-        );
-    }
 }
 
 async function main() {
@@ -87,12 +44,11 @@ async function main() {
     };
 
     try {
-        await buildImages(env);
+        if (!process.env.SKIP_IMAGE_BUILD) {
+            await buildStackImages(engine, images, env);
+        }
 
-        const upResult = await run('podman', [
-            'compose',
-            '-f',
-            composeFile,
+        const upResult = await compose(engine, composeFile, [
             'up',
             '--abort-on-container-exit',
             '--exit-code-from',
@@ -102,7 +58,7 @@ async function main() {
         assert.strictEqual(
             upResult.code,
             0,
-            `podman compose up failed.\nSTDOUT:\n${upResult.stdout}\nSTDERR:\n${upResult.stderr}`
+            `${engine} compose up failed.\nSTDOUT:\n${upResult.stdout}\nSTDERR:\n${upResult.stderr}`
         );
 
         const combinedOutput = `${upResult.stdout}\n${upResult.stderr}`;
@@ -111,15 +67,14 @@ async function main() {
             `Expected agent output to include STACK_OK.\n${combinedOutput}`
         );
 
-        console.log('Podman OpenAI-compatible stack integration test passed.');
+        await assertStackHardened(engine, composeFile, [], env, {
+            services: ['mock-openai', 'broker', 'agent'],
+            pidsLimits: { broker: 1024 },
+        });
+
+        console.log(`OpenAI-compatible stack integration test passed (${engine}).`);
     } finally {
-        await run('podman', [
-            'compose',
-            '-f',
-            composeFile,
-            'down',
-            '-v',
-        ], { env });
+        await compose(engine, composeFile, ['down', '-v'], { env });
     }
 }
 

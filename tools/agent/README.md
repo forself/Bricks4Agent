@@ -18,7 +18,7 @@ This README describes the CLI itself. It does not describe the canonical LINE in
 
 ## Requirements
 
-- Node.js 18+
+- Node.js 22+ (the agent container image is pinned to `node:22-bookworm-slim`)
 
 - Ollama if you want fully local provider mode
 
@@ -225,7 +225,8 @@ podman build -f tools/agent/Containerfile -t bricks4agent-agent:dev .
 
 ```bash
 podman run --rm -it \
-  -v %CD%:/workspace \
+  --read-only --tmpfs /tmp --cap-drop ALL \
+  --security-opt no-new-privileges:true --pids-limit 256 \
   -e BROKER_URL=http://host.containers.internal:5000 \
   -e BROKER_PUB_KEY=<base64> \
   -e BROKER_PRINCIPAL_ID=prn_xxx \
@@ -242,7 +243,9 @@ The container entrypoint accepts only the governed path:
 
 - direct provider API keys are not the intended formal execution path
 
-- `/workspace` is the default mounted workspace
+- nothing is mounted into the agent: `/workspace` is an empty logical root baked into the image, every file read or write goes through broker capabilities (the file worker or the execution adapter), and the project manual comes from `/app/AGENT.md` (`AGENT_MANUAL_PATH`)
+
+- the image runs as uid 10001 and needs no writable path besides the `/tmp` tmpfs
 
 - the entrypoint adds `--governed` and broker/session parameters automatically
 

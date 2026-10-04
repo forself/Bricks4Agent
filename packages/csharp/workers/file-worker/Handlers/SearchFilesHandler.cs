@@ -10,13 +10,13 @@ namespace FileWorker.Handlers;
 /// </summary>
 public class SearchFilesHandler : ICapabilityHandler
 {
-    private readonly string _sandboxRoot;
+    private readonly SandboxPolicy _policy;
 
     public string CapabilityId => "file.search_name";
 
     public SearchFilesHandler(string sandboxRoot)
     {
-        _sandboxRoot = Path.GetFullPath(sandboxRoot);
+        _policy = new SandboxPolicy(sandboxRoot);
     }
 
     public Task<(bool Success, string? ResultPayload, string? Error)> ExecuteAsync(
@@ -31,16 +31,15 @@ public class SearchFilesHandler : ICapabilityHandler
             var basePath = root.TryGetProperty("path", out var p)
                 ? p.GetString() ?? "." : ".";
 
-            var fullPath = ResolveSandboxedPath(basePath);
+            var (fullPath, pathError) = _policy.Resolve(basePath);
             if (fullPath == null)
-                return Task.FromResult<(bool, string?, string?)>(
-                    (false, null, "Path outside sandbox."));
+                return Task.FromResult<(bool, string?, string?)>((false, null, pathError));
 
             if (!Directory.Exists(fullPath))
                 return Task.FromResult<(bool, string?, string?)>(
                     (false, null, $"Directory not found: {basePath}"));
 
-            var files = Directory.GetFiles(fullPath, pattern, SearchOption.AllDirectories)
+            var files = _policy.EnumerateFilesRecursive(fullPath, pattern)
                 .Take(100)
                 .Select(f => Path.GetRelativePath(fullPath, f).Replace('\\', '/'))
                 .ToList();
@@ -53,17 +52,5 @@ public class SearchFilesHandler : ICapabilityHandler
             return Task.FromResult<(bool, string?, string?)>(
                 (false, null, $"Search files error: {ex.Message}"));
         }
-    }
-
-    private string? ResolveSandboxedPath(string path)
-    {
-        try
-        {
-            var fullPath = Path.GetFullPath(Path.Combine(_sandboxRoot, path));
-            if (!fullPath.StartsWith(_sandboxRoot, StringComparison.OrdinalIgnoreCase))
-                return null;
-            return fullPath;
-        }
-        catch { return null; }
     }
 }

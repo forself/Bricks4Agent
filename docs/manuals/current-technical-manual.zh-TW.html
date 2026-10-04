@@ -963,7 +963,7 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\run-worker.ps
 </tr>
 <tr>
 <td><code>POST /api/v1/workers/spawn</code></td>
-<td>spawn container worker</td>
+<td>spawn a hardened worker container（<code>worker_type</code> 必填、不接受 <code>agent</code> 與 <code>environment</code>；agent 一律走 <code>/api/v1/agents/spawn</code>）</td>
 </tr>
 <tr>
 <td><code>POST /api/v1/workers/stop</code></td>

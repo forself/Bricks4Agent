@@ -204,7 +204,91 @@ assertIncludes('container build ignores git metadata', dockerignore, '.git');
 
 const agentContainerfile = read('tools/agent/Containerfile');
 assertIncludes('agent image workspace directory', agentContainerfile, 'mkdir -p /workspace');
-assertIncludes('agent image workspace ownership', agentContainerfile, 'chown -R agent:agent /app /workspace');
+assertIncludes('agent image bakes in the project manual', agentContainerfile, 'COPY AGENT.md /app/AGENT.md');
+assertIncludes('agent image points the prompt at the baked manual', agentContainerfile, 'ENV AGENT_MANUAL_PATH=/app/AGENT.md');
+assert(!/^\s*(?:RUN|&&).*\bchown\b.*\/app\b/m.test(agentContainerfile), 'agent image: /app must stay owned by root (no chown of /app)');
+assertNotIncludes('agent image does not chown the code', agentContainerfile, 'chown -R agent:agent /app');
+assertIncludes('agent image keeps the default project root', read('tools/agent/container/entrypoint.sh'), 'WORKSPACE_DIR="${AGENT_PROJECT_ROOT:-/workspace}"');
+
+// ── compose 每個服務的 §13.2 加固（依縮排切出服務區塊逐一檢查） ──
+function composeServices(text) {
+    const lines = text.split(/\r?\n/);
+    const start = lines.findIndex((line) => line === 'services:');
+    assert(start >= 0, 'compose file without a services: section');
+    const services = {};
+    let current = null;
+    for (const line of lines.slice(start + 1)) {
+        if (/^\S/.test(line)) {
+            break; // next top-level key (networks:, volumes:)
+        }
+        const header = /^ {2}([A-Za-z0-9_-]+):\s*$/.exec(line);
+        if (header) {
+            current = header[1];
+            services[current] = [];
+        } else if (current) {
+            services[current].push(line);
+        }
+    }
+    return Object.fromEntries(Object.entries(services).map(([name, body]) => [name, body.join('\n')]));
+}
+
+function serviceListValues(block, key) {
+    const match = new RegExp(`^ {4}${key}:\\s*\\r?\\n((?: {6}- .*\\r?\\n?)+)`, 'm').exec(block);
+    return match ? match[1].split(/\r?\n/).map((line) => line.trim().replace(/^- /, '').replace(/\s+#.*$/, '')).filter(Boolean) : [];
+}
+
+const expectedServices = {
+    'tools/agent/container/compose.yml': ['mock-ollama', 'broker', 'file-worker', 'line-worker', 'execution-adapter-worker', 'agent'],
+    'tools/agent/container/compose.openai-compatible.yml': ['mock-openai', 'broker', 'agent'],
+    'tools/agent/container/compose.ollama-host.yml': ['broker', 'agent'],
+};
+for (const composePath of COMPOSE_FILES) {
+    const text = read(composePath);
+    assertNotIncludes(`${composePath} mounts no runtime socket`, text, 'docker.sock');
+    assertNotIncludes(`${composePath} mounts no podman socket`, text, 'podman.sock');
+    assert(!/^\s*privileged:/m.test(text), `${composePath}: no service may be privileged`);
+    assert(!/^\s*network_mode:/m.test(text), `${composePath}: no service may share the host network`);
+
+    const services = composeServices(text);
+    assert.deepStrictEqual(Object.keys(services).sort(), [...expectedServices[composePath]].sort(), `${composePath}: unexpected service list`);
+    for (const [name, block] of Object.entries(services)) {
+        const where = `${composePath} ${name}`;
+        assert(/^ {4}read_only: true\b/m.test(block), `${where}: expected read_only: true`);
+        assert(serviceListValues(block, 'tmpfs').includes('/tmp'), `${where}: expected a /tmp tmpfs`);
+        assert.deepStrictEqual(serviceListValues(block, 'cap_drop'), ['ALL'], `${where}: expected cap_drop: [ALL]`);
+        assert(serviceListValues(block, 'security_opt').includes('no-new-privileges:true'), `${where}: expected no-new-privileges:true`);
+        const pids = /^ {4}pids_limit: (\d+)\b/m.exec(block);
+        assert(pids, `${where}: expected pids_limit`);
+        assert.strictEqual(Number(pids[1]), name === 'broker' ? 1024 : 256, `${where}: unexpected pids_limit`);
+        assert(!/^ {4}user:\s*["']?(?:0|root)\b/m.test(block), `${where}: must not run as root`);
+    }
+
+    const agent = services.agent;
+    assert(!/^ {4}volumes:/m.test(agent), `${composePath} agent: the agent must not mount anything`);
+    assert(!/:\/workspace\b/.test(agent), `${composePath} agent: no :/workspace bind mount`);
+    assertIncludes(`${composePath} agent keeps the logical project root`, agent, 'AGENT_PROJECT_ROOT: "/workspace"');
+    assertIncludes(`${composePath} agent stays on the internal network`, agent, '- agent-net');
+    assertNotIncludes(`${composePath} drops the stale file.search seed`, text, '"capability_id":"file.search"');
+}
+
+const composeServicesMain = composeServices(compose);
+assertIncludes('compose line worker writes audio to tmpfs', composeServicesMain['line-worker'], 'WORKER_Line__AudioTempPath: "/tmp/audio_temp"');
+assertIncludes('compose file worker reads the repository read-only', composeServicesMain['file-worker'], '- ../../..:/workspace:ro');
+assertIncludes('compose broker keeps its data volume', composeServicesMain.broker, '- broker-data:/data');
+assertIncludes('compose seeds file.search_name', compose, '"capability_id":"file.search_name","scope":{"paths":["/workspace"],"routes":["search_files"]}');
+assertIncludes('compose seeds file.search_content', compose, '"capability_id":"file.search_content","scope":{"paths":["/workspace"],"routes":["search_content"]}');
+assertIncludes('compose keeps container manager disabled by default', compose, 'FunctionPool__ContainerManager__Enabled: "${CONTAINER_MANAGER_ENABLED:-false}"');
+assertIncludes('compose keeps the agent block marker', compose, '# ── Agent ──');
+
+// sidecar：動態啟動的代理不掛任何主機目錄；預設網路只能明確 opt-in。
+const sidecarContainerBlock = sidecarScript.slice(
+    sidecarScript.indexOf('ContainerManager = @{'),
+    sidecarScript.indexOf('$brokerWorkerAuthCredentials = @()')
+);
+assert(sidecarContainerBlock.length > 0, 'sidecar: ContainerManager block not found');
+assert(!/^\s*Volumes\s*=/m.test(sidecarContainerBlock), 'sidecar: agent image must not configure Volumes');
+assertNotIncludes('sidecar does not mount managed workspaces into agents', sidecarContainerBlock, '$managedWorkspaceRoot');
+assertIncludes('sidecar opts in to the default network explicitly', sidecarContainerBlock, 'AllowAgentDefaultNetwork = $true');
 
 const agentSystemPrompt = read('tools/agent/lib/system-prompt.js');
 assertIncludes('agent prompt prioritizes custom components', agentSystemPrompt, 'use the custom component library first');
@@ -262,6 +346,26 @@ assertIncludes('container manager uses argument list', containerManager, 'proces
 assertIncludes('container manager exposes testable run args', containerManager, 'BuildRunArguments');
 assertIncludes('container manager uses per-image network override', containerManager, 'imageConfig.NetworkName');
 assertIncludes('container manager keeps env values atomic', containerManager, 'args.Add($"{key}={value ?? string.Empty}")');
+for (const flag of ['"--read-only"', '"--cap-drop", "ALL"', '"--security-opt", "no-new-privileges:true"', '"--pids-limit"', '"--tmpfs", TmpfsMount']) {
+    assertIncludes(`container manager always adds ${flag}`, containerManager, flag);
+}
+assertIncludes('container manager tmpfs is noexec', containerManager, '"/tmp:rw,noexec,nosuid,nodev,size=64m"');
+assertIncludes('container manager removes anonymous volumes', containerManager, '"rm", "-f", "-v"');
+assertIncludes('container manager passes secrets by name only', containerManager, 'process.StartInfo.Environment[name] = value');
+assertIncludes('container manager refuses agent mounts', containerManager, 'Agent containers must not mount volumes');
+
+const containerManagerInterface = read('packages/csharp/function-pool/Container/IContainerManager.cs');
+assertIncludes('spawn takes a request object', containerManagerInterface, 'Task<string> SpawnWorkerAsync(ContainerSpawnRequest request, CancellationToken ct = default);');
+const spawnRequest = read('packages/csharp/function-pool/Container/ContainerSpawnRequest.cs');
+assertIncludes('spawn request has trusted environment', spawnRequest, 'public IReadOnlyDictionary<string, string> TrustedEnvironment');
+assertIncludes('spawn request has secret environment', spawnRequest, 'public IReadOnlyDictionary<string, string> SecretEnvironment');
+
+const workerEndpoints = read('packages/csharp/broker/Endpoints/WorkerEndpoints.cs');
+assertIncludes('workers/spawn refuses agents', workerEndpoints, 'ContainerManager.IsAgentWorkerType(workerType)');
+assertNotIncludes('workers/spawn no longer copies a request environment', workerEndpoints, 'envOverrides[prop.Name]');
+assertIncludes('workers/spawn reports a missing runtime CLI', workerEndpoints, 'catch (Win32Exception)');
+assertIncludes('agents/spawn caps max_iterations', agentEndpoints, 'ClampMaxIterations(maxIterations)');
+assertIncludes('agents/spawn only accepts the configured broker url', agentEndpoints, 'Agent broker_url must match the configured AgentBrokerUrl.');
 
 const spawnService = read('packages/csharp/broker-core/Services/AgentSpawnService.cs');
 assertIncludes('agent id normalization exists', spawnService, 'public static string NormalizeAgentId');

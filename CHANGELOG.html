@@ -29,6 +29,23 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 </ul>
 <p>B4A 只收通用元件與通用能力；任何業務系統的專屬元件都不寫入 B4A。</p>
 <h2>未發行</h2>
+<h3>預設行為變更：代理容器不掛 repo、所有容器加固、映像改為 .NET 10 與 Node 22（2026-10-05）</h3>
+<p><strong>預設行為變更</strong></p>
+<ul>
+<li>代理容器不再掛載任何主機目錄：三個 compose 與 Windows sidecar 都拿掉 agent 的掛載，sidecar 不再把 managed-workspaces 掛給代理。專案手冊改烤進映像（<code>/app/AGENT.md</code>，經 <code>AGENT_MANUAL_PATH</code> 讀取）；專案目錄附近找得到 <code>AGENT.md</code> 時仍以專案的為準，local 模式不受影響。</li>
+<li>file-worker 收緊讀取面：sandbox 邊界改以「根目錄 + 分隔字元」完整比對並解析 symlink；<code>.git</code>、<code>.claude</code>、<code>.codegraph-cache</code>、<code>.env</code>、<code>.env.*</code>、<code>appsettings.Development.json</code>、金鑰與憑證檔等拒絕清單對讀、列、搜尋、寫、刪一致套用，列舉與搜尋不進入 symlink。</li>
+<li>compose 的所有服務都套 §13.2 加固（<code>read_only</code>、<code>/tmp</code> tmpfs、<code>cap_drop: ALL</code>、<code>no-new-privileges</code>、<code>pids_limit</code>；broker 1024，其餘 256）。broker 不再掛 docker socket，<code>CONTAINER_MANAGER_ENABLED</code> 維持 false；line-worker 的音訊暫存改到 <code>/tmp/audio_temp</code>；dev seed 的 <code>file.search</code> 改為實際存在的 <code>file.search_name</code> 與 <code>file.search_content</code>。</li>
+<li>broker 動態啟動的容器一律帶 <code>--read-only</code>、noexec 的 <code>/tmp</code> tmpfs、<code>--cap-drop ALL</code>、<code>no-new-privileges</code>、<code>--pids-limit</code> 與記憶體上限；拒絕 root、<code>host</code>／<code>container:</code> 網路、agent 映像的掛載與發布埠、runtime socket、系統路徑與白名單外的 hostPath。agent 映像沒有自己的網路時預設拒絕，只有 sidecar 以 <code>AllowAgentDefaultNetwork=true</code> 明確例外。停止容器改為 <code>rm -f -v</code>。</li>
+<li><code>IContainerManager.SpawnWorkerAsync</code> 改為接收 <code>ContainerSpawnRequest</code>：<code>TrustedEnvironment</code> 放 broker 自己組出的環境變數，<code>SecretEnvironment</code> 只以 <code>-e NAME</code> 出現在 CLI 參數中。自行實作 <code>IContainerManager</code> 的程式需同步調整。</li>
+<li><code>/api/v1/workers/spawn</code> 的 <code>worker_type</code> 改為必填，不再能啟動 agent，也不再接受 <code>environment</code>；找不到 runtime CLI 時回 503。<code>/api/v1/agents/spawn</code> 的 <code>broker_url</code> 只能等於設定的 <code>AgentBrokerUrl</code>，<code>max_iterations</code> 上限為 50。</li>
+<li>映像改為 <code>sdk:10.0</code>／<code>aspnet:10.0</code> 與 <code>node:22-bookworm-slim</code>，全部以多架構 index digest 釘選；<code>/app</code> 由 root 擁有；各映像 UID 不重複（line-worker 改為 10005、mock-ollama 10006、mock-openai 10007）。基底映像的修補要以 <code>node tools/agent/container/resolve-base-image-digests.mjs</code> 更新 digest 後重建才會進來。</li>
+</ul>
+<p><strong>新增</strong></p>
+<ul>
+<li>stack 測試設 <code>CONTAINER_ENGINE=docker</code> 即改用 Docker（預設仍為 podman），<code>up</code> 之後以 <code>inspect</code> 檢查每個容器的加固；governed stack 改為證明 file-worker 真的讀到檔案，execution-adapter stack 增加實際的 <code>dotnet build</code>。</li>
+<li><code>npm run validate:container-images</code>（Containerfile 靜態檢查）、<code>npm run validate:container-spawn</code>（host broker 經 docker／podman 實際 spawn 代理容器）、<code>npm run validate:podman-execution-adapter-stack</code>。</li>
+</ul>
+<p>驗證入口：<code>npm run validate:agent-container-config</code>、<code>npm run validate:agent-governed</code>、<code>dotnet test packages/csharp/tests/unit/Unit.Tests.csproj</code>（SandboxPolicyTests）、<code>dotnet run --project packages/csharp/tests/broker-tests/Broker.Tests.csproj</code>（Agent Container Tests）、設 <code>CONTAINER_ENGINE=docker</code> 後執行 <code>npm run validate:podman-governed-stack</code>。</p>
 <h3>預設行為變更：broker 驗證與授權收緊、compose 改用產生的密鑰（2026-10-04）</h3>
 <p><strong>預設行為變更</strong></p>
 <ul>

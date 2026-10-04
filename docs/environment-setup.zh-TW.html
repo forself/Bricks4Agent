@@ -184,7 +184,7 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <tr>
 <td>Node.js 22.13+</td>
 <td>JS tools and agent</td>
-<td><code>tools/agent/README.md</code> states Node 18+, but the browser package's jsdom 29 requires <code>^20.19.0 || ^22.13.0 || &gt;=24.0.0</code> and root <code>test:ui-components</code> passes globs to <code>node --test</code> (Node 21+); CI uses Node 22</td>
+<td>The browser package's jsdom 29 requires <code>^20.19.0 || ^22.13.0 || &gt;=24.0.0</code> and root <code>test:ui-components</code> passes globs to <code>node --test</code> (Node 21+); CI uses Node 22, and the agent and mock container images are pinned to <code>node:22-bookworm-slim</code></td>
 </tr>
 <tr>
 <td>npm</td>
@@ -881,10 +881,11 @@ npm run validate:backend-governance
 <pre><code class="language-powershell">npm run validate:podman-governed-stack
 </code></pre>
 <p>The node stack tests generate fresh broker keys and worker credentials in memory for every run and pass them to both <code>up</code> and <code>down</code>; they write no files.</p>
+<p>The stack tests use podman by default; set <code>$env:CONTAINER_ENGINE = 'docker'</code> to run them with <code>docker build</code> and <code>docker compose</code> instead. Every service runs hardened (non-root, read-only root filesystem, <code>/tmp</code> tmpfs, no capabilities, <code>no-new-privileges</code>, <code>pids_limit</code>), the agent mounts nothing, and each test checks this with <code>inspect</code> after <code>up</code>; see <code>tools/agent/container/README.md</code>.</p>
 <p>The compose files have no default keys (<code>${VAR:?...}</code>). For manual runs, generate a secrets file outside the repository first, and pass the same <code>--env-file</code> to every <code>up</code> and <code>down</code>:</p>
 <pre><code class="language-powershell">node tools/agent/container/gen-stack-secrets.mjs
 </code></pre>
-<p>The generator writes <code>$env:BRICKS4AGENT_SECRETS_DIR/agent-stack.env</code>, or <code>~/.bricks4agent/agent-stack.env</code> when that variable is not set, prints the path but never the values, and refuses any path inside the repository (the agent container mounts the repository and can read it). See <code>tools/agent/container/README.md</code> for the variable list.</p>
+<p>The generator writes <code>$env:BRICKS4AGENT_SECRETS_DIR/agent-stack.env</code>, or <code>~/.bricks4agent/agent-stack.env</code> when that variable is not set, prints the path but never the values, and refuses any path inside the repository (the file worker serves the repository read-only to the agent through the broker). See <code>tools/agent/container/README.md</code> for the variable list.</p>
 <p>Manual default stack:</p>
 <pre><code class="language-powershell">podman compose --env-file &quot;$HOME/.bricks4agent/agent-stack.env&quot; -f tools/agent/container/compose.yml up --build --abort-on-container-exit --exit-code-from agent
 </code></pre>

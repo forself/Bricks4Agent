@@ -90,13 +90,13 @@ The list below records a repository-wide validation run carried out on 2026-03-2
 
 ### 1.1 Prerequisites
 
-- Node.js 18+
+- Node.js 22.13+ (the agent container images use Node 22)
 
 - .NET 10 SDK or newer
 
 - Git
 
-- Podman 5+ for the full governed-stack validation matrix
+- Podman 5+ for the full governed-stack validation matrix (Docker also works: set `CONTAINER_ENGINE=docker`)
 
 ### 1.2 Installation & Startup
 

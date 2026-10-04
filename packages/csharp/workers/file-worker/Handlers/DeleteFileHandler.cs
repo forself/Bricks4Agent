@@ -10,13 +10,13 @@ namespace FileWorker.Handlers;
 /// </summary>
 public class DeleteFileHandler : ICapabilityHandler
 {
-    private readonly string _sandboxRoot;
+    private readonly SandboxPolicy _policy;
 
     public string CapabilityId => "file.delete";
 
     public DeleteFileHandler(string sandboxRoot)
     {
-        _sandboxRoot = Path.GetFullPath(sandboxRoot);
+        _policy = new SandboxPolicy(sandboxRoot);
     }
 
     public Task<(bool Success, string? ResultPayload, string? Error)> ExecuteAsync(
@@ -29,10 +29,9 @@ public class DeleteFileHandler : ICapabilityHandler
                 ? argsEl : doc.RootElement;
             var filePath = root.GetProperty("path").GetString() ?? "";
 
-            var fullPath = ResolveSandboxedPath(filePath);
+            var (fullPath, pathError) = _policy.Resolve(filePath);
             if (fullPath == null)
-                return Task.FromResult<(bool, string?, string?)>(
-                    (false, null, "Path outside sandbox."));
+                return Task.FromResult<(bool, string?, string?)>((false, null, pathError));
 
             if (!File.Exists(fullPath))
                 return Task.FromResult<(bool, string?, string?)>(
@@ -53,17 +52,5 @@ public class DeleteFileHandler : ICapabilityHandler
             return Task.FromResult<(bool, string?, string?)>(
                 (false, null, $"Delete file error: {ex.Message}"));
         }
-    }
-
-    private string? ResolveSandboxedPath(string path)
-    {
-        try
-        {
-            var fullPath = Path.GetFullPath(Path.Combine(_sandboxRoot, path));
-            if (!fullPath.StartsWith(_sandboxRoot, StringComparison.OrdinalIgnoreCase))
-                return null;
-            return fullPath;
-        }
-        catch { return null; }
     }
 }

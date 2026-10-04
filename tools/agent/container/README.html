@@ -34,12 +34,16 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <p><code>broker</code>: scoped-session issuer, capability/scope policy engine, and LLM proxy</p>
 </li>
 <li>
-<p><code>agent</code>: governed agent container that only talks to the broker</p>
+<p><code>agent</code>: governed agent container that only talks to the broker; nothing is mounted into it</p>
 </li>
 <li>
 <p><code>file-worker</code> and <code>line-worker</code>: optional worker containers in the default stack</p>
 </li>
+<li>
+<p><code>execution-adapter-worker</code>: patch and build/test worker, started only with <code>--profile adapters</code></p>
+</li>
 </ul>
+<p>Every service runs hardened (non-root, read-only root filesystem, no capabilities); see <a href="#container-hardening">Container Hardening</a>.</p>
 <h2>Scope</h2>
 <p>This stack proves the broker-mediated agent path. It does not prove the full production system.</p>
 <p>What it proves:</p>
@@ -105,6 +109,12 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <pre><code class="language-bash">npm run validate:podman-governed-stack
 </code></pre>
 <p>The validation script prebuilds each image with an explicit <code>Containerfile</code>, then runs <code>podman compose up</code> without the compose build flag. This is the preferred smoke test on Windows Podman because some <code>podman-compose</code> versions do not reliably honor per-service <code>dockerfile:</code> entries during <code>up --build</code>.</p>
+<p>The stack tests also run with Docker: set <code>CONTAINER_ENGINE=docker</code> (PowerShell: <code>$env:CONTAINER_ENGINE = 'docker'</code>) and they use <code>docker build</code> and <code>docker compose</code> instead; the default stays <code>podman</code>. After <code>up</code>, each test inspects every container and fails unless it has a read-only root filesystem, a non-root user, <code>cap_drop: ALL</code>, <code>no-new-privileges</code>, the expected <code>pids_limit</code>, a <code>/tmp</code> tmpfs, no runtime socket and, for the agent, no bind or volume mount. If a host service already uses a published port (for example a local Ollama on <code>11434</code>), move the stack with <code>STACK_LLM_PORT</code> or <code>BROKER_PORT</code>.</p>
+<p>Other end-to-end checks:</p>
+<pre><code class="language-bash">npm run validate:podman-execution-adapter-stack
+npm run validate:container-spawn
+</code></pre>
+<p>The first applies a patch and runs a real <code>dotnet build</code> through the execution adapter (profile <code>adapters</code>). The second starts a broker on the host with the container manager enabled, spawns an agent container through <code>/api/v1/agents/spawn</code>, and checks its hardening, its run and its removal; see <a href="#container-hardening">Container Hardening</a>.</p>
 <p>The validation scripts generate a fresh set of broker keys and worker credentials in memory for every run (see <a href="#secrets">Secrets</a>) and pass them to both <code>up</code> and <code>down</code> through the environment. Nothing is written to disk.</p>
 <p>For manual runs, generate a secrets file outside the repository once, then pass it with <code>--env-file</code> to every <code>up</code> and <code>down</code>.</p>
 <p>The manual command blocks in this README are PowerShell, like the runbook and the environment setup guide. In bash, replace <code>$env:NAME = 'value'</code> with <code>export NAME='value'</code>; keep the double quotes around the env file path in either shell, because the home directory may contain spaces.</p>
@@ -114,7 +124,7 @@ podman compose --env-file &quot;$HOME/.bricks4agent/agent-stack.env&quot; -f too
 <p>The generator prints the exact path it wrote; it differs from the default when <code>BRICKS4AGENT_SECRETS_DIR</code> is set.</p>
 <p>The default stack uses the bundled mock upstream and should end with the agent printing <code>STACK_OK</code>.</p>
 <p>The smoke stack disables broker RAG seeding and embeddings so it only verifies the governed agent, broker LLM proxy, and worker attachment path. This avoids accidental dependence on a host-side Ollama embedding server.</p>
-<p>The default <code>npm run validate:podman-governed-stack</code> run also configures the mock upstream to request <code>read_file</code> once, so the test covers the agent submitting a broker-governed capability request and the broker dispatching it to <code>file-worker</code>.</p>
+<p>The default <code>npm run validate:podman-governed-stack</code> run also configures the mock upstream to request <code>read_file</code> once, so the test covers the agent submitting a broker-governed capability request and the broker dispatching it to <code>file-worker</code>. The mock answers <code>STACK_OK TOOL_RESULT_VERIFIED</code> only when the tool result it receives through the broker contains text from <code>README.html</code>, so a passing run proves the file worker really read the file (the <code>[governed] read_file</code> log line alone is printed before the tool runs).</p>
 <p>OpenAI-compatible stack:</p>
 <pre><code class="language-powershell">podman compose --env-file &quot;$HOME/.bricks4agent/agent-stack.env&quot; -f tools/agent/container/compose.openai-compatible.yml up --build --abort-on-container-exit --exit-code-from agent
 </code></pre>
@@ -186,9 +196,87 @@ podman compose --env-file &quot;$HOME/.bricks4agent/agent-stack.env&quot; -f too
 </li>
 </ul>
 <p><code>node tools/agent/container/gen-stack-secrets.mjs</code> generates all of them with <code>node:crypto</code> and writes them to <code>$BRICKS4AGENT_SECRETS_DIR/agent-stack.env</code>, or <code>~/.bricks4agent/agent-stack.env</code> when that variable is not set. It never prints the values, refuses any path inside the repository, and refuses to overwrite an existing file unless you pass <code>--force</code> (which rotates every key; recreate the stack with <code>down -v</code> afterwards). <code>--self-test</code> checks the generator without writing anything. <a href="agent-stack.env.example"><code>agent-stack.env.example</code></a> lists the variable names only.</p>
-<p>Keep the file outside the repository. The agent container mounts the repository at <code>/workspace</code> with read access, and compose also auto-loads a <code>.env</code> next to the compose files, so a key file inside the repository would be readable by the untrusted agent.</p>
+<p>Keep the file outside the repository. The agent no longer mounts anything, but the file worker serves the repository read-only to the agent through the broker; its deny list refuses <code>.env</code>, <code>.env.*</code> and <code>agent-stack.env</code>, yet any other name you give a key file inside the repository would be readable by the untrusted agent. Compose also auto-loads a <code>.env</code> next to the compose files.</p>
 <p>The broker runs in the Production environment in these stacks and validates its keys at startup: it refuses placeholder values (empty, <code>CHANGE_ME*</code>, <code>REPLACE_WITH_*</code>) and any key that was ever published as a compose default, and it checks key formats. Do not set <code>ASPNETCORE_ENVIRONMENT=Development</code> in the compose files to get around this.</p>
 <p><code>WORKER_AUTH_ENFORCE</code> defaults to <code>true</code>: the broker verifies worker credentials on function pool registration and on the LINE worker HTTP routes. The broker also trusts the execution adapter credential (credential index 2), which replaces the template credential at that index in <code>appsettings.json</code>.</p>
+<h2 id="container-hardening">Container Hardening</h2>
+<p>Every service in the three compose files runs with the design §13.2 settings:</p>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>user</td>
+<td>non-root UID from the image: agent 10001, broker 10002, file-worker 10003, execution-adapter 10004, line-worker 10005, mock-ollama 10006, mock-openai 10007</td>
+</tr>
+<tr>
+<td><code>read_only</code></td>
+<td><code>true</code>; only the <code>/tmp</code> tmpfs and the mounts below are writable</td>
+</tr>
+<tr>
+<td><code>tmpfs</code></td>
+<td><code>/tmp</code> (Docker and Podman mount it <code>noexec,nosuid,nodev</code>)</td>
+</tr>
+<tr>
+<td><code>cap_drop</code></td>
+<td><code>ALL</code></td>
+</tr>
+<tr>
+<td><code>security_opt</code></td>
+<td><code>no-new-privileges:true</code></td>
+</tr>
+<tr>
+<td><code>pids_limit</code></td>
+<td><code>1024</code> for the broker (.NET thread pool and sockets), <code>256</code> for every other service</td>
+</tr>
+</tbody>
+</table>
+<p>Mounts:</p>
+<ul>
+<li>
+<p>broker: the named volume at <code>/data</code> (SQLite database and workspaces). No container runtime socket is mounted, so dynamic spawn is not available inside these stacks; keep <code>CONTAINER_MANAGER_ENABLED</code> at <code>false</code>.</p>
+</li>
+<li>
+<p>agent: nothing. <code>/workspace</code> is an empty directory in the image that only serves as the logical root the broker grants are scoped to; the project manual is baked in at <code>/app/AGENT.md</code> (<code>AGENT_MANUAL_PATH</code>).</p>
+</li>
+<li>
+<p>file-worker: the repository at <code>/workspace</code>, read-only. This is what the agent can read through the broker. The worker resolves every path, symlinks included, refuses anything outside <code>/workspace</code>, and applies one deny list to read, list, search, write and delete: <code>.git</code>, <code>.claude</code>, <code>.codegraph-cache</code>, <code>.ssh</code>, <code>.env</code>, <code>.env.*</code>, <code>agent-stack.env</code>, <code>appsettings.Development.json</code>, <code>*.pem</code>, <code>*.key</code>, <code>*.pfx</code>, <code>*.p12</code>, SSH private key names such as <code>id_rsa*</code>, and <code>client_secret_*</code>.</p>
+</li>
+<li>
+<p>execution-adapter-worker: the throwaway git workspace from <code>ADAPTER_WORKSPACE</code>, writable, because it is the mediated write path. <code>dotnet build</code> and <code>dotnet test</code> (with NuGet packages on the <code>noexec</code> <code>/tmp</code>) work within <code>pids_limit: 256</code>.</p>
+</li>
+<li>
+<p>line-worker: nothing; audio scratch files go to <code>/tmp/audio_temp</code> (<code>WORKER_Line__AudioTempPath</code>).</p>
+</li>
+</ul>
+<h3 id="dynamic-spawn">Dynamic Spawn</h3>
+<p>A broker running on the host can start containers itself when <code>FunctionPool:ContainerManager:Enabled</code> is <code>true</code> (the Windows sidecar turns it on when it finds podman or docker). Every container it starts gets <code>--read-only</code>, <code>--tmpfs /tmp:rw,noexec,nosuid,nodev,size=64m</code>, <code>--cap-drop ALL</code>, <code>--security-opt no-new-privileges:true</code>, <code>--pids-limit</code> (<code>DefaultPidsLimit</code>, 256 unless an image sets <code>PidsLimit</code>) and a memory limit (<code>DefaultMemoryLimit</code>, <code>512m</code> unless an image sets <code>MemoryLimit</code>). The broker refuses configuration that would weaken this:</p>
+<ul>
+<li>
+<p>a root user (<code>User</code> of <code>0</code> or <code>root</code>), or a <code>host</code>, <code>container:</code> or <code>ns:</code> network</p>
+</li>
+<li>
+<p>any <code>Volumes</code> or <code>Ports</code> on the <code>agent</code> image</p>
+</li>
+<li>
+<p>an <code>agent</code> image without its own <code>NetworkName</code>; agents never fall back to the shared worker network. Only a broker that runs on the host without a dedicated agent network sets <code>AllowAgentDefaultNetwork=true</code> (the sidecar does)</p>
+</li>
+<li>
+<p>for other workers: runtime sockets, system paths, relative paths, ports not bound to <code>127.0.0.1</code>, and host paths outside <code>AllowedHostPathRoots</code></p>
+</li>
+</ul>
+<p><code>/api/v1/agents/spawn</code> always hands the agent the configured <code>AgentBrokerUrl</code>; a request may repeat that value in <code>broker_url</code> but cannot replace it, and <code>max_iterations</code> is capped at 50. <code>/api/v1/workers/spawn</code> requires <code>worker_type</code>, no longer starts agents and no longer accepts an <code>environment</code> field. Values that must stay out of process listings are passed to the runtime as <code>-e NAME</code> with the value in the CLI's own environment; they still show up in the runtime's <code>inspect</code> output.</p>
+<h3>Images</h3>
+<p>All images build from <code>main</code>: the .NET services use <code>mcr.microsoft.com/dotnet/sdk:10.0</code> and <code>aspnet:10.0</code> (the execution adapter keeps the SDK at run time for <code>git</code> and <code>dotnet build/test</code>), and the Node services use <code>node:22-bookworm-slim</code>. Every <code>FROM</code> is pinned to the multi-arch index digest, so base image fixes arrive only when you refresh the digests and rebuild:</p>
+<pre><code class="language-bash">node tools/agent/container/resolve-base-image-digests.mjs
+node tools/agent/container/resolve-base-image-digests.mjs --engine podman
+node tools/agent/container/resolve-base-image-digests.mjs --check
+</code></pre>
+<p>The first form queries docker (or <code>CONTAINER_ENGINE</code>) and rewrites the <code>FROM</code> lines; <code>--check</code> only reports and exits 1 when a digest is out of date. <code>npm run validate:container-images</code> checks every Containerfile without a container runtime: digest pinning, .NET 10 and Node 22 bases, no <code>adduser</code>, a non-root <code>USER</code> with a UID no other image uses, and no <code>COPY . .</code> or <code>VOLUME</code> in the final stage.</p>
 <h2>Overrides</h2>
 <p>You can override the defaults with environment variables before starting the stack:</p>
 <pre><code class="language-powershell">$env:BROKER_PORT = '5500'
@@ -216,6 +304,15 @@ podman compose --env-file &quot;$HOME/.bricks4agent/agent-stack.env&quot; -f too
 </li>
 <li>
 <p><code>STACK_TOOL_PATH</code></p>
+</li>
+<li>
+<p><code>STACK_TOOL_ARGS_JSON</code>, <code>STACK_TOOL_SEQUENCE_JSON</code> (several tool calls in order) and <code>STACK_EXPECT_TOOL_RESULTS_JSON</code> (text each tool result must contain before the mock answers <code>TOOL_RESULT_VERIFIED</code>)</p>
+</li>
+<li>
+<p><code>POOL_DISPATCH_TIMEOUT_SECONDS</code> (default <code>30</code>)</p>
+</li>
+<li>
+<p><code>ADAPTER_WORKSPACE</code></p>
 </li>
 <li>
 <p><code>BROKER_PRINCIPAL_ID</code></p>
@@ -281,8 +378,8 @@ podman compose --env-file &quot;$HOME/.bricks4agent/agent-stack.env&quot; -f too
 <p><code>WORKER_AUTH_ENFORCE=false</code> turns off worker credential verification. The three LINE worker routes (<code>POST /api/v1/high-level/line/process</code>, <code>GET /api/v1/high-level/line/notifications/pending</code>, <code>POST /api/v1/high-level/line/notifications/complete</code>) accept only a verified worker signature, so with verification off they answer HTTP 401 to every request and the LINE worker stops working. Keep the default <code>true</code> whenever the LINE worker runs.</p>
 </li>
 </ul>
-<p><code>AGENT_BROKER_URL</code> controls the HTTP broker URL injected into dynamically spawned agent containers through <code>/api/v1/agents/spawn</code>. In the compose stack the default is <code>http://broker:5000</code>; for a host-side broker, point it at the broker address reachable from the container, such as <code>http://host.containers.internal:5361</code> on Podman Desktop.</p>
-<p><code>/api/v1/agents/spawn</code> requires an administrator scoped token (<code>role_admin</code>). The broker issues an administrator-level session only when the registration arrives over the broker host's own loopback interface and the task assigns an administrator role. The agent containers in these stacks reach the broker over the compose network, so the spawn flow is not available inside them.</p>
+<p><code>AGENT_BROKER_URL</code> controls the HTTP broker URL injected into dynamically spawned agent containers through <code>/api/v1/agents/spawn</code>. In the compose stack the default is <code>http://broker:5000</code>; for a host-side broker, point it at the broker address reachable from the container, such as <code>http://host.containers.internal:5361</code> on Podman Desktop (<code>http://host.docker.internal:&lt;port&gt;</code> on Docker Desktop).</p>
+<p><code>/api/v1/agents/spawn</code> requires an administrator scoped token (<code>role_admin</code>). The broker issues an administrator-level session only when the registration arrives over the broker host's own loopback interface and the task assigns an administrator role. The agent containers in these stacks reach the broker over the compose network, and the compose broker has neither a runtime CLI nor a runtime socket, so the spawn flow is not available inside them; see <a href="#dynamic-spawn">Dynamic Spawn</a> for a broker on the host.</p>
 <h2>Switching To A Real Upstream</h2>
 <p>The broker is already wired to use the upstream through <code>LlmProxy__BaseUrl</code>.</p>
 <p>For a real provider:</p>

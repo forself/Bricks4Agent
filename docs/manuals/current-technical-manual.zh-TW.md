@@ -437,7 +437,7 @@ Available only when `FunctionPool:Enabled=true`：
 | Route | 用途 |
 |---|---|
 | `GET /api/v1/workers/` | list registered workers |
-| `POST /api/v1/workers/spawn` | spawn container worker |
+| `POST /api/v1/workers/spawn` | spawn a hardened worker container（`worker_type` 必填、不接受 `agent` 與 `environment`；agent 一律走 `/api/v1/agents/spawn`） |
 | `POST /api/v1/workers/stop` | stop worker container |
 | `GET /api/v1/workers/containers` | list containers |
 | `POST /api/v1/workers/logs` | fetch container logs |

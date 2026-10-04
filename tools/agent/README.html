@@ -33,7 +33,7 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <p><code>--line-listen</code> is kept only as a legacy development path.</p>
 <h2>Requirements</h2>
 <ul>
-<li>Node.js 18+</li>
+<li>Node.js 22+ (the agent container image is pinned to <code>node:22-bookworm-slim</code>)</li>
 <li>Ollama if you want fully local provider mode</li>
 <li>an API key for OpenAI-compatible mode</li>
 <li>a broker if you want governed mode</li>
@@ -195,7 +195,8 @@ node tools/agent/agent.js --governed
 </code></pre>
 <h3>Run</h3>
 <pre><code class="language-bash">podman run --rm -it \
-  -v %CD%:/workspace \
+  --read-only --tmpfs /tmp --cap-drop ALL \
+  --security-opt no-new-privileges:true --pids-limit 256 \
   -e BROKER_URL=http://host.containers.internal:5000 \
   -e BROKER_PUB_KEY=&lt;base64&gt; \
   -e BROKER_PRINCIPAL_ID=prn_xxx \
@@ -209,7 +210,8 @@ node tools/agent/agent.js --governed
 <ul>
 <li><code>BROKER_URL</code>, <code>BROKER_PUB_KEY</code>, <code>BROKER_PRINCIPAL_ID</code>, and <code>BROKER_TASK_ID</code> are required</li>
 <li>direct provider API keys are not the intended formal execution path</li>
-<li><code>/workspace</code> is the default mounted workspace</li>
+<li>nothing is mounted into the agent: <code>/workspace</code> is an empty logical root baked into the image, every file read or write goes through broker capabilities (the file worker or the execution adapter), and the project manual comes from <code>/app/AGENT.md</code> (<code>AGENT_MANUAL_PATH</code>)</li>
+<li>the image runs as uid 10001 and needs no writable path besides the <code>/tmp</code> tmpfs</li>
 <li>the entrypoint adds <code>--governed</code> and broker/session parameters automatically</li>
 <li><code>AGENT_RUN</code> executes one task; otherwise the container enters REPL</li>
 </ul>
