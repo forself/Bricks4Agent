@@ -28,7 +28,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 
 const { BrokerClient } = require('../lib/broker-client');
-const { ROOT, buildImages, containerEngine, run } = require('./lib/container-stack');
+const { ROOT, assertContainerHardened, buildImages, containerEngine, run } = require('./lib/container-stack');
 
 const engine = containerEngine();
 const hostAlias = engine === 'docker' ? 'host.docker.internal' : 'host.containers.internal';
@@ -330,6 +330,8 @@ async function main() {
             `agent must have no mounts: ${JSON.stringify(container.Mounts)}`);
         assert.strictEqual(host.NetworkMode, networkName, 'agent runs on its dedicated network');
         assert.notStrictEqual(host.Privileged, true, 'Privileged');
+        // The checks the compose stacks share (root in any spelling, added capabilities, shared pid/ipc, unconfined).
+        assertContainerHardened('spawned agent', container, { noMounts: true });
         assert(/^10001(:|$)/.test(String(container.Config.User || '')), `User ${container.Config.User}`);
         assert(env.includes(`BROKER_URL=http://${hostAlias}:${brokerPort}`), 'BROKER_URL is the configured AgentBrokerUrl');
         assert(env.includes('AGENT_MAX_ITERATIONS=50'), 'max_iterations is capped');

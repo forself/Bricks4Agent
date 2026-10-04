@@ -7,6 +7,9 @@ const fs = require('fs');
 const path = require('path');
 const { pathToFileURL } = require('url');
 
+const { isRootUserSpec } = require('../container/container-user');
+const { assertContainerHardened } = require('./lib/container-stack');
+
 const ROOT = path.resolve(__dirname, '..', '..', '..');
 
 // compose 檔曾以 ${VAR:-預設值} 提交的開發金鑰，已在 git 歷史中公開。
@@ -246,10 +249,153 @@ function composeServices(text) {
     return Object.fromEntries(Object.entries(services).map(([name, body]) => [name, body.join('\n')]));
 }
 
+// 服務區塊中的清單值（`key:` 之下的 `- value`），略過夾在清單中的註解行與行尾註解。
 function serviceListValues(block, key) {
-    const match = new RegExp(`^ {4}${key}:\\s*\\r?\\n((?: {6}- .*\\r?\\n?)+)`, 'm').exec(block);
-    return match ? match[1].split(/\r?\n/).map((line) => line.trim().replace(/^- /, '').replace(/\s+#.*$/, '')).filter(Boolean) : [];
+    const match = new RegExp(`^ {4}${key}:\\s*\\r?\\n((?: {6}(?:- .*|#.*)\\r?\\n?)+)`, 'm').exec(block);
+    return match
+        ? match[1].split(/\r?\n/)
+            .map((line) => line.trim())
+            .filter((line) => line.startsWith('- '))
+            .map((line) => line.replace(/^- /, '').replace(/\s+#.*$/, '').replace(/^["']|["']$/g, ''))
+            .filter(Boolean)
+        : [];
 }
+
+// 服務區塊中某個純量鍵的值（去掉引號與行尾註解）；沒有這個鍵時回傳 null。
+function serviceScalar(block, key) {
+    const match = new RegExp(`^ {4}${key}:[ \\t]*(.*)$`, 'm').exec(block);
+    return match ? match[1].replace(/\s+#.*$/, '').trim().replace(/^["']|["']$/g, '') : null;
+}
+
+// 一個 compose 服務區塊的 §13.2 加固，以及不得出現的削弱設定。
+function assertServiceHardened(where, name, block) {
+    assert(/^ {4}read_only: true\b/m.test(block), `${where}: expected read_only: true`);
+    assert(serviceListValues(block, 'tmpfs').includes('/tmp'), `${where}: expected a /tmp tmpfs`);
+    assert.deepStrictEqual(serviceListValues(block, 'cap_drop'), ['ALL'], `${where}: expected cap_drop: [ALL]`);
+    const securityOpt = serviceListValues(block, 'security_opt');
+    assert(securityOpt.includes('no-new-privileges:true'), `${where}: expected no-new-privileges:true`);
+    assert(!securityOpt.some((opt) => /unconfined/i.test(opt)), `${where}: security_opt must not be unconfined`);
+    const pids = /^ {4}pids_limit: (\d+)\b/m.exec(block);
+    assert(pids, `${where}: expected pids_limit`);
+    assert.strictEqual(Number(pids[1]), name === 'broker' ? 1024 : 256, `${where}: unexpected pids_limit`);
+    // 與 ContainerManager.ValidateUser 相同的規則：任一段為 root 或數值為 0（00、+0、10001:0）即是 root。
+    const user = serviceScalar(block, 'user');
+    assert(user === null || !isRootUserSpec(user), `${where}: must not run as root (user: ${user})`);
+    for (const key of ['cap_add', 'devices', 'userns_mode', 'privileged', 'network_mode']) {
+        assert(!new RegExp(`^ {4}${key}:`, 'm').test(block), `${where}: ${key} is not allowed`);
+    }
+    for (const key of ['pid', 'ipc']) {
+        const value = serviceScalar(block, key);
+        assert(value === null || !/^(host|container:|service:)/i.test(value), `${where}: ${key}: ${value} shares a namespace`);
+    }
+}
+
+// 頂層 networks 區段中，某個網路的設定行。
+function topLevelNetwork(text, network) {
+    const lines = text.split(/\r?\n/);
+    const start = lines.findIndex((line) => line === 'networks:');
+    assert(start >= 0, 'compose file without a top-level networks: section');
+    const body = [];
+    let inside = false;
+    for (const line of lines.slice(start + 1)) {
+        if (/^\S/.test(line)) {
+            break;
+        }
+        const header = /^ {2}([A-Za-z0-9_-]+):\s*$/.exec(line);
+        if (header) {
+            inside = header[1] === network;
+            continue;
+        }
+        if (inside) {
+            body.push(line);
+        }
+    }
+    return body.join('\n');
+}
+
+// 檢查規則本身：合格的區塊通過，每一種削弱寫法都被擋下。
+{
+    const goodBlock = [
+        '    image: example:latest',
+        '    user: "10001:10001"',
+        '    read_only: true',
+        '    tmpfs:',
+        '      - /tmp',
+        '    cap_drop:',
+        '      - ALL',
+        '    security_opt:',
+        '      # comment inside the list',
+        '      - no-new-privileges:true',
+        '    pids_limit: 256',
+    ].join('\n');
+    assertServiceHardened('synthetic', 'worker', goodBlock);
+    const weakened = {
+        'user 00': goodBlock.replace('user: "10001:10001"', 'user: "00"'),
+        'user +0': goodBlock.replace('user: "10001:10001"', 'user: "+0"'),
+        'group 0': goodBlock.replace('user: "10001:10001"', 'user: "10001:0"'),
+        'named user, group 0': goodBlock.replace('user: "10001:10001"', 'user: agent:0'),
+        'group root': goodBlock.replace('user: "10001:10001"', "user: '10001:root'"),
+        'cap_add': `${goodBlock}\n    cap_add:\n      - NET_ADMIN`,
+        'devices': `${goodBlock}\n    devices:\n      - /dev/fuse`,
+        'pid host': `${goodBlock}\n    pid: host`,
+        'ipc host': `${goodBlock}\n    ipc: "host"`,
+        'ipc of another container': `${goodBlock}\n    ipc: container:other`,
+        'userns_mode': `${goodBlock}\n    userns_mode: host`,
+        'unconfined seccomp': goodBlock.replace('      - no-new-privileges:true', '      - no-new-privileges:true\n      - seccomp:unconfined'),
+        'unconfined apparmor': goodBlock.replace('      - no-new-privileges:true', '      - no-new-privileges:true\n      - apparmor=unconfined'),
+    };
+    for (const [label, block] of Object.entries(weakened)) {
+        assert.throws(() => assertServiceHardened(`synthetic ${label}`, 'worker', block), assert.AssertionError, `compose check must refuse: ${label}`);
+    }
+}
+
+// inspect 的檢查規則（docker／podman inspect 輸出，Docker 端到端測試共用）：合格的通過，每一種削弱都被擋下。
+{
+    const goodContainer = () => ({
+        Config: { User: '10001' },
+        Mounts: [],
+        HostConfig: {
+            ReadonlyRootfs: true,
+            CapDrop: ['ALL'],
+            CapAdd: null,
+            SecurityOpt: ['no-new-privileges:true'],
+            PidsLimit: 256,
+            Privileged: false,
+            NetworkMode: 'bricks4agent_agent-net',
+            PidMode: '',
+            IpcMode: 'private',
+            Tmpfs: { '/tmp': '' },
+            Devices: [],
+        },
+    });
+    assertContainerHardened('synthetic', goodContainer(), { noMounts: true });
+    const weaken = {
+        'user 00': (c) => { c.Config.User = '00'; },
+        'user 10001:0': (c) => { c.Config.User = '10001:0'; },
+        'user agent:0': (c) => { c.Config.User = 'agent:0'; },
+        'user ROOT': (c) => { c.Config.User = 'ROOT'; },
+        'no user': (c) => { c.Config.User = ''; },
+        'cap add': (c) => { c.HostConfig.CapAdd = ['NET_ADMIN']; },
+        'pid host': (c) => { c.HostConfig.PidMode = 'host'; },
+        'ipc host': (c) => { c.HostConfig.IpcMode = 'host'; },
+        'ipc of another container': (c) => { c.HostConfig.IpcMode = 'container:abc'; },
+        'network host': (c) => { c.HostConfig.NetworkMode = 'host'; },
+        'seccomp unconfined': (c) => { c.HostConfig.SecurityOpt.push('seccomp=unconfined'); },
+        'device': (c) => { c.HostConfig.Devices = [{ PathOnHost: '/dev/fuse' }]; },
+        'writable rootfs': (c) => { c.HostConfig.ReadonlyRootfs = false; },
+        'socket mount': (c) => { c.Mounts = [{ Type: 'bind', Source: '/var/run/docker.sock', Destination: '/var/run/docker.sock' }]; },
+    };
+    for (const [label, change] of Object.entries(weaken)) {
+        const container = goodContainer();
+        change(container);
+        assert.throws(() => assertContainerHardened(`synthetic ${label}`, container, { noMounts: true }), assert.AssertionError, `inspect check must refuse: ${label}`);
+    }
+}
+
+const seedOptionsSource = read('packages/csharp/broker-core/Data/DevelopmentSeedOptions.cs');
+const seedLifetimeMatch = /DefaultRegistrationSecretLifetimeHours = (\d+);/.exec(seedOptionsSource);
+assert(seedLifetimeMatch, 'DevelopmentSeedOptions.DefaultRegistrationSecretLifetimeHours not found');
+const seedLifetimeDefault = seedLifetimeMatch[1];
 
 const expectedServices = {
     'tools/agent/container/compose.yml': ['mock-ollama', 'broker', 'file-worker', 'line-worker', 'execution-adapter-worker', 'agent'],
@@ -266,16 +412,12 @@ for (const composePath of COMPOSE_FILES) {
     const services = composeServices(text);
     assert.deepStrictEqual(Object.keys(services).sort(), [...expectedServices[composePath]].sort(), `${composePath}: unexpected service list`);
     for (const [name, block] of Object.entries(services)) {
-        const where = `${composePath} ${name}`;
-        assert(/^ {4}read_only: true\b/m.test(block), `${where}: expected read_only: true`);
-        assert(serviceListValues(block, 'tmpfs').includes('/tmp'), `${where}: expected a /tmp tmpfs`);
-        assert.deepStrictEqual(serviceListValues(block, 'cap_drop'), ['ALL'], `${where}: expected cap_drop: [ALL]`);
-        assert(serviceListValues(block, 'security_opt').includes('no-new-privileges:true'), `${where}: expected no-new-privileges:true`);
-        const pids = /^ {4}pids_limit: (\d+)\b/m.exec(block);
-        assert(pids, `${where}: expected pids_limit`);
-        assert.strictEqual(Number(pids[1]), name === 'broker' ? 1024 : 256, `${where}: unexpected pids_limit`);
-        assert(!/^ {4}user:\s*["']?(?:0|root)\b/m.test(block), `${where}: must not run as root`);
+        assertServiceHardened(`${composePath} ${name}`, name, block);
     }
+
+    // 種子憑證的有效時間可由 compose 調整（broker 每次啟動重新起算）；預設值與 DevelopmentSeedOptions 一致。
+    assertIncludes(`${composePath} broker exposes the seeded credential lifetime`, services.broker,
+        `DevelopmentSeed__RegistrationSecretLifetimeHours: "\${BROKER_REGISTRATION_SECRET_LIFETIME_HOURS:-${seedLifetimeDefault}}"`);
 
     const agent = services.agent;
     // 註冊密鑰：broker 的種子與 agent 取用同一個必填變數（${VAR:?...}，訊息指向產生器，見上方檢查）。
@@ -286,7 +428,9 @@ for (const composePath of COMPOSE_FILES) {
     assert(!/^ {4}volumes:/m.test(agent), `${composePath} agent: the agent must not mount anything`);
     assert(!/:\/workspace\b/.test(agent), `${composePath} agent: no :/workspace bind mount`);
     assertIncludes(`${composePath} agent keeps the logical project root`, agent, 'AGENT_PROJECT_ROOT: "/workspace"');
-    assertIncludes(`${composePath} agent stays on the internal network`, agent, '- agent-net');
+    // agent 只在 agent-net 上，且 agent-net 是 internal（沒有對外的閘道）。
+    assert.deepStrictEqual(serviceListValues(agent, 'networks'), ['agent-net'], `${composePath} agent: must join agent-net only`);
+    assert(/^ {4}internal: true\b/m.test(topLevelNetwork(text, 'agent-net')), `${composePath}: agent-net must be internal: true`);
     assertNotIncludes(`${composePath} drops the stale file.search seed`, text, '"capability_id":"file.search"');
 }
 

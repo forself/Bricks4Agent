@@ -12,7 +12,7 @@
 // - podman：先 `podman manifest inspect <ref>` 取得各平台 manifest 的 digest，再 `podman pull` 後讀
 //   RepoDigests，取不屬於任何平台 manifest 的那一個（也就是 index 的 digest）。
 //
-// 純函式（解析、改寫、挑選 digest）可以離線測試：tools/agent/tests/test-resolve-base-image-digests.mjs。
+// 純函式（解析、改寫、挑選 digest）可以離線測試：tools/agent/tests/test-container-image-tools.mjs。
 
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';

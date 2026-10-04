@@ -2,7 +2,8 @@
 // 靜態檢查 repo 內所有 Containerfile（不需要 docker 或 podman）：
 // - 每個外部基底映像的 FROM 都以 @sha256 釘選 index digest；.NET 必須是 10.0，node 必須是 22。
 // - 不得出現 adduser（.NET 10 的 Ubuntu 映像沒有）與 node:20。
-// - 最終階段要有非 root 的 USER，且各映像的 UID 不重複。
+// - 最終階段要有非 root 的 USER，且各映像的 UID 不重複。root 的判定與 broker 的 ContainerManager 相同
+//   （tools/agent/container/container-user.js）：使用者或群組任一段為 root，或數值為 0（例如 00、+0）。
 // - 最終階段不得 `COPY . .`／`ADD . .`（整個 repo 進入執行映像），也不得宣告 VOLUME
 //   （沒有掛載時會產生不受 --read-only 限制的可寫匿名卷）。
 //
@@ -19,6 +20,9 @@ import {
     listBaseImages,
     REPO_ROOT,
 } from '../agent/container/resolve-base-image-digests.mjs';
+import containerUser from '../agent/container/container-user.js';
+
+const { isRootPart, userSpecParts } = containerUser;
 
 const DIGEST_PATTERN = /^sha256:[0-9a-f]{64}$/;
 
@@ -81,31 +85,45 @@ export function splitStages(instructions) {
     return stages;
 }
 
-/** 把 USER 的值換成數字 UID；名稱以同一階段 `useradd ... --uid N ... name` 解析。無法判定時回傳 null。 */
-export function resolveUid(userValue, stageInstructions) {
-    const user = userValue.split(':')[0].trim();
-    if (/^\d+$/.test(user)) {
-        return Number(user);
-    }
-    if (user === 'root') {
-        return 0;
-    }
+/** 同一階段 `<command> ... <option> N ... name` 中，name 對應的數字 id；找不到時回傳 null。 */
+function resolveNamedId(name, stageInstructions, command, options) {
     for (const instruction of stageInstructions) {
         if (instruction.keyword !== 'RUN') {
             continue;
         }
-        for (const command of instruction.args.split(/&&|;/)) {
-            const tokens = command.trim().split(/\s+/);
-            if (tokens[0] !== 'useradd' || tokens[tokens.length - 1] !== user) {
+        for (const part of instruction.args.split(/&&|;/)) {
+            const tokens = part.trim().split(/\s+/);
+            if (tokens[0] !== command || tokens[tokens.length - 1] !== name) {
                 continue;
             }
-            const uidIndex = tokens.findIndex((token) => token === '--uid' || token === '-u');
-            if (uidIndex >= 0 && /^\d+$/.test(tokens[uidIndex + 1] || '')) {
-                return Number(tokens[uidIndex + 1]);
+            const idIndex = tokens.findIndex((token) => options.includes(token));
+            if (idIndex >= 0 && /^[+-]?\d+$/.test(tokens[idIndex + 1] || '')) {
+                return Number(tokens[idIndex + 1]);
             }
         }
     }
     return null;
+}
+
+/**
+ * 把 USER 的值換成數字 UID；名稱以同一階段 `useradd ... --uid N ... name` 解析。無法判定時回傳 null。
+ * 使用者或群組任一段是 root（名稱 root，或數值為 0，例如 `00`、`+0`、`agent:0`），或群組名稱經
+ * `groupadd --gid 0` 建立時，一律回傳 0（視為 root）。
+ */
+export function resolveUid(userValue, stageInstructions) {
+    const [user, ...groups] = userSpecParts(userValue);
+    if ([user, ...groups].some(isRootPart)) {
+        return 0;
+    }
+    for (const group of groups) {
+        if (!/^[+-]?\d+$/.test(group) && resolveNamedId(group, stageInstructions, 'groupadd', ['--gid', '-g']) === 0) {
+            return 0;
+        }
+    }
+    if (/^[+-]?\d+$/.test(user)) {
+        return Number(user);
+    }
+    return resolveNamedId(user, stageInstructions, 'useradd', ['--uid', '-u']);
 }
 
 function copiesWholeContext(instruction) {

@@ -15,7 +15,8 @@
 //
 // The agent registers with the seeded task's registration secret (BROKER_REGISTRATION_SECRET).
 // A second `up` restarts the broker on the same data volume: the agent must register again with
-// the same secret, and the secret must never appear in any container output.
+// the same secret, and the secret must never appear in any container output. The second run also
+// sets BROKER_REGISTRATION_SECRET_LIFETIME_HOURS, which must reach the broker's seed settings.
 
 const assert = require('assert');
 const fs = require('fs');
@@ -28,6 +29,8 @@ const {
     buildImages: buildStackImages,
     compose,
     containerEngine,
+    inspectStack,
+    serviceOf,
 } = require('./lib/container-stack');
 
 const engine = containerEngine();
@@ -108,12 +111,14 @@ async function main() {
         // First run on a fresh volume, then a second run that restarts every container (broker included)
         // on the same volume: the seeded registration credential must still register the agent.
         for (const run of ['first', 'second']) {
+            // Second run: a shorter seeded credential lifetime (the broker sets it again at every start).
+            const runEnv = run === 'second' ? { ...env, BROKER_REGISTRATION_SECRET_LIFETIME_HOURS: '2' } : env;
             upResult = await compose(engine, composeFile, [
                 'up',
                 '--abort-on-container-exit',
                 '--exit-code-from',
                 'agent',
-            ], { env, stream: true });
+            ], { env: runEnv, stream: true });
 
             assert.strictEqual(
                 upResult.code,
@@ -161,6 +166,14 @@ async function main() {
             pidsLimits: { broker: 1024 },
             readOnlyBinds: ['file-worker'],
         });
+
+        // The lifetime override of the second run reached the broker (only this one variable is read).
+        const brokerContainer = (await inspectStack(engine, composeFile, [], env)).find((container) => serviceOf(container) === 'broker');
+        assert(brokerContainer, 'inspect: broker container not found');
+        assert(
+            ((brokerContainer.Config && brokerContainer.Config.Env) || []).includes('DevelopmentSeed__RegistrationSecretLifetimeHours=2'),
+            'the broker should get BROKER_REGISTRATION_SECRET_LIFETIME_HOURS as DevelopmentSeed__RegistrationSecretLifetimeHours'
+        );
 
         console.log(`Governed stack integration test passed (${engine}).`);
     } finally {

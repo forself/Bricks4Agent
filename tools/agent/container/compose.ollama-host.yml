@@ -37,6 +37,9 @@ services:
       # Registration secret for the seeded task (the broker keeps only its hash). The agent gets the
       # same value below; it is required to register a session.
       DevelopmentSeed__RegistrationSecret: "${BROKER_REGISTRATION_SECRET:?run node tools/agent/container/gen-stack-secrets.mjs and pass the file with --env-file}"
+      # Hours the seeded credential stays valid, counted again from every broker start (1 to 720).
+      # Once the broker has run longer than this, registrations are refused until it restarts.
+      DevelopmentSeed__RegistrationSecretLifetimeHours: "${BROKER_REGISTRATION_SECRET_LIFETIME_HOURS:-24}"
       DevelopmentSeed__RuntimeDescriptor: >-
         {"llm":{"default_model":"${STACK_MODEL:-qwen3.6:latest}","allow_model_override":false,"supports_tool_calling":true,"streaming_enabled":false},"capability_grants":[{"capability_id":"file.read","scope":{"paths":["/workspace"],"routes":["read_file"]},"quota":-1}]}
     ports:

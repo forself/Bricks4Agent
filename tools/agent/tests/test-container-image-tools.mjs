@@ -2,12 +2,14 @@
 // 離線測試 resolve-base-image-digests.mjs 與 verify-container-images.mjs 的純函式（不呼叫 docker／podman、不連網）。
 
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const resolver = await import(pathToFileURL(path.join(ROOT, 'tools', 'agent', 'container', 'resolve-base-image-digests.mjs')).href);
 const verifier = await import(pathToFileURL(path.join(ROOT, 'tools', 'scripts', 'verify-container-images.mjs')).href);
+const { default: containerUser } = await import(pathToFileURL(path.join(ROOT, 'tools', 'agent', 'container', 'container-user.js')).href);
 
 const OLD = `sha256:${'a'.repeat(64)}`;
 const NEW = `sha256:${'b'.repeat(64)}`;
@@ -100,6 +102,16 @@ const fakePodman = (command, args) => {
 assert.equal(resolver.queryIndexDigest('podman', 'node:22-bookworm-slim', fakePodman), NEW);
 assert.throws(() => resolver.queryIndexDigest('nerdctl', 'node:22', fakeDocker), /Unsupported engine/);
 
+// ── 共用的 root 判定（container-user.js）：與 ContainerManager.ValidateUser 相同的案例（broker-tests 的 AgentContainerTests）──
+const ROOT_USER_SPECS = ['0', 'root', 'ROOT', '10001:0', '0:10001', '00', '+0', '-0', '000', ' 0 ', '10001:00', '+0:10001', '10001:root', 'agent:0', 'agent:ROOT'];
+const NON_ROOT_USER_SPECS = ['10001', '10001:10001', '010001', 'app', 'app:app', 'rooted', '10'];
+for (const spec of ROOT_USER_SPECS) {
+    assert.equal(containerUser.isRootUserSpec(spec), true, `"${spec}" must count as root`);
+}
+for (const spec of NON_ROOT_USER_SPECS) {
+    assert.equal(containerUser.isRootUserSpec(spec), false, `"${spec}" must not count as root`);
+}
+
 // ── verify-container-images：合格與各種違規 ──
 const good = [
     '# comment mentioning adduser is fine',
@@ -116,6 +128,13 @@ const goodResult = verifier.checkContainerfile('good/Containerfile', good);
 assert.deepEqual(goodResult.errors, []);
 assert.equal(goodResult.uid, 10002);
 assert.equal(verifier.checkContainerfile('numeric/Containerfile', `FROM node:22-bookworm-slim@${OLD}\nUSER 10001:10001\n`).uid, 10001);
+const namedGroup = verifier.checkContainerfile('named-group/Containerfile', [
+    `FROM node:22-bookworm-slim@${OLD}`,
+    'RUN groupadd --gid 10002 svc && useradd --uid 10002 --gid 10002 svc',
+    'USER svc:svc',
+].join('\n'));
+assert.deepEqual(namedGroup.errors, []);
+assert.equal(namedGroup.uid, 10002);
 
 function expectError(name, text, pattern) {
     const { errors } = verifier.checkContainerfile(`${name}/Containerfile`, text);
@@ -129,6 +148,16 @@ expectError('adduser', `FROM node:22@${OLD}\nRUN adduser --disabled-password svc
 expectError('no-user', `FROM node:22@${OLD}\nRUN true\n`, /no USER/);
 expectError('root-user', `FROM node:22@${OLD}\nUSER root\n`, /runs as root/);
 expectError('uid-zero', `FROM node:22@${OLD}\nUSER 0:0\n`, /runs as root/);
+// root 的每一種寫法，包含只有群組是 root 的情況（規則與 ContainerManager.ValidateUser 相同）。
+for (const spec of ROOT_USER_SPECS.map((value) => value.trim())) {
+    expectError(`root-spec-${spec}`, `FROM node:22@${OLD}\nRUN groupadd --gid 10002 agent && useradd --uid 10002 --gid 10002 agent\nUSER ${spec}\n`, /runs as root/);
+}
+expectError('group-created-with-gid-0', [
+    `FROM node:22@${OLD}`,
+    'RUN groupadd --gid 0 admins && useradd --uid 10002 --gid 0 svc',
+    'USER svc:admins',
+].join('\n'), /runs as root/);
+expectError('user-created-with-uid-00', `FROM node:22@${OLD}\nRUN useradd --uid 00 svc\nUSER svc\n`, /runs as root/);
 expectError('unresolved', `FROM node:22@${OLD}\nUSER someone\n`, /cannot be resolved/);
 expectError('copy-all', `FROM node:22@${OLD}\nCOPY . .\nUSER 10001\n`, /whole build context/);
 expectError('add-all', `FROM node:22@${OLD}\nADD --chown=1:1 ./ /app\nUSER 10001\n`, /whole build context/);
@@ -140,6 +169,16 @@ const duplicate = verifier.checkContainerfiles([
     { relative: 'b/Containerfile', text: `FROM node:22@${OLD}\nUSER 10001\n` },
 ]);
 assert(duplicate.errors.some((error) => /UID 10001 is already used/.test(error)));
+
+// ── 工具註解中指向的測試檔都要存在 ──
+for (const tool of ['tools/agent/container/resolve-base-image-digests.mjs', 'tools/scripts/verify-container-images.mjs', 'tools/agent/container/container-user.js']) {
+    const source = fs.readFileSync(path.join(ROOT, tool), 'utf8');
+    for (const [reference] of source.matchAll(/tools\/agent\/tests\/[A-Za-z0-9_.-]+\.m?js/g)) {
+        assert(fs.existsSync(path.join(ROOT, reference)), `${tool} refers to ${reference}, which does not exist`);
+    }
+}
+const resolverSource = fs.readFileSync(path.join(ROOT, 'tools/agent/container/resolve-base-image-digests.mjs'), 'utf8');
+assert(resolverSource.includes('tools/agent/tests/test-container-image-tools.mjs'), 'the resolver should point at its offline test');
 
 // ── repo 內實際的 Containerfile 都要通過，且涵蓋全部七個映像 ──
 const discovered = resolver.discoverContainerfiles(ROOT);
