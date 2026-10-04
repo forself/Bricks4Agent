@@ -8,11 +8,13 @@ namespace FileWorker;
 /// - 拒絕清單：路徑中任何一段符合 <see cref="IsSensitiveName"/> 即拒絕（版本控制中繼資料、
 ///   代理工具設定、環境變數檔、本機設定與金鑰類檔案）。列舉與搜尋時直接略過這些項目，
 ///   也不進入 symlink（避免經由連結走出 sandbox）。
+/// - 搜尋：檔名 pattern 只能比對檔名（<see cref="IsFileNamePattern"/>），目錄一律由 path 指定並經 <see cref="Resolve"/>。
 /// </summary>
 public sealed class SandboxPolicy
 {
     public const string OutsideSandboxError = "Path outside sandbox.";
     public const string BlockedPathError = "Path is blocked by the sandbox policy.";
+    public const string InvalidPatternError = "Search pattern must match file names only (no directory part); use path for the directory.";
 
     private const int MaxLinkHops = 40;
 
@@ -145,10 +147,35 @@ public sealed class SandboxPolicy
     }
 
     /// <summary>
+    /// 搜尋用的 pattern 只能比對檔名：不得含目錄部分（任何平台的分隔字元）、磁碟代號或 NUL。
+    /// 搜尋的目錄一律由 path 參數指定，並經 <see cref="Resolve"/> 檢查。
+    /// </summary>
+    public static bool IsFileNamePattern(string? pattern)
+    {
+        if (pattern == null)
+            return false;
+
+        if (pattern.IndexOfAny(new[] { '/', '\\', ':', '\0' }) >= 0)
+            return false;
+
+        return pattern != "." && pattern != "..";
+    }
+
+    /// <summary>
     /// 遞迴列舉符合 pattern 的檔案（與 Directory.GetFiles 相同的萬用字元語意）：
     /// 不進入 symlink／junction，也不進入或回傳拒絕清單中的項目。
+    /// pattern 必須通過 <see cref="IsFileNamePattern"/>，否則丟出 <see cref="ArgumentException"/>；
+    /// 回傳的每一個檔案都再確認仍在 sandbox 內、路徑中沒有拒絕清單的段落。
     /// </summary>
     public IEnumerable<string> EnumerateFilesRecursive(string directory, string pattern)
+    {
+        if (!IsFileNamePattern(pattern))
+            throw new ArgumentException(InvalidPatternError, nameof(pattern));
+
+        return EnumerateFilesRecursiveCore(directory, pattern);
+    }
+
+    private IEnumerable<string> EnumerateFilesRecursiveCore(string directory, string pattern)
     {
         var options = new EnumerationOptions
         {
@@ -178,7 +205,13 @@ public sealed class SandboxPolicy
             {
                 if (IsSensitiveName(Path.GetFileName(file)) || new FileInfo(file).LinkTarget != null)
                     continue;
-                yield return file;
+
+                // 縱深防禦：結果必須仍在 sandbox 內，且相對路徑沒有拒絕清單的段落。
+                var fullFile = TrimTrailingSeparator(Path.GetFullPath(file));
+                if (!IsWithin(fullFile, Root) || HasSensitiveSegment(Path.GetRelativePath(Root, fullFile)))
+                    continue;
+
+                yield return fullFile;
             }
 
             for (var i = subdirectories.Count - 1; i >= 0; i--)

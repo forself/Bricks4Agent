@@ -207,6 +207,55 @@ public class SandboxPolicyTests : IDisposable
         sibling.Error.Should().Be(SandboxPolicy.OutsideSandboxError);
     }
 
+    [Theory]
+    [InlineData("*", true)]
+    [InlineData("*.cs", true)]
+    [InlineData("test-*.ts", true)]
+    [InlineData("README.md", true)]
+    [InlineData("", true)]
+    [InlineData(null, false)]
+    [InlineData(".", false)]
+    [InlineData("..", false)]
+    [InlineData("src/*.js", false)]
+    [InlineData(@"src\*.js", false)]
+    [InlineData("../sandbox-evil/*", false)]
+    [InlineData(@"..\sandbox-evil\*", false)]
+    [InlineData(".git/*", false)]
+    [InlineData("C:*", false)]
+    public void IsFileNamePattern_RejectsDirectoryParts(string? pattern, bool expected)
+    {
+        SandboxPolicy.IsFileNamePattern(pattern).Should().Be(expected);
+    }
+
+    [Fact]
+    public void EnumerateFilesRecursive_RejectsPatternWithDirectoryPart()
+    {
+        var policy = new SandboxPolicy(_sandboxRoot);
+        var act = () => policy.EnumerateFilesRecursive(policy.Root, ".git/*").ToList();
+        act.Should().Throw<ArgumentException>();
+    }
+
+    [Theory]
+    [InlineData("../sandbox-evil/*")]
+    [InlineData(@"..\sandbox-evil\*")]
+    [InlineData(".git/*")]
+    [InlineData(@".git\config")]
+    [InlineData("src/config/*")]
+    public async Task Search_PatternWithDirectoryPart_IsRefused(string pattern)
+    {
+        var byName = await new SearchFilesHandler(_sandboxRoot)
+            .ExecuteAsync("p1", "file.search_name", Payload(new { pattern }), "", default);
+        byName.Success.Should().BeFalse();
+        byName.Error.Should().Be(SandboxPolicy.InvalidPatternError);
+        byName.ResultPayload.Should().BeNull();
+
+        var byContent = await new SearchContentHandler(_sandboxRoot)
+            .ExecuteAsync("p2", "file.search_content", Payload(new { query = "MARKER", file_pattern = pattern }), "", default);
+        byContent.Success.Should().BeFalse();
+        byContent.Error.Should().Be(SandboxPolicy.InvalidPatternError);
+        byContent.ResultPayload.Should().BeNull();
+    }
+
     [Fact]
     public async Task WriteAndDelete_ApplyTheSamePolicy()
     {

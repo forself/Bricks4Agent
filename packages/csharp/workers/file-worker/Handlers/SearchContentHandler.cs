@@ -33,6 +33,9 @@ public class SearchContentHandler : ICapabilityHandler
             var filePattern = root.TryGetProperty("file_pattern", out var fp)
                 ? fp.GetString() ?? "*" : "*";
 
+            if (!SandboxPolicy.IsFileNamePattern(filePattern))
+                return Task.FromResult<(bool, string?, string?)>((false, null, SandboxPolicy.InvalidPatternError));
+
             var (fullPath, pathError) = _policy.Resolve(basePath);
             if (fullPath == null)
                 return Task.FromResult<(bool, string?, string?)>((false, null, pathError));

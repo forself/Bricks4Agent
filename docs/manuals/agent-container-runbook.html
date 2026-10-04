@@ -220,7 +220,7 @@ podman network rm seal-probe
 <h3>8.1 file-worker 的讀取面</h3>
 <p>agent 讀得到什麼,由 file-worker 決定。file-worker 對 read、list、search、write、delete 一致套用:</p>
 <ul>
-<li>邊界:路徑先正規化,以「根目錄 + 分隔字元」做完整前綴比對,再逐段解析 symlink/junction,解析後的實際路徑也必須在 <code>/workspace</code> 內;列舉與搜尋不進入 symlink。</li>
+<li>邊界:路徑先正規化,以「根目錄 + 分隔字元」做完整前綴比對,再逐段解析 symlink/junction,解析後的實際路徑也必須在 <code>/workspace</code> 內;列舉與搜尋不進入 symlink。搜尋的 <code>pattern</code>／<code>file_pattern</code> 只能比對檔名,帶目錄部分即拒絕(目錄一律由 <code>path</code> 指定並經同樣的檢查)。</li>
 <li>拒絕清單(不分大小寫,路徑任何一段命中即拒絕;列舉與搜尋直接略過):<code>.git</code>、<code>.claude</code>、<code>.codegraph-cache</code>、<code>.ssh</code>、<code>.env</code>、<code>.env.*</code>、<code>agent-stack.env</code>、<code>appsettings.Development.json</code>、<code>*.pem</code>、<code>*.key</code>、<code>*.pfx</code>、<code>*.p12</code>、<code>id_rsa*</code> 等 SSH 私鑰檔名、<code>client_secret_*</code>。</li>
 </ul>
 <p>拒絕清單是 denylist:清單外的新敏感檔仍讀得到。改為只提供白名單快照的唯讀視圖列為後續(§10)。</p>

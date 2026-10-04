@@ -180,7 +180,7 @@ mock stack 已實測:套上述 hardening 後 agent 仍能完成 governed `read_f
 
 agent 讀得到什麼,由 file-worker 決定。file-worker 對 read、list、search、write、delete 一致套用:
 
-- 邊界:路徑先正規化,以「根目錄 + 分隔字元」做完整前綴比對,再逐段解析 symlink/junction,解析後的實際路徑也必須在 `/workspace` 內;列舉與搜尋不進入 symlink。
+- 邊界:路徑先正規化,以「根目錄 + 分隔字元」做完整前綴比對,再逐段解析 symlink/junction,解析後的實際路徑也必須在 `/workspace` 內;列舉與搜尋不進入 symlink。搜尋的 `pattern`／`file_pattern` 只能比對檔名,帶目錄部分即拒絕(目錄一律由 `path` 指定並經同樣的檢查)。
 - 拒絕清單(不分大小寫,路徑任何一段命中即拒絕;列舉與搜尋直接略過):`.git`、`.claude`、`.codegraph-cache`、`.ssh`、`.env`、`.env.*`、`agent-stack.env`、`appsettings.Development.json`、`*.pem`、`*.key`、`*.pfx`、`*.p12`、`id_rsa*` 等 SSH 私鑰檔名、`client_secret_*`。
 
 拒絕清單是 denylist:清單外的新敏感檔仍讀得到。改為只提供白名單快照的唯讀視圖列為後續(§10)。
