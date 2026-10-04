@@ -10,13 +10,13 @@ namespace FileWorker.Handlers;
 /// </summary>
 public class WriteFileHandler : ICapabilityHandler
 {
-    private readonly string _sandboxRoot;
+    private readonly SandboxPolicy _policy;
 
     public string CapabilityId => "file.write";
 
     public WriteFileHandler(string sandboxRoot)
     {
-        _sandboxRoot = Path.GetFullPath(sandboxRoot);
+        _policy = new SandboxPolicy(sandboxRoot);
     }
 
     public Task<(bool Success, string? ResultPayload, string? Error)> ExecuteAsync(
@@ -30,10 +30,9 @@ public class WriteFileHandler : ICapabilityHandler
             var filePath = root.GetProperty("path").GetString() ?? "";
             var content = root.GetProperty("content").GetString() ?? "";
 
-            var fullPath = ResolveSandboxedPath(filePath);
+            var (fullPath, pathError) = _policy.Resolve(filePath);
             if (fullPath == null)
-                return Task.FromResult<(bool, string?, string?)>(
-                    (false, null, "Path outside sandbox."));
+                return Task.FromResult<(bool, string?, string?)>((false, null, pathError));
 
             // 確保目錄存在
             var dir = Path.GetDirectoryName(fullPath);
@@ -56,17 +55,5 @@ public class WriteFileHandler : ICapabilityHandler
             return Task.FromResult<(bool, string?, string?)>(
                 (false, null, $"Write file error: {ex.Message}"));
         }
-    }
-
-    private string? ResolveSandboxedPath(string path)
-    {
-        try
-        {
-            var fullPath = Path.GetFullPath(Path.Combine(_sandboxRoot, path));
-            if (!fullPath.StartsWith(_sandboxRoot, StringComparison.OrdinalIgnoreCase))
-                return null;
-            return fullPath;
-        }
-        catch { return null; }
     }
 }

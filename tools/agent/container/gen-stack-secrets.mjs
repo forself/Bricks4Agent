@@ -13,8 +13,9 @@
 // 預設位置：$BRICKS4AGENT_SECRETS_DIR/agent-stack.env；未設定時為 <使用者目錄>/.bricks4agent/agent-stack.env。
 // 之後以 `podman compose --env-file <path> -f tools/agent/container/compose.yml ...` 使用（up 與 down 都要帶）。
 //
-// 為什麼不能寫進 repo：agent 容器把整個 repo 掛在 /workspace 並具有讀取授權，
-// compose 也會自動讀取 compose 檔旁的 .env；放在 repo 內等於把 broker 私鑰交給受控 agent。
+// 為什麼不能寫進 repo：file-worker 以唯讀方式把整個 repo 提供給受控 agent 經 broker 讀取
+// （拒絕清單只擋固定檔名），compose 也會自動讀取 compose 檔旁的 .env；
+// 放在 repo 內等於冒著把 broker 私鑰交給受控 agent 的風險。
 //
 // 測試腳本請 import generateStackSecrets()，把結果放進子行程的 env，不要寫檔。
 
@@ -177,7 +178,7 @@ export function assertOutsideRepo(target, repoRoot = REPO_ROOT) {
     if (isInsideDirectory(target, repoRoot)) {
         throw new Error(
             `Refusing to write stack secrets inside the repository (${path.resolve(target)}). ` +
-            'The agent container mounts the repository and can read it; choose a path outside it ' +
+            'The file worker serves the repository to the agent; choose a path outside it ' +
             `(for example set ${SECRETS_DIR_ENV}).`
         );
     }

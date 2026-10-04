@@ -12,7 +12,7 @@ Date: 2026-06-13
 
 ## 2. 前置需求
 
-- **podman**(Windows 用 podman machine / WSL backend)。首次需 `podman machine start`(若 `LAST UP: Never`)。
+- **podman**(Windows 用 podman machine / WSL backend)。首次需 `podman machine start`(若 `LAST UP: Never`)。也可以用 **Docker**:node 測試腳本設 `CONTAINER_ENGINE=docker` 就改用 `docker build` 與 `docker compose`,預設仍是 podman。
 
 - **node**(跑 stack 啟動腳本)。
 
@@ -33,6 +33,8 @@ Date: 2026-06-13
 每支 node 測試腳本(含 §9 的 execution-adapter 測試)都會在記憶體中產生一組新的 broker 金鑰與 worker 憑證,經環境變數同時傳給 `up` 與 `down`,不寫任何檔案。
 
 > 2026-10-04 起 compose 改為必填金鑰(`${VAR:?...}`)、`WORKER_AUTH_ENFORCE` 預設 `true`、對外埠只綁 `127.0.0.1`;這些變更之後尚未以 podman 重新實測。
+>
+> 2026-10-05 起映像改為 .NET 10 與 Node 22(以 digest 釘選)、所有服務套 §13.2 加固、agent 不再掛 repo(§8)。mock、OpenAI-compatible mock、execution-adapter、ollama-host(本機 `qwen2.5-coder`)四個 stack 與 host broker 動態 spawn 已以 Docker 27.4(`CONTAINER_ENGINE=docker`)實測通過;尚未以 podman 重新實測。
 
 ### 3.1 mock(最快,離線驗證治理鏈)
 
@@ -40,7 +42,7 @@ Date: 2026-06-13
 node tools/agent/tests/test-podman-governed-stack.js
 ```
 
-驗證 `STACK_OK` + `[governed] read_file`——agent 不直連工具,經 broker 裁決執行 governed `read_file`。
+驗證 `STACK_OK` + `[governed] read_file`——agent 不直連工具,經 broker 裁決執行 governed `read_file`。另外斷言 `TOOL_RESULT_VERIFIED`:mock 只有在經 broker 收到的工具結果含 `README.html` 內文時才回這個字串,證明 file-worker 真的讀到檔案(`[governed] read_file` 這行在工具執行前就印出,本身證明不了讀檔)。`up` 結束後再以 `inspect` 逐一檢查每個容器的加固(§8)。
 
 ### 3.2 本機 ollama(真實開源模型)
 
@@ -80,7 +82,7 @@ podman compose --env-file "$HOME/.bricks4agent/agent-stack.env" -f tools/agent/c
 
 - 輸出位置:`$env:BRICKS4AGENT_SECRETS_DIR/agent-stack.env`;未設定時為 `~/.bricks4agent/agent-stack.env`。產生器會印出實際路徑,但不印出金鑰值。
 - 產生器拒絕寫進 repo 內;既有檔案要加 `--force` 才覆寫(等同輪替全部金鑰,之後用 `down -v` 重建 stack)。`--self-test` 只在記憶體中檢查,不寫檔。變數清單見 `tools/agent/container/agent-stack.env.example`(只有名稱)。
-- 為什麼不能放進 repo:agent 容器把整個 repo 掛在 `/workspace` 且有讀取授權;compose 也會自動讀取 compose 檔旁的 `.env`。金鑰檔放在 repo 內,等於讓受控 agent 讀得到 broker 私鑰。
+- 為什麼不能放進 repo:agent 容器已不掛 repo,但 file-worker 以唯讀方式把整個 repo 提供給 agent 經 broker 讀取;拒絕清單只擋得住 `.env`、`.env.*`、`agent-stack.env` 等固定名稱,換個檔名就擋不住。compose 也會自動讀取 compose 檔旁的 `.env`。
 - 必填變數:三個 compose 檔都要 `BROKER_SCOPED_TOKEN_SECRET`、`BROKER_MASTER_KEY_BASE64`、`BROKER_ECDH_PRIVATE_KEY_BASE64`、`BROKER_ECDH_PUBLIC_KEY_BASE64`(agent 釘選這把公鑰,必須與私鑰成對);`compose.yml` 另需 LINE、file、execution-adapter 三組 worker 的 `*_AUTH_KEY_ID` 與 `*_AUTH_SHARED_SECRET`。
 - broker 啟動驗證:compose 中的 broker 以 Production 執行,啟動時拒絕佔位值(空白、`CHANGE_ME*`、`REPLACE_WITH_*`)與任何曾以 compose 預設值公開過的金鑰,並檢查格式。不要在 compose 加 `ASPNETCORE_ENVIRONMENT=Development` 來繞過。
 - `WORKER_AUTH_ENFORCE` 預設 `true`:worker 註冊與 LINE worker 的 HTTP 路由都要驗證憑證;broker 端也登錄了 execution-adapter 的憑證(索引 2,同時蓋掉 `appsettings.json` 該索引的範本憑證)。
@@ -98,7 +100,7 @@ podman compose --env-file "$HOME/.bricks4agent/agent-stack.env" -f tools/agent/c
 
 ## 5. FunctionPool 與健康端點
 
-受控代理容器 stack 的 broker 預設 `FunctionPool:Enabled=true`(worker dispatch + container manager 的基礎)。`/api/v1/health/workers`、`/health/score` 等監控端點只在 FunctionPool 啟用時註冊——它們的 handler 依賴 worker registry 服務,關閉時不註冊以免 Minimal API 把未註冊服務推斷成 body。純 LLM 對話的 stack(如 ollama/openai host 測試)可 FunctionPool=false。
+受控代理容器 stack 的 broker 預設 `FunctionPool:Enabled=true`(worker dispatch + container manager 的基礎)。compose 內的 broker 沒有容器 runtime CLI,也不掛 runtime socket,所以 container manager 在 compose 內不可用(`CONTAINER_MANAGER_ENABLED` 維持 `false`);動態 spawn 只適用於在 host 上執行的 broker(§8.2)。`/api/v1/health/workers`、`/health/score` 等監控端點只在 FunctionPool 啟用時註冊——它們的 handler 依賴 worker registry 服務,關閉時不註冊以免 Minimal API 把未註冊服務推斷成 body。純 LLM 對話的 stack(如 ollama/openai host 測試)可 FunctionPool=false。
 
 ## 6. 疑難排解(2026-06-13 通電時實際遇到並修掉的)
 
@@ -130,21 +132,39 @@ podman network rm seal-probe
 
 mock stack 已實測:agent 在 `agent-net` 仍能註冊 session、經 broker 裁決跑 governed `read_file` → `STACK_OK`。ollama/openai stack 的網路拓樸相同(broker 在 `egress`、agent 在 `agent-net`),但因需 GPU/金鑰未在此機離線複驗——使用者跑這兩條時即同時驗證。
 
-## 8. OS 層容器 hardening(§13,已實作 2026-06-13)
+## 8. OS 層容器 hardening(§13,agent 自 2026-06-13;所有服務自 2026-10-05)
 
-三條 compose stack 的 **agent 服務**(受控主體,不受信任)都套上 OS 層沙箱:
+三條 compose stack 的**每個服務**(agent、broker、file-worker、line-worker、execution-adapter、mock LLM)都套上 OS 層沙箱:
 
 | 設定 | 作用 |
 |---|---|
-| `read_only: true` | rootfs 唯讀;`/workspace` bind mount 仍可寫(唯讀不影響掛載卷) |
-| `tmpfs: [/tmp]` | 唯一可寫的 rootfs 路徑放 tmpfs(`os.tmpdir()` 用) |
-| `cap_drop: [ALL]` | 丟掉所有 Linux capability(agent 以非 root uid 10001 跑,無需任何 cap) |
+| `read_only: true` | rootfs 唯讀;agent 沒有任何掛載,整個容器只剩 `/tmp` 可寫 |
+| `tmpfs: [/tmp]` | 唯一可寫的 rootfs 路徑放 tmpfs(Docker 與 Podman 預設 `noexec,nosuid,nodev`) |
+| `cap_drop: [ALL]` | 丟掉所有 Linux capability(各服務都以非 root 跑,無需任何 cap) |
 | `security_opt: [no-new-privileges:true]` | 擋 setuid/setgid 提權 |
-| `pids_limit: 256` | 限制行程數(fork-bomb 防護) |
+| `pids_limit` | 限制行程數(fork-bomb 防護);broker 1024(.NET 執行緒池),其餘 256 |
+
+各映像的 UID 互不重複:agent 10001、broker 10002、file-worker 10003、execution-adapter 10004、line-worker 10005、mock-ollama 10006、mock-openai 10007。`/app` 一律由 root 擁有,執行身分不能改寫自己的程式;只有 broker 的 `/data` 可寫。
+
+掛載:
+
+- agent:**不掛任何東西**。`/workspace` 是映像內的空目錄,只當 broker grant 的邏輯根;專案手冊烤在 `/app/AGENT.md`(`AGENT_MANUAL_PATH`)。
+- broker:named volume `/data`(SQLite 與 workspaces)。**不掛 docker/podman socket**。
+- file-worker:repo 以唯讀掛在 `/workspace`,這就是 agent 經 broker 讀得到的範圍(§8.1)。
+- execution-adapter:可寫的拋棄式 git workspace(`ADAPTER_WORKSPACE`),它就是經控制平面中介的寫入路徑。
+- line-worker:不掛;音訊暫存寫到 `/tmp/audio_temp`(`WORKER_Line__AudioTempPath`)。
+
+file-worker 與 execution-adapter 這兩個受信任節點仍使用 hostPath,是 §13.2「禁用 hostPath」的明確例外;agent 嚴格不掛 hostPath。改用 named volume 列為後續。
 
 seccomp 用 runtime 預設 profile(尚未寫客製 profile)。
 
-驗證(以 agent 映像直接驗證強制生效):
+驗證:每支 stack 測試在 `up` 之後都以 `inspect` 逐一檢查每個容器的 `ReadonlyRootfs`、`CapDrop`、`SecurityOpt`、`PidsLimit`、`User`、`/tmp` tmpfs、沒有 runtime socket 掛載、agent 沒有 bind/volume 掛載。手動檢查單一容器:
+
+```powershell
+docker inspect --format '{{.HostConfig.ReadonlyRootfs}} {{.HostConfig.CapDrop}} {{.HostConfig.SecurityOpt}} {{.HostConfig.PidsLimit}} {{.Config.User}} {{json .Mounts}}' <container>
+```
+
+以 agent 映像直接驗證強制生效:
 
 ```powershell
 podman run --rm --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges:true `
@@ -153,7 +173,47 @@ podman run --rm --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-pr
 # 預期:uid=10001 / rootfs:blocked / tmp:ok / CapEff:0000000000000000
 ```
 
-mock stack 已實測:套上述 hardening 後 agent 仍能完成 governed `read_file` → `STACK_OK`。
+mock stack 已實測:套上述 hardening 後 agent 仍能完成 governed `read_file` → `STACK_OK`。2026-10-05 以 Docker 重測:所有服務加固後,file-worker 讀檔、adapter 套 patch 與 `dotnet build` 都通過。
+
+### 8.1 file-worker 的讀取面
+
+agent 讀得到什麼,由 file-worker 決定。file-worker 對 read、list、search、write、delete 一致套用:
+
+- 邊界:路徑先正規化,以「根目錄 + 分隔字元」做完整前綴比對,再逐段解析 symlink/junction,解析後的實際路徑也必須在 `/workspace` 內;列舉與搜尋不進入 symlink。
+- 拒絕清單(不分大小寫,路徑任何一段命中即拒絕;列舉與搜尋直接略過):`.git`、`.claude`、`.codegraph-cache`、`.ssh`、`.env`、`.env.*`、`agent-stack.env`、`appsettings.Development.json`、`*.pem`、`*.key`、`*.pfx`、`*.p12`、`id_rsa*` 等 SSH 私鑰檔名、`client_secret_*`。
+
+拒絕清單是 denylist:清單外的新敏感檔仍讀得到。改為只提供白名單快照的唯讀視圖列為後續(§10)。
+
+### 8.2 broker 動態 spawn 的加固
+
+在 host 上執行的 broker 啟用 `FunctionPool:ContainerManager:Enabled` 時(Windows sidecar 偵測到 podman/docker 就會啟用),它啟動的每個容器一律帶:`--read-only`、`--tmpfs /tmp:rw,noexec,nosuid,nodev,size=64m`、`--cap-drop ALL`、`--security-opt no-new-privileges:true`、`--pids-limit`(`DefaultPidsLimit`,預設 256,映像可設 `PidsLimit`)與記憶體上限(`DefaultMemoryLimit`,預設 `512m`)。停止時以 `rm -f -v` 一併移除匿名卷。
+
+broker 拒絕會削弱加固的設定:
+
+- `User` 為 `0` 或 `root`;網路為 `host`、`container:*`、`ns:*`。
+- agent 映像帶任何 `Volumes` 或 `Ports`。
+- agent 映像沒有自己的 `NetworkName`(agent 不會退回共用的 worker 網路)。只有 broker 在 host 上、沒有專用 agent 網路時才設 `AllowAgentDefaultNetwork=true`;sidecar 目前如此設定,這是 §13.1 的已知例外。
+- 其他 worker 的掛載來源是 runtime socket、系統路徑、相對路徑或不在 `AllowedHostPathRoots` 之內;發布埠沒有綁 `127.0.0.1`。
+
+`/api/v1/agents/spawn` 一律把設定中的 `AgentBrokerUrl` 交給 agent(請求的 `broker_url` 只能等於這個值),`max_iterations` 上限 50。`/api/v1/workers/spawn` 必須帶 `worker_type`、不能啟動 agent、不再接受 `environment`。需要避開行程清單的值以 `-e NAME` 傳給 runtime,值放在 CLI 行程的環境變數;runtime 的 `inspect` 仍看得到這些值。
+
+驗證(host broker + docker 或 podman,實際 spawn 一個 agent 容器,檢查加固、註冊、完成一輪與移除):
+
+```powershell
+$env:CONTAINER_ENGINE = 'docker'
+npm run validate:container-spawn
+```
+
+### 8.3 映像與 digest 更新
+
+所有映像都可由 `main` 建置:.NET 服務用 `mcr.microsoft.com/dotnet/sdk:10.0` 與 `aspnet:10.0`(execution-adapter 執行階段保留 SDK,內含 `git`),Node 服務用 `node:22-bookworm-slim`。每個 `FROM` 都以多架構 index digest 釘選,所以基底映像的安全修補不會自動進來,要定期更新 digest 再重建:
+
+```powershell
+node tools/agent/container/resolve-base-image-digests.mjs
+node tools/agent/container/resolve-base-image-digests.mjs --check
+```
+
+第一行以 docker(或 `--engine podman`)查詢並改寫 `FROM`;`--check` 只回報,digest 過期時 exit 1。`npm run validate:container-images` 不需要容器 runtime,檢查每個 Containerfile 的 digest 釘選、.NET 10 / Node 22 基底、沒有 `adduser`、最終階段有不重複 UID 的非 root `USER`,以及最終階段沒有 `COPY . .` 或 `VOLUME`。Node 22 於 2027-04-30 EOL,要在那之前與 CI 一起升到 24。
 
 ## 9. 執行配接器(§18.1,已實作 + 單元驗證 2026-06-13)
 
@@ -166,7 +226,7 @@ mock stack 已實測:套上述 hardening 後 agent 仍能完成 governed `read_f
 | `repo.patch.apply` / `execution.repo.apply_patch` | 驗 patch(非自由 shell)、驗 base_commit==HEAD、限 `scope.allowed_paths`、`git apply --check` 後套用、存 diff 證據、支援 idempotency_key(重放回前次結果不重套) |
 | `build.test.run` / `execution.build_test.run` | 只跑白名單命令(npm test / npm run build / dotnet test / dotnet build / pytest;預設見 `packages/csharp/workers/execution-adapter-worker/Handlers/BuildTestRunHandler.cs:23-26`,可由 `Worker:BuildTest:Whitelist` 覆寫)、不經 shell、收 stdout/stderr+exit、截斷大輸出、存 log 證據 |
 
-adapter 是**受信任執行節點**:套 §13.2 OS 加固(非 root uid 10004、read-only rootfs、cap-drop ALL、no-new-privileges、無 docker socket),但與 agent 不同 —— 可寫 workspace(它就是經控制平面中介的寫入路徑)、有出口(build/test restore)。
+adapter 是**受信任執行節點**:套 §13.2 OS 加固(非 root uid 10004、read-only rootfs、cap-drop ALL、no-new-privileges、無 docker socket),但與 agent 不同 —— 可寫 workspace(它就是經控制平面中介的寫入路徑)、有出口(build/test restore)。`/tmp` 是 `noexec`、`pids_limit` 是 256;2026-10-05 以 Docker 實測,`dotnet build`(經治理鏈的 e2e)與 `dotnet test`(NuGet 套件放在 `/tmp`)在這些限制下都能完成。
 
 驗證:
 
@@ -175,7 +235,7 @@ adapter 是**受信任執行節點**:套 §13.2 OS 加固(非 root uid 10004、r
 dotnet run --project packages/csharp/tests/broker-tests/Broker.Tests.csproj
 # 設定驗證(compose 接線 + 加固 + 能力 seed + 工具映射)
 node tools/agent/tests/test-execution-adapter-config.js
-# 端到端:模型驅動 agent 經治理鏈套 patch,斷言檔案真的被改(profile=adapters)
+# 端到端:模型驅動 agent 經治理鏈套 patch 再跑 dotnet build,斷言檔案真的被改且建置成功(profile=adapters)
 node tools/agent/tests/test-podman-execution-adapter-stack.js
 ```
 
@@ -194,5 +254,10 @@ compose 中 adapter 服務以 **profile 隔離**(`--profile adapters`),預設不
 
 **尚未實作**:
 - agent 客製 seccomp profile(目前用 runtime 預設)
+- file-worker 改為只提供白名單快照的唯讀視圖(目前以 worker 端拒絕清單收緊,§8.1)
+- file.read 的根目錄改由 broker 依任務決定,不採用 agent 請求中帶來的值
+- file-worker 與 execution-adapter 的 hostPath 改為 named volume
+- sidecar 的 agent 專用網路(目前以 `AllowAgentDefaultNetwork` 明確例外,§8.2),以及在 Windows Podman sidecar 上實測新的加固旗標
+- Node 24 升級(Node 22 於 2027-04-30 EOL)
 
 重點:容器「關得住」已做到;危險動作的人工放行也已接上,剩客製 seccomp。

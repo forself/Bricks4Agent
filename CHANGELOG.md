@@ -10,6 +10,25 @@ B4A 只收通用元件與通用能力；任何業務系統的專屬元件都不�
 
 ## 未發行
 
+### 預設行為變更：代理容器不掛 repo、所有容器加固、映像改為 .NET 10 與 Node 22（2026-10-05）
+
+**預設行為變更**
+
+- 代理容器不再掛載任何主機目錄：三個 compose 與 Windows sidecar 都拿掉 agent 的掛載，sidecar 不再把 managed-workspaces 掛給代理。專案手冊改烤進映像（`/app/AGENT.md`，經 `AGENT_MANUAL_PATH` 讀取）；專案目錄附近找得到 `AGENT.md` 時仍以專案的為準，local 模式不受影響。
+- file-worker 收緊讀取面：sandbox 邊界改以「根目錄 + 分隔字元」完整比對並解析 symlink；`.git`、`.claude`、`.codegraph-cache`、`.env`、`.env.*`、`appsettings.Development.json`、金鑰與憑證檔等拒絕清單對讀、列、搜尋、寫、刪一致套用，列舉與搜尋不進入 symlink。
+- compose 的所有服務都套 §13.2 加固（`read_only`、`/tmp` tmpfs、`cap_drop: ALL`、`no-new-privileges`、`pids_limit`；broker 1024，其餘 256）。broker 不再掛 docker socket，`CONTAINER_MANAGER_ENABLED` 維持 false；line-worker 的音訊暫存改到 `/tmp/audio_temp`；dev seed 的 `file.search` 改為實際存在的 `file.search_name` 與 `file.search_content`。
+- broker 動態啟動的容器一律帶 `--read-only`、noexec 的 `/tmp` tmpfs、`--cap-drop ALL`、`no-new-privileges`、`--pids-limit` 與記憶體上限；拒絕 root、`host`／`container:` 網路、agent 映像的掛載與發布埠、runtime socket、系統路徑與白名單外的 hostPath。agent 映像沒有自己的網路時預設拒絕，只有 sidecar 以 `AllowAgentDefaultNetwork=true` 明確例外。停止容器改為 `rm -f -v`。
+- `IContainerManager.SpawnWorkerAsync` 改為接收 `ContainerSpawnRequest`：`TrustedEnvironment` 放 broker 自己組出的環境變數，`SecretEnvironment` 只以 `-e NAME` 出現在 CLI 參數中。自行實作 `IContainerManager` 的程式需同步調整。
+- `/api/v1/workers/spawn` 的 `worker_type` 改為必填，不再能啟動 agent，也不再接受 `environment`；找不到 runtime CLI 時回 503。`/api/v1/agents/spawn` 的 `broker_url` 只能等於設定的 `AgentBrokerUrl`，`max_iterations` 上限為 50。
+- 映像改為 `sdk:10.0`／`aspnet:10.0` 與 `node:22-bookworm-slim`，全部以多架構 index digest 釘選；`/app` 由 root 擁有；各映像 UID 不重複（line-worker 改為 10005、mock-ollama 10006、mock-openai 10007）。基底映像的修補要以 `node tools/agent/container/resolve-base-image-digests.mjs` 更新 digest 後重建才會進來。
+
+**新增**
+
+- stack 測試設 `CONTAINER_ENGINE=docker` 即改用 Docker（預設仍為 podman），`up` 之後以 `inspect` 檢查每個容器的加固；governed stack 改為證明 file-worker 真的讀到檔案，execution-adapter stack 增加實際的 `dotnet build`。
+- `npm run validate:container-images`（Containerfile 靜態檢查）、`npm run validate:container-spawn`（host broker 經 docker／podman 實際 spawn 代理容器）、`npm run validate:podman-execution-adapter-stack`。
+
+驗證入口：`npm run validate:agent-container-config`、`npm run validate:agent-governed`、`dotnet test packages/csharp/tests/unit/Unit.Tests.csproj`（SandboxPolicyTests）、`dotnet run --project packages/csharp/tests/broker-tests/Broker.Tests.csproj`（Agent Container Tests）、設 `CONTAINER_ENGINE=docker` 後執行 `npm run validate:podman-governed-stack`。
+
 ### 預設行為變更：broker 驗證與授權收緊、compose 改用產生的密鑰（2026-10-04）
 
 **預設行為變更**

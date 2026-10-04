@@ -1,5 +1,8 @@
+# Base images are pinned by multi-arch index digest. Refresh them with
+# `node tools/agent/container/resolve-base-image-digests.mjs` (docker or podman).
+
 # ── Build Stage ──
-FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0@sha256:e70cdb7f80b0348f5cb85f19a8f670fca061f033d57eed12fa003d58b0e06317 AS build
 
 WORKDIR /src
 COPY . .
@@ -7,28 +10,29 @@ RUN dotnet publish packages/csharp/workers/execution-adapter-worker/ExecutionAda
     -c Release -o /app/publish /p:UseAppHost=false
 
 # ── Runtime Stage ──
-FROM mcr.microsoft.com/dotnet/sdk:8.0
-
-# repo-adapter 需要 git；build-test-adapter 需要 dotnet（sdk image 已含）。
-# 用 sdk image 以便 dotnet build/test；git 額外安裝。
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends git \
-    && rm -rf /var/lib/apt/lists/*
+# repo-adapter needs git and build-test-adapter needs the dotnet SDK; the sdk
+# image already ships both, so nothing is installed at build time.
+FROM mcr.microsoft.com/dotnet/sdk:10.0@sha256:e70cdb7f80b0348f5cb85f19a8f670fca061f033d57eed12fa003d58b0e06317
 
 WORKDIR /app
 COPY --from=build /app/publish .
 
-RUN adduser --disabled-password --gecos "" --uid 10004 execadapter \
-    && mkdir -p /workspace \
-    && chown -R execadapter:execadapter /app /workspace
+# /app stays owned by root. /workspace is only a mount point: the writable
+# workspace is the throwaway directory the operator mounts. There is no VOLUME,
+# so a container started without a mount gets no writable anonymous volume.
+RUN groupadd --gid 10004 execadapter \
+    && useradd --uid 10004 --gid 10004 --no-create-home --shell /usr/sbin/nologin execadapter \
+    && mkdir -p /workspace
 
-USER execadapter
+USER 10004:10004
 
-# git 需要 identity 才能某些操作；apply 不需 commit，但設個安全預設
+# git needs an identity for some operations; apply does not commit, but keep a safe default.
+# The runtime user has no home directory: the dotnet CLI and NuGet use /tmp (a tmpfs
+# under the hardened runtime) instead.
 ENV GIT_AUTHOR_NAME=execadapter GIT_AUTHOR_EMAIL=execadapter@bricks4agent.local \
-    GIT_COMMITTER_NAME=execadapter GIT_COMMITTER_EMAIL=execadapter@bricks4agent.local
+    GIT_COMMITTER_NAME=execadapter GIT_COMMITTER_EMAIL=execadapter@bricks4agent.local \
+    HOME=/tmp \
+    DOTNET_CLI_TELEMETRY_OPTOUT=1
 
 # No port — worker connects outbound to broker:7000
-VOLUME ["/workspace"]
-
 ENTRYPOINT ["dotnet", "ExecutionAdapterWorker.dll"]

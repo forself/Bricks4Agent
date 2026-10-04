@@ -856,13 +856,19 @@ $productionOverrideMap["FunctionPool"] = @{
         Enabled = $containerManagerEnabled
         Runtime = $containerRuntime
         NetworkName = ""
+        # The broker runs on the host and the agent reaches it through
+        # host.containers.internal, so there is no dedicated agent network here yet:
+        # explicitly allow the runtime default network (a documented exception to §13.1).
+        AllowAgentDefaultNetwork = $true
         AgentBrokerUrl = $agentBrokerUrl
         MaxContainersPerType = 3
         WorkerImages = @{
+            # No Volumes: nothing from the host (in particular not the managed
+            # workspaces of other channels and users) is mounted into an agent;
+            # every read and write goes through the broker.
             agent = @{
                 Image = "bricks4agent-agent:latest"
                 MemoryLimit = "512m"
-                Volumes = @("$managedWorkspaceRoot`:/workspace")
             }
         }
     }

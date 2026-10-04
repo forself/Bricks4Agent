@@ -1,7 +1,7 @@
 # 受控代理容器啟用計畫與驗證
 
 Date: 2026-06-13
-Status: **已完成** —— V1–V7 全數通過(見「最終 e2e 驗證」)。結論段所列後續項目的現況(網路隔離、OS hardening、執行配接器、審批已實作;客製 seccomp 仍未做)與操作方式見 [agent-container-runbook.md](../manuals/agent-container-runbook.md)。
+Status: **已完成** —— V1–V7 全數通過(見「最終 e2e 驗證」)。結論段所列後續項目的現況(網路隔離、OS hardening、執行配接器、審批已實作;客製 seccomp 仍未做)與操作方式見 [agent-container-runbook.md](../manuals/agent-container-runbook.md)。本報告保留 2026-06-13 當時的內容:之後專案改為 .NET 10,當時的 .NET 8 映像已無法建置(V1);2026-10-05 起映像改為 .NET 10 與 Node 22 並以 digest 釘選,所有服務都套 §13.2 加固、agent 不再掛 repo,現況以 runbook §8 為準。
 依據規格: [ControlledAutonomousAISystemTechnicalDesign.md](../designs/ControlledAutonomousAISystemTechnicalDesign.md)
 
 ## 1. 目的與「完成」的定義

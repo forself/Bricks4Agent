@@ -10,13 +10,13 @@ namespace FileWorker.Handlers;
 /// </summary>
 public class SearchContentHandler : ICapabilityHandler
 {
-    private readonly string _sandboxRoot;
+    private readonly SandboxPolicy _policy;
 
     public string CapabilityId => "file.search_content";
 
     public SearchContentHandler(string sandboxRoot)
     {
-        _sandboxRoot = Path.GetFullPath(sandboxRoot);
+        _policy = new SandboxPolicy(sandboxRoot);
     }
 
     public Task<(bool Success, string? ResultPayload, string? Error)> ExecuteAsync(
@@ -33,17 +33,16 @@ public class SearchContentHandler : ICapabilityHandler
             var filePattern = root.TryGetProperty("file_pattern", out var fp)
                 ? fp.GetString() ?? "*" : "*";
 
-            var fullPath = ResolveSandboxedPath(basePath);
+            var (fullPath, pathError) = _policy.Resolve(basePath);
             if (fullPath == null)
-                return Task.FromResult<(bool, string?, string?)>(
-                    (false, null, "Path outside sandbox."));
+                return Task.FromResult<(bool, string?, string?)>((false, null, pathError));
 
             if (!Directory.Exists(fullPath))
                 return Task.FromResult<(bool, string?, string?)>(
                     (false, null, $"Directory not found: {basePath}"));
 
             var results = new List<object>();
-            var files = Directory.GetFiles(fullPath, filePattern, SearchOption.AllDirectories)
+            var files = _policy.EnumerateFilesRecursive(fullPath, filePattern)
                 .Take(500);
 
             foreach (var file in files)
@@ -81,17 +80,5 @@ public class SearchContentHandler : ICapabilityHandler
             return Task.FromResult<(bool, string?, string?)>(
                 (false, null, $"Search content error: {ex.Message}"));
         }
-    }
-
-    private string? ResolveSandboxedPath(string path)
-    {
-        try
-        {
-            var fullPath = Path.GetFullPath(Path.Combine(_sandboxRoot, path));
-            if (!fullPath.StartsWith(_sandboxRoot, StringComparison.OrdinalIgnoreCase))
-                return null;
-            return fullPath;
-        }
-        catch { return null; }
     }
 }

@@ -158,7 +158,11 @@ public static class AgentEndpoints
                 envOverrides["AGENT_MODEL"] = modelEl.GetString() ?? highLevelLlmOptions.DefaultModel;
             if (body.TryGetProperty("max_iterations", out var maxIterationsEl) &&
                 maxIterationsEl.ValueKind == JsonValueKind.Number)
-                envOverrides["AGENT_MAX_ITERATIONS"] = Math.Max(1, maxIterationsEl.GetInt32()).ToString();
+            {
+                if (!maxIterationsEl.TryGetInt32(out var maxIterations))
+                    return Results.BadRequest(ApiResponseHelper.Error("max_iterations must be an integer.", 400));
+                envOverrides["AGENT_MAX_ITERATIONS"] = ClampMaxIterations(maxIterations).ToString();
+            }
             if (body.TryGetProperty("verbose", out var verboseEl) &&
                 (verboseEl.ValueKind == JsonValueKind.True || verboseEl.ValueKind == JsonValueKind.False))
                 envOverrides["AGENT_VERBOSE"] = verboseEl.GetBoolean() ? "1" : "0";
@@ -187,8 +191,12 @@ public static class AgentEndpoints
 
             try
             {
-                var containerId = await containerManager.SpawnWorkerAsync(
-                    "agent", agentId, envOverrides);
+                var containerId = await containerManager.SpawnWorkerAsync(new ContainerSpawnRequest
+                {
+                    WorkerType = "agent",
+                    WorkerId = agentId,
+                    TrustedEnvironment = envOverrides,
+                });
 
                 return Results.Ok(ApiResponseHelper.Success(new
                 {
@@ -544,31 +552,43 @@ public static class AgentEndpoints
         });
     }
 
+    /// <summary>Upper bound for the max_iterations a spawn request may ask for.</summary>
+    internal const int MaxSpawnIterations = 50;
+
+    internal static int ClampMaxIterations(int requested)
+        => Math.Clamp(requested, 1, MaxSpawnIterations);
+
+    /// <summary>
+    /// The agent container always talks to the configured AgentBrokerUrl. A request may repeat
+    /// that value but cannot point the agent (and the credentials handed to it) somewhere else.
+    /// </summary>
     internal static (bool Ok, string BrokerUrl, string? Error) ResolveAgentBrokerUrl(
         JsonElement body,
         IConfiguration configuration)
     {
-        var value = configuration.GetValue(
+        var configured = (configuration.GetValue(
             "FunctionPool:ContainerManager:AgentBrokerUrl",
-            "http://broker:5000") ?? "http://broker:5000";
+            "http://broker:5000") ?? "http://broker:5000").Trim().TrimEnd('/');
 
-        if (body.TryGetProperty("broker_url", out var brokerUrlEl) &&
-            brokerUrlEl.ValueKind == JsonValueKind.String)
-        {
-            value = brokerUrlEl.GetString() ?? string.Empty;
-        }
+        if (string.IsNullOrWhiteSpace(configured))
+            return (false, string.Empty, "FunctionPool:ContainerManager:AgentBrokerUrl must not be empty.");
 
-        value = value.Trim().TrimEnd('/');
-        if (string.IsNullOrWhiteSpace(value))
-            return (false, string.Empty, "Agent broker_url must not be empty.");
-
-        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) ||
+        if (!Uri.TryCreate(configured, UriKind.Absolute, out var uri) ||
             (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
         {
-            return (false, string.Empty, "Agent broker_url must be an absolute http(s) URL.");
+            return (false, string.Empty, "FunctionPool:ContainerManager:AgentBrokerUrl must be an absolute http(s) URL.");
         }
 
-        return (true, value, null);
+        if (body.ValueKind == JsonValueKind.Object && body.TryGetProperty("broker_url", out var brokerUrlEl))
+        {
+            var requested = brokerUrlEl.ValueKind == JsonValueKind.String
+                ? (brokerUrlEl.GetString() ?? string.Empty).Trim().TrimEnd('/')
+                : null;
+            if (requested == null || !string.Equals(requested, configured, StringComparison.OrdinalIgnoreCase))
+                return (false, string.Empty, "Agent broker_url must match the configured AgentBrokerUrl.");
+        }
+
+        return (true, configured, null);
     }
 
     // FTS query DTO

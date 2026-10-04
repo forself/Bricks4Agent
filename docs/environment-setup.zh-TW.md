@@ -79,7 +79,7 @@ Approximate tracked source/doc mix (`git ls-tree -r HEAD` at `34ba862`, 2026-09-
 | Windows 10/11 | canonical local LINE sidecar | Sidecar scripts are PowerShell and Windows-oriented |
 | Windows PowerShell 5.1+ | sidecar scripts | Scripts use `#Requires -Version 5.1` |
 | .NET SDK 10.0+ | C# build/test/runtime | All active control-plane projects target `net10.0` |
-| Node.js 22.13+ | JS tools and agent | `tools/agent/README.md` states Node 18+, but the browser package's jsdom 29 requires `^20.19.0 \|\| ^22.13.0 \|\| >=24.0.0` and root `test:ui-components` passes globs to `node --test` (Node 21+); CI uses Node 22 |
+| Node.js 22.13+ | JS tools and agent | The browser package's jsdom 29 requires `^20.19.0 \|\| ^22.13.0 \|\| >=24.0.0` and root `test:ui-components` passes globs to `node --test` (Node 21+); CI uses Node 22, and the agent and mock container images are pinned to `node:22-bookworm-slim` |
 | npm | Node dependency install and scripts | Root package uses npm scripts |
 | Playwright browsers | browser tests and browser worker | Install Chromium for JS e2e and .NET browser-worker |
 
@@ -692,13 +692,15 @@ npm run validate:podman-governed-stack
 
 The node stack tests generate fresh broker keys and worker credentials in memory for every run and pass them to both `up` and `down`; they write no files.
 
+The stack tests use podman by default; set `$env:CONTAINER_ENGINE = 'docker'` to run them with `docker build` and `docker compose` instead. Every service runs hardened (non-root, read-only root filesystem, `/tmp` tmpfs, no capabilities, `no-new-privileges`, `pids_limit`), the agent mounts nothing, and each test checks this with `inspect` after `up`; see `tools/agent/container/README.md`.
+
 The compose files have no default keys (`${VAR:?...}`). For manual runs, generate a secrets file outside the repository first, and pass the same `--env-file` to every `up` and `down`:
 
 ```powershell
 node tools/agent/container/gen-stack-secrets.mjs
 ```
 
-The generator writes `$env:BRICKS4AGENT_SECRETS_DIR/agent-stack.env`, or `~/.bricks4agent/agent-stack.env` when that variable is not set, prints the path but never the values, and refuses any path inside the repository (the agent container mounts the repository and can read it). See `tools/agent/container/README.md` for the variable list.
+The generator writes `$env:BRICKS4AGENT_SECRETS_DIR/agent-stack.env`, or `~/.bricks4agent/agent-stack.env` when that variable is not set, prints the path but never the values, and refuses any path inside the repository (the file worker serves the repository read-only to the agent through the broker). See `tools/agent/container/README.md` for the variable list.
 
 Manual default stack:
 

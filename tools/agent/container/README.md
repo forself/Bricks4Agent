@@ -10,9 +10,13 @@ Included services:
 
 - `broker`: scoped-session issuer, capability/scope policy engine, and LLM proxy
 
-- `agent`: governed agent container that only talks to the broker
+- `agent`: governed agent container that only talks to the broker; nothing is mounted into it
 
 - `file-worker` and `line-worker`: optional worker containers in the default stack
+
+- `execution-adapter-worker`: patch and build/test worker, started only with `--profile adapters`
+
+Every service runs hardened (non-root, read-only root filesystem, no capabilities); see [Container Hardening](#container-hardening).
 
 ## Scope
 
@@ -68,6 +72,17 @@ npm run validate:podman-governed-stack
 
 The validation script prebuilds each image with an explicit `Containerfile`, then runs `podman compose up` without the compose build flag. This is the preferred smoke test on Windows Podman because some `podman-compose` versions do not reliably honor per-service `dockerfile:` entries during `up --build`.
 
+The stack tests also run with Docker: set `CONTAINER_ENGINE=docker` (PowerShell: `$env:CONTAINER_ENGINE = 'docker'`) and they use `docker build` and `docker compose` instead; the default stays `podman`. After `up`, each test inspects every container and fails unless it has a read-only root filesystem, a non-root user, `cap_drop: ALL`, `no-new-privileges`, the expected `pids_limit`, a `/tmp` tmpfs, no runtime socket and, for the agent, no bind or volume mount. If a host service already uses a published port (for example a local Ollama on `11434`), move the stack with `STACK_LLM_PORT` or `BROKER_PORT`.
+
+Other end-to-end checks:
+
+```bash
+npm run validate:podman-execution-adapter-stack
+npm run validate:container-spawn
+```
+
+The first applies a patch and runs a real `dotnet build` through the execution adapter (profile `adapters`). The second starts a broker on the host with the container manager enabled, spawns an agent container through `/api/v1/agents/spawn`, and checks its hardening, its run and its removal; see [Container Hardening](#container-hardening).
+
 The validation scripts generate a fresh set of broker keys and worker credentials in memory for every run (see [Secrets](#secrets)) and pass them to both `up` and `down` through the environment. Nothing is written to disk.
 
 For manual runs, generate a secrets file outside the repository once, then pass it with `--env-file` to every `up` and `down`.
@@ -85,7 +100,7 @@ The default stack uses the bundled mock upstream and should end with the agent p
 
 The smoke stack disables broker RAG seeding and embeddings so it only verifies the governed agent, broker LLM proxy, and worker attachment path. This avoids accidental dependence on a host-side Ollama embedding server.
 
-The default `npm run validate:podman-governed-stack` run also configures the mock upstream to request `read_file` once, so the test covers the agent submitting a broker-governed capability request and the broker dispatching it to `file-worker`.
+The default `npm run validate:podman-governed-stack` run also configures the mock upstream to request `read_file` once, so the test covers the agent submitting a broker-governed capability request and the broker dispatching it to `file-worker`. The mock answers `STACK_OK TOOL_RESULT_VERIFIED` only when the tool result it receives through the broker contains text from `README.html`, so a passing run proves the file worker really read the file (the `[governed] read_file` log line alone is printed before the tool runs).
 
 OpenAI-compatible stack:
 
@@ -163,11 +178,62 @@ Required variables:
 
 `node tools/agent/container/gen-stack-secrets.mjs` generates all of them with `node:crypto` and writes them to `$BRICKS4AGENT_SECRETS_DIR/agent-stack.env`, or `~/.bricks4agent/agent-stack.env` when that variable is not set. It never prints the values, refuses any path inside the repository, and refuses to overwrite an existing file unless you pass `--force` (which rotates every key; recreate the stack with `down -v` afterwards). `--self-test` checks the generator without writing anything. [`agent-stack.env.example`](agent-stack.env.example) lists the variable names only.
 
-Keep the file outside the repository. The agent container mounts the repository at `/workspace` with read access, and compose also auto-loads a `.env` next to the compose files, so a key file inside the repository would be readable by the untrusted agent.
+Keep the file outside the repository. The agent no longer mounts anything, but the file worker serves the repository read-only to the agent through the broker; its deny list refuses `.env`, `.env.*` and `agent-stack.env`, yet any other name you give a key file inside the repository would be readable by the untrusted agent. Compose also auto-loads a `.env` next to the compose files.
 
 The broker runs in the Production environment in these stacks and validates its keys at startup: it refuses placeholder values (empty, `CHANGE_ME*`, `REPLACE_WITH_*`) and any key that was ever published as a compose default, and it checks key formats. Do not set `ASPNETCORE_ENVIRONMENT=Development` in the compose files to get around this.
 
 `WORKER_AUTH_ENFORCE` defaults to `true`: the broker verifies worker credentials on function pool registration and on the LINE worker HTTP routes. The broker also trusts the execution adapter credential (credential index 2), which replaces the template credential at that index in `appsettings.json`.
+
+## Container Hardening
+
+Every service in the three compose files runs with the design §13.2 settings:
+
+| Setting | Value |
+|---|---|
+| user | non-root UID from the image: agent 10001, broker 10002, file-worker 10003, execution-adapter 10004, line-worker 10005, mock-ollama 10006, mock-openai 10007 |
+| `read_only` | `true`; only the `/tmp` tmpfs and the mounts below are writable |
+| `tmpfs` | `/tmp` (Docker and Podman mount it `noexec,nosuid,nodev`) |
+| `cap_drop` | `ALL` |
+| `security_opt` | `no-new-privileges:true` |
+| `pids_limit` | `1024` for the broker (.NET thread pool and sockets), `256` for every other service |
+
+Mounts:
+
+- broker: the named volume at `/data` (SQLite database and workspaces). No container runtime socket is mounted, so dynamic spawn is not available inside these stacks; keep `CONTAINER_MANAGER_ENABLED` at `false`.
+
+- agent: nothing. `/workspace` is an empty directory in the image that only serves as the logical root the broker grants are scoped to; the project manual is baked in at `/app/AGENT.md` (`AGENT_MANUAL_PATH`).
+
+- file-worker: the repository at `/workspace`, read-only. This is what the agent can read through the broker. The worker resolves every path, symlinks included, refuses anything outside `/workspace`, and applies one deny list to read, list, search, write and delete: `.git`, `.claude`, `.codegraph-cache`, `.ssh`, `.env`, `.env.*`, `agent-stack.env`, `appsettings.Development.json`, `*.pem`, `*.key`, `*.pfx`, `*.p12`, SSH private key names such as `id_rsa*`, and `client_secret_*`.
+
+- execution-adapter-worker: the throwaway git workspace from `ADAPTER_WORKSPACE`, writable, because it is the mediated write path. `dotnet build` and `dotnet test` (with NuGet packages on the `noexec` `/tmp`) work within `pids_limit: 256`.
+
+- line-worker: nothing; audio scratch files go to `/tmp/audio_temp` (`WORKER_Line__AudioTempPath`).
+
+### Dynamic Spawn
+
+A broker running on the host can start containers itself when `FunctionPool:ContainerManager:Enabled` is `true` (the Windows sidecar turns it on when it finds podman or docker). Every container it starts gets `--read-only`, `--tmpfs /tmp:rw,noexec,nosuid,nodev,size=64m`, `--cap-drop ALL`, `--security-opt no-new-privileges:true`, `--pids-limit` (`DefaultPidsLimit`, 256 unless an image sets `PidsLimit`) and a memory limit (`DefaultMemoryLimit`, `512m` unless an image sets `MemoryLimit`). The broker refuses configuration that would weaken this:
+
+- a root user (`User` of `0` or `root`), or a `host`, `container:` or `ns:` network
+
+- any `Volumes` or `Ports` on the `agent` image
+
+- an `agent` image without its own `NetworkName`; agents never fall back to the shared worker network. Only a broker that runs on the host without a dedicated agent network sets `AllowAgentDefaultNetwork=true` (the sidecar does)
+
+- for other workers: runtime sockets, system paths, relative paths, ports not bound to `127.0.0.1`, and host paths outside `AllowedHostPathRoots`
+
+`/api/v1/agents/spawn` always hands the agent the configured `AgentBrokerUrl`; a request may repeat that value in `broker_url` but cannot replace it, and `max_iterations` is capped at 50. `/api/v1/workers/spawn` requires `worker_type`, no longer starts agents and no longer accepts an `environment` field. Values that must stay out of process listings are passed to the runtime as `-e NAME` with the value in the CLI's own environment; they still show up in the runtime's `inspect` output.
+
+### Images
+
+All images build from `main`: the .NET services use `mcr.microsoft.com/dotnet/sdk:10.0` and `aspnet:10.0` (the execution adapter keeps the SDK at run time for `git` and `dotnet build/test`), and the Node services use `node:22-bookworm-slim`. Every `FROM` is pinned to the multi-arch index digest, so base image fixes arrive only when you refresh the digests and rebuild:
+
+```bash
+node tools/agent/container/resolve-base-image-digests.mjs
+node tools/agent/container/resolve-base-image-digests.mjs --engine podman
+node tools/agent/container/resolve-base-image-digests.mjs --check
+```
+
+The first form queries docker (or `CONTAINER_ENGINE`) and rewrites the `FROM` lines; `--check` only reports and exits 1 when a digest is out of date. `npm run validate:container-images` checks every Containerfile without a container runtime: digest pinning, .NET 10 and Node 22 bases, no `adduser`, a non-root `USER` with a UID no other image uses, and no `COPY . .` or `VOLUME` in the final stage.
 
 ## Overrides
 
@@ -195,6 +261,12 @@ Supported overrides:
 - `STACK_TOOL_CALL`
 
 - `STACK_TOOL_PATH`
+
+- `STACK_TOOL_ARGS_JSON`, `STACK_TOOL_SEQUENCE_JSON` (several tool calls in order) and `STACK_EXPECT_TOOL_RESULTS_JSON` (text each tool result must contain before the mock answers `TOOL_RESULT_VERIFIED`)
+
+- `POOL_DISPATCH_TIMEOUT_SECONDS` (default `30`)
+
+- `ADAPTER_WORKSPACE`
 
 - `BROKER_PRINCIPAL_ID`
 
@@ -238,9 +310,9 @@ Limits on these overrides:
 
 - `WORKER_AUTH_ENFORCE=false` turns off worker credential verification. The three LINE worker routes (`POST /api/v1/high-level/line/process`, `GET /api/v1/high-level/line/notifications/pending`, `POST /api/v1/high-level/line/notifications/complete`) accept only a verified worker signature, so with verification off they answer HTTP 401 to every request and the LINE worker stops working. Keep the default `true` whenever the LINE worker runs.
 
-`AGENT_BROKER_URL` controls the HTTP broker URL injected into dynamically spawned agent containers through `/api/v1/agents/spawn`. In the compose stack the default is `http://broker:5000`; for a host-side broker, point it at the broker address reachable from the container, such as `http://host.containers.internal:5361` on Podman Desktop.
+`AGENT_BROKER_URL` controls the HTTP broker URL injected into dynamically spawned agent containers through `/api/v1/agents/spawn`. In the compose stack the default is `http://broker:5000`; for a host-side broker, point it at the broker address reachable from the container, such as `http://host.containers.internal:5361` on Podman Desktop (`http://host.docker.internal:<port>` on Docker Desktop).
 
-`/api/v1/agents/spawn` requires an administrator scoped token (`role_admin`). The broker issues an administrator-level session only when the registration arrives over the broker host's own loopback interface and the task assigns an administrator role. The agent containers in these stacks reach the broker over the compose network, so the spawn flow is not available inside them.
+`/api/v1/agents/spawn` requires an administrator scoped token (`role_admin`). The broker issues an administrator-level session only when the registration arrives over the broker host's own loopback interface and the task assigns an administrator role. The agent containers in these stacks reach the broker over the compose network, and the compose broker has neither a runtime CLI nor a runtime socket, so the spawn flow is not available inside them; see [Dynamic Spawn](#dynamic-spawn) for a broker on the host.
 
 ## Switching To A Real Upstream
 
