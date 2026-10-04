@@ -613,9 +613,10 @@ One-shot 範例：
 node tools/agent/agent.js --run "Read AGENT.md and summarize the constraints"
 ```
 
-Governed 範例：
+Governed 範例（註冊密鑰只從環境變數 `BROKER_REGISTRATION_SECRET` 讀取，沒有命令列參數；缺少時 agent 直接結束）：
 
 ```powershell
+$env:BROKER_REGISTRATION_SECRET = '<該任務的註冊密鑰>'
 node tools/agent/agent.js `
   --governed `
   --broker-url http://127.0.0.1:5361 `
@@ -625,6 +626,12 @@ node tools/agent/agent.js `
   --role-id role_reader `
   --run "Inspect the repo"
 ```
+
+註冊密鑰的來源（broker 只存雜湊；密鑰不要寫進 repo 或命令列）：
+
+- compose stack 的種子任務：`node tools/agent/container/gen-stack-secrets.mjs` 把它產生在 repo 以外的 env 檔，compose 以 `--env-file` 同時交給 broker 與 agent。
+- `/api/v1/agents/spawn` 啟動的代理：broker 每次 spawn 簽發一把並直接交給容器，不需手動設定。
+- 以 `tasks/create` 建立的任務：管理員呼叫 `/api/v1/admin/registration-credentials/issue` 簽發，密鑰只在該次加密回應中出現一次。
 
 Governed mode 中，`--provider`、`--api-key`、`--host` 不是 canonical 執行路徑；LLM health、model list、chat 都會透過 broker `/api/v1/llm/*`。
 

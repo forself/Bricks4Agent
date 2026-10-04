@@ -180,10 +180,12 @@ mock stack 已實測:套上述 hardening 後 agent 仍能完成 governed `read_f
 
 agent 讀得到什麼,由 file-worker 決定。file-worker 對 read、list、search、write、delete 一致套用:
 
-- 邊界:路徑先正規化,以「根目錄 + 分隔字元」做完整前綴比對,再逐段解析 symlink/junction,解析後的實際路徑也必須在 `/workspace` 內;列舉與搜尋不進入 symlink。搜尋的 `pattern`／`file_pattern` 只能比對檔名,帶目錄部分即拒絕(目錄一律由 `path` 指定並經同樣的檢查)。
-- 拒絕清單(不分大小寫,路徑任何一段命中即拒絕;列舉與搜尋直接略過):`.git`、`.claude`、`.codegraph-cache`、`.ssh`、`.env`、`.env.*`、`agent-stack.env`、`appsettings.Development.json`、`*.pem`、`*.key`、`*.pfx`、`*.p12`、`id_rsa*` 等 SSH 私鑰檔名、`client_secret_*`。
+- 邊界:路徑先正規化,以「根目錄 + 分隔字元」做完整前綴比對,再逐段解析 symlink/junction,解析後的實際路徑也必須在 `/workspace` 內;列舉與搜尋不進入 symlink。路徑中任何一段含冒號一律拒絕(所有平台都一樣)。搜尋的 `pattern`／`file_pattern` 只能比對檔名,帶目錄部分即拒絕(目錄一律由 `directory`(或 `path`)指定並經同樣的檢查)。
+- 拒絕清單(不分大小寫,路徑任何一段命中即拒絕;列舉與搜尋直接略過):`.git`、`.claude`、`.codegraph-cache`、`.ssh`、`.env`、`.env.*`、`agent-stack.env`、`appsettings.Development.json`、`Api.txt`、`ngrok_recovery_codes.txt`、SQLite 資料庫檔(`*.db`、`*.db-wal`、`*.db-shm`、`*.db-journal`)、`*.pem`、`*.key`、`*.pfx`、`*.p12`、`id_rsa*` 等 SSH 私鑰檔名、`client_secret_*`、下載的服務帳戶金鑰檔名(`<名稱>-<12 位十六進位>.json`),以及只在該位置才擋的 `line-worker/appsettings.json`。
 
-拒絕清單是 denylist:清單外的新敏感檔仍讀得到。改為只提供白名單快照的唯讀視圖列為後續(§10)。
+拒絕清單只是過渡措施(denylist):清單外的新敏感檔仍讀得到;單元測試會確認 `.gitignore` 的 Secrets 區段都被清單涵蓋。改為只提供白名單快照的唯讀視圖列為後續(§10)。
+
+file-worker 回覆的結果(含拒絕)是最終結果,broker 不會改交內建的 InProcess 實作重試。只有在非 strict 模式(compose 預設 `POOL_STRICT_MODE=false`)下,沒有可用的 worker,或分派逾時、傳輸失敗時,broker 才降級到 InProcess:它對搜尋套用相同的檔名 pattern 規則與根目錄邊界,但以 broker 的工作目錄為根(容器內是 `/app`),也沒有拒絕清單(§10)。要完全不降級,設 `POOL_STRICT_MODE=true`。
 
 ### 8.2 broker 動態 spawn 的加固
 
@@ -198,7 +200,9 @@ broker 拒絕會削弱加固的設定:
 
 `/api/v1/agents/spawn` 一律把設定中的 `AgentBrokerUrl` 交給 agent(請求的 `broker_url` 只能等於這個值),`max_iterations` 上限 50。`/api/v1/workers/spawn` 必須帶 `worker_type`、不能啟動 agent、不再接受 `environment`。需要避開行程清單的值以 `-e NAME` 傳給 runtime,值放在 CLI 行程的環境變數;runtime 的 `inspect` 仍看得到這些值。
 
-每次 `/api/v1/agents/spawn` 都為該 agent 簽發新的註冊憑證(並撤銷上一次 spawn 的),密鑰以上述方式作為 `BROKER_REGISTRATION_SECRET` 交給容器,回應只帶憑證 id。憑證有效 `Broker:RegistrationCredential:SpawnedAgentLifetimeHours`(預設 24)小時,涵蓋容器重啟;過期後要重新 spawn。spawn 失敗會撤銷剛簽發的憑證。`/api/v1/agents/stop`(以及代理的停止工具)撤銷該 agent 的憑證與 session,之後它的 token 與密鑰都不能再用。broker 的容器清單只存在程序記憶體中:broker 重啟後,`/api/v1/agents/stop` 仍會撤銷重啟前 spawn 的 agent 的憑證與 session,但不會移除它的容器,要以 `docker rm -f -v <容器 id>`(或 podman)手動移除。kill switch 只讓 token 失效;要讓代理無法再註冊,請停止或停用它、取消任務,或以 `/api/v1/admin/registration-credentials/revoke` 撤銷憑證。以 `tasks/create` 建立的任務由管理員經 `/api/v1/admin/registration-credentials/issue` 簽發(密鑰只出現在該次加密回應中)。
+每次 `/api/v1/agents/spawn` 都為該 agent 簽發新的註冊憑證(並撤銷上一次 spawn 的),密鑰以上述方式作為 `BROKER_REGISTRATION_SECRET` 交給容器,回應只帶憑證 id。憑證有效 `Broker:RegistrationCredential:SpawnedAgentLifetimeHours`(預設 24)小時,涵蓋容器重啟;過期後要重新 spawn。spawn 失敗會撤銷剛簽發的憑證。`/api/v1/agents/stop`(以及代理的停止工具)撤銷該 agent 的憑證與 session,之後它的 token 與密鑰都不能再用。broker 的容器清單只存在程序記憶體中:broker 重啟後,`/api/v1/agents/stop` 仍會撤銷重啟前 spawn 的 agent 的憑證與 session,但不會移除它的容器,要以 `docker rm -f -v <容器 id>`(或 podman)手動移除。kill switch 只讓 token 失效。要立刻停下代理,請停止或停用它、取消任務,或以 `/api/v1/admin/registration-credentials/revoke` 撤銷憑證:撤銷憑證會一併結束以它註冊的 session,代理無法續期也無法再註冊(以 `principal_id`＋`task_id` 撤銷時,該任務的所有 session 都會結束)。只撤銷 session(`/api/v1/admin/revoke`)擋不住代理:它會以仍有效的憑證自動重新註冊。broker 拒絕重新註冊後,代理就停止(不再 heartbeat、註冊或呼叫 broker,`--run` 以錯誤結束,LINE listener 以非零碼結束;網路錯誤仍會重試)。種子憑證被管理員撤銷後,只要設定的密鑰不變,broker 重啟也不會恢復(啟動時記警告);要恢復請輪替密鑰(`gen-stack-secrets.mjs --force` 後以 `down -v` 重建)。以 `tasks/create` 建立的任務由管理員經 `/api/v1/admin/registration-credentials/issue` 簽發(密鑰只出現在該次加密回應中)。
+
+升級 broker 後,要以 `tools/agent/Containerfile` 重建 `bricks4agent-agent:latest`(Windows sidecar 直接使用本機既有的映像,不會自行建置):舊版 agent 映像不會送出註冊密鑰,broker spawn 的每個代理都會註冊失敗,重啟次數用完後停止。
 
 驗證(host broker + docker 或 podman,實際 spawn 一個 agent 容器,檢查加固(含 runtime CLI 本身的參數:註冊密鑰只以名稱傳遞)、註冊、完成一輪與移除,並在 broker 以同一個資料庫重啟後,確認再次啟動的代理容器以 spawn 時簽發的憑證註冊新的 session):
 
@@ -253,16 +257,19 @@ compose 中 adapter 服務以 **profile 隔離**(`--profile adapters`),預設不
 ## 10. 範圍界線(對照規格 §13/§18;2026-09-26 核對)
 
 **已實作**:
+
 - §18.2 審批服務與風險分級:`PolicyEngine` 依 `RiskLevel` / `approval_policy` 裁決 —— High/Critical 需管理員層審批(Critical 需 2 票)、`auto_if_task_scope_match` 逸出 scope 轉管理員審批(`packages/csharp/broker-core/Services/PolicyEngine.cs:68-117`);`RequireApproval` 時 broker 建審批請求並擱置執行(`packages/csharp/broker-core/Services/BrokerService.cs:256-280`)。放行端點:使用者層 `/api/v1/user/approvals`(`packages/csharp/broker/Endpoints/UserApprovalEndpoints.cs`)、管理員層 `/api/v1/local-admin/approvals`(`packages/csharp/broker/Endpoints/LocalAdminEndpoints.cs:933-953`)。
 
 **尚未實作**:
+
 - agent 客製 seccomp profile(目前用 runtime 預設)
 - file-worker 改為只提供白名單快照的唯讀視圖(目前以 worker 端拒絕清單收緊,§8.1)
 - file.read 的根目錄改由 broker 依任務決定,不採用 agent 請求中帶來的值
+- InProcess 降級的讀取面:非 strict 模式下沒有可用的 worker、或分派逾時與傳輸失敗時,檔案類 route 由 broker 內建的 InProcess 實作執行,以 broker 的工作目錄為根(容器內是 `/app`)、沒有拒絕清單,所以 `/workspace` 的 grant 實際讀到 broker 的 `/app`。compose 的 ollama-host 與 openai-compatible 兩個變體沒有 file-worker,檔案類 route 一律走 InProcess。worker 回覆的拒絕已不再降級,兩邊的搜尋 pattern 規則也一致(§8.1);`compose.yml` 要完全避免降級,設 `POOL_STRICT_MODE=true`
 - file-worker 與 execution-adapter 的 hostPath 改為 named volume
 - sidecar 的 agent 專用網路(目前以 `AllowAgentDefaultNetwork` 明確例外,§8.2),以及在 Windows Podman sidecar 上實測新的加固旗標
 - Node 24 升級(Node 22 於 2027-04-30 EOL)
 - 以任務為單位的 quota(註冊憑證可重複使用,每次註冊都會建立新的 grants)
 - 在 Windows Podman sidecar(podman remote)上實測 `-e NAME` 能把註冊密鑰帶進容器
 
-重點:容器「關得住」已做到;危險動作的人工放行也已接上,剩客製 seccomp。
+重點:容器加固與危險動作的人工放行都已做到;「尚未實作」所列項目仍待後續。

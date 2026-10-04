@@ -540,7 +540,7 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\run-worker.ps
 <li><code>context/*</code> 在讀取 ACL 之外另以任務為範圍：文件屬於某任務時，<code>read</code>、<code>history</code>、<code>read-by-key</code>、<code>list</code>、<code>write</code> 只限該任務的擁有者或管理員；系統範圍 <code>global</code> 沒有對應的任務，只限管理員；沒有任務的舊文件只限原作者或管理員。<code>read</code>、<code>history</code> 對範圍外的文件與不存在的文件一律回 404；<code>read-by-key</code>、<code>list</code> 指定了無權存取的任務時回 403，<code>read-by-key</code> 未帶 <code>task_id</code> 時只查 token 綁定的任務。<code>history</code> 只回傳範圍內、而且各版本 ACL 允許讀取的版本。</li>
 <li><code>context/write</code> 未帶 <code>task_id</code> 時，既有文件沿用其任務，新文件落在 token 綁定的任務；token 沒有綁定任務時回 403。既有文件只能由能存取其範圍者追加新版本。broker 系統元件自己維護的 document_id（<code>hlm.</code>、<code>convlog:</code>、<code>node_output_</code>、<code>browser.execution.</code>、<code>deployment.execution.</code> 開頭，不分大小寫）只限管理員經由 context API 寫入。其中 <code>hlm.</code>、<code>convlog:</code> 文件由高階流程（LINE、portal）的系統元件讀取，只採信系統元件（作者以 <code>system:</code> 開頭）寫入的版本，大多數還限定在 <code>global</code> 範圍；<code>node_output_</code> 與 <code>browser.execution.</code>、<code>deployment.execution.</code> 執行證據由 broker 以執行者的身分寫入，讀取端依任務、key 或 document_id 讀取，不以系統作者為條件，保留前綴對它們的作用只是不讓非管理員經由 context API 以這些 document_id 寫入。</li>
 <li><code>ScopedToken</code> 的 token 只能在簽發它的 session 使用：走加密信封時，信封的 session 必須就是 token 的 session；不論加密信封或 Bearer，session 都必須存在、未關閉或撤銷、未過期，且主體、任務、角色與 session 記錄一致，否則回 401。因此關閉或撤銷 session、取消任務、session 到期都會讓該 session 的所有 token 立即失效。交握信封（帶 <code>client_ephemeral_pub</code>）只接受於 <code>sessions/register</code>，送往其他端點回 400。</li>
-<li>註冊憑證：每組 principal＋task 的高熵密鑰，broker 只存 SHA-256 雜湊，以常數時間比對；可重複使用到到期或撤銷（不做一次性，容器或 broker 重啟後可再註冊），每一把都有到期時間。來源有四種：<code>DevelopmentSeed:RegistrationSecret</code> 與 <code>DashboardSeed:RegistrationSecret</code>（broker 每次啟動重新設定到期時間，預設 24 小時；<code>DevelopmentSeed</code> 在非 Development／Testing 環境缺少可用密鑰時拒絕啟動）、<code>/api/v1/agents/spawn</code>（每次 spawn 簽發新的一把並撤銷上一把，以 <code>-e NAME</code> 交給容器，預設 24 小時）、管理員的 <code>/api/v1/admin/registration-credentials/issue</code>（給以 <code>tasks/create</code> 建立的任務；密鑰只出現在該次加密回應中）。停用 agent（<code>agents/stop</code> 與代理的停止工具）會撤銷該 agent 的憑證與 session；kill switch 只讓 token 失效，不撤銷憑證。Development 的 dashboard（<code>wwwroot/index.html</code>）登入表單多一個「註冊密鑰」欄位，填 <code>DashboardSeed:RegistrationSecret</code> 的值；密鑰只放進加密的交握 payload，登入後即從表單清除，不保存在瀏覽器。</li>
+<li>註冊憑證：每組 principal＋task 的高熵密鑰，broker 只存 SHA-256 雜湊，以常數時間比對；可重複使用到到期或撤銷（不做一次性，容器或 broker 重啟後可再註冊），每一把都有到期時間。來源有四種：<code>DevelopmentSeed:RegistrationSecret</code> 與 <code>DashboardSeed:RegistrationSecret</code>（broker 每次啟動重新設定到期時間，預設 24 小時；<code>DevelopmentSeed</code> 在非 Development／Testing 環境缺少可用密鑰時拒絕啟動）、<code>/api/v1/agents/spawn</code>（每次 spawn 簽發新的一把並撤銷上一把，以 <code>-e NAME</code> 交給容器，預設 24 小時）、管理員的 <code>/api/v1/admin/registration-credentials/issue</code>（給以 <code>tasks/create</code> 建立的任務；密鑰只出現在該次加密回應中）。停用 agent（<code>agents/stop</code> 與代理的停止工具）會撤銷該 agent 的憑證與 session；管理員撤銷憑證時，以該憑證註冊的 session 一併撤銷（session 記錄註冊時使用的憑證）；只撤銷 session 時，代理會以仍有效的憑證重新註冊。種子憑證被管理員撤銷後，只要設定的密鑰不變，broker 重啟不會再種入，要恢復須輪替密鑰。kill switch 只讓 token 失效，不撤銷憑證。Development 的 dashboard（<code>wwwroot/index.html</code>）登入表單多一個「註冊密鑰」欄位，填 <code>DashboardSeed:RegistrationSecret</code> 的值；密鑰只放進加密的交握 payload，登入後即從表單清除，不保存在瀏覽器。</li>
 <li><code>/dev/*</code> 不在 <code>/api/v1</code> 之下，由 <code>DevEndpointGuardMiddleware</code> 另外把關。</li>
 </ul>
 <h3>6.2 Session, task, execution</h3>
@@ -566,7 +566,7 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\run-worker.ps
 </tr>
 <tr>
 <td><code>POST /api/v1/admin/registration-credentials/issue</code>、<code>revoke</code>、<code>list</code></td>
-<td>管理員簽發、撤銷、列出註冊憑證（列表不含密鑰與雜湊）</td>
+<td>管理員簽發、撤銷、列出註冊憑證（列表不含密鑰與雜湊）；撤銷憑證時一併撤銷以它註冊的 session</td>
 </tr>
 <tr>
 <td><code>POST /api/v1/tasks/create</code></td>
@@ -590,7 +590,7 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\run-worker.ps
 </tr>
 </tbody>
 </table>
-<p><code>sessions/heartbeat</code> 只接受 session 自己的加密信封，回傳同一 session 的新 token（<code>scoped_token</code>、<code>token_expires_at</code>、<code>session_expires_at</code>）。舊 token 不撤銷，到期自然失效。heartbeat 只延長仍有效的 session 與它的授予：新的到期時間為「現在＋<code>Broker:Session:TtlMinutes</code>」（預設 60，必須小於 120）與「註冊時間＋<code>Broker:Session:MaxLifetimeMinutes</code>」（預設 1440）兩者較早者；已過期的 session 不會被延長，超過最長存活時間後必須重新註冊。主體已停用或任務已結束時 heartbeat 回 401 並結束該 session。agent（<code>governed-executor.js</code>）、dashboard 與 e2e-bridge 依 token 剩餘時效的三分之一（10 秒到 5 分鐘）送 heartbeat；agent 收到 401 時重新註冊一次，但 kill switch 造成的 401 不會重新註冊。</p>
+<p><code>sessions/heartbeat</code> 只接受 session 自己的加密信封，回傳同一 session 的新 token（<code>scoped_token</code>、<code>token_expires_at</code>、<code>session_expires_at</code>）。舊 token 不撤銷，到期自然失效。heartbeat 只延長仍有效的 session 與它的授予：新的到期時間為「現在＋<code>Broker:Session:TtlMinutes</code>」（預設 60，必須小於 120）與「註冊時間＋<code>Broker:Session:MaxLifetimeMinutes</code>」（預設 1440）兩者較早者；已過期的 session 不會被延長，超過最長存活時間後必須重新註冊。主體已停用或任務已結束時 heartbeat 回 401 並結束該 session。agent（<code>governed-executor.js</code>）、dashboard 與 e2e-bridge 依 token 剩餘時效的三分之一（10 秒到 5 分鐘）送 heartbeat；agent 收到 401 時重新註冊一次，但 kill switch 造成的 401 不會重新註冊；重新註冊被拒（400、401、403）後 agent 就停止，不再 heartbeat、註冊或呼叫 broker。</p>
 <h3>6.3 Capability, grants, context, audit</h3>
 <table>
 <thead>

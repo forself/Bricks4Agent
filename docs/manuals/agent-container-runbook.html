@@ -220,10 +220,11 @@ podman network rm seal-probe
 <h3>8.1 file-worker 的讀取面</h3>
 <p>agent 讀得到什麼,由 file-worker 決定。file-worker 對 read、list、search、write、delete 一致套用:</p>
 <ul>
-<li>邊界:路徑先正規化,以「根目錄 + 分隔字元」做完整前綴比對,再逐段解析 symlink/junction,解析後的實際路徑也必須在 <code>/workspace</code> 內;列舉與搜尋不進入 symlink。搜尋的 <code>pattern</code>／<code>file_pattern</code> 只能比對檔名,帶目錄部分即拒絕(目錄一律由 <code>path</code> 指定並經同樣的檢查)。</li>
-<li>拒絕清單(不分大小寫,路徑任何一段命中即拒絕;列舉與搜尋直接略過):<code>.git</code>、<code>.claude</code>、<code>.codegraph-cache</code>、<code>.ssh</code>、<code>.env</code>、<code>.env.*</code>、<code>agent-stack.env</code>、<code>appsettings.Development.json</code>、<code>*.pem</code>、<code>*.key</code>、<code>*.pfx</code>、<code>*.p12</code>、<code>id_rsa*</code> 等 SSH 私鑰檔名、<code>client_secret_*</code>。</li>
+<li>邊界:路徑先正規化,以「根目錄 + 分隔字元」做完整前綴比對,再逐段解析 symlink/junction,解析後的實際路徑也必須在 <code>/workspace</code> 內;列舉與搜尋不進入 symlink。路徑中任何一段含冒號一律拒絕(所有平台都一樣)。搜尋的 <code>pattern</code>／<code>file_pattern</code> 只能比對檔名,帶目錄部分即拒絕(目錄一律由 <code>directory</code>(或 <code>path</code>)指定並經同樣的檢查)。</li>
+<li>拒絕清單(不分大小寫,路徑任何一段命中即拒絕;列舉與搜尋直接略過):<code>.git</code>、<code>.claude</code>、<code>.codegraph-cache</code>、<code>.ssh</code>、<code>.env</code>、<code>.env.*</code>、<code>agent-stack.env</code>、<code>appsettings.Development.json</code>、<code>Api.txt</code>、<code>ngrok_recovery_codes.txt</code>、SQLite 資料庫檔(<code>*.db</code>、<code>*.db-wal</code>、<code>*.db-shm</code>、<code>*.db-journal</code>)、<code>*.pem</code>、<code>*.key</code>、<code>*.pfx</code>、<code>*.p12</code>、<code>id_rsa*</code> 等 SSH 私鑰檔名、<code>client_secret_*</code>、下載的服務帳戶金鑰檔名(<code>&lt;名稱&gt;-&lt;12 位十六進位&gt;.json</code>),以及只在該位置才擋的 <code>line-worker/appsettings.json</code>。</li>
 </ul>
-<p>拒絕清單是 denylist:清單外的新敏感檔仍讀得到。改為只提供白名單快照的唯讀視圖列為後續(§10)。</p>
+<p>拒絕清單只是過渡措施(denylist):清單外的新敏感檔仍讀得到;單元測試會確認 <code>.gitignore</code> 的 Secrets 區段都被清單涵蓋。改為只提供白名單快照的唯讀視圖列為後續(§10)。</p>
+<p>file-worker 回覆的結果(含拒絕)是最終結果,broker 不會改交內建的 InProcess 實作重試。只有在非 strict 模式(compose 預設 <code>POOL_STRICT_MODE=false</code>)下,沒有可用的 worker,或分派逾時、傳輸失敗時,broker 才降級到 InProcess:它對搜尋套用相同的檔名 pattern 規則與根目錄邊界,但以 broker 的工作目錄為根(容器內是 <code>/app</code>),也沒有拒絕清單(§10)。要完全不降級,設 <code>POOL_STRICT_MODE=true</code>。</p>
 <h3>8.2 broker 動態 spawn 的加固</h3>
 <p>在 host 上執行的 broker 啟用 <code>FunctionPool:ContainerManager:Enabled</code> 時(Windows sidecar 偵測到 podman/docker 就會啟用),它啟動的每個容器一律帶:<code>--read-only</code>、<code>--tmpfs /tmp:rw,noexec,nosuid,nodev,size=64m</code>、<code>--cap-drop ALL</code>、<code>--security-opt no-new-privileges:true</code>、<code>--pids-limit</code>(<code>DefaultPidsLimit</code>,預設 256,映像可設 <code>PidsLimit</code>)與記憶體上限(<code>DefaultMemoryLimit</code>,預設 <code>512m</code>)。停止時以 <code>rm -f -v</code> 一併移除匿名卷。</p>
 <p>broker 拒絕會削弱加固的設定:</p>
@@ -234,7 +235,8 @@ podman network rm seal-probe
 <li>其他 worker 的掛載來源是 runtime socket、系統路徑、相對路徑或不在 <code>AllowedHostPathRoots</code> 之內;發布埠沒有綁 <code>127.0.0.1</code>。</li>
 </ul>
 <p><code>/api/v1/agents/spawn</code> 一律把設定中的 <code>AgentBrokerUrl</code> 交給 agent(請求的 <code>broker_url</code> 只能等於這個值),<code>max_iterations</code> 上限 50。<code>/api/v1/workers/spawn</code> 必須帶 <code>worker_type</code>、不能啟動 agent、不再接受 <code>environment</code>。需要避開行程清單的值以 <code>-e NAME</code> 傳給 runtime,值放在 CLI 行程的環境變數;runtime 的 <code>inspect</code> 仍看得到這些值。</p>
-<p>每次 <code>/api/v1/agents/spawn</code> 都為該 agent 簽發新的註冊憑證(並撤銷上一次 spawn 的),密鑰以上述方式作為 <code>BROKER_REGISTRATION_SECRET</code> 交給容器,回應只帶憑證 id。憑證有效 <code>Broker:RegistrationCredential:SpawnedAgentLifetimeHours</code>(預設 24)小時,涵蓋容器重啟;過期後要重新 spawn。spawn 失敗會撤銷剛簽發的憑證。<code>/api/v1/agents/stop</code>(以及代理的停止工具)撤銷該 agent 的憑證與 session,之後它的 token 與密鑰都不能再用。broker 的容器清單只存在程序記憶體中:broker 重啟後,<code>/api/v1/agents/stop</code> 仍會撤銷重啟前 spawn 的 agent 的憑證與 session,但不會移除它的容器,要以 <code>docker rm -f -v &lt;容器 id&gt;</code>(或 podman)手動移除。kill switch 只讓 token 失效;要讓代理無法再註冊,請停止或停用它、取消任務,或以 <code>/api/v1/admin/registration-credentials/revoke</code> 撤銷憑證。以 <code>tasks/create</code> 建立的任務由管理員經 <code>/api/v1/admin/registration-credentials/issue</code> 簽發(密鑰只出現在該次加密回應中)。</p>
+<p>每次 <code>/api/v1/agents/spawn</code> 都為該 agent 簽發新的註冊憑證(並撤銷上一次 spawn 的),密鑰以上述方式作為 <code>BROKER_REGISTRATION_SECRET</code> 交給容器,回應只帶憑證 id。憑證有效 <code>Broker:RegistrationCredential:SpawnedAgentLifetimeHours</code>(預設 24)小時,涵蓋容器重啟;過期後要重新 spawn。spawn 失敗會撤銷剛簽發的憑證。<code>/api/v1/agents/stop</code>(以及代理的停止工具)撤銷該 agent 的憑證與 session,之後它的 token 與密鑰都不能再用。broker 的容器清單只存在程序記憶體中:broker 重啟後,<code>/api/v1/agents/stop</code> 仍會撤銷重啟前 spawn 的 agent 的憑證與 session,但不會移除它的容器,要以 <code>docker rm -f -v &lt;容器 id&gt;</code>(或 podman)手動移除。kill switch 只讓 token 失效。要立刻停下代理,請停止或停用它、取消任務,或以 <code>/api/v1/admin/registration-credentials/revoke</code> 撤銷憑證:撤銷憑證會一併結束以它註冊的 session,代理無法續期也無法再註冊(以 <code>principal_id</code>＋<code>task_id</code> 撤銷時,該任務的所有 session 都會結束)。只撤銷 session(<code>/api/v1/admin/revoke</code>)擋不住代理:它會以仍有效的憑證自動重新註冊。broker 拒絕重新註冊後,代理就停止(不再 heartbeat、註冊或呼叫 broker,<code>--run</code> 以錯誤結束,LINE listener 以非零碼結束;網路錯誤仍會重試)。種子憑證被管理員撤銷後,只要設定的密鑰不變,broker 重啟也不會恢復(啟動時記警告);要恢復請輪替密鑰(<code>gen-stack-secrets.mjs --force</code> 後以 <code>down -v</code> 重建)。以 <code>tasks/create</code> 建立的任務由管理員經 <code>/api/v1/admin/registration-credentials/issue</code> 簽發(密鑰只出現在該次加密回應中)。</p>
+<p>升級 broker 後,要以 <code>tools/agent/Containerfile</code> 重建 <code>bricks4agent-agent:latest</code>(Windows sidecar 直接使用本機既有的映像,不會自行建置):舊版 agent 映像不會送出註冊密鑰,broker spawn 的每個代理都會註冊失敗,重啟次數用完後停止。</p>
 <p>驗證(host broker + docker 或 podman,實際 spawn 一個 agent 容器,檢查加固(含 runtime CLI 本身的參數:註冊密鑰只以名稱傳遞)、註冊、完成一輪與移除,並在 broker 以同一個資料庫重啟後,確認再次啟動的代理容器以 spawn 時簽發的憑證註冊新的 session):</p>
 <pre><code class="language-powershell">$env:CONTAINER_ENGINE = 'docker'
 npm run validate:container-spawn
@@ -282,18 +284,23 @@ node tools/agent/tests/test-podman-execution-adapter-stack.js
 </blockquote>
 <p>尚未做:broker <code>--integration</code> HTTP 對新 route 的覆蓋(stack 測試已涵蓋真實 dispatch 路徑)。</p>
 <h2>10. 範圍界線(對照規格 §13/§18;2026-09-26 核對)</h2>
-<p><strong>已實作</strong>:
-- §18.2 審批服務與風險分級:<code>PolicyEngine</code> 依 <code>RiskLevel</code> / <code>approval_policy</code> 裁決 —— High/Critical 需管理員層審批(Critical 需 2 票)、<code>auto_if_task_scope_match</code> 逸出 scope 轉管理員審批(<code>packages/csharp/broker-core/Services/PolicyEngine.cs:68-117</code>);<code>RequireApproval</code> 時 broker 建審批請求並擱置執行(<code>packages/csharp/broker-core/Services/BrokerService.cs:256-280</code>)。放行端點:使用者層 <code>/api/v1/user/approvals</code>(<code>packages/csharp/broker/Endpoints/UserApprovalEndpoints.cs</code>)、管理員層 <code>/api/v1/local-admin/approvals</code>(<code>packages/csharp/broker/Endpoints/LocalAdminEndpoints.cs:933-953</code>)。</p>
-<p><strong>尚未實作</strong>:
-- agent 客製 seccomp profile(目前用 runtime 預設)
-- file-worker 改為只提供白名單快照的唯讀視圖(目前以 worker 端拒絕清單收緊,§8.1)
-- file.read 的根目錄改由 broker 依任務決定,不採用 agent 請求中帶來的值
-- file-worker 與 execution-adapter 的 hostPath 改為 named volume
-- sidecar 的 agent 專用網路(目前以 <code>AllowAgentDefaultNetwork</code> 明確例外,§8.2),以及在 Windows Podman sidecar 上實測新的加固旗標
-- Node 24 升級(Node 22 於 2027-04-30 EOL)
-- 以任務為單位的 quota(註冊憑證可重複使用,每次註冊都會建立新的 grants)
-- 在 Windows Podman sidecar(podman remote)上實測 <code>-e NAME</code> 能把註冊密鑰帶進容器</p>
-<p>重點:容器「關得住」已做到;危險動作的人工放行也已接上,剩客製 seccomp。</p>
+<p><strong>已實作</strong>:</p>
+<ul>
+<li>§18.2 審批服務與風險分級:<code>PolicyEngine</code> 依 <code>RiskLevel</code> / <code>approval_policy</code> 裁決 —— High/Critical 需管理員層審批(Critical 需 2 票)、<code>auto_if_task_scope_match</code> 逸出 scope 轉管理員審批(<code>packages/csharp/broker-core/Services/PolicyEngine.cs:68-117</code>);<code>RequireApproval</code> 時 broker 建審批請求並擱置執行(<code>packages/csharp/broker-core/Services/BrokerService.cs:256-280</code>)。放行端點:使用者層 <code>/api/v1/user/approvals</code>(<code>packages/csharp/broker/Endpoints/UserApprovalEndpoints.cs</code>)、管理員層 <code>/api/v1/local-admin/approvals</code>(<code>packages/csharp/broker/Endpoints/LocalAdminEndpoints.cs:933-953</code>)。</li>
+</ul>
+<p><strong>尚未實作</strong>:</p>
+<ul>
+<li>agent 客製 seccomp profile(目前用 runtime 預設)</li>
+<li>file-worker 改為只提供白名單快照的唯讀視圖(目前以 worker 端拒絕清單收緊,§8.1)</li>
+<li>file.read 的根目錄改由 broker 依任務決定,不採用 agent 請求中帶來的值</li>
+<li>InProcess 降級的讀取面:非 strict 模式下沒有可用的 worker、或分派逾時與傳輸失敗時,檔案類 route 由 broker 內建的 InProcess 實作執行,以 broker 的工作目錄為根(容器內是 <code>/app</code>)、沒有拒絕清單,所以 <code>/workspace</code> 的 grant 實際讀到 broker 的 <code>/app</code>。compose 的 ollama-host 與 openai-compatible 兩個變體沒有 file-worker,檔案類 route 一律走 InProcess。worker 回覆的拒絕已不再降級,兩邊的搜尋 pattern 規則也一致(§8.1);<code>compose.yml</code> 要完全避免降級,設 <code>POOL_STRICT_MODE=true</code></li>
+<li>file-worker 與 execution-adapter 的 hostPath 改為 named volume</li>
+<li>sidecar 的 agent 專用網路(目前以 <code>AllowAgentDefaultNetwork</code> 明確例外,§8.2),以及在 Windows Podman sidecar 上實測新的加固旗標</li>
+<li>Node 24 升級(Node 22 於 2027-04-30 EOL)</li>
+<li>以任務為單位的 quota(註冊憑證可重複使用,每次註冊都會建立新的 grants)</li>
+<li>在 Windows Podman sidecar(podman remote)上實測 <code>-e NAME</code> 能把註冊密鑰帶進容器</li>
+</ul>
+<p>重點:容器加固與危險動作的人工放行都已做到;「尚未實作」所列項目仍待後續。</p>
 </main>
 </body>
 </html>

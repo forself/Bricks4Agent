@@ -191,7 +191,10 @@ Knowing a principal id and a task id is not enough to register a session: the re
 - In these stacks the broker seeds the task's credential from `DevelopmentSeed__RegistrationSecret` and the agent gets the same `BROKER_REGISTRATION_SECRET`. The entrypoint requires the variable but keeps it out of the agent's argument list; `agent.js` reads it from the environment only and removes it from its own environment after reading. The system prompt shows only a placeholder for it.
 - A credential can be used again until it expires or is revoked, so a restarted agent, a restarted broker or a second `up` registers without any extra step. The seeded credential expires `DevelopmentSeed__RegistrationSecretLifetimeHours` (default 24) after each broker start; a broker restart sets the expiry again.
 - Outside Development and Testing the broker refuses to start when `DevelopmentSeed` is enabled without a usable secret (at least 32 characters, not a placeholder). Rotating the stack secrets with `--force` replaces the seeded credential on the next broker start.
-- The kill switch invalidates tokens only. To keep an agent from registering again, stop or deactivate it, cancel its task, or revoke its credential (`/api/v1/admin/registration-credentials/revoke`).
+- The kill switch invalidates tokens only. To stop an agent at once, stop or deactivate it, cancel its task, or revoke its credential (`/api/v1/admin/registration-credentials/revoke`). Revoking a credential also ends the sessions registered with it, so the agent can neither renew its session nor register again; revoking by `principal_id` and `task_id` ends every session of that task.
+- Revoking only a session (`/api/v1/admin/revoke` with `target_type` `session`) does not stop the agent: it registers again with its credential, which is still valid. Revoke the credential instead.
+- When the broker refuses to register the agent again, the agent stops for good: no more heartbeats, registrations or broker calls; `--run` exits with an error and the LINE listener exits with a non-zero code. Network errors are still retried.
+- A seeded credential that an operator revoked stays revoked across broker restarts as long as the configured secret stays the same (the broker logs a warning at startup). To allow registration again, rotate the secret (`gen-stack-secrets.mjs --force`, then recreate the stack with `down -v`).
 
 ## Container Hardening
 
@@ -212,7 +215,7 @@ Mounts:
 
 - agent: nothing. `/workspace` is an empty directory in the image that only serves as the logical root the broker grants are scoped to; the project manual is baked in at `/app/AGENT.md` (`AGENT_MANUAL_PATH`).
 
-- file-worker: the repository at `/workspace`, read-only. This is what the agent can read through the broker. The worker resolves every path, symlinks included, refuses anything outside `/workspace`, and applies one deny list to read, list, search, write and delete: `.git`, `.claude`, `.codegraph-cache`, `.ssh`, `.env`, `.env.*`, `agent-stack.env`, `appsettings.Development.json`, `*.pem`, `*.key`, `*.pfx`, `*.p12`, SSH private key names such as `id_rsa*`, and `client_secret_*`.
+- file-worker: the repository at `/workspace`, read-only. This is what the agent can read through the broker. The worker resolves every path, symlinks included, refuses anything outside `/workspace` and any path segment that contains a colon, and applies one deny list to read, list, search, write and delete: `.git`, `.claude`, `.codegraph-cache`, `.ssh`, `.env`, `.env.*`, `agent-stack.env`, `appsettings.Development.json`, `Api.txt`, `ngrok_recovery_codes.txt`, SQLite files (`*.db`, `*.db-wal`, `*.db-shm`, `*.db-journal`), `*.pem`, `*.key`, `*.pfx`, `*.p12`, SSH private key names such as `id_rsa*`, `client_secret_*`, downloaded service account keys (`<name>-<12 hex digits>.json`), and `line-worker/appsettings.json` (only at that location). Search patterns (`pattern`, `file_pattern`) match file names only; the folder to search comes from `directory` (or `path`). The deny list is a stopgap: a key file with any other name is still readable, and a read-only allow-list snapshot is planned. A refusal from the worker is final; the broker falls back to its built-in file routes only when no worker is available or the dispatch fails or times out, and only outside strict mode (`POOL_STRICT_MODE`, `false` by default in `compose.yml`). The built-in routes apply the same search pattern rule but use the broker's working directory as their root and have no deny list; set `POOL_STRICT_MODE=true` to never fall back.
 
 - execution-adapter-worker: the throwaway git workspace from `ADAPTER_WORKSPACE`, writable, because it is the mediated write path. `dotnet build` and `dotnet test` (with NuGet packages on the `noexec` `/tmp`) work within `pids_limit: 256`.
 
@@ -233,6 +236,8 @@ A broker running on the host can start containers itself when `FunctionPool:Cont
 `/api/v1/agents/spawn` always hands the agent the configured `AgentBrokerUrl`; a request may repeat that value in `broker_url` but cannot replace it, and `max_iterations` is capped at 50. `/api/v1/workers/spawn` requires `worker_type`, no longer starts agents and no longer accepts an `environment` field. Values that must stay out of process listings are passed to the runtime as `-e NAME` with the value in the CLI's own environment; they still show up in the runtime's `inspect` output.
 
 Each `/api/v1/agents/spawn` issues a new registration credential for the agent (revoking the one from its previous spawn) and hands the secret to the container as `BROKER_REGISTRATION_SECRET` in that way; the response carries only the credential id. The credential lasts `Broker:RegistrationCredential:SpawnedAgentLifetimeHours` (default 24), which covers container restarts; after that the agent must be spawned again. A failed spawn revokes the credential it was given. `/api/v1/agents/stop` (and the agent stop tool) revokes the agent's credentials and sessions, so neither its tokens nor its secret work afterwards.
+
+After upgrading the broker, rebuild `bricks4agent-agent:latest` from `tools/agent/Containerfile` (the Windows sidecar uses whatever local image it finds and does not build it): an agent image from before registration credentials does not send the secret, so every agent the broker spawns fails to register and stops once its restarts are used up.
 
 ### Images
 
@@ -257,7 +262,7 @@ $env:AGENT_RUN = 'Read README.md and summarize it in one sentence.'
 podman compose --env-file "$HOME/.bricks4agent/agent-stack.env" -f tools/agent/container/compose.yml up --build --abort-on-container-exit --exit-code-from agent
 ```
 
-Required secrets have no defaults and are not overrides; see [Secrets](#secrets) for the four broker key variables and, for `compose.yml`, the six worker credential variables.
+Required secrets have no defaults and are not overrides; see [Secrets](#secrets) for the five broker key variables and, for `compose.yml`, the six worker credential variables.
 
 Supported overrides:
 
