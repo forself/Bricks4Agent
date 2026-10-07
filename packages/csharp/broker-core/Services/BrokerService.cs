@@ -227,7 +227,7 @@ public class BrokerService : IBrokerService
         if (grant == null)
         {
             return UpdateRequestState(request, ExecutionState.Denied,
-                Models.PolicyDecision.Deny, $"No active grant for capability '{capabilityId}' in this task/session.");
+                Models.PolicyDecision.Deny, DescribeMissingGrant(principalId, taskId, sessionId, capabilityId));
         }
 
         // ── Step 9: 檢查配額 ──
@@ -768,6 +768,37 @@ public class BrokerService : IBrokerService
             JsonSerializer.Serialize(new { reason }));
 
         return request;
+    }
+
+    /// <summary>
+    /// 沒有可用授予時的拒絕理由。<see cref="ICapabilityCatalog.GetActiveGrant"/> 只回 Active 且未過期的授予，
+    /// 配額用完的授予已被設為 Exhausted，所以這裡再查同一主體、任務、session 與能力最新的一筆授予，
+    /// 依它的狀態說明是配額用完、過期還是撤銷（代理據此判斷是否停止）；沒有任何授予時才是 No active grant。
+    /// 只決定理由文字，拒絕本身不變。
+    /// </summary>
+    private string DescribeMissingGrant(string principalId, string taskId, string sessionId, string capabilityId)
+    {
+        var noGrant = $"No active grant for capability '{capabilityId}' in this task/session.";
+        var latest = _db.QueryFirst<CapabilityGrant>(
+            @"SELECT * FROM capability_grants
+              WHERE principal_id = @principalId
+                AND task_id = @taskId
+                AND session_id = @sessionId
+                AND capability_id = @capabilityId
+              ORDER BY issued_at DESC, grant_id DESC",
+            new { principalId, taskId, sessionId, capabilityId });
+        if (latest == null)
+            return noGrant;
+
+        return latest.Status switch
+        {
+            GrantStatus.Exhausted => "Grant quota exhausted.",
+            GrantStatus.Revoked => "Grant revoked.",
+            GrantStatus.Expired => "Grant expired.",
+            GrantStatus.Active when latest.ExpiresAt <= DateTime.UtcNow => "Grant expired.",
+            GrantStatus.Active when latest.RemainingQuota == 0 => "Grant quota exhausted.",
+            _ => noGrant
+        };
     }
 
     private ExecutionRequest UpdateRequestState(

@@ -36,6 +36,21 @@ item leaves open. Make each call as a function (tool) call, or inside the <tool_
 write the call as a JSON block in your reply text. Reply without a tool call again only if you cannot continue, for
 example when the validate_definition calls are used up; that reply is your final summary.`;
 
+const MAX_ECHOED_TOOL_NAME = 64;
+
+/**
+ * 生成任務中，模型呼叫了沒有授予的工具名稱（常見的是自己編出來的「寫定義」工具）時回給模型的說明：
+ * 沒有這個工具、沒有工具會替它寫定義，以及下一步要做什麼。agent loop 與 governed executor 共用。
+ */
+function generationUnsupportedToolMessage(name, availableTools) {
+    const shown = String(name ?? '').slice(0, MAX_ECHOED_TOOL_NAME);
+    const available = (availableTools || []).filter(Boolean);
+    return `unsupported tool ${shown}: there is no such tool. No tool writes the definition for you. Write the complete `
+        + 'DefinitionTemplate yourself, following the example from query_component_catalog (section "example"), and pass '
+        + 'it as the template argument of validate_definition. When validate_definition returns ok: true, call '
+        + `generate_scaffold with the same template. Available tools: ${available.length > 0 ? available.join(', ') : '(none)'}.`;
+}
+
 const REACT_INSTRUCTIONS = `
 ## Tool Calls
 
@@ -278,10 +293,11 @@ call, so:
 Work in this order:
 1. query_component_catalog: read section "overview" first, then "field_types" and "example". Ask for
    section "component" with a name only when you need the details of one component.
-2. Write one DefinitionTemplate (a single JSON object) and submit it directly with validate_definition in the same
-   turn. Follow the catalog rules exactly and use only the page types and field types the catalog lists. Never put
-   code, HTML, scripts, styles, absolute URLs or file system paths in it (an api value is only the base path form
-   the catalog describes).
+2. Write one DefinitionTemplate (a single JSON object) yourself, since no tool writes it for you, and submit it
+   directly with validate_definition in the same turn, as a JSON object in the template argument. Follow the
+   catalog rules exactly and use only the page types and field types the catalog lists. Never put code, HTML,
+   scripts, styles, absolute URLs or file system paths in it (an api value is only the base path form the catalog
+   describes).
 3. validate_definition: when it returns ok: false, fix every reported error (each has code, path, message and hint)
    and call validate_definition again with the corrected template. Do not generate until validation returns ok: true.
 4. generate_scaffold with the same template. Do not pass any output location: the broker decides where the
@@ -291,8 +307,8 @@ Work in this order:
 
 Limits for this task:
 ${limits.join('\n')}
-If validation still fails when the validate_definition calls run out, stop and report the remaining errors
-instead of guessing. A validate result with truncated: true lists only the first errors (total_errors gives the
+If validation still fails when the validate_definition calls run out (a call is denied with "Grant quota
+exhausted."), stop and report the remaining errors instead of guessing. A validate result with truncated: true lists only the first errors (total_errors gives the
 count); errors that repeat across fields are reported once with the number of places they occur, and paths lists the
 first few places. Warnings do not block generation, but fix the ones that say pages of one resource do not line up:
 every page of a resource needs the same api base path, field names and options.
@@ -344,6 +360,7 @@ module.exports = {
     buildSystemPrompt,
     isGenerationTask,
     resolveAgentManualPath,
+    generationUnsupportedToolMessage,
     GENERATION_BASE_PROMPT,
     GENERATION_CONTINUE_REMINDER,
 };

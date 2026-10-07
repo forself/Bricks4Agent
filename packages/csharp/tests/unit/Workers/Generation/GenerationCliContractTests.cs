@@ -188,6 +188,8 @@ public sealed class GenerationCliContractTests : IDisposable
 
         var manifest = JsonNode.Parse(File.ReadAllText(Path.Combine(directOutput, "report", "manifest.json")))!.AsObject();
         manifest["format"]!.GetValue<string>().Should().Be("definition-site-v1");
+        manifest["validator_version"]!.GetValue<string>().Should().Be("definition-validator/1.5.0");
+        build.Output!["validator_version"]!.GetValue<string>().Should().Be("definition-validator/1.5.0");
         AssertNoLocalPath(manifest.ToJsonString());
     }
 }

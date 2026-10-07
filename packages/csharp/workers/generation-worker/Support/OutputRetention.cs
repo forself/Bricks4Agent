@@ -11,7 +11,8 @@ namespace GenerationWorker.Support;
 /// 刪除超過期限的請求目錄。worker 沒有執行時不會清理。
 ///
 /// 只處理本 worker 建立的結構：名稱符合 <see cref="GenerationRequest.IsSafeName"/> 的 slot 目錄與其下的請求目錄。
-/// 符號連結與 junction 一律略過（不跟隨、不刪除），其他名稱的項目也不動。
+/// 符號連結與 junction 一律略過（不跟隨、不刪除），其他名稱的項目也不動。OutputRoot 本身是連結時無法清理：
+/// worker 啟動時的設定檢查拒絕這種根目錄，清理時遇到也記錄警告。
 /// </summary>
 public static class OutputRetention
 {
@@ -64,8 +65,16 @@ public static class OutputRetention
             return 0;
 
         var root = new DirectoryInfo(Path.GetFullPath(outputRoot));
-        if (!root.Exists || IsLink(root))
+        if (!root.Exists)
             return 0;
+        if (IsLink(root))
+        {
+            // 不跟隨連結，所以根目錄是連結時無法清理。啟動時的設定檢查會拒絕這種根目錄；這裡處理啟動後才被換成連結的情況。
+            logger.LogWarning(
+                "Generation:OutputRoot is a symbolic link or junction, so expired generation outputs are not removed. " +
+                "Set Generation:OutputRoot to the real directory.");
+            return 0;
+        }
 
         var cutoff = now.UtcDateTime - retention;
         var removed = 0;
@@ -154,6 +163,19 @@ public static class OutputRetention
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// <paramref name="outputRoot"/> 本身是否為符號連結或 junction（不存在時為 false）。保留期限清理不跟隨連結，
+    /// 所以這種根目錄下的產物永遠不會被刪除；worker 的設定檢查以此拒絕啟動。
+    /// </summary>
+    public static bool IsLinkedRoot(string outputRoot)
+    {
+        if (string.IsNullOrWhiteSpace(outputRoot))
+            return false;
+
+        var root = new DirectoryInfo(Path.GetFullPath(outputRoot));
+        return root.Exists && IsLink(root);
     }
 
     private static bool IsLink(FileSystemInfo info)

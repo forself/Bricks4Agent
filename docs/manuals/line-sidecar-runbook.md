@@ -153,7 +153,7 @@ When step 2 is missing, confirming a system scaffold replies that system scaffol
 
 Without `-GenerationMode` (or with `Legacy`) nothing changes. Spawned agents in the sidecar use the documented `AllowAgentDefaultNetwork` exception (they are not on an internal network), so the request text an agent sees could leave the host; a dedicated internal agent network is planned.
 
-To run the worker by hand against a running broker: `run-worker.ps1 -Worker generation` (add `-GenerationOutputRoot` to use another output root; the broker must use the same one).
+To run the worker by hand against a running broker: `run-worker.ps1 -Worker generation` (add `-GenerationOutputRoot` to use another output root; the broker must use the same one). The output root must be the real directory, not a symbolic link or junction: the retention sweep never follows links, so the worker refuses to start on a linked root. To move it to another drive, pass the real path on that drive.
 
 Package retention: generation-worker removes request directories in `generation-out` that are older than `Generation:RetentionHours` (default 24 hours) when it starts, before every generation, and every hour while it runs. A zip holds the user's requirement text; the broker copies it into the user's documents when it accepts the package. While the worker keeps running, once the user deletes that copy, the one in `generation-out` is gone within the retention period plus one hour. Nothing is removed while the worker is not running: after switching back to Legacy (starting without `-GenerationMode Governed`), delete the directories left in `generation-out` by hand, or start once more in Governed mode (the worker cleans up when it starts).
 

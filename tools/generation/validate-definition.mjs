@@ -126,6 +126,11 @@ const VALIDATION_SCHEMA = S.object({
     minItems: S.integer({ min: 0, max: 1000 }),
     maxItems: S.integer({ min: 1, max: 1000 })
 });
+// 欄位上常見的外來鍵：給專屬代碼與可照做的 hint，而不只是允許鍵清單（模型常照其他表單框架的寫法）
+const misplacedValidationKey = key => [
+    'VALIDATION_KEY_MISPLACED',
+    `Put ${key} inside validation, for example "validation": { "${key}": ... }; fields have no ${key} key. The field_types catalog section lists the validation keys each type takes.`
+];
 const FIELD_SCHEMA = S.object({
     name: S.string({ max: 64, min: 1 }),
     type: S.string({ max: 32, min: 1 }),
@@ -135,7 +140,17 @@ const FIELD_SCHEMA = S.object({
     options: S.array(OPTION_SCHEMA, { min: 1, max: LIMITS.maxOptionsPerField }),
     validation: VALIDATION_SCHEMA,
     component: S.string({ max: 64, min: 1 })
-}, { required: ['name', 'type', 'label'] });
+}, {
+    required: ['name', 'type', 'label'],
+    forbidden: {
+        multiple: ['MULTIPLE_NOT_ALLOWED', 'For a field with several choices use type: "multiselect" with options; fields have no multiple key.'],
+        placeholder: ['PLACEHOLDER_NOT_ALLOWED', 'Fields have no placeholder key; remove it. Put a short prompt in the label if the field needs one.'],
+        min: misplacedValidationKey('min'),
+        max: misplacedValidationKey('max'),
+        maxLength: misplacedValidationKey('maxLength'),
+        maxItems: misplacedValidationKey('maxItems')
+    }
+});
 const PAGE_DEFINITION_SCHEMA = S.object({
     name: S.string({ max: 64, pattern: PAGE_NAME_PATTERN }),
     type: S.string({ max: 32, min: 1 }),

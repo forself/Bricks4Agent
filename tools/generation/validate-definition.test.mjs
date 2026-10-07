@@ -107,6 +107,61 @@ test('layer 2 rejects unknown keys at every level', async () => {
     assert.ok(result.errors.some(error => error.code === 'UNKNOWN_KEY' && error.path === 'definitions.pages[2].definition.fields[0].placeholderText'));
 });
 
+test('layer 2 answers common foreign field keys with their own code and a hint that says what to write instead', async () => {
+    // multiple on a select (a 7B model kept it through five validations): the hint names multiselect
+    const multiple = golden();
+    formFields(multiple)[3].multiple = true;
+    const multipleError = assertRejected(await validateRequest({ template: multiple }), 'MULTIPLE_NOT_ALLOWED', 'definitions.pages[2].definition.fields[3].multiple');
+    assert.equal(multipleError.path, 'definitions.pages[2].definition.fields[3].multiple');
+    assert.match(multipleError.hint, /type: "multiselect" with options/);
+    assert.match(multipleError.hint, /no multiple key/);
+    assert.doesNotMatch(multipleError.hint, /Allowed keys:/);
+
+    // the hint leads to a definition that passes
+    const fixed = golden();
+    formFields(fixed)[3].type = 'multiselect';
+    for (const page of fixed.definitions.pages) {
+        for (const field of page.definition.fields) if (field.name === 'category') field.type = 'multiselect';
+    }
+    assert.equal((await validateRequest({ template: fixed })).ok, true);
+
+    const placeholder = golden();
+    formFields(placeholder)[0].placeholder = '請輸入姓名';
+    const placeholderError = assertRejected(await validateRequest({ template: placeholder }), 'PLACEHOLDER_NOT_ALLOWED', 'fields[0].placeholder');
+    assert.match(placeholderError.hint, /no placeholder key/);
+
+    // limits written next to the field instead of inside validation point to validation.*
+    const misplaced = golden();
+    formFields(misplaced)[0].maxLength = 50;
+    formFields(misplaced)[2].min = 1;
+    formFields(misplaced)[2].max = 9;
+    formFields(misplaced)[6].maxItems = 3;
+    const result = await validateRequest({ template: misplaced });
+    assert.equal(result.ok, false);
+    for (const [index, key] of [[0, 'maxLength'], [2, 'min'], [2, 'max'], [6, 'maxItems']]) {
+        const entry = result.errors.find(error => error.code === 'VALIDATION_KEY_MISPLACED' && error.path === `definitions.pages[2].definition.fields[${index}].${key}`);
+        assert.ok(entry, `${key}: ${JSON.stringify(result.errors)}`);
+        assert.ok(entry.hint.includes(`Put ${key} inside validation, for example "validation": { "${key}": ... }`), entry.hint);
+    }
+    assert.ok(!result.errors.some(error => error.code === 'UNKNOWN_KEY'), 'the foreign keys are not reported again as unknown keys');
+    for (const entry of result.errors) assertIssueShape(entry);
+});
+
+test('a foreign field key on every field is reported once with its count', async () => {
+    const template = systematicErrorTemplate((pageIndex, fieldIndex) => ({
+        name: `field${fieldIndex}`,
+        type: 'text',
+        label: `欄位 ${fieldIndex}`,
+        placeholder: 'x'
+    }));
+    const result = await validateRequest({ template });
+    const placeholder = result.errors.filter(entry => entry.code === 'PLACEHOLDER_NOT_ALLOWED');
+    assert.equal(placeholder.length, 1, JSON.stringify(result.errors));
+    assert.match(placeholder[0].message, /occurs at 720 paths/);
+    assert.equal(placeholder[0].paths.length, 5);
+    assert.ok(Buffer.byteLength(JSON.stringify(result)) < 16 * 1024);
+});
+
 test('layer 2 rejects page.entity style definitions so file names never come from them', async () => {
     const template = golden();
     template.definitions.pages[0].definition.page = { entity: '../escaped', view: 'list' };
@@ -311,7 +366,7 @@ test('a systematic error is reported once with its count, inside the response bu
         name: `field${fieldIndex}`,
         type: 'text',
         label: `欄位 ${fieldIndex}`,
-        placeholder: 'x',
+        tooltip: 'x',
         helpText: 'y'
     }));
     const result = await validateRequest({ template });
@@ -321,12 +376,12 @@ test('a systematic error is reported once with its count, inside the response bu
     assert.equal(result.truncated, false);
     const unknown = result.errors.filter(entry => entry.code === 'UNKNOWN_KEY');
     assert.equal(unknown.length, 1, JSON.stringify(result.errors));
-    assert.equal(unknown[0].path, 'definitions.pages[0].definition.fields[0].placeholder');
-    assert.match(unknown[0].message, /"placeholder", "helpText"/);
+    assert.equal(unknown[0].path, 'definitions.pages[0].definition.fields[0].tooltip');
+    assert.match(unknown[0].message, /"tooltip", "helpText"/);
     assert.match(unknown[0].message, /occurs at 1440 paths/);
     assert.equal(result.errors.filter(entry => /Allowed keys:/.test(entry.hint)).length, 1, 'the allowed key list appears once');
     assert.deepEqual(unknown[0].paths.slice(0, 2), [
-        'definitions.pages[0].definition.fields[0].placeholder',
+        'definitions.pages[0].definition.fields[0].tooltip',
         'definitions.pages[0].definition.fields[0].helpText'
     ]);
     assert.equal(unknown[0].paths.length, 5);

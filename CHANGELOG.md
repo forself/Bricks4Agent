@@ -10,6 +10,25 @@ B4A 只收通用元件與通用能力；任何業務系統的專屬元件都不�
 
 ## 未發行
 
+### 修正：受治理生成的第五輪審查修正（2026-10-07）
+
+**預設行為變更**
+
+- 生成任務的代理在送出請求之前，依工具的參數定義整理參數：宣告為 object 或 array、實際收到字串時（模型輸出的 JSON 不合法時，模型伺服器會把原文當成字串交出）先 JSON.parse，得到相符的型別就改送解析結果。`validate_definition` 與 `generate_scaffold` 在 parse 失敗時做保守的閉合修補（只看字串外的括號、只補閉合符號：在閉合符號不相符處、物件中後面直接接著 `{` 或 `[` 的逗號之前，或結尾補上缺少的 `}` 或 `]`），工具結果的 `agent_note` 註明補了幾個；仍不成功時在本地回 `ARGUMENT_JSON_INVALID`（參數、錯誤位置與附近約 60 字元），不送 broker、不扣配額。先前模型只看到 broker 的「expected object, got String」，同一份少一個 `}` 的定義會一直重送到回合上限。broker 的 schema 驗證、驗證器與 generate 的完整驗證仍是最後的關卡。
+- 生成任務中呼叫沒有授予的工具名稱時（寫在內文或以工具呼叫送出），回覆改為可照做的說明：沒有這個工具，也沒有工具會替它寫定義，請依型錄的 example 自己寫完整的 DefinitionTemplate，作為 template 參數呼叫 `validate_definition`，通過後再呼叫 `generate_scaffold`。呼叫全部是這種名稱的回合算成沒有進展，送出那一次提醒；同一個名稱在下一個這種回合又出現時就結束並寫明原因，不再等到回合上限。governed executor 對生成任務的 unsupported 與 capability denied 回覆同一份說明；一般代理不變。生成的工作流程也寫明沒有工具會替它寫定義、定義以 JSON 物件放進 template 參數，以及 validate 用完時的拒絕理由。
+- 驗證器對欄位上常見的外來鍵回專屬代碼與可照做的 hint，不再只列允許鍵：`multiple` 回 `MULTIPLE_NOT_ALLOWED`（多選用 `multiselect` 加上 options），`placeholder` 回 `PLACEHOLDER_NOT_ALLOWED`，寫在 `validation` 外面的 `min`、`max`、`maxLength`、`maxItems` 回 `VALIDATION_KEY_MISPLACED`（hint 指向 `validation.*`）。這些鍵先前回 `UNKNOWN_KEY`；驗證器版本改為 `definition-validator/1.5.0`。
+- broker 拒絕沒有可用授予的請求時，理由依同一主體、任務、session 與能力最新的一筆授予說明：配額用完回 `Grant quota exhausted.`，過期回 `Grant expired.`，撤銷回 `Grant revoked.`；完全沒有授予時才是 `No active grant for capability …`。先前配額正常用完時也回「No active grant」，代理無從判斷 validate 已經用完。拒絕決定本身不變。
+- generation-worker 的 `Generation:OutputRoot` 本身是符號連結或 junction 時拒絕啟動（保留期限清理不跟隨連結，連結後的產物永遠不會被刪除）；啟動之後才被換成連結時，每次清理都記錄警告。先前清理默默略過，含使用者需求內容的 zip 會無限期保留。要換位置時直接指定實際路徑。
+
+**修正**
+
+- 生成任務的代理不再把 `arguments` 巢狀超過 64 層的內文 JSON 當成工具呼叫（與 broker 的 JSON 深度上限一致），印出參數時序列化失敗也只印說明。先前巢狀極深的回覆會讓代理在授權檢查之前就丟出例外而中止。
+- `agent.js --run` 遇到例外時先關閉代理（broker session）再結束，只設定結束碼；先前在 catch 中直接結束程序，session 留在 Active，容器重啟重跑，任務要到期限才以錯誤的原因失敗。
+- governed executor 比對 broker 回的 `execution_state` 時不分大小寫（broker 回 `Denied`、`Dispatched`）。先前這兩個分支永遠不成立：拒絕不會記錄，模型拿到的是原始 broker JSON，而不是 `[Governed] request denied: 理由`。
+- 文件：設計文件、generation-worker README、LINE sidecar runbook（中英）與代理 README 同步上述行為，並註明 `Generation:OutputRoot` 不可是符號連結或 junction。
+
+驗證入口：`npm run validate:agent-governed`、`npm run test:generation`、`dotnet test packages/csharp/tests/unit/Unit.Tests.csproj`（BrokerServiceGrantReasonTests、GenerationHandlerTests、GenerationCliContractTests）。
+
 ### 修正：受治理生成的第四輪審查修正（2026-10-07）
 
 **預設行為變更**

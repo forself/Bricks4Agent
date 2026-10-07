@@ -79,7 +79,10 @@ public sealed class GenerationWorkerOptions
         return OperatingSystem.IsWindows() ? "node.exe" : "node";
     }
 
-    /// <summary>啟動前檢查：ToolsRoot 內要有 CLI，OutputRoot 要是絕對路徑。回傳錯誤訊息（null 表示通過）。</summary>
+    /// <summary>
+    /// 啟動前檢查：ToolsRoot 內要有 CLI，OutputRoot 要是絕對路徑，而且不是符號連結或 junction
+    /// （保留期限清理不跟隨連結，連結後的產物會無限期保留）。回傳錯誤訊息（null 表示通過）。
+    /// </summary>
     public string? Validate()
     {
         if (string.IsNullOrWhiteSpace(ToolsRoot))
@@ -90,6 +93,9 @@ public sealed class GenerationWorkerOptions
             return "Generation:OutputRoot is not configured.";
         if (!Path.IsPathFullyQualified(OutputRoot))
             return "Generation:OutputRoot must be an absolute path.";
+        if (OutputRetention.IsLinkedRoot(OutputRoot))
+            return "Generation:OutputRoot must not be a symbolic link or junction: the retention sweep never follows links, " +
+                "so packages under it would be kept forever. Set it to the real directory.";
         if (QueryTimeout <= TimeSpan.Zero || BuildTimeout <= TimeSpan.Zero)
             return "Generation timeouts must be positive.";
         if (MaxInputBytes <= 0 || MaxStdoutBytes <= 0 || MaxStderrBytes <= 0 || MaxResultBytes <= 0)

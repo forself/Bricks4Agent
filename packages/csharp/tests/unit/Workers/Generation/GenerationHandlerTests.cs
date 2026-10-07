@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using GenerationWorker.Handlers;
 using GenerationWorker.Support;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Unit.Tests.Workers.Generation;
@@ -760,6 +761,45 @@ public sealed class GenerationHandlerTests : IDisposable
         File.Exists(Path.Combine(outsideRequest, "contacts-scaffold.zip")).Should().BeTrue("content behind a link is never deleted");
     }
 
+    [Fact]
+    public void RetentionSweep_WarnsWhenTheOutputRootIsALink()
+    {
+        // OutputRoot 本身是 junction 或 symlink（例如換磁碟時）：清理不跟隨連結，不能默默什麼都不做。
+        var fixture = NewFixture();
+        var expired = DateTime.UtcNow.AddHours(-25);
+        var realRoot = Path.Combine(fixture.Root, "real-out");
+        var expiredRequest = MakeRequestDirectory(realRoot, "task_behind_link", "req_behind_link", expired);
+        if (!Unit.Tests.Broker.GovernedGenerationTestSupport.TryCreateDirectoryLink(fixture.OutputRoot, realRoot))
+            return; // 這台機器不能建立連結（沒有 symlink 權限也沒有 junction），無法重現。
+
+        var logger = new CapturingLogger();
+        var removed = OutputRetention.Sweep(fixture.OutputRoot, TimeSpan.FromHours(24), DateTimeOffset.UtcNow, logger);
+
+        removed.Should().Be(0);
+        Directory.Exists(expiredRequest).Should().BeTrue("content behind a linked root is never followed or deleted");
+        logger.Entries.Should().ContainSingle(entry => entry.Level == LogLevel.Warning
+            && entry.Message.Contains("symbolic link or junction", StringComparison.Ordinal)
+            && entry.Message.Contains("not removed", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Options_RejectAnOutputRootThatIsALink()
+    {
+        var fixture = NewFixture();
+        var realRoot = Path.Combine(fixture.Root, "real-out");
+        Directory.CreateDirectory(realRoot);
+        if (!Unit.Tests.Broker.GovernedGenerationTestSupport.TryCreateDirectoryLink(fixture.OutputRoot, realRoot))
+            return; // 這台機器不能建立連結，無法重現。
+
+        OutputRetention.IsLinkedRoot(fixture.OutputRoot).Should().BeTrue();
+        fixture.Options.Validate().Should().Contain("must not be a symbolic link or junction");
+
+        // 實際的目錄照常通過。
+        fixture.Options.OutputRoot = realRoot;
+        OutputRetention.IsLinkedRoot(realRoot).Should().BeFalse();
+        fixture.Options.Validate().Should().BeNull();
+    }
+
     [Theory]
     [InlineData(0)]
     [InlineData(-1)]
@@ -776,5 +816,26 @@ public sealed class GenerationHandlerTests : IDisposable
         var fixture = NewFixture();
         fixture.Options.RetentionHours.Should().Be(24);
         fixture.Options.Validate().Should().BeNull();
+    }
+
+    private sealed record LogEntry(LogLevel Level, string Message);
+
+    private sealed class CapturingLogger : ILogger
+    {
+        public List<LogEntry> Entries { get; } = new();
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            Entries.Add(new LogEntry(logLevel, formatter(state, exception)));
+        }
     }
 }

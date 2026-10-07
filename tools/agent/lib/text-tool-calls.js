@@ -7,8 +7,12 @@
  * 這裡依序從內文找出：```json（或不標語言的 ```）區塊，缺少收尾 fence 也可以；<tool_call>、<tools>、
  * <function_call> 包裝；最後是整段或內文中的裸 JSON。只取同時帶字串 name 與物件 arguments 的物件
  * （也接受這種物件的陣列，以及 { tool_calls: [...] } 或 { function: {...} } 的包裝）。
+ * arguments 的巢狀深度超過 MAX_ARGUMENT_DEPTH（與 broker 的 System.Text.Json 預設一致）時不當成呼叫：
+ * JSON.parse 不受深度影響，但之後印出或序列化參數時會耗盡呼叫堆疊。
  * 名稱是否已授予由呼叫端判斷；這裡不執行任何東西。
  */
+
+const { MAX_ARGUMENT_DEPTH, exceedsJsonDepth } = require('./tool-arguments');
 
 const MAX_TEXT_LENGTH = 256 * 1024;
 const MAX_CALLS = 8;
@@ -48,7 +52,9 @@ function collectCalls(value, calls, depth = 0) {
     }
     if (!isPlainObject(value)) return;
     if (typeof value.name === 'string' && value.name.trim() !== '' && isPlainObject(value.arguments)) {
-        calls.push({ name: value.name.trim(), arguments: value.arguments });
+        if (!exceedsJsonDepth(value.arguments, MAX_ARGUMENT_DEPTH)) {
+            calls.push({ name: value.name.trim(), arguments: value.arguments });
+        }
         return;
     }
     if (Array.isArray(value.tool_calls)) {

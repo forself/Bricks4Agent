@@ -18,7 +18,7 @@
 
 - 輸出位置**只取自 grant scope**（broker 寫入）：`{Generation:OutputRoot}/{output_slot}/{requestId}/`。scope 必須含 `output_slot`、`package_name`（兩者只能是英數、底線、連字號，1～80 字，整個字串都要符合，結尾不得帶換行）、`max_pages`（1～12 的整數，與生成器驗證的頁數上限相同）與 `package: "definition-site-v1"`，缺少或格式不符就拒絕。請求參數中任何路徑類欄位一律不採用。
 - 冪等：同一 requestId 的 `result.json` 已存在，且 zip 的 sha256 與大小相符時，直接回傳同一結果（broker 逾時重派不會重複生成）；否則清空該 requestId 目錄後重做。worker 一次只處理一個請求（`MaxConcurrent=1`），同一請求的並行重派會等前一次完成後取用其結果。
-- 保留期限：產物（zip 與 `result.json`）在輸出根目錄保留 `Generation:RetentionHours`（預設 24 小時）。worker 啟動時、每次 generate 之前，以及執行期間每小時（閒置時也照常；與 generate 共用同一把鎖，不會刪到正在生成的目錄），刪除最後修改時間超過期限的 `{output_slot}/{requestId}/` 目錄，以及因此變空的 slot 目錄；只處理名稱符合上述格式的目錄，符號連結與 junction 一律略過（不跟隨、不刪除），含連結的請求目錄也不動。zip 含使用者的需求內容：broker 收下時已複製到使用者的文件區，被拒收、逾時後才產出或代理重試留下的套件也在期限後刪除。compose 中 broker 唯讀掛載輸出根目錄，清理只由 worker 做；worker 沒有執行時（例如 sidecar 切回 Legacy）不會清理，留下的目錄要手動刪除。
+- 保留期限：產物（zip 與 `result.json`）在輸出根目錄保留 `Generation:RetentionHours`（預設 24 小時）。worker 啟動時、每次 generate 之前，以及執行期間每小時（閒置時也照常；與 generate 共用同一把鎖，不會刪到正在生成的目錄），刪除最後修改時間超過期限的 `{output_slot}/{requestId}/` 目錄，以及因此變空的 slot 目錄；只處理名稱符合上述格式的目錄，符號連結與 junction 一律略過（不跟隨、不刪除），含連結的請求目錄也不動。輸出根目錄本身是連結時無法清理：啟動時的設定檢查拒絕這種根目錄，啟動後才被換成連結時，每次清理都記錄警告。zip 含使用者的需求內容：broker 收下時已複製到使用者的文件區，被拒收、逾時後才產出或代理重試留下的套件也在期限後刪除。compose 中 broker 唯讀掛載輸出根目錄，清理只由 worker 做；worker 沒有執行時（例如 sidecar 切回 Legacy）不會清理，留下的目錄要手動刪除。
 - 定義不通過：回傳失敗，錯誤訊息是 `{"ok":false,"errors":[...]}`，不留下任何檔案。頁數超過 scope 的 `max_pages` 也以同樣格式回報（`MAX_PAGES_EXCEEDED`）。
 - zip：`{package_name}-scaffold.zip`，頂層只有 `site/` 與 `report/`；條目依路徑排序、固定時間戳與權限位元，同樣的內容永遠得到同樣的 sha256。生成器輸出含符號連結、未回報的檔案、頂層多出其他項目，或 report 中出現本機路徑時都拒絕。
 - 回傳 payload 不含檔案內容與主機路徑：
@@ -47,7 +47,7 @@ CLI 以 `node <ToolsRoot>/tools/generation/cli.mjs <command>` 執行：不經 sh
 | 鍵 | 說明 |
 |---|---|
 | `Generation:ToolsRoot` | 含 `tools/generation/cli.mjs` 的 repo 子集根目錄（必填；啟動時檢查） |
-| `Generation:OutputRoot` | 產物根目錄（必填，絕對路徑）；broker 端要指向同一份內容 |
+| `Generation:OutputRoot` | 產物根目錄（必填，絕對路徑）；broker 端要指向同一份內容。本身不可是符號連結或 junction：保留期限清理不跟隨連結，連結後的產物永遠不會被刪除，所以啟動時遇到連結就拒絕啟動；要換位置時直接指定實際路徑 |
 | `Generation:NodePath` | node 執行檔；未設時用環境變數 `B4A_NODE_PATH`（檔案存在時），再退到 PATH 上的 `node` |
 | `Generation:QueryTimeoutSeconds` | catalog／validate 逾時，預設 30 |
 | `Generation:BuildTimeoutSeconds` | build 逾時，預設 120 |

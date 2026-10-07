@@ -3,6 +3,7 @@
 
 const { AgentLoop } = require('./lib/agent-loop');
 const { AgentRepl } = require('./lib/repl');
+const { runOnce } = require('./lib/run-once');
 const { StateMachine } = require('./lib/state-machine');
 const { buildCrudPipeline } = require('./lib/pipelines/crud-pipeline');
 const { runPipelines } = require('./lib/pipelines/pipeline-runner');
@@ -465,14 +466,8 @@ async function main() {
     }
 
     if (args.run) {
-        try {
-            await agent.send(args.run);
-        } catch (e) {
-            logError(e.message);
-            process.exit(1);
-        } finally {
-            await agent.close();
-        }
+        // 例外時也先關閉 session 再結束（見 runOnce）：只設定結束碼，不在 catch 中直接 process.exit。
+        process.exitCode = await runOnce(agent, args.run, { verbose: args.verbose });
         return;
     }
 
