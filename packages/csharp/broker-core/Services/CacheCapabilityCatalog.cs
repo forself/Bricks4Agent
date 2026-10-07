@@ -147,6 +147,34 @@ public class CacheCapabilityCatalog : ICapabilityCatalog
     }
 
     /// <inheritdoc />
+    public int RevokeSessionGrants(string sessionId)
+    {
+        if (string.IsNullOrWhiteSpace(sessionId))
+            return 0;
+
+        // 先記下要失效的快取鍵，再寫 DB；之後快取 miss 會回 DB 讀到已撤銷的狀態
+        var grants = _db.Query<CapabilityGrant>(
+            "SELECT * FROM capability_grants WHERE session_id = @sessionId AND status = 0",
+            new { sessionId });
+        var revoked = _dbCatalog.RevokeSessionGrants(sessionId);
+        foreach (var grant in grants)
+        {
+            try
+            {
+                _cache.DeleteAsync($"{GrantPrefix}{grant.PrincipalId}:{grant.TaskId}:{grant.SessionId}:{grant.CapabilityId}")
+                    .GetAwaiter().GetResult();
+                _cache.DeleteAsync(QuotaPrefix + grant.GrantId).GetAwaiter().GetResult();
+            }
+            catch
+            {
+                // 快取不可用：快取中的項目到期前仍可能被讀到，但 session 已撤銷，代理無法再以它呼叫 broker
+            }
+        }
+
+        return revoked;
+    }
+
+    /// <inheritdoc />
     public bool ConsumeQuota(string grantId)
     {
         // 先嘗試快取 DECR_POS（原子操作）

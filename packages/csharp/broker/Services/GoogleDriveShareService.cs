@@ -193,30 +193,66 @@ public sealed class GoogleDriveShareService
                 return Fail($"oauth_token_refresh_failed: {ex.Message}");
             }
         }
+        else if (!File.Exists(_options.ServiceAccountJsonPath))
+        {
+            return Fail("google drive service account json not found.");
+        }
         else
         {
-            if (!File.Exists(_options.ServiceAccountJsonPath))
-                return Fail("google drive service account json not found.");
-            credential = LoadCredential(_options.ServiceAccountJsonPath);
-            accessToken = await GetAccessTokenAsync(credential, cancellationToken);
+            accessToken = string.Empty;
         }
 
-        var uploadResult = await UploadFileAsync(accessToken, request.FilePath, fileName, folderId, cancellationToken);
-        if (!uploadResult.Success)
-            return uploadResult;
-
-        if (string.Equals(shareMode, "anyone_with_link", StringComparison.OrdinalIgnoreCase))
+        // Drive 的網路錯誤、逾時（HttpClient 的 Timeout 以 TaskCanceledException 表示）與無效回應都轉成失敗結果，
+        // 呼叫端照常記錄產物並改用簽章下載連結；只有呼叫端自己的取消才往外丟。
+        try
         {
-            var permissionError = await CreateAnyonePermissionAsync(accessToken, uploadResult.FileId, cancellationToken);
-            if (!string.IsNullOrWhiteSpace(permissionError))
-                return Fail(permissionError);
-        }
+            if (identityMode != "user_delegated" && identityMode != "shared_delegated")
+            {
+                credential = LoadCredential(_options.ServiceAccountJsonPath);
+                accessToken = await GetAccessTokenAsync(credential, cancellationToken);
+            }
 
-        uploadResult.ShareMode = shareMode;
-        uploadResult.SourcePath = request.FilePath;
-        uploadResult.Message = "ok";
-        return uploadResult;
+            var uploadResult = await UploadFileAsync(accessToken, request.FilePath, fileName, folderId, cancellationToken);
+            if (!uploadResult.Success)
+                return uploadResult;
+
+            if (string.Equals(shareMode, "anyone_with_link", StringComparison.OrdinalIgnoreCase))
+            {
+                var permissionError = await CreateAnyonePermissionAsync(accessToken, uploadResult.FileId, cancellationToken);
+                if (!string.IsNullOrWhiteSpace(permissionError))
+                    return Fail(permissionError);
+            }
+
+            uploadResult.ShareMode = shareMode;
+            uploadResult.SourcePath = request.FilePath;
+            uploadResult.Message = "ok";
+            return uploadResult;
+        }
+        catch (Exception ex) when (IsDriveRequestFailure(ex, cancellationToken))
+        {
+            _logger.LogWarning(ex, "Google Drive request failed for {FileName}.", fileName);
+            return Fail($"google_drive_request_failed: {DescribeDriveFailure(ex)}");
+        }
     }
+
+    /// <summary>Drive 呼叫失敗（不含呼叫端取消）：網路錯誤、逾時、無效回應、權杖或憑證檔錯誤。</summary>
+    public static bool IsDriveRequestFailure(Exception ex, CancellationToken callerToken)
+        => ex switch
+        {
+            OperationCanceledException => !callerToken.IsCancellationRequested,
+            HttpRequestException or JsonException or InvalidOperationException or IOException => true,
+            _ => false
+        };
+
+    private static string DescribeDriveFailure(Exception ex)
+        => ex switch
+        {
+            OperationCanceledException => "timeout",
+            HttpRequestException => "network_error",
+            JsonException => "invalid_response",
+            IOException => "io_error",
+            _ => "request_rejected"
+        };
 
     private async Task<string> GetAccessTokenAsync(
         GoogleServiceAccountCredential credential,

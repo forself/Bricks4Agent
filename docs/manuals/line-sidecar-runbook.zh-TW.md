@@ -110,7 +110,7 @@
 
 目前 sidecar 會：
 
-- 優先讀取 `ANTHROPIC_API_KEY`，並設定 `HighLevelLlm` / `LlmProxy` 為 `anthropic`、`claude-sonnet-4-6`
+- 優先讀取 `ANTHROPIC_API_KEY`，並設定 `HighLevelLlm` / `LlmProxy` 為 `anthropic`、`claude-sonnet-4-6`；LlmProxy 改用雲端供應者時（含 OpenAI-compatible fallback）一併關閉 `HighLevelExecutionModelPolicy`，代理改用 `LlmProxy:DefaultModel`
 
 - 若沒有 `ANTHROPIC_API_KEY`，才讀取這個檔案並注入 broker 的 `HighLevelLlm.ApiKey`
 
@@ -128,7 +128,7 @@
 
 目前 sidecar 會：
 
-- 啟動時為缺少憑證的 worker 類型自動產生並持久化（line-worker、file-worker、browser-worker、transport-tdx、site-crawler-worker）
+- 啟動時為缺少憑證的 worker 類型自動產生並持久化（line-worker、file-worker、browser-worker、transport-tdx、site-crawler-worker、generation-worker）
 
 - 將全部憑證注入 broker runtime 設定，並開啟 `WorkerAuth.Enforce = true`
 
@@ -142,7 +142,26 @@
 powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\run-worker.ps1 -Worker site-crawler
 ```
 
-（`-Worker` 可用 `file`、`browser`、`transport-tdx`、`site-crawler`。）此腳本讀取同一憑證庫，註冊即可通過 worker 身分驗證。
+（`-Worker` 可用 `file`、`browser`、`transport-tdx`、`site-crawler`、`generation`。）此腳本讀取同一憑證庫，註冊即可通過 worker 身分驗證。
+
+### 3.1.1 受治理生成（選用）
+
+`line-sidecar.ps1 up -GenerationMode Governed`（或 `restart`）會另外發布並以主機程序啟動 `generation-worker`（與其他 sidecar worker 相同），並把 broker 切到 `HighLevelCoordinator:Generation:SystemScaffoldMode = Governed`。之後確認過的系統雛形需求，改由 broker 啟動的受控代理經三個生成能力產出，不再在 broker 程序內生成。broker 與 worker 共用 `Generation:OutputRoot`，位置是 `.run\line-sidecar\data\generation-out`，在各使用者工作區之外。worker 執行的 node 取自 `B4A_NODE_PATH`（有設定時），否則用 PATH 上的 `node`。
+
+不加 `-GenerationMode`（或設為 `Legacy`）時行為不變。sidecar 上啟動的代理沿用已記載的 `AllowAgentDefaultNetwork` 例外（不在 internal 網路上），代理看到的需求文字有外流的可能；專用的 internal 代理網路列為後續。
+
+啟用前的準備（升級後也要重做第 1 項）：
+
+1. 以 `tools/agent/Containerfile` 重建 `bricks4agent-agent:latest`（在 repo 根目錄執行 `podman build -t bricks4agent-agent:latest -f tools/agent/Containerfile .`，使用 docker 時把 `podman` 換成 `docker`）。三個生成工具與生成用的 system prompt 都烤在這個映像裡；sidecar 直接使用本機既有的映像、不會自己建置，就緒檢查也不看映像版本。舊映像啟動的代理沒有這三個工具，每次生成都要等到代理結束或 watchdog 期限才失敗。
+2. 容器執行環境（podman 或 docker，可用 `B4A_CONTAINER_RUNTIME` 指定）在 PATH 上，ContainerManager 因此啟用（或以 `B4A_CONTAINER_MANAGER_ENABLED` 明確開啟）。
+3. LlmProxy 有模型可用：有 Anthropic 或 OpenAI 的 API 金鑰時，sidecar 把 LlmProxy 切到該供應者。沒有金鑰時 LlmProxy 仍是啟用的，沿用 broker `appsettings.json` 的本機 Ollama（`LlmProxy:BaseUrl` 與 `LlmProxy:DefaultModel`），這時必須有可用的 Ollama 與該模型；`-GenerationMode Governed` 啟動前會檢查，不成立就停止並說明原因。
+4. generation-worker 找得到 node：`B4A_NODE_PATH` 或 PATH 上的 `node`。
+
+第 2 項不成立時，確認系統雛形會回「系統雛形生成暫不可用」且不建立任務；第 3 項由啟動腳本檢查（就緒檢查只看 LlmProxy 是否啟用，看不出供應者是否可達）。第 1、4 項不成立時就緒檢查看不出來（它不看映像版本，也不檢查 worker 能否執行 node），每次生成都要等到代理結束或 watchdog 期限才失敗，所以啟用前請先確認。
+
+要對執行中的 broker 手動啟動 worker：`run-worker.ps1 -Worker generation`（加 `-GenerationOutputRoot` 可改用其他輸出根目錄；broker 必須使用同一個）。輸出根目錄必須是實際的目錄，不可是符號連結或 junction：保留期限清理不跟隨連結，所以 worker 遇到連結的根目錄就拒絕啟動。要移到其他磁碟時，直接指定那顆磁碟上的實際路徑。
+
+產物的保留期限：generation-worker 在啟動時、每次生成之前，以及執行期間每小時，刪除 `generation-out` 中超過 `Generation:RetentionHours`（預設 24 小時）的請求目錄。zip 含使用者的需求內容；broker 收下時已複製到使用者的文件區。worker 持續執行時，使用者刪除自己文件區中的產物後，`generation-out` 中的副本最遲在保留期限再加一小時後消失。worker 沒有執行時不會清理：切回 Legacy（啟動時不加 `-GenerationMode Governed`）之後，`generation-out` 中留下的目錄要手動刪除，或再以 Governed 模式啟動一次（worker 啟動時會清理）。
 
 ### 3.2 LINE outbound rate limit
 
@@ -485,7 +504,15 @@ broker 現在支援三種 Google Drive 身分：
 
 6. 用 `/ok`、`/revise`、`/cancel` 表態
 
+7. `/ok` 之後回 `y` 開始建置，回 `n` 取消
+
 補充：
+
+- `/proj`、`/ok`、`/revise`、訪談中的回答與 draft 確認（`y`）需要 production 權限（會員層級，且管理員已開啟 production 任務）；基本註冊者會收到與 `/建立` 相同的權限不足回覆，`/cancel` 不受限
+
+- `/ok` 只建立系統雛形 draft，使用者回 `y` 才建置，走與 `/建立` 相同的 draft 確認（專案名稱重查、升格閘、task、plan、handoff）；回 `n` 或 draft 逾時後可再 `/ok` 或 `/revise`
+
+- 回覆只寫專案資料夾名、封裝檔名與相對於受管根目錄的工作區位置，不寫主機絕對路徑
 
 - prompts 目前是中英文雙語
 

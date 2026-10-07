@@ -10,6 +10,151 @@ B4A 只收通用元件與通用能力；任何業務系統的專屬元件都不�
 
 ## 未發行
 
+### 修正：受治理生成的第五輪審查修正（2026-10-07）
+
+**預設行為變更**
+
+- 生成任務的代理在送出請求之前，依工具的參數定義整理參數：宣告為 object 或 array、實際收到字串時（模型輸出的 JSON 不合法時，模型伺服器會把原文當成字串交出）先 JSON.parse，得到相符的型別就改送解析結果。`validate_definition` 與 `generate_scaffold` 在 parse 失敗時做保守的閉合修補（只看字串外的括號、只補閉合符號：在閉合符號不相符處、物件中後面直接接著 `{` 或 `[` 的逗號之前，或結尾補上缺少的 `}` 或 `]`），工具結果的 `agent_note` 註明補了幾個；仍不成功時在本地回 `ARGUMENT_JSON_INVALID`（參數、錯誤位置與附近約 60 字元），不送 broker、不扣配額。先前模型只看到 broker 的「expected object, got String」，同一份少一個 `}` 的定義會一直重送到回合上限。broker 的 schema 驗證、驗證器與 generate 的完整驗證仍是最後的關卡。
+- 生成任務中呼叫沒有授予的工具名稱時（寫在內文或以工具呼叫送出），回覆改為可照做的說明：沒有這個工具，也沒有工具會替它寫定義，請依型錄的 example 自己寫完整的 DefinitionTemplate，作為 template 參數呼叫 `validate_definition`，通過後再呼叫 `generate_scaffold`。呼叫全部是這種名稱的回合算成沒有進展，送出那一次提醒；同一個名稱在下一個這種回合又出現時就結束並寫明原因，不再等到回合上限。governed executor 對生成任務的 unsupported 與 capability denied 回覆同一份說明；一般代理不變。生成的工作流程也寫明沒有工具會替它寫定義、定義以 JSON 物件放進 template 參數，以及 validate 用完時的拒絕理由。
+- 驗證器對欄位上常見的外來鍵回專屬代碼與可照做的 hint，不再只列允許鍵：`multiple` 回 `MULTIPLE_NOT_ALLOWED`（多選用 `multiselect` 加上 options），`placeholder` 回 `PLACEHOLDER_NOT_ALLOWED`，寫在 `validation` 外面的 `min`、`max`、`maxLength`、`maxItems` 回 `VALIDATION_KEY_MISPLACED`（hint 指向 `validation.*`）。這些鍵先前回 `UNKNOWN_KEY`；驗證器版本改為 `definition-validator/1.5.0`。
+- broker 拒絕沒有可用授予的請求時，理由依同一主體、任務、session 與能力最新的一筆授予說明：配額用完回 `Grant quota exhausted.`，過期回 `Grant expired.`，撤銷回 `Grant revoked.`；完全沒有授予時才是 `No active grant for capability …`。先前配額正常用完時也回「No active grant」，代理無從判斷 validate 已經用完。拒絕決定本身不變。
+- generation-worker 的 `Generation:OutputRoot` 本身是符號連結或 junction 時拒絕啟動（保留期限清理不跟隨連結，連結後的產物永遠不會被刪除）；啟動之後才被換成連結時，每次清理都記錄警告。先前清理默默略過，含使用者需求內容的 zip 會無限期保留。要換位置時直接指定實際路徑。
+
+**修正**
+
+- 生成任務的代理不再把 `arguments` 巢狀超過 64 層的內文 JSON 當成工具呼叫（與 broker 的 JSON 深度上限一致），印出參數時序列化失敗也只印說明。先前巢狀極深的回覆會讓代理在授權檢查之前就丟出例外而中止。
+- `agent.js --run` 遇到例外時先關閉代理（broker session）再結束，只設定結束碼；先前在 catch 中直接結束程序，session 留在 Active，容器重啟重跑，任務要到期限才以錯誤的原因失敗。
+- governed executor 比對 broker 回的 `execution_state` 時不分大小寫（broker 回 `Denied`、`Dispatched`）。先前這兩個分支永遠不成立：拒絕不會記錄，模型拿到的是原始 broker JSON，而不是 `[Governed] request denied: 理由`。
+- 文件：設計文件、generation-worker README、LINE sidecar runbook（中英）與代理 README 同步上述行為，並註明 `Generation:OutputRoot` 不可是符號連結或 junction。
+
+驗證入口：`npm run validate:agent-governed`、`npm run test:generation`、`dotnet test packages/csharp/tests/unit/Unit.Tests.csproj`（BrokerServiceGrantReasonTests、GenerationHandlerTests、GenerationCliContractTests）。
+
+### 修正：受治理生成的第四輪審查修正（2026-10-07）
+
+**預設行為變更**
+
+- 定義網站的外殼把表單連結拆成兩個：列表列與明細的「編輯」開啟同一資源中頁序第一個有 `api.update` 的表單，列表的「新增」開啟第一個有 `api.create` 的表單。先前兩者都連到第一個表單，第一個表單只能新增時（例如公開填寫加上處理用的表單）就無法編輯。驗證器對一個資源有多個表單的定義發 `MULTIPLE_FORMS` warning，說明編輯與新增各自開啟哪個表單，`FORM_WITHOUT_UPDATE` 的 hint 與型錄的 `linking` 一併說明這個規則；驗證器版本改為 `definition-validator/1.4.0`，生成器版本改為 `definition-site/1.2.0`。
+- 生成任務的代理在還沒有成功生成時，把模型寫在回覆內文中的工具呼叫（標示為 json 的程式碼區塊，缺少收尾的 fence 也可以；裸 JSON；`<tool_call>`、`<tools>` 包裝）當成工具呼叫執行，只接受同時帶字串 `name` 與物件 `arguments` 的物件。名稱不在 session 授予的工具中時不執行、也不結束，而是回一則列出可用工具的 unsupported 結果。一般代理與生成成功之後的回覆不受影響。先前小型的本機模型把呼叫寫成 JSON 文字時，提醒一次後任務就結束。
+- generation-worker 在執行期間每小時清理一次超過保留期限的產物（與 generate 共用同一把鎖），閒置的 worker 也會刪除過期的 zip。worker 沒有執行時（例如 sidecar 切回 Legacy）不會清理，文件改寫成照實說明，並說明手動刪除的方式。
+- compose 的 generation-worker 轉入 `WORKER_Generation__RetentionHours`，可在 env 檔以 `GENERATION_RETENTION_HOURS`（預設 24）調整。先前 runbook 寫的 `WORKER_Generation__RetentionHours` 放在 env 檔中不會生效。
+- 三個生成能力的分派時限改由 `FunctionPool:CapabilityDispatchTimeoutSeconds:{能力 id}` 設定（預設 catalog 與 validate 45 秒、generate 150 秒），大於 generation-worker 的查詢與建置逾時；其他能力沿用 `FunctionPool:DispatchTimeoutSeconds`。
+
+**修正**
+
+- `MultiSelectDropdown` 在真實瀏覽器中可以用滑鼠與鍵盤選取選項。先前游標停在選項上時 mouseenter 一再觸發，整個選單隨之重建，點擊落不到選項上；重繪標籤時輸入框被移出 DOM，方向鍵之後焦點就遺失。現在只有項目、選取值、篩選條件或可用狀態改變時才重建選單，反白改變只更新選項背景；標籤只移除與重建 `.msd__tag`，輸入框留在原位。
+- `/plans/submit` 的回應與 `/plans/get`、`/plans/status` 一樣，對不是提交者、也不是管理員的呼叫者不帶 `submitted_by`。先前代理 session 替自己任務的計畫加節點並提交時，回應帶有使用者識別。
+- 代理容器還在啟動時管理員以 `/agents/stop` 停止受治理生成：容器啟動完成後，啟動流程自己停止它並再停用一次代理，回覆使用者生成已由管理員停止（錯誤碼 `generation_stopped`），不回「已受理」、也不刪 draft。先前啟動流程忽略狀態轉換失敗，容器不會被停止，並一直占用代理容器的名額。
+- 管理員停止與交付和 watchdog 的一輪依序執行，交付之前也重讀執行紀錄：交付進行中時停止會等它結束，已交付的執行只停用代理與停止容器。先前停止可以夾在交付途中，任務已失敗、產物卻仍送出，使用者同時收到「已停止」與「已生成」。
+- 執行分派的結果新增 `NoWorkerAvailable`：只有功能池一開始就找不到可用的 worker、請求沒有送出時才設定。受治理生成的忙碌重試改看這個旗標、不再比對錯誤訊息，所以分派後逾時（請求已送到 worker）不再被當成忙碌重送；先前非 strict 模式下一個請求最多會送出 15 次。介面變更：`ExecutionResult` 新增 `NoWorkerAvailable` 與 `ExecutionResult.NoWorker(...)`，`PoolConfig` 新增 `CapabilityDispatchTimeouts`、`AddCapabilityDispatchTimeouts` 與 `ResolveDispatchTimeout`。
+- 文件：設計文件 §10（其他代理或 API 的入口）補上建立主體、`output_slot` 的寫法、zip 是唯一副本且有保留期限，以及取走後結束任務並撤銷註冊憑證；§13 與 CHANGELOG 的欄位型別數量更正為被擋 10 種、開放 18 種；代理 README 更正生成用 system prompt 的適用條件。
+
+驗證入口：`npm run test:generation`、`npm run test:definition-site:browser`、`npm --prefix packages/javascript/browser run test:vitest`（MultiSelectDropdown.test.js）、`npm run validate:agent-governed`、`npm run validate:agent-container-config`、`dotnet test packages/csharp/tests/unit/Unit.Tests.csproj`（GenerationHandlerTests、GovernedGenerationLauncherTests、GenerationDeliveryServiceTests、GenerationIngestTests、FallbackDispatcherTests）、`dotnet test packages/csharp/tests/integration/Integration.Tests.csproj`（GovernedGenerationTests）。
+
+### 修正：受治理生成的第三輪審查修正（2026-10-07）
+
+**預設行為變更**
+
+- 一般代理不再被切成生成模式。`/agents/create`、dashboard 預選的清單（`/agents/capabilities/defaults`）與各任務類型（analysis、rag、assistant、full）的預設能力集合都不含 `generation.*`：生成授予只由受治理生成的啟動流程寫入，管理員仍可明確選取。代理只在任務類型是 `system_scaffold`，或 generate 授予的 scope 帶 `output_slot` 時才改用生成用的 system prompt；只拿到 catalog 或 validate 授予的代理照常使用一般的基礎提示與專案手冊。先前 Legacy 模式下沒有指定能力的一般代理也會拿到這兩個低風險授予，基礎提示因此被換掉、也不再附專案手冊。
+- 生成器的欄位型別再擋下 `list`（每一列都沒有輸入框，存下的是空物件，改用 `textarea`）與 `chained`（連動層級無法設定，改用 `select`；先前只發 `FIELD_TYPE_LIMITED` warning），實際開放 18 種；驗證器版本改為 `definition-validator/1.3.0`。
+- validate 帶 `page_ids` 時，跨頁一致性 warning 只看選取的頁，也就是 generate 會生成的頁：只選列表或明細、沒選同資源的表單時回 `RESOURCE_WITHOUT_FORM`。整份定義仍逐層驗證，沒選取的頁有錯時照樣不通過；代理工具的說明與兩個 TOOL.md 改為與這個行為一致。
+- 生成代理的工作流程明寫這是無人應答的執行：最後的摘要之前每一回合都要呼叫工具，定義直接放進 `validate_definition` 與 `generate_scaffold` 的參數，不向使用者提問而是自行假設並在摘要中說明。還沒有成功生成就回了沒有工具呼叫的訊息時，代理迴圈追加一次提醒（仍受回合上限約束）。`AGENT_RUN` 的說明與重試規則一致，不再寫「generate once」。
+- generation-worker 的產物保留期限：新設定 `Generation:RetentionHours`（預設 24，範圍 1～8760）。worker 啟動時與每次 generate 之前，刪除超過期限的 `{output_slot}/{requestId}/` 目錄（只處理名稱符合格式的目錄，符號連結與 junction 略過）。先前 zip 與其中的使用者需求內容一直留在輸出根目錄。
+- sidecar 的 `-GenerationMode Governed` 在沒有 Anthropic 或 OpenAI 金鑰時，啟動前先確認 LlmProxy 沿用的本機 Ollama（`LlmProxy:BaseUrl`）可達且有 `LlmProxy:DefaultModel`，不成立就停止並說明原因。先前就緒檢查只看 LlmProxy 是否啟用，每次確認都會建立注定失敗的任務。
+- Legacy 模式的交付與 watchdog 只在啟動時接手先前以 Governed 模式啟動、尚未結束的執行，沒有進行中的執行就停止輪詢。
+
+**修正**
+
+- 證據文件 `generation.execution.{requestId}` 改在執行紀錄的鎖內、確認任務仍在等待產物之後才寫入，與 ingested 狀態一起生效：任務在 ingest 途中結束（watchdog 期限或管理員停止）時，不再留下宣稱「已排入交付」的證據。
+- watchdog 的查詢在 SQLite 上改以範圍條件走 `(document_id, version)` 索引，不再每輪掃過整張 `shared_context_entries`；最新版本已結束的執行先在查詢中排除。前綴之外、只差大小寫的系統文件也不會再被當成執行紀錄。
+- `output_slot`、`package_name`、requestId 以及 broker 端的路徑段、zip 檔名與 sha256 的格式檢查改為整個字串都要符合（以 `\z` 結尾）。先前 .NET 的 `$` 讓結尾帶換行的值通過，管理員以 `/tasks/create` 自行撰寫 scope 時，可能在 Linux 上建立名稱含換行的目錄。
+- 文件：設計文件的 D5 引用與實作相同的回覆字串，D10 改寫成原決策與實際採用（PR-0 的決策列）；sidecar runbook（中英）與設計文件更正 LlmProxy 的前置條件（沒有金鑰時仍啟用並指向本機 Ollama）；generate 的 TOOL.md 寫明 `max_pages` 是 1～12 的整數；compose 必須補上的 env 變數改列在「預設行為變更」。
+- 定義網站的瀏覽器 smoke 在 all-types 表單對可直接輸入的型別與列表類型別填值，確認列表類的每一列都有輸入框，存檔後在明細頁核對存回的值。
+
+驗證入口：`npm run test:generation`、`npm run test:definition-site:browser`、`npm run validate:agent-governed`、`npm run validate:agent-container-config`、`dotnet test packages/csharp/tests/unit/Unit.Tests.csproj`（GenerationToolSpecTests、GenerationHandlerTests、GenerationIngestTests、GenerationDeliveryServiceTests、GovernedGenerationLauncherTests）。
+
+### 修正：受治理生成的第二輪審查修正（2026-10-07）
+
+**預設行為變更**
+
+- 以任務累計的配額（`quota_scope: "task"`）不能再靠同時存在的多個 session 放大：一個任務同時只留一個 session。`sessions/register` 在同一道鎖內撤銷同任務的其他 session（連同授予與 session key），再以撤銷後的用量算新配額；除了被拒絕的請求，已分派、仍在處理或等待審批的請求都算。任務所有 session 合計不超過樣板的配額。介面變更：`ISessionService` 新增 `RevokeOtherTaskSessions`，`ICapabilityCatalog` 新增 `RevokeSessionGrants`；自行實作這兩個介面的程式要同步調整。
+- 專案訪談 `/ok` 之後送 `/cancel`，會一併撤下等待 `y` 的建置 draft（回覆會註明）：之後回 `y` 不會建置已取消的設計，一般文字也不會被當成那份 draft 的需求補充。以 `/proj` 重新開始訪談時也一樣。其他來源的 draft 不受影響。屬於 `/proj` 的範圍。
+- `/ok` 取代使用者原本等待確認的其他 draft（例如 `/建立` 留下的；訪談進行中它無法回 `y` 或 `n`）時，回覆開頭明確註明被取代的 draft，不再靜默覆寫。屬於 `/proj` 的範圍。
+- Governed 模式的系統雛形 draft 預覽說明實際的產物（前端可操作原型，不含後端、資料庫與登入），不再列出 Legacy scaffold 的前端框架、後端、資料庫、登入與封裝格式；交給代理的工作項也只帶 scaffold 的 family 與 ui_shape。
+- 生成器驗證（`definition-validator/1.2.0`）：`required`、限制鍵與 `default` 只接受執行期會生效的形式。表單無法判斷是否為空的型別（checkbox、toggle、color、chained、student、hidden 與 list、personinfo、phonelist、socialmedia 等列表類）寫 `required: true` 回 `REQUIRED_NOT_SUPPORTED`；列表類只開放 `maxItems`（`minItems` 不開放）；`default` 依型別檢查（字串、有限數字、布林、等於選項值的字串、`today` 或 YYYY-MM-DD、HH:MM），不符回 `DEFAULT_INVALID`，不開放的型別回 `DEFAULT_NOT_ALLOWED`。型錄的 `field_types` 逐型別列出 `default` 與不開放的 `required`；`student` 的說明改為「是否為在學學生加學校名稱」。
+- 驗證的跨頁一致性 warning（不擋生成）：列表或明細沒有同路徑的表單、表單沒有同路徑的列表、列表或明細的欄位不在同資源的表單中、同一資源同名欄位的選項不一致。型錄 overview 的 linking 說明同一資源的各頁要用相同的 api 路徑、欄位名與選項。
+- 驗證錯誤的回報：合併的項目附 `paths`（前 5 個路徑）；截斷時每個錯誤代碼至少保留一筆；識別字錯誤改以代碼與 hint 合併；`name` 不是字串的欄位不再多報一筆識別字錯誤；`validation` 中的未知鍵只以 `UNKNOWN_KEY` 回報一次。
+- 原型的 `README.txt` 改為只綁定本機的開啟方式（`python -m http.server 8000 --bind 127.0.0.1`、`npx http-server -a 127.0.0.1 -p 8000`，不再用 `npx --yes`）。生成器版本改為 `definition-site/1.1.0`。
+
+**修正**
+
+- 生成器驗證第 1 層限制物件鍵長（128 字元，超過即回 `KEY_TOO_LONG` 並停止）與收集的錯誤筆數（200 筆，達到時停止走訪並帶 `truncated: true`），path、message、hint 在建立時就截短：異常的輸入不再讓單次驗證長時間占用 generation-worker。generation-worker 在轉交 CLI 之前也拒絕過長的鍵，node 子程序加上 V8 heap 上限（`Generation:MaxOldSpaceMegabytes`，預設 256）。
+- 只有 `api.create` 的表單送出第一筆後留在新增模式並清空表單，可以接著送下一筆（先前導向不存在的編輯路由，再送出只會顯示「只能新增」）；讀不到紀錄端點時表單不再當成編輯模式。
+- generation-worker 的 `max_pages` 範圍收斂到 1～12（與生成器驗證的上限相同）。validate 與 catalog 的 tool-spec 補上 `total_errors`、`truncated`、`MAX_PAGES_EXCEEDED` 與 `paths`，catalog 的 `content` 改為物件；型錄 overview 的頁數上限註明以任務為準。
+- 單元測試的 `TestDb` 不再在 %TEMP% 留下 `broker_test_*.db`：生成相關的測試把資料庫建在自己的暫存目錄並在結束時刪除，其餘的在測試程序結束時刪除。
+- 文件：sidecar runbook（中英）與設計文件補上啟用 Governed 前要以 `tools/agent/Containerfile` 重建 `bricks4agent-agent:latest`，以及容器執行環境、LlmProxy 與 node 等前置條件；設計文件的 D10 與兩層權限模型文件補上實際的五個權限閘位置與 `/cancel` 的例外；PR-0 的最終行為隨 `feat/governed-generation` 一起合併，`fix/proj-gate` 不單獨合併。
+
+驗證入口：`npm run test:generation`、`npm run test:definition-site:browser`、`npm --prefix packages/javascript/browser run test:vitest`（GenerationFieldRuntime.test.js）、`dotnet test packages/csharp/tests/unit/Unit.Tests.csproj`（GenerationHandlerTests、DefinitionValidateTruncationTests、GovernedGenerationLauncherTests、GenerationCliContractTests）、`dotnet test packages/csharp/tests/integration/Integration.Tests.csproj`（GovernedGenerationTests、ProjectInterviewGateTests）、`npm run validate:agent-governed`。
+
+### 修正：受治理生成與 `/proj` 的審查後修正（2026-10-07）
+
+**預設行為變更**
+
+- 確認 draft（回 `y`）時重新檢查 effective `AllowProduction`：draft 建立後才被降為 Basic 的使用者回 `production_disabled`，draft 保留，權限恢復後可再確認。專案訪談的 `/revise` 與訪談中的回答（會產生並交付審查檔）也要求 `AllowProduction`；訪談中途被降級的使用者只能 `/cancel`。這兩項屬於 `/proj` 權限閘的範圍。
+- `/ok` 不再立即把訪談標為 Confirmed：訪談進入新的 `AwaitBuildConfirmation` 階段，建置任務建立成功後才標為 Confirmed。回 `n` 或 draft 過期後，可以再 `/ok` 重建 draft，或 `/revise` 修訂（修訂時撤下等待確認的舊 draft）。屬於 `/proj` 的範圍。
+- 同一位使用者的 draft 確認依序執行，並在鎖內重新讀取 draft：一份 draft 只會建立一個任務，重複的 `y` 回 `draft_not_pending`。
+- 受治理生成的名額：同一使用者同時只能有 `Generation:MaxConcurrentRunsPerUser`（預設 1）個進行中的生成（回 `generation_in_progress`），全部合計不超過 `Generation:MaxConcurrentRuns`（預設 2，要小於代理容器的 `MaxContainersPerType`）（回 `generation_busy`）；兩者都不建立任務，draft 保留。任務建立後的代理啟動不再跟著請求取消，失敗時一律把任務標為 Failed。
+- 受治理任務交給代理的資料不再帶主機路徑與發起使用者的識別資料：runtime descriptor 只保留三個 grant、生成上限與可用時的 `llm`；scope descriptor 拿掉 `origin_user_id` 與 `execution_intent_document`；handoff 改為只有系統可讀（代理 session 經 context API 讀不到，broker 內部與管理端照常使用）；plan 描述不含來源使用者。`/tasks/query`、`/plans/get` 與 `/plans/status` 對不是提交者、也不是管理員的呼叫者（例如被指派到任務的代理）不回 `submitted_by`。
+- 生成三個 grant 的配額改以任務累計（grant 樣板的 `quota_scope: "task"`）：代理容器重啟或 session 過期後重新註冊，只拿到這個任務尚未用掉的次數。其他任務的 grant 仍是每個 session 一份配額。（同時存在的多個 session 共用同一份配額，由上方第二輪修正補上。）
+- 執行模型的推薦只在型錄項目標明的供應者（`HighLevelExecutionModelPolicy:Catalog[].Provider`）與 `LlmProxy:Provider` 相同時寫進受治理任務，否則代理用 `LlmProxy:DefaultModel`；先前推薦的本機模型會被送給 LlmProxy 目前的雲端供應者，每次生成都失敗。預設型錄的兩個項目標為 `ollama`；sidecar 把 LlmProxy 切到其他供應者時一併關閉執行模型建議。
+- 生成器的欄位型別再擋下 `datetime`（明細頁顯示與再編輯的往返未支援，改用 `date`）與 `file`（原型不保存檔案值，改用 `text`），實際開放 20 種；驗證器版本改為 `definition-validator/1.1.0`。`string`、`boolean`、`integer` 等程式型別名稱被拒時，hint 直接給出對應的欄位型別，型錄的 `field_types` 也列出這張對照。
+- `Generation:MaxPages` 限制在 1～12（生成器驗證的上限），先前可設到 100；validate 的 grant scope 也帶 `max_pages`，選取的頁數超過時在驗證就回 `MAX_PAGES_EXCEEDED`，不必等到 generate。
+
+**修正**
+
+- 受治理生成的交付：Drive 的網路錯誤、逾時與無效回應改為失敗結果，照常記錄產物並改用簽章下載連結（先前例外讓產物紀錄沒有寫入、任務直接標為失敗）；單筆交付丟出例外（含逾時）不再中斷整輪，排在後面的執行照常交付與檢查期限；已收下產物的交付例外最多嘗試 `Generation:MaxDeliveryAttempts`（預設 3）次才標為失敗。`GoogleDriveShareService` 的這項修正也適用於其他經它上傳的交付。
+- `validate` 的錯誤合併與上限：相同的錯誤合併成一筆並註明出現次數（未知鍵依所在層級合併，允許鍵清單只列一次），合併後最多 50 筆，超過時帶 `truncated: true` 與 `total_errors`。generation-worker 的 validate 結果超過 `MaxResultBytes` 時改回截斷的結構化結果（仍是成功的呼叫），不再只回大小超限。
+- generation-worker 忙碌時（每個 worker 一次處理一件），broker 對三個生成能力在約 15 秒內等它空出來再分派同一個請求，不重複扣配額；代理的工作流程說明遇到 `No available worker` 時可以稍後以相同參數重試。
+- 生成類任務的 system prompt 改用精簡的基礎提示，不附專案手冊（手冊的 CLI 範例與欄位型別表和型錄衝突），也不列元件清單。
+- 管理員可以用 `/agents/list` 列出的 id 經 `/agents/stop` 停止受治理生成的代理：任務標為 Failed、撤銷憑證與 session、停止容器並通知使用者（先前 id 對不上，只能等 watchdog）。
+
+驗證入口：`npm run test:generation`、`npm run validate:agent-governed`、`dotnet test packages/csharp/tests/unit/Unit.Tests.csproj`（GovernedGenerationLauncherTests、GenerationDeliveryServiceTests、GenerationIngestTests、DefinitionValidateTruncationTests）、`dotnet test packages/csharp/tests/integration/Integration.Tests.csproj`（GovernedGenerationTests、ProjectInterviewGateTests）、`npm run validate:broker-scope`。
+
+### 預設行為變更：compose 的 broker 需要生成 worker 的 WorkerAuth 變數（2026-10-07）
+
+**預設行為變更**
+
+- `tools/agent/container/compose.yml` 的 broker 服務新增必填的 `GENERATION_WORKER_AUTH_KEY_ID` 與 `GENERATION_WORKER_AUTH_SHARED_SECRET`，不論是否啟用 generation profile，`up` 與 `down` 都需要：既有的 env 檔沒有這兩個變數時，堆疊無法啟動也無法拆除。升級時只需補上這兩個變數，不必輪替其他金鑰（可用 `gen-stack-secrets.mjs --out` 在 repo 以外產生一份暫存檔，只複製這兩行，再刪除暫存檔）。
+
+### 新增：受治理生成（system_scaffold 第一個切片）（2026-10-07）
+
+**新增**
+
+- 新的模式開關 `HighLevelCoordinator:Generation:SystemScaffoldMode`：`Legacy`（預設，行為不變）或 `Governed`。Governed 時，使用者確認系統雛形 draft 後，broker 不在程序內寫任何專案檔案：任務指派給自己的 AI 主體與 `role_executor`、帶三個生成 grant，broker 啟動受控代理並立即回覆「已受理（任務 id）」；代理經 LLM 代理撰寫 DefinitionTemplate，經 `generation.catalog.query`、`generation.definition.validate`、`generation.scaffold.generate` 三個能力走 PEP，generation-worker 確定性產出多頁前端原型（list、detail、form，瀏覽器內記憶體 store，不含後端）並打成 zip；broker 驗證路徑與 sha256、寫入證據文件後，以既有的產物紀錄、Drive 或簽章下載連結與 LINE 通知交付，任務 Completed 並停用代理。前置條件不滿足時回「系統雛形生成暫不可用」且不建立任務，不退回程序內生成；逾時或代理未產出時由 watchdog 把任務標為 Failed 並通知使用者。流程、設定與部署見 [GovernedGeneration.md](docs/designs/GovernedGeneration.md)。
+- 生成器 `tools/generation/`（`cli.mjs` 的 catalog、validate、build，零依賴、Node 22）與通用外殼 `templates/definition-site/`（嚴格 CSP、hash 路由），golden 範例是通用的聯絡人三頁。外殼納入 `audit:csp` 掃描。欄位型別白名單是 page-gen 型別清單與 support matrix 的交集（28 種），本切片再擋下無後端原型中無法正確使用的型別，實際開放 18 種（被擋的型別、原因與替代見設計文件 §3.1）。
+- 新的 worker `packages/csharp/workers/generation-worker/`（Containerfile、compose 的 `generation` profile 與 internal 的 `generation-net`、sidecar 的 `-GenerationMode Governed`、`run-worker.ps1 -Worker generation`）。compose 的 broker 服務因此需要兩個新的必填 env 變數，屬於相容性變更，見同日的「預設行為變更：compose 的 broker 需要生成 worker 的 WorkerAuth 變數」；三個能力以 tool-spec 為唯一來源；代理新增 `query_component_catalog`、`validate_definition`、`generate_scaffold` 三個工具，生成類任務的 system prompt 說明工作流程與上限，`AGENT_MAX_ITERATIONS` 可由環境變數設定。
+- broker：`GovernedGenerationLauncher`、`GenerationIngestingDispatcher`（只處理 `generate_scaffold`）、`GenerationDeliveryService`（交付與 watchdog）、`AgentContainerLauncher`（`/agents/spawn` 與受治理生成共用的容器啟動，行為不變）；設定區段 `Generation`（`OutputRoot`、`DeadlineMinutes`、`AgentMaxIterations`、`MaxPages`、`WatchdogIntervalSeconds`、`MaxPackageBytes`）；保留前綴 `generation.execution.` 與 `generation.run.`；generate 超出 scope 送審時，審批畫面顯示標題、各頁摘要與定義內容。
+- 任務狀態新增 `Failed`（終止狀態，與 Completed、Cancelled 一樣不再接受註冊、續期、憑證簽發與取消）；`AgentSpawnService.DeactivateTaskAgent` 依任務指派的主體停用代理。
+- npm script：`test:generation`（已接進 `npm test`）與 `test:definition-site:browser`。
+
+**修正**
+
+- worker-sdk 的 `WorkerHost`：送結果、心跳與狀態回覆經同一個寫入鎖，不再交錯寫入同一個 stream；接收端保留同一次讀到的後續 frame。影響所有 worker。
+- `PolicyEngine.IsScopeValid` 遇到例外時改為不在 scope 內；scope 的 `routes`、`paths` 存在但不是字串陣列時也視為不在 scope 內（先前會被當成沒有限制）。依審批政策改為 Deny 或送審。
+
+驗證入口：`npm run test:generation`、`npm run test:definition-site:browser`、`dotnet test packages/csharp/tests/unit/Unit.Tests.csproj`（GenerationHandlerTests、GenerationCliContractTests、GenerationIngestTests、GenerationDeliveryServiceTests、GovernedGenerationLauncherTests、GenerationApprovalRenderTests、WorkerFrameIoTests、PolicyEngineScopeFailClosedTests、GenerationToolSpecTests）、`dotnet test packages/csharp/tests/integration/Integration.Tests.csproj`（GovernedGenerationTests，含以真正的 worker handler 與生成器 CLI 跑 golden 範例的程序內端到端案例，需要 node）、`npm run validate:broker-scope`、`npm run validate:agent-governed`、`npm run validate:agent-container-config`。
+
+### 預設行為變更：`/proj` 與 `/ok` 需要 production 權限、`/ok` 改為建立 draft、高階回覆不帶主機路徑（2026-10-07）
+
+**預設行為變更**
+
+- 專案訪談的 `/proj`（起手）與 `/ok` 和 `/建立` 走同一個權限判斷：effective `AllowProduction` 不成立（Basic 層一律如此）時回 `production_disabled`，回覆與 `/建立` 被拒時相同，不會開始訪談，也不會建立 draft。先前這兩個指令在權限閘之前處理，Basic 層也能走到建置。既有的訪談整合測試要先以會員身分開啟 production（測試 fixture 已改為先呼叫 `EnableLineProductionAsync`）。
+- `/ok` 不再當下建置。它讓訪談進入 `AwaitBuildConfirmation`（等待建置確認；確認 draft 建立任務之後才標為 Confirmed，見上方的審查後修正），並把編譯出的專案定義轉成 `system_scaffold` draft，回覆摘要並請使用者回 `y` 確認或回 `n` 取消。回 `y` 後走與 `/建立` 相同的 draft 確認：專案名稱重查、升格閘、execution intent、task、plan、handoff，之後才生成與交付。使用者工作區已有同名專案資料夾時，draft 不帶專案名稱，改請使用者以 `#名稱` 補件。
+- 高階回覆不帶主機絕對路徑。`?profile`、`/name`、`/id` 的回覆改寫 `workspace: line/<user>` 這類相對位置；code_gen、system_scaffold、site_rebuild 的完成回覆只寫 `project_folder`、相對的 `entry_file` 與 `package_file` 檔名；要求專案名稱的回覆不再列出工作區根目錄；生成失敗訊息中的絕對路徑只保留最後一段。回覆、後續訊息與診斷欄位在回傳前會把受管工作區根目錄底下的路徑改寫成相對名稱，portal 的結果紀錄顯示時也套用同樣的改寫。draft 與 plan 的描述改寫專案資料夾名，不再寫專案的絕對路徑。
+- 新增 `HighLevelReplyRedactor`（路徑改寫工具）與 `HighLevelCoordinator.RedactHostPaths`。
+- 整合測試的 `BrokerFixture` 改以 `UseSetting` 設定資料庫路徑、受管工作區根目錄與執行模型建議開關（`HighLevelExecutionModelPolicy:Enabled=false`，確認 draft 時不連本機模型）。這些值在 host 建置前就被讀取，先前以 `ConfigureAppConfiguration` 覆寫沒有生效，測試共用 bin 下的 `broker.db` 並寫入本機的受管工作區；結束時改為先釋放 SQLite 連線池再刪除暫存檔。
+
+驗證入口：`dotnet test packages/csharp/tests/integration/Integration.Tests.csproj`（ProjectInterviewGateTests、ProjectInterviewLifecycleTests、ProjectInterviewReviewTests、PortalEndpointTests）、`dotnet test packages/csharp/tests/unit/Unit.Tests.csproj`（HighLevelReplyRedactorTests）、`npm run validate:broker-scope`。
+
 ### 預設行為變更：session 註冊需要註冊憑證、token 綁定所屬 session 並可續發（2026-10-05）
 
 **預設行為變更**

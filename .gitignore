@@ -62,6 +62,8 @@ tools/*.png
 .run/
 .test-output/
 .superpowers/
+# 映像建置時由 tools/generation/catalog-summary.mjs --out 預先產生的型錄摘要
+tools/generation/catalog-summary.json
 # execution-adapter stack default workspace + adapter evidence
 tools/agent/container/adapter-workspace/
 **/.b4a-evidence/

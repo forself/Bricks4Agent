@@ -22,7 +22,7 @@ namespace Broker.Endpoints;
 /// 3. POST /agents/create → 選擇能力 → 建立 Agent（Principal + Task + Grants）
 /// 4. POST /agents/spawn  → 生成 Agent 容器（需先 create）
 /// 5. POST /agents/list → 列出所有 Agent
-/// 6. POST /agents/stop → 停止 Agent 容器 + 停用 Principal
+/// 6. POST /agents/stop → 停止 Agent 容器 + 停用 Principal（受治理生成的代理以 /agents/list 列出的 agent_id 或任務 id 停止）
 /// </summary>
 public static class AgentEndpoints
 {
@@ -31,6 +31,28 @@ public static class AgentEndpoints
         PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
         PropertyNameCaseInsensitive = true
     };
+
+    /// <summary>
+    /// 受治理生成任務的代理：<paramref name="requestedId"/> 是 /agents/list 列出的 agent_id（任務 id 去掉 task_）或任務 id 本身，
+    /// 而且該任務有受治理生成的執行紀錄、指派給自己的 AI 主體時，回傳任務 id；否則回傳 null（照一般代理處理）。
+    /// </summary>
+    internal static string? ResolveGovernedGenerationTaskId(
+        string requestedId,
+        AgentSpawnService spawnService,
+        GovernedGenerationRunStore generationRuns)
+    {
+        var trimmed = (requestedId ?? string.Empty).Trim();
+        if (trimmed.Length == 0 || trimmed.Length > 128)
+            return null;
+
+        var taskId = trimmed.StartsWith("task_", StringComparison.Ordinal) ? trimmed : "task_" + trimmed;
+        if (generationRuns.Get(taskId) == null)
+            return null;
+
+        return spawnService.ListAgents().Any(agent => string.Equals(agent.TaskId, taskId, StringComparison.Ordinal))
+            ? taskId
+            : null;
+    }
 
     public static void Map(RouteGroupBuilder group)
     {
@@ -112,7 +134,7 @@ public static class AgentEndpoints
         });
 
         // ── 4. 生成 Agent 容器 ──
-        agents.MapPost("/spawn", async (HttpContext ctx, AgentSpawnService spawnService, IContainerManager containerManager, IEnvelopeCrypto crypto, IConfiguration configuration, HighLevelLlmOptions highLevelLlmOptions, RegistrationCredentialOptions credentialOptions) =>
+        agents.MapPost("/spawn", async (HttpContext ctx, AgentSpawnService spawnService, AgentContainerLauncher launcher, IConfiguration configuration) =>
         {
             var body = RequestBodyHelper.GetBody(ctx);
             if (!RequestBodyHelper.TryGetRequired(body, "agent_id", out var agentId, out var err))
@@ -132,62 +154,37 @@ public static class AgentEndpoints
                 return Results.BadRequest(ApiResponseHelper.Error($"Agent is not active (state: {agent.State})", 400));
 
             // 檢查容器運行時
-            var runtimeOk = await containerManager.IsRuntimeAvailableAsync();
+            var runtimeOk = await launcher.IsRuntimeAvailableAsync();
             if (!runtimeOk)
                 return Results.Json(ApiResponseHelper.Error(
                     "Container runtime not available. Configure ContainerManager or start Docker/Podman.", 503), statusCode: 503);
 
-            // 準備環境變數
-            var envOverrides = new Dictionary<string, string>
-            {
-                ["BROKER_URL"] = agentBrokerUrl,
-                ["BROKER_PUB_KEY"] = crypto.GetBrokerPublicKey(),
-                ["BROKER_PRINCIPAL_ID"] = agent.PrincipalId,
-                ["BROKER_TASK_ID"] = agent.TaskId,
-                ["BROKER_ROLE_ID"] = agent.RoleId,
-                ["BROKER_WAIT_FOR_HEALTH"] = "1",
-                ["AGENT_NO_CONFIRM"] = "1",
-                ["AGENT_LINE_LISTEN"] = "0",
-                ["AGENT_MAX_ITERATIONS"] = "10",
-                ["AGENT_VERBOSE"] = "1"
-            };
-
-            // Agent containers use the broker high-level model by default.
-            envOverrides["AGENT_MODEL"] = highLevelLlmOptions.DefaultModel;
-            if (body.TryGetProperty("model", out var modelEl) && modelEl.ValueKind == JsonValueKind.String)
-                envOverrides["AGENT_MODEL"] = modelEl.GetString() ?? highLevelLlmOptions.DefaultModel;
+            // 啟動參數（環境變數由 AgentContainerLauncher 組成，不從請求本文複製）
+            var maxIterations = 10;
             if (body.TryGetProperty("max_iterations", out var maxIterationsEl) &&
                 maxIterationsEl.ValueKind == JsonValueKind.Number)
             {
-                if (!maxIterationsEl.TryGetInt32(out var maxIterations))
+                if (!maxIterationsEl.TryGetInt32(out var requestedIterations))
                     return Results.BadRequest(ApiResponseHelper.Error("max_iterations must be an integer.", 400));
-                envOverrides["AGENT_MAX_ITERATIONS"] = ClampMaxIterations(maxIterations).ToString();
+                maxIterations = ClampMaxIterations(requestedIterations);
             }
-            if (body.TryGetProperty("verbose", out var verboseEl) &&
-                (verboseEl.ValueKind == JsonValueKind.True || verboseEl.ValueKind == JsonValueKind.False))
-                envOverrides["AGENT_VERBOSE"] = verboseEl.GetBoolean() ? "1" : "0";
 
+            var model = body.TryGetProperty("model", out var modelEl) && modelEl.ValueKind == JsonValueKind.String
+                ? modelEl.GetString()
+                : null;
+            var verbose = !(body.TryGetProperty("verbose", out var verboseEl) && verboseEl.ValueKind == JsonValueKind.False);
             var legacyLineListen = body.TryGetProperty("legacy_line_listen", out var legacyEl) &&
                 legacyEl.ValueKind == JsonValueKind.True;
-            if (legacyLineListen)
-            {
-                envOverrides["AGENT_LINE_LISTEN"] = "1";
-                envOverrides["AGENT_ENABLE_LEGACY_LINE_LISTEN"] = "1";
-                if (body.TryGetProperty("line_poll_interval", out var pollEl) &&
-                    pollEl.ValueKind == JsonValueKind.Number)
-                    envOverrides["AGENT_LINE_POLL_INTERVAL"] = Math.Max(500, pollEl.GetInt32()).ToString();
-            }
-            else
-            {
-                var runPrompt = body.TryGetProperty("run", out var runEl) && runEl.ValueKind == JsonValueKind.String
-                    ? runEl.GetString()
-                    : body.TryGetProperty("prompt", out var promptEl) && promptEl.ValueKind == JsonValueKind.String
-                        ? promptEl.GetString()
-                        : null;
-                envOverrides["AGENT_RUN"] = string.IsNullOrWhiteSpace(runPrompt)
-                    ? "Reply with the exact text AGENT_READY."
-                    : runPrompt.Trim();
-            }
+            int? linePollInterval = legacyLineListen &&
+                body.TryGetProperty("line_poll_interval", out var pollEl) &&
+                pollEl.ValueKind == JsonValueKind.Number
+                    ? pollEl.GetInt32()
+                    : null;
+            var runPrompt = body.TryGetProperty("run", out var runEl) && runEl.ValueKind == JsonValueKind.String
+                ? runEl.GetString()
+                : body.TryGetProperty("prompt", out var promptEl) && promptEl.ValueKind == JsonValueKind.String
+                    ? promptEl.GetString()
+                    : null;
 
             // 註冊憑證：每次 spawn 簽發新的一把，可重複使用到到期，讓容器重啟後仍能註冊。
             // 容器啟動成功後才撤銷這個 agent 先前 spawn 的憑證；啟動失敗只撤銷新的這把，
@@ -196,20 +193,20 @@ public static class AgentEndpoints
             var issuedBy = RequestBodyHelper.GetPrincipalId(ctx);
             try
             {
-                var spawned = await spawnService.SpawnWithCredentialAsync(
+                var spawned = await launcher.SpawnAsync(
                     agent,
-                    string.IsNullOrWhiteSpace(issuedBy) ? "agents-spawn" : issuedBy,
-                    credentialOptions.SpawnedAgentLifetime,
-                    secret => containerManager.SpawnWorkerAsync(new ContainerSpawnRequest
+                    agentBrokerUrl,
+                    new AgentLaunchRequest
                     {
-                        WorkerType = "agent",
                         WorkerId = agentId,
-                        TrustedEnvironment = envOverrides,
-                        SecretEnvironment = new Dictionary<string, string>(StringComparer.Ordinal)
-                        {
-                            [RegistrationSecretEnvironmentVariable] = secret
-                        },
-                    }));
+                        Model = model,
+                        MaxIterations = maxIterations,
+                        Verbose = verbose,
+                        Run = runPrompt,
+                        LegacyLineListen = legacyLineListen,
+                        LinePollIntervalMs = linePollInterval
+                    },
+                    string.IsNullOrWhiteSpace(issuedBy) ? "agents-spawn" : issuedBy);
 
                 return Results.Ok(ApiResponseHelper.Success(new
                 {
@@ -240,11 +237,31 @@ public static class AgentEndpoints
         });
 
         // ── 6. 停止 Agent ──
-        agents.MapPost("/stop", async (HttpContext ctx, AgentSpawnService spawnService, IContainerManager containerManager) =>
+        agents.MapPost("/stop", async (
+            HttpContext ctx,
+            AgentSpawnService spawnService,
+            IContainerManager containerManager,
+            GovernedGenerationRunStore generationRuns,
+            GenerationDeliveryService generationDelivery) =>
         {
             var body = RequestBodyHelper.GetBody(ctx);
             if (!RequestBodyHelper.TryGetRequired(body, "agent_id", out var agentId, out var err))
                 return err!;
+
+            // 受治理生成的代理：/agents/list 以任務 id 去掉 task_ 前綴列出，不是 agent_ 開頭。
+            // 這類代理改以任務指派的主體停用（撤銷憑證與 session、任務標為 Failed、通知使用者）並停止容器。
+            var governedTaskId = ResolveGovernedGenerationTaskId(agentId, spawnService, generationRuns);
+            if (governedTaskId != null)
+            {
+                await generationDelivery.StopByAdminAsync(governedTaskId);
+                return Results.Ok(ApiResponseHelper.Success(new
+                {
+                    agent_id = governedTaskId[5..],
+                    task_id = governedTaskId,
+                    status = "stopped"
+                }));
+            }
+
             agentId = AgentSpawnService.NormalizeAgentId(agentId);
 
             // 停用資料庫記錄
@@ -568,49 +585,22 @@ public static class AgentEndpoints
     }
 
     /// <summary>
-    /// The container environment variable that carries the registration secret. It is passed through
-    /// ContainerSpawnRequest.SecretEnvironment, so only its name appears in the runtime CLI arguments.
+    /// The container environment variable that carries the registration secret
+    /// (see <see cref="AgentContainerLauncher.RegistrationSecretEnvironmentVariable"/>).
     /// </summary>
-    public const string RegistrationSecretEnvironmentVariable = "BROKER_REGISTRATION_SECRET";
+    public const string RegistrationSecretEnvironmentVariable = AgentContainerLauncher.RegistrationSecretEnvironmentVariable;
 
     /// <summary>Upper bound for the max_iterations a spawn request may ask for.</summary>
-    internal const int MaxSpawnIterations = 50;
+    internal const int MaxSpawnIterations = AgentContainerLauncher.MaxSpawnIterations;
 
     internal static int ClampMaxIterations(int requested)
-        => Math.Clamp(requested, 1, MaxSpawnIterations);
+        => AgentContainerLauncher.ClampMaxIterations(requested);
 
-    /// <summary>
-    /// The agent container always talks to the configured AgentBrokerUrl. A request may repeat
-    /// that value but cannot point the agent (and the credentials handed to it) somewhere else.
-    /// </summary>
+    /// <inheritdoc cref="AgentContainerLauncher.ResolveAgentBrokerUrl"/>
     internal static (bool Ok, string BrokerUrl, string? Error) ResolveAgentBrokerUrl(
         JsonElement body,
         IConfiguration configuration)
-    {
-        var configured = (configuration.GetValue(
-            "FunctionPool:ContainerManager:AgentBrokerUrl",
-            "http://broker:5000") ?? "http://broker:5000").Trim().TrimEnd('/');
-
-        if (string.IsNullOrWhiteSpace(configured))
-            return (false, string.Empty, "FunctionPool:ContainerManager:AgentBrokerUrl must not be empty.");
-
-        if (!Uri.TryCreate(configured, UriKind.Absolute, out var uri) ||
-            (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
-        {
-            return (false, string.Empty, "FunctionPool:ContainerManager:AgentBrokerUrl must be an absolute http(s) URL.");
-        }
-
-        if (body.ValueKind == JsonValueKind.Object && body.TryGetProperty("broker_url", out var brokerUrlEl))
-        {
-            var requested = brokerUrlEl.ValueKind == JsonValueKind.String
-                ? (brokerUrlEl.GetString() ?? string.Empty).Trim().TrimEnd('/')
-                : null;
-            if (requested == null || !string.Equals(requested, configured, StringComparison.OrdinalIgnoreCase))
-                return (false, string.Empty, "Agent broker_url must match the configured AgentBrokerUrl.");
-        }
-
-        return (true, configured, null);
-    }
+        => AgentContainerLauncher.ResolveAgentBrokerUrl(body, configuration);
 
     // FTS query DTO
     private class FtsQueryResult

@@ -58,12 +58,22 @@ public class AgentSpawnService
         }).OrderBy(c => c.RiskLevelValue).ThenBy(c => c.Category).ToList();
     }
 
-    /// <summary>取得預設（最低權限）的能力集合</summary>
+    /// <summary>
+    /// 只由受治理生成的啟動流程授予的能力前綴。這些授予的 scope（輸出位置、套件名稱、頁數上限）
+    /// 由 broker 為單一生成任務寫入，所以不放進任何預設能力集合；管理員仍可在建立代理時明確選取。
+    /// </summary>
+    public const string GovernedOnlyCapabilityPrefix = "generation.";
+
+    /// <summary>是否為只由受治理流程授予、不得出現在預設能力集合中的能力。</summary>
+    public static bool IsGovernedOnlyCapability(string? capabilityId)
+        => capabilityId != null && capabilityId.StartsWith(GovernedOnlyCapabilityPrefix, StringComparison.Ordinal);
+
+    /// <summary>取得預設（最低權限）的能力集合；不含只由受治理流程授予的能力。</summary>
     public List<string> GetDefaultCapabilities()
     {
         var capabilities = _db.GetAll<Capability>();
         return capabilities
-            .Where(c => c.RiskLevel == RiskLevel.Low)
+            .Where(c => c.RiskLevel == RiskLevel.Low && !IsGovernedOnlyCapability(c.CapabilityId))
             .Select(c => c.CapabilityId)
             .ToList();
     }
@@ -76,10 +86,14 @@ public class AgentSpawnService
     /// - rag: RAG 檢索增強型（含 memory + RAG 能力）
     /// - assistant: 助理型（含 memory + conv_log + communication）
     /// - full: 全能力（所有 Low + Medium 權限）
+    ///
+    /// 每一種都不含只由受治理流程授予的能力（generation.*）。
     /// </summary>
     public List<string> GetCapabilitiesForTaskType(string taskType)
     {
-        var allCaps = _db.GetAll<Capability>().ToDictionary(c => c.CapabilityId);
+        var allCaps = _db.GetAll<Capability>()
+            .Where(c => !IsGovernedOnlyCapability(c.CapabilityId))
+            .ToDictionary(c => c.CapabilityId);
         var baseCaps = allCaps.Values
             .Where(c => c.RiskLevel == RiskLevel.Low)
             .Select(c => c.CapabilityId)
@@ -279,6 +293,46 @@ public class AgentSpawnService
             return true;
         }
         return false;
+    }
+
+    /// <summary>
+    /// 結束一個由 broker 指派主體的任務（例如受治理生成）：主體標為 Disabled，撤銷這組主體與任務的註冊憑證與 session，
+    /// 任務改為 <paramref name="finalState"/>（Completed 或 Failed）。任務已在終止狀態時不改它的狀態。
+    /// 與 <see cref="DeactivateAgent"/> 不同，這裡不假設任務 id 是 <c>task_agent_*</c> 的形式，而是以任務指派的主體為準。
+    /// 回傳任務是否存在。
+    /// </summary>
+    public bool DeactivateTaskAgent(string taskId, TaskState finalState, string reason, string revokedBy)
+    {
+        if (finalState is not (TaskState.Completed or TaskState.Failed))
+            throw new ArgumentOutOfRangeException(nameof(finalState), "A task agent ends as Completed or Failed.");
+
+        var task = _db.Get<BrokerTask>(taskId);
+        if (task == null)
+            return false;
+
+        var principalId = task.AssignedPrincipalId;
+        if (!string.IsNullOrWhiteSpace(principalId))
+        {
+            var principal = _db.Get<Principal>(principalId);
+            if (principal != null && principal.Status != EntityStatus.Disabled)
+            {
+                principal.Status = EntityStatus.Disabled;
+                _db.Update(principal);
+            }
+
+            _credentials.RevokeFor(principalId, taskId, reason, revokedBy);
+        }
+
+        _sessions.RevokeSessionsByTask(taskId, reason, revokedBy);
+
+        if (!TaskStates.IsTerminal(task.State))
+        {
+            _db.Execute(
+                "UPDATE broker_tasks SET state = @state, completed_at = @now WHERE task_id = @taskId",
+                new { state = (int)finalState, now = DateTime.UtcNow, taskId });
+        }
+
+        return true;
     }
 
     /// <summary>

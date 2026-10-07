@@ -9,6 +9,8 @@ const {
     getToolNamesForCapabilities,
 } = require('./tool-registry');
 const { logInfo, logWarn, logError, colorize } = require('./utils');
+const { isGenerationTask, generationUnsupportedToolMessage } = require('./system-prompt');
+const { attachArgumentNotes, coerceToolArguments, formatArgumentError } = require('./tool-arguments');
 
 const BROKER_ROUTES = {
     register: '/api/v1/sessions/register',
@@ -130,9 +132,13 @@ class GovernedExecutor {
             return `[Governed] broker session ended: ${this._terminationReason}`;
         }
 
+        // 生成任務：名稱沒有授予時回可照做的說明（沒有這個工具、沒有工具會替它寫定義、下一步做什麼）。
+        const generationTask = isGenerationTask(this.promptContext);
         const capabilityId = capabilityIdForTool(toolName);
         if (!capabilityId) {
-            return `[Governed] unsupported tool: ${toolName}`;
+            return generationTask
+                ? generationUnsupportedToolMessage(toolName, this.getAllowedToolNames())
+                : `[Governed] unsupported tool: ${toolName}`;
         }
 
         const grantedCapabilityIds = this.getAllowedCapabilityIds();
@@ -140,19 +146,35 @@ class GovernedExecutor {
             return '[Governed] session has no granted capabilities.';
         }
         if (!grantedCapabilityIds.includes(capabilityId)) {
+            if (generationTask) {
+                return generationUnsupportedToolMessage(toolName, this.getAllowedToolNames());
+            }
             return `[Governed] capability denied: ${capabilityId}\n` +
                 `tool: ${toolName}\n` +
                 `granted: ${grantedCapabilityIds.join(', ')}`;
+        }
+
+        // 宣告為 object／array 的參數以字串送達時先轉成相符的型別（生成工具另做保守的閉合修補）；
+        // 仍不成功時在本地回結構化錯誤，不送 broker。
+        const parameters = getToolDefinitions({ names: [toolName] })[0]?.function?.parameters;
+        const coerced = coerceToolArguments(toolName, toolArgs, parameters);
+        if (coerced.error) {
+            logWarn(`[Governed] ${toolName}: argument ${coerced.error.parameter} is not usable (${coerced.error.code}); not sent to the broker`);
+            return formatArgumentError(coerced.error);
+        }
+        const args = coerced.args;
+        if (coerced.notes.length > 0) {
+            logWarn(`[Governed] ${toolName}: repaired a JSON string argument before sending`);
         }
 
         this.requestCounter++;
         const idempotencyKey = `${this.sessionInfo.sessionId}-${this.requestCounter}-${Date.now()}`;
         const payload = {
             route: toolName,
-            args: toolArgs,
+            args,
             project_root: context.projectRoot || '',
         };
-        const intent = this._describeIntent(toolName, toolArgs);
+        const intent = this._describeIntent(toolName, args);
 
         if (this.verbose) {
             console.log(colorize(`  [Governed] ${capabilityId} -> broker`, 'yellow'));
@@ -166,7 +188,9 @@ class GovernedExecutor {
                 intent
             ));
 
-            if (result.success === false || result.data?.execution_state === 'denied') {
+            // broker 回的 execution_state 是列舉名稱（Denied、Dispatched…），比對前先轉小寫。
+            const state = String(result.data?.execution_state || '').toLowerCase();
+            if (result.success === false || state === 'denied') {
                 const reason = result.data?.policy_reason || result.message || 'Request denied';
                 console.log(colorize(`  [Governed] denied: ${reason}`, 'red'));
                 return `[Governed] request denied: ${reason}\ncapability: ${capabilityId}\ntool: ${toolName}`;
@@ -180,16 +204,16 @@ class GovernedExecutor {
                 if (this.verbose) {
                     console.log(colorize('  [Governed] tool request succeeded', 'green'));
                 }
-                return resultPayload;
+                return attachArgumentNotes(resultPayload, coerced.notes);
             }
 
-            if (result.data?.execution_state === 'dispatched') {
-                return `[Governed] request dispatched (request_id: ${result.data?.request_id})`;
+            if (state === 'dispatched') {
+                return attachArgumentNotes(`[Governed] request dispatched (request_id: ${result.data?.request_id})`, coerced.notes);
             }
 
-            return result.data
+            return attachArgumentNotes(result.data
                 ? JSON.stringify(result.data)
-                : '[Governed] request completed';
+                : '[Governed] request completed', coerced.notes);
         } catch (e) {
             logError(`[Governed] tool request failed: ${e.message}`);
             return `[Governed] broker error: ${e.message}`;
@@ -297,6 +321,11 @@ class GovernedExecutor {
 
     getAllowedCapabilityIds() {
         return this.allowedCapabilities.map((item) => item.capabilityId);
+    }
+
+    /** 這個 session 授予的工具名稱（與 getAllowedToolDefinitions 相同的順序）。 */
+    getAllowedToolNames() {
+        return this.getAllowedToolDefinitions().map((definition) => definition.function?.name).filter(Boolean);
     }
 
     getAllowedToolDefinitions() {
@@ -574,6 +603,13 @@ class GovernedExecutor {
                 return `Apply repo patch${args.base_commit ? ` (base ${String(args.base_commit).substring(0, 12)})` : ''}`;
             case 'run_build_test':
                 return `Run build/test: ${(args.command || '').substring(0, 100)}`;
+            case 'query_component_catalog':
+                return `Query component catalog: ${String(args.section || 'overview').substring(0, 32)}` +
+                    (args.name ? ` (${String(args.name).substring(0, 64)})` : '');
+            case 'validate_definition':
+                return 'Validate generation definition';
+            case 'generate_scaffold':
+                return `Generate scaffold${args.title ? `: ${String(args.title).substring(0, 120)}` : ''}`;
             default:
                 return `Tool call: ${toolName}`;
         }

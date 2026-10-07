@@ -14,13 +14,15 @@ Bricks4Agent's end state is an **AI agent service**: it takes requests from huma
 
 ## Build & Test
 
-- Full JS gate: `npm test` (runs `test-all.js` generator examples, then `test:ui-components`, `test:custom-components` and the Vitest component suites via `npm --prefix packages/javascript/browser run test:vitest`; run `npm --prefix packages/javascript/browser install` once first to get the vitest/jsdom devDependencies)
+- Full JS gate: `npm test` (runs `test-all.js` generator examples, then `test:ui-components`, `test:custom-components`, `test:generation` and the Vitest component suites via `npm --prefix packages/javascript/browser run test:vitest`; run `npm --prefix packages/javascript/browser install` once first to get the vitest/jsdom devDependencies)
 
 - UI library checks: `npm run validate:ui-library` (add `:browser` for a real browser)
 
 - Component/renderer unit tests: `npm run test:ui-components` (node:test; covers `ui_components/**/*.test.mjs`, `page-generator/**/*.test.mjs`, and the DOM-equivalence utility)
 
 - Style-token audit: `npm run audit:ui-styles`
+
+- Governed generation (DefinitionTemplate → multi-page prototype): `npm run test:generation` (node:test for `tools/generation/`: layered validation, catalog summary, deterministic build, CLI exit-code contract); `npm run test:definition-site:browser` builds the golden example into `.test-output/` and drives every route in Edge (hard-imports playwright-core from `../tim-web/poc`). Broker side: `GovernedGenerationTests` in the integration suite (one case runs the real generation-worker handlers and `tools/generation/cli.mjs` in process, so the integration suite needs node); design and settings in [GovernedGeneration.md](docs/designs/GovernedGeneration.md)
 
 - All SDK-style .NET 10 projects, with every warning treated as an error: `npm run test:dotnet10`
 
@@ -52,6 +54,9 @@ Bricks4Agent's end state is an **AI agent service**: it takes requests from huma
 |---|---|---|
 | `.test-output/` | test output directory | delete after testing |
 | generated pages/projects under `out/` (or your `--output`) | `spa-cli.js` / `page-gen.js` | delete after testing |
+| `%TEMP%/b4a-gen*` (`b4a-gen-test-*`, `b4a-gen-truncate-*`, `b4a-gengov-*`, `b4a-gencontract-*`, `b4a-genworker-*`, `b4a-gen-toolspec-*`) | generation node:test and xUnit suites | removed by the tests; delete leftovers |
+| `%TEMP%/broker_integration_*` (`.db`, `-shm`, `-wal`, and `broker_integration_access_*` directories) | integration test fixtures (`BrokerFixture`) | removed by the fixtures (retried); delete leftovers |
+| `%TEMP%/broker_test_*.db` (with `-shm`, `-wal`) | unit tests (`TestDb.CreateInMemory`) | deleted when the test process exits; delete leftovers |
 
 When adding tests that produce files: add the pattern to this table, ensure it is in `.gitignore`, and clean it up in the test.
 

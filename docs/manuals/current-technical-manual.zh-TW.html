@@ -1279,6 +1279,8 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\run-worker.ps
 <p><code>/cancel</code></p>
 </li>
 </ul>
+<p><code>/proj</code>（起手）、<code>/ok</code>、<code>/revise</code> 與訪談中的回答（會產生並交付審查檔）和 <code>/建立</code> 走同一個權限判斷：effective <code>AllowProduction</code>（Basic 層一律遮罩為 false）不成立時回 <code>production_disabled</code>，回覆與 <code>/建立</code> 被拒時相同，不建立訪談狀態、不產生審查檔，也不建立 draft。<code>/cancel</code> 不設閘，訪談中途被降級的使用者仍可結束訪談。確認 draft（回 <code>y</code>）時也重新檢查：draft 建立後才被降級的使用者回 <code>production_disabled</code>，draft 保留。</p>
+<p><code>/ok</code> 在審查階段只做兩件事：把訪談轉入 <code>AwaitBuildConfirmation</code>，並把編譯出的專案定義轉成 <code>system_scaffold</code> draft（模板家族與已確認的需求寫入 scaffold spec，draft 記錄訪談版本）。它不建置任何檔案。使用者回 <code>y</code> 後，draft 走與 <code>/建立</code> 相同的 <code>ConfirmDraft</code>：專案名稱重查、promotion gate、execution intent、task、plan、handoff，之後才執行生成；建置任務建立成功後訪談才標為 Confirmed。回 <code>n</code> 或 draft 過期後，訪談仍在 <code>AwaitBuildConfirmation</code>，可再 <code>/ok</code> 重建 draft，或 <code>/revise</code> 修訂（修訂時撤下等待確認的舊 draft）。使用者工作區已有同名專案資料夾時，draft 不帶專案名稱，改走 <code>#名稱</code> 補件。同一位使用者的 draft 確認依序執行並在鎖內重新讀取 draft，一份 draft 只會建立一個任務（重複的 <code>y</code> 回 <code>draft_not_pending</code>）。</p>
 <h3>9.2 Workflow states</h3>
 <p>High-level workflow separates：</p>
 <ul>
@@ -1312,6 +1314,24 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\run-worker.ps
 {AccessRoot}/{channel}/{userId}/projects
 </code></pre>
 <p>Document/code/site artifacts are written to managed workspace and represented in shared context / DB records for admin listing and delivery.</p>
+<p>使用者看得到的高階回覆（LINE 與 portal 的 <code>reply</code>、<code>follow_up_messages</code>，以及 portal 結果紀錄）不帶主機絕對路徑：</p>
+<ul>
+<li>回覆只寫 <code>project_folder</code>、相對於專案資料夾的 <code>entry_file</code>、<code>package_file</code> 檔名，以及相對於 <code>AccessRoot</code> 的工作區位置（例如 <code>workspace: line/&lt;user&gt;</code>）。</li>
+<li>生成失敗訊息中的絕對路徑只保留最後一段。</li>
+<li><code>FinalizeResult</code> 會把 <code>AccessRoot</code> 底下的路徑改寫成相對名稱，作為最後一道防線；portal 的 <code>/portal/results</code> 顯示歷史紀錄時也套用同樣的改寫。</li>
+<li><code>/high-level/line/process</code> 回給 line-worker 的結構化欄位（<code>draft</code>、<code>handoff</code>、<code>created_task</code>）仍帶工作區路徑，供受信任的 worker 與管理端使用，line-worker 只轉送 <code>reply</code> 與 <code>follow_up_messages</code>。</li>
+</ul>
+<h3>9.4 Governed generation（受治理生成）</h3>
+<p><code>HighLevelCoordinator:Generation:SystemScaffoldMode</code> 決定 system_scaffold 確認後怎麼生成：<code>Legacy</code>（預設）沿用 broker 程序內的佔位頁生成；<code>Governed</code> 改由受控代理經三個生成能力產出，broker 程序內不寫任何專案檔案。其他值視為設定錯誤，走 Governed 並由就緒檢查拒絕。</p>
+<p>Governed 的流程（設計與決策見 <a href="../designs/GovernedGeneration.html">GovernedGeneration.md</a>）：</p>
+<ul>
+<li><code>ConfirmDraft</code> 先做就緒檢查：ContainerManager 啟用且容器執行環境可用、LlmProxy 啟用、三個 <code>generation.*</code> 能力已載入、FunctionPool 有提供這三個能力的 generation-worker、<code>Generation:OutputRoot</code> 存在。不就緒時回 <code>generation_unavailable</code>，不建立任務，也不退回程序內生成。建立任務前再檢查名額：同一使用者已有進行中的生成時回 <code>generation_in_progress</code>（上限 <code>Generation:MaxConcurrentRunsPerUser</code>，預設 1），全部進行中的生成達到 <code>Generation:MaxConcurrentRuns</code>（預設 2）時回 <code>generation_busy</code>；名額檢查到代理啟動與其他受治理的啟動依序進行。</li>
+<li>名稱重查、升格閘、execution intent、task、plan、handoff 與 Legacy 相同。之後 <code>GovernedGenerationLauncher</code> 把任務指派給 AI 主體 <code>prn_{任務後綴}</code> 與 <code>role_executor</code>，runtimeDescriptor 換成只含三個 grant（generate 的 scope 由 broker 寫入 <code>output_slot</code>＝任務 id、<code>package_name</code>、<code>max_pages</code>、<code>package</code>；三個 grant 帶 <code>quota_scope: "task"</code>：一個任務同時只留一個 session，註冊新 session 時在同一道鎖內撤銷同任務的其他 session 與授予，新 session 只拿到任務剩下的配額，所有 session 合計不超過樣板的配額；validate 的 scope 也帶 <code>max_pages</code>，頁數過多在驗證時就回報）、生成上限與可用時的 <code>llm</code> 的精簡版本；推薦的執行模型只在型錄項目的 <code>Provider</code> 與 <code>LlmProxy:Provider</code> 相同時採用，否則代理用 <code>LlmProxy:DefaultModel</code>。handoff 加上淨化過的 <code>generation_request</code>，讀取 ACL 只限系統；受治理任務的 scope descriptor 不帶 <code>path_scope</code>、<code>origin_user_id</code> 與 <code>execution_intent_document</code>，plan 描述不帶來源使用者。<code>/tasks/query</code>、<code>/plans/get</code>、<code>/plans/status</code> 對不是提交者、也不是管理員的呼叫者不回 <code>submitted_by</code>。</li>
+<li>draft 預覽（<code>HighLevelSystemScaffoldService.BuildDraftReply</code> 的 Governed 版本）說明產物是前端可操作原型，不列 Legacy scaffold 的前端框架、後端、資料庫、登入與封裝格式；交給代理的工作項也只帶 scaffold 的 family 與 ui_shape。</li>
+<li>以 <code>AgentContainerLauncher</code>（與 <code>/agents/spawn</code> 共用）簽發註冊憑證並啟動代理容器，<code>AGENT_RUN</code> 帶不超過 4000 位元組的工作項；啟動不跟著請求取消。成功才刪除 draft，回覆「已受理（任務 id）」；啟動失敗時任務標為 <code>Failed</code>（新的終止狀態，與 Completed、Cancelled 同樣不再接受註冊、續期與憑證簽發），回 <code>generation_launch_failed</code>。</li>
+<li><code>GenerationIngestingDispatcher</code> 包在執行分派器外層。三個生成能力在 generation-worker 忙碌（<code>No available worker</code>）時於約 15 秒內再分派同一個請求，不重複扣配額。<code>generate_scaffold</code> 另外經它收下產物：比對 output slot 與請求 id，確認 zip 是 <code>{slot}/{requestId}/{名稱}-scaffold.zip</code> 且在 <code>Generation:OutputRoot</code> 之下、路徑上沒有連結，重新計算大小與 sha256，複製到使用者文件區後再驗一次，寫入證據文件 <code>generation.execution.{requestId}</code> 並設定執行請求的 <code>EvidenceRef</code>。任何一步失敗，這次執行記為 Failed、不交付。</li>
+<li><code>GenerationDeliveryService</code>（hosted service）以 <code>LineArtifactDeliveryService.DeliverExistingFileAsync</code> 交付（產物紀錄、Drive 或簽章連結、LINE 通知；Drive 的網路錯誤、逾時與無效回應改用簽章連結），之後任務 Completed、停用代理並停止容器。watchdog 在超過 <code>Generation:DeadlineMinutes</code>、代理結束卻沒有產物、或交付失敗時，把任務標為 Failed、停用代理、停止容器並通知使用者；交付丟出例外只算一次嘗試，達到 <code>Generation:MaxDeliveryAttempts</code>（預設 3）次才標為失敗，單一執行的例外不中斷整輪。管理員可用 <code>/agents/list</code> 列出的 id 經 <code>/agents/stop</code> 停止受治理代理（<code>stopped_by_admin</code>）。執行紀錄存在 <code>generation.run.{taskId}</code>（global 範圍）。</li>
+</ul>
 <h2>10. Agent Runtime</h2>
 <p><code>tools/agent</code> supports three modes:</p>
 <table>
@@ -2133,11 +2153,19 @@ $env:STACK_MODEL='gpt-5.4-mini'
 </tr>
 <tr>
 <td><code>HighLevelExecutionModelPolicy</code></td>
-<td>execution model aliases</td>
+<td>execution model aliases；<code>Catalog[].Provider</code> 標明服務該模型的供應者，受治理生成只在它與 <code>LlmProxy:Provider</code> 相同時採用推薦</td>
 </tr>
 <tr>
 <td><code>HighLevelCoordinator</code></td>
 <td>workspace/root/keywords/draft TTL</td>
+</tr>
+<tr>
+<td><code>HighLevelCoordinator:Generation</code></td>
+<td><code>SystemScaffoldMode</code>：<code>Legacy</code>（預設）或 <code>Governed</code></td>
+</tr>
+<tr>
+<td><code>Generation</code></td>
+<td>governed generation：<code>OutputRoot</code>（與 generation-worker 共用）、<code>DeadlineMinutes</code>、<code>AgentMaxIterations</code>、<code>MaxPages</code>（1～12，受生成器驗證限制）、<code>WatchdogIntervalSeconds</code>、<code>MaxPackageBytes</code>、<code>MaxConcurrentRuns</code>（預設 2）、<code>MaxConcurrentRunsPerUser</code>（預設 1）、<code>MaxDeliveryAttempts</code>（預設 3）</td>
 </tr>
 <tr>
 <td><code>ProjectInterview</code></td>
@@ -2297,6 +2325,7 @@ $env:WORKER_Line__OutboundRateLimit__PermitLimit='20'
 dotnet test packages/csharp/tests/integration/Integration.Tests.csproj
 dotnet test packages/csharp/tests/integration/Integration.Tests.csproj --filter PortalEndpointTests
 </code></pre>
+<p><code>GovernedGenerationTests</code> 含一個程序內端到端案例，以 generation-worker 的 handler 與 repo 中的 <code>tools/generation/cli.mjs</code> 處理 golden 範例，需要 node（<code>B4A_NODE_PATH</code> 或 PATH 上的 node）。</p>
 <h3>20.4 BaseOrm and broker verify</h3>
 <pre><code class="language-powershell">npm run validate:baseorm
 npm run validate:baseorm-sync
@@ -2317,6 +2346,8 @@ npm run test:dotnet10
 <h3>20.6 JS/UI/generator</h3>
 <pre><code class="language-powershell">npm test
 npm run test:generator
+npm run test:generation
+npm run test:definition-site:browser
 npm run validate:ui-state
 npm run audit:ui-styles
 npm run validate:ui-library
@@ -2452,6 +2483,21 @@ node tools/agent/tests/validate-efcore-removal.js
 <td><code>.test-output/</code></td>
 <td>stack/tests</td>
 <td>delete after testing</td>
+</tr>
+<tr>
+<td><code>%TEMP%\b4a-gengov-*</code>, <code>%TEMP%\b4a-gencontract-*</code>, <code>%TEMP%\b4a-genworker-*</code>, <code>%TEMP%\b4a-gen-test-*</code>, <code>%TEMP%\b4a-gen-truncate-*</code>, <code>%TEMP%\b4a-gen-toolspec-*</code></td>
+<td>governed generation unit/integration tests</td>
+<td>removed by the tests; delete leftovers</td>
+</tr>
+<tr>
+<td><code>%TEMP%\broker_integration_*.db</code>（含 <code>-shm</code>、<code>-wal</code>）, <code>%TEMP%\broker_integration_access_*</code></td>
+<td>integration test fixtures (<code>BrokerFixture</code>)</td>
+<td>removed by the fixtures (retried); delete leftovers</td>
+</tr>
+<tr>
+<td><code>%TEMP%\broker_test_*.db</code>（含 <code>-shm</code>、<code>-wal</code>）</td>
+<td>unit tests (<code>TestDb.CreateInMemory</code>)</td>
+<td>deleted when the test process exits; delete leftovers</td>
 </tr>
 <tr>
 <td><code>test-results/</code></td>

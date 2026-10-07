@@ -254,6 +254,29 @@ compose 中 adapter 服務以 **profile 隔離**(`--profile adapters`),預設不
 
 尚未做:broker `--integration` HTTP 對新 route 的覆蓋(stack 測試已涵蓋真實 dispatch 路徑)。
 
+### 9.1 生成 worker(受治理生成,2026-10-07 起)
+
+`generation-worker` 執行三個受治理生成能力:`generation.catalog.query`(route `query_component_catalog`)、`generation.definition.validate`(`validate_definition`)、`generation.scaffold.generate`(`generate_scaffold`)。代理查型錄、撰寫 DefinitionTemplate、驗證後請求生成;broker 裁決後派給這個 worker,它以 node 執行元件庫生成器,產出多頁前端原型並打包成決定性 zip。能力以 `packages/csharp/broker/tool-specs/generation.*` 為唯一來源;三個 route 都不在 broker 程序內的降級清單,沒有 worker 就直接失敗。
+
+- 不呼叫 LLM、不連外:compose 中只接 internal 的 `generation-net`(成員只有 broker 與它),以 `--profile generation` 啟動。
+- 輸出位置只取自 grant scope(`output_slot`、`package_name`、`max_pages`、`package`),寫到 `generation-out` volume 的 `/out`;broker 以唯讀掛同一個 volume 在 `/generation-out`(`Generation__OutputRoot`)。請求參數中的路徑一律不採用。
+- 保留期限:產物在 `generation-out` 保留 `Generation:RetentionHours`(預設 24 小時)。要調整時在 env 檔設定 `GENERATION_RETENTION_HOURS`(1~8760),compose 會把它轉成 worker 的 `WORKER_Generation__RetentionHours`。worker 啟動時、每次 generate 之前與執行期間每小時刪除超過期限的請求目錄;broker 唯讀掛載,清理只由 worker 做;worker 沒有執行時(沒有啟用 `generation` profile)不會清理。zip 含使用者的需求內容,所以不無限期保留。
+- 加固:uid 10008、read-only rootfs、`/tmp` tmpfs、cap-drop ALL、no-new-privileges、`pids_limit: 128`;映像只從 node:22 取 node 執行檔放進 aspnet:10.0,建置時先執行一次確認相容。
+- 憑證是 broker 的 credential index 3(`GENERATION_WORKER_AUTH_KEY_ID`、`GENERATION_WORKER_AUTH_SHARED_SECRET`,由 `gen-stack-secrets.mjs` 產生)。
+- `AGENT_MAX_ITERATIONS` 可由環境變數設定(compose 預設 4;生成流程需要更多回合)。
+- Windows sidecar 以 `line-sidecar.ps1 up -GenerationMode Governed` 用主機程序啟動它;見 [line-sidecar-runbook.zh-TW.md](line-sidecar-runbook.zh-TW.md) 3.1.1。
+
+驗證:
+
+```bash
+# handler、scope、冪等、zip 決定性、逾時與輸出過大(以測試用的假 CLI 執行真正的 node 子程序)
+dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter "FullyQualifiedName~Generation"
+# compose 接線、加固、映像、sidecar 與工具映射
+npm run validate:agent-container-config
+```
+
+worker 的契約見 [packages/csharp/workers/generation-worker/README.md](../../packages/csharp/workers/generation-worker/README.md)。端到端(compose 生成堆疊、主機 broker 完整入口)另行驗證。
+
 ## 10. 範圍界線(對照規格 §13/§18;2026-09-26 核對)
 
 **已實作**:

@@ -10,6 +10,7 @@ $repoRoot = Resolve-Path (Join-Path $scriptDir "..\..\..\..")
 $runRoot = Join-Path $repoRoot ".run\line-sidecar"
 $brokerPidFile = Join-Path $runRoot "broker.pid"
 $workerPidFile = Join-Path $runRoot "line-worker.pid"
+$generationWorkerPidFile = Join-Path $runRoot "generation-worker.pid"
 $ngrokPidFile = Join-Path $runRoot "ngrok.pid"
 $cloudflaredPidFile = Join-Path $runRoot "cloudflared.pid"
 $localhostRunPidFile = Join-Path $runRoot "localhostrun.pid"
@@ -92,11 +93,15 @@ function Remove-NgrokTunnel {
 }
 
 Stop-RecordedProcess -PidFile $workerPidFile -Label "line-worker"
+if (Test-Path $generationWorkerPidFile) {
+    Stop-RecordedProcess -PidFile $generationWorkerPidFile -Label "generation-worker"
+}
 Stop-RecordedProcess -PidFile $brokerPidFile -Label "broker"
 Stop-RecordedProcess -PidFile $ngrokPidFile -Label "ngrok"
 Stop-RecordedProcess -PidFile $cloudflaredPidFile -Label "cloudflared"
 Stop-RecordedProcess -PidFile $localhostRunPidFile -Label "localhost.run"
 Stop-RecordedProcess -PidFile $webhookSyncPidFile -Label "webhook-sync"
 Stop-ProcessByExecutablePath -ExecutablePath (Join-Path $runRoot "line-worker\\LineWorker.exe") -Label "line-worker"
+Stop-ProcessByExecutablePath -ExecutablePath (Join-Path $runRoot "generation-worker\\GenerationWorker.exe") -Label "generation-worker"
 Stop-ProcessByExecutablePath -ExecutablePath (Join-Path $runRoot "broker\\Broker.exe") -Label "broker"
 Remove-NgrokTunnel -Name $tunnelName

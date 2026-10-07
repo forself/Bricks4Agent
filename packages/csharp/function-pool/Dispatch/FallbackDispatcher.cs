@@ -41,10 +41,14 @@ public class FallbackDispatcher : IExecutionDispatcher
 
     public async Task<ExecutionResult> DispatchAsync(ApprovedRequest request)
     {
+        // 請求是否一開始就沒有送到任何 worker（逾時或傳輸失敗時請求已送出，不算）。
+        var notSentToAWorker = true;
+
         // 嘗試功能池
         if (_pool.HasAvailableWorker(request.CapabilityId))
         {
             var result = await _pool.DispatchAsync(request);
+            notSentToAWorker = result.NoWorkerAvailable;
 
             // 成功 → 直接返回
             if (result.Success)
@@ -81,8 +85,10 @@ public class FallbackDispatcher : IExecutionDispatcher
         }
 
         // 兩者都不可用
-        return ExecutionResult.Fail(request.RequestId,
-            $"No available worker for capability '{request.CapabilityId}' " +
-            $"and route '{request.Route}' is not supported by fallback dispatcher.");
+        var message = $"No available worker for capability '{request.CapabilityId}' " +
+                      $"and route '{request.Route}' is not supported by fallback dispatcher.";
+        return notSentToAWorker
+            ? ExecutionResult.NoWorker(request.RequestId, message)
+            : ExecutionResult.Fail(request.RequestId, message);
     }
 }

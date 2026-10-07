@@ -283,6 +283,24 @@ node tools/agent/tests/test-podman-execution-adapter-stack.js
 <p>慣例提醒:agent 送出的 payload <code>route</code> 就是「工具名」(如 <code>apply_patch</code>),broker policy 要求 <code>route == capability.Route</code>。所以新能力的 <code>Route</code> 必須設成工具名(<code>repo.patch.apply</code>→<code>apply_patch</code>、<code>build.test.run</code>→<code>run_build_test</code>),而非設計文件的 <code>execution.*</code> 邏輯名。</p>
 </blockquote>
 <p>尚未做:broker <code>--integration</code> HTTP 對新 route 的覆蓋(stack 測試已涵蓋真實 dispatch 路徑)。</p>
+<h3>9.1 生成 worker(受治理生成,2026-10-07 起)</h3>
+<p><code>generation-worker</code> 執行三個受治理生成能力:<code>generation.catalog.query</code>(route <code>query_component_catalog</code>)、<code>generation.definition.validate</code>(<code>validate_definition</code>)、<code>generation.scaffold.generate</code>(<code>generate_scaffold</code>)。代理查型錄、撰寫 DefinitionTemplate、驗證後請求生成;broker 裁決後派給這個 worker,它以 node 執行元件庫生成器,產出多頁前端原型並打包成決定性 zip。能力以 <code>packages/csharp/broker/tool-specs/generation.*</code> 為唯一來源;三個 route 都不在 broker 程序內的降級清單,沒有 worker 就直接失敗。</p>
+<ul>
+<li>不呼叫 LLM、不連外:compose 中只接 internal 的 <code>generation-net</code>(成員只有 broker 與它),以 <code>--profile generation</code> 啟動。</li>
+<li>輸出位置只取自 grant scope(<code>output_slot</code>、<code>package_name</code>、<code>max_pages</code>、<code>package</code>),寫到 <code>generation-out</code> volume 的 <code>/out</code>;broker 以唯讀掛同一個 volume 在 <code>/generation-out</code>(<code>Generation__OutputRoot</code>)。請求參數中的路徑一律不採用。</li>
+<li>保留期限:產物在 <code>generation-out</code> 保留 <code>Generation:RetentionHours</code>(預設 24 小時)。要調整時在 env 檔設定 <code>GENERATION_RETENTION_HOURS</code>(1~8760),compose 會把它轉成 worker 的 <code>WORKER_Generation__RetentionHours</code>。worker 啟動時、每次 generate 之前與執行期間每小時刪除超過期限的請求目錄;broker 唯讀掛載,清理只由 worker 做;worker 沒有執行時(沒有啟用 <code>generation</code> profile)不會清理。zip 含使用者的需求內容,所以不無限期保留。</li>
+<li>加固:uid 10008、read-only rootfs、<code>/tmp</code> tmpfs、cap-drop ALL、no-new-privileges、<code>pids_limit: 128</code>;映像只從 node:22 取 node 執行檔放進 aspnet:10.0,建置時先執行一次確認相容。</li>
+<li>憑證是 broker 的 credential index 3(<code>GENERATION_WORKER_AUTH_KEY_ID</code>、<code>GENERATION_WORKER_AUTH_SHARED_SECRET</code>,由 <code>gen-stack-secrets.mjs</code> 產生)。</li>
+<li><code>AGENT_MAX_ITERATIONS</code> 可由環境變數設定(compose 預設 4;生成流程需要更多回合)。</li>
+<li>Windows sidecar 以 <code>line-sidecar.ps1 up -GenerationMode Governed</code> 用主機程序啟動它;見 <a href="line-sidecar-runbook.zh-TW.html">line-sidecar-runbook.zh-TW.md</a> 3.1.1。</li>
+</ul>
+<p>驗證:</p>
+<pre><code class="language-bash"># handler、scope、冪等、zip 決定性、逾時與輸出過大(以測試用的假 CLI 執行真正的 node 子程序)
+dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter &quot;FullyQualifiedName~Generation&quot;
+# compose 接線、加固、映像、sidecar 與工具映射
+npm run validate:agent-container-config
+</code></pre>
+<p>worker 的契約見 <a href="../../packages/csharp/workers/generation-worker/README.html">packages/csharp/workers/generation-worker/README.md</a>。端到端(compose 生成堆疊、主機 broker 完整入口)另行驗證。</p>
 <h2>10. 範圍界線(對照規格 §13/§18;2026-09-26 核對)</h2>
 <p><strong>已實作</strong>:</p>
 <ul>

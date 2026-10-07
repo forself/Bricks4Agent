@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'; worker-src 'none'">
+    <title>系統原型</title>
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="runtime/ui_components/theme.css">
+    <link rel="stylesheet" href="app.css">
+</head>
+<body>
+    <div class="ds-app">
+        <header class="ds-header">
+            <h1 class="ds-header__title" data-site-title>系統原型</h1>
+            <nav class="ds-nav" data-site-nav></nav>
+        </header>
+        <main class="ds-main" data-site-main data-route-state="loading"></main>
+        <noscript>
+            <p class="ds-notice">此原型需要 JavaScript，且須透過本機 HTTP 伺服器開啟，請參閱 README.txt。</p>
+        </noscript>
+    </div>
+    <script type="module" src="boot.js"></script>
+</body>
+</html>

@@ -586,6 +586,10 @@ Project interview commands:
 
 - `/cancel`
 
+`/proj`（起手）、`/ok`、`/revise` 與訪談中的回答（會產生並交付審查檔）和 `/建立` 走同一個權限判斷：effective `AllowProduction`（Basic 層一律遮罩為 false）不成立時回 `production_disabled`，回覆與 `/建立` 被拒時相同，不建立訪談狀態、不產生審查檔，也不建立 draft。`/cancel` 不設閘，訪談中途被降級的使用者仍可結束訪談。確認 draft（回 `y`）時也重新檢查：draft 建立後才被降級的使用者回 `production_disabled`，draft 保留。
+
+`/ok` 在審查階段只做兩件事：把訪談轉入 `AwaitBuildConfirmation`，並把編譯出的專案定義轉成 `system_scaffold` draft（模板家族與已確認的需求寫入 scaffold spec，draft 記錄訪談版本）。它不建置任何檔案。使用者回 `y` 後，draft 走與 `/建立` 相同的 `ConfirmDraft`：專案名稱重查、promotion gate、execution intent、task、plan、handoff，之後才執行生成；建置任務建立成功後訪談才標為 Confirmed。回 `n` 或 draft 過期後，訪談仍在 `AwaitBuildConfirmation`，可再 `/ok` 重建 draft，或 `/revise` 修訂（修訂時撤下等待確認的舊 draft）。使用者工作區已有同名專案資料夾時，draft 不帶專案名稱，改走 `#名稱` 補件。同一位使用者的 draft 確認依序執行並在鎖內重新讀取 draft，一份 draft 只會建立一個任務（重複的 `y` 回 `draft_not_pending`）。
+
 ### 9.2 Workflow states
 
 High-level workflow separates：
@@ -617,6 +621,26 @@ Workspace service uses:
 ```
 
 Document/code/site artifacts are written to managed workspace and represented in shared context / DB records for admin listing and delivery.
+
+使用者看得到的高階回覆（LINE 與 portal 的 `reply`、`follow_up_messages`，以及 portal 結果紀錄）不帶主機絕對路徑：
+
+- 回覆只寫 `project_folder`、相對於專案資料夾的 `entry_file`、`package_file` 檔名，以及相對於 `AccessRoot` 的工作區位置（例如 `workspace: line/<user>`）。
+- 生成失敗訊息中的絕對路徑只保留最後一段。
+- `FinalizeResult` 會把 `AccessRoot` 底下的路徑改寫成相對名稱，作為最後一道防線；portal 的 `/portal/results` 顯示歷史紀錄時也套用同樣的改寫。
+- `/high-level/line/process` 回給 line-worker 的結構化欄位（`draft`、`handoff`、`created_task`）仍帶工作區路徑，供受信任的 worker 與管理端使用，line-worker 只轉送 `reply` 與 `follow_up_messages`。
+
+### 9.4 Governed generation（受治理生成）
+
+`HighLevelCoordinator:Generation:SystemScaffoldMode` 決定 system_scaffold 確認後怎麼生成：`Legacy`（預設）沿用 broker 程序內的佔位頁生成；`Governed` 改由受控代理經三個生成能力產出，broker 程序內不寫任何專案檔案。其他值視為設定錯誤，走 Governed 並由就緒檢查拒絕。
+
+Governed 的流程（設計與決策見 [GovernedGeneration.md](../designs/GovernedGeneration.md)）：
+
+- `ConfirmDraft` 先做就緒檢查：ContainerManager 啟用且容器執行環境可用、LlmProxy 啟用、三個 `generation.*` 能力已載入、FunctionPool 有提供這三個能力的 generation-worker、`Generation:OutputRoot` 存在。不就緒時回 `generation_unavailable`，不建立任務，也不退回程序內生成。建立任務前再檢查名額：同一使用者已有進行中的生成時回 `generation_in_progress`（上限 `Generation:MaxConcurrentRunsPerUser`，預設 1），全部進行中的生成達到 `Generation:MaxConcurrentRuns`（預設 2）時回 `generation_busy`；名額檢查到代理啟動與其他受治理的啟動依序進行。
+- 名稱重查、升格閘、execution intent、task、plan、handoff 與 Legacy 相同。之後 `GovernedGenerationLauncher` 把任務指派給 AI 主體 `prn_{任務後綴}` 與 `role_executor`，runtimeDescriptor 換成只含三個 grant（generate 的 scope 由 broker 寫入 `output_slot`＝任務 id、`package_name`、`max_pages`、`package`；三個 grant 帶 `quota_scope: "task"`：一個任務同時只留一個 session，註冊新 session 時在同一道鎖內撤銷同任務的其他 session 與授予，新 session 只拿到任務剩下的配額，所有 session 合計不超過樣板的配額；validate 的 scope 也帶 `max_pages`，頁數過多在驗證時就回報）、生成上限與可用時的 `llm` 的精簡版本；推薦的執行模型只在型錄項目的 `Provider` 與 `LlmProxy:Provider` 相同時採用，否則代理用 `LlmProxy:DefaultModel`。handoff 加上淨化過的 `generation_request`，讀取 ACL 只限系統；受治理任務的 scope descriptor 不帶 `path_scope`、`origin_user_id` 與 `execution_intent_document`，plan 描述不帶來源使用者。`/tasks/query`、`/plans/get`、`/plans/status` 對不是提交者、也不是管理員的呼叫者不回 `submitted_by`。
+- draft 預覽（`HighLevelSystemScaffoldService.BuildDraftReply` 的 Governed 版本）說明產物是前端可操作原型，不列 Legacy scaffold 的前端框架、後端、資料庫、登入與封裝格式；交給代理的工作項也只帶 scaffold 的 family 與 ui_shape。
+- 以 `AgentContainerLauncher`（與 `/agents/spawn` 共用）簽發註冊憑證並啟動代理容器，`AGENT_RUN` 帶不超過 4000 位元組的工作項；啟動不跟著請求取消。成功才刪除 draft，回覆「已受理（任務 id）」；啟動失敗時任務標為 `Failed`（新的終止狀態，與 Completed、Cancelled 同樣不再接受註冊、續期與憑證簽發），回 `generation_launch_failed`。
+- `GenerationIngestingDispatcher` 包在執行分派器外層。三個生成能力在 generation-worker 忙碌（`No available worker`）時於約 15 秒內再分派同一個請求，不重複扣配額。`generate_scaffold` 另外經它收下產物：比對 output slot 與請求 id，確認 zip 是 `{slot}/{requestId}/{名稱}-scaffold.zip` 且在 `Generation:OutputRoot` 之下、路徑上沒有連結，重新計算大小與 sha256，複製到使用者文件區後再驗一次，寫入證據文件 `generation.execution.{requestId}` 並設定執行請求的 `EvidenceRef`。任何一步失敗，這次執行記為 Failed、不交付。
+- `GenerationDeliveryService`（hosted service）以 `LineArtifactDeliveryService.DeliverExistingFileAsync` 交付（產物紀錄、Drive 或簽章連結、LINE 通知；Drive 的網路錯誤、逾時與無效回應改用簽章連結），之後任務 Completed、停用代理並停止容器。watchdog 在超過 `Generation:DeadlineMinutes`、代理結束卻沒有產物、或交付失敗時，把任務標為 Failed、停用代理、停止容器並通知使用者；交付丟出例外只算一次嘗試，達到 `Generation:MaxDeliveryAttempts`（預設 3）次才標為失敗，單一執行的例外不中斷整輪。管理員可用 `/agents/list` 列出的 id 經 `/agents/stop` 停止受治理代理（`stopped_by_admin`）。執行紀錄存在 `generation.run.{taskId}`（global 範圍）。
 
 ## 10. Agent Runtime
 
@@ -1265,8 +1289,10 @@ Honest boundary:
 | `RagPipeline` | query rewrite/rerank/cache |
 | `LineChatGateway` | conversation/RAG behavior |
 | `HighLevelLlm` | LINE high-level model |
-| `HighLevelExecutionModelPolicy` | execution model aliases |
+| `HighLevelExecutionModelPolicy` | execution model aliases；`Catalog[].Provider` 標明服務該模型的供應者，受治理生成只在它與 `LlmProxy:Provider` 相同時採用推薦 |
 | `HighLevelCoordinator` | workspace/root/keywords/draft TTL |
+| `HighLevelCoordinator:Generation` | `SystemScaffoldMode`：`Legacy`（預設）或 `Governed` |
+| `Generation` | governed generation：`OutputRoot`（與 generation-worker 共用）、`DeadlineMinutes`、`AgentMaxIterations`、`MaxPages`（1～12，受生成器驗證限制）、`WatchdogIntervalSeconds`、`MaxPackageBytes`、`MaxConcurrentRuns`（預設 2）、`MaxConcurrentRunsPerUser`（預設 1）、`MaxDeliveryAttempts`（預設 3） |
 | `ProjectInterview` | template catalog/session timeout |
 | `ArtifactDownload` | signed download secret/TTL |
 | `PortalAuth` | user portal self-registration, password length, session TTL, and LINE verification code TTL |
@@ -1347,6 +1373,8 @@ dotnet test packages/csharp/tests/integration/Integration.Tests.csproj
 dotnet test packages/csharp/tests/integration/Integration.Tests.csproj --filter PortalEndpointTests
 ```
 
+`GovernedGenerationTests` 含一個程序內端到端案例，以 generation-worker 的 handler 與 repo 中的 `tools/generation/cli.mjs` 處理 golden 範例，需要 node（`B4A_NODE_PATH` 或 PATH 上的 node）。
+
 ### 20.4 BaseOrm and broker verify
 
 ```powershell
@@ -1379,6 +1407,8 @@ npm run test:dotnet10
 ```powershell
 npm test
 npm run test:generator
+npm run test:generation
+npm run test:definition-site:browser
 npm run validate:ui-state
 npm run audit:ui-styles
 npm run validate:ui-library
@@ -1479,6 +1509,9 @@ Known artifacts:
 | `packages/csharp/broker/broker.db-shm` | SQLite WAL/shared memory | delete with DB |
 | `packages/csharp/broker/broker.db-wal` | SQLite WAL | delete with DB |
 | `.test-output/` | stack/tests | delete after testing |
+| `%TEMP%\b4a-gengov-*`, `%TEMP%\b4a-gencontract-*`, `%TEMP%\b4a-genworker-*`, `%TEMP%\b4a-gen-test-*`, `%TEMP%\b4a-gen-truncate-*`, `%TEMP%\b4a-gen-toolspec-*` | governed generation unit/integration tests | removed by the tests; delete leftovers |
+| `%TEMP%\broker_integration_*.db`（含 `-shm`、`-wal`）, `%TEMP%\broker_integration_access_*` | integration test fixtures (`BrokerFixture`) | removed by the fixtures (retried); delete leftovers |
+| `%TEMP%\broker_test_*.db`（含 `-shm`、`-wal`） | unit tests (`TestDb.CreateInMemory`) | deleted when the test process exits; delete leftovers |
 | `test-results/` | Playwright | delete after testing |
 | `.run/line-sidecar/` | sidecar runtime | keep unless intentionally resetting sidecar |
 | `bin/`, `obj/` | .NET build | clean when no process uses them |

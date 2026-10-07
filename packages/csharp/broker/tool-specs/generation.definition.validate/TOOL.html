@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Validate Definition</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Validate Definition</h1>
+<p>Validates a DefinitionTemplate with the same layered, fail-closed checks that generation runs, and returns structured errors that the agent can fix.</p>
+<h2>Capability</h2>
+<ul>
+<li>
+<p>Tool ID: <code>generation.definition.validate</code></p>
+</li>
+<li>
+<p>Capability ID: <code>generation.definition.validate</code></p>
+</li>
+<li>
+<p>Route: <code>validate_definition</code></p>
+</li>
+<li>
+<p>Status: <code>beta</code></p>
+</li>
+<li>
+<p>Risk: low, approval <code>auto</code></p>
+</li>
+<li>
+<p>Runtime: <code>generation-worker</code></p>
+</li>
+</ul>
+<h2>Input</h2>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>template</code></td>
+<td>object (required)</td>
+<td>The DefinitionTemplate to validate</td>
+</tr>
+<tr>
+<td><code>page_ids</code></td>
+<td>array of strings, each at most 64 characters</td>
+<td>The pages that generation would select. The whole definition is still validated; <code>pages</code> and the cross-page warnings cover only these pages</td>
+</tr>
+</tbody>
+</table>
+<h2>Output</h2>
+<p>The generator's JSON: <code>ok</code>, <code>errors</code>, <code>warnings</code>, <code>pages</code> (<code>id</code>, <code>type</code>, <code>field_count</code>), <code>validation_digest</code> and <code>validator_version</code>. Every error and warning carries <code>code</code>, <code>path</code>, <code>message</code> and <code>hint</code>. An error found at several places is reported once: its message gives the count and <code>paths</code> lists the first five paths (<code>path</code> is the first of them).</p>
+<p>When errors or warnings were merged or cut, the result also carries:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>total_errors</code></td>
+<td>Number of errors before merging and cutting</td>
+</tr>
+<tr>
+<td><code>truncated</code></td>
+<td><code>true</code> when not every error is listed (at most 50 are; every error code keeps at least one entry)</td>
+</tr>
+<tr>
+<td><code>total_warnings</code>, <code>warnings_truncated</code></td>
+<td>The same for warnings</td>
+</tr>
+</tbody>
+</table>
+<p>The worker cuts a result that is larger than its <code>MaxResultBytes</code> the same way (first errors and warnings, <code>total_errors</code>, <code>truncated: true</code>); it is still a successful call.</p>
+<p>When the grant scope carries <code>max_pages</code> and the selected pages exceed it, the result is <code>ok: false</code> with the error code <code>MAX_PAGES_EXCEEDED</code> first. The page limit is at most 12.</p>
+<p>Warnings do not block generation. The cross-page warnings (<code>RESOURCE_WITHOUT_FORM</code>, <code>FORM_WITHOUT_LIST</code>, <code>FIELD_NOT_IN_FORM</code>, <code>OPTIONS_MISMATCH</code>) point at pages of one resource that do not share the api base path, field names or options, which breaks the prototype's list, detail and form flow. With <code>page_ids</code> they compare only the selected pages, so a list or detail page selected without the form of its resource is reported.</p>
+<p>A definition that fails validation is a successful call with <code>ok: false</code>, so the agent can correct the definition and validate again. Only internal failures (time-out, oversized output, generator crash) and malformed input (for example an object key longer than 128 characters) fail the execution.</p>
+<h2>Rules</h2>
+<ul>
+<li>
+<p>The worker forwards only <code>template</code> and <code>page_ids</code> to the generator, and rejects a template with an object key longer than 128 characters before it runs the generator.</p>
+</li>
+<li>
+<p>Validation has no side effects. <code>generate_scaffold</code> runs the same checks before it writes anything.</p>
+</li>
+</ul>
+</main>
+</body>
+</html>

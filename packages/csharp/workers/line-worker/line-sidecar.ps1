@@ -8,6 +8,9 @@ param(
     [int]$WebhookPort = 5357,
     [switch]$SkipBuild,
     [switch]$SkipWebhookUpdate,
+    # Passed to start-sidecar-stack.ps1 by up and restart (Legacy keeps the current behavior).
+    [ValidateSet("Legacy", "Governed")]
+    [string]$GenerationMode = "Legacy",
     [string]$UserId = "utf8-test-user",
     [string]$Message = "",
     [string]$MessageFile = "",
@@ -46,6 +49,7 @@ switch ($Action) {
         if ($SkipWebhookUpdate) {
             $params.SkipWebhookUpdate = $true
         }
+        $params.GenerationMode = $GenerationMode
 
         Invoke-ChildScript -ScriptName "start-sidecar-stack.ps1" -Parameters $params
         break
@@ -118,6 +122,7 @@ switch ($Action) {
         if ($SkipWebhookUpdate) {
             $params.SkipWebhookUpdate = $true
         }
+        $params.GenerationMode = $GenerationMode
 
         Invoke-ChildScript -ScriptName "start-sidecar-stack.ps1" -Parameters $params
         break

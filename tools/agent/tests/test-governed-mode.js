@@ -9,6 +9,7 @@ const util = require('util');
 const { AgentLoop } = require('../lib/agent-loop');
 const { BrokerClient } = require('../lib/broker-client');
 const { LineListener } = require('../lib/line-listener');
+const { GENERATION_BASE_PROMPT, GENERATION_CONTINUE_REMINDER, isGenerationTask } = require('../lib/system-prompt');
 
 const ROOT = path.resolve(__dirname, '..', '..', '..');
 // A per-run value, so a match in the prompt can only come from the governed config.
@@ -628,6 +629,1017 @@ async function testRegistrationRefusalEndsTheExecutor() {
     await agent.close();
 }
 
+/** The three generation capabilities as the broker syncs them from their tool-specs. */
+function readGenerationToolSpecs() {
+    const fs = require('fs');
+    const specRoot = path.join(ROOT, 'packages', 'csharp', 'broker', 'tool-specs');
+    return ['generation.catalog.query', 'generation.definition.validate', 'generation.scaffold.generate']
+        .map((toolId) => JSON.parse(fs.readFileSync(path.join(specRoot, toolId, 'tool.json'), 'utf8')));
+}
+
+/** A fake broker client for a governed generation task: the three generation grants and a system_scaffold task. */
+function createGenerationFakeClient() {
+    const client = createFakeClient();
+    const specs = readGenerationToolSpecs();
+    const submitted = [];
+    const riskValue = { low: 0, medium: 1, high: 2, critical: 3 };
+    const quotas = { 'generation.catalog.query': 20, 'generation.definition.validate': 6, 'generation.scaffold.generate': 2 };
+    const scopes = {
+        'generation.catalog.query': { routes: ['query_component_catalog'] },
+        'generation.definition.validate': { routes: ['validate_definition'] },
+        'generation.scaffold.generate': {
+            routes: ['generate_scaffold'],
+            output_slot: 'task_test',
+            package_name: 'contacts',
+            max_pages: 12,
+            package: 'definition-site-v1',
+        },
+    };
+
+    client.listCapabilities = async () => ({
+        success: true,
+        data: specs.map((spec) => ({
+            capabilityId: spec.capability_bindings[0].capability_id,
+            route: spec.capability_bindings[0].route,
+            approvalPolicy: spec.capability_template.approval_policy,
+            riskLevelValue: riskValue[spec.capability_template.risk_level],
+            resourceType: spec.capability_template.resource_type,
+            paramSchema: JSON.stringify(spec.input_schema),
+        })),
+    });
+    client.listGrants = async () => ({
+        success: true,
+        data: Object.entries(scopes).map(([capabilityId, scope]) => ({
+            capabilityId,
+            scopeOverride: JSON.stringify(scope),
+            remainingQuota: quotas[capabilityId],
+            expiresAt: '2030-01-01T00:00:00Z',
+            statusValue: 0,
+        })),
+    });
+    const baseRuntimeSpec = client.getRuntimeSpec.bind(client);
+    client.getRuntimeSpec = async () => {
+        const response = await baseRuntimeSpec();
+        return { ...response, data: { ...response.data, task_type: 'system_scaffold', task_id: 'task_test' } };
+    };
+    client.submitRequest = async (capabilityId, payload, idempotencyKey, intent) => {
+        submitted.push({ capabilityId, payload, idempotencyKey, intent });
+        return { success: true, data: { execution_state: 'Succeeded', result_payload: '{"ok":true}' } };
+    };
+    client.getSubmitted = () => submitted.slice();
+    return client;
+}
+
+/**
+ * Governed generation: the three generation tools map to the generation capabilities, their parameters match
+ * the broker tool-specs, the payload stays { route, args, project_root }, and a generation task gets the
+ * workflow and its limits in the system prompt (no secret, no host path). Other tasks do not get that section.
+ */
+async function testGenerationTools() {
+    const { TOOL_DEFINITIONS, TOOL_TO_CAPABILITY } = require('../lib/tool-registry');
+
+    // Tool parameters agree with the broker tool-spec input_schema (names, required, types, enum, maxLength, items).
+    const normalize = (schema) => {
+        if (!schema || typeof schema !== 'object') return schema;
+        const result = {};
+        for (const key of ['type', 'enum', 'maxLength']) {
+            if (schema[key] !== undefined) result[key] = schema[key];
+        }
+        if (schema.items) result.items = normalize(schema.items);
+        if (schema.properties) {
+            result.properties = Object.fromEntries(Object.entries(schema.properties).map(([name, child]) => [name, normalize(child)]));
+        }
+        result.required = [...(schema.required || [])].sort();
+        return result;
+    };
+    for (const spec of readGenerationToolSpecs()) {
+        const binding = spec.capability_bindings[0];
+        assert.strictEqual(spec.execution_rules.runtime_required, 'generation-worker', `${spec.tool_id} runtime`);
+        assert.strictEqual(TOOL_TO_CAPABILITY[binding.route], binding.capability_id, `${binding.route} maps to ${binding.capability_id}`);
+        const definition = TOOL_DEFINITIONS.find((def) => def.function.name === binding.route);
+        assert(definition, `tool definition for ${binding.route}`);
+        const toolSchema = normalize(definition.function.parameters);
+        const specSchema = normalize(spec.input_schema);
+        if (specSchema.properties) {
+            for (const child of Object.values(specSchema.properties)) {
+                if (child && child.required && child.required.length === 0) delete child.required;
+            }
+        }
+        if (toolSchema.properties) {
+            for (const child of Object.values(toolSchema.properties)) {
+                if (child && child.required && child.required.length === 0) delete child.required;
+            }
+        }
+        assert.deepStrictEqual(toolSchema, specSchema, `${binding.route} parameters match the tool-spec input_schema`);
+    }
+
+    const fakeClient = createGenerationFakeClient();
+    const agent = new AgentLoop({
+        model: 'user-requested-model',
+        provider: createForbiddenDirectProvider(),
+        projectRoot: ROOT,
+        stream: false,
+        maxIterations: 12,
+        governed: {
+            brokerUrl: 'http://broker.local:5000',
+            brokerPubKey: 'fake-pub-key',
+            principalId: 'prn_test',
+            taskId: 'task_test',
+            roleId: 'role_executor',
+            registrationSecret: TEST_REGISTRATION_SECRET,
+            clientFactory: () => fakeClient,
+        },
+    });
+    await agent.init();
+
+    const toolNames = agent.getAvailableToolDefinitions().map((def) => def.function.name);
+    assert.deepStrictEqual(toolNames, ['query_component_catalog', 'validate_definition', 'generate_scaffold']);
+
+    const prompt = agent.messages[0].content;
+    const start = prompt.indexOf('## Governed Generation Workflow');
+    assert(start >= 0, 'a generation task gets the workflow section');
+    const nextSection = prompt.indexOf('\n## ', start + 1);
+    const section = prompt.slice(start, nextSection > start ? nextSection : undefined);
+    const order = ['query_component_catalog', 'validate_definition', 'generate_scaffold'].map((name) => section.indexOf(`. ${name}`));
+    assert(order.every((index) => index > 0) && order[0] < order[1] && order[1] < order[2], 'workflow lists catalog, validate, generate in order');
+    assert(section.includes('Pages per prototype: at most 12'), section);
+    assert(section.includes('validate_definition calls left: 6'), section);
+    assert(section.includes('generate_scaffold calls left: 2'), section);
+    assert(section.includes('Model turns for the whole task: at most 12'), section);
+    for (const forbidden of [ROOT, ROOT.replace(/\\/g, '/'), TEST_REGISTRATION_SECRET, 'output_slot', 'task_test']) {
+        assert(!section.includes(forbidden), `the workflow section must not contain ${forbidden}`);
+    }
+    assert(section.includes('No available worker'), 'the workflow section explains the busy-worker retry');
+    assertSecretNotExposed(agent.getGovernedPromptContext(), prompt);
+
+    // A generation task gets the lean base prompt and no project manual: the manual's CLI examples and field
+    // type tables conflict with the catalog, and the agent has no file tool to read the rest of it.
+    assert(prompt.startsWith(GENERATION_BASE_PROMPT), 'a generation task starts with the generation base prompt');
+    for (const forbidden of ['## Project Manual', '<project_manual>', 'read AGENT.md', 'ui_components', 'PhotoWall', 'ImageViewer', '--fields']) {
+        assert(!prompt.includes(forbidden), `a generation task prompt must not contain ${forbidden}`);
+    }
+
+    // The payload keeps the broker contract; the route is the tool name and the capability is the generation one.
+    const context = { projectRoot: '/workspace', noConfirm: true, verbose: false };
+    const template = { kind: 'definition-template', version: '0.1.0' };
+    assert.strictEqual(await agent.governedExecutor.executeTool('query_component_catalog', { section: 'overview' }, context), '{"ok":true}');
+    await agent.governedExecutor.executeTool('validate_definition', { template }, context);
+    await agent.governedExecutor.executeTool('generate_scaffold', { template, title: 'Contacts' }, context);
+    const submitted = fakeClient.getSubmitted();
+    assert.deepStrictEqual(submitted.map((item) => item.capabilityId), [
+        'generation.catalog.query', 'generation.definition.validate', 'generation.scaffold.generate',
+    ]);
+    for (const item of submitted) {
+        assert.deepStrictEqual(Object.keys(item.payload), ['route', 'args', 'project_root']);
+        assert.strictEqual(item.payload.route, TOOL_DEFINITIONS.find((def) => TOOL_TO_CAPABILITY[def.function.name] === item.capabilityId).function.name);
+    }
+    assert.deepStrictEqual(submitted[2].payload.args, { template, title: 'Contacts' });
+    assert.strictEqual(submitted[2].intent, 'Generate scaffold: Contacts');
+    await agent.close();
+
+    // A session without generation grants does not get the workflow section.
+    const plainClient = createFakeClient();
+    const plainAgent = new AgentLoop({
+        model: 'user-requested-model',
+        provider: createForbiddenDirectProvider(),
+        projectRoot: ROOT,
+        stream: false,
+        governed: {
+            brokerUrl: 'http://broker.local:5000',
+            brokerPubKey: 'fake-pub-key',
+            principalId: 'prn_test',
+            taskId: 'task_test',
+            roleId: 'role_reader',
+            registrationSecret: TEST_REGISTRATION_SECRET,
+            clientFactory: () => plainClient,
+        },
+    });
+    await plainAgent.init();
+    assert(!plainAgent.messages[0].content.includes('## Governed Generation Workflow'));
+    assert(!plainAgent.messages[0].content.startsWith(GENERATION_BASE_PROMPT), 'other tasks keep the general base prompt');
+    assert(plainAgent.messages[0].content.includes('## Project Manual'), 'other tasks still get the project manual');
+    await plainAgent.close();
+}
+
+/**
+ * Only a system_scaffold task, or a generate grant whose scope carries the output slot, is a generation task.
+ * The low-risk catalog and validate capabilities can reach ordinary agents (default capability sets or an
+ * administrator's choice); such an agent keeps the general base prompt and the project manual.
+ */
+async function testLowRiskGenerationGrantsKeepTheGeneralPrompt() {
+    const grant = (capabilityId, scopeOverride = {}) => ({ capabilityId, scopeOverride });
+    assert.strictEqual(isGenerationTask({
+        allowedCapabilities: [grant('file.read'), grant('generation.catalog.query'), grant('generation.definition.validate')],
+    }), false, 'catalog and validate grants alone do not make a generation task');
+    assert.strictEqual(isGenerationTask({
+        allowedCapabilities: [grant('generation.scaffold.generate', { routes: ['generate_scaffold'] })],
+    }), false, 'a generate grant without an output slot does not make a generation task');
+    assert.strictEqual(isGenerationTask({
+        allowedCapabilities: [grant('generation.scaffold.generate', { routes: ['generate_scaffold'], output_slot: '  ' })],
+    }), false, 'a blank output slot does not count');
+    assert.strictEqual(isGenerationTask({
+        allowedCapabilities: [grant('generation.scaffold.generate', { routes: ['generate_scaffold'], output_slot: 'task_x' })],
+    }), true, 'a generate grant with an output slot is a generation task');
+    assert.strictEqual(isGenerationTask({ allowedCapabilities: [], runtimeSpec: { taskType: 'system_scaffold' } }), true);
+    assert.strictEqual(isGenerationTask({ allowedCapabilities: [], runtimeSpec: { taskType: 'analysis' } }), false);
+    assert.strictEqual(isGenerationTask(null), false);
+
+    // An analysis agent that also holds the two low-risk generation grants.
+    const client = createFakeClient();
+    const specs = readGenerationToolSpecs().filter((spec) => spec.capability_template.risk_level === 'low');
+    assert.deepStrictEqual(specs.map((spec) => spec.tool_id), ['generation.catalog.query', 'generation.definition.validate']);
+    const baseCapabilities = client.listCapabilities.bind(client);
+    const baseGrants = client.listGrants.bind(client);
+    client.listCapabilities = async () => {
+        const response = await baseCapabilities();
+        return {
+            ...response,
+            data: [...response.data, ...specs.map((spec) => ({
+                capabilityId: spec.capability_bindings[0].capability_id,
+                route: spec.capability_bindings[0].route,
+                approvalPolicy: spec.capability_template.approval_policy,
+                riskLevelValue: 0,
+                resourceType: spec.capability_template.resource_type,
+                paramSchema: JSON.stringify(spec.input_schema),
+            }))],
+        };
+    };
+    client.listGrants = async () => {
+        const response = await baseGrants();
+        return {
+            ...response,
+            data: [...response.data, ...specs.map((spec) => ({
+                capabilityId: spec.capability_bindings[0].capability_id,
+                scopeOverride: JSON.stringify({ routes: [spec.capability_bindings[0].route] }),
+                remainingQuota: 5,
+                expiresAt: '2030-01-01T00:00:00Z',
+                statusValue: 0,
+            }))],
+        };
+    };
+    const baseRuntimeSpec = client.getRuntimeSpec.bind(client);
+    client.getRuntimeSpec = async () => {
+        const response = await baseRuntimeSpec();
+        return { ...response, data: { ...response.data, task_type: 'analysis', task_id: 'task_test' } };
+    };
+
+    const agent = new AgentLoop({
+        model: 'user-requested-model',
+        provider: createForbiddenDirectProvider(),
+        projectRoot: ROOT,
+        stream: false,
+        governed: {
+            brokerUrl: 'http://broker.local:5000',
+            brokerPubKey: 'fake-pub-key',
+            principalId: 'prn_test',
+            taskId: 'task_test',
+            roleId: 'role_reader',
+            registrationSecret: TEST_REGISTRATION_SECRET,
+            clientFactory: () => client,
+        },
+    });
+    await agent.init();
+    const toolNames = agent.getAvailableToolDefinitions().map((def) => def.function.name);
+    assert.deepStrictEqual(toolNames, ['read_file', 'query_component_catalog', 'validate_definition']);
+    const prompt = agent.messages[0].content;
+    assert.strictEqual(agent.generationTask, false);
+    assert(!prompt.startsWith(GENERATION_BASE_PROMPT), 'an ordinary agent keeps the general base prompt');
+    assert(!prompt.includes('## Governed Generation Workflow'), 'an ordinary agent gets no generation workflow');
+    assert(prompt.includes('## Project Manual'), 'an ordinary agent still gets the project manual');
+    await agent.close();
+}
+
+/** A scripted broker LLM: each call returns the next reply (text, or tool calls). */
+function scriptLlm(client, replies) {
+    const seen = [];
+    client.llmChat = async (body) => {
+        seen.push(body.messages.map((message) => ({ role: message.role, content: message.content })));
+        const reply = replies.shift();
+        assert(reply, 'the agent asked the model more often than the script expected');
+        return {
+            success: true,
+            data: {
+                content: reply.content || '',
+                tool_calls: (reply.tools || []).map(([name, args], index) => ({ id: `call_${seen.length}_${index}`, function: { name, arguments: args } })),
+                done: true,
+                model: 'broker-model',
+            },
+        };
+    };
+    return seen;
+}
+
+function generationAgent(client, maxIterations = 12, forceStrategy = null) {
+    return new AgentLoop({
+        model: 'user-requested-model',
+        provider: createForbiddenDirectProvider(),
+        projectRoot: ROOT,
+        stream: false,
+        maxIterations,
+        forceStrategy,
+        governed: {
+            brokerUrl: 'http://broker.local:5000',
+            brokerPubKey: 'fake-pub-key',
+            principalId: 'prn_test',
+            taskId: 'task_test',
+            roleId: 'role_executor',
+            registrationSecret: TEST_REGISTRATION_SECRET,
+            clientFactory: () => client,
+        },
+    });
+}
+
+/**
+ * The generation prompt states that the run is unattended: a tool call in every turn until the summary, no
+ * definition in text, no questions. The loop backs this up with one reminder when the model replies without a
+ * tool call before a generate succeeded; a second such reply ends the run, and a summary after a successful
+ * generate ends it at once.
+ */
+async function testGenerationRunNeedsAToolCallEveryTurn() {
+    const template = { kind: 'definition-template', version: '0.1.0' };
+    const generateOk = JSON.stringify({ ok: true, zip: { path: 'slot/req/contacts-scaffold.zip', sha256: 'a'.repeat(64), size: 10 } });
+
+    // The prompt rules.
+    {
+        const client = createGenerationFakeClient();
+        const agent = generationAgent(client);
+        await agent.init();
+        const prompt = agent.messages[0].content.replace(/\s+/g, ' ');
+        assert(prompt.includes('Call a tool in every turn until the final summary'), 'the prompt requires a tool call every turn');
+        assert(prompt.includes('Never write the definition in your reply text'), 'the prompt forbids the definition in text');
+        assert(prompt.includes('You cannot ask the user anything'), 'the prompt forbids questions');
+        assert(prompt.includes('make reasonable assumptions'), 'the prompt asks for assumptions');
+        assert(prompt.includes('submit it directly with validate_definition'), 'step 2 submits the definition with validate_definition');
+        await agent.close();
+    }
+
+    // The definition written as text first: one reminder, then the normal flow and the summary.
+    {
+        const client = createGenerationFakeClient();
+        client.submitRequest = async (capabilityId) => ({
+            success: true,
+            data: {
+                execution_state: 'Succeeded',
+                result_payload: capabilityId === 'generation.scaffold.generate' ? generateOk : '{"ok":true}',
+            },
+        });
+        const seen = scriptLlm(client, [
+            { content: 'Here is the definition: {"kind":"definition-template"}' },
+            { tools: [['validate_definition', { template }]] },
+            { tools: [['generate_scaffold', { template, title: 'Contacts' }]] },
+            { content: 'Generated 3 pages.' },
+        ]);
+        const agent = generationAgent(client);
+        await agent.init();
+        assert.strictEqual(agent.generationTask, true);
+        const reply = await agent.send('build it');
+        assert.strictEqual(reply, 'Generated 3 pages.');
+        assert.strictEqual(seen.length, 4);
+        const reminders = agent.messages.filter((message) => message.role === 'user' && message.content === GENERATION_CONTINUE_REMINDER);
+        assert.strictEqual(reminders.length, 1, 'exactly one reminder');
+        assert.strictEqual(seen[1][seen[1].length - 1].content, GENERATION_CONTINUE_REMINDER, 'the reminder follows the text-only reply');
+        await agent.close();
+    }
+
+    // A clarifying question twice: one reminder, and the second text-only reply ends the run.
+    {
+        const client = createGenerationFakeClient();
+        const seen = scriptLlm(client, [
+            { content: 'Which fields do you need?' },
+            { content: 'I still need the field list.' },
+        ]);
+        const agent = generationAgent(client);
+        await agent.init();
+        const reply = await agent.send('build it');
+        assert.strictEqual(reply, 'I still need the field list.');
+        assert.strictEqual(seen.length, 2, 'only one reminder, then the run ends');
+        await agent.close();
+    }
+
+    // The reminder counts against the iteration limit.
+    {
+        const client = createGenerationFakeClient();
+        const seen = scriptLlm(client, [{ content: 'Which fields do you need?' }]);
+        const agent = generationAgent(client, 1);
+        await agent.init();
+        await agent.send('build it');
+        assert.strictEqual(seen.length, 1, 'no reminder when the iteration limit is reached');
+        await agent.close();
+    }
+
+    // A failed generate is not a success: a text-only reply after it still gets the one reminder.
+    {
+        const client = createGenerationFakeClient();
+        client.submitRequest = async () => ({ success: true, data: { execution_state: 'Failed', result_payload: '{"ok":false,"errors":[]}' } });
+        const seen = scriptLlm(client, [
+            { tools: [['generate_scaffold', { template }]] },
+            { content: 'Generation failed.' },
+            { content: 'Generation failed again; stopping.' },
+        ]);
+        const agent = generationAgent(client);
+        await agent.init();
+        await agent.send('build it');
+        assert.strictEqual(seen.length, 3);
+        await agent.close();
+    }
+
+    // Other tasks never get the reminder.
+    {
+        const client = createFakeClient();
+        let calls = 0;
+        client.llmChat = async () => {
+            calls += 1;
+            return { success: true, data: { content: 'done', tool_calls: [], done: true, model: 'broker-model' } };
+        };
+        const agent = new AgentLoop({
+            model: 'user-requested-model',
+            provider: createForbiddenDirectProvider(),
+            projectRoot: ROOT,
+            stream: false,
+            governed: {
+                brokerUrl: 'http://broker.local:5000',
+                brokerPubKey: 'fake-pub-key',
+                principalId: 'prn_test',
+                taskId: 'task_test',
+                roleId: 'role_reader',
+                registrationSecret: TEST_REGISTRATION_SECRET,
+                clientFactory: () => client,
+            },
+        });
+        await agent.init();
+        assert.strictEqual(await agent.send('hello'), 'done');
+        assert.strictEqual(calls, 1);
+        await agent.close();
+    }
+}
+
+/**
+ * Small local models often write the tool call as JSON text instead of calling the tool, in native and in ReAct
+ * mode. A generation task runs such calls (a fenced ```json block, also without the closing fence, bare JSON or a
+ * <tools> wrapper) as tool calls, but only names the session was granted: any other name gets an "unsupported tool"
+ * result that lists the available tools, and the run goes on. Other tasks, and a generation task after a successful
+ * generate, never run text as a tool call.
+ */
+async function testGenerationToolCallsWrittenAsText() {
+    const template = { kind: 'definition-template', version: '0.1.0' };
+    const generateOk = JSON.stringify({ ok: true, zip: { path: 'slot/req/contacts-scaffold.zip', sha256: 'b'.repeat(64), size: 10 } });
+    const call = (name, args) => JSON.stringify({ name, arguments: args });
+    const fence = '```';
+    const respondOk = (client) => {
+        const submitted = [];
+        client.submitRequest = async (capabilityId, payload) => {
+            submitted.push({ capabilityId, route: payload.route, args: payload.args });
+            return {
+                success: true,
+                data: {
+                    execution_state: 'Succeeded',
+                    result_payload: capabilityId === 'generation.scaffold.generate' ? generateOk : '{"ok":true}',
+                },
+            };
+        };
+        return submitted;
+    };
+
+    // Native mode: a fenced block, a block without the closing fence, bare JSON and a <tools> wrapper all run.
+    {
+        const client = createGenerationFakeClient();
+        const submitted = respondOk(client);
+        const seen = scriptLlm(client, [
+            { content: `I will read the catalog.\n${fence}json\n${call('query_component_catalog', { section: 'overview' })}\n${fence}` },
+            { content: `${fence}json\n${call('query_component_catalog', { section: 'field_types' })}` },
+            { content: `<tools>${call('validate_definition', { template })}</tools>` },
+            { content: call('generate_scaffold', { template, title: 'Contacts' }) },
+            { content: 'Generated 3 pages.' },
+        ]);
+        const agent = generationAgent(client);
+        await agent.init();
+        assert.strictEqual(agent.useNativeTools, true);
+        const reply = await agent.send('build it');
+        assert.strictEqual(reply, 'Generated 3 pages.');
+        assert.strictEqual(seen.length, 5);
+        assert.deepStrictEqual(submitted.map((entry) => entry.route),
+            ['query_component_catalog', 'query_component_catalog', 'validate_definition', 'generate_scaffold']);
+        assert.deepStrictEqual(submitted[0].args, { section: 'overview' });
+        assert.deepStrictEqual(submitted[2].args, { template });
+        assert.strictEqual(agent.messages.filter((message) => message.content === GENERATION_CONTINUE_REMINDER).length, 0,
+            'a call written as text is a call, not a text-only reply');
+        const assistantCall = agent.messages.find((message) => message.role === 'assistant' && Array.isArray(message.tool_calls));
+        assert.strictEqual(assistantCall.tool_calls[0].id, 'text_call_1_0');
+        assert.strictEqual(assistantCall.tool_calls[0].function.name, 'query_component_catalog');
+        const toolResults = agent.messages.filter((message) => message.role === 'tool');
+        assert.strictEqual(toolResults.length, 4);
+        assert.strictEqual(toolResults[0].tool_call_id, 'text_call_1_0');
+        await agent.close();
+    }
+
+    // A name that is not granted is not run and does not end the run: the model gets an unsupported result that says
+    // what to do next. The first turn with only unsupported calls gets the one reminder; a different name next turn
+    // does not end the run.
+    {
+        const client = createGenerationFakeClient();
+        const submitted = respondOk(client);
+        const seen = scriptLlm(client, [
+            { content: `${fence}json\n${call('generate_definition', { template })}\n${fence}` },
+            { content: call('run_command', { command: 'dir' }) },
+            { tools: [['validate_definition', { template }]] },
+            { tools: [['generate_scaffold', { template }]] },
+            { content: 'Generated.' },
+        ]);
+        const agent = generationAgent(client);
+        await agent.init();
+        const reply = await agent.send('build it');
+        assert.strictEqual(reply, 'Generated.');
+        assert.strictEqual(seen.length, 5, 'the run goes on after the unsupported names');
+        assert.deepStrictEqual(submitted.map((entry) => entry.route), ['validate_definition', 'generate_scaffold'],
+            'names that are not granted never reach the broker');
+        const unsupported = agent.messages.filter((message) => message.role === 'tool' && message.content.startsWith('unsupported tool'));
+        assert.strictEqual(unsupported.length, 2);
+        assertUnsupportedGuidance(unsupported[0].content, 'generate_definition');
+        assertUnsupportedGuidance(unsupported[1].content, 'run_command');
+        assert.strictEqual(agent.messages.filter((message) => message.content === GENERATION_CONTINUE_REMINDER).length, 1,
+            'the first turn with only unsupported calls gets the one reminder');
+        assert.strictEqual(seen[1][seen[1].length - 1].content, GENERATION_CONTINUE_REMINDER,
+            'the reminder follows the unsupported result');
+        await agent.close();
+    }
+
+    // ReAct mode: a fenced block outside the <tool_call> wrapper runs too, and the result comes back as a tool result.
+    {
+        const client = createGenerationFakeClient();
+        const submitted = respondOk(client);
+        scriptLlm(client, [
+            { content: `${fence}json\n${call('validate_definition', { template })}\n${fence}` },
+            { content: `<tool_call>${call('generate_scaffold', { template })}</tool_call>` },
+            { content: 'Generated.' },
+        ]);
+        const agent = generationAgent(client, 12, 'react');
+        await agent.init();
+        assert.strictEqual(agent.useNativeTools, false);
+        assert.strictEqual(await agent.send('build it'), 'Generated.');
+        assert.deepStrictEqual(submitted.map((entry) => entry.route), ['validate_definition', 'generate_scaffold']);
+        assert(agent.messages.some((message) => message.role === 'user' && message.content.includes('"tool": "validate_definition"')));
+        await agent.close();
+    }
+
+    // A call written after a successful generate ends the run as before.
+    {
+        const client = createGenerationFakeClient();
+        const submitted = respondOk(client);
+        const seen = scriptLlm(client, [
+            { tools: [['generate_scaffold', { template }]] },
+            { content: `Done. I called:\n${fence}json\n${call('generate_scaffold', { template })}\n${fence}` },
+        ]);
+        const agent = generationAgent(client);
+        await agent.init();
+        const reply = await agent.send('build it');
+        assert(reply.startsWith('Done.'));
+        assert.strictEqual(seen.length, 2);
+        assert.strictEqual(submitted.length, 1, 'the summary after a successful generate is not run again');
+        await agent.close();
+    }
+
+    // Other tasks never run text as a tool call.
+    {
+        const client = createFakeClient();
+        let calls = 0;
+        client.llmChat = async () => {
+            calls += 1;
+            return { success: true, data: { content: call('read_file', { path: './README.md' }), tool_calls: [], done: true, model: 'broker-model' } };
+        };
+        const agent = new AgentLoop({
+            model: 'user-requested-model',
+            provider: createForbiddenDirectProvider(),
+            projectRoot: ROOT,
+            stream: false,
+            governed: {
+                brokerUrl: 'http://broker.local:5000',
+                brokerPubKey: 'fake-pub-key',
+                principalId: 'prn_test',
+                taskId: 'task_test',
+                roleId: 'role_reader',
+                registrationSecret: TEST_REGISTRATION_SECRET,
+                clientFactory: () => client,
+            },
+        });
+        await agent.init();
+        const submitsBefore = client.getSubmitCalls();
+        await agent.send('hello');
+        assert.strictEqual(calls, 1);
+        assert.strictEqual(client.getSubmitCalls(), submitsBefore, 'an ordinary task does not run JSON text');
+        await agent.close();
+    }
+}
+
+const GENERATION_TOOL_NAMES = 'query_component_catalog, validate_definition, generate_scaffold';
+
+/** The unsupported result of a generation task says that no tool writes the definition, and what to call next. */
+function assertUnsupportedGuidance(content, name) {
+    assert(content.startsWith(`unsupported tool ${name}: there is no such tool.`), content);
+    assert(content.includes('No tool writes the definition for you.'), content);
+    assert(content.includes('Write the complete DefinitionTemplate yourself'), content);
+    assert(content.includes('section "example"'), content);
+    assert(content.includes('pass it as the template argument of validate_definition'), content);
+    assert(content.includes('call generate_scaffold with the same template'), content);
+    assert(content.endsWith(`Available tools: ${GENERATION_TOOL_NAMES}.`), content);
+}
+
+/**
+ * A generation task that keeps calling a tool it does not have (a 7B model asked for generate_definition_template in
+ * every turn until the iteration limit): the reply says what to do instead, the turn counts as no progress (the one
+ * reminder), and the same name in the next turn ends the run before the iteration limit. Calls the governed executor
+ * gets for names that are not granted carry the same guidance in a generation task.
+ */
+async function testUnsupportedToolsInAGenerationTask() {
+    const template = { kind: 'definition-template', version: '0.1.0' };
+    const call = (name, args) => JSON.stringify({ name, arguments: args });
+    const repeatedName = 'generate_definition_template';
+
+    // The same made-up name as text in every turn: guidance, one reminder, and the run ends at the second turn.
+    {
+        const client = createGenerationFakeClient();
+        const replies = Array.from({ length: 12 }, () => ({ content: call(repeatedName, { description: 'contacts' }) }));
+        const seen = scriptLlm(client, replies);
+        const agent = generationAgent(client, 12);
+        await agent.init();
+        const reply = await agent.send('build it');
+        assert.strictEqual(seen.length, 2, 'the run ends when the same unsupported name comes back, before the limit');
+        assert(reply.startsWith(`Stopped: the model called "${repeatedName}", which is not an available tool, in two turns in a row`), reply);
+        assert(reply.includes('Nothing was generated.'), reply);
+        assert(reply.includes(`Available tools: ${GENERATION_TOOL_NAMES}.`), reply);
+        assert.strictEqual(client.getSubmitted().length, 0, 'an unsupported name never reaches the broker');
+        const results = agent.messages.filter((message) => message.role === 'tool');
+        assert.strictEqual(results.length, 2);
+        for (const result of results) assertUnsupportedGuidance(result.content, repeatedName);
+        assert.strictEqual(agent.messages.filter((message) => message.content === GENERATION_CONTINUE_REMINDER).length, 1,
+            'exactly one reminder');
+        assert.strictEqual(seen[1][seen[1].length - 1].content, GENERATION_CONTINUE_REMINDER);
+        await agent.close();
+    }
+
+    // The same name as a native call: the same guidance and the same early end.
+    {
+        const client = createGenerationFakeClient();
+        const seen = scriptLlm(client, [
+            { tools: [['run_command', { command: 'dir' }]] },
+            { tools: [['run_command', { command: 'dir' }]] },
+            { content: 'unused' },
+        ]);
+        const agent = generationAgent(client, 12);
+        await agent.init();
+        const reply = await agent.send('build it');
+        assert.strictEqual(seen.length, 2);
+        assert(reply.startsWith('Stopped: the model called "run_command"'), reply);
+        assertUnsupportedGuidance(agent.messages.find((message) => message.role === 'tool').content, 'run_command');
+        assert.strictEqual(client.getSubmitted().length, 0);
+        await agent.close();
+    }
+
+    // A turn that also runs a granted tool is progress: the repeated name only ends the run in two turns in a row
+    // that call nothing but unsupported names.
+    {
+        const client = createGenerationFakeClient();
+        const seen = scriptLlm(client, [
+            { tools: [[repeatedName, {}]] },
+            { tools: [[repeatedName, {}], ['query_component_catalog', { section: 'example' }]] },
+            { tools: [[repeatedName, {}]] },
+            { tools: [['validate_definition', { template }]] },
+            { tools: [[repeatedName, {}]] },
+            { tools: [[repeatedName, {}]] },
+            { content: 'unused' },
+        ]);
+        const agent = generationAgent(client, 12);
+        await agent.init();
+        const reply = await agent.send('build it');
+        assert.strictEqual(seen.length, 6, 'only the 5th and 6th turns are two unsupported-only turns in a row');
+        assert(reply.startsWith(`Stopped: the model called "${repeatedName}"`), reply);
+        assert.deepStrictEqual(client.getSubmitted().map((entry) => entry.payload.route), ['query_component_catalog', 'validate_definition']);
+        assert.strictEqual(agent.messages.filter((message) => message.content === GENERATION_CONTINUE_REMINDER).length, 1,
+            'the reminder is still sent only once');
+        await agent.close();
+    }
+
+    // The iteration limit still counts: at the limit no reminder is added.
+    {
+        const client = createGenerationFakeClient();
+        const seen = scriptLlm(client, [{ content: call(repeatedName, {}) }]);
+        const agent = generationAgent(client, 1);
+        await agent.init();
+        const reply = await agent.send('build it');
+        assert.strictEqual(seen.length, 1);
+        assert(reply.startsWith('Stopped because max iterations were reached'), reply);
+        assert.strictEqual(agent.messages.filter((message) => message.content === GENERATION_CONTINUE_REMINDER).length, 0);
+        await agent.close();
+    }
+
+    // The governed executor answers names that are not granted with the same guidance in a generation task, and keeps
+    // its plain messages for other agents.
+    {
+        const client = createGenerationFakeClient();
+        const agent = generationAgent(client);
+        await agent.init();
+        const context = { projectRoot: ROOT, noConfirm: true, verbose: false };
+        assertUnsupportedGuidance(await agent.governedExecutor.executeTool('make_definition', {}, context), 'make_definition');
+        assertUnsupportedGuidance(await agent.governedExecutor.executeTool('read_file', { path: './README.md' }, context), 'read_file');
+        assert.strictEqual(client.getSubmitted().length, 0);
+        await agent.close();
+
+        const plainClient = createFakeClient();
+        const plain = new AgentLoop({
+            model: 'user-requested-model',
+            provider: createForbiddenDirectProvider(),
+            projectRoot: ROOT,
+            stream: false,
+            governed: {
+                brokerUrl: 'http://broker.local:5000',
+                brokerPubKey: 'fake-pub-key',
+                principalId: 'prn_test',
+                taskId: 'task_test',
+                roleId: 'role_reader',
+                registrationSecret: TEST_REGISTRATION_SECRET,
+                clientFactory: () => plainClient,
+            },
+        });
+        await plain.init();
+        assert.strictEqual(await plain.governedExecutor.executeTool('make_definition', {}, context), '[Governed] unsupported tool: make_definition');
+        assert((await plain.governedExecutor.executeTool('run_command', { command: 'dir' }, context)).startsWith('[Governed] capability denied: command.execute'));
+        await plain.close();
+    }
+}
+
+/**
+ * An object or array parameter that arrives as a string (a model server puts the raw text there when the model's JSON
+ * is broken): valid JSON is sent as the parsed value; a generation tool's string that only lacks closing brackets is
+ * repaired and sent, with a note in the tool result; a string that cannot be repaired is answered locally with the
+ * JSON error, its position and the text around it, and never reaches the broker.
+ */
+async function testObjectArgumentsSentAsJsonStrings() {
+    const template = {
+        kind: 'definition-template',
+        version: '0.1.0',
+        definitions: { pages: [{ id: 'contacts', definition: { name: 'ContactPage', type: 'form', fields: [{ name: 'a', type: 'text', label: 'A' }] } }] },
+    };
+    const text = JSON.stringify(template);
+    const missingOneBrace = text.slice(0, -1);
+    assert.throws(() => JSON.parse(missingOneBrace), 'the broken string is not JSON');
+    const context = { projectRoot: ROOT, noConfirm: true, verbose: false };
+
+    const client = createGenerationFakeClient();
+    const agent = generationAgent(client);
+    await agent.init();
+    const executor = agent.governedExecutor;
+
+    // Valid JSON strings: the parsed object and array are sent.
+    await executor.executeTool('validate_definition', { template: text, page_ids: '["contacts"]' }, context);
+    let submitted = client.getSubmitted();
+    assert.strictEqual(submitted.length, 1);
+    assert.deepStrictEqual(submitted[0].payload.args, { template, page_ids: ['contacts'] });
+
+    // One closing brace missing: repaired, sent as an object, and the result carries a note.
+    const repairedResult = await executor.executeTool('validate_definition', { template: missingOneBrace }, context);
+    submitted = client.getSubmitted();
+    assert.strictEqual(submitted.length, 2);
+    assert.deepStrictEqual(submitted[1].payload.args, { template });
+    const repaired = JSON.parse(repairedResult);
+    assert.strictEqual(repaired.ok, true, 'the broker result is kept');
+    assert(repaired.agent_note.includes('missing 1 closing bracket; it was added automatically'), repaired.agent_note);
+
+    // A missing bracket in the middle is closed where the next closer does not match.
+    const middle = '{"kind":"definition-template","version":"0.1.0","definitions":{"pages":[{"id":"contacts"}}}';
+    await executor.executeTool('validate_definition', { template: middle }, context);
+    submitted = client.getSubmitted();
+    assert.deepStrictEqual(submitted[2].payload.args.template,
+        { kind: 'definition-template', version: '0.1.0', definitions: { pages: [{ id: 'contacts' }] } });
+
+    // A page object missing its } before the next page: a comma inside an object followed by { cannot be JSON, so the }
+    // is added before the comma.
+    const twoPages = {
+        kind: 'definition-template',
+        version: '0.1.0',
+        definitions: { pages: [{ id: 'a', definition: { name: 'APage' } }, { id: 'b', definition: { name: 'BPage' } }] },
+    };
+    const betweenPages = JSON.stringify(twoPages).replace('{"name":"APage"}},', '{"name":"APage"},');
+    assert.throws(() => JSON.parse(betweenPages));
+    await executor.executeTool('validate_definition', { template: betweenPages }, context);
+    submitted = client.getSubmitted();
+    assert.deepStrictEqual(submitted[3].payload.args.template, twoPages);
+
+    // Not repairable (a value is missing): a local structured error, nothing sent.
+    const broken = '{"kind":"definition-template","version":,"definitions":{"pages":[]}}';
+    const errorResult = JSON.parse(await executor.executeTool('validate_definition', { template: broken }, context));
+    assert.strictEqual(client.getSubmitted().length, 4, 'an argument that cannot be repaired is not sent to the broker');
+    assert.strictEqual(errorResult.ok, false);
+    assert.strictEqual(errorResult.errors.length, 1);
+    const [issue] = errorResult.errors;
+    assert.strictEqual(issue.code, 'ARGUMENT_JSON_INVALID');
+    assert.strictEqual(issue.parameter, 'template');
+    assert(issue.message.startsWith('The template argument is a string that is not valid JSON: '), issue.message);
+    assert(Number.isInteger(issue.position) && issue.position > 0 && issue.position < broken.length);
+    assert(issue.near.length > 0 && issue.near.length <= 60 && broken.includes(issue.near), issue.near);
+    assert(issue.near.includes('"version":,'), 'the text near the error shows the problem');
+    assert(issue.hint.includes('not sent to the broker'), issue.hint);
+
+    // An extra closing bracket and an unterminated string are not repaired either.
+    for (const value of [`${text}}`, '{"kind":"definition-template']) {
+        const result = JSON.parse(await executor.executeTool('generate_scaffold', { template: value }, context));
+        assert.strictEqual(result.errors[0].code, 'ARGUMENT_JSON_INVALID', value);
+    }
+    // Valid JSON of another type: also answered locally for a generation tool.
+    const wrongType = JSON.parse(await executor.executeTool('validate_definition', { template: '[1,2]' }, context));
+    assert.strictEqual(wrongType.errors[0].code, 'ARGUMENT_TYPE_INVALID');
+    assert.strictEqual(client.getSubmitted().length, 4, 'none of these reached the broker');
+    await agent.close();
+
+    // Through the agent loop: the native tool call carries the template as a string with a missing brace, the
+    // repaired request is sent, and the successful generate ends the run at the summary without a reminder.
+    {
+        const loopClient = createGenerationFakeClient();
+        const generateOk = JSON.stringify({ ok: true, zip: { path: 'slot/req/contacts-scaffold.zip', sha256: 'c'.repeat(64), size: 10 } });
+        const sent = [];
+        loopClient.submitRequest = async (capabilityId, payload) => {
+            sent.push(payload);
+            return { success: true, data: { execution_state: 'Succeeded', result_payload: capabilityId === 'generation.scaffold.generate' ? generateOk : '{"ok":true}' } };
+        };
+        const seen = scriptLlm(loopClient, [
+            { tools: [['validate_definition', { template: missingOneBrace }]] },
+            { tools: [['generate_scaffold', { template: missingOneBrace, title: 'Contacts' }]] },
+            { content: 'Generated.' },
+        ]);
+        const loopAgent = generationAgent(loopClient);
+        await loopAgent.init();
+        assert.strictEqual(await loopAgent.send('build it'), 'Generated.');
+        assert.strictEqual(seen.length, 3);
+        assert.deepStrictEqual(sent.map((payload) => payload.args.template), [template, template]);
+        assert.strictEqual(loopAgent.messages.filter((message) => message.content === GENERATION_CONTINUE_REMINDER).length, 0,
+            'a repaired generate that succeeded counts as generated');
+        await loopAgent.close();
+    }
+
+    // Other tools: a valid JSON string for an object parameter is still parsed; a broken one is sent unchanged
+    // (the broker's schema check reports it), without a repair.
+    const { coerceToolArguments, repairClosers } = require('../lib/tool-arguments');
+    // The repair only adds closing brackets outside strings, and gives up when that cannot make the text JSON.
+    assert.deepStrictEqual(repairClosers('{"a":[1,{"b":"}],"}'), { text: '{"a":[1,{"b":"}],"}]}', added: 2 });
+    assert.deepStrictEqual(repairClosers('[{"a":1},{"b":{"c":2,{"d":3}]'), { text: '[{"a":1},{"b":{"c":2}},{"d":3}]', added: 2 });
+    assert.deepStrictEqual(repairClosers('{"a":"q\\"}"'), { text: '{"a":"q\\"}"}', added: 1 }, 'an escaped quote does not end the string');
+    assert.strictEqual(repairClosers('{"a":1,{"b":2}}'), null, 'a member without a key is not closed away');
+    assert.strictEqual(repairClosers('{"a":1}'), null, 'nothing to add');
+    assert.strictEqual(repairClosers('{"a":"open'), null, 'an unterminated string');
+    assert.strictEqual(repairClosers(`${'['.repeat(65)}`), null, 'deeper than the limit');
+    const objectParameters = { type: 'object', properties: { options: { type: 'object' } } };
+    assert.deepStrictEqual(coerceToolArguments('some_tool', { options: '{"a":1}' }, objectParameters),
+        { args: { options: { a: 1 } }, notes: [], error: null });
+    assert.deepStrictEqual(coerceToolArguments('some_tool', { options: '{"a":1' }, objectParameters),
+        { args: { options: '{"a":1' }, notes: [], error: null });
+}
+
+/**
+ * The broker reports execution_state with the enum names (Denied, Dispatched). The executor matches them without
+ * regard to case: a denied request is reported as such, with the policy reason.
+ */
+async function testExecutionStateCase() {
+    const client = createGenerationFakeClient();
+    const agent = generationAgent(client);
+    await agent.init();
+    const context = { projectRoot: ROOT, noConfirm: true, verbose: false };
+    const template = { kind: 'definition-template', version: '0.1.0' };
+
+    client.submitRequest = async () => ({
+        success: true,
+        data: { request_id: 'req_denied', execution_state: 'Denied', policy_reason: 'Grant quota exhausted.' },
+    });
+    const denied = await agent.governedExecutor.executeTool('validate_definition', { template }, context);
+    assert(denied.startsWith('[Governed] request denied: Grant quota exhausted.'), denied);
+    assert(denied.includes('capability: generation.definition.validate'), denied);
+
+    client.submitRequest = async () => ({ success: true, data: { request_id: 'req_wait', execution_state: 'Dispatched' } });
+    assert.strictEqual(await agent.governedExecutor.executeTool('validate_definition', { template }, context),
+        '[Governed] request dispatched (request_id: req_wait)');
+    await agent.close();
+
+    // The generation prompt names the reason the broker gives when a tool's calls are used up.
+    const promptClient = createGenerationFakeClient();
+    const promptAgent = generationAgent(promptClient);
+    await promptAgent.init();
+    assert(promptAgent.messages[0].content.replace(/\s+/g, ' ').includes('(a call is denied with "Grant quota exhausted.")'));
+    await promptAgent.close();
+}
+
+/**
+ * A tool call written as text whose arguments nest deeper than the broker's JSON depth limit is not a tool call:
+ * printing or sending such arguments exhausts the call stack. The run goes on (a text-only reply gets the reminder),
+ * nothing reaches the broker, and printing unprintable arguments never throws.
+ */
+async function testDeeplyNestedTextToolCall() {
+    const { MAX_ARGUMENT_DEPTH, exceedsJsonDepth } = require('../lib/tool-arguments');
+    const { parseTextToolCalls } = require('../lib/text-tool-calls');
+    const nested = (depth) => `${'['.repeat(depth)}${']'.repeat(depth)}`;
+    const deepCall = (name, depth) => `{"name":"${name}","arguments":{"a":${nested(depth)}}}`;
+
+    assert.strictEqual(MAX_ARGUMENT_DEPTH, 64);
+    // arguments itself is one level: 63 nested arrays inside it are 64 levels, 64 arrays are 65.
+    assert.strictEqual(parseTextToolCalls(deepCall('a', MAX_ARGUMENT_DEPTH - 1)).length, 1);
+    assert.strictEqual(parseTextToolCalls(deepCall('a', MAX_ARGUMENT_DEPTH)).length, 0);
+    assert.strictEqual(exceedsJsonDepth(JSON.parse(nested(100000))), true, 'the depth check is not recursive');
+
+    for (const verbose of [false, true]) {
+        for (const name of ['no_such_tool', 'validate_definition']) {
+            const client = createGenerationFakeClient();
+            const text = deepCall(name, 1600);
+            assert(text.length > 3200);
+            const seen = scriptLlm(client, [{ content: text }, { content: text }]);
+            const agent = generationAgent(client);
+            agent.verbose = verbose;
+            await agent.init();
+            const reply = await agent.send('build it');
+            assert.strictEqual(reply, text, 'a too deep call is a text-only reply');
+            assert.strictEqual(seen.length, 2, 'one reminder, then the run ends');
+            assert.strictEqual(client.getSubmitted().length, 0, 'nothing reaches the broker');
+            await agent.close();
+        }
+    }
+
+    // Printing arguments that cannot be serialised does not throw.
+    const agent = generationAgent(createGenerationFakeClient());
+    assert.strictEqual(agent._formatArgs({ a: JSON.parse(nested(1600)) }), '(arguments not printable)');
+}
+
+/**
+ * --run: an exception in the run still closes the agent (and with it the broker session) before the process ends,
+ * so the generation watchdog sees at once that the agent ended without a package. The exit code is set, the process
+ * is not ended inside the catch.
+ */
+async function testRunOnceClosesTheAgent() {
+    const { runOnce } = require('../lib/run-once');
+    const events = [];
+    const failing = {
+        async send() { events.push('send'); throw new RangeError('Maximum call stack size exceeded'); },
+        async close() { events.push('close'); },
+    };
+    assert.strictEqual(await runOnce(failing, 'build it'), 1);
+    assert.deepStrictEqual(events, ['send', 'close']);
+
+    events.length = 0;
+    const passing = {
+        async send() { events.push('send'); return 'done'; },
+        async close() { events.push('close'); },
+    };
+    assert.strictEqual(await runOnce(passing, 'build it'), 0);
+    assert.deepStrictEqual(events, ['send', 'close']);
+
+    const fs = require('fs');
+    const agentCli = fs.readFileSync(path.join(ROOT, 'tools', 'agent', 'agent.js'), 'utf8');
+    const start = agentCli.indexOf('if (args.run) {');
+    assert(start >= 0, 'agent.js has the --run branch');
+    const branch = agentCli.slice(start, agentCli.indexOf('return;', start));
+    assert(branch.includes('process.exitCode = await runOnce(agent, args.run'), 'the --run branch uses runOnce and sets the exit code');
+    assert(!branch.includes('process.exit('), 'the --run branch does not end the process before the agent is closed');
+}
+
+/** The text parser only accepts objects with a string name and object arguments. */
+function testTextToolCallParser() {
+    const { parseTextToolCalls } = require('../lib/text-tool-calls');
+    const fence = '```';
+    assert.deepStrictEqual(parseTextToolCalls(`${fence}json\n{"name":"a","arguments":{"x":1}}\n${fence}`), [{ name: 'a', arguments: { x: 1 } }]);
+    assert.deepStrictEqual(parseTextToolCalls(`${fence}\n{"name":"a","arguments":{}}`), [{ name: 'a', arguments: {} }]);
+    assert.deepStrictEqual(parseTextToolCalls('Call: {"name":"a","arguments":{"y":"z"},}'), [{ name: 'a', arguments: { y: 'z' } }]);
+    assert.deepStrictEqual(parseTextToolCalls('[{"name":"a","arguments":{}},{"name":"b","arguments":{}}]').map((entry) => entry.name), ['a', 'b']);
+    assert.deepStrictEqual(parseTextToolCalls('{"tool_calls":[{"function":{"name":"a","arguments":{}}}]}').map((entry) => entry.name), ['a']);
+    assert.deepStrictEqual(parseTextToolCalls('<tool_call>{"name":"a","arguments":{}}</tool_call>').map((entry) => entry.name), ['a']);
+    for (const text of [
+        '',
+        'no json here',
+        '{"kind":"definition-template"}',
+        '{"name":"a","arguments":"{}"}',
+        '{"name":"a"}',
+        '{"name":5,"arguments":{}}',
+        '{"name":"a","arguments":[1]}',
+    ]) {
+        assert.deepStrictEqual(parseTextToolCalls(text), [], text);
+    }
+    // A fence in another language is skipped; the bare JSON fallback still finds an object written in the text.
+    assert.deepStrictEqual(parseTextToolCalls(`${fence}python\nprint(1)\n${fence}\n{"name":"a","arguments":{}}`).map((entry) => entry.name), ['a']);
+    assert.deepStrictEqual(parseTextToolCalls(`{"name":"a","arguments":{"pad":"${'x'.repeat(300 * 1024)}"}}`), [], 'oversized text is ignored');
+}
+
+/** AGENT_MAX_ITERATIONS and --max-iterations accept integers from 1 to 100; anything else keeps the default. */
+function testMaxIterationsParsing() {
+    const { parseMaxIterations, DEFAULT_MAX_ITERATIONS } = require('../lib/utils');
+    assert.strictEqual(DEFAULT_MAX_ITERATIONS, 20);
+    assert.strictEqual(parseMaxIterations('12'), 12);
+    assert.strictEqual(parseMaxIterations(' 4 '), 4);
+    assert.strictEqual(parseMaxIterations(100), 100);
+    for (const invalid of [undefined, '', '0', '-3', '101', '7x', '1.5', 'NaN']) {
+        assert.strictEqual(parseMaxIterations(invalid), DEFAULT_MAX_ITERATIONS, `rejects ${invalid}`);
+    }
+    assert.strictEqual(parseMaxIterations('abc', 9), 9);
+
+    const fs = require('fs');
+    const agentCli = fs.readFileSync(path.join(ROOT, 'tools', 'agent', 'agent.js'), 'utf8');
+    assert(agentCli.includes('parseMaxIterations(process.env.AGENT_MAX_ITERATIONS'), 'agent.js reads AGENT_MAX_ITERATIONS');
+    const entrypoint = fs.readFileSync(path.join(ROOT, 'tools', 'agent', 'container', 'entrypoint.sh'), 'utf8');
+    assert(entrypoint.includes('--max-iterations "$AGENT_MAX_ITERATIONS"'), 'the container entrypoint passes AGENT_MAX_ITERATIONS');
+}
+
 /** The registration secret must never reach the prompt context or the system prompt (both go to the model). */
 function assertSecretNotExposed(promptContext, prompt) {
     assert(!JSON.stringify(promptContext).includes(TEST_REGISTRATION_SECRET), 'prompt context must not contain the registration secret');
@@ -725,6 +1737,17 @@ async function main() {
     await testKillSwitchEndsTheExecutor();
     await testKillSwitchSeenOnlyWhenRegisteringAgain();
     await testRegistrationRefusalEndsTheExecutor();
+    await testGenerationTools();
+    await testLowRiskGenerationGrantsKeepTheGeneralPrompt();
+    await testGenerationRunNeedsAToolCallEveryTurn();
+    await testGenerationToolCallsWrittenAsText();
+    await testUnsupportedToolsInAGenerationTask();
+    await testObjectArgumentsSentAsJsonStrings();
+    await testExecutionStateCase();
+    await testDeeplyNestedTextToolCall();
+    await testRunOnceClosesTheAgent();
+    testTextToolCallParser();
+    testMaxIterationsParsing();
     console.log('Governed mode tests passed.');
 }
 

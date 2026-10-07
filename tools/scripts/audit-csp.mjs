@@ -1,5 +1,5 @@
 // audit-csp.mjs — CSP + 視覺技術政策守門員(零依賴 node;不靠 rg)。
-// 掃 runtime 原始碼與實際出貨的 SPA 範本(排除 vendor/demo/tests):
+// 掃 runtime 原始碼與實際出貨的 SPA 範本、定義網站外殼(排除 vendor/demo/tests):
 //   A. <style> 元素注入(style-src 擋)          B. setAttribute('style',…)(style-src 擋)
 //   C. HTML 字串內 style="…"(style-src 擋)     D. HTML 字串內 on*= 事件(script-src 擋)
 //   E. eval / new Function(unsafe-eval)          F. javascript: URL(security.js 的防禦性過濾除外)
@@ -18,7 +18,8 @@ const roots = [
     path.join(repo, 'tools', 'custom-component-studio'),
     path.join(repo, 'tools', 'theme-studio'),
     path.join(repo, 'templates', 'spa', 'frontend'),
-    path.join(repo, 'templates', 'spa', 'scripts')
+    path.join(repo, 'templates', 'spa', 'scripts'),
+    path.join(repo, 'templates', 'definition-site')
 ];
 const quiet = process.argv.includes('--quiet');
 const writeBaseline = process.argv.includes('--write-baseline');
@@ -51,7 +52,8 @@ const isAuditedHtml = (f) => f.endsWith('.html') && (
     f.startsWith(path.join(repo, 'tools', 'custom-component-studio') + path.sep) ||
     f.startsWith(path.join(repo, 'tools', 'theme-studio') + path.sep) ||
     f.startsWith(path.join(repo, 'templates', 'spa', 'frontend') + path.sep) ||
-    f.startsWith(path.join(repo, 'templates', 'spa', 'scripts', 'web') + path.sep)
+    f.startsWith(path.join(repo, 'templates', 'spa', 'scripts', 'web') + path.sep) ||
+    f.startsWith(path.join(repo, 'templates', 'definition-site') + path.sep)
 );
 
 function* walk(dir) {

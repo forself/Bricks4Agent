@@ -159,7 +159,7 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <p>目前 sidecar 會：</p>
 <ul>
 <li>
-<p>優先讀取 <code>ANTHROPIC_API_KEY</code>，並設定 <code>HighLevelLlm</code> / <code>LlmProxy</code> 為 <code>anthropic</code>、<code>claude-sonnet-4-6</code></p>
+<p>優先讀取 <code>ANTHROPIC_API_KEY</code>，並設定 <code>HighLevelLlm</code> / <code>LlmProxy</code> 為 <code>anthropic</code>、<code>claude-sonnet-4-6</code>；LlmProxy 改用雲端供應者時（含 OpenAI-compatible fallback）一併關閉 <code>HighLevelExecutionModelPolicy</code>，代理改用 <code>LlmProxy:DefaultModel</code></p>
 </li>
 <li>
 <p>若沒有 <code>ANTHROPIC_API_KEY</code>，才讀取這個檔案並注入 broker 的 <code>HighLevelLlm.ApiKey</code></p>
@@ -178,7 +178,7 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <p>目前 sidecar 會：</p>
 <ul>
 <li>
-<p>啟動時為缺少憑證的 worker 類型自動產生並持久化（line-worker、file-worker、browser-worker、transport-tdx、site-crawler-worker）</p>
+<p>啟動時為缺少憑證的 worker 類型自動產生並持久化（line-worker、file-worker、browser-worker、transport-tdx、site-crawler-worker、generation-worker）</p>
 </li>
 <li>
 <p>將全部憑證注入 broker runtime 設定，並開啟 <code>WorkerAuth.Enforce = true</code></p>
@@ -193,7 +193,28 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <p>要讓其他 worker 對啟用驗證的 broker 註冊，使用：</p>
 <pre><code class="language-powershell">powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\run-worker.ps1 -Worker site-crawler
 </code></pre>
-<p>（<code>-Worker</code> 可用 <code>file</code>、<code>browser</code>、<code>transport-tdx</code>、<code>site-crawler</code>。）此腳本讀取同一憑證庫，註冊即可通過 worker 身分驗證。</p>
+<p>（<code>-Worker</code> 可用 <code>file</code>、<code>browser</code>、<code>transport-tdx</code>、<code>site-crawler</code>、<code>generation</code>。）此腳本讀取同一憑證庫，註冊即可通過 worker 身分驗證。</p>
+<h3>3.1.1 受治理生成（選用）</h3>
+<p><code>line-sidecar.ps1 up -GenerationMode Governed</code>（或 <code>restart</code>）會另外發布並以主機程序啟動 <code>generation-worker</code>（與其他 sidecar worker 相同），並把 broker 切到 <code>HighLevelCoordinator:Generation:SystemScaffoldMode = Governed</code>。之後確認過的系統雛形需求，改由 broker 啟動的受控代理經三個生成能力產出，不再在 broker 程序內生成。broker 與 worker 共用 <code>Generation:OutputRoot</code>，位置是 <code>.run\line-sidecar\data\generation-out</code>，在各使用者工作區之外。worker 執行的 node 取自 <code>B4A_NODE_PATH</code>（有設定時），否則用 PATH 上的 <code>node</code>。</p>
+<p>不加 <code>-GenerationMode</code>（或設為 <code>Legacy</code>）時行為不變。sidecar 上啟動的代理沿用已記載的 <code>AllowAgentDefaultNetwork</code> 例外（不在 internal 網路上），代理看到的需求文字有外流的可能；專用的 internal 代理網路列為後續。</p>
+<p>啟用前的準備（升級後也要重做第 1 項）：</p>
+<ol>
+<li>
+<p>以 <code>tools/agent/Containerfile</code> 重建 <code>bricks4agent-agent:latest</code>（在 repo 根目錄執行 <code>podman build -t bricks4agent-agent:latest -f tools/agent/Containerfile .</code>，使用 docker 時把 <code>podman</code> 換成 <code>docker</code>）。三個生成工具與生成用的 system prompt 都烤在這個映像裡；sidecar 直接使用本機既有的映像、不會自己建置，就緒檢查也不看映像版本。舊映像啟動的代理沒有這三個工具，每次生成都要等到代理結束或 watchdog 期限才失敗。</p>
+</li>
+<li>
+<p>容器執行環境（podman 或 docker，可用 <code>B4A_CONTAINER_RUNTIME</code> 指定）在 PATH 上，ContainerManager 因此啟用（或以 <code>B4A_CONTAINER_MANAGER_ENABLED</code> 明確開啟）。</p>
+</li>
+<li>
+<p>LlmProxy 有模型可用：有 Anthropic 或 OpenAI 的 API 金鑰時，sidecar 把 LlmProxy 切到該供應者。沒有金鑰時 LlmProxy 仍是啟用的，沿用 broker <code>appsettings.json</code> 的本機 Ollama（<code>LlmProxy:BaseUrl</code> 與 <code>LlmProxy:DefaultModel</code>），這時必須有可用的 Ollama 與該模型；<code>-GenerationMode Governed</code> 啟動前會檢查，不成立就停止並說明原因。</p>
+</li>
+<li>
+<p>generation-worker 找得到 node：<code>B4A_NODE_PATH</code> 或 PATH 上的 <code>node</code>。</p>
+</li>
+</ol>
+<p>第 2 項不成立時，確認系統雛形會回「系統雛形生成暫不可用」且不建立任務；第 3 項由啟動腳本檢查（就緒檢查只看 LlmProxy 是否啟用，看不出供應者是否可達）。第 1、4 項不成立時就緒檢查看不出來（它不看映像版本，也不檢查 worker 能否執行 node），每次生成都要等到代理結束或 watchdog 期限才失敗，所以啟用前請先確認。</p>
+<p>要對執行中的 broker 手動啟動 worker：<code>run-worker.ps1 -Worker generation</code>（加 <code>-GenerationOutputRoot</code> 可改用其他輸出根目錄；broker 必須使用同一個）。輸出根目錄必須是實際的目錄，不可是符號連結或 junction：保留期限清理不跟隨連結，所以 worker 遇到連結的根目錄就拒絕啟動。要移到其他磁碟時，直接指定那顆磁碟上的實際路徑。</p>
+<p>產物的保留期限：generation-worker 在啟動時、每次生成之前，以及執行期間每小時，刪除 <code>generation-out</code> 中超過 <code>Generation:RetentionHours</code>（預設 24 小時）的請求目錄。zip 含使用者的需求內容；broker 收下時已複製到使用者的文件區。worker 持續執行時，使用者刪除自己文件區中的產物後，<code>generation-out</code> 中的副本最遲在保留期限再加一小時後消失。worker 沒有執行時不會清理：切回 Legacy（啟動時不加 <code>-GenerationMode Governed</code>）之後，<code>generation-out</code> 中留下的目錄要手動刪除，或再以 Governed 模式啟動一次（worker 啟動時會清理）。</p>
 <h3>3.2 LINE outbound rate limit</h3>
 <p>line-worker 會對 <code>line.message.send</code> 與 <code>line.audio.send</code> 做 worker-local outbound rate limiting，key 為 recipient + capability。預設值在 <code>packages/csharp/workers/line-worker/appsettings*.json</code>：</p>
 <ul>
@@ -577,9 +598,21 @@ npm run signing:wdac-repair -- -Deploy
 <li>
 <p>用 <code>/ok</code>、<code>/revise</code>、<code>/cancel</code> 表態</p>
 </li>
+<li>
+<p><code>/ok</code> 之後回 <code>y</code> 開始建置，回 <code>n</code> 取消</p>
+</li>
 </ol>
 <p>補充：</p>
 <ul>
+<li>
+<p><code>/proj</code>、<code>/ok</code>、<code>/revise</code>、訪談中的回答與 draft 確認（<code>y</code>）需要 production 權限（會員層級，且管理員已開啟 production 任務）；基本註冊者會收到與 <code>/建立</code> 相同的權限不足回覆，<code>/cancel</code> 不受限</p>
+</li>
+<li>
+<p><code>/ok</code> 只建立系統雛形 draft，使用者回 <code>y</code> 才建置，走與 <code>/建立</code> 相同的 draft 確認（專案名稱重查、升格閘、task、plan、handoff）；回 <code>n</code> 或 draft 逾時後可再 <code>/ok</code> 或 <code>/revise</code></p>
+</li>
+<li>
+<p>回覆只寫專案資料夾名、封裝檔名與相對於受管根目錄的工作區位置，不寫主機絕對路徑</p>
+</li>
 <li>
 <p>prompts 目前是中英文雙語</p>
 </li>

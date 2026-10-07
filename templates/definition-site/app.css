@@ -1,0 +1,121 @@
+/* 定義網站外殼樣式：只用主題 token（var(--cl-*)），深色模式由 theme.css 的 [data-theme="dark"] 提供 */
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    background: var(--cl-bg-secondary);
+    color: var(--cl-text);
+    font-family: var(--cl-font-family);
+    font-size: var(--cl-font-size-md);
+}
+
+.ds-app {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.ds-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--cl-space-md) var(--cl-space-xl);
+    padding: var(--cl-space-md) var(--cl-space-xl);
+    background: var(--cl-bg);
+    border-bottom: 1px solid var(--cl-border);
+    box-shadow: var(--cl-shadow-sm);
+}
+
+.ds-header__title {
+    margin: 0;
+    font-size: var(--cl-font-size-xl);
+    font-weight: 600;
+    color: var(--cl-text-heading);
+}
+
+.ds-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--cl-space-xs);
+}
+
+.ds-nav__link {
+    padding: var(--cl-space-xs) var(--cl-space-md);
+    border-radius: var(--cl-radius-md);
+    color: var(--cl-text-secondary);
+    text-decoration: none;
+}
+
+.ds-nav__link:hover,
+.ds-nav__link:focus-visible {
+    background: var(--cl-bg-hover);
+    color: var(--cl-text);
+}
+
+.ds-nav__link--current {
+    background: var(--cl-primary-light);
+    color: var(--cl-primary-dark);
+    font-weight: 600;
+}
+
+.ds-main {
+    flex: 1;
+    width: 100%;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: var(--cl-space-xl);
+}
+
+.ds-page {
+    background: var(--cl-bg);
+    border: 1px solid var(--cl-border-light);
+    border-radius: var(--cl-radius-lg);
+    box-shadow: var(--cl-shadow-sm);
+    padding: var(--cl-space-xl);
+}
+
+.ds-page__header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--cl-space-md);
+    margin-bottom: var(--cl-space-lg);
+}
+
+.ds-page__title {
+    margin: 0;
+    font-size: var(--cl-font-size-2xl);
+    font-weight: 600;
+    color: var(--cl-text-heading);
+}
+
+.ds-page__toolbar {
+    display: flex;
+    gap: var(--cl-space-sm);
+}
+
+.ds-notice {
+    margin: 0 0 var(--cl-space-lg);
+    padding: var(--cl-space-sm) var(--cl-space-md);
+    border-radius: var(--cl-radius-md);
+    background: var(--cl-bg-info-light);
+    color: var(--cl-text);
+}
+
+.ds-notice--error {
+    background: var(--cl-bg-danger-light);
+    color: var(--cl-danger-dark);
+}
+
+.ds-footer {
+    padding: var(--cl-space-md) var(--cl-space-xl);
+    color: var(--cl-text-muted);
+    font-size: var(--cl-font-size-sm);
+    text-align: center;
+}

@@ -56,8 +56,11 @@ public class PoolDispatcher : IExecutionDispatcher
                 _logger.LogDebug(
                     "No available worker for capability '{Cap}' (attempt {A})",
                     request.CapabilityId, attempt);
-                return ExecutionResult.Fail(request.RequestId,
-                    $"No available worker for capability '{request.CapabilityId}'");
+                var message = $"No available worker for capability '{request.CapabilityId}'";
+                // 只有第一次就找不到 worker 才是「請求沒有送出」；重試時找不到，代表先前的嘗試已送出（逾時或傳輸失敗）。
+                return attempt == 0
+                    ? ExecutionResult.NoWorker(request.RequestId, message)
+                    : ExecutionResult.Fail(request.RequestId, message);
             }
 
             try
@@ -85,7 +88,7 @@ public class PoolDispatcher : IExecutionDispatcher
 
                 // 發送並等待結果（含 timeout）
                 var (respOpCode, respPayload) = await conn.SendAndWaitAsync(
-                    frame, request.RequestId, _config.DispatchTimeout);
+                    frame, request.RequestId, _config.ResolveDispatchTimeout(request.CapabilityId));
 
                 // 成功完成 → 歸還活躍任務計數
                 _registry.DecrementActiveTask(conn.WorkerId);

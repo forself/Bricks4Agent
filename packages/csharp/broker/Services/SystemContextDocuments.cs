@@ -8,7 +8,9 @@ namespace Broker.Services;
 ///   其中大多數還限定在 <see cref="GlobalTaskId"/> 範圍（見 <see cref="TrustedGlobalCondition"/>）；
 /// - <c>node_output_</c> 與 <c>browser.execution.</c>、<c>deployment.execution.</c> 執行證據由 broker
 ///   以執行者的身分寫入，讀取端依任務、key 或 document_id 讀取，不以系統作者為條件；
-///   保留前綴對它們的作用只是不讓非管理員經由 context API 以這些 document_id 寫入。
+///   保留前綴對它們的作用只是不讓非管理員經由 context API 以這些 document_id 寫入；
+/// - <c>generation.execution.</c>（受治理生成的產物證據，任務範圍，作者 <c>system:generation-ingestor</c>）與
+///   <c>generation.run.</c>（受治理生成的執行紀錄，global 範圍，只採信系統元件寫入的版本）由 broker 的生成服務寫入。
 /// </summary>
 public static class SystemContextDocuments
 {
@@ -22,6 +24,8 @@ public static class SystemContextDocuments
         "node_output_",
         "browser.execution.",
         "deployment.execution.",
+        "generation.execution.",
+        "generation.run.",
     };
 
     /// <summary>

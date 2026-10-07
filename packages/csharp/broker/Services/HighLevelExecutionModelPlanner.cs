@@ -80,6 +80,7 @@ public sealed class HighLevelExecutionModelPlanner : IHighLevelExecutionModelPla
                 Alias = matched.Alias,
                 Model = matched.Model,
                 Tier = matched.Tier,
+                Provider = string.IsNullOrWhiteSpace(matched.Provider) ? null : matched.Provider.Trim(),
                 Reason = string.IsNullOrWhiteSpace(reason)
                     ? $"requested by high-level entry model for task_type={draft.TaskType}"
                     : reason,
@@ -258,6 +259,12 @@ public sealed class HighLevelExecutionModelCatalogEntry
     public string Tier { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
     public bool Enabled { get; set; } = true;
+
+    /// <summary>
+    /// 服務這個模型的供應者（例如 ollama、anthropic），與 <c>LlmProxy:Provider</c> 同一種寫法。
+    /// 受治理生成只在它與 LlmProxy 目前的供應者相同時採用推薦的模型；未標明時不採用。
+    /// </summary>
+    public string Provider { get; set; } = string.Empty;
 }
 
 public sealed class HighLevelExecutionModelRequest
@@ -268,6 +275,9 @@ public sealed class HighLevelExecutionModelRequest
     public string Model { get; set; } = string.Empty;
     [JsonPropertyName("tier")]
     public string Tier { get; set; } = string.Empty;
+    [JsonPropertyName("provider")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Provider { get; set; }
     [JsonPropertyName("reason")]
     public string Reason { get; set; } = string.Empty;
     [JsonPropertyName("requested_by")]

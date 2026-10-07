@@ -62,6 +62,11 @@ services:
       WorkerAuth__Credentials__2__KeyId: "${EXEC_ADAPTER_AUTH_KEY_ID:?run node tools/agent/container/gen-stack-secrets.mjs and pass the file with --env-file}"
       WorkerAuth__Credentials__2__SharedSecret: "${EXEC_ADAPTER_AUTH_SHARED_SECRET:?run node tools/agent/container/gen-stack-secrets.mjs and pass the file with --env-file}"
       WorkerAuth__Credentials__2__Status: "active"
+      # Index 3: the generation worker (profile `generation`).
+      WorkerAuth__Credentials__3__WorkerType: "generation-worker"
+      WorkerAuth__Credentials__3__KeyId: "${GENERATION_WORKER_AUTH_KEY_ID:?run node tools/agent/container/gen-stack-secrets.mjs and pass the file with --env-file}"
+      WorkerAuth__Credentials__3__SharedSecret: "${GENERATION_WORKER_AUTH_SHARED_SECRET:?run node tools/agent/container/gen-stack-secrets.mjs and pass the file with --env-file}"
+      WorkerAuth__Credentials__3__Status: "active"
       # ── LLM Proxy ──
       LlmProxy__Enabled: "true"
       LlmProxy__Provider: "ollama"
@@ -115,11 +120,16 @@ services:
       FunctionPool__ContainerManager__WorkerImages__agent__MemoryLimit: "512m"
       # broker-spawned agents are sealed on the internal-only agent network (§13.1)
       FunctionPool__ContainerManager__WorkerImages__agent__NetworkName: "bricks4agent_agent-net"
+      # ── Governed generation ── the broker reads generated packages (read-only) from the volume
+      # the generation worker writes, verifies path and sha256, then copies them for delivery.
+      Generation__OutputRoot: "/generation-out"
     ports:
       - "127.0.0.1:${BROKER_PORT:-5000}:5000"
     volumes:
       # SQLite database and workspaces; the only writable path besides /tmp
       - broker-data:/data
+      # generated packages, read-only for the broker (the generation worker writes them)
+      - generation-out:/generation-out:ro
     # ── OS-level hardening (design §13.2) ── non-root uid 10002 from the image
     read_only: true
     tmpfs:
@@ -133,6 +143,7 @@ services:
       - control-net
       - worker-net
       - agent-net
+      - generation-net
 
   # ── File Worker ──
   file-worker:
@@ -248,6 +259,45 @@ services:
     networks:
       - worker-net   # broker dispatch + egress (build/test restore)
 
+  # ── Generation Worker (governed generation) ──
+  # Profile-gated: only starts with `--profile generation`. Deterministic node: it runs the
+  # component-library generator, writes packages to the generation-out volume and calls no
+  # LLM and no network. It sits only on the internal generation-net (broker + this worker).
+  # The agent never reaches it; only the broker dispatches the generation capabilities.
+  generation-worker:
+    image: bricks4agent-generation-worker:latest
+    profiles: ["generation"]
+    build:
+      context: ../../..
+      dockerfile: packages/csharp/workers/generation-worker/Containerfile
+    depends_on:
+      - broker
+    environment:
+      WORKER_Worker__BrokerHost: "broker"
+      WORKER_Worker__BrokerPort: "7000"
+      WORKER_Worker__Auth__WorkerType: "generation-worker"
+      WORKER_Worker__Auth__KeyId: "${GENERATION_WORKER_AUTH_KEY_ID:?run node tools/agent/container/gen-stack-secrets.mjs and pass the file with --env-file}"
+      WORKER_Worker__Auth__SharedSecret: "${GENERATION_WORKER_AUTH_SHARED_SECRET:?run node tools/agent/container/gen-stack-secrets.mjs and pass the file with --env-file}"
+      WORKER_Generation__OutputRoot: "/out"
+      # hours a package stays in the generation-out volume (1 to 8760); set it in the env file
+      WORKER_Generation__RetentionHours: "${GENERATION_RETENTION_HOURS:-24}"
+      HOME: "/tmp"
+    volumes:
+      # the only writable path besides /tmp; the broker mounts the same volume read-only
+      - generation-out:/out
+    restart: "on-failure:5"
+    # ── OS-level hardening (design §13.2) ── non-root uid 10008 from the image
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    networks:
+      - generation-net   # internal: broker dispatch only, no egress
+
   # ── Agent ──
   agent:
     image: bricks4agent-agent:latest
@@ -268,7 +318,7 @@ services:
       BROKER_WAIT_TIMEOUT_SECONDS: "90"
       AGENT_PROJECT_ROOT: "/workspace"
       AGENT_MODEL: "${STACK_MODEL:-stack-test-model}"
-      AGENT_MAX_ITERATIONS: "4"
+      AGENT_MAX_ITERATIONS: "${AGENT_MAX_ITERATIONS:-4}"
       AGENT_NO_CONFIRM: "1"
       AGENT_VERBOSE: "${AGENT_VERBOSE:-0}"
       AGENT_LINE_LISTEN: "${AGENT_LINE_LISTEN:-0}"
@@ -304,6 +354,8 @@ services:
 # control-net: broker + LLM, bridge. Broker reaches the model provider here.
 # worker-net:  broker + workers, bridge. Broker keeps egress and host
 #   port-publishing via its bridge memberships while the agent stays sealed.
+# generation-net: broker + generation-worker ONLY, `internal: true`. Generation is
+#   deterministic and needs no egress, so the worker has no gateway at all.
 networks:
   agent-net:
     name: bricks4agent_agent-net
@@ -315,6 +367,12 @@ networks:
   worker-net:
     name: bricks4agent_worker-net
     driver: bridge
+  generation-net:
+    name: bricks4agent_generation-net
+    driver: bridge
+    internal: true
 
 volumes:
   broker-data:
+  # generated packages: written by generation-worker (uid 10008), read-only for the broker
+  generation-out:

@@ -1,0 +1,73 @@
+# Base images are pinned by multi-arch index digest. Refresh them with
+# `node tools/agent/container/resolve-base-image-digests.mjs` (docker or podman).
+
+# ── Build Stage ──
+# Only the projects the worker is built from are copied in (no `COPY . .`).
+FROM mcr.microsoft.com/dotnet/sdk:10.0@sha256:e70cdb7f80b0348f5cb85f19a8f670fca061f033d57eed12fa003d58b0e06317 AS build
+
+WORKDIR /src
+COPY global.json ./
+COPY packages/csharp/cache-protocol packages/csharp/cache-protocol
+COPY packages/csharp/cache-client packages/csharp/cache-client
+COPY packages/csharp/database/BaseOrm/net10 packages/csharp/database/BaseOrm/net10
+COPY packages/csharp/broker-core packages/csharp/broker-core
+COPY packages/csharp/worker-sdk packages/csharp/worker-sdk
+COPY packages/csharp/workers/generation-worker packages/csharp/workers/generation-worker
+RUN dotnet publish packages/csharp/workers/generation-worker/GenerationWorker.csproj \
+    -c Release -o /app/publish /p:UseAppHost=false
+
+# ── Generator Stage ──
+# The node image supplies the node binary for the runtime stage and assembles the repository
+# subset the generator needs. The packaged component runtime leaves out data, reference
+# resources, demo pages and tests. The catalog summary is generated here, at build time,
+# from the catalog files copied in (the generator checks its hash before using it).
+FROM node:22-bookworm-slim@sha256:43ac6c60b8f89723f746e8a92ce91abd5017e627ce1ddfe4238355d3a30b772c AS generator
+
+WORKDIR /generation
+COPY tools/page-gen.js tools/page-gen.js
+COPY tools/package.json tools/package.json
+COPY tools/lib tools/lib
+COPY tools/generation tools/generation
+COPY packages/javascript/browser/package.json packages/javascript/browser/package.json
+COPY packages/javascript/browser/page-generator packages/javascript/browser/page-generator
+COPY packages/javascript/browser/ui_components packages/javascript/browser/ui_components
+COPY templates/definition-site templates/definition-site
+RUN rm -rf packages/javascript/browser/ui_components/data \
+        packages/javascript/browser/ui_components/refresource \
+    && find packages/javascript/browser -type d -name '__tests__' -prune -exec rm -rf {} + \
+    && find packages/javascript/browser -type f \( -name '*.test.mjs' -o -name '*.test.js' -o -name '*.spec.js' \
+        -o -name 'demo.html' -o -name 'demo_*.html' -o -name '*_demo.html' -o -name 'README_DEMO.*' \) -delete \
+    && find tools/generation -type f -name '*.test.mjs' -delete \
+    && node tools/generation/catalog-summary.mjs --out tools/generation/catalog-summary.json
+
+# ── Runtime Stage ──
+FROM mcr.microsoft.com/dotnet/aspnet:10.0@sha256:222759b391a1aaf241166672c8f99b2d4ada452e7b5319f3c6e8f265a37b5ad4
+
+WORKDIR /app
+COPY --from=build /app/publish .
+COPY --from=generator /usr/local/bin/node /usr/local/bin/node
+COPY --from=generator /generation /app/generation
+
+# /app stays owned by root, so the worker cannot rewrite itself or the generator.
+# /out is only a mount point (the generation-out volume in compose); the worker writes
+# nothing else but /tmp. The node binary is run once here so an incompatible binary
+# fails the build instead of the first request. No package manager runs: nothing is installed.
+RUN groupadd --gid 10008 generation \
+    && useradd --uid 10008 --gid 10008 --no-create-home --shell /usr/sbin/nologin generation \
+    && mkdir -p /out \
+    && chown 10008:10008 /out \
+    && /usr/local/bin/node --version
+
+USER 10008:10008
+
+# The runtime user has no home directory; anything that needs one uses /tmp (a tmpfs
+# under the hardened runtime). Generator and node locations come from configuration only.
+ENV HOME=/tmp \
+    TMPDIR=/tmp \
+    DOTNET_CLI_TELEMETRY_OPTOUT=1 \
+    WORKER_Generation__NodePath=/usr/local/bin/node \
+    WORKER_Generation__ToolsRoot=/app/generation \
+    WORKER_Generation__OutputRoot=/out
+
+# No port — the worker connects outbound to broker:7000
+ENTRYPOINT ["dotnet", "GenerationWorker.dll"]

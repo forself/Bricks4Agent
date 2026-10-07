@@ -1848,6 +1848,9 @@ try
         AssertTrue(profileView.Reply.Contains("user_code: bricks001", StringComparison.Ordinal), "profile query shows preferred alphanumeric user id");
         AssertTrue(profileView.Reply.Contains("目前擁有的權限：", StringComparison.Ordinal), "profile query shows current permission summary");
         AssertTrue(profileView.Reply.Contains("交通查詢：?rail、?hsr、?bus、?flight", StringComparison.Ordinal), "profile query lists transport query permissions");
+        var verifyAccessRoot = Path.Combine(sandboxRoot, "managed");
+        AssertTrue(!profileView.Reply.Contains(verifyAccessRoot, StringComparison.OrdinalIgnoreCase), "profile query does not expose the host workspace path");
+        AssertTrue(profileView.Reply.Contains("workspace: line/bricks001", StringComparison.Ordinal), "profile query shows the workspace as a relative name");
 
         var updatedPermissions = coordinator.SetLineUserPermissions("line-user-a", new HighLevelUserPermissionsPatch
         {
@@ -1877,6 +1880,10 @@ try
 
         var basicStillDenied = await coordinator.ProcessLineMessageAsync("line-user-a", "/build website prototype");
         AssertTrue(basicStillDenied.Error == "production_disabled", "basic tier still masks production even when raw production flag is true");
+        var basicInterviewDenied = await coordinator.ProcessLineMessageAsync("line-user-a", "/proj");
+        AssertTrue(basicInterviewDenied.Error == "production_disabled", "basic tier cannot start a /proj interview");
+        var basicApproveDenied = await coordinator.ProcessLineMessageAsync("line-user-a", "/ok");
+        AssertTrue(basicApproveDenied.Error == "production_disabled", "basic tier cannot approve a /proj design");
 
         var promotedUser = coordinator.ReviewLineUserRegistration("line-user-a", "promote", "verify production access");
         AssertTrue(promotedUser?.AccessTier == HighLevelAccessTier.Member, "registration review promotes user to member tier");
@@ -1887,6 +1894,11 @@ try
 
         var projectNamed = await coordinator.ProcessLineMessageAsync("line-user-a", "#VerifySite");
         AssertTrue(projectNamed.Draft?.ProjectName == "VerifySite", "project-name command updates production draft");
+        coordinator.ReviewLineUserRegistration("line-user-a", "demote", "verify demotion before confirmation");
+        var demotedConfirm = await coordinator.ProcessLineMessageAsync("line-user-a", "confirm");
+        AssertTrue(demotedConfirm.Error == "production_disabled" && demotedConfirm.CreatedTask == null, "a user demoted after the draft cannot confirm it");
+        AssertTrue(coordinator.GetLineDraft("line-user-a") != null, "the draft stays when confirmation is denied");
+        coordinator.ReviewLineUserRegistration("line-user-a", "promote", "verify production access");
         var confirmedDraft = await coordinator.ProcessLineMessageAsync("line-user-a", "confirm");
         AssertTrue(confirmedDraft.CreatedTask != null, "confirm creates broker task");
         using var runtimeDescriptorDoc = JsonDocument.Parse(confirmedDraft.CreatedTask!.RuntimeDescriptor);
@@ -1928,6 +1940,8 @@ try
         AssertTrue(!string.IsNullOrWhiteSpace(inlineProjectConfirmed.Reply), "code_gen confirm reply is not empty");
         AssertTrue(inlineProjectConfirmed.Reply.Contains("已生成網站原型", StringComparison.Ordinal), "code_gen confirm reply reports generated website prototype");
         AssertTrue(!inlineProjectConfirmed.Reply.Contains("目前擁有的權限", StringComparison.Ordinal), "code_gen confirm reply no longer appends the full command guide");
+        AssertTrue(!inlineProjectConfirmed.Reply.Contains(verifyAccessRoot, StringComparison.OrdinalIgnoreCase), "code_gen confirm reply does not expose host paths");
+        AssertTrue(inlineProjectConfirmed.Reply.Contains("project_folder: proj1", StringComparison.Ordinal), "code_gen confirm reply names only the project folder");
         AssertTrue(!string.IsNullOrWhiteSpace(inlineProjectRoot), "code_gen draft captures project root");
         AssertTrue(File.Exists(Path.Combine(inlineProjectRoot, "index.html")), "code_gen confirm writes index.html into project root");
         var generatedSiteContent = File.ReadAllText(Path.Combine(inlineProjectRoot, "index.html"), Encoding.UTF8);
@@ -1978,6 +1992,8 @@ try
         var scaffoldConfirmed = await coordinator.ProcessLineMessageAsync("line-scaffold-user", "confirm");
         AssertTrue(scaffoldConfirmed.CreatedTask != null && scaffoldConfirmed.CreatedTask.TaskType == "system_scaffold", "confirm creates broker task for system scaffold draft");
         AssertTrue(scaffoldConfirmed.Reply.Contains("已生成並封裝系統雛形", StringComparison.Ordinal), "system scaffold confirm reply reports packaged scaffold generation");
+        AssertTrue(!scaffoldConfirmed.Reply.Contains(verifyAccessRoot, StringComparison.OrdinalIgnoreCase), "system scaffold confirm reply does not expose host paths");
+        AssertTrue(scaffoldConfirmed.Reply.Contains("package_file: scaffoldproj-scaffold.zip", StringComparison.Ordinal), "system scaffold confirm reply names only the package file");
         var scaffoldPaths = coordinator.GetLineManagedPaths("line-scaffold-user");
         AssertTrue(scaffoldPaths != null, "system scaffold managed paths can be resolved");
         var scaffoldProjectRoot = scaffoldPaths is null ? throw new Exception("system scaffold managed paths unexpectedly null") : Path.Combine(scaffoldPaths.ProjectsRoot, "scaffoldproj");
@@ -1988,6 +2004,129 @@ try
         var scaffoldArtifacts = coordinatorWorkspaceService.ListArtifacts("line-scaffold-user");
         AssertTrue(scaffoldArtifacts.Any(item => item.RelatedTaskType == "system_scaffold" && item.FileName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)), "system scaffold confirm records packaged zip artifact");
         AssertTrue(scaffoldConfirmed.FollowUpMessages != null && scaffoldConfirmed.FollowUpMessages.Any(item => item.Contains("進度：", StringComparison.Ordinal)), "system scaffold confirm returns phase progress follow-up messages");
+
+        // /proj 訪談：/ok 只建立 system_scaffold draft，回 y 之後才走 ConfirmDraft 建立 task 與 handoff
+        await PromoteLineUserForProductionAsync("line-interview-user");
+        var interviewStart = await coordinator.ProcessLineMessageAsync("line-interview-user", "/proj");
+        AssertTrue(interviewStart.Error == null && interviewStart.Reply.Contains("專案訪談已開始", StringComparison.Ordinal), "member tier can start a /proj interview");
+        await coordinator.ProcessLineMessageAsync("line-interview-user", "#VerifyInterview");
+        await coordinator.ProcessLineMessageAsync("line-interview-user", "2");
+        var interviewReview = await coordinator.ProcessLineMessageAsync("line-interview-user", "1");
+        AssertTrue(interviewReview.Reply.Contains("/ok", StringComparison.Ordinal), "project interview reaches review with /ok guidance");
+        var interviewApproved = await coordinator.ProcessLineMessageAsync("line-interview-user", "/ok");
+        AssertTrue(interviewApproved.Draft?.TaskType == "system_scaffold", "/ok creates a system_scaffold draft");
+        AssertTrue(interviewApproved.CreatedTask == null, "/ok does not create a task before confirmation");
+        AssertTrue(!Directory.Exists(interviewApproved.Draft!.ManagedPaths.ProjectRoot), "/ok does not build the project before confirmation");
+        AssertTrue(interviewApproved.FollowUpMessages != null && interviewApproved.FollowUpMessages.Contains("y"), "/ok draft exposes the y confirm follow-up");
+        var approvedInterview = await coordinatorProjectInterviewStateService.LoadTaskDocumentAsync("line", "line-interview-user", CancellationToken.None);
+        AssertTrue(approvedInterview.SessionState.CurrentPhase == ProjectInterviewPhase.AwaitBuildConfirmation, "/ok leaves the interview awaiting build confirmation");
+        var interviewConfirmed = await coordinator.ProcessLineMessageAsync("line-interview-user", "y");
+        AssertTrue(interviewConfirmed.CreatedTask?.TaskType == "system_scaffold", "confirming the /ok draft creates a system_scaffold task");
+        AssertTrue(interviewConfirmed.Handoff != null, "confirming the /ok draft writes a handoff");
+        AssertTrue(interviewConfirmed.Reply.Contains("已生成並封裝系統雛形", StringComparison.Ordinal), "confirming the /ok draft builds through the legacy scaffold path");
+        AssertTrue(!interviewConfirmed.Reply.Contains(verifyAccessRoot, StringComparison.OrdinalIgnoreCase), "interview build reply does not expose host paths");
+        var builtInterview = await coordinatorProjectInterviewStateService.LoadTaskDocumentAsync("line", "line-interview-user", CancellationToken.None);
+        AssertTrue(builtInterview.SessionState.CurrentPhase == ProjectInterviewPhase.Confirmed, "the interview is confirmed once its build task exists");
+
+        // Governed：確認 system_scaffold draft 後改由受控代理經生成能力產出；broker 程序內不寫出檔案，
+        // 立即回覆「已受理」。前置條件不滿足時 fail-closed，不建立任務也不退回程序內生成。
+        {
+            var governedOutputRoot = Path.Combine(sandboxRoot, "generation-out");
+            Directory.CreateDirectory(governedOutputRoot);
+            var governedContainers = new VerifyRecordingContainerManager();
+            var governedReadiness = new VerifyGovernedReadiness();
+            var governedSpawnService = new AgentSpawnService(coordinatorDb);
+            using var governedCrypto = new BrokerCore.Crypto.EnvelopeCrypto();
+            var governedLauncher = new GovernedGenerationLauncher(
+                new GovernedGenerationOptions { OutputRoot = governedOutputRoot },
+                governedReadiness,
+                new AgentContainerLauncher(
+                    governedSpawnService,
+                    governedContainers,
+                    governedCrypto,
+                    new ConfigurationBuilder()
+                        .AddInMemoryCollection(new Dictionary<string, string?>
+                        {
+                            ["FunctionPool:ContainerManager:AgentBrokerUrl"] = "http://host.containers.internal:5361"
+                        })
+                        .Build(),
+                    new HighLevelLlmOptions { DefaultModel = "verify" },
+                    new RegistrationCredentialOptions()),
+                governedSpawnService,
+                new GovernedGenerationRunStore(coordinatorDb),
+                coordinatorDb,
+                NullLogger<GovernedGenerationLauncher>.Instance);
+            var governedCoordinator = new HighLevelCoordinator(
+                coordinatorDb,
+                new FakeBrokerService(),
+                new FakePlanService(),
+                new FakeTaskRouter(),
+                lineGateway,
+                queryMediator,
+                new HighLevelRelationQueryService(
+                    queryMediator,
+                    new HighLevelLlmOptions
+                    {
+                        Provider = "ollama",
+                        BaseUrl = "http://localhost:11434",
+                        DefaultModel = "verify"
+                    },
+                    new FakeHttpClientFactory(),
+                    NullLogger<HighLevelRelationQueryService>.Instance),
+                new HighLevelCoordinatorOptions
+                {
+                    AccessRoot = Path.Combine(sandboxRoot, "managed"),
+                    CommandGuideReminderMinutes = 60,
+                    Generation = new HighLevelGenerationOptions { SystemScaffoldMode = SystemScaffoldModes.Governed }
+                },
+                new FakeHighLevelExecutionModelPlanner(),
+                coordinatorDocumentArtifactService,
+                coordinatorCodeArtifactService,
+                coordinatorSystemScaffoldService,
+                coordinatorSiteRebuildService,
+                coordinatorArtifactDeliveryService,
+                new BrowserBindingService(coordinatorDb),
+                coordinatorProjectInterviewStateMachine,
+                coordinatorProjectInterviewStateService,
+                coordinatorProjectInterviewRestatementService,
+                coordinatorProjectInterviewTemplateCatalogService,
+                coordinatorProjectInterviewCompiler,
+                coordinatorProjectInterviewWorkflowDesignService,
+                coordinatorProjectInterviewPdfRenderService,
+                NullLogger<HighLevelCoordinator>.Instance,
+                governedGenerationLauncher: governedLauncher);
+
+            await PromoteLineUserForProductionAsync("line-governed-user");
+            var governedDraft = await governedCoordinator.ProcessLineMessageAsync("line-governed-user", "/建立 完整系統雛形 #governedproj");
+            AssertTrue(governedDraft.Draft?.TaskType == "system_scaffold", "governed mode still creates a system_scaffold draft");
+
+            governedReadiness.Ready = false;
+            var governedUnavailable = await governedCoordinator.ProcessLineMessageAsync("line-governed-user", "y");
+            AssertTrue(governedUnavailable.Error == "generation_unavailable", "governed mode fails closed when its prerequisites are missing");
+            AssertTrue(governedUnavailable.CreatedTask == null, "governed mode creates no task when it is not ready");
+            AssertTrue(governedUnavailable.Reply.Contains("暫不可用", StringComparison.Ordinal), "governed mode tells the user generation is unavailable");
+            AssertTrue(governedContainers.Spawned.Count == 0, "governed mode starts no agent when it is not ready");
+
+            governedReadiness.Ready = true;
+            var governedConfirmed = await governedCoordinator.ProcessLineMessageAsync("line-governed-user", "y");
+            AssertTrue(governedConfirmed.Error == null, "governed confirm succeeds once ready");
+            AssertTrue(governedConfirmed.CreatedTask?.TaskType == "system_scaffold", "governed confirm creates a system_scaffold task");
+            AssertTrue(governedConfirmed.Reply.Contains("已受理", StringComparison.Ordinal), "governed confirm replies that the request was accepted");
+            AssertTrue(governedConfirmed.Reply.Contains(governedConfirmed.CreatedTask!.TaskId, StringComparison.Ordinal), "governed confirm reply names the task id");
+            AssertTrue(!governedConfirmed.Reply.Contains("已生成並封裝系統雛形", StringComparison.Ordinal), "governed confirm does not run the in-process scaffold");
+            AssertTrue(!governedConfirmed.Reply.Contains(verifyAccessRoot, StringComparison.OrdinalIgnoreCase), "governed confirm reply does not expose host paths");
+            AssertTrue(governedConfirmed.CreatedTask.AssignedRoleId == "role_executor", "governed task is assigned to role_executor");
+            AssertTrue(governedConfirmed.CreatedTask.AssignedPrincipalId == GovernedGenerationLauncher.BuildPrincipalId(governedConfirmed.CreatedTask.TaskId), "governed task is assigned to its own AI principal");
+            AssertTrue(TaskRuntimeDescriptor.Parse(governedConfirmed.CreatedTask.RuntimeDescriptor).CapabilityGrants.Count == 3, "governed task carries the three generation grants");
+            AssertTrue(governedConfirmed.Handoff?.GenerationRequest != null, "governed handoff carries the sanitized generation request");
+            AssertTrue(governedContainers.Spawned.Count == 1 && governedContainers.Spawned[0].TrustedEnvironment.ContainsKey("AGENT_RUN"), "governed confirm starts one agent with a work item");
+            AssertTrue(governedContainers.Spawned[0].SecretEnvironment.ContainsKey(AgentContainerLauncher.RegistrationSecretEnvironmentVariable), "governed agent receives its registration credential as a secret");
+            var governedPaths = governedCoordinator.GetLineManagedPaths("line-governed-user")!;
+            var governedProjectRoot = Path.Combine(governedPaths.ProjectsRoot, "governedproj");
+            AssertTrue(!Directory.Exists(governedProjectRoot) || !Directory.EnumerateFileSystemEntries(governedProjectRoot, "*", SearchOption.AllDirectories).Any(), "governed confirm writes no project files in the broker process");
+            AssertTrue(!Directory.Exists(governedPaths.DocumentsRoot) || !Directory.EnumerateFiles(governedPaths.DocumentsRoot).Any(), "governed confirm writes no package in the broker process");
+            AssertTrue(governedCoordinator.GetLineDraft("line-governed-user") == null, "governed confirm removes the draft once the agent started");
+        }
 
         await PromoteLineUserForProductionAsync("line-site-rebuild-user");
         var siteRebuildDraft = await coordinator.ProcessLineMessageAsync("line-site-rebuild-user", "/重製網站 https://example.edu/ 深度3 #sitecopy");
@@ -2478,6 +2617,43 @@ file sealed class FakeLlmHandler : HttpMessageHandler
             Content = new StringContent(body)
         });
     }
+}
+
+file sealed class VerifyGovernedReadiness : IGovernedGenerationReadiness
+{
+    public bool Ready { get; set; } = true;
+
+    public Task<GovernedGenerationReadinessResult> CheckAsync(CancellationToken cancellationToken = default)
+    {
+        var result = new GovernedGenerationReadinessResult();
+        if (!Ready)
+            result.Reasons.Add("verify: not ready");
+        return Task.FromResult(result);
+    }
+}
+
+file sealed class VerifyRecordingContainerManager : FunctionPool.Container.IContainerManager
+{
+    public List<FunctionPool.Container.ContainerSpawnRequest> Spawned { get; } = new();
+
+    public Task<string> SpawnWorkerAsync(FunctionPool.Container.ContainerSpawnRequest request, CancellationToken ct = default)
+    {
+        Spawned.Add(request);
+        return Task.FromResult($"verify{Spawned.Count:D6}");
+    }
+
+    public Task StopWorkerAsync(string containerId, CancellationToken ct = default) => Task.CompletedTask;
+
+    public Task<List<FunctionPool.Container.ManagedContainer>> ListManagedAsync(CancellationToken ct = default)
+        => Task.FromResult(new List<FunctionPool.Container.ManagedContainer>());
+
+    public Task<string> GetLogsAsync(string containerId, int tailLines = 50, CancellationToken ct = default)
+        => Task.FromResult(string.Empty);
+
+    public Task<bool> IsRuntimeAvailableAsync(CancellationToken ct = default) => Task.FromResult(true);
+
+    public Task<List<FunctionPool.Container.ContainerStats>> GetStatsAsync(CancellationToken ct = default)
+        => Task.FromResult(new List<FunctionPool.Container.ContainerStats>());
 }
 
 file sealed class FakeBrokerService : IBrokerService

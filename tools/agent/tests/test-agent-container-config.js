@@ -46,6 +46,8 @@ const WORKER_SECRET_VARIABLES = [
     'FILE_WORKER_AUTH_SHARED_SECRET',
     'EXEC_ADAPTER_AUTH_KEY_ID',
     'EXEC_ADAPTER_AUTH_SHARED_SECRET',
+    'GENERATION_WORKER_AUTH_KEY_ID',
+    'GENERATION_WORKER_AUTH_SHARED_SECRET',
 ];
 
 function sha256Hex(value) {
@@ -267,6 +269,9 @@ function serviceScalar(block, key) {
     return match ? match[1].replace(/\s+#.*$/, '').trim().replace(/^["']|["']$/g, '') : null;
 }
 
+// 各服務的 pids_limit：broker 需要較多（.NET 執行緒池與功能池連線），生成 worker 只跑一個 node 子程序。
+const EXPECTED_PIDS_LIMIT = { broker: 1024, 'generation-worker': 128 };
+
 // 一個 compose 服務區塊的 §13.2 加固，以及不得出現的削弱設定。
 function assertServiceHardened(where, name, block) {
     assert(/^ {4}read_only: true\b/m.test(block), `${where}: expected read_only: true`);
@@ -277,7 +282,7 @@ function assertServiceHardened(where, name, block) {
     assert(!securityOpt.some((opt) => /unconfined/i.test(opt)), `${where}: security_opt must not be unconfined`);
     const pids = /^ {4}pids_limit: (\d+)\b/m.exec(block);
     assert(pids, `${where}: expected pids_limit`);
-    assert.strictEqual(Number(pids[1]), name === 'broker' ? 1024 : 256, `${where}: unexpected pids_limit`);
+    assert.strictEqual(Number(pids[1]), EXPECTED_PIDS_LIMIT[name] ?? 256, `${where}: unexpected pids_limit`);
     // 與 ContainerManager.ValidateUser 相同的規則：任一段為 root 或數值為 0（00、+0、10001:0）即是 root。
     const user = serviceScalar(block, 'user');
     assert(user === null || !isRootUserSpec(user), `${where}: must not run as root (user: ${user})`);
@@ -398,7 +403,7 @@ assert(seedLifetimeMatch, 'DevelopmentSeedOptions.DefaultRegistrationSecretLifet
 const seedLifetimeDefault = seedLifetimeMatch[1];
 
 const expectedServices = {
-    'tools/agent/container/compose.yml': ['mock-ollama', 'broker', 'file-worker', 'line-worker', 'execution-adapter-worker', 'agent'],
+    'tools/agent/container/compose.yml': ['mock-ollama', 'broker', 'file-worker', 'line-worker', 'execution-adapter-worker', 'generation-worker', 'agent'],
     'tools/agent/container/compose.openai-compatible.yml': ['mock-openai', 'broker', 'agent'],
     'tools/agent/container/compose.ollama-host.yml': ['broker', 'agent'],
 };
@@ -459,15 +464,20 @@ assertIncludes('agent prompt names ui component runtime', agentSystemPrompt, './
 assertIncludes('agent prompt names key components', agentSystemPrompt, 'BasicButton, ButtonGroup, FeatureCard');
 
 const agentEndpoints = read('packages/csharp/broker/Endpoints/AgentEndpoints.cs');
-assertIncludes('spawn defaults to non-legacy mode', agentEndpoints, '["AGENT_LINE_LISTEN"] = "0"');
-assertIncludes('spawn has legacy opt-in flag', agentEndpoints, '["AGENT_ENABLE_LEGACY_LINE_LISTEN"] = "1"');
-assertIncludes('spawn one-shot run fallback', agentEndpoints, 'Reply with the exact text AGENT_READY.');
+// /agents/spawn 與受治理生成共用 AgentContainerLauncher：環境變數、註冊憑證與容器啟動都在那裡組成。
+const agentLauncher = read('packages/csharp/broker/Services/AgentContainerLauncher.cs');
+assertIncludes('spawn defaults to non-legacy mode', agentLauncher, '["AGENT_LINE_LISTEN"] = "0"');
+assertIncludes('spawn has legacy opt-in flag', agentLauncher, '["AGENT_ENABLE_LEGACY_LINE_LISTEN"] = "1"');
+assertIncludes('spawn one-shot run fallback', agentLauncher, 'Reply with the exact text AGENT_READY.');
 assertIncludes('spawn normalizes requested agent id', agentEndpoints, 'agentId = AgentSpawnService.NormalizeAgentId(agentId);');
 assertIncludes('spawn resolves configurable agent broker url', agentEndpoints, 'ResolveAgentBrokerUrl(body, configuration)');
-assertIncludes('spawn uses resolved broker url', agentEndpoints, '["BROKER_URL"] = agentBrokerUrl');
-assertIncludes('spawn uses high-level model by default', agentEndpoints, '["AGENT_MODEL"] = highLevelLlmOptions.DefaultModel');
-assertNotIncludes('spawn does not pass direct provider', agentEndpoints, 'envOverrides["AGENT_PROVIDER"]');
-assertNotIncludes('spawn does not pass direct api key', agentEndpoints, 'envOverrides["OPENAI_API_KEY"]');
+assertIncludes('spawn goes through the shared launcher', agentEndpoints, 'launcher.SpawnAsync(');
+assertIncludes('spawn uses resolved broker url', agentLauncher, '["BROKER_URL"] = brokerUrl');
+assertIncludes('spawn uses high-level model by default', agentLauncher, 'string.IsNullOrWhiteSpace(request.Model) ? _llmOptions.DefaultModel');
+for (const source of [agentEndpoints, agentLauncher]) {
+    assertNotIncludes('spawn does not pass direct provider', source, '["AGENT_PROVIDER"]');
+    assertNotIncludes('spawn does not pass direct api key', source, '["OPENAI_API_KEY"]');
+}
 assertNotIncludes('create lets task type choose default caps', agentEndpoints, 'capabilityIds = spawnService.GetDefaultCapabilities();');
 assertNotIncludes('stop only matches requested agent container', agentEndpoints, 'c.WorkerId == agentId || c.WorkerType == "agent"');
 assertIncludes('stop requires agent worker type and id', agentEndpoints, 'c.WorkerType == "agent" && c.WorkerId == agentId');
@@ -531,14 +541,17 @@ const workerEndpoints = read('packages/csharp/broker/Endpoints/WorkerEndpoints.c
 assertIncludes('workers/spawn refuses agents', workerEndpoints, 'ContainerManager.IsAgentWorkerType(workerType)');
 assertNotIncludes('workers/spawn no longer copies a request environment', workerEndpoints, 'envOverrides[prop.Name]');
 assertIncludes('workers/spawn reports a missing runtime CLI', workerEndpoints, 'catch (Win32Exception)');
-assertIncludes('agents/spawn caps max_iterations', agentEndpoints, 'ClampMaxIterations(maxIterations)');
-assertIncludes('agents/spawn only accepts the configured broker url', agentEndpoints, 'Agent broker_url must match the configured AgentBrokerUrl.');
+assertIncludes('agents/spawn caps max_iterations', agentEndpoints, 'maxIterations = ClampMaxIterations(requestedIterations)');
+assertIncludes('agent launcher caps max_iterations', agentLauncher, 'ClampMaxIterations(request.MaxIterations)');
+assertIncludes('agents/spawn only accepts the configured broker url', agentLauncher, 'Agent broker_url must match the configured AgentBrokerUrl.');
 // 註冊憑證只經 SecretEnvironment 交給容器（參數中只有 -e NAME），不放進 TrustedEnvironment。
-assertIncludes('agents/spawn issues a registration credential', agentEndpoints, 'spawnService.SpawnWithCredentialAsync(');
-assertIncludes('agents/spawn hands the secret over as a secret environment', agentEndpoints, '[RegistrationSecretEnvironmentVariable] = secret');
-assertIncludes('agents/spawn names the container variable', agentEndpoints, 'RegistrationSecretEnvironmentVariable = "BROKER_REGISTRATION_SECRET"');
-assertNotIncludes('agents/spawn keeps the secret out of the trusted environment', agentEndpoints, 'envOverrides["BROKER_REGISTRATION_SECRET"]');
-assertNotIncludes('agents/spawn keeps the secret out of the trusted environment (indexer form)', agentEndpoints, '["BROKER_REGISTRATION_SECRET"] =');
+assertIncludes('agents/spawn issues a registration credential', agentLauncher, '_spawnService.SpawnWithCredentialAsync(');
+assertIncludes('agents/spawn hands the secret over as a secret environment', agentLauncher, '[RegistrationSecretEnvironmentVariable] = secret');
+assertIncludes('agents/spawn names the container variable', agentLauncher, 'RegistrationSecretEnvironmentVariable = "BROKER_REGISTRATION_SECRET"');
+for (const source of [agentEndpoints, agentLauncher]) {
+    assertNotIncludes('agents/spawn keeps the secret out of the trusted environment', source, 'envOverrides["BROKER_REGISTRATION_SECRET"]');
+    assertNotIncludes('agents/spawn keeps the secret out of the trusted environment (indexer form)', source, '["BROKER_REGISTRATION_SECRET"] =');
+}
 
 const spawnService = read('packages/csharp/broker-core/Services/AgentSpawnService.cs');
 // spawn 的憑證：先簽發新的、啟動容器，成功後才撤銷先前 spawn 的憑證（新的除外）；失敗只撤銷新的這把。
@@ -644,6 +657,101 @@ for (const docPath of [
         assert(!CMD_SET_LINE.test(line), `${docPath}: cmd-style "set NAME=value" line: ${line}`);
     }
     assert(composeCommands > 0, `${docPath}: expected at least one manual compose command`);
+}
+
+// ── 受治理生成：generation-worker 服務、generation-net、產物 volume、映像、sidecar 與工具定義 ──
+{
+    const generation = composeServicesMain['generation-worker'];
+    const broker = composeServicesMain.broker;
+    assert(generation, 'compose declares the generation-worker service');
+    assertIncludes('generation worker is profile-gated', generation, 'profiles: ["generation"]');
+    assertIncludes('generation worker image tag', generation, 'image: bricks4agent-generation-worker:latest');
+    assertIncludes('generation worker image Containerfile', generation, 'dockerfile: packages/csharp/workers/generation-worker/Containerfile');
+    assertIncludes('generation worker auth type', generation, 'WORKER_Worker__Auth__WorkerType: "generation-worker"');
+    assertIncludes('generation worker key id', generation, 'WORKER_Worker__Auth__KeyId: "${GENERATION_WORKER_AUTH_KEY_ID:?');
+    assertIncludes('generation worker secret', generation, 'WORKER_Worker__Auth__SharedSecret: "${GENERATION_WORKER_AUTH_SHARED_SECRET:?');
+    assertIncludes('generation worker writes to /out', generation, 'WORKER_Generation__OutputRoot: "/out"');
+    // 保留期限可由 env 檔調整：--env-file 的變數只用於插值，所以 compose 要明確轉入 worker。
+    assertIncludes('generation worker retention comes from the env file', generation,
+        'WORKER_Generation__RetentionHours: "${GENERATION_RETENTION_HOURS:-24}"');
+    assert(/^#\s+GENERATION_RETENTION_HOURS\s/m.test(envExample), 'agent-stack.env.example documents the optional GENERATION_RETENTION_HOURS');
+    assert.deepStrictEqual(serviceListValues(generation, 'volumes'), ['generation-out:/out'], 'generation worker mounts only the output volume');
+    assert.deepStrictEqual(serviceListValues(generation, 'networks'), ['generation-net'], 'generation worker joins generation-net only');
+    assert(!/^ {4}ports:/m.test(generation), 'generation worker publishes no port');
+
+    assertIncludes('broker trusts the generation worker credential (index 3)', broker, 'WorkerAuth__Credentials__3__WorkerType: "generation-worker"');
+    assertIncludes('broker generation key id', broker, 'WorkerAuth__Credentials__3__KeyId: "${GENERATION_WORKER_AUTH_KEY_ID:?');
+    assertIncludes('broker generation secret', broker, 'WorkerAuth__Credentials__3__SharedSecret: "${GENERATION_WORKER_AUTH_SHARED_SECRET:?');
+    assertIncludes('broker reads packages from /generation-out', broker, 'Generation__OutputRoot: "/generation-out"');
+    assert(serviceListValues(broker, 'volumes').includes('generation-out:/generation-out:ro'), 'broker mounts the output volume read-only');
+    assert(serviceListValues(broker, 'networks').includes('generation-net'), 'broker joins generation-net');
+
+    // generation-net：internal，成員只有 broker 與 generation-worker。
+    assert(/^ {4}internal: true\b/m.test(topLevelNetwork(compose, 'generation-net')), 'generation-net must be internal: true');
+    assertIncludes('generation-net name', topLevelNetwork(compose, 'generation-net'), 'name: bricks4agent_generation-net');
+    const members = Object.entries(composeServicesMain)
+        .filter(([, block]) => serviceListValues(block, 'networks').includes('generation-net'))
+        .map(([name]) => name)
+        .sort();
+    assert.deepStrictEqual(members, ['broker', 'generation-worker'], 'generation-net members');
+    assert(/^volumes:\r?\n(?:.*\r?\n)*? {2}generation-out:/m.test(compose), 'compose declares the generation-out volume');
+    assertIncludes('agent iterations are configurable', composeServicesMain.agent, 'AGENT_MAX_ITERATIONS: "${AGENT_MAX_ITERATIONS:-4}"');
+
+    // 映像：.NET 10 aspnet 最終階段、node 只從 node:22 取執行檔、UID 10008、HOME=/tmp、不宣告 VOLUME、
+    // 任何階段都不 COPY 整個 build context，建置時產生型錄摘要，打包排除 data 與 refresource。
+    const containerfile = read('packages/csharp/workers/generation-worker/Containerfile');
+    assert(!/^\s*(COPY|ADD)\s+(--\S+\s+)*\.\/?\s+\S+\s*$/m.test(containerfile), 'generation image: no stage copies the whole build context');
+    assert(/^FROM node:22-bookworm-slim@sha256:[0-9a-f]{64} AS generator\r?$/m.test(containerfile), 'generation image: node stage pinned by digest');
+    const runtimeStage = containerfile.slice(containerfile.lastIndexOf('\nFROM '));
+    assert(/^\nFROM mcr\.microsoft\.com\/dotnet\/aspnet:10\.0@sha256:[0-9a-f]{64}\s*\n/.test(runtimeStage), 'generation runtime stage: aspnet:10.0 pinned by digest');
+    assertIncludes('generation image takes only the node binary', runtimeStage, 'COPY --from=generator /usr/local/bin/node /usr/local/bin/node');
+    assertIncludes('generation image runs as uid 10008', runtimeStage, 'USER 10008:10008');
+    assertIncludes('generation image creates the user with useradd', runtimeStage, 'useradd --uid 10008');
+    assertIncludes('generation image home on tmpfs', runtimeStage, 'HOME=/tmp');
+    assert(!/^\s*VOLUME\b/m.test(containerfile), 'generation image declares no VOLUME');
+    assertNotIncludes('generation image installs nothing', containerfile, 'apt-get');
+    assertIncludes('generation image builds the catalog summary', containerfile, 'node tools/generation/catalog-summary.mjs --out tools/generation/catalog-summary.json');
+    assertIncludes('generation image leaves out data', containerfile, 'packages/javascript/browser/ui_components/data');
+    assertIncludes('generation image leaves out refresource', containerfile, 'packages/javascript/browser/ui_components/refresource');
+
+    // worker：一次一個請求、註冊三個 handler。
+    const generationProgram = read('packages/csharp/workers/generation-worker/Program.cs');
+    assertIncludes('generation worker runs one request at a time', generationProgram, 'MaxConcurrent = 1,');
+    for (const handler of ['CatalogQueryHandler', 'DefinitionValidateHandler', 'ScaffoldGenerateHandler']) {
+        assertIncludes(`generation worker registers ${handler}`, generationProgram, `new ${handler}(`);
+    }
+
+    // sidecar 與手動啟動：generation-worker 有憑證；只有 -GenerationMode Governed 才啟動它並切換 broker 的模式。
+    assertIncludes('sidecar provisions a generation worker credential', sidecarScript, '"site-crawler-worker", "generation-worker")');
+    assertIncludes('sidecar has a generation mode switch', sidecarScript, '[ValidateSet("Legacy", "Governed")]');
+    assertIncludes('sidecar defaults to the legacy generation mode', sidecarScript, '[string]$GenerationMode = "Legacy"');
+    assertIncludes('sidecar switches the broker to governed generation', sidecarScript, 'SystemScaffoldMode = "Governed"');
+    assertIncludes('sidecar shares the output root with the broker', sidecarScript, 'OutputRoot = $generationOutputRoot');
+    // 沒有供應者金鑰時 LlmProxy 沿用 appsettings 的 Ollama：Governed 啟動前先確認 Ollama 可達且有該模型。
+    assertIncludes('sidecar checks the Ollama model for governed generation without a key', sidecarScript,
+        'if ($governedGeneration -and [string]::IsNullOrWhiteSpace($anthropicApiKey) -and [string]::IsNullOrWhiteSpace($openAiApiKey)) {\n    Assert-GovernedLlmProxyModel');
+    assertIncludes('the Ollama check reads LlmProxy:BaseUrl', sidecarScript, '-Section "LlmProxy" -Name "BaseUrl"');
+    assertIncludes('the Ollama check reads LlmProxy:DefaultModel', sidecarScript, '-Section "LlmProxy" -Name "DefaultModel"');
+    assertIncludes('the Ollama check lists the models', sidecarScript, '"/api/tags"');
+    assert(sidecarScript.indexOf('Assert-GovernedLlmProxyModel `') < sidecarScript.indexOf('$productionOverrideMap = @{'),
+        'the Ollama check runs before the broker configuration is written');
+    const generationWorkerSettings = JSON.parse(read('packages/csharp/workers/generation-worker/appsettings.json'));
+    assert.strictEqual(generationWorkerSettings.Generation.RetentionHours, 24, 'generation worker keeps packages for 24 hours by default');
+    const runWorker = read('packages/csharp/workers/run-worker.ps1');
+    assertIncludes('run-worker can start the generation worker', runWorker, '"site-crawler", "generation")]');
+    assertIncludes('run-worker maps the generation worker type', runWorker, 'Type = "generation-worker"');
+
+    // 代理工具：三個工具對應三個生成能力；能力只由 tool-spec 定義。
+    const registry = read('tools/agent/lib/tool-registry.js');
+    assertIncludes('tool query_component_catalog', registry, "query_component_catalog: 'generation.catalog.query'");
+    assertIncludes('tool validate_definition', registry, "validate_definition: 'generation.definition.validate'");
+    assertIncludes('tool generate_scaffold', registry, "generate_scaffold: 'generation.scaffold.generate'");
+    for (const toolId of ['generation.catalog.query', 'generation.definition.validate', 'generation.scaffold.generate']) {
+        const spec = JSON.parse(read(`packages/csharp/broker/tool-specs/${toolId}/tool.json`));
+        assert.strictEqual(spec.execution_rules.runtime_required, 'generation-worker', `${toolId}: runtime_required`);
+        assert.strictEqual(spec.status, 'beta', `${toolId}: status`);
+    }
+    assertNotIncludes('generation capabilities are not seeded twice', read('packages/csharp/broker-core/Data/BrokerDbInitializer.cs'), 'generation.scaffold.generate');
 }
 
 async function validateSecretsGenerator() {

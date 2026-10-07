@@ -48,7 +48,7 @@ public static class PlanEndpoints
             if (!TryRequirePlanAccess(ctx, plan, broker, out var denied))
                 return denied;
 
-            return Results.Ok(ApiResponseHelper.Success(plan));
+            return Results.Ok(ApiResponseHelper.Success(ForCaller(ctx, plan)));
         });
 
         // ── 新增節點 ──
@@ -170,7 +170,8 @@ public static class PlanEndpoints
                 // H-3 修復：proper await，消除 sync-over-async
                 // M-8 修復：傳遞 RequestAborted 取消令牌
                 var plan = await planEngine.SubmitAndExecuteAsync(planId, principalId, sessionId, traceId, ctx.RequestAborted);
-                return Results.Ok(ApiResponseHelper.Success(plan));
+                // 與 /plans/get、/plans/status 相同：不是提交者的呼叫者（例如被指派到任務的代理）看不到提交者的識別資料。
+                return Results.Ok(ApiResponseHelper.Success(ForCaller(ctx, plan)));
             }
             catch (InvalidOperationException ex)
             {
@@ -198,7 +199,7 @@ public static class PlanEndpoints
 
             return Results.Ok(ApiResponseHelper.Success(new
             {
-                plan,
+                plan = ForCaller(ctx, plan),
                 nodes = nodes.OrderBy(n => n.Ordinal).ToList(),
                 edges,
                 checkpoints,
@@ -214,6 +215,33 @@ public static class PlanEndpoints
                 }
             }));
         });
+    }
+
+    /// <summary>
+    /// 以 token 綁定的任務取得存取權、但不是提交者的呼叫者（例如被指派到這個任務的代理）看不到提交者的識別資料；
+    /// 管理員與提交者看到完整的計畫。
+    /// </summary>
+    private static Plan ForCaller(HttpContext ctx, Plan plan)
+    {
+        if (BrokerAuthorization.IsAdmin(ctx) ||
+            string.Equals(plan.SubmittedBy, RequestBodyHelper.GetPrincipalId(ctx), StringComparison.Ordinal))
+        {
+            return plan;
+        }
+
+        return new Plan
+        {
+            PlanId = plan.PlanId,
+            TaskId = plan.TaskId,
+            SubmittedBy = string.Empty,
+            Title = plan.Title,
+            Description = plan.Description,
+            StateValue = plan.StateValue,
+            TotalNodes = plan.TotalNodes,
+            CompletedNodes = plan.CompletedNodes,
+            CreatedAt = plan.CreatedAt,
+            UpdatedAt = plan.UpdatedAt
+        };
     }
 
     /// <summary>

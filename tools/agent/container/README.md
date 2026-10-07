@@ -16,6 +16,8 @@ Included services:
 
 - `execution-adapter-worker`: patch and build/test worker, started only with `--profile adapters`
 
+- `generation-worker`: deterministic generator for the governed generation capabilities, started only with `--profile generation`
+
 Every service runs hardened (non-root, read-only root filesystem, no capabilities); see [Container Hardening](#container-hardening).
 
 ## Scope
@@ -121,6 +123,24 @@ To stop and remove a stack (`down` also needs the env file, because compose expa
 podman compose --env-file "$HOME/.bricks4agent/agent-stack.env" -f tools/agent/container/compose.yml down -v
 ```
 
+### Governed Generation
+
+The `generation` profile adds `generation-worker`, the node for the three governed generation capabilities (`generation.catalog.query`, `generation.definition.validate`, `generation.scaffold.generate`). An agent queries the catalog, writes a DefinitionTemplate, validates it and asks for generation; the broker dispatches each request to this worker, which runs the component-library generator and packages the prototype as a deterministic zip. The worker calls no LLM and has no network access besides the broker.
+
+- It sits only on `generation-net` (`internal: true`, members: the broker and this worker).
+- It writes packages to the `generation-out` volume at `/out`, under the output slot the broker wrote into the grant scope; path arguments in a request are ignored. The broker mounts the same volume read-only at `/generation-out` (`Generation__OutputRoot`), verifies the zip path and sha256, and copies the package for delivery.
+- Its credential is credential index 3 (`GENERATION_WORKER_AUTH_KEY_ID`, `GENERATION_WORKER_AUTH_SHARED_SECRET`).
+- `AGENT_MAX_ITERATIONS` (default `4` in this stack) sets the agent's iteration limit; a generation run needs more turns than the smoke test.
+- `GENERATION_RETENTION_HOURS` (default `24`, from 1 to 8760) sets how long the worker keeps a package in `generation-out`. Set it in the env file: variables there are only used for substitution, and compose passes this one to the worker as `WORKER_Generation__RetentionHours`. The worker removes expired packages when it starts, before every generation and every hour while it runs.
+
+Start it with the profile (the worker image builds only once the generator under `tools/generation` and the shell under `templates/definition-site` are present):
+
+```powershell
+podman compose --env-file "$HOME/.bricks4agent/agent-stack.env" -f tools/agent/container/compose.yml --profile generation up -d broker generation-worker
+```
+
+See [packages/csharp/workers/generation-worker/README.md](../../../packages/csharp/workers/generation-worker/README.md) for the worker's contract.
+
 ## Port Notes
 
 Default exposed broker ports:
@@ -174,7 +194,7 @@ Required variables:
 
 - all three compose files: `BROKER_SCOPED_TOKEN_SECRET`, `BROKER_MASTER_KEY_BASE64`, `BROKER_ECDH_PRIVATE_KEY_BASE64`, `BROKER_ECDH_PUBLIC_KEY_BASE64` (the agent pins this public key; it must be the pair of the private key), and `BROKER_REGISTRATION_SECRET` (the seeded task's registration secret; see [Registration Secret](#registration-secret))
 
-- `compose.yml` also: `LINE_WORKER_AUTH_KEY_ID`, `LINE_WORKER_AUTH_SHARED_SECRET`, `FILE_WORKER_AUTH_KEY_ID`, `FILE_WORKER_AUTH_SHARED_SECRET`, `EXEC_ADAPTER_AUTH_KEY_ID`, and `EXEC_ADAPTER_AUTH_SHARED_SECRET` (the broker side and the worker side read the same variables)
+- `compose.yml` also: `LINE_WORKER_AUTH_KEY_ID`, `LINE_WORKER_AUTH_SHARED_SECRET`, `FILE_WORKER_AUTH_KEY_ID`, `FILE_WORKER_AUTH_SHARED_SECRET`, `EXEC_ADAPTER_AUTH_KEY_ID`, `EXEC_ADAPTER_AUTH_SHARED_SECRET`, `GENERATION_WORKER_AUTH_KEY_ID`, and `GENERATION_WORKER_AUTH_SHARED_SECRET` (the broker side and the worker side read the same variables; compose expands them even when the profile of the worker that uses them is not started)
 
 `node tools/agent/container/gen-stack-secrets.mjs` generates all of them with `node:crypto` and writes them to `$BRICKS4AGENT_SECRETS_DIR/agent-stack.env`, or `~/.bricks4agent/agent-stack.env` when that variable is not set. It never prints the values, refuses any path inside the repository, and refuses to overwrite an existing file unless you pass `--force` (which rotates every key; recreate the stack with `down -v` afterwards). `--self-test` checks the generator without writing anything. [`agent-stack.env.example`](agent-stack.env.example) lists the variable names only.
 
@@ -182,7 +202,7 @@ Keep the file outside the repository. The agent no longer mounts anything, but t
 
 The broker runs in the Production environment in these stacks and validates its keys at startup: it refuses placeholder values (empty, `CHANGE_ME*`, `REPLACE_WITH_*`) and any key that was ever published as a compose default, and it checks key formats. Do not set `ASPNETCORE_ENVIRONMENT=Development` in the compose files to get around this.
 
-`WORKER_AUTH_ENFORCE` defaults to `true`: the broker verifies worker credentials on function pool registration and on the LINE worker HTTP routes. The broker also trusts the execution adapter credential (credential index 2), which replaces the template credential at that index in `appsettings.json`.
+`WORKER_AUTH_ENFORCE` defaults to `true`: the broker verifies worker credentials on function pool registration and on the LINE worker HTTP routes. The broker also trusts the execution adapter credential (credential index 2), which replaces the template credential at that index in `appsettings.json`, and the generation worker credential (credential index 3).
 
 ### Registration Secret
 
@@ -202,16 +222,16 @@ Every service in the three compose files runs with the design §13.2 settings:
 
 | Setting | Value |
 |---|---|
-| user | non-root UID from the image: agent 10001, broker 10002, file-worker 10003, execution-adapter 10004, line-worker 10005, mock-ollama 10006, mock-openai 10007 |
+| user | non-root UID from the image: agent 10001, broker 10002, file-worker 10003, execution-adapter 10004, line-worker 10005, mock-ollama 10006, mock-openai 10007, generation-worker 10008 |
 | `read_only` | `true`; only the `/tmp` tmpfs and the mounts below are writable |
 | `tmpfs` | `/tmp` (Docker and Podman mount it `noexec,nosuid,nodev`) |
 | `cap_drop` | `ALL` |
 | `security_opt` | `no-new-privileges:true` |
-| `pids_limit` | `1024` for the broker (.NET thread pool and sockets), `256` for every other service |
+| `pids_limit` | `1024` for the broker (.NET thread pool and sockets), `128` for the generation worker (one node process at a time), `256` for every other service |
 
 Mounts:
 
-- broker: the named volume at `/data` (SQLite database and workspaces). No container runtime socket is mounted, so dynamic spawn is not available inside these stacks; keep `CONTAINER_MANAGER_ENABLED` at `false`.
+- broker: the named volume at `/data` (SQLite database and workspaces) and the `generation-out` volume at `/generation-out`, read-only. No container runtime socket is mounted, so dynamic spawn is not available inside these stacks; keep `CONTAINER_MANAGER_ENABLED` at `false`.
 
 - agent: nothing. `/workspace` is an empty directory in the image that only serves as the logical root the broker grants are scoped to; the project manual is baked in at `/app/AGENT.md` (`AGENT_MANUAL_PATH`).
 
@@ -220,6 +240,8 @@ Mounts:
 - execution-adapter-worker: the throwaway git workspace from `ADAPTER_WORKSPACE`, writable, because it is the mediated write path. `dotnet build` and `dotnet test` (with NuGet packages on the `noexec` `/tmp`) work within `pids_limit: 256`.
 
 - line-worker: nothing; audio scratch files go to `/tmp/audio_temp` (`WORKER_Line__AudioTempPath`).
+
+- generation-worker: the `generation-out` volume at `/out`, writable; it is the only place the worker writes besides `/tmp`. The image creates `/out` for uid 10008, and generated files are world-readable so the broker (uid 10002) can read them through its read-only mount.
 
 ### Dynamic Spawn
 
@@ -241,7 +263,7 @@ After upgrading the broker, rebuild `bricks4agent-agent:latest` from `tools/agen
 
 ### Images
 
-All images build from `main`: the .NET services use `mcr.microsoft.com/dotnet/sdk:10.0` and `aspnet:10.0` (the execution adapter keeps the SDK at run time for `git` and `dotnet build/test`), and the Node services use `node:22-bookworm-slim`. Every `FROM` is pinned to the multi-arch index digest, so base image fixes arrive only when you refresh the digests and rebuild:
+All images build from `main`: the .NET services use `mcr.microsoft.com/dotnet/sdk:10.0` and `aspnet:10.0` (the execution adapter keeps the SDK at run time for `git` and `dotnet build/test`; the generation worker copies only the node binary from `node:22-bookworm-slim` into its `aspnet:10.0` image and runs it once at build time), and the Node services use `node:22-bookworm-slim`. Every `FROM` is pinned to the multi-arch index digest, so base image fixes arrive only when you refresh the digests and rebuild:
 
 ```bash
 node tools/agent/container/resolve-base-image-digests.mjs

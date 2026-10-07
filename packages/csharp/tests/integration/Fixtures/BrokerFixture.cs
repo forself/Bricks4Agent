@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using System.Net.Http.Json;
@@ -18,8 +19,9 @@ namespace Integration.Tests.Fixtures;
 ///
 /// Key adaptations for the test environment:
 ///   - Environment set to "Testing" so production guards are skipped.
-///   - Database path overridden to a per-run temp file so tests never
-///     touch the real broker.db.
+///   - Database path and high-level access root overridden (via UseSetting)
+///     to per-run temp locations so tests never touch the real broker.db or
+///     the local managed workspaces; both are removed on dispose.
 ///   - appsettings.json is loaded from the Broker project's content root.
 /// </summary>
 public class BrokerFixture : IAsyncLifetime
@@ -30,6 +32,8 @@ public class BrokerFixture : IAsyncLifetime
     private const string FileWorkerType = "file-worker";
     private const string FileWorkerKeyId = "file-v1";
     private const string FileWorkerSecret = "file-secret";
+    private const int CleanupAttempts = 20;
+    private static readonly TimeSpan CleanupDelay = TimeSpan.FromMilliseconds(250);
     private readonly string _tempDbPath;
     private readonly string _tempAccessRoot;
     private readonly WorkerIdentityAuthOptions _workerAuthOptions;
@@ -37,6 +41,9 @@ public class BrokerFixture : IAsyncLifetime
     public WebApplicationFactory<Program> Factory { get; }
     public HttpClient Client { get; private set; } = null!;
     public string DefaultLineUserId { get; } = "line-project-user";
+
+    /// <summary>本次執行的受管工作區根目錄（暫存），供「回覆不含主機路徑」的斷言使用。</summary>
+    public string AccessRoot => _tempAccessRoot;
 
     public BrokerFixture()
     {
@@ -50,13 +57,18 @@ public class BrokerFixture : IAsyncLifetime
             {
                 builder.UseEnvironment("Testing");
 
+                // Program.cs 在建置 host 之前就讀取這幾個值，ConfigureAppConfiguration 到不了那個階段，
+                // 必須用 UseSetting（同 BrokerAuthorizationFixture）；否則測試會共用 bin 下的 broker.db，
+                // 並寫入本機真正的受管工作區。
+                builder.UseSetting("Database:Path", _tempDbPath);
+                builder.UseSetting("HighLevelCoordinator:AccessRoot", _tempAccessRoot);
+                // 確認 draft 時不向本機模型詢問執行模型建議
+                builder.UseSetting("HighLevelExecutionModelPolicy:Enabled", "false");
+
                 builder.ConfigureAppConfiguration((ctx, config) =>
                 {
-                    // Override the database path to the temp file
                     config.AddInMemoryCollection(new Dictionary<string, string?>
                     {
-                        ["Database:Path"] = _tempDbPath,
-                        ["HighLevelCoordinator:AccessRoot"] = _tempAccessRoot,
                         // Disable features that need external services
                         ["CacheCluster:Enabled"] = "false",
                         ["FunctionPool:Enabled"] = "false",
@@ -214,6 +226,8 @@ public class BrokerFixture : IAsyncLifetime
     {
         var resolvedUserId = userId ?? DefaultLineUserId;
         var uniqueProjectName = "#AlphaPortal" + Guid.NewGuid().ToString("N");
+        // /proj 需要 AllowProduction（會員層級）
+        await EnableLineProductionAsync(resolvedUserId);
         await SendHighLevelLineTextAsync("/proj", resolvedUserId);
         await SendHighLevelLineTextAsync(uniqueProjectName, resolvedUserId);
         await SendHighLevelLineTextAsync("2", resolvedUserId);
@@ -269,21 +283,37 @@ public class BrokerFixture : IAsyncLifetime
         Client.Dispose();
         await Factory.DisposeAsync();
 
-        // Clean up the temp database files
-        foreach (var suffix in new[] { "", "-shm", "-wal" })
+        // broker 使用 SQLite 連線池；先釋放連線，暫存資料庫檔才刪得掉。
+        SqliteConnection.ClearAllPools();
+        for (var attempt = 1; attempt <= CleanupAttempts; attempt++)
         {
-            var file = _tempDbPath + suffix;
-            if (File.Exists(file))
-            {
-                try { File.Delete(file); }
-                catch { /* best effort */ }
-            }
-        }
+            if (TryDeleteTempArtifacts())
+                return;
 
-        if (Directory.Exists(_tempAccessRoot))
+            SqliteConnection.ClearAllPools();
+            await Task.Delay(CleanupDelay);
+        }
+    }
+
+    private bool TryDeleteTempArtifacts()
+    {
+        try
         {
-            try { Directory.Delete(_tempAccessRoot, recursive: true); }
-            catch { /* best effort */ }
+            foreach (var suffix in new[] { "", "-shm", "-wal" })
+            {
+                var file = _tempDbPath + suffix;
+                if (File.Exists(file))
+                    File.Delete(file);
+            }
+
+            if (Directory.Exists(_tempAccessRoot))
+                Directory.Delete(_tempAccessRoot, recursive: true);
+
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
         }
     }
 }

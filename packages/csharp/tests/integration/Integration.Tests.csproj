@@ -18,6 +18,8 @@
 
   <ItemGroup>
     <ProjectReference Include="../../broker/Broker.csproj" />
+    <!-- 受治理生成的程序內端到端測試：以 generation-worker 真正的 handler 與 repo 中的生成器 CLI 處理請求 -->
+    <ProjectReference Include="../../workers/generation-worker/GenerationWorker.csproj" />
   </ItemGroup>
 
 </Project>

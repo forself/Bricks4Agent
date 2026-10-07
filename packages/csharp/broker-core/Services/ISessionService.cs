@@ -34,4 +34,7 @@ public interface ISessionService
 
     /// <summary>撤銷這組 principal＋task 仍為 Active 的 session，回傳被撤銷的 session id。</summary>
     IReadOnlyList<string> RevokeSessionsBySubject(string principalId, string taskId, string reason, string revokedBy);
+
+    /// <summary>撤銷同一任務中除了 <paramref name="keepSessionId"/> 以外仍為 Active 的 session，回傳被撤銷的 session id。</summary>
+    IReadOnlyList<string> RevokeOtherTaskSessions(string taskId, string keepSessionId, string reason, string revokedBy);
 }

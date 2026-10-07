@@ -357,13 +357,16 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\l
 
 專案訪談用於更結構化地收集需求並產生 artifact。
 
+`/proj`、`/ok`、`/revise` 與訪談中的回答需要 production 權限：帳戶必須是會員（Tier 2），而且管理員已開啟 production 任務。基本註冊者（Tier 1）會收到與 `/建立` 相同的權限不足回覆，不會開始訪談、不會產生審查文件，也不會建立 draft；訪談中途權限被收回時，仍可用 `/cancel` 結束。確認 draft 時（回 `y`）也會再檢查一次權限。
+
 | 指令 | 用途 |
 |---|---|
 | `/proj` | 開始專案訪談 |
 | `#ProjectName` | 指定專案名稱 |
-| `/ok` | 確認目前訪談/設計 |
+| `/ok` | 確認目前設計，並建立系統雛形 draft（尚未建置） |
+| `y` / `n` | `/ok` 之後確認建置或取消 draft |
 | `/revise` | 要求修訂 |
-| `/cancel` | 取消訪談 |
+| `/cancel` | 取消訪談；`/ok` 之後還沒回 `y` 時，等待確認的建置 draft 也一併撤下，不會建置 |
 
 典型流程：
 
@@ -376,6 +379,8 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\l
 4. 查看系統產出的摘要、設計、PDF/JSON review artifact。
 
 5. 用 `/ok`、`/revise` 或 `/cancel` 決定下一步。
+
+6. `/ok` 之後系統只建立系統雛形 draft 並列出摘要。回覆 `y` 才會建立 task / plan / handoff 並開始建置，回覆 `n` 取消。這一步與 `/建立` 的 draft 確認相同：專案名稱會再檢查一次，你的工作區若已有同名專案，系統會請你用 `#新名稱` 回覆。回覆 `n` 或 draft 逾時後，已批准的設計還在：可以再傳 `/ok` 重新建立 draft，或用 `/revise` 修訂。若這時用 `/cancel` 取消訪談，或用 `/proj` 重新開始訪談，等待確認的建置 draft 會一併撤下，之後回 `y` 不會建置。若在訪談之前還有一份等待確認的其他 draft（例如 `/建立` 留下的），`/ok` 會以系統雛形 draft 取代它，回覆中會註明被取代的是哪一份。
 
 ### 8.6 使用者 Portal 前台
 
@@ -397,7 +402,7 @@ http://127.0.0.1:5361/portal/index.html
 
 4. 「結果檔案」會列出該使用者工作區中的 artifact。若 artifact 沒有 Google Drive 下載連結，portal 會使用 broker 的短效簽章下載連結。
 
-5. Portal 只顯示自己的 profile、結果紀錄與 artifact metadata；不回傳 broker 內部檔案路徑。
+5. Portal 只顯示自己的 profile、結果紀錄與 artifact metadata；不回傳 broker 內部檔案路徑。LINE 與 Portal 的回覆只寫專案資料夾名、封裝檔名與相對於個人工作區的位置（例如 `workspace: line/<你的 ID>`），不寫主機上的絕對路徑。
 
 Portal 是一般使用者操作入口；管理、審批、Drive OAuth、部署與系統監控仍使用 `line-admin.html`。
 

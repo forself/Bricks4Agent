@@ -1,0 +1,61 @@
+{
+  "tool_id": "generation.catalog.query",
+  "display_name": "Query Component Catalog",
+  "summary": "Return a bounded, deterministic summary of the component catalog and the DefinitionTemplate rules, for writing a generation definition.",
+  "kind": "generator",
+  "status": "beta",
+  "version": "2026-10-07",
+  "tags": ["generation", "component-catalog", "definition-template", "governed"],
+  "capability_template": {
+    "action_type": "read",
+    "resource_type": "component_catalog",
+    "risk_level": "low",
+    "approval_policy": "auto",
+    "ttl_seconds": 1800,
+    "audit_level": "summary",
+    "quota": { "max_calls": 20, "per_window_seconds": 3600 }
+  },
+  "capability_bindings": [
+    {
+      "capability_id": "generation.catalog.query",
+      "route": "query_component_catalog",
+      "purpose": "Read the catalog summary sections (overview, field_types, example, component) that a governed agent needs to write a DefinitionTemplate."
+    }
+  ],
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "section": { "type": "string", "enum": ["overview", "field_types", "example", "component"] },
+      "name": { "type": "string", "maxLength": 64 }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "ok": { "type": "boolean" },
+      "section": { "type": "string" },
+      "content": { "type": "object" },
+      "catalog_sha256": { "type": "string" },
+      "matrix_sha256": { "type": "string" },
+      "summary_version": { "type": "string" },
+      "errors": { "type": "array" }
+    }
+  },
+  "source_policy": {
+    "allowed_sources": ["component_catalog", "generator_support_matrix"]
+  },
+  "execution_rules": {
+    "runtime_required": "generation-worker",
+    "mediation_required": true,
+    "deterministic": true,
+    "calls_llm": false,
+    "network_access": false,
+    "side_effects": false,
+    "max_response_bytes": 32768
+  },
+  "response_contract": {
+    "must_include_ok": true,
+    "must_include_catalog_sha256": true,
+    "result_wording": "The catalog summary is generated deterministically from component-catalog.json and generator-support-matrix.json; catalog_sha256 and matrix_sha256 identify the exact catalog it was built from. A component that does not exist returns ok:false with COMPONENT_NOT_FOUND."
+  }
+}

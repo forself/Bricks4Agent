@@ -24,7 +24,18 @@ public enum TaskState
     Assigned = 1,
     Active = 2,
     Completed = 3,
-    Cancelled = 4
+    Cancelled = 4,
+
+    /// <summary>執行失敗而結束（例如受治理生成逾時、代理未產出結果）。與 Completed、Cancelled 同為終止狀態。</summary>
+    Failed = 5
+}
+
+/// <summary>任務狀態的共用判斷。</summary>
+public static class TaskStates
+{
+    /// <summary>任務已結束（完成、取消或失敗）：不再接受註冊、續期、簽發憑證或取消。</summary>
+    public static bool IsTerminal(TaskState state)
+        => state is TaskState.Completed or TaskState.Cancelled or TaskState.Failed;
 }
 
 /// <summary>政策裁決結果</summary>

@@ -1,0 +1,65 @@
+{
+  "tool_id": "generation.definition.validate",
+  "display_name": "Validate Definition",
+  "summary": "Validate a DefinitionTemplate with the same layered, fail-closed checks that generation runs, and return structured errors the agent can fix.",
+  "kind": "generator",
+  "status": "beta",
+  "version": "2026-10-07",
+  "tags": ["generation", "definition-template", "validation", "governed"],
+  "capability_template": {
+    "action_type": "read",
+    "resource_type": "definition",
+    "risk_level": "low",
+    "approval_policy": "auto",
+    "ttl_seconds": 1800,
+    "audit_level": "summary",
+    "quota": { "max_calls": 6, "per_window_seconds": 3600 }
+  },
+  "capability_bindings": [
+    {
+      "capability_id": "generation.definition.validate",
+      "route": "validate_definition",
+      "purpose": "Validate a DefinitionTemplate without side effects before asking for generation."
+    }
+  ],
+  "input_schema": {
+    "type": "object",
+    "required": ["template"],
+    "properties": {
+      "template": { "type": "object" },
+      "page_ids": { "type": "array", "items": { "type": "string", "maxLength": 64 } }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "ok": { "type": "boolean" },
+      "errors": { "type": "array" },
+      "warnings": { "type": "array" },
+      "pages": { "type": "array" },
+      "validation_digest": { "type": "string" },
+      "validator_version": { "type": "string" },
+      "total_errors": { "type": "integer" },
+      "truncated": { "type": "boolean" },
+      "total_warnings": { "type": "integer" },
+      "warnings_truncated": { "type": "boolean" }
+    }
+  },
+  "source_policy": {
+    "allowed_sources": ["agent_definition_template"]
+  },
+  "execution_rules": {
+    "runtime_required": "generation-worker",
+    "mediation_required": true,
+    "deterministic": true,
+    "calls_llm": false,
+    "network_access": false,
+    "side_effects": false,
+    "same_checks_as_generate": true
+  },
+  "response_contract": {
+    "must_include_ok": true,
+    "must_include_structured_errors": true,
+    "result_wording": "A definition that fails validation is a successful call with ok:false; each error carries code, path, message and hint (and paths when it occurs at several places) so the definition can be corrected and validated again. total_errors and truncated:true mean that not every error is listed; MAX_PAGES_EXCEEDED means the selected pages exceed the task's page limit."
+  }
+}

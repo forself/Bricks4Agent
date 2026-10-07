@@ -16,7 +16,13 @@ public enum ProjectInterviewPhase
     Confirmed = 11,
     Cancelled = 12,
     Failed = 13,
-    Expired = 14
+    Expired = 14,
+
+    /// <summary>
+    /// 設計已批准（/ok），system_scaffold draft 等待使用者回 y。建置任務建立成功後才進入 <see cref="Confirmed"/>；
+    /// 回 n 或 draft 過期時仍可再 /ok 或 /revise。這個階段不算進行中的訪談，回覆 y／n 由 draft 流程處理。
+    /// </summary>
+    AwaitBuildConfirmation = 15
 }
 
 public enum ProjectInterviewCommand
@@ -36,7 +42,8 @@ public enum ProjectInterviewAdvanceReason
     RequirementsReady = 4,
     GraphCompiled = 5,
     ArtifactsRendered = 6,
-    RevisionCaptured = 7
+    RevisionCaptured = 7,
+    BuildConfirmed = 8
 }
 
 public sealed record ProjectInterviewSessionState(
@@ -109,6 +116,7 @@ public sealed record ProjectInterviewTaskDocument(
     public bool IsActiveSession =>
         SessionState.CurrentPhase is not ProjectInterviewPhase.Idle
         and not ProjectInterviewPhase.Confirmed
+        and not ProjectInterviewPhase.AwaitBuildConfirmation
         and not ProjectInterviewPhase.Cancelled
         and not ProjectInterviewPhase.Failed
         and not ProjectInterviewPhase.Expired;
