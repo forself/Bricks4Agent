@@ -78,6 +78,9 @@ public static class GovernedGenerationErrors
 
     /// <summary>全部進行中的生成已達上限。</summary>
     public const string Busy = "generation_busy";
+
+    /// <summary>代理啟動期間執行已被結束（例如管理員停止）：剛啟動的容器已停止，任務已是 Failed。</summary>
+    public const string Stopped = "generation_stopped";
 }
 
 public sealed class GovernedGenerationLaunchResult
@@ -370,7 +373,7 @@ public sealed class GovernedGenerationLauncher
                 Author,
                 cancellationToken);
 
-            _runs.TryUpdate(task.TaskId, Author, run =>
+            var running = _runs.TryUpdate(task.TaskId, Author, run =>
             {
                 if (run.Status != GovernedGenerationRunStatus.Launching)
                     return false;
@@ -378,6 +381,18 @@ public sealed class GovernedGenerationLauncher
                 run.ContainerId = spawned.ContainerId;
                 return true;
             });
+            if (!running)
+            {
+                // 容器啟動期間執行紀錄已被結束（例如管理員以 /agents/stop 停止；那時還沒有容器 id 可停）。
+                // 紀錄已不是進行中，watchdog 與交付服務都不會再停止這個容器，所以由這裡停止它，
+                // 並再停用一次代理：停止若發生在註冊憑證簽發之前，這次簽發的憑證也要撤銷。
+                _logger.LogWarning(
+                    "Governed generation for task {TaskId} ended while its agent was starting; stopping the new container.",
+                    task.TaskId);
+                await StopStartedContainerAsync(task.TaskId, spawned.ContainerId);
+                _spawnService.DeactivateTaskAgent(task.TaskId, TaskState.Failed, "Governed generation ended while the agent was starting.", Author);
+                return new GovernedGenerationLaunchResult { Success = false, ErrorCode = GovernedGenerationErrors.Stopped };
+            }
 
             _logger.LogInformation(
                 "Governed generation started: task={TaskId} principal={PrincipalId} container={ContainerId}",
@@ -398,6 +413,22 @@ public sealed class GovernedGenerationLauncher
                 return true;
             });
             return new GovernedGenerationLaunchResult { Success = false, ErrorCode = GovernedGenerationErrors.LaunchFailed };
+        }
+    }
+
+    /// <summary>停止剛啟動、但執行已結束的代理容器。不受請求取消影響；停不掉時只記錄（憑證與 session 已撤銷）。</summary>
+    private async Task StopStartedContainerAsync(string taskId, string containerId)
+    {
+        if (string.IsNullOrWhiteSpace(containerId))
+            return;
+
+        try
+        {
+            await _containerLauncher.ContainerManager.StopWorkerAsync(containerId, CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Agent container for task {TaskId} could not be stopped after the run ended.", taskId);
         }
     }
 

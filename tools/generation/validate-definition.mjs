@@ -672,7 +672,7 @@ function layerSlice(pages, selectedIds = null) {
             errors.push(makeError('API_REQUIRED', `${base}.api.${requiredApi}`, `A ${type} page needs api.${requiredApi}.`, 'Give every page of one resource the same base path, e.g. /api/contacts.'));
         }
         if (type === 'form' && api && typeof api.create === 'string' && typeof api.update !== 'string') {
-            warnings.push(makeError('FORM_WITHOUT_UPDATE', `${base}.api`, 'The form can create records but cannot edit them.', 'Add api.update with the same base path to allow editing.'));
+            warnings.push(makeError('FORM_WITHOUT_UPDATE', `${base}.api`, 'The form can create records but cannot edit them.', 'Add api.update with the same base path to allow editing, or let another form page of the same resource edit the records: edit links open the first form of the resource that has api.update.'));
         }
 
         if (!Array.isArray(definition.fields)) return;
@@ -757,6 +757,47 @@ function checkResources(pages, selectedIds = null) {
                 warnings.push(makeError('OPTIONS_MISMATCH', `${base}.fields[${fieldIndex}].options`, `Field "${field.name}" has different options than on page "${String(first.page.entry?.id ?? first.page.index)}" of the same resource.`, 'Use the same options for one field on every page of a resource; each page shows labels from its own options.'));
             }
         });
+    }
+    warnings.push(...checkMultipleForms(entries));
+    return warnings;
+}
+
+function pageLabel(item) {
+    return String(item.entry?.id ?? item.index);
+}
+
+/**
+ * 一個資源有多個表單時，連結規則與外殼（site-model.js）相同：列表列與明細的「編輯」開啟頁序中第一個有
+ * api.update 的表單，列表的「新增」開啟第一個有 api.create 的表單；其他表單只能從導覽進入，而從導覽進入的
+ * 表單一律是新增一筆只有它自己欄位的紀錄。每個資源發一則 warning（路徑指向第二個表單）。
+ */
+function checkMultipleForms(entries) {
+    const warnings = [];
+    const byEndpoint = new Map();
+    for (const item of entries) {
+        if (item.type !== 'form') continue;
+        if (!byEndpoint.has(item.endpoint)) byEndpoint.set(item.endpoint, []);
+        byEndpoint.get(item.endpoint).push(item);
+    }
+    for (const [endpoint, forms] of byEndpoint) {
+        if (forms.length < 2) continue;
+        const ordered = forms.slice().sort((a, b) => a.index - b.index);
+        const hasKey = (item, key) => isPlainObject(item.definition.api) && typeof item.definition.api[key] === 'string' && item.definition.api[key] !== '';
+        const editForm = ordered.find(item => hasKey(item, 'update'));
+        const createForm = ordered.find(item => hasKey(item, 'create'));
+        const names = ordered.map(pageLabel).map(id => `"${id}"`).join(', ');
+        const editText = editForm
+            ? `Edit links on list rows and detail pages open "${pageLabel(editForm)}" (the first of them with api.update)`
+            : 'None of them has api.update, so records cannot be edited';
+        const createText = createForm
+            ? `the list's create button opens "${pageLabel(createForm)}" (the first with api.create)`
+            : 'no form can create records';
+        warnings.push(makeError(
+            'MULTIPLE_FORMS',
+            `${pagePath(ordered[1].index)}.api`,
+            `The api path "${endpoint}" has ${ordered.length} form pages (${names}). ${editText}; ${createText}. The other form pages are reached only from the navigation, where they always create a new record holding only their own fields.`,
+            'Use one form per resource when you can. When a resource needs two forms (for example a public create-only form and a form that staff use to process records), give the form that edits records api.update and api.get, and keep api.update off the create-only form.'
+        ));
     }
     return warnings;
 }

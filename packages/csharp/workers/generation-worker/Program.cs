@@ -49,7 +49,7 @@ if (configurationError != null)
 }
 
 Directory.CreateDirectory(generationOptions.OutputRoot);
-// 產物含使用者的需求內容：啟動時先清掉超過保留期限的請求目錄（之後每次 generate 前也會清）。
+// 產物含使用者的需求內容：啟動時先清掉超過保留期限的請求目錄（之後每次 generate 前與執行期間每小時也會清）。
 OutputRetention.Sweep(generationOptions.OutputRoot, generationOptions.Retention, DateTimeOffset.UtcNow, handlerLogger);
 
 var options = new WorkerHostOptions
@@ -72,7 +72,8 @@ var cli = new NodeGeneratorCli(generationOptions, handlerLogger);
 // ── 註冊生成 Handlers ──
 host.RegisterHandler(new CatalogQueryHandler(generationOptions, cli, handlerLogger));
 host.RegisterHandler(new DefinitionValidateHandler(generationOptions, cli, handlerLogger));
-host.RegisterHandler(new ScaffoldGenerateHandler(generationOptions, cli, handlerLogger));
+var scaffoldHandler = new ScaffoldGenerateHandler(generationOptions, cli, handlerLogger);
+host.RegisterHandler(scaffoldHandler);
 
 // ── 啟動 ──
 logger.LogInformation(
@@ -87,5 +88,12 @@ Console.CancelKeyPress += (_, e) =>
     logger.LogInformation("Shutdown signal received.");
 };
 
+// 定期清理：worker 閒置（沒有新的 generate、也沒有重啟）時，過期的產物仍會被刪除。
+// 與 generate 共用同一把鎖，不會刪到正在生成的目錄。
+var retentionSweep = OutputRetention.RunPeriodicAsync(
+    scaffoldHandler.SweepExpiredOutputsAsync, generationOptions.RetentionSweepInterval, handlerLogger, cts.Token);
+
 await host.RunAsync(cts.Token);
+cts.Cancel();
+await retentionSweep;
 return 0;

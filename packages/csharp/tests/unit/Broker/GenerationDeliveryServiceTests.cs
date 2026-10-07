@@ -45,18 +45,23 @@ public sealed class GenerationDeliveryServiceTests : IDisposable
         /// <summary>傳回非 null 時，這次交付丟出該例外。</summary>
         public Func<GovernedGenerationRun, Exception?>? ThrowFor { get; set; }
 
-        public Task<GeneratedPackageDeliveryResult> DeliverAsync(GovernedGenerationRun run, CancellationToken cancellationToken)
+        /// <summary>交付進行中（回傳結果之前）執行的動作，例如模擬同時發生的停止。</summary>
+        public Func<GovernedGenerationRun, Task>? During { get; set; }
+
+        public async Task<GeneratedPackageDeliveryResult> DeliverAsync(GovernedGenerationRun run, CancellationToken cancellationToken)
         {
             Delivered.Add(run);
+            if (During != null)
+                await During(run);
             var failure = ThrowFor?.Invoke(run);
             if (failure != null)
-                return Task.FromException<GeneratedPackageDeliveryResult>(failure);
-            return Task.FromResult(new GeneratedPackageDeliveryResult
+                throw failure;
+            return new GeneratedPackageDeliveryResult
             {
                 Success = Succeed,
                 ArtifactId = Succeed ? "artifact_test" : string.Empty,
                 Message = Succeed ? "ok" : "failed"
-            });
+            };
         }
     }
 
@@ -323,6 +328,65 @@ public sealed class GenerationDeliveryServiceTests : IDisposable
         Notifications().Should().ContainSingle(notification => notification.Body.Contains("管理員停止"));
 
         (await Service().StopByAdminAsync("task_not_a_generation_run")).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task AdminStopDuringADelivery_WaitsForIt_AndOnlyStopsTheAgent()
+    {
+        // 交付進行中的停止要等這次交付結束：產物已送出時，執行維持 Delivered、任務 Completed，
+        // 停止只停用代理與停止容器，使用者不會再收到「已由管理員停止」。
+        var taskId = _env.SeedRun(containerId: "c0ffee000008");
+        Ingested(taskId);
+        var service = Service();
+        Task<bool>? stop = null;
+        var stopFinishedDuringDelivery = false;
+        _delivery.During = async run =>
+        {
+            stop = service.StopByAdminAsync(run.TaskId);
+            await Task.Delay(200);
+            stopFinishedDuringDelivery = stop.IsCompleted;
+        };
+
+        await service.ProcessPendingAsync();
+        (await stop!).Should().BeTrue();
+
+        stopFinishedDuringDelivery.Should().BeFalse("the stop waits until the delivery pass is over");
+        _delivery.Delivered.Should().ContainSingle();
+        var run = _env.Runs.Get(taskId)!;
+        run.Status.Should().Be(GovernedGenerationRunStatus.Delivered);
+        TaskOf(taskId).State.Should().Be(TaskState.Completed);
+        Principal(taskId).Status.Should().Be(EntityStatus.Disabled);
+        await _containers.Received().StopWorkerAsync("c0ffee000008", Arg.Any<CancellationToken>());
+        Notifications().Should().NotContain(notification => notification.Body.Contains("管理員停止"));
+    }
+
+    [Fact]
+    public async Task ARunThatEndedAfterTheSnapshot_IsNotDelivered()
+    {
+        // 這一輪開始時兩個執行都在等待交付；交付第一個的期間，第二個被結束（例如其他寫入者標為失敗）。
+        var first = _env.SeedRun();
+        var second = _env.SeedRun();
+        Ingested(first);
+        Ingested(second);
+        _delivery.During = run =>
+        {
+            var other = run.TaskId == first ? second : first;
+            _env.Runs.TryUpdate(other, "system:test", current =>
+            {
+                current.Status = GovernedGenerationRunStatus.Failed;
+                current.FailureReason = "stopped_by_admin";
+                return true;
+            });
+            return Task.CompletedTask;
+        };
+
+        await Service().ProcessPendingAsync();
+
+        _delivery.Delivered.Should().ContainSingle("the run that ended during the pass is read again and skipped");
+        var delivered = _delivery.Delivered.Single().TaskId;
+        var skipped = delivered == first ? second : first;
+        _env.Runs.Get(delivered)!.Status.Should().Be(GovernedGenerationRunStatus.Delivered);
+        _env.Runs.Get(skipped)!.Status.Should().Be(GovernedGenerationRunStatus.Failed);
     }
 
     /// <summary>

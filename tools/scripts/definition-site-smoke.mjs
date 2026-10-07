@@ -4,8 +4,10 @@
 // 2. 以 Edge（playwright-core，沿用 studio smoke 的載入方式）逐一走訪每個路由，確認渲染出預期數量的欄位或欄。
 // 3. 記憶體資料流程：列表新增一筆 → 明細看得到 → 表單編輯後列表更新 → 刪除。
 // 4. 另以涵蓋本切片全部開放欄位型別的定義重跑一次表單、列表、明細，確認每種型別在瀏覽器中可渲染；
-//    可直接輸入的型別與列表類型別都填入值（列表類的每一列都必須有輸入框），存檔後在明細頁核對存回的值。
+//    可直接輸入的型別與列表類型別都填入值（列表類的每一列都必須有輸入框），選項類型別（select、radio、multiselect）
+//    以真實的滑鼠點擊與鍵盤操作選值，存檔後在明細頁逐欄核對存回的值。
 // 5. 只能新增的表單（只有 api.create，沒有列表或明細）可以連續送出多筆，每次送出後回到空白的新增表單。
+// 6. 一個資源有兩個表單（頁序第一個只能新增、第二個可編輯）：列表的新增開啟第一個，列表列與明細的編輯開啟第二個。
 // 全程 console error、pageerror、HTTP 錯誤、CSP 違規為 0；DOM 中 svg、<style>、inline handler 為 0。
 // 結束時刪除本次的 .test-output 子目錄（.test-output 若因此變空也一併刪除）。
 import { spawnSync } from 'node:child_process';
@@ -148,6 +150,14 @@ const TYPED_VALUES = Object.freeze({
     socialmedia: 'row_social'
 });
 
+// 選項類欄位以真實的滑鼠與鍵盤選值後，明細頁該欄應顯示的選項標籤。
+const CHOSEN_OPTION_LABELS = Object.freeze({
+    select: ['選項 B'],
+    radio: ['選項 A'],
+    multiselect: ['選項 A', '選項 B']
+});
+const REAL_INPUT_TIMEOUT = 5000;
+
 /** 列表類欄位：以 maxItems 限制列數的型別（每一列由元件自己的輸入框組成）。 */
 function isRepeatableType(type) {
     return FIELD_TYPE_NOTES[type]?.validation.includes('maxItems') === true;
@@ -197,6 +207,24 @@ function buildCreateOnlyTemplate() {
                         api: { create: '/api/feedback' }
                     }
                 }
+            ]
+        }
+    };
+}
+
+function buildTwoFormsTemplate() {
+    const field = (name, label) => ({ name, type: 'text', label });
+    const status = { name: 'status', type: 'select', label: '狀態', options: [{ value: 'new', label: '新申請' }, { value: 'done', label: '已處理' }] };
+    return {
+        kind: 'definition-template',
+        version: '0.1.0',
+        meta: { title: '報名' },
+        definitions: {
+            pages: [
+                { id: 'signups-list', definition: { name: 'SignupListPage', type: 'list', description: '報名列表', fields: [field('fullName', '姓名'), status], api: { list: '/api/signups', delete: '/api/signups' } } },
+                { id: 'signup-detail', definition: { name: 'SignupDetailPage', type: 'detail', description: '報名明細', fields: [field('fullName', '姓名'), status], api: { get: '/api/signups' } } },
+                { id: 'signup-public', definition: { name: 'SignupPublicPage', type: 'form', description: '公開報名', fields: [field('fullName', '姓名')], api: { create: '/api/signups' } } },
+                { id: 'signup-process', definition: { name: 'SignupProcessPage', type: 'form', description: '處理報名', fields: [field('fullName', '姓名'), status], api: { get: '/api/signups', create: '/api/signups', update: '/api/signups' } } }
             ]
         }
     };
@@ -257,6 +285,65 @@ async function domAudit(page) {
 function auditPasses(audit) {
     return audit.svg === 0 && audit.styleElements === 0 && audit.markupStyleAttributes === 0
         && audit.inlineHandlers === 0 && audit.javascriptUrls === 0 && audit.cspViolations.length === 0;
+}
+
+/**
+ * 選項類欄位以真實的輸入選值：Playwright 的 locator.click 與 page.keyboard 送出真正的滑鼠與鍵盤事件
+ * （元素要先穩定才點得到）。DOM 的 element.click() 不經過游標，抓不到元素在游標下被重建、或焦點被移走的問題。
+ * 回傳 [field, 預期的選項標籤] 清單，存檔後在明細頁核對。
+ */
+async function chooseOptionsWithRealInput(page, fields) {
+    const chosen = [];
+    for (const field of fields) {
+        const expected = CHOSEN_OPTION_LABELS[field.type];
+        if (!expected) continue;
+        const fieldSelector = `.form-field[data-field="${field.name}"]`;
+        try {
+            if (field.type === 'select') {
+                await page.locator(`${fieldSelector} .dropdown__selector`).click({ timeout: REAL_INPUT_TIMEOUT });
+                await page.locator('.dropdown__option:visible', { hasText: expected[0] }).first().click({ timeout: REAL_INPUT_TIMEOUT });
+                // 可搜尋的下拉選單把選取的標籤放在輸入框中，其他樣式放在顯示區。
+                const shown = await page.locator(`${fieldSelector} .dropdown`).evaluate(node =>
+                    `${node.querySelector('.dropdown__input')?.value ?? ''} ${node.querySelector('.dropdown__display')?.textContent ?? ''}`.trim());
+                check('select: a real click on an option selects it', shown.includes(expected[0]), shown);
+            } else if (field.type === 'radio') {
+                await page.locator(`${fieldSelector} label.radio`, { hasText: expected[0] }).click({ timeout: REAL_INPUT_TIMEOUT });
+                const checked = await page.locator(`${fieldSelector} input[type="radio"]:checked`).count();
+                check('radio: a real click on a choice checks it', checked === 1, `checked ${checked}`);
+            } else if (field.type === 'multiselect') {
+                const input = page.locator(`${fieldSelector} .msd__input`);
+                // 滑鼠：開啟選單，點第一個選項（游標停在選項上時選單不得一直重建，否則點擊落空）。
+                await page.locator(`${fieldSelector} .msd__selector`).click({ timeout: REAL_INPUT_TIMEOUT });
+                await page.locator(`${fieldSelector} .msd__option`, { hasText: expected[0] }).click({ timeout: REAL_INPUT_TIMEOUT });
+                const afterClick = await page.locator(`${fieldSelector} .msd__tag`).allInnerTexts();
+                check('multiselect: a real mouse click on an option selects it', afterClick.length === 1 && afterClick[0].includes(expected[0]), JSON.stringify(afterClick));
+                // 鍵盤：輸入框取得焦點後以方向鍵移到下一個選項、Enter 選取；整個過程焦點都留在輸入框。
+                await input.click({ timeout: REAL_INPUT_TIMEOUT });
+                await page.keyboard.press('ArrowDown');
+                const focusAfterArrow = await input.evaluate(node => document.activeElement === node);
+                await page.keyboard.press('ArrowDown');
+                await page.keyboard.press('Enter');
+                const focusAfterEnter = await input.evaluate(node => document.activeElement === node);
+                await page.keyboard.press('Escape');
+                const tags = await page.locator(`${fieldSelector} .msd__tag`).allInnerTexts();
+                check('multiselect: the keyboard keeps focus on the input and selects the highlighted option',
+                    focusAfterArrow && focusAfterEnter && tags.length === 2 && expected.every((label, index) => tags[index]?.includes(label)),
+                    JSON.stringify({ focusAfterArrow, focusAfterEnter, tags }));
+            }
+            chosen.push([field, expected]);
+        } catch (error) {
+            check(`${field.type}: options can be chosen with real mouse and keyboard input`, false, error?.message ?? String(error));
+        }
+    }
+    return chosen;
+}
+
+/** 明細頁每一欄的值文字，以欄位標籤為鍵。 */
+async function detailValuesByLabel(page) {
+    return page.evaluate(() => Object.fromEntries([...document.querySelectorAll('.dynamic-detail__field')].map(node => [
+        node.querySelector('.dynamic-detail__label')?.textContent?.trim() ?? '',
+        node.querySelector('.dynamic-detail__value')?.textContent?.trim() ?? ''
+    ])));
 }
 
 async function goldenScenario(browser, baseUrl, golden) {
@@ -395,6 +482,12 @@ async function allTypesScenario(browser, baseUrl, template) {
         check('Every repeatable list type got a value', repeatable.every(field => typed.some(([entry]) => entry === field)),
             JSON.stringify(typed.map(([field]) => field.type)));
 
+        const optionFields = fields.filter(field => CHOSEN_OPTION_LABELS[field.type]);
+        check('All-types form has the select, radio and multiselect fields to choose from',
+            ['select', 'radio', 'multiselect'].every(type => optionFields.some(field => field.type === type)),
+            JSON.stringify(optionFields.map(field => field.type)));
+        const chosen = await chooseOptionsWithRealInput(page, optionFields);
+
         await page.getByRole('button', { name: '儲存' }).click();
         await waitForRoute(page, 'items-list');
         await page.waitForSelector('[data-site-main][data-record-count="1"]', { timeout: 10000 });
@@ -415,6 +508,16 @@ async function allTypesScenario(browser, baseUrl, template) {
         const missingValues = typed.filter(([, value]) => !detailText.includes(value)).map(([field, value]) => `${field.type}=${value}`);
         check(`Detail shows the ${typed.length} values typed into the form, including list rows`, typed.length > 0 && missingValues.length === 0,
             `missing: ${missingValues.join(', ')}; detail: ${detailText.replace(/\s+/g, ' ')}`);
+        const detailByLabel = await detailValuesByLabel(page);
+        const wrongChoices = chosen
+            .filter(([field, labels]) => {
+                const shown = detailByLabel[field.label] ?? '';
+                const others = ['選項 A', '選項 B'].filter(label => !labels.includes(label));
+                return !labels.every(label => shown.includes(label)) || others.some(label => shown.includes(label));
+            })
+            .map(([field, labels]) => `${field.type}: expected ${labels.join(' + ')}, shown "${detailByLabel[field.label] ?? ''}"`);
+        check(`Detail shows the options chosen with real input for ${chosen.length} option fields`, chosen.length === optionFields.length && wrongChoices.length === 0,
+            wrongChoices.join('; ') || `chosen ${chosen.length} of ${optionFields.length}`);
         audits.push(['all-types detail', await domAudit(page)]);
 
         await page.locator('.dynamic-detail__footer button', { hasText: '編輯' }).click();
@@ -458,6 +561,44 @@ async function createOnlyScenario(browser, baseUrl) {
         await context.close();
     }
     reportAudits('Create-only', audits, problems);
+}
+
+async function twoFormsScenario(browser, baseUrl) {
+    const { context, page, problems } = await openBrowserSession(browser, baseUrl);
+    const audits = [];
+    try {
+        await page.goto(`${baseUrl}/#/signups-list`, { waitUntil: 'load' });
+        await waitForRoute(page, 'signups-list');
+        await page.click('[data-site-action="create"]');
+        await waitForRoute(page, 'signup-public');
+        check('Two forms: the list create button opens the first form with api.create', true);
+        await page.fill('.form-field[data-field="fullName"] input', 'Morgan Example');
+        await page.getByRole('button', { name: '儲存' }).click();
+        await waitForRoute(page, 'signups-list');
+        await page.waitForSelector('[data-site-main][data-record-count="1"]', { timeout: 10000 });
+        audits.push(['two-forms list', await domAudit(page)]);
+
+        await page.locator('.dynamic-list tbody tr').first().locator('[data-legacy-action="edit"]').click();
+        await waitForRoute(page, 'signup-process');
+        const rowEdit = await page.evaluate(() => ({
+            hash: location.hash,
+            name: document.querySelector('.form-field[data-field="fullName"] input')?.value ?? null
+        }));
+        check('Two forms: a row edit opens the form with api.update, prefilled', rowEdit.hash === '#/signup-process/1' && rowEdit.name === 'Morgan Example', JSON.stringify(rowEdit));
+        audits.push(['two-forms process form', await domAudit(page)]);
+
+        await page.goto(`${baseUrl}/#/signup-detail/1`, { waitUntil: 'load' });
+        await waitForRoute(page, 'signup-detail');
+        await page.locator('.dynamic-detail__footer button', { hasText: '編輯' }).click();
+        await waitForRoute(page, 'signup-process');
+        const detailEdit = await page.evaluate(() => location.hash);
+        check('Two forms: the detail edit opens the form with api.update', detailEdit === '#/signup-process/1', detailEdit);
+        const toasts = await page.evaluate(() => [...document.querySelectorAll('.toast')].map(node => node.textContent));
+        check('Two forms: editing never reports that the resource cannot be edited', !toasts.some(text => text.includes('只能新增')), JSON.stringify(toasts));
+    } finally {
+        await context.close();
+    }
+    reportAudits('Two-forms', audits, problems);
 }
 
 function reportAudits(label, audits, problems) {
@@ -508,7 +649,13 @@ try {
     check('Create-only template builds through the CLI', createOnlyBuild.status === 0 && createOnlyBuild.result?.ok === true,
         `${createOnlyBuild.status} ${JSON.stringify(createOnlyBuild.result?.errors ?? null)}`);
 
-    if (goldenBuild.result?.ok && allTypesBuild.result?.ok && createOnlyBuild.result?.ok) {
+    const twoForms = buildTwoFormsTemplate();
+    const twoFormsOut = path.join(workRoot, 'two-forms');
+    const twoFormsBuild = runBuild(twoForms, twoFormsOut, '報名');
+    check('Two-forms template builds through the CLI', twoFormsBuild.status === 0 && twoFormsBuild.result?.ok === true,
+        `${twoFormsBuild.status} ${JSON.stringify(twoFormsBuild.result?.errors ?? null)}`);
+
+    if (goldenBuild.result?.ok && allTypesBuild.result?.ok && createOnlyBuild.result?.ok && twoFormsBuild.result?.ok) {
         browser = await chromium.launch({ channel: 'msedge', headless: !headed });
         const goldenServer = await createStaticServer(path.join(goldenOut, 'site'));
         servers.push(goldenServer.server);
@@ -521,6 +668,10 @@ try {
         const createOnlyServer = await createStaticServer(path.join(createOnlyOut, 'site'));
         servers.push(createOnlyServer.server);
         await createOnlyScenario(browser, createOnlyServer.baseUrl);
+
+        const twoFormsServer = await createStaticServer(path.join(twoFormsOut, 'site'));
+        servers.push(twoFormsServer.server);
+        await twoFormsScenario(browser, twoFormsServer.baseUrl);
     }
 } catch (error) {
     check('Smoke run completes without an exception', false, error?.stack || String(error));

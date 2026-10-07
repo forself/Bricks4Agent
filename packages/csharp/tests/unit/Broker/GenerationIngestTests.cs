@@ -434,7 +434,7 @@ public sealed class GenerationIngestTests : IDisposable
     private static readonly TimeSpan[] NoDelays = { TimeSpan.Zero, TimeSpan.Zero, TimeSpan.Zero };
 
     private static ExecutionResult NoWorker(string requestId, string capabilityId)
-        => ExecutionResult.Fail(requestId, $"[StrictMode] No available worker for capability '{capabilityId}'. Execution plane unavailable.");
+        => ExecutionResult.NoWorker(requestId, $"[StrictMode] No available worker for capability '{capabilityId}'. Execution plane unavailable.");
 
     [Theory]
     [InlineData("generation.catalog.query", "query_component_catalog")]
@@ -501,6 +501,31 @@ public sealed class GenerationIngestTests : IDisposable
         result.Success.Should().BeFalse();
         result.ErrorMessage.Should().Contain("No available worker");
         inner.Calls.Should().Be(NoDelays.Length + 1);
+    }
+
+    [Theory]
+    [InlineData("All worker dispatch attempts failed")]
+    [InlineData("No available worker for capability 'generation.definition.validate' and route 'validate_definition' is not supported by fallback dispatcher.")]
+    public async Task ATimedOutDispatch_IsNotRetriedAsBusy(string message)
+    {
+        // 分派後逾時（請求已送到 worker）的結果沒有 NoWorkerAvailable：即使訊息看起來像「沒有可用的 worker」，
+        // 也不再分派一次。先前以訊息判斷時，非 strict 模式下一個請求最多會送出 15 次。
+        var requestId = IdGen.New("req");
+        var inner = new StubDispatcher(_ => ExecutionResult.Fail(requestId, message));
+        var dispatcher = new GenerationIngestingDispatcher(inner, Ingestor(), NoDelays);
+
+        var result = await dispatcher.DispatchAsync(new ApprovedRequest
+        {
+            RequestId = requestId,
+            CapabilityId = GenerationCapabilities.DefinitionValidate,
+            Route = GenerationCapabilities.ValidateRoute,
+            Payload = "{}",
+            Scope = "{}",
+            TaskId = IdGen.New("task")
+        });
+
+        result.Success.Should().BeFalse();
+        inner.Calls.Should().Be(1, "a request that reached the worker is not dispatched again");
     }
 
     [Fact]

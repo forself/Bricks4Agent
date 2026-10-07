@@ -349,6 +349,50 @@ public sealed class GovernedGenerationLauncherTests : IDisposable
         run.FailureReason.Should().Be("agent_launch_failed");
     }
 
+    private sealed class UnusedDelivery : IGeneratedPackageDelivery
+    {
+        public Task<GeneratedPackageDeliveryResult> DeliverAsync(GovernedGenerationRun run, CancellationToken cancellationToken)
+            => throw new InvalidOperationException("Nothing is delivered in this test.");
+    }
+
+    [Fact]
+    public async Task AdminStopWhileTheAgentStarts_StopsTheNewContainer_AndDoesNotReportAcceptance()
+    {
+        // 管理員在 docker run 回傳之前 /agents/stop：那時還沒有容器 id 可停。容器啟動完成後，
+        // 啟動流程必須自己停止它，並回報失敗（coordinator 因此不回「已受理」、不刪 draft）。
+        var spawnService = new AgentSpawnService(_env.Db, new RegistrationCredentialService(_env.Db), new SessionService(_env.Db));
+        var delivery = new GenerationDeliveryService(
+            _env.Options, _env.Runs, new UnusedDelivery(), spawnService, _containers, _env.Workspace, _env.Db, _env.Signal,
+            NullLogger<GenerationDeliveryService>.Instance);
+        _containers.ListManagedAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult(new List<ManagedContainer>()));
+        var launcher = Launcher();
+        var task = SeedTask();
+        var draft = Draft();
+        var preparation = launcher.Prepare(task, draft, PromotedRuntimeDescriptor(), _env.AccessRoot);
+        var stoppedDuringSpawn = false;
+        _containers.SpawnWorkerAsync(Arg.Any<ContainerSpawnRequest>(), Arg.Any<CancellationToken>())
+            .Returns(async _ =>
+            {
+                stoppedDuringSpawn = await delivery.StopByAdminAsync(task.TaskId);
+                return "c0ffee000011";
+            });
+
+        var result = await launcher.LaunchAsync(task, new Plan { PlanId = IdGen.New("plan"), TaskId = task.TaskId }, draft, preparation, CancellationToken.None);
+
+        stoppedDuringSpawn.Should().BeTrue("the run existed while the container was starting");
+        result.Success.Should().BeFalse("a run stopped during the launch is not accepted");
+        result.ErrorCode.Should().Be(GovernedGenerationErrors.Stopped);
+        await _containers.Received(1).StopWorkerAsync("c0ffee000011", Arg.Any<CancellationToken>());
+        var run = _env.Runs.Get(task.TaskId)!;
+        run.Status.Should().Be(GovernedGenerationRunStatus.Failed);
+        run.FailureReason.Should().Be("stopped_by_admin");
+        _env.Runs.ListOpen().Should().NotContain(open => open.TaskId == task.TaskId);
+        _env.Db.Get<BrokerTask>(task.TaskId)!.State.Should().Be(TaskState.Failed);
+        _env.Db.Get<Principal>(preparation.PrincipalId)!.Status.Should().Be(EntityStatus.Disabled);
+        _env.Db.Query<RegistrationCredential>("SELECT * FROM registration_credentials WHERE task_id = @taskId", new { taskId = task.TaskId })
+            .Should().NotBeEmpty().And.OnlyContain(credential => credential.RevokedAt != null);
+    }
+
     [Fact]
     public async Task LaunchCancelledByTheRequest_StillFailsTheTaskAndTheRun()
     {

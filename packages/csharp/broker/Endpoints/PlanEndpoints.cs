@@ -170,7 +170,8 @@ public static class PlanEndpoints
                 // H-3 修復：proper await，消除 sync-over-async
                 // M-8 修復：傳遞 RequestAborted 取消令牌
                 var plan = await planEngine.SubmitAndExecuteAsync(planId, principalId, sessionId, traceId, ctx.RequestAborted);
-                return Results.Ok(ApiResponseHelper.Success(plan));
+                // 與 /plans/get、/plans/status 相同：不是提交者的呼叫者（例如被指派到任務的代理）看不到提交者的識別資料。
+                return Results.Ok(ApiResponseHelper.Success(ForCaller(ctx, plan)));
             }
             catch (InvalidOperationException ex)
             {

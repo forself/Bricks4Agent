@@ -50,11 +50,15 @@ public sealed class GenerationIngestingDispatcher : IExecutionDispatcher
            string.Equals(request.Route, GenerationCapabilities.ValidateRoute, StringComparison.OrdinalIgnoreCase) ||
            string.Equals(request.Route, GenerationCapabilities.GenerateRoute, StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>功能池找不到可用的 worker（沒有交給任何 worker）；worker 自己的拒絕不算。</summary>
+    /// <summary>
+    /// 功能池一開始就找不到可用的 worker、請求沒有送出（<see cref="ExecutionResult.NoWorkerAvailable"/>）。
+    /// 只看這個旗標、不比對錯誤訊息：分派後逾時或傳輸失敗時請求已送到 worker（它可能仍在處理），
+    /// 不得再分派一次；worker 自己的拒絕也不算。
+    /// </summary>
     public static bool IsNoAvailableWorker(ExecutionResult result)
         => !result.Success &&
            !result.AnsweredByWorker &&
-           (result.ErrorMessage?.Contains("No available worker", StringComparison.Ordinal) ?? false);
+           result.NoWorkerAvailable;
 
     public async Task<ExecutionResult> DispatchAsync(ApprovedRequest approvedRequest)
     {

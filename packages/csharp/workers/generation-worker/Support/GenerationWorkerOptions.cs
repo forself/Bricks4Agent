@@ -50,11 +50,15 @@ public sealed class GenerationWorkerOptions
 
     /// <summary>
     /// 產物在 <see cref="OutputRoot"/> 保留的時數（設定 <c>Generation:RetentionHours</c>，預設 24，範圍 1～8760）。
-    /// 超過期限的 <c>{output_slot}/{requestId}/</c> 目錄在 worker 啟動時與每次 generate 之前刪除。
+    /// 超過期限的 <c>{output_slot}/{requestId}/</c> 目錄在 worker 啟動時、每次 generate 之前，
+    /// 以及 worker 執行期間每隔 <see cref="RetentionSweepInterval"/> 刪除。
     /// </summary>
     public int RetentionHours { get; set; } = 24;
 
     public TimeSpan Retention => TimeSpan.FromHours(RetentionHours);
+
+    /// <summary>worker 執行期間定期清理的間隔（固定一小時；worker 閒置時也照常清理）。</summary>
+    public TimeSpan RetentionSweepInterval { get; set; } = TimeSpan.FromHours(1);
 
     public string CliPath => Path.Combine(ToolsRoot, CliRelativePath.Replace('/', Path.DirectorySeparatorChar));
 

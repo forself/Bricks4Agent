@@ -10,6 +10,27 @@ B4A 只收通用元件與通用能力；任何業務系統的專屬元件都不�
 
 ## 未發行
 
+### 修正：受治理生成的第四輪審查修正（2026-10-07）
+
+**預設行為變更**
+
+- 定義網站的外殼把表單連結拆成兩個：列表列與明細的「編輯」開啟同一資源中頁序第一個有 `api.update` 的表單，列表的「新增」開啟第一個有 `api.create` 的表單。先前兩者都連到第一個表單，第一個表單只能新增時（例如公開填寫加上處理用的表單）就無法編輯。驗證器對一個資源有多個表單的定義發 `MULTIPLE_FORMS` warning，說明編輯與新增各自開啟哪個表單，`FORM_WITHOUT_UPDATE` 的 hint 與型錄的 `linking` 一併說明這個規則；驗證器版本改為 `definition-validator/1.4.0`，生成器版本改為 `definition-site/1.2.0`。
+- 生成任務的代理在還沒有成功生成時，把模型寫在回覆內文中的工具呼叫（標示為 json 的程式碼區塊，缺少收尾的 fence 也可以；裸 JSON；`<tool_call>`、`<tools>` 包裝）當成工具呼叫執行，只接受同時帶字串 `name` 與物件 `arguments` 的物件。名稱不在 session 授予的工具中時不執行、也不結束，而是回一則列出可用工具的 unsupported 結果。一般代理與生成成功之後的回覆不受影響。先前小型的本機模型把呼叫寫成 JSON 文字時，提醒一次後任務就結束。
+- generation-worker 在執行期間每小時清理一次超過保留期限的產物（與 generate 共用同一把鎖），閒置的 worker 也會刪除過期的 zip。worker 沒有執行時（例如 sidecar 切回 Legacy）不會清理，文件改寫成照實說明，並說明手動刪除的方式。
+- compose 的 generation-worker 轉入 `WORKER_Generation__RetentionHours`，可在 env 檔以 `GENERATION_RETENTION_HOURS`（預設 24）調整。先前 runbook 寫的 `WORKER_Generation__RetentionHours` 放在 env 檔中不會生效。
+- 三個生成能力的分派時限改由 `FunctionPool:CapabilityDispatchTimeoutSeconds:{能力 id}` 設定（預設 catalog 與 validate 45 秒、generate 150 秒），大於 generation-worker 的查詢與建置逾時；其他能力沿用 `FunctionPool:DispatchTimeoutSeconds`。
+
+**修正**
+
+- `MultiSelectDropdown` 在真實瀏覽器中可以用滑鼠與鍵盤選取選項。先前游標停在選項上時 mouseenter 一再觸發，整個選單隨之重建，點擊落不到選項上；重繪標籤時輸入框被移出 DOM，方向鍵之後焦點就遺失。現在只有項目、選取值、篩選條件或可用狀態改變時才重建選單，反白改變只更新選項背景；標籤只移除與重建 `.msd__tag`，輸入框留在原位。
+- `/plans/submit` 的回應與 `/plans/get`、`/plans/status` 一樣，對不是提交者、也不是管理員的呼叫者不帶 `submitted_by`。先前代理 session 替自己任務的計畫加節點並提交時，回應帶有使用者識別。
+- 代理容器還在啟動時管理員以 `/agents/stop` 停止受治理生成：容器啟動完成後，啟動流程自己停止它並再停用一次代理，回覆使用者生成已由管理員停止（錯誤碼 `generation_stopped`），不回「已受理」、也不刪 draft。先前啟動流程忽略狀態轉換失敗，容器不會被停止，並一直占用代理容器的名額。
+- 管理員停止與交付和 watchdog 的一輪依序執行，交付之前也重讀執行紀錄：交付進行中時停止會等它結束，已交付的執行只停用代理與停止容器。先前停止可以夾在交付途中，任務已失敗、產物卻仍送出，使用者同時收到「已停止」與「已生成」。
+- 執行分派的結果新增 `NoWorkerAvailable`：只有功能池一開始就找不到可用的 worker、請求沒有送出時才設定。受治理生成的忙碌重試改看這個旗標、不再比對錯誤訊息，所以分派後逾時（請求已送到 worker）不再被當成忙碌重送；先前非 strict 模式下一個請求最多會送出 15 次。介面變更：`ExecutionResult` 新增 `NoWorkerAvailable` 與 `ExecutionResult.NoWorker(...)`，`PoolConfig` 新增 `CapabilityDispatchTimeouts`、`AddCapabilityDispatchTimeouts` 與 `ResolveDispatchTimeout`。
+- 文件：設計文件 §10（其他代理或 API 的入口）補上建立主體、`output_slot` 的寫法、zip 是唯一副本且有保留期限，以及取走後結束任務並撤銷註冊憑證；§13 與 CHANGELOG 的欄位型別數量更正為被擋 10 種、開放 18 種；代理 README 更正生成用 system prompt 的適用條件。
+
+驗證入口：`npm run test:generation`、`npm run test:definition-site:browser`、`npm --prefix packages/javascript/browser run test:vitest`（MultiSelectDropdown.test.js）、`npm run validate:agent-governed`、`npm run validate:agent-container-config`、`dotnet test packages/csharp/tests/unit/Unit.Tests.csproj`（GenerationHandlerTests、GovernedGenerationLauncherTests、GenerationDeliveryServiceTests、GenerationIngestTests、FallbackDispatcherTests）、`dotnet test packages/csharp/tests/integration/Integration.Tests.csproj`（GovernedGenerationTests）。
+
 ### 修正：受治理生成的第三輪審查修正（2026-10-07）
 
 **預設行為變更**
@@ -90,7 +111,7 @@ B4A 只收通用元件與通用能力；任何業務系統的專屬元件都不�
 **新增**
 
 - 新的模式開關 `HighLevelCoordinator:Generation:SystemScaffoldMode`：`Legacy`（預設，行為不變）或 `Governed`。Governed 時，使用者確認系統雛形 draft 後，broker 不在程序內寫任何專案檔案：任務指派給自己的 AI 主體與 `role_executor`、帶三個生成 grant，broker 啟動受控代理並立即回覆「已受理（任務 id）」；代理經 LLM 代理撰寫 DefinitionTemplate，經 `generation.catalog.query`、`generation.definition.validate`、`generation.scaffold.generate` 三個能力走 PEP，generation-worker 確定性產出多頁前端原型（list、detail、form，瀏覽器內記憶體 store，不含後端）並打成 zip；broker 驗證路徑與 sha256、寫入證據文件後，以既有的產物紀錄、Drive 或簽章下載連結與 LINE 通知交付，任務 Completed 並停用代理。前置條件不滿足時回「系統雛形生成暫不可用」且不建立任務，不退回程序內生成；逾時或代理未產出時由 watchdog 把任務標為 Failed 並通知使用者。流程、設定與部署見 [GovernedGeneration.md](docs/designs/GovernedGeneration.md)。
-- 生成器 `tools/generation/`（`cli.mjs` 的 catalog、validate、build，零依賴、Node 22）與通用外殼 `templates/definition-site/`（嚴格 CSP、hash 路由），golden 範例是通用的聯絡人三頁。外殼納入 `audit:csp` 掃描。欄位型別白名單是 page-gen 型別清單與 support matrix 的交集（28 種），本切片再擋下無後端原型中無法正確使用的型別，實際開放 20 種（被擋的型別、原因與替代見設計文件 §3.1）。
+- 生成器 `tools/generation/`（`cli.mjs` 的 catalog、validate、build，零依賴、Node 22）與通用外殼 `templates/definition-site/`（嚴格 CSP、hash 路由），golden 範例是通用的聯絡人三頁。外殼納入 `audit:csp` 掃描。欄位型別白名單是 page-gen 型別清單與 support matrix 的交集（28 種），本切片再擋下無後端原型中無法正確使用的型別，實際開放 18 種（被擋的型別、原因與替代見設計文件 §3.1）。
 - 新的 worker `packages/csharp/workers/generation-worker/`（Containerfile、compose 的 `generation` profile 與 internal 的 `generation-net`、sidecar 的 `-GenerationMode Governed`、`run-worker.ps1 -Worker generation`）。compose 的 broker 服務因此需要兩個新的必填 env 變數，屬於相容性變更，見同日的「預設行為變更：compose 的 broker 需要生成 worker 的 WorkerAuth 變數」；三個能力以 tool-spec 為唯一來源；代理新增 `query_component_catalog`、`validate_definition`、`generate_scaffold` 三個工具，生成類任務的 system prompt 說明工作流程與上限，`AGENT_MAX_ITERATIONS` 可由環境變數設定。
 - broker：`GovernedGenerationLauncher`、`GenerationIngestingDispatcher`（只處理 `generate_scaffold`）、`GenerationDeliveryService`（交付與 watchdog）、`AgentContainerLauncher`（`/agents/spawn` 與受治理生成共用的容器啟動，行為不變）；設定區段 `Generation`（`OutputRoot`、`DeadlineMinutes`、`AgentMaxIterations`、`MaxPages`、`WatchdogIntervalSeconds`、`MaxPackageBytes`）；保留前綴 `generation.execution.` 與 `generation.run.`；generate 超出 scope 送審時，審批畫面顯示標題、各頁摘要與定義內容。
 - 任務狀態新增 `Failed`（終止狀態，與 Completed、Cancelled 一樣不再接受註冊、續期、憑證簽發與取消）；`AgentSpawnService.DeactivateTaskAgent` 依任務指派的主體停用代理。

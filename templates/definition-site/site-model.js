@@ -60,6 +60,12 @@ export function pageEndpoint(type, api) {
     return null;
 }
 
+/** 頁定義的 api 是否帶非空字串的 key（例如 update、create） */
+export function hasApi(definition, key) {
+    const value = definition?.api?.[key];
+    return typeof value === 'string' && value !== '';
+}
+
 export function resourceEndpoint(base, recordId) {
     return `${String(base).replace(/\/+$/, '')}/${encodeURIComponent(String(recordId))}`;
 }
@@ -85,16 +91,20 @@ export function buildSiteModel(site, definitionsById) {
             title: definition.description || definition.name || id,
             definition,
             endpoint: pageEndpoint(type, definition.api),
-            links: { list: null, detail: null, form: null }
+            links: { list: null, detail: null, editForm: null, createForm: null }
         };
     });
 
+    // 同一資源（同一個端點）的頁彼此連結。一個資源可以有多個表單（例如公開填寫只能新增、處理用的表單可以編輯），
+    // 所以編輯與新增各自連到頁序中第一個能做這件事的表單：editForm 有 api.update，createForm 有 api.create。
     for (const page of pages) {
         if (!page.endpoint) continue;
-        for (const type of SUPPORTED_PAGE_TYPES) {
-            const target = pages.find(candidate => candidate.type === type && candidate.endpoint === page.endpoint);
-            page.links[type] = target ? target.id : null;
-        }
+        const sameResource = pages.filter(candidate => candidate.endpoint === page.endpoint);
+        const firstOf = (predicate) => sameResource.find(predicate)?.id ?? null;
+        page.links.list = firstOf(candidate => candidate.type === 'list');
+        page.links.detail = firstOf(candidate => candidate.type === 'detail');
+        page.links.editForm = firstOf(candidate => candidate.type === 'form' && hasApi(candidate.definition, 'update'));
+        page.links.createForm = firstOf(candidate => candidate.type === 'form' && hasApi(candidate.definition, 'create'));
     }
 
     const firstList = pages.find(page => page.type === 'list');

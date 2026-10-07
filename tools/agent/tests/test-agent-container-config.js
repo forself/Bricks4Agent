@@ -671,6 +671,10 @@ for (const docPath of [
     assertIncludes('generation worker key id', generation, 'WORKER_Worker__Auth__KeyId: "${GENERATION_WORKER_AUTH_KEY_ID:?');
     assertIncludes('generation worker secret', generation, 'WORKER_Worker__Auth__SharedSecret: "${GENERATION_WORKER_AUTH_SHARED_SECRET:?');
     assertIncludes('generation worker writes to /out', generation, 'WORKER_Generation__OutputRoot: "/out"');
+    // 保留期限可由 env 檔調整：--env-file 的變數只用於插值，所以 compose 要明確轉入 worker。
+    assertIncludes('generation worker retention comes from the env file', generation,
+        'WORKER_Generation__RetentionHours: "${GENERATION_RETENTION_HOURS:-24}"');
+    assert(/^#\s+GENERATION_RETENTION_HOURS\s/m.test(envExample), 'agent-stack.env.example documents the optional GENERATION_RETENTION_HOURS');
     assert.deepStrictEqual(serviceListValues(generation, 'volumes'), ['generation-out:/out'], 'generation worker mounts only the output volume');
     assert.deepStrictEqual(serviceListValues(generation, 'networks'), ['generation-net'], 'generation worker joins generation-net only');
     assert(!/^ {4}ports:/m.test(generation), 'generation worker publishes no port');

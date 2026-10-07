@@ -929,13 +929,14 @@ function scriptLlm(client, replies) {
     return seen;
 }
 
-function generationAgent(client, maxIterations = 12) {
+function generationAgent(client, maxIterations = 12, forceStrategy = null) {
     return new AgentLoop({
         model: 'user-requested-model',
         provider: createForbiddenDirectProvider(),
         projectRoot: ROOT,
         stream: false,
         maxIterations,
+        forceStrategy,
         governed: {
             brokerUrl: 'http://broker.local:5000',
             brokerPubKey: 'fake-pub-key',
@@ -1072,6 +1073,185 @@ async function testGenerationRunNeedsAToolCallEveryTurn() {
     }
 }
 
+/**
+ * Small local models often write the tool call as JSON text instead of calling the tool, in native and in ReAct
+ * mode. A generation task runs such calls (a fenced ```json block, also without the closing fence, bare JSON or a
+ * <tools> wrapper) as tool calls, but only names the session was granted: any other name gets an "unsupported tool"
+ * result that lists the available tools, and the run goes on. Other tasks, and a generation task after a successful
+ * generate, never run text as a tool call.
+ */
+async function testGenerationToolCallsWrittenAsText() {
+    const template = { kind: 'definition-template', version: '0.1.0' };
+    const generateOk = JSON.stringify({ ok: true, zip: { path: 'slot/req/contacts-scaffold.zip', sha256: 'b'.repeat(64), size: 10 } });
+    const call = (name, args) => JSON.stringify({ name, arguments: args });
+    const fence = '```';
+    const respondOk = (client) => {
+        const submitted = [];
+        client.submitRequest = async (capabilityId, payload) => {
+            submitted.push({ capabilityId, route: payload.route, args: payload.args });
+            return {
+                success: true,
+                data: {
+                    execution_state: 'Succeeded',
+                    result_payload: capabilityId === 'generation.scaffold.generate' ? generateOk : '{"ok":true}',
+                },
+            };
+        };
+        return submitted;
+    };
+
+    // Native mode: a fenced block, a block without the closing fence, bare JSON and a <tools> wrapper all run.
+    {
+        const client = createGenerationFakeClient();
+        const submitted = respondOk(client);
+        const seen = scriptLlm(client, [
+            { content: `I will read the catalog.\n${fence}json\n${call('query_component_catalog', { section: 'overview' })}\n${fence}` },
+            { content: `${fence}json\n${call('query_component_catalog', { section: 'field_types' })}` },
+            { content: `<tools>${call('validate_definition', { template })}</tools>` },
+            { content: call('generate_scaffold', { template, title: 'Contacts' }) },
+            { content: 'Generated 3 pages.' },
+        ]);
+        const agent = generationAgent(client);
+        await agent.init();
+        assert.strictEqual(agent.useNativeTools, true);
+        const reply = await agent.send('build it');
+        assert.strictEqual(reply, 'Generated 3 pages.');
+        assert.strictEqual(seen.length, 5);
+        assert.deepStrictEqual(submitted.map((entry) => entry.route),
+            ['query_component_catalog', 'query_component_catalog', 'validate_definition', 'generate_scaffold']);
+        assert.deepStrictEqual(submitted[0].args, { section: 'overview' });
+        assert.deepStrictEqual(submitted[2].args, { template });
+        assert.strictEqual(agent.messages.filter((message) => message.content === GENERATION_CONTINUE_REMINDER).length, 0,
+            'a call written as text is a call, not a text-only reply');
+        const assistantCall = agent.messages.find((message) => message.role === 'assistant' && Array.isArray(message.tool_calls));
+        assert.strictEqual(assistantCall.tool_calls[0].id, 'text_call_1_0');
+        assert.strictEqual(assistantCall.tool_calls[0].function.name, 'query_component_catalog');
+        const toolResults = agent.messages.filter((message) => message.role === 'tool');
+        assert.strictEqual(toolResults.length, 4);
+        assert.strictEqual(toolResults[0].tool_call_id, 'text_call_1_0');
+        await agent.close();
+    }
+
+    // A name that is not granted is not run and does not end the run: the model gets an unsupported result.
+    {
+        const client = createGenerationFakeClient();
+        const submitted = respondOk(client);
+        const seen = scriptLlm(client, [
+            { content: `${fence}json\n${call('generate_definition', { template })}\n${fence}` },
+            { content: call('run_command', { command: 'dir' }) },
+            { tools: [['validate_definition', { template }]] },
+            { tools: [['generate_scaffold', { template }]] },
+            { content: 'Generated.' },
+        ]);
+        const agent = generationAgent(client);
+        await agent.init();
+        const reply = await agent.send('build it');
+        assert.strictEqual(reply, 'Generated.');
+        assert.strictEqual(seen.length, 5, 'the run goes on after the unsupported names');
+        assert.deepStrictEqual(submitted.map((entry) => entry.route), ['validate_definition', 'generate_scaffold'],
+            'names that are not granted never reach the broker');
+        const unsupported = agent.messages.filter((message) => message.role === 'tool' && message.content.startsWith('unsupported tool'));
+        assert.strictEqual(unsupported.length, 2);
+        assert.strictEqual(unsupported[0].content,
+            'unsupported tool generate_definition; available: query_component_catalog, validate_definition, generate_scaffold');
+        assert(unsupported[1].content.startsWith('unsupported tool run_command; available: '));
+        assert.strictEqual(agent.messages.filter((message) => message.content === GENERATION_CONTINUE_REMINDER).length, 0);
+        await agent.close();
+    }
+
+    // ReAct mode: a fenced block outside the <tool_call> wrapper runs too, and the result comes back as a tool result.
+    {
+        const client = createGenerationFakeClient();
+        const submitted = respondOk(client);
+        scriptLlm(client, [
+            { content: `${fence}json\n${call('validate_definition', { template })}\n${fence}` },
+            { content: `<tool_call>${call('generate_scaffold', { template })}</tool_call>` },
+            { content: 'Generated.' },
+        ]);
+        const agent = generationAgent(client, 12, 'react');
+        await agent.init();
+        assert.strictEqual(agent.useNativeTools, false);
+        assert.strictEqual(await agent.send('build it'), 'Generated.');
+        assert.deepStrictEqual(submitted.map((entry) => entry.route), ['validate_definition', 'generate_scaffold']);
+        assert(agent.messages.some((message) => message.role === 'user' && message.content.includes('"tool": "validate_definition"')));
+        await agent.close();
+    }
+
+    // A call written after a successful generate ends the run as before.
+    {
+        const client = createGenerationFakeClient();
+        const submitted = respondOk(client);
+        const seen = scriptLlm(client, [
+            { tools: [['generate_scaffold', { template }]] },
+            { content: `Done. I called:\n${fence}json\n${call('generate_scaffold', { template })}\n${fence}` },
+        ]);
+        const agent = generationAgent(client);
+        await agent.init();
+        const reply = await agent.send('build it');
+        assert(reply.startsWith('Done.'));
+        assert.strictEqual(seen.length, 2);
+        assert.strictEqual(submitted.length, 1, 'the summary after a successful generate is not run again');
+        await agent.close();
+    }
+
+    // Other tasks never run text as a tool call.
+    {
+        const client = createFakeClient();
+        let calls = 0;
+        client.llmChat = async () => {
+            calls += 1;
+            return { success: true, data: { content: call('read_file', { path: './README.md' }), tool_calls: [], done: true, model: 'broker-model' } };
+        };
+        const agent = new AgentLoop({
+            model: 'user-requested-model',
+            provider: createForbiddenDirectProvider(),
+            projectRoot: ROOT,
+            stream: false,
+            governed: {
+                brokerUrl: 'http://broker.local:5000',
+                brokerPubKey: 'fake-pub-key',
+                principalId: 'prn_test',
+                taskId: 'task_test',
+                roleId: 'role_reader',
+                registrationSecret: TEST_REGISTRATION_SECRET,
+                clientFactory: () => client,
+            },
+        });
+        await agent.init();
+        const submitsBefore = client.getSubmitCalls();
+        await agent.send('hello');
+        assert.strictEqual(calls, 1);
+        assert.strictEqual(client.getSubmitCalls(), submitsBefore, 'an ordinary task does not run JSON text');
+        await agent.close();
+    }
+}
+
+/** The text parser only accepts objects with a string name and object arguments. */
+function testTextToolCallParser() {
+    const { parseTextToolCalls } = require('../lib/text-tool-calls');
+    const fence = '```';
+    assert.deepStrictEqual(parseTextToolCalls(`${fence}json\n{"name":"a","arguments":{"x":1}}\n${fence}`), [{ name: 'a', arguments: { x: 1 } }]);
+    assert.deepStrictEqual(parseTextToolCalls(`${fence}\n{"name":"a","arguments":{}}`), [{ name: 'a', arguments: {} }]);
+    assert.deepStrictEqual(parseTextToolCalls('Call: {"name":"a","arguments":{"y":"z"},}'), [{ name: 'a', arguments: { y: 'z' } }]);
+    assert.deepStrictEqual(parseTextToolCalls('[{"name":"a","arguments":{}},{"name":"b","arguments":{}}]').map((entry) => entry.name), ['a', 'b']);
+    assert.deepStrictEqual(parseTextToolCalls('{"tool_calls":[{"function":{"name":"a","arguments":{}}}]}').map((entry) => entry.name), ['a']);
+    assert.deepStrictEqual(parseTextToolCalls('<tool_call>{"name":"a","arguments":{}}</tool_call>').map((entry) => entry.name), ['a']);
+    for (const text of [
+        '',
+        'no json here',
+        '{"kind":"definition-template"}',
+        '{"name":"a","arguments":"{}"}',
+        '{"name":"a"}',
+        '{"name":5,"arguments":{}}',
+        '{"name":"a","arguments":[1]}',
+    ]) {
+        assert.deepStrictEqual(parseTextToolCalls(text), [], text);
+    }
+    // A fence in another language is skipped; the bare JSON fallback still finds an object written in the text.
+    assert.deepStrictEqual(parseTextToolCalls(`${fence}python\nprint(1)\n${fence}\n{"name":"a","arguments":{}}`).map((entry) => entry.name), ['a']);
+    assert.deepStrictEqual(parseTextToolCalls(`{"name":"a","arguments":{"pad":"${'x'.repeat(300 * 1024)}"}}`), [], 'oversized text is ignored');
+}
+
 /** AGENT_MAX_ITERATIONS and --max-iterations accept integers from 1 to 100; anything else keeps the default. */
 function testMaxIterationsParsing() {
     const { parseMaxIterations, DEFAULT_MAX_ITERATIONS } = require('../lib/utils');
@@ -1191,6 +1371,8 @@ async function main() {
     await testGenerationTools();
     await testLowRiskGenerationGrantsKeepTheGeneralPrompt();
     await testGenerationRunNeedsAToolCallEveryTurn();
+    await testGenerationToolCallsWrittenAsText();
+    testTextToolCallParser();
     testMaxIterationsParsing();
     console.log('Governed mode tests passed.');
 }

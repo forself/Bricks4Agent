@@ -131,6 +131,7 @@ The `generation` profile adds `generation-worker`, the node for the three govern
 - It writes packages to the `generation-out` volume at `/out`, under the output slot the broker wrote into the grant scope; path arguments in a request are ignored. The broker mounts the same volume read-only at `/generation-out` (`Generation__OutputRoot`), verifies the zip path and sha256, and copies the package for delivery.
 - Its credential is credential index 3 (`GENERATION_WORKER_AUTH_KEY_ID`, `GENERATION_WORKER_AUTH_SHARED_SECRET`).
 - `AGENT_MAX_ITERATIONS` (default `4` in this stack) sets the agent's iteration limit; a generation run needs more turns than the smoke test.
+- `GENERATION_RETENTION_HOURS` (default `24`, from 1 to 8760) sets how long the worker keeps a package in `generation-out`. Set it in the env file: variables there are only used for substitution, and compose passes this one to the worker as `WORKER_Generation__RetentionHours`. The worker removes expired packages when it starts, before every generation and every hour while it runs.
 
 Start it with the profile (the worker image builds only once the generator under `tools/generation` and the shell under `templates/definition-site` are present):
 

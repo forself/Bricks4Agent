@@ -16,7 +16,7 @@ namespace GenerationWorker.Handlers;
 ///   （broker 逾時重派不會重複生成）；否則清空該 requestId 目錄（只會由本 worker 建立）後重做。
 /// - 生成器先跑與 validate 相同的驗證；不通過時回 Success=false，錯誤訊息是結構化 errors 的 JSON。
 /// - zip 以決定性方式產生（排序、固定時間戳與權限位元），頂層只有 <c>site/</c> 與 <c>report/</c>。
-/// - 保留期限：每次生成前刪除超過 <c>Generation:RetentionHours</c> 的請求目錄（<see cref="OutputRetention"/>）。
+/// - 保留期限：每次生成前，以及 worker 定期呼叫 <see cref="SweepExpiredOutputsAsync"/> 時，刪除超過 <c>Generation:RetentionHours</c> 的請求目錄（<see cref="OutputRetention"/>）。
 /// - 回傳的 payload 不含檔案內容，也不含主機的絕對路徑：zip 路徑相對於 OutputRoot。
 /// </summary>
 public sealed class ScaffoldGenerateHandler : ICapabilityHandler
@@ -44,6 +44,25 @@ public sealed class ScaffoldGenerateHandler : ICapabilityHandler
     }
 
     public string CapabilityId => "generation.scaffold.generate";
+
+    /// <summary>
+    /// 刪除超過保留期限的產物（worker 的定期清理呼叫；不經 generate）。
+    /// 取得與生成相同的鎖，所以不會刪到正在生成的請求目錄。回傳刪除的請求目錄數。
+    /// </summary>
+    public async Task<int> SweepExpiredOutputsAsync(CancellationToken ct)
+    {
+        await _gate.WaitAsync(ct);
+        try
+        {
+            if (string.IsNullOrWhiteSpace(_options.OutputRoot))
+                return 0;
+            return OutputRetention.Sweep(Path.GetFullPath(_options.OutputRoot), _options.Retention, DateTimeOffset.UtcNow, _logger);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
 
     public async Task<(bool Success, string? ResultPayload, string? Error)> ExecuteAsync(
         string requestId, string route, string payload, string scope, CancellationToken ct)

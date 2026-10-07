@@ -659,6 +659,80 @@ public sealed class GenerationHandlerTests : IDisposable
     }
 
     [Fact]
+    public async Task PeriodicSweep_RemovesExpiredPackages_WithoutAGenerate()
+    {
+        // worker 閒置（沒有新的 generate、也沒有重啟）時，定期清理仍刪除過期的產物。
+        var fixture = NewFixture();
+        var expired = DateTime.UtcNow.AddHours(-25);
+        var expiredRequest = MakeRequestDirectory(fixture.OutputRoot, "task_idle", "req_idle_old", expired);
+        var recentRequest = MakeRequestDirectory(fixture.OutputRoot, "task_idle_recent", "req_idle_new");
+        var handler = Generate(fixture);
+
+        using var stop = new CancellationTokenSource();
+        var loop = OutputRetention.RunPeriodicAsync(handler.SweepExpiredOutputsAsync, TimeSpan.FromMilliseconds(50), NullLogger.Instance, stop.Token);
+        var waited = Stopwatch.StartNew();
+        while (Directory.Exists(expiredRequest) && waited.Elapsed < TimeSpan.FromSeconds(10))
+            await Task.Delay(25);
+        stop.Cancel();
+        await loop;
+
+        Directory.Exists(expiredRequest).Should().BeFalse("the periodic sweep removes an expired package without a generate");
+        Directory.Exists(recentRequest).Should().BeTrue();
+        fixture.Invocations("build").Should().Be(0, "the sweep never runs the generator");
+    }
+
+    [Fact]
+    public async Task PeriodicSweep_KeepsRunningAfterAFailedSweep()
+    {
+        var calls = 0;
+        using var stop = new CancellationTokenSource();
+        var loop = OutputRetention.RunPeriodicAsync(_ =>
+        {
+            if (Interlocked.Increment(ref calls) == 1)
+                throw new IOException("simulated sweep failure");
+            return Task.FromResult(0);
+        }, TimeSpan.FromMilliseconds(20), NullLogger.Instance, stop.Token);
+
+        var waited = Stopwatch.StartNew();
+        while (Volatile.Read(ref calls) < 3 && waited.Elapsed < TimeSpan.FromSeconds(10))
+            await Task.Delay(10);
+        stop.Cancel();
+        await loop;
+
+        Volatile.Read(ref calls).Should().BeGreaterThanOrEqualTo(3, "one failed sweep does not stop the later ones");
+    }
+
+    [Fact]
+    public async Task SweepExpiredOutputs_WaitsForARunningGenerate()
+    {
+        var fixture = NewFixture(options => options.BuildTimeout = TimeSpan.FromSeconds(3));
+        var handler = Generate(fixture);
+        var generate = handler.ExecuteAsync(
+            RequestId, ScaffoldGenerateHandler.Route, GeneratePayload(Template("sleep")), Scope(), CancellationToken.None);
+
+        var waited = Stopwatch.StartNew();
+        while (fixture.Invocations("build") == 0 && waited.Elapsed < TimeSpan.FromSeconds(10))
+            await Task.Delay(25);
+        fixture.Invocations("build").Should().Be(1, "the generate is running");
+
+        // 生成進行中才出現的過期目錄：清理要等生成結束（同一把鎖）才動手。
+        var expiredRequest = MakeRequestDirectory(fixture.OutputRoot, "task_waiting", "req_waiting_old", DateTime.UtcNow.AddHours(-25));
+        var sweep = handler.SweepExpiredOutputsAsync(CancellationToken.None);
+        await Task.Delay(500);
+        sweep.IsCompleted.Should().BeFalse("the sweep waits while a generate holds the output directory");
+        Directory.Exists(expiredRequest).Should().BeTrue();
+
+        var (success, _, _) = await generate;
+        success.Should().BeFalse("the sleeping generator times out");
+        (await sweep).Should().Be(1);
+        Directory.Exists(expiredRequest).Should().BeFalse();
+    }
+
+    [Fact]
+    public void Options_SweepTheOutputHourly()
+        => NewFixture().Options.RetentionSweepInterval.Should().Be(TimeSpan.FromHours(1));
+
+    [Fact]
     public void RetentionSweep_DoesNotFollowOrRemoveLinks()
     {
         var fixture = NewFixture();

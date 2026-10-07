@@ -335,6 +335,11 @@ if (poolEnabled)
             builder.Configuration.GetValue("FunctionPool:HealthCheckIntervalSeconds", 10)),
         MaxWorkers = builder.Configuration.GetValue("FunctionPool:MaxWorkers", 100)
     };
+    // 個別能力的分派超時（例如生成要等 worker 的建置逾時）：FunctionPool:CapabilityDispatchTimeoutSeconds:{能力 id}
+    poolConfig.AddCapabilityDispatchTimeouts(builder.Configuration
+        .GetSection("FunctionPool:CapabilityDispatchTimeoutSeconds")
+        .GetChildren()
+        .Select(entry => new KeyValuePair<string, string?>(entry.Key, entry.Value)));
 
     builder.Services.AddSingleton(poolConfig);
     builder.Services.AddSingleton<IWorkerRegistry, WorkerRegistry>();

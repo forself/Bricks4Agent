@@ -144,7 +144,7 @@ public sealed class GenerationCliContractTests : IDisposable
         zipPath.Should().Be($"{Slot}/{requestId}/{PackageName}-scaffold.zip");
         first["output_slot"]!.GetValue<string>().Should().Be(Slot);
         first["request_id"]!.GetValue<string>().Should().Be(requestId);
-        first["generator_version"]!.GetValue<string>().Should().Be("definition-site/1.1.0");
+        first["generator_version"]!.GetValue<string>().Should().Be("definition-site/1.2.0");
         first["pages"]!.AsArray().Select(page => page!["type"]!.GetValue<string>()).Should().Equal("list", "detail", "form");
 
         var zipFile = Path.Combine(firstRoot, zipPath.Replace('/', Path.DirectorySeparatorChar));

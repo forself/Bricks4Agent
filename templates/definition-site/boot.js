@@ -116,13 +116,13 @@ class PageView {
         section.appendChild(body);
         this.host.replaceChildren(section);
 
-        if (page.type === 'list' && page.links.form) {
+        if (page.type === 'list' && page.links.createForm) {
             const create = new BasicButton({
                 type: BasicButton.TYPES.CUSTOM,
                 variant: 'primary',
                 showIcon: false,
                 customLabel: t('create'),
-                onClick: () => navigate(routeHref(page.links.form))
+                onClick: () => navigate(routeHref(page.links.createForm))
             });
             create.element.classList.add('ds-page__create');
             create.element.dataset.siteAction = 'create';
@@ -244,17 +244,22 @@ class PageView {
         else window.history.back();
     }
 
+    /** 編輯連到同一資源中第一個有 api.update 的表單；沒有這種表單時，有表單就是只能新增，否則是沒有連結。 */
+    editTarget() {
+        const form = this.linkedPage('editForm');
+        if (form) return { form };
+        return { error: this.linkedPage('createForm') ? 'cannotEdit' : 'notLinked' };
+    }
+
     editFromDetail() {
-        const form = this.linkedPage('form');
         if (!this.recordId) {
             ToastPanel.info(t('noRecord'));
-        } else if (!form) {
-            ToastPanel.info(t('notLinked'));
-        } else if (!form.definition.api?.update) {
-            ToastPanel.warning(t('cannotEdit'));
-        } else {
-            navigate(routeHref(form.id, this.recordId));
+            return;
         }
+        const { form, error } = this.editTarget();
+        if (error === 'cannotEdit') ToastPanel.warning(t('cannotEdit'));
+        else if (error) ToastPanel.info(t('notLinked'));
+        else navigate(routeHref(form.id, this.recordId));
     }
 
     handleRowAction(action, row) {
@@ -267,9 +272,9 @@ class PageView {
             return;
         }
         if (action === 'edit') {
-            const form = this.linkedPage('form');
-            if (!form) ToastPanel.info(t('notLinked'));
-            else if (!form.definition.api?.update) ToastPanel.warning(t('cannotEdit'));
+            const { form, error } = this.editTarget();
+            if (error === 'cannotEdit') ToastPanel.warning(t('cannotEdit'));
+            else if (error) ToastPanel.info(t('notLinked'));
             else navigate(routeHref(form.id, id));
             return;
         }

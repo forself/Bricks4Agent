@@ -23,6 +23,12 @@ public class ExecutionResult
     /// </summary>
     public bool AnsweredByWorker { get; set; }
 
+    /// <summary>
+    /// 分派時一開始就沒有可用的 worker，請求沒有送到任何 worker。
+    /// 已送出後的逾時或傳輸失敗不算（worker 可能仍在處理），呼叫端不得把那種結果當成「忙碌、可以再送一次」。
+    /// </summary>
+    public bool NoWorkerAvailable { get; set; }
+
     public static ExecutionResult Ok(string requestId, string resultPayload, string? evidenceRef = null)
         => new()
         {
@@ -38,5 +44,15 @@ public class ExecutionResult
             RequestId = requestId,
             Success = false,
             ErrorMessage = errorMessage
+        };
+
+    /// <summary>沒有可用的 worker、請求沒有送出時的失敗（<see cref="NoWorkerAvailable"/> 為 true）。</summary>
+    public static ExecutionResult NoWorker(string requestId, string errorMessage)
+        => new()
+        {
+            RequestId = requestId,
+            Success = false,
+            ErrorMessage = errorMessage,
+            NoWorkerAvailable = true
         };
 }

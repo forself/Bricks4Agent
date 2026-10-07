@@ -2196,7 +2196,7 @@ public class HighLevelCoordinator
     /// <summary>
     /// 受治理生成：啟動受控代理後立即回覆「已受理」，結果之後以 LINE 通知與 portal 產物清單送達。
     /// 代理啟動成功才刪除 draft；失敗時任務已標為 Failed，draft 保留讓使用者再回 y 重試
-    /// （專案資料夾若仍是空的就移除，名稱可沿用）。
+    /// （專案資料夾若仍是空的就移除，名稱可沿用）。啟動期間被管理員停止時也不回「已受理」、不刪 draft。
     /// </summary>
     private async Task<(HighLevelProcessResult Result, HighLevelUserProfile Profile)> LaunchGovernedGenerationAsync(
         string channel,
@@ -2213,13 +2213,18 @@ public class HighLevelCoordinator
         if (!launch.Success)
         {
             TryRemoveEmptyProjectRoot(draft.ManagedPaths);
+            var stopped = launch.ErrorCode == GovernedGenerationErrors.Stopped;
             return (new HighLevelProcessResult
             {
                 Mode = HighLevelRouteMode.Production,
-                Reply = $"系統雛形生成暫不可用：生成代理無法啟動，任務 {task.TaskId} 已標為失敗。請稍後回覆 y 再試一次，或聯絡管理員。",
+                Reply = stopped
+                    ? $"系統雛形生成已由管理員停止，任務 {task.TaskId} 已結束。"
+                    : $"系統雛形生成暫不可用：生成代理無法啟動，任務 {task.TaskId} 已標為失敗。請稍後回覆 y 再試一次，或聯絡管理員。",
                 Draft = draft,
                 Error = launch.ErrorCode ?? GovernedGenerationErrors.LaunchFailed,
-                DecisionReason = "governed generation agent could not be started",
+                DecisionReason = stopped
+                    ? "governed generation was stopped while its agent was starting"
+                    : "governed generation agent could not be started",
                 CreatedTask = task,
                 CreatedPlan = plan,
                 Handoff = handoff

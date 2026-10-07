@@ -73,12 +73,37 @@ test('pages sharing an api base path are linked into one resource', () => {
     const model = buildSiteModel({ title: 't', pages: Object.keys(definitions) }, definitions);
     assert.equal(model.defaultPageId, 'contacts-list');
     const list = model.byId.get('contacts-list');
-    assert.deepEqual(list.links, { list: 'contacts-list', detail: 'contact-detail', form: 'contact-form' });
+    assert.deepEqual(list.links, { list: 'contacts-list', detail: 'contact-detail', editForm: 'contact-form', createForm: 'contact-form' });
     assert.equal(model.byId.get('contact-form').endpoint, '/api/contacts');
     assert.equal(pageEndpoint('detail', { get: '/api/a', list: '/api/b' }), '/api/a');
     assert.equal(pageEndpoint('form', undefined), null);
     assert.throws(() => buildSiteModel({ pages: ['missing'] }, {}), /missing definition/);
     assert.throws(() => buildSiteModel({ pages: ['t'] }, { t: { type: 'tool' } }), /unsupported page type/);
+});
+
+test('a resource with two forms links edits to the form with api.update and creates to the form with api.create', () => {
+    const field = (name) => ({ name, type: 'text', label: name });
+    const definitions = {
+        'signups-list': { name: 'SignupList', type: 'list', fields: [field('fullName'), field('status')], api: { list: '/api/signups', delete: '/api/signups' } },
+        'signup-detail': { name: 'SignupDetail', type: 'detail', fields: [field('fullName'), field('status')], api: { get: '/api/signups' } },
+        // 頁序第一個表單只能新增（公開填寫），第二個表單用來處理（可編輯）。
+        'signup-public': { name: 'SignupPublic', type: 'form', fields: [field('fullName')], api: { create: '/api/signups' } },
+        'signup-process': { name: 'SignupProcess', type: 'form', fields: [field('fullName'), field('status')], api: { get: '/api/signups', create: '/api/signups', update: '/api/signups' } }
+    };
+    const model = buildSiteModel({ title: 't', pages: Object.keys(definitions) }, definitions);
+    for (const id of Object.keys(definitions)) {
+        const links = model.byId.get(id).links;
+        assert.equal(links.editForm, 'signup-process', `${id} edits through the form that has api.update`);
+        assert.equal(links.createForm, 'signup-public', `${id} creates through the first form with api.create`);
+        assert.equal(links.list, 'signups-list');
+        assert.equal(links.detail, 'signup-detail');
+    }
+
+    // 沒有任何表單有 api.update：編輯沒有目標，新增仍連到第一個表單。
+    const createOnly = { ...definitions, 'signup-process': { ...definitions['signup-process'], api: { create: '/api/signups' } } };
+    const createOnlyModel = buildSiteModel({ pages: Object.keys(createOnly) }, createOnly);
+    assert.equal(createOnlyModel.byId.get('signups-list').links.editForm, null);
+    assert.equal(createOnlyModel.byId.get('signups-list').links.createForm, 'signup-public');
 });
 
 test('list columns keep only text-friendly fields, capped', () => {

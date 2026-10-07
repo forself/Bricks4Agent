@@ -3,6 +3,7 @@
 const { TOOL_DEFINITIONS, executeTool, getToolDescriptions } = require('./tool-registry');
 const { buildSystemPrompt, isGenerationTask, GENERATION_CONTINUE_REMINDER } = require('./system-prompt');
 const { parseToolCalls, stripToolCalls, formatToolResult } = require('./react-parser');
+const { parseTextToolCalls } = require('./text-tool-calls');
 const { colorize, bold, logInfo, logWarn, logError, logTool, formatDuration } = require('./utils');
 const { GovernedExecutor } = require('./governed-executor');
 
@@ -163,6 +164,20 @@ class AgentLoop {
                 toolCalls = parseToolCalls(result.content);
             }
 
+            // 生成任務還沒生成時，模型把呼叫寫成內文的 JSON（native 與 ReAct 都可能）：改當成工具呼叫執行。
+            // 只限受治理的生成任務；名稱沒有授予的呼叫不執行，回一則 unsupported 結果讓模型改用可用的工具。
+            let textCalls = false;
+            if (toolCalls.length === 0 && this.generationTask && !generated) {
+                toolCalls = parseTextToolCalls(result.content).map((call, index) => ({
+                    id: `text_call_${iterations}_${index}`,
+                    function: { name: call.name, arguments: call.arguments },
+                }));
+                textCalls = toolCalls.length > 0;
+                if (textCalls) {
+                    logWarn(`Model wrote ${toolCalls.length} tool call(s) as text; running them as tool calls`);
+                }
+            }
+
             if (toolCalls.length === 0) {
                 const content = this.useNativeTools
                     ? result.content
@@ -211,17 +226,23 @@ class AgentLoop {
                 const modeIcon = this.governedExecutor ? '[governed]' : '[local]';
                 console.log(colorize(`  ${modeIcon} ${toolName}(${this._formatArgs(toolArgs)})`, 'gray'));
 
-                const toolResult = this.governedExecutor
-                    ? await this.governedExecutor.executeTool(toolName, toolArgs, {
-                        projectRoot: this.projectRoot,
-                        noConfirm: this.noConfirm,
-                        verbose: this.verbose,
-                    })
-                    : await executeTool(toolName, toolArgs, {
+                const grantedNames = this.toolDefinitions.map((definition) => definition.function?.name).filter(Boolean);
+                let toolResult;
+                if (textCalls && !grantedNames.includes(toolName)) {
+                    toolResult = `unsupported tool ${toolName}; available: ${grantedNames.join(', ')}`;
+                } else if (this.governedExecutor) {
+                    toolResult = await this.governedExecutor.executeTool(toolName, toolArgs, {
                         projectRoot: this.projectRoot,
                         noConfirm: this.noConfirm,
                         verbose: this.verbose,
                     });
+                } else {
+                    toolResult = await executeTool(toolName, toolArgs, {
+                        projectRoot: this.projectRoot,
+                        noConfirm: this.noConfirm,
+                        verbose: this.verbose,
+                    });
+                }
 
                 if (toolName === 'generate_scaffold' && isSuccessfulGenerateResult(toolResult)) {
                     generated = true;

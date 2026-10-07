@@ -92,7 +92,7 @@ function buildOverview() {
             detail: 'read-only view of one record; needs api.get',
             form: 'create or edit one record; needs api.create; api.update enables editing; api.get loads the record'
         },
-        linking: 'Pages that share one api base path form one resource: list rows open its detail and form pages. List and detail pages read the values the form saved by field name, so give every page of one resource the same api base path, the same field names and the same options.',
+        linking: 'Pages that share one api base path form one resource: list rows open its detail page, and edit links (list rows and the detail page) open the first form of the resource that has api.update; the create button of the list opens the first form with api.create. List and detail pages read the values the form saved by field name, so give every page of one resource the same api base path, the same field names and the same options.',
         rules: [
             'declarative data only: no code, HTML, expressions or lambdas',
             'unknown keys are rejected at every level',

@@ -161,7 +161,7 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\run-worker.ps
 
 要對執行中的 broker 手動啟動 worker：`run-worker.ps1 -Worker generation`（加 `-GenerationOutputRoot` 可改用其他輸出根目錄；broker 必須使用同一個）。
 
-產物的保留期限：generation-worker 在啟動時與每次生成之前，刪除 `generation-out` 中超過 `Generation:RetentionHours`（預設 24 小時）的請求目錄。zip 含使用者的需求內容；broker 收下時已複製到使用者的文件區，使用者刪除自己文件區中的產物後，`generation-out` 中的副本最遲在保留期限後消失。
+產物的保留期限：generation-worker 在啟動時、每次生成之前，以及執行期間每小時，刪除 `generation-out` 中超過 `Generation:RetentionHours`（預設 24 小時）的請求目錄。zip 含使用者的需求內容；broker 收下時已複製到使用者的文件區。worker 持續執行時，使用者刪除自己文件區中的產物後，`generation-out` 中的副本最遲在保留期限再加一小時後消失。worker 沒有執行時不會清理：切回 Legacy（啟動時不加 `-GenerationMode Governed`）之後，`generation-out` 中留下的目錄要手動刪除，或再以 Governed 模式啟動一次（worker 啟動時會清理）。
 
 ### 3.2 LINE outbound rate limit
 

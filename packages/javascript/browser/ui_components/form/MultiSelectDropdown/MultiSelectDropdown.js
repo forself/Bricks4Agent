@@ -62,7 +62,11 @@ export class MultiSelectDropdown {
                 const filteredItems = !query ? cloneItems(this.options.items) : this.options.items.filter((item) => String(item.label ?? '').toLowerCase().includes(query));
                 return { ...state, filterQuery: String(payload?.query ?? ''), filteredItems, open: true, highlightIndex: -1 };
             },
-            SET_HIGHLIGHT: (state, payload) => ({ ...state, highlightIndex: payload?.index ?? -1 }),
+            // 同一個索引不算變更：游標停在選項上時 mouseenter 會一再觸發，不得因此重繪。
+            SET_HIGHLIGHT: (state, payload) => {
+                const highlightIndex = payload?.index ?? -1;
+                return highlightIndex === state.highlightIndex ? state : { ...state, highlightIndex };
+            },
             TOGGLE_VALUE: (state, payload) => {
                 const value = payload?.value;
                 const item = this.options.items.find((entry) => entry.value === value);
@@ -246,12 +250,19 @@ export class MultiSelectDropdown {
         this.options.disabled = state.availability === 'disabled';
     }
 
+    /**
+     * 重建已選取的標籤。輸入框留在原位（只移除與重建 .msd__tag，新標籤插在輸入框之前）：
+     * 把輸入框移出 DOM 會讓它失去焦點，鍵盤操作因此中斷。
+     */
     _renderTags() {
         const state = this.snapshot();
         const ss = this._getSizeStyles();
         const selectedSet = new Set(state.selectedValues);
         const selectedItems = this.options.items.filter((item) => selectedSet.has(item.value));
-        this._tagsWrap.innerHTML = '';
+        for (const child of [...this._tagsWrap.children]) {
+            if (child !== this._input) child.remove();
+        }
+        if (this._input.parentNode !== this._tagsWrap) this._tagsWrap.appendChild(this._input);
         for (const item of selectedItems) {
             const tag = document.createElement('span');
             tag.className = 'msd__tag';
@@ -274,11 +285,32 @@ export class MultiSelectDropdown {
                 }
                 tag.appendChild(removeBtn);
             }
-            this._tagsWrap.appendChild(tag);
+            this._tagsWrap.insertBefore(tag, this._input);
         }
         this._input.placeholder = selectedItems.length === 0 ? this.options.placeholder : '';
-        this._input.value = state.filterQuery;
-        this._tagsWrap.appendChild(this._input);
+        if (this._input.value !== state.filterQuery) this._input.value = state.filterQuery;
+        this._renderedTagsSignature = this._tagsSignature(state);
+        this._renderedTagsItems = this.options.items;
+    }
+
+    _tagsSignature(state) {
+        return JSON.stringify([state.selectedValues, state.availability]);
+    }
+
+    _menuSignature(state) {
+        return JSON.stringify([state.filteredItems, state.selectedValues, state.availability]);
+    }
+
+    _optionBackground(index, highlightIndex) {
+        return highlightIndex === index ? 'var(--cl-bg-secondary)' : 'transparent';
+    }
+
+    /** 只改變反白：更新選項的背景，不重建選單（游標下的選項節點保持不變，點擊才落得到）。 */
+    _updateHighlight(highlightIndex) {
+        for (const option of this._menu.querySelectorAll('.msd__option')) {
+            option.style.background = this._optionBackground(Number(option.dataset.index), highlightIndex);
+        }
+        this._renderedHighlight = highlightIndex;
     }
 
     _renderMenuItems() {
@@ -288,6 +320,9 @@ export class MultiSelectDropdown {
         this._menuIcons?.forEach((icon) => icon.destroy());
         this._menuIcons = [];
         this._menu.innerHTML = '';
+        this._renderedMenuSignature = this._menuSignature(state);
+        this._renderedMenuItems = this.options.items;
+        this._renderedHighlight = state.highlightIndex;
         if (sorted.length === 0) {
             const empty = document.createElement('div');
             empty.className = 'msd__empty';
@@ -305,7 +340,7 @@ export class MultiSelectDropdown {
             option.className = 'msd__option';
             option.dataset.value = item.value;
             option.dataset.index = String(index);
-            option.style.cssText = `padding:8px 12px;cursor:${isItemDisabled ? 'not-allowed' : 'pointer'};transition:background var(--cl-transition-fast);display:flex;align-items:center;gap:8px;font-size:var(--cl-font-size-lg);color:${isItemDisabled && !isSelected ? 'var(--cl-text-light)' : 'var(--cl-text)'};background:${state.highlightIndex === index ? 'var(--cl-bg-secondary)' : 'transparent'};`;
+            option.style.cssText = `padding:8px 12px;cursor:${isItemDisabled ? 'not-allowed' : 'pointer'};transition:background var(--cl-transition-fast);display:flex;align-items:center;gap:8px;font-size:var(--cl-font-size-lg);color:${isItemDisabled && !isSelected ? 'var(--cl-text-light)' : 'var(--cl-text)'};background:${this._optionBackground(index, state.highlightIndex)};`;
             const checkbox = document.createElement('span');
             checkbox.className = 'msd__checkbox';
             checkbox.style.cssText = `display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border:2px solid ${isSelected ? 'var(--cl-primary)' : 'var(--cl-border-dark)'};border-radius:var(--cl-radius-sm);background:${isSelected ? 'var(--cl-primary)' : 'var(--cl-bg)'};transition:all var(--cl-transition-fast);flex-shrink:0;opacity:${isItemDisabled ? '0.5' : '1'};`;
@@ -320,7 +355,9 @@ export class MultiSelectDropdown {
             option.appendChild(checkbox);
             option.appendChild(label);
             if (!isItemDisabled) {
-                option.addEventListener('mouseenter', () => this.send('SET_HIGHLIGHT', { index }));
+                option.addEventListener('mouseenter', () => {
+                    if (this.highlightIndex !== index) this.send('SET_HIGHLIGHT', { index });
+                });
                 option.addEventListener('click', (event) => {
                     event.stopPropagation?.();
                     this._toggleValue(item.value);
@@ -345,7 +382,7 @@ export class MultiSelectDropdown {
         this._selector.style.borderColor = state.open ? 'var(--cl-primary)' : 'var(--cl-border)';
         this._input.disabled = state.availability === 'disabled';
         this._input.style.cursor = state.availability === 'disabled' ? 'not-allowed' : 'text';
-        this._input.value = state.filterQuery;
+        if (this._input.value !== state.filterQuery) this._input.value = state.filterQuery;
         this._expandBtn.disabled = state.availability === 'disabled';
         this._expandBtn.style.cursor = state.availability === 'disabled' ? 'not-allowed' : 'pointer';
         this._expandBtn.style.opacity = state.availability === 'disabled' ? '0.5' : '1';
@@ -353,8 +390,16 @@ export class MultiSelectDropdown {
         this._portalMenu(state.open);
         this._menu.style.display = state.open ? 'block' : 'none';
         this._syncGlobalListeners(state.open);
-        this._renderTags();
-        this._renderMenuItems();
+        // 只在內容改變時重建：標籤看選取值與可用狀態，選單看篩選後的項目、選取值與可用狀態；
+        // 只有反白改變時只更新選項背景。每次都重建會讓游標下的選項與輸入框的焦點一再被換掉。
+        if (this._renderedTagsItems !== this.options.items || this._renderedTagsSignature !== this._tagsSignature(state)) {
+            this._renderTags();
+        }
+        if (this._renderedMenuItems !== this.options.items || this._renderedMenuSignature !== this._menuSignature(state)) {
+            this._renderMenuItems();
+        } else if (this._renderedHighlight !== state.highlightIndex) {
+            this._updateHighlight(state.highlightIndex);
+        }
         if (state.open) this._positionMenu();
     }
 

@@ -32,8 +32,9 @@ description of a front-end prototype, and hand it to the broker-governed generat
 const GENERATION_CONTINUE_REMINDER = `Reminder: this task runs unattended and nothing has been generated yet. A reply
 without a tool call ends the task, and nobody will answer questions. Do not write the definition or questions as
 text: submit the DefinitionTemplate with validate_definition now (then generate_scaffold), and assume what the work
-item leaves open. Reply without a tool call again only if you cannot continue, for example when the
-validate_definition calls are used up; that reply is your final summary.`;
+item leaves open. Make each call as a function (tool) call, or inside the <tool_call> wrapper in ReAct mode; do not
+write the call as a JSON block in your reply text. Reply without a tool call again only if you cannot continue, for
+example when the validate_definition calls are used up; that reply is your final summary.`;
 
 const REACT_INSTRUCTIONS = `
 ## Tool Calls

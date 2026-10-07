@@ -7,13 +7,53 @@ namespace GenerationWorker.Support;
 ///
 /// generate 成功後 <c>{OutputRoot}/{output_slot}/{requestId}/</c> 留著 zip 與 result.json：broker 會把 zip 複製到使用者的文件區，
 /// 但被拒收、逾時後才產出或代理重試留下的套件不會被取走。zip 內含使用者的需求內容，不能無限期留在使用者工作區之外，
-/// 所以由唯一能寫入 OutputRoot 的 worker 在啟動時與每次 generate 之前刪除超過期限的請求目錄。
+/// 所以由唯一能寫入 OutputRoot 的 worker 在啟動時、每次 generate 之前，以及執行期間定期（<see cref="RunPeriodicAsync"/>）
+/// 刪除超過期限的請求目錄。worker 沒有執行時不會清理。
 ///
 /// 只處理本 worker 建立的結構：名稱符合 <see cref="GenerationRequest.IsSafeName"/> 的 slot 目錄與其下的請求目錄。
 /// 符號連結與 junction 一律略過（不跟隨、不刪除），其他名稱的項目也不動。
 /// </summary>
 public static class OutputRetention
 {
+    /// <summary>
+    /// 每隔 <paramref name="interval"/> 執行一次 <paramref name="sweep"/>，直到 <paramref name="cancellationToken"/> 取消。
+    /// 讓閒置的 worker（沒有新的 generate、也沒有重啟）仍會刪除過期的產物。單次清理丟出的例外只記錄，不中斷之後的清理。
+    /// </summary>
+    public static async Task RunPeriodicAsync(
+        Func<CancellationToken, Task<int>> sweep,
+        TimeSpan interval,
+        ILogger logger,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(sweep);
+        if (interval <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(interval), "The sweep interval must be positive.");
+
+        using var timer = new PeriodicTimer(interval);
+        try
+        {
+            while (await timer.WaitForNextTickAsync(cancellationToken))
+            {
+                try
+                {
+                    await sweep(cancellationToken);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "The periodic generation output sweep failed; it runs again at the next interval.");
+                }
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // worker 停止
+        }
+    }
+
     /// <summary>
     /// 刪除最後修改時間早於 <paramref name="now"/> 減 <paramref name="retention"/> 的請求目錄，以及因此變空且同樣過期的 slot 目錄。
     /// 回傳刪除的請求目錄數。單一目錄刪不掉時記錄警告後繼續。

@@ -544,6 +544,40 @@ test('with page_ids the cross-page checks look only at the selected pages, but e
     assertRejected(selectedOk, 'FIELD_TYPE_UNSUPPORTED', 'definitions.pages[1].definition.fields[0].type');
 });
 
+test('layer 7 warns once when a resource has several forms and names the forms the links open', async () => {
+    // 頁序第一個表單只能新增（例如公開填寫），再加一個處理用、可編輯的表單。
+    const template = golden();
+    const publicForm = template.definitions.pages[2];
+    publicForm.definition.api = { create: '/api/contacts' };
+    template.definitions.pages.push({
+        id: 'contact-review',
+        definition: { ...structuredClone(publicForm.definition), name: 'ContactReviewPage', api: { get: '/api/contacts', create: '/api/contacts', update: '/api/contacts' } }
+    });
+    const result = await validateRequest({ template });
+    assert.equal(result.ok, true, 'several forms only warn');
+    const multiple = result.warnings.filter(entry => entry.code === 'MULTIPLE_FORMS');
+    assert.equal(multiple.length, 1, JSON.stringify(result.warnings));
+    assert.equal(multiple[0].path, 'definitions.pages[3].definition.api');
+    assert.match(multiple[0].message, /"\/api\/contacts" has 2 form pages \("contact-form", "contact-review"\)/);
+    assert.match(multiple[0].message, /open "contact-review" \(the first of them with api\.update\)/);
+    assert.match(multiple[0].message, /opens "contact-form" \(the first with api\.create\)/);
+    assert.match(multiple[0].message, /only from the navigation/);
+    const createOnly = result.warnings.find(entry => entry.code === 'FORM_WITHOUT_UPDATE');
+    assert.equal(createOnly.path, 'definitions.pages[2].definition.api');
+    assert.match(createOnly.hint, /another form page of the same resource/);
+
+    // 兩個表單都只能新增：說明紀錄無法編輯。
+    const noUpdate = structuredClone(template);
+    noUpdate.definitions.pages[3].definition.api = { create: '/api/contacts' };
+    const noUpdateResult = await validateRequest({ template: noUpdate });
+    const noUpdateWarning = noUpdateResult.warnings.find(entry => entry.code === 'MULTIPLE_FORMS');
+    assert.match(noUpdateWarning.message, /None of them has api\.update/);
+
+    // 只選其中一個表單生成時不發（page_ids 之外的表單不在原型中）。
+    const selected = await validateRequest({ template, page_ids: ['contacts-list', 'contact-detail', 'contact-review'] });
+    assert.equal(selected.warnings.filter(entry => entry.code === 'MULTIPLE_FORMS').length, 0, JSON.stringify(selected.warnings));
+});
+
 test('layer 7 warns when pages of one resource do not line up', async () => {
     const moved = golden();
     moved.definitions.pages[2].definition.api = { get: '/api/people', create: '/api/people', update: '/api/people' };

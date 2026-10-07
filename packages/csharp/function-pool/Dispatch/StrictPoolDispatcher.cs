@@ -36,7 +36,7 @@ public class StrictPoolDispatcher : IExecutionDispatcher
                 "Request {R} rejected (503 semantics, no fallback).",
                 request.CapabilityId, request.RequestId);
 
-            return ExecutionResult.Fail(request.RequestId,
+            return ExecutionResult.NoWorker(request.RequestId,
                 $"[StrictMode] No available worker for capability '{request.CapabilityId}'. " +
                 "Execution plane unavailable — request cannot be processed.");
         }

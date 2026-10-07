@@ -186,6 +186,12 @@ public sealed class GenerationDeliveryService : BackgroundService
 
     private async Task DeliverAsync(GovernedGenerationRun run, CancellationToken cancellationToken)
     {
+        // 這一輪的清單是開始時的快照：交付之前重讀，已不在等待交付（例如已失敗）的執行不交付。
+        var current = _runs.Get(run.TaskId);
+        if (current == null || current.Status != GovernedGenerationRunStatus.Ingested)
+            return;
+        run = current;
+
         GeneratedPackageDeliveryResult delivery;
         try
         {
@@ -267,23 +273,33 @@ public sealed class GenerationDeliveryService : BackgroundService
     /// <summary>
     /// 管理員停止受治理生成的代理（<c>/agents/stop</c>）：仍在進行的執行標為失敗（stopped_by_admin）並通知使用者；
     /// 不論執行是否已結束，都停用代理的主體、撤銷憑證與 session，並停止它的容器。沒有這個任務的執行紀錄時回傳 false。
+    /// 與交付和 watchdog 的一輪依序執行（同一把鎖）：交付進行中時等它結束，已交付的執行只停用代理與停止容器，
+    /// 不會出現任務已失敗、產物卻仍送出，或使用者同時收到「已停止」與「已生成」的情形。
     /// </summary>
     public async Task<bool> StopByAdminAsync(string taskId, CancellationToken cancellationToken = default)
     {
-        var run = _runs.Get(taskId);
-        if (run == null)
-            return false;
-
-        var failed = await FailAsync(run, "stopped_by_admin",
-            "系統雛形生成已由管理員停止，這次任務已結束。", cancellationToken,
-            current => GovernedGenerationRunStatus.IsOpen(current.Status));
-        if (!failed)
+        await _processing.WaitAsync(cancellationToken);
+        try
         {
-            _spawnService.DeactivateTaskAgent(taskId, TaskState.Failed, "Governed generation stopped by an administrator.", Author);
-            await StopContainerAsync(run, cancellationToken);
-        }
+            var run = _runs.Get(taskId);
+            if (run == null)
+                return false;
 
-        return true;
+            var failed = await FailAsync(run, "stopped_by_admin",
+                "系統雛形生成已由管理員停止，這次任務已結束。", cancellationToken,
+                current => GovernedGenerationRunStatus.IsOpen(current.Status));
+            if (!failed)
+            {
+                _spawnService.DeactivateTaskAgent(taskId, TaskState.Failed, "Governed generation stopped by an administrator.", Author);
+                await StopContainerAsync(_runs.Get(taskId) ?? run, cancellationToken);
+            }
+
+            return true;
+        }
+        finally
+        {
+            _processing.Release();
+        }
     }
 
     private async Task<bool> FailAsync(

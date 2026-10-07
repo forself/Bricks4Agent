@@ -279,6 +279,8 @@ services:
       WORKER_Worker__Auth__KeyId: "${GENERATION_WORKER_AUTH_KEY_ID:?run node tools/agent/container/gen-stack-secrets.mjs and pass the file with --env-file}"
       WORKER_Worker__Auth__SharedSecret: "${GENERATION_WORKER_AUTH_SHARED_SECRET:?run node tools/agent/container/gen-stack-secrets.mjs and pass the file with --env-file}"
       WORKER_Generation__OutputRoot: "/out"
+      # hours a package stays in the generation-out volume (1 to 8760); set it in the env file
+      WORKER_Generation__RetentionHours: "${GENERATION_RETENTION_HOURS:-24}"
       HOME: "/tmp"
     volumes:
       # the only writable path besides /tmp; the broker mounts the same volume read-only

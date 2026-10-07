@@ -469,6 +469,29 @@ public sealed class GovernedGenerationTests : IClassFixture<GovernedGenerationFi
         plan.StatusCode.Should().Be(HttpStatusCode.OK, "the plan was {0}", plan);
         AssertClean(plan, "/plans/get");
 
+        // 代理可以替自己任務的計畫加節點並提交：提交的回應同樣不帶使用者 id，
+        // 沒有授予的能力不會被執行，三個生成能力的配額也不變。
+        Dictionary<string, int> GenerationQuotas() => _fixture.Db.Query<CapabilityGrant>(
+                "SELECT * FROM capability_grants WHERE session_id = @sessionId",
+                new { sessionId = session.SessionId })
+            .Where(grant => grant.CapabilityId.StartsWith("generation.", StringComparison.Ordinal))
+            .ToDictionary(grant => grant.CapabilityId, grant => grant.RemainingQuota);
+        var quotasBefore = GenerationQuotas();
+        quotasBefore.Keys.Should().BeEquivalentTo(new[] { "generation.catalog.query", "generation.definition.validate", "generation.scaffold.generate" });
+        var node = await _client.SendEncryptedAsync(session, "/api/v1/plans/add-node", new
+        {
+            plan_id = planId,
+            capability_id = "file.read",
+            intent = "read a file the task was not granted",
+            request_payload = new { route = "read_file", args = new { path = "README.md" } }
+        }, session.ScopedToken);
+        node.StatusCode.Should().Be(HttpStatusCode.OK, "the add-node response was {0}", node);
+        var submitted = await _client.SendEncryptedAsync(session, "/api/v1/plans/submit", new { plan_id = planId }, session.ScopedToken);
+        submitted.StatusCode.Should().Be(HttpStatusCode.OK, "the submit response was {0}", submitted);
+        AssertClean(submitted, "/plans/submit");
+        BrokerJson.ReadString(submitted.Body, "data", "submittedBy").Should().BeEmpty("the agent is not the submitter");
+        GenerationQuotas().Should().BeEquivalentTo(quotasBefore, "submitting a plan does not spend the generation quotas");
+
         // broker 內部仍保有交付需要的資料：handoff 帶受管路徑，但只有系統讀得到；管理員看得到提交者。
         var handoffEntry = _fixture.FindContextEntries($"hlm.handoff.{task.TaskId}").Last();
         handoffEntry.Acl.Should().NotContain("\"*\"");
