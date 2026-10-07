@@ -12,6 +12,12 @@ Status: planning draft
 > - Delivery mode is not selectable (§11.1): it is hard-coded to `shared_delegated` Google Drive (`HighLevelSystemScaffoldService.cs:192,199`). When the Drive upload fails, `LineArtifactDeliveryService` falls back to a signed broker download link.
 > - The broker download API that §11 / §11.2 list as missing now exists: `GET /api/v1/artifacts/download/{artifactId}` (`packages/csharp/broker/Endpoints/ArtifactDownloadEndpoints.cs:9`), and end users can browse their artifacts in the `/portal` user portal.
 
+> **Governed generation (2026-10-07)**
+>
+> - The in-process flow above is now the `Legacy` mode and stays the default. With `HighLevelCoordinator:Generation:SystemScaffoldMode = Governed`, confirming a system_scaffold draft no longer writes any project file in the broker: the broker assigns the task to its own AI principal with three generation grants, starts a governed agent, and replies that the request was accepted (task id). The agent writes a DefinitionTemplate, the generation worker builds and packages a multi-page front-end prototype, and the broker verifies the package path and sha256 before delivering it through the same artifact, Drive / signed-link and LINE notification chain.
+> - When Governed mode is not ready (no container runtime, LLM proxy, generation worker or output root), the broker refuses the confirmation instead of falling back to the in-process flow. A watchdog fails tasks that do not deliver within the deadline.
+> - See [GovernedGeneration.md](GovernedGeneration.md) for the flow, capabilities, settings and deployment.
+
 ## 1. Goal
 
 Add a new high-level capability where the system can:

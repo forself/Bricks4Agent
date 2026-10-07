@@ -34,6 +34,14 @@ Status: planning draft</p>
 <li>The broker download API that §11 / §11.2 list as missing now exists: <code>GET /api/v1/artifacts/download/{artifactId}</code> (<code>packages/csharp/broker/Endpoints/ArtifactDownloadEndpoints.cs:9</code>), and end users can browse their artifacts in the <code>/portal</code> user portal.</li>
 </ul>
 </blockquote>
+<blockquote>
+<p><strong>Governed generation (2026-10-07)</strong></p>
+<ul>
+<li>The in-process flow above is now the <code>Legacy</code> mode and stays the default. With <code>HighLevelCoordinator:Generation:SystemScaffoldMode = Governed</code>, confirming a system_scaffold draft no longer writes any project file in the broker: the broker assigns the task to its own AI principal with three generation grants, starts a governed agent, and replies that the request was accepted (task id). The agent writes a DefinitionTemplate, the generation worker builds and packages a multi-page front-end prototype, and the broker verifies the package path and sha256 before delivering it through the same artifact, Drive / signed-link and LINE notification chain.</li>
+<li>When Governed mode is not ready (no container runtime, LLM proxy, generation worker or output root), the broker refuses the confirmation instead of falling back to the in-process flow. A watchdog fails tasks that do not deliver within the deadline.</li>
+<li>See <a href="GovernedGeneration.html">GovernedGeneration.md</a> for the flow, capabilities, settings and deployment.</li>
+</ul>
+</blockquote>
 <h2>1. Goal</h2>
 <p>Add a new high-level capability where the system can:</p>
 <ol>

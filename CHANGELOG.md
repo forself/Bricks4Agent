@@ -10,6 +10,24 @@ B4A 只收通用元件與通用能力；任何業務系統的專屬元件都不�
 
 ## 未發行
 
+### 新增：受治理生成（system_scaffold 第一個切片）（2026-10-07）
+
+**新增**
+
+- 新的模式開關 `HighLevelCoordinator:Generation:SystemScaffoldMode`：`Legacy`（預設，行為不變）或 `Governed`。Governed 時，使用者確認系統雛形 draft 後，broker 不在程序內寫任何專案檔案：任務指派給自己的 AI 主體與 `role_executor`、帶三個生成 grant，broker 啟動受控代理並立即回覆「已受理（任務 id）」；代理經 LLM 代理撰寫 DefinitionTemplate，經 `generation.catalog.query`、`generation.definition.validate`、`generation.scaffold.generate` 三個能力走 PEP，generation-worker 確定性產出多頁前端原型（list、detail、form，瀏覽器內記憶體 store，不含後端）並打成 zip；broker 驗證路徑與 sha256、寫入證據文件後，以既有的產物紀錄、Drive 或簽章下載連結與 LINE 通知交付，任務 Completed 並停用代理。前置條件不滿足時回「系統雛形生成暫不可用」且不建立任務，不退回程序內生成；逾時或代理未產出時由 watchdog 把任務標為 Failed 並通知使用者。流程、設定與部署見 [GovernedGeneration.md](docs/designs/GovernedGeneration.md)。
+- 生成器 `tools/generation/`（`cli.mjs` 的 catalog、validate、build，零依賴、Node 22）與通用外殼 `templates/definition-site/`（嚴格 CSP、hash 路由），golden 範例是通用的聯絡人三頁。外殼納入 `audit:csp` 掃描。
+- 新的 worker `packages/csharp/workers/generation-worker/`（Containerfile、compose 的 `generation` profile 與 internal 的 `generation-net`、sidecar 的 `-GenerationMode Governed`、`run-worker.ps1 -Worker generation`）；三個能力以 tool-spec 為唯一來源；代理新增 `query_component_catalog`、`validate_definition`、`generate_scaffold` 三個工具，生成類任務的 system prompt 說明工作流程與上限，`AGENT_MAX_ITERATIONS` 可由環境變數設定。
+- broker：`GovernedGenerationLauncher`、`GenerationIngestingDispatcher`（只處理 `generate_scaffold`）、`GenerationDeliveryService`（交付與 watchdog）、`AgentContainerLauncher`（`/agents/spawn` 與受治理生成共用的容器啟動，行為不變）；設定區段 `Generation`（`OutputRoot`、`DeadlineMinutes`、`AgentMaxIterations`、`MaxPages`、`WatchdogIntervalSeconds`、`MaxPackageBytes`）；保留前綴 `generation.execution.` 與 `generation.run.`；generate 超出 scope 送審時，審批畫面顯示標題、各頁摘要與定義內容。
+- 任務狀態新增 `Failed`（終止狀態，與 Completed、Cancelled 一樣不再接受註冊、續期、憑證簽發與取消）；`AgentSpawnService.DeactivateTaskAgent` 依任務指派的主體停用代理。
+- npm script：`test:generation`（已接進 `npm test`）與 `test:definition-site:browser`。
+
+**修正**
+
+- worker-sdk 的 `WorkerHost`：送結果、心跳與狀態回覆經同一個寫入鎖，不再交錯寫入同一個 stream；接收端保留同一次讀到的後續 frame。影響所有 worker。
+- `PolicyEngine.IsScopeValid` 遇到例外時改為不在 scope 內；scope 的 `routes`、`paths` 存在但不是字串陣列時也視為不在 scope 內（先前會被當成沒有限制）。依審批政策改為 Deny 或送審。
+
+驗證入口：`npm run test:generation`、`npm run test:definition-site:browser`、`dotnet test packages/csharp/tests/unit/Unit.Tests.csproj`（GenerationHandlerTests、GenerationCliContractTests、GenerationIngestTests、GenerationDeliveryServiceTests、GovernedGenerationLauncherTests、GenerationApprovalRenderTests、WorkerFrameIoTests、PolicyEngineScopeFailClosedTests、GenerationToolSpecTests）、`dotnet test packages/csharp/tests/integration/Integration.Tests.csproj`（GovernedGenerationTests）、`npm run validate:broker-scope`、`npm run validate:agent-governed`、`npm run validate:agent-container-config`。
+
 ### 預設行為變更：`/proj` 與 `/ok` 需要 production 權限、`/ok` 改為建立 draft、高階回覆不帶主機路徑（2026-10-07）
 
 **預設行為變更**

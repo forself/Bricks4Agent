@@ -1,0 +1,387 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>受治理生成（Governed Generation）</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>受治理生成（Governed Generation）</h1>
+<p>日期：2026-10-07 狀態：第一個切片已實作（system_scaffold）；預設仍是 Legacy，以設定開啟。</p>
+<h2>1. 摘要</h2>
+<p>使用者在 LINE 或 portal 要求「產生系統雛形」（<code>/建立 完整系統雛形 … #名稱</code>，或 <code>/proj</code> 訪談後 <code>/ok</code>），確認 draft 回 <code>y</code> 之後：</p>
+<ul>
+<li>
+<p><strong>Legacy（預設）</strong>：沿用 broker 程序內的佔位頁生成（<code>HighLevelSystemScaffoldService</code>），行為不變。</p>
+</li>
+<li>
+<p><strong>Governed</strong>：broker 不在程序內寫任何專案檔案，而是依任務啟動一個受控代理。代理經 broker 的 LLM 代理撰寫 DefinitionTemplate，再透過三個生成能力走 PEP（查型錄、驗證定義、生成並打包）。generation-worker 以 B4A 元件庫確定性產出多頁前端原型並打成 zip；broker 驗證產物的路徑與 sha256 後交付給使用者。</p>
+</li>
+</ul>
+<p>模式開關是 <code>HighLevelCoordinator:Generation:SystemScaffoldMode</code>，值為 <code>Legacy</code> 或 <code>Governed</code>。其他值視為設定錯誤：走 Governed 路徑並由就緒檢查拒絕，不會靜默退回 Legacy。</p>
+<p>產物是 DefinitionTemplate 驅動的多頁前端原型（list、detail、form 三種頁型），用瀏覽器內記憶體 store 讓頁面可以操作，不含後端。zip 的內容與外殼見 <a href="../../tools/generation/cli.mjs">tools/generation</a> 與 <a href="../../templates/definition-site/README.txt">templates/definition-site</a>。</p>
+<h2>2. 端到端流程</h2>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>執行者</th>
+<th>動作</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>使用者入口</td>
+<td>line-worker 呼叫 <code>/api/v1/high-level/line/process</code>，或 portal 呼叫 <code>/api/v1/portal/commands</code></td>
+</tr>
+<tr>
+<td>2</td>
+<td>coordinator</td>
+<td>分類 → AllowProduction 權限閘 → 建立 system_scaffold draft → 使用者回 <code>y</code> → <code>ConfirmDraft</code></td>
+</tr>
+<tr>
+<td>3</td>
+<td>coordinator（Governed）</td>
+<td>就緒檢查（見 §5）。不就緒就回覆「系統雛形生成暫不可用」，不建立任務、不建立專案資料夾</td>
+</tr>
+<tr>
+<td>4</td>
+<td>coordinator</td>
+<td>名稱重查、升格閘、ExecutionIntent、Task、Plan、Handoff（與 Legacy 相同的前半段）</td>
+</tr>
+<tr>
+<td>5</td>
+<td><code>GovernedGenerationLauncher</code></td>
+<td>建立 AI 主體 <code>prn_{任務後綴}</code>，任務指派給它與 <code>role_executor</code>；runtimeDescriptor 加上三個 grant（scope 由 broker 寫入）；handoff 加上淨化過的 <code>generation_request</code></td>
+</tr>
+<tr>
+<td>6</td>
+<td><code>GovernedGenerationLauncher</code></td>
+<td>寫入執行紀錄，簽發註冊憑證並啟動代理容器（<code>AGENT_RUN</code> 帶工作項，<code>AGENT_MAX_ITERATIONS</code> 預設 12）。成功才刪除 draft，立即回覆「已受理（任務 id）」</td>
+</tr>
+<tr>
+<td>7</td>
+<td>受控代理</td>
+<td><code>query_component_catalog</code> → 經 <code>/api/v1/llm/chat</code> 撰寫定義 → <code>validate_definition</code>（依錯誤修正）→ <code>generate_scaffold</code></td>
+</tr>
+<tr>
+<td>8</td>
+<td>broker PEP</td>
+<td>session、grant、配額、PolicyEngine（route 相符；catalog 與 validate 為 auto；generate 為 auto_if_task_scope_match）→ 分派給 generation-worker</td>
+</tr>
+<tr>
+<td>9</td>
+<td>generation-worker</td>
+<td>重新完整驗證定義，輸出位置只取自 grant scope：<code>{Generation:OutputRoot}/{output_slot}/{requestId}/</code>；決定性打包 zip，回傳相對路徑、sha256 與摘要</td>
+</tr>
+<tr>
+<td>10</td>
+<td><code>GenerationIngestingDispatcher</code></td>
+<td>驗證 worker 的結果（§6），把 zip 複製到使用者的文件區，寫入證據文件 <code>generation.execution.{requestId}</code>，執行請求記為 Succeeded 並帶 evidenceRef</td>
+</tr>
+<tr>
+<td>11</td>
+<td><code>GenerationDeliveryService</code></td>
+<td>交付：產物紀錄（RelatedTaskId 為該任務，portal 產物清單看得到）→ Drive 上傳（失敗時改用簽章下載連結）→ LINE 通知 → 任務 Completed → 停用代理（主體停用、撤銷憑證與 session）並停止容器</td>
+</tr>
+</tbody>
+</table>
+<p>LINE 的處理逾時有上限，所以確認之後改為非同步：先回「已受理」，完成後以 LINE 通知與 portal 產物清單送達。回覆不帶主機路徑。</p>
+<h2>3. 能力與 grant scope</h2>
+<p>三個能力以 tool-spec（<code>packages/csharp/broker/tool-specs/generation.*</code>）為唯一來源，由 broker 啟動時同步成 capability，status 為 beta，<code>runtime_required</code> 為 <code>generation-worker</code>。它們不在 in-process 降級清單中：沒有 generation-worker 時直接失敗，不會在 broker 程序內執行。</p>
+<table>
+<thead>
+<tr>
+<th>capability</th>
+<th>route（同代理工具名）</th>
+<th>風險／審批</th>
+<th>每個 session 的配額</th>
+<th>broker 寫入的 scope</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>generation.catalog.query</code></td>
+<td><code>query_component_catalog</code></td>
+<td>Low／auto</td>
+<td>20</td>
+<td><code>{"routes":["query_component_catalog"]}</code></td>
+</tr>
+<tr>
+<td><code>generation.definition.validate</code></td>
+<td><code>validate_definition</code></td>
+<td>Low／auto</td>
+<td>6</td>
+<td><code>{"routes":["validate_definition"]}</code></td>
+</tr>
+<tr>
+<td><code>generation.scaffold.generate</code></td>
+<td><code>generate_scaffold</code></td>
+<td>Medium／auto_if_task_scope_match</td>
+<td>2</td>
+<td><code>{"routes":["generate_scaffold"],"output_slot":"&lt;任務 id&gt;","package_name":"&lt;淨化後的資料夾名&gt;","max_pages":12,"package":"definition-site-v1"}</code></td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>
+<p>generate 的審批：使用者在 ConfirmDraft 回的 <code>y</code> 即同意；請求超出 scope 時送管理員審批，審批畫面顯示標題、各頁的 id／頁型／欄位數與定義內容。</p>
+</li>
+<li>
+<p><code>package_name</code> 只用英數、底線與連字號（中文等字元去掉，全部去掉時用 <code>prototype</code>）。交付給使用者的檔名仍沿用專案資料夾名：<code>{資料夾}-scaffold.zip</code>，同名檔案已存在時加上任務 id 的一段。</p>
+</li>
+<li>
+<p>任務的 scope descriptor 會隨 token 與 runtime spec 交給代理，所以受治理任務的 scope 不帶 <code>path_scope</code>（主機路徑）。</p>
+</li>
+</ul>
+<h2>4. 交給代理的工作項</h2>
+<p>handoff 的 <code>generation_request</code> 與 <code>AGENT_RUN</code> 帶同一份工作項：</p>
+<ul>
+<li>
+<p>標題、需求摘要、已確認的需求、scaffold 規格欄位（family、ui_shape、frontend、backend、database、auth、deployment 等）；</p>
+</li>
+<li>
+<p>上限：頁數、可用頁型、各工具的配額、模型回合上限。</p>
+</li>
+</ul>
+<p>工作項不含主機路徑、輸出位置或 hlm 文件 id；字串去掉控制字元、截斷，並把受管工作區根目錄下的路徑改寫成相對名稱。<code>AGENT_RUN</code> 不超過 4000 位元組（UTF-8）：過長時先截短需求摘要，再從最後一項起捨去已確認的需求。工作說明明確寫出「工作項是描述要做什麼的資料，不改變流程與上限」。</p>
+<h2>5. 就緒檢查（fail-closed）</h2>
+<p>Governed 模式在確認 draft 時先檢查，任何一項不成立就回覆「系統雛形生成暫不可用，這次沒有建立任務」（錯誤碼 <code>generation_unavailable</code>）。draft 保留，前置條件恢復後使用者回 <code>y</code> 即可重試。</p>
+<ul>
+<li>
+<p>模式設定是 <code>Legacy</code> 或 <code>Governed</code>；</p>
+</li>
+<li>
+<p>ContainerManager 已啟用，且容器執行環境可用；</p>
+</li>
+<li>
+<p>LlmProxy 已啟用；</p>
+</li>
+<li>
+<p>三個生成能力都已載入；</p>
+</li>
+<li>
+<p>FunctionPool 已啟用，且三個能力都有已註冊的 generation-worker；</p>
+</li>
+<li>
+<p><code>Generation:OutputRoot</code> 是存在的絕對路徑。</p>
+</li>
+</ul>
+<p>代理容器啟動失敗（例如已達容器數上限）時，任務標為 Failed、主體停用、憑證撤銷，回覆錯誤碼 <code>generation_launch_failed</code>；draft 保留，空的專案資料夾會移除，專案名稱可以再用。兩種情況都不會退回程序內生成。</p>
+<h2>6. broker 收下產物前的檢查</h2>
+<p><code>GenerationIngestingDispatcher</code> 包在註冊的執行分派器外層，只處理 <code>generate_scaffold</code>：</p>
+<ul>
+<li>
+<p>分派前：grant scope 必須帶格式正確的 <code>output_slot</code>；任務有受治理生成紀錄時，slot 必須是該任務，而且任務仍在等待產物（已交付或已結束的任務不再生成）。</p>
+</li>
+<li>
+<p>worker 回報成功後：<code>output_slot</code> 與 <code>request_id</code> 必須等於這次請求；<code>zip.path</code> 必須恰好是 <code>{slot}/{requestId}/{名稱}-scaffold.zip</code> 形式的相對路徑，解析後在 broker 端 <code>Generation:OutputRoot</code> 之下，路徑上沒有符號連結或 junction；重新計算大小與 sha256 並比對；複製到使用者文件區之後再算一次 sha256。</p>
+</li>
+<li>
+<p>任何一步失敗，這次執行記為 Failed，不交付、不寫證據。代理可以在配額內修正後再送。</p>
+</li>
+</ul>
+<p>證據文件 <code>generation.execution.{requestId}</code>（任務範圍，作者 <code>system:generation-ingestor</code>）記錄 zip 的相對路徑、sha256、大小、頁面、檔案數、validation digest、生成器版本與型錄 hash，並寫入執行請求的 <code>EvidenceRef</code>。執行紀錄 <code>generation.run.{taskId}</code>（global 範圍，只採信系統元件寫入的版本）保存狀態與 broker 內部的檔案位置。兩個前綴都加進 <code>SystemContextDocuments</code> 的保留前綴，非管理員不能經 context API 以這些 document id 寫入。</p>
+<h2>7. watchdog</h2>
+<p><code>GenerationDeliveryService</code> 依 <code>Generation:WatchdogIntervalSeconds</code>（預設 10 秒）輪詢，ingest 收下產物時會立即喚醒它。進行中的執行在下列情況收掉：任務 Failed、代理停用、容器停止，並以 LINE 通知使用者。</p>
+<ul>
+<li>
+<p>從啟動代理起超過 <code>Generation:DeadlineMinutes</code>（預設 15 分鐘）仍未交付；</p>
+</li>
+<li>
+<p>代理已經結束（曾經註冊過，現在沒有有效的 session）卻沒有產物；</p>
+</li>
+<li>
+<p>已收下的產物交付失敗。</p>
+</li>
+</ul>
+<p>broker 重啟後由執行紀錄接手；容器清單遺失時找不到容器就略過停止，代理的憑證與 session 已撤銷，無法再呼叫 broker。</p>
+<h2>8. 設定</h2>
+<table>
+<thead>
+<tr>
+<th>設定</th>
+<th>預設</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>HighLevelCoordinator:Generation:SystemScaffoldMode</code></td>
+<td><code>Legacy</code></td>
+<td><code>Governed</code> 時啟用受治理生成</td>
+</tr>
+<tr>
+<td><code>Generation:OutputRoot</code></td>
+<td>（無）</td>
+<td>generation-worker 的輸出根目錄；broker 從這裡讀取產物。必須是絕對路徑，在各使用者工作區之外</td>
+</tr>
+<tr>
+<td><code>Generation:DeadlineMinutes</code></td>
+<td>15</td>
+<td>交付期限</td>
+</tr>
+<tr>
+<td><code>Generation:AgentMaxIterations</code></td>
+<td>12</td>
+<td>代理的模型回合上限</td>
+</tr>
+<tr>
+<td><code>Generation:MaxPages</code></td>
+<td>12</td>
+<td>寫進 generate scope 的頁數上限</td>
+</tr>
+<tr>
+<td><code>Generation:WatchdogIntervalSeconds</code></td>
+<td>10</td>
+<td>交付與 watchdog 的輪詢間隔</td>
+</tr>
+<tr>
+<td><code>Generation:MaxPackageBytes</code></td>
+<td>268435456</td>
+<td>broker 接受的 zip 大小上限</td>
+</tr>
+</tbody>
+</table>
+<p>代理容器沿用 <code>FunctionPool:ContainerManager</code>（<code>AgentBrokerUrl</code>、<code>WorkerImages:agent</code>、<code>MaxContainersPerType</code> 等）與 <code>Broker:RegistrationCredential:SpawnedAgentLifetimeHours</code>。代理使用的模型是 ExecutionModelPlanner 推薦的模型（寫進 runtimeDescriptor 的 <code>llm.default_model</code>），沒有推薦時用 <code>HighLevelLlm:DefaultModel</code>。generation-worker 的設定見 <a href="../../packages/csharp/workers/generation-worker/README.html">generation-worker README</a>。</p>
+<h2>9. 部署</h2>
+<ul>
+<li>
+<p><strong>Windows sidecar（正式部署）</strong>：<code>line-sidecar.ps1 up -GenerationMode Governed</code> 會發布並以主機程序啟動 generation-worker，把 broker 切到 Governed，並讓 broker 與 worker 共用 <code>.run\line-sidecar\data\generation-out</code>。代理容器沿用已記載的 <code>AllowAgentDefaultNetwork</code> 例外（不在 internal 網路上）。不加參數時行為不變。見 <a href="../manuals/line-sidecar-runbook.zh-TW.html">LINE sidecar runbook</a>。</p>
+</li>
+<li>
+<p><strong>compose 測試堆疊</strong>：<code>--profile generation</code> 啟動 generation-worker，它只接 internal 的 <code>generation-net</code>；<code>generation-out</code> volume 由 worker 寫入、broker 唯讀掛載。見 <a href="../manuals/agent-container-runbook.html">agent container runbook</a>。</p>
+</li>
+</ul>
+<h2>10. 其他 AI 代理或 API 的入口</h2>
+<p>第一刀只做 LINE 與 portal 兩個入口，不新增端點。其他代理要走同一條受治理路徑時，由管理員：</p>
+<ol>
+<li>
+<p>以 <code>/api/v1/tasks/create</code> 建立任務：指派一個 AI 主體與 <code>role_executor</code>，<code>runtime_descriptor.capability_grants</code> 帶同樣三個 grant，generate 的 scope 照 §3 寫入 <code>output_slot</code>、<code>package_name</code>、<code>max_pages</code> 與 <code>package</code>；</p>
+</li>
+<li>
+<p>以 <code>/api/v1/admin/registration-credentials/issue</code> 簽發註冊憑證交給代理。</p>
+</li>
+</ol>
+<p>這類任務沒有受治理生成紀錄：broker 一樣驗證產物並寫入證據，但沒有交付對象，zip 留在 <code>Generation:OutputRoot</code> 由管理員取用。</p>
+<h2>11. 決策</h2>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>決策</th>
+<th>採用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>D1</td>
+<td>第一刀的生成類型</td>
+<td>system_scaffold，產出 DefinitionTemplate 驅動的多頁前端原型（form、list、detail）</td>
+</tr>
+<tr>
+<td>D2</td>
+<td>推理者</td>
+<td>broker 依任務啟動受控代理；控制平面不做 LLM 推理</td>
+</tr>
+<tr>
+<td>D3</td>
+<td>後端</td>
+<td>不含；原型以瀏覽器內記憶體 store 讓 list、detail、form 可操作</td>
+</tr>
+<tr>
+<td>D4</td>
+<td>generate 的審批</td>
+<td><code>auto_if_task_scope_match</code>（使用者在 ConfirmDraft 回的 y 即同意）；超出 scope 送管理員審批</td>
+</tr>
+<tr>
+<td>D5</td>
+<td>Governed 前置條件不滿足</td>
+<td>fail-closed，回覆「系統生成暫不可用」；不退回程序內生成</td>
+</tr>
+<tr>
+<td>D6</td>
+<td>確認後的回應</td>
+<td>非同步：先回「已受理（任務 id）」，完成後以 LINE 通知與 portal 產物清單送達</td>
+</tr>
+<tr>
+<td>D7</td>
+<td>sidecar 代理網路</td>
+<td>沿用 <code>AllowAgentDefaultNetwork</code> 例外並記載風險；internal 代理網路列為後續</td>
+</tr>
+<tr>
+<td>D8</td>
+<td>sidecar 上的 generation-worker</td>
+<td>主機程序（與 site-crawler 一致）；容器化列為後續</td>
+</tr>
+<tr>
+<td>D9</td>
+<td>ui_components 打包範圍</td>
+<td>整包，排除 data、refresource、demo、test 檔；依用量裁剪列為後續</td>
+</tr>
+<tr>
+<td>D10</td>
+<td><code>/proj</code> 權限閘</td>
+<td>獨立修正先合；<code>/proj</code> 起手與 <code>/ok</code> 兩處都檢查</td>
+</tr>
+<tr>
+<td>D11</td>
+<td>file:// 無法開啟 ES module</td>
+<td>zip 附 <code>README.txt</code> 說明以本機 HTTP 伺服器開啟；託管預覽列為後續</td>
+</tr>
+</tbody>
+</table>
+<h2>12. 測試</h2>
+<ul>
+<li>
+<p>生成器與外殼：<code>npm run test:generation</code>、<code>npm run test:definition-site:browser</code>。</p>
+</li>
+<li>
+<p>worker：<code>GenerationHandlerTests</code>（假 CLI 的邊界行為）與 <code>GenerationCliContractTests</code>（真正的 CLI：zip 內容與 build 輸出逐位元組相同、兩次生成 sha256 相同）。</p>
+</li>
+<li>
+<p>broker：<code>GenerationIngestTests</code>（路徑逃逸、連結、sha256 或大小不符、檔案遺失、slot 或請求 id 不符都失敗且不交付）、<code>GenerationDeliveryServiceTests</code>（交付、期限、代理結束未產出、交付失敗）、<code>GovernedGenerationLauncherTests</code>（grant 與 scope、工作項與 <code>AGENT_RUN</code> 上限、啟動失敗、就緒檢查）、<code>GenerationApprovalRenderTests</code>。</p>
+</li>
+<li>
+<p>整合：<code>GovernedGenerationTests</code>（確認後的任務、主體、grant 與代理啟動；代理 session 依序呼叫三個能力，稽核鏈 RECEIVED → DISPATCHED → SUCCEEDED 並帶 evidenceRef；交付後任務 Completed；沒有 grant 時 Denied；未就緒與啟動失敗時 fail-closed）。</p>
+</li>
+<li>
+<p><code>npm run validate:broker-scope</code>：Legacy 斷言保留；Governed 斷言確認回覆「已受理」、程序內沒有寫出檔案、未就緒時不建立任務。</p>
+</li>
+</ul>
+<h2>13. 後續</h2>
+<ul>
+<li>
+<p>端到端：compose 生成堆疊（mock LLM 依序 catalog → validate（含一次失敗後修正）→ generate）、主機 broker 完整入口（<code>/建立…#x</code> → y → 通知 → 下載 zip）、解壓產物的瀏覽器 smoke。</p>
+</li>
+<li>
+<p>sidecar 的 internal 代理網路；generation-worker 容器化。</p>
+</li>
+<li>
+<p>Governed 在 sidecar 實測後改為預設，再移除佔位頁產生器。</p>
+</li>
+<li>
+<p>依用量裁剪 ui_components；產物的託管預覽；第二刀的後端生成。</p>
+</li>
+<li>
+<p>把 code_gen、site_rebuild、doc_gen 移到受治理路徑；在 worker 協定加入正式的 evidence 欄位。</p>
+</li>
+</ul>
+</main>
+</body>
+</html>

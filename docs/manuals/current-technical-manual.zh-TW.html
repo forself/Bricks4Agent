@@ -1321,6 +1321,16 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\run-worker.ps
 <li><code>FinalizeResult</code> 會把 <code>AccessRoot</code> 底下的路徑改寫成相對名稱，作為最後一道防線；portal 的 <code>/portal/results</code> 顯示歷史紀錄時也套用同樣的改寫。</li>
 <li><code>/high-level/line/process</code> 回給 line-worker 的結構化欄位（<code>draft</code>、<code>handoff</code>、<code>created_task</code>）仍帶工作區路徑，供受信任的 worker 與管理端使用，line-worker 只轉送 <code>reply</code> 與 <code>follow_up_messages</code>。</li>
 </ul>
+<h3>9.4 Governed generation（受治理生成）</h3>
+<p><code>HighLevelCoordinator:Generation:SystemScaffoldMode</code> 決定 system_scaffold 確認後怎麼生成：<code>Legacy</code>（預設）沿用 broker 程序內的佔位頁生成；<code>Governed</code> 改由受控代理經三個生成能力產出，broker 程序內不寫任何專案檔案。其他值視為設定錯誤，走 Governed 並由就緒檢查拒絕。</p>
+<p>Governed 的流程（設計與決策見 <a href="../designs/GovernedGeneration.html">GovernedGeneration.md</a>）：</p>
+<ul>
+<li><code>ConfirmDraft</code> 先做就緒檢查：ContainerManager 啟用且容器執行環境可用、LlmProxy 啟用、三個 <code>generation.*</code> 能力已載入、FunctionPool 有提供這三個能力的 generation-worker、<code>Generation:OutputRoot</code> 存在。不就緒時回 <code>generation_unavailable</code>，不建立任務，也不退回程序內生成。</li>
+<li>名稱重查、升格閘、execution intent、task、plan、handoff 與 Legacy 相同。之後 <code>GovernedGenerationLauncher</code> 把任務指派給 AI 主體 <code>prn_{任務後綴}</code> 與 <code>role_executor</code>，runtimeDescriptor 加上三個 grant（generate 的 scope 由 broker 寫入 <code>output_slot</code>＝任務 id、<code>package_name</code>、<code>max_pages</code>、<code>package</code>），handoff 加上淨化過的 <code>generation_request</code>；受治理任務的 scope descriptor 不帶 <code>path_scope</code>。</li>
+<li>以 <code>AgentContainerLauncher</code>（與 <code>/agents/spawn</code> 共用）簽發註冊憑證並啟動代理容器，<code>AGENT_RUN</code> 帶不超過 4000 位元組的工作項。成功才刪除 draft，回覆「已受理（任務 id）」；啟動失敗時任務標為 <code>Failed</code>（新的終止狀態，與 Completed、Cancelled 同樣不再接受註冊、續期與憑證簽發），回 <code>generation_launch_failed</code>。</li>
+<li><code>GenerationIngestingDispatcher</code> 包在執行分派器外層，只處理 <code>generate_scaffold</code>：比對 output slot 與請求 id，確認 zip 是 <code>{slot}/{requestId}/{名稱}-scaffold.zip</code> 且在 <code>Generation:OutputRoot</code> 之下、路徑上沒有連結，重新計算大小與 sha256，複製到使用者文件區後再驗一次，寫入證據文件 <code>generation.execution.{requestId}</code> 並設定執行請求的 <code>EvidenceRef</code>。任何一步失敗，這次執行記為 Failed、不交付。</li>
+<li><code>GenerationDeliveryService</code>（hosted service）以 <code>LineArtifactDeliveryService.DeliverExistingFileAsync</code> 交付（產物紀錄、Drive 或簽章連結、LINE 通知），之後任務 Completed、停用代理並停止容器。watchdog 在超過 <code>Generation:DeadlineMinutes</code>、代理結束卻沒有產物、或交付失敗時，把任務標為 Failed、停用代理、停止容器並通知使用者。執行紀錄存在 <code>generation.run.{taskId}</code>（global 範圍）。</li>
+</ul>
 <h2>10. Agent Runtime</h2>
 <p><code>tools/agent</code> supports three modes:</p>
 <table>
@@ -2149,6 +2159,14 @@ $env:STACK_MODEL='gpt-5.4-mini'
 <td>workspace/root/keywords/draft TTL</td>
 </tr>
 <tr>
+<td><code>HighLevelCoordinator:Generation</code></td>
+<td><code>SystemScaffoldMode</code>：<code>Legacy</code>（預設）或 <code>Governed</code></td>
+</tr>
+<tr>
+<td><code>Generation</code></td>
+<td>governed generation：<code>OutputRoot</code>（與 generation-worker 共用）、<code>DeadlineMinutes</code>、<code>AgentMaxIterations</code>、<code>MaxPages</code>、<code>WatchdogIntervalSeconds</code>、<code>MaxPackageBytes</code></td>
+</tr>
+<tr>
 <td><code>ProjectInterview</code></td>
 <td>template catalog/session timeout</td>
 </tr>
@@ -2326,6 +2344,8 @@ npm run test:dotnet10
 <h3>20.6 JS/UI/generator</h3>
 <pre><code class="language-powershell">npm test
 npm run test:generator
+npm run test:generation
+npm run test:definition-site:browser
 npm run validate:ui-state
 npm run audit:ui-styles
 npm run validate:ui-library
@@ -2461,6 +2481,11 @@ node tools/agent/tests/validate-efcore-removal.js
 <td><code>.test-output/</code></td>
 <td>stack/tests</td>
 <td>delete after testing</td>
+</tr>
+<tr>
+<td><code>%TEMP%\b4a-gengov-*</code>, <code>%TEMP%\b4a-gencontract-*</code>, <code>%TEMP%\b4a-genworker-*</code></td>
+<td>governed generation unit/integration tests</td>
+<td>removed by the tests; delete leftovers</td>
 </tr>
 <tr>
 <td><code>test-results/</code></td>

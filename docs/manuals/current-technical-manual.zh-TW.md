@@ -629,6 +629,18 @@ Document/code/site artifacts are written to managed workspace and represented in
 - `FinalizeResult` 會把 `AccessRoot` 底下的路徑改寫成相對名稱，作為最後一道防線；portal 的 `/portal/results` 顯示歷史紀錄時也套用同樣的改寫。
 - `/high-level/line/process` 回給 line-worker 的結構化欄位（`draft`、`handoff`、`created_task`）仍帶工作區路徑，供受信任的 worker 與管理端使用，line-worker 只轉送 `reply` 與 `follow_up_messages`。
 
+### 9.4 Governed generation（受治理生成）
+
+`HighLevelCoordinator:Generation:SystemScaffoldMode` 決定 system_scaffold 確認後怎麼生成：`Legacy`（預設）沿用 broker 程序內的佔位頁生成；`Governed` 改由受控代理經三個生成能力產出，broker 程序內不寫任何專案檔案。其他值視為設定錯誤，走 Governed 並由就緒檢查拒絕。
+
+Governed 的流程（設計與決策見 [GovernedGeneration.md](../designs/GovernedGeneration.md)）：
+
+- `ConfirmDraft` 先做就緒檢查：ContainerManager 啟用且容器執行環境可用、LlmProxy 啟用、三個 `generation.*` 能力已載入、FunctionPool 有提供這三個能力的 generation-worker、`Generation:OutputRoot` 存在。不就緒時回 `generation_unavailable`，不建立任務，也不退回程序內生成。
+- 名稱重查、升格閘、execution intent、task、plan、handoff 與 Legacy 相同。之後 `GovernedGenerationLauncher` 把任務指派給 AI 主體 `prn_{任務後綴}` 與 `role_executor`，runtimeDescriptor 加上三個 grant（generate 的 scope 由 broker 寫入 `output_slot`＝任務 id、`package_name`、`max_pages`、`package`），handoff 加上淨化過的 `generation_request`；受治理任務的 scope descriptor 不帶 `path_scope`。
+- 以 `AgentContainerLauncher`（與 `/agents/spawn` 共用）簽發註冊憑證並啟動代理容器，`AGENT_RUN` 帶不超過 4000 位元組的工作項。成功才刪除 draft，回覆「已受理（任務 id）」；啟動失敗時任務標為 `Failed`（新的終止狀態，與 Completed、Cancelled 同樣不再接受註冊、續期與憑證簽發），回 `generation_launch_failed`。
+- `GenerationIngestingDispatcher` 包在執行分派器外層，只處理 `generate_scaffold`：比對 output slot 與請求 id，確認 zip 是 `{slot}/{requestId}/{名稱}-scaffold.zip` 且在 `Generation:OutputRoot` 之下、路徑上沒有連結，重新計算大小與 sha256，複製到使用者文件區後再驗一次，寫入證據文件 `generation.execution.{requestId}` 並設定執行請求的 `EvidenceRef`。任何一步失敗，這次執行記為 Failed、不交付。
+- `GenerationDeliveryService`（hosted service）以 `LineArtifactDeliveryService.DeliverExistingFileAsync` 交付（產物紀錄、Drive 或簽章連結、LINE 通知），之後任務 Completed、停用代理並停止容器。watchdog 在超過 `Generation:DeadlineMinutes`、代理結束卻沒有產物、或交付失敗時，把任務標為 Failed、停用代理、停止容器並通知使用者。執行紀錄存在 `generation.run.{taskId}`（global 範圍）。
+
 ## 10. Agent Runtime
 
 `tools/agent` supports three modes:
@@ -1278,6 +1290,8 @@ Honest boundary:
 | `HighLevelLlm` | LINE high-level model |
 | `HighLevelExecutionModelPolicy` | execution model aliases |
 | `HighLevelCoordinator` | workspace/root/keywords/draft TTL |
+| `HighLevelCoordinator:Generation` | `SystemScaffoldMode`：`Legacy`（預設）或 `Governed` |
+| `Generation` | governed generation：`OutputRoot`（與 generation-worker 共用）、`DeadlineMinutes`、`AgentMaxIterations`、`MaxPages`、`WatchdogIntervalSeconds`、`MaxPackageBytes` |
 | `ProjectInterview` | template catalog/session timeout |
 | `ArtifactDownload` | signed download secret/TTL |
 | `PortalAuth` | user portal self-registration, password length, session TTL, and LINE verification code TTL |
@@ -1390,6 +1404,8 @@ npm run test:dotnet10
 ```powershell
 npm test
 npm run test:generator
+npm run test:generation
+npm run test:definition-site:browser
 npm run validate:ui-state
 npm run audit:ui-styles
 npm run validate:ui-library
@@ -1490,6 +1506,7 @@ Known artifacts:
 | `packages/csharp/broker/broker.db-shm` | SQLite WAL/shared memory | delete with DB |
 | `packages/csharp/broker/broker.db-wal` | SQLite WAL | delete with DB |
 | `.test-output/` | stack/tests | delete after testing |
+| `%TEMP%\b4a-gengov-*`, `%TEMP%\b4a-gencontract-*`, `%TEMP%\b4a-genworker-*` | governed generation unit/integration tests | removed by the tests; delete leftovers |
 | `test-results/` | Playwright | delete after testing |
 | `.run/line-sidecar/` | sidecar runtime | keep unless intentionally resetting sidecar |
 | `bin/`, `obj/` | .NET build | clean when no process uses them |
