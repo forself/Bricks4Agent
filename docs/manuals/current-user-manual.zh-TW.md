@@ -357,11 +357,14 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\l
 
 專案訪談用於更結構化地收集需求並產生 artifact。
 
+`/proj` 與 `/ok` 需要 production 權限：帳戶必須是會員（Tier 2），而且管理員已開啟 production 任務。基本註冊者（Tier 1）傳這兩個指令時，會收到與 `/建立` 相同的權限不足回覆，不會開始訪談，也不會建立 draft。
+
 | 指令 | 用途 |
 |---|---|
 | `/proj` | 開始專案訪談 |
 | `#ProjectName` | 指定專案名稱 |
-| `/ok` | 確認目前訪談/設計 |
+| `/ok` | 確認目前設計，並建立系統雛形 draft（尚未建置） |
+| `y` / `n` | `/ok` 之後確認建置或取消 draft |
 | `/revise` | 要求修訂 |
 | `/cancel` | 取消訪談 |
 
@@ -376,6 +379,8 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\l
 4. 查看系統產出的摘要、設計、PDF/JSON review artifact。
 
 5. 用 `/ok`、`/revise` 或 `/cancel` 決定下一步。
+
+6. `/ok` 之後系統只建立系統雛形 draft 並列出摘要。回覆 `y` 才會建立 task / plan / handoff 並開始建置，回覆 `n` 取消。這一步與 `/建立` 的 draft 確認相同：專案名稱會再檢查一次，你的工作區若已有同名專案，系統會請你用 `#新名稱` 回覆。
 
 ### 8.6 使用者 Portal 前台
 
@@ -397,7 +402,7 @@ http://127.0.0.1:5361/portal/index.html
 
 4. 「結果檔案」會列出該使用者工作區中的 artifact。若 artifact 沒有 Google Drive 下載連結，portal 會使用 broker 的短效簽章下載連結。
 
-5. Portal 只顯示自己的 profile、結果紀錄與 artifact metadata；不回傳 broker 內部檔案路徑。
+5. Portal 只顯示自己的 profile、結果紀錄與 artifact metadata；不回傳 broker 內部檔案路徑。LINE 與 Portal 的回覆只寫專案資料夾名、封裝檔名與相對於個人工作區的位置（例如 `workspace: line/<你的 ID>`），不寫主機上的絕對路徑。
 
 Portal 是一般使用者操作入口；管理、審批、Drive OAuth、部署與系統監控仍使用 `line-admin.html`。
 

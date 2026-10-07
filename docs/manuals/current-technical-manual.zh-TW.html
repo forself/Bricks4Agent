@@ -1279,6 +1279,8 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\run-worker.ps
 <p><code>/cancel</code></p>
 </li>
 </ul>
+<p><code>/proj</code>（起手）與 <code>/ok</code> 和 <code>/建立</code> 走同一個權限判斷：effective <code>AllowProduction</code>（Basic 層一律遮罩為 false）不成立時回 <code>production_disabled</code>，回覆與 <code>/建立</code> 被拒時相同，不建立訪談狀態，也不建立 draft。<code>/revise</code>、<code>/cancel</code> 與訪談中的回答不另設閘。</p>
+<p><code>/ok</code> 在審查階段只做兩件事：把訪談標為 Confirmed，並把編譯出的專案定義轉成 <code>system_scaffold</code> draft（模板家族與已確認的需求寫入 scaffold spec）。它不建置任何檔案。使用者回 <code>y</code> 後，draft 走與 <code>/建立</code> 相同的 <code>ConfirmDraft</code>：專案名稱重查、promotion gate、execution intent、task、plan、handoff，之後才執行生成。使用者工作區已有同名專案資料夾時，draft 不帶專案名稱，改走 <code>#名稱</code> 補件。</p>
 <h3>9.2 Workflow states</h3>
 <p>High-level workflow separates：</p>
 <ul>
@@ -1312,6 +1314,13 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\run-worker.ps
 {AccessRoot}/{channel}/{userId}/projects
 </code></pre>
 <p>Document/code/site artifacts are written to managed workspace and represented in shared context / DB records for admin listing and delivery.</p>
+<p>使用者看得到的高階回覆（LINE 與 portal 的 <code>reply</code>、<code>follow_up_messages</code>，以及 portal 結果紀錄）不帶主機絕對路徑：</p>
+<ul>
+<li>回覆只寫 <code>project_folder</code>、相對於專案資料夾的 <code>entry_file</code>、<code>package_file</code> 檔名，以及相對於 <code>AccessRoot</code> 的工作區位置（例如 <code>workspace: line/&lt;user&gt;</code>）。</li>
+<li>生成失敗訊息中的絕對路徑只保留最後一段。</li>
+<li><code>FinalizeResult</code> 會把 <code>AccessRoot</code> 底下的路徑改寫成相對名稱，作為最後一道防線；portal 的 <code>/portal/results</code> 顯示歷史紀錄時也套用同樣的改寫。</li>
+<li><code>/high-level/line/process</code> 回給 line-worker 的結構化欄位（<code>draft</code>、<code>handoff</code>、<code>created_task</code>）仍帶工作區路徑，供受信任的 worker 與管理端使用，line-worker 只轉送 <code>reply</code> 與 <code>follow_up_messages</code>。</li>
+</ul>
 <h2>10. Agent Runtime</h2>
 <p><code>tools/agent</code> supports three modes:</p>
 <table>

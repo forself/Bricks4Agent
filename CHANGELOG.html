@@ -29,6 +29,16 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 </ul>
 <p>B4A 只收通用元件與通用能力；任何業務系統的專屬元件都不寫入 B4A。</p>
 <h2>未發行</h2>
+<h3>預設行為變更：<code>/proj</code> 與 <code>/ok</code> 需要 production 權限、<code>/ok</code> 改為建立 draft、高階回覆不帶主機路徑（2026-10-07）</h3>
+<p><strong>預設行為變更</strong></p>
+<ul>
+<li>專案訪談的 <code>/proj</code>（起手）與 <code>/ok</code> 和 <code>/建立</code> 走同一個權限判斷：effective <code>AllowProduction</code> 不成立（Basic 層一律如此）時回 <code>production_disabled</code>，回覆與 <code>/建立</code> 被拒時相同，不會開始訪談，也不會建立 draft。先前這兩個指令在權限閘之前處理，Basic 層也能走到建置。既有的訪談整合測試要先以會員身分開啟 production（測試 fixture 已改為先呼叫 <code>EnableLineProductionAsync</code>）。</li>
+<li><code>/ok</code> 不再當下建置。它把訪談標為 Confirmed，並把編譯出的專案定義轉成 <code>system_scaffold</code> draft，回覆摘要並請使用者回 <code>y</code> 確認或回 <code>n</code> 取消。回 <code>y</code> 後走與 <code>/建立</code> 相同的 draft 確認：專案名稱重查、升格閘、execution intent、task、plan、handoff，之後才生成與交付。使用者工作區已有同名專案資料夾時，draft 不帶專案名稱，改請使用者以 <code>#名稱</code> 補件。</li>
+<li>高階回覆不帶主機絕對路徑。<code>?profile</code>、<code>/name</code>、<code>/id</code> 的回覆改寫 <code>workspace: line/&lt;user&gt;</code> 這類相對位置；code_gen、system_scaffold、site_rebuild 的完成回覆只寫 <code>project_folder</code>、相對的 <code>entry_file</code> 與 <code>package_file</code> 檔名；要求專案名稱的回覆不再列出工作區根目錄；生成失敗訊息中的絕對路徑只保留最後一段。回覆、後續訊息與診斷欄位在回傳前會把受管工作區根目錄底下的路徑改寫成相對名稱，portal 的結果紀錄顯示時也套用同樣的改寫。draft 與 plan 的描述改寫專案資料夾名，不再寫專案的絕對路徑。</li>
+<li>新增 <code>HighLevelReplyRedactor</code>（路徑改寫工具）與 <code>HighLevelCoordinator.RedactHostPaths</code>。</li>
+<li>整合測試的 <code>BrokerFixture</code> 改以 <code>UseSetting</code> 設定資料庫路徑、受管工作區根目錄與執行模型建議開關（<code>HighLevelExecutionModelPolicy:Enabled=false</code>，確認 draft 時不連本機模型）。這些值在 host 建置前就被讀取，先前以 <code>ConfigureAppConfiguration</code> 覆寫沒有生效，測試共用 bin 下的 <code>broker.db</code> 並寫入本機的受管工作區；結束時改為先釋放 SQLite 連線池再刪除暫存檔。</li>
+</ul>
+<p>驗證入口：<code>dotnet test packages/csharp/tests/integration/Integration.Tests.csproj</code>（ProjectInterviewGateTests、ProjectInterviewLifecycleTests、ProjectInterviewReviewTests、PortalEndpointTests）、<code>dotnet test packages/csharp/tests/unit/Unit.Tests.csproj</code>（HighLevelReplyRedactorTests）、<code>npm run validate:broker-scope</code>。</p>
 <h3>預設行為變更：session 註冊需要註冊憑證、token 綁定所屬 session 並可續發（2026-10-05）</h3>
 <p><strong>預設行為變更</strong></p>
 <ul>

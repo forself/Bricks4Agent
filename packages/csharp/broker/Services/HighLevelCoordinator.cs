@@ -11,6 +11,7 @@ public class HighLevelCoordinator
 {
     private const string SystemPrincipalId = "system:high-level-coordinator";
     private const string ConversationDocumentPrefix = "convlog:";
+    private const string ProductionPermissionDeniedReply = "目前你的帳戶不能建立 production 任務。若需要此權限，請聯絡管理員。";
     private static readonly Regex PreferredUserCodePattern = new("^[A-Za-z0-9]{3,32}$", RegexOptions.CultureInvariant);
     private static readonly Regex LineUserIdPattern = new("^U[a-fA-F0-9]{32}$", RegexOptions.CultureInvariant);
 
@@ -201,6 +202,21 @@ public class HighLevelCoordinator
 
         if (projectInterviewCommand.IsProjectInterview && projectInterviewCommand.Command is { } command)
         {
+            // /proj 起手與 /ok 會建立專案資料夾、review 檔與建置 draft，
+            // 與 /建立 相同要求 AllowProduction（Basic 層一律遮罩為 false）。
+            if (ProjectInterviewCommandRequiresProduction(command) &&
+                !GetEffectivePermissions(profile).AllowProduction)
+            {
+                profile.LastDecision = HighLevelRouteMode.Production.ToString();
+                profile.LastUpdatedAt = DateTime.UtcNow;
+                IncrementDecisionCount(profile, HighLevelRouteMode.Production);
+                return BuildPermissionDeniedResult(
+                    channel, userId, trimmed, profile, trustedParse, workflow,
+                    HighLevelRouteMode.Production,
+                    ProductionPermissionDeniedReply,
+                    "production_disabled");
+            }
+
             var interviewResult = await HandleProjectInterviewCommandAsync(
                 channel,
                 userId,
@@ -708,8 +724,9 @@ public class HighLevelCoordinator
                 };
             }
 
-            // 批准 = 確認設計 + 啟動建置 handoff：把訪談編譯出的專案定義
-            // 轉成 system_scaffold draft，走既有的生成、打包、交付鏈。
+            // 批准 = 確認設計並建立 system_scaffold draft。建置不在這裡執行：
+            // 使用者回 y 之後走與 /建立 相同的 ConfirmDraft（名稱重查、升格閘、
+            // execution intent、task、plan、handoff）。
             if (command == ProjectInterviewCommand.Approve &&
                 document.SessionState.CurrentPhase == ProjectInterviewPhase.AwaitUserReview &&
                 document.CurrentProjectDefinition != null)
@@ -718,14 +735,26 @@ public class HighLevelCoordinator
                 var approvedDocument = document.WithSessionState(approvedState).ClearPendingOptions();
                 await _projectInterviewStateService.SaveTaskDocumentAsync(approvedDocument, cancellationToken);
 
-                var constructionReply = await BuildProjectFromInterviewAsync(
-                    channel, userId, profile, document, cancellationToken);
+                var interviewDraft = CreateDraftFromInterview(channel, userId, profile, document);
+                SaveTaskDraft(channel, userId, interviewDraft);
+                UpdatePendingDraftSnapshot(profile, interviewDraft);
 
+                var awaitingProjectName = string.IsNullOrWhiteSpace(interviewDraft.ProjectName);
                 return new HighLevelProcessResult
                 {
                     Mode = HighLevelRouteMode.Production,
-                    Reply = PrepareReplyWithoutGuide(profile, constructionReply),
-                    DecisionReason = "project interview approved and handed off to construction"
+                    Reply = PrepareReplyWithoutGuide(
+                        profile,
+                        awaitingProjectName
+                            ? BuildCompactProjectNameRequestReply(interviewDraft)
+                            : BuildInterviewDraftReply(interviewDraft, document.CurrentVersion)),
+                    FollowUpMessages = awaitingProjectName
+                        ? BuildProjectNameFollowUpMessages(interviewDraft)
+                        : _systemScaffoldService.BuildDraftFollowUpMessages(),
+                    Draft = interviewDraft,
+                    DecisionReason = awaitingProjectName
+                        ? "project interview approved; project folder already exists, new project name required"
+                        : "project interview approved; system scaffold draft awaits confirmation"
                 };
             }
 
@@ -767,10 +796,13 @@ public class HighLevelCoordinator
                         "這個指令不適用於目前的 /proj 階段。",
                         "That command is not valid in the current /proj phase.")),
                 Error = "project_interview_command_not_allowed",
-                DecisionReason = ex.Message
+                DecisionReason = HighLevelReplyRedactor.SanitizeDetail(ex.Message)
             };
         }
     }
+
+    private static bool ProjectInterviewCommandRequiresProduction(ProjectInterviewCommand command)
+        => command is ProjectInterviewCommand.StartProjectInterview or ProjectInterviewCommand.Approve;
 
     private async Task<HighLevelProcessResult> HandleProjectInterviewTurnAsync(
         string channel,
@@ -1209,94 +1241,93 @@ public class HighLevelCoordinator
     }
 
     /// <summary>
-    /// Interview -> construction handoff：把批准的訪談專案定義轉成
-    /// system_scaffold draft，交給既有的生成/打包/交付鏈。
+    /// Interview -> construction handoff：把批准的訪談專案定義轉成 system_scaffold draft。
+    /// 這裡只建立 draft，不建置；使用者回 y 後由 ConfirmDraft 產生 task、plan、handoff 並執行。
+    /// 若使用者工作區已有同名專案資料夾，draft 不帶專案名稱，改走既有的 #名稱 補件流程。
     /// </summary>
-    private async Task<string> BuildProjectFromInterviewAsync(
+    private HighLevelTaskDraft CreateDraftFromInterview(
         string channel,
         string userId,
         HighLevelUserProfile profile,
-        ProjectInterviewTaskDocument document,
-        CancellationToken cancellationToken)
+        ProjectInterviewTaskDocument document)
     {
         var definition = document.CurrentProjectDefinition!;
-        var projectFolderName = document.SessionState.ProjectFolderName
-            ?? document.SessionState.ProjectName
+        var projectName = string.IsNullOrWhiteSpace(document.SessionState.ProjectName)
+            ? null
+            : document.SessionState.ProjectName.Trim();
+        var folderSource = document.SessionState.ProjectFolderName
+            ?? projectName
             ?? $"interview-v{document.CurrentVersion}";
-        var managedPaths = BuildManagedPaths(channel, userId, profile, projectFolderName);
+        string? projectFolderName = SanitizePathSegment(folderSource, $"interview-v{document.CurrentVersion}");
+        projectName ??= projectFolderName;
 
+        var managedPaths = BuildManagedPaths(channel, userId, profile, projectFolderName);
+        string? projectNameValidationError = null;
+        if (Directory.Exists(managedPaths.ProjectRoot))
+        {
+            projectNameValidationError = "你的工作區已有同名專案。請以 # 開頭提供新的專案名稱，例如 #MySite2。";
+            projectName = null;
+            projectFolderName = null;
+            managedPaths = BuildManagedPaths(channel, userId, profile, null);
+        }
+
+        var summary = $"專案訪談 v{document.CurrentVersion} 批准的設計：{definition.TemplateFamily}（{definition.ProjectScale}）";
         var draft = new HighLevelTaskDraft
         {
-            DraftId = IdGen.New("draft"),
+            DraftId = $"draft_{Guid.NewGuid():N}"[..18],
             Channel = channel,
             UserId = userId,
             TaskType = "system_scaffold",
-            Title = document.SessionState.ProjectName ?? projectFolderName,
-            ProjectName = document.SessionState.ProjectName,
+            Title = projectName == null
+                ? $"Generate system scaffold from {channel} project interview"
+                : $"Generate system scaffold {projectName} from {channel} project interview",
+            ProjectName = projectName,
             ProjectFolderName = projectFolderName,
+            ProjectNameValidationError = projectNameValidationError,
+            RequiresProjectName = true,
             OriginalMessage = $"/proj approved v{document.CurrentVersion}",
-            Summary = $"專案訪談 v{document.CurrentVersion} 批准的設計：{definition.TemplateFamily}（{definition.ProjectScale}）",
-            ManagedPaths = managedPaths
+            Summary = summary,
+            Description = string.Join('\n', new[]
+            {
+                $"Origin: {channel}:{userId}",
+                projectName == null ? null : $"Project name: {projectName}",
+                projectFolderName == null ? null : $"Project folder: {projectFolderName}",
+                "",
+                $"Source: project interview v{document.CurrentVersion} approved design",
+                summary
+            }.Where(line => line != null)),
+            ManagedPaths = managedPaths,
+            ProposedPhases = BuildProposedPhases("system_scaffold"),
+            CreatedAt = DateTime.UtcNow,
+            ExpiresAt = DateTime.UtcNow.AddMinutes(Math.Max(1, _options.DraftTtlMinutes))
         };
-        draft.ScaffoldSpec = new HighLevelSystemScaffoldSpec
-        {
-            Channel = channel,
-            UserId = userId,
-            DraftId = draft.DraftId,
-            ProjectName = draft.Title,
-            RequestSummary = draft.Summary,
-            LatestUserInput = draft.OriginalMessage,
-            ScaffoldFamily = definition.TemplateFamily,
-            UiShape = definition.StyleProfile,
-            ReadyForConfirmation = true,
-            ConfirmedRequirements = BuildCompileAssertions(document.Assertions).ToList()
-        };
 
-        try
-        {
-            var result = await _systemScaffoldService.GenerateAndDeliverAsync(
-                draft, profile, draft.DraftId, cancellationToken);
+        // 先由 scaffold service 補齊預設的技術棧，再套用訪談確認的模板與需求。
+        _systemScaffoldService.InitializeDraft(draft);
+        var spec = draft.ScaffoldSpec!;
+        spec.ScaffoldFamily = definition.TemplateFamily;
+        spec.RequestSummary = summary;
+        spec.LatestUserInput = draft.OriginalMessage;
+        spec.ConfirmedRequirements = BuildCompileAssertions(document.Assertions).ToList();
+        _systemScaffoldService.RefreshDraftState(
+            draft,
+            "requirements_analysis",
+            "updated",
+            "已依專案訪談批准的設計建立系統雛形 draft。");
 
-            if (!result.Success)
-            {
-                _logger.LogWarning("Interview construction failed: {Message}", result.Message);
-                return BilingualProjectInterviewMessage(
-                    $"設計已確認，但建置失敗：{result.Message}\n可用 /revise 調整後重新批准。",
-                    $"Design confirmed, but construction failed: {result.Message}");
-            }
-
-            var lines = new List<string>
-            {
-                "設計已確認，專案建置完成。",
-                $"專案：{draft.Title}（設計版本 v{document.CurrentVersion}）"
-            };
-            if (!string.IsNullOrWhiteSpace(result.PackageFileName))
-            {
-                lines.Add($"封裝：{result.PackageFileName}");
-            }
-            if (result.Delivery?.GoogleDrive?.Success == true &&
-                !string.IsNullOrWhiteSpace(result.Delivery.GoogleDrive.WebViewLink))
-            {
-                lines.Add($"雲端連結：{result.Delivery.GoogleDrive.WebViewLink}");
-            }
-            else if (result.Delivery?.Notification != null)
-            {
-                lines.Add("下載連結將以通知送達。");
-            }
-            lines.Add($"專案位置：{result.ProjectRoot}");
-
-            return BilingualProjectInterviewMessage(
-                string.Join("\n", lines),
-                $"Design approved; project built{(string.IsNullOrWhiteSpace(result.PackageFileName) ? "" : $" and packaged as {result.PackageFileName}")}.");
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Interview construction handoff threw for {User}", userId);
-            return BilingualProjectInterviewMessage(
-                "設計已確認，但建置過程發生錯誤；設計版本已保留，可稍後重試。",
-                "Design confirmed, but construction hit an error; the approved design is preserved.");
-        }
+        UpdateDraftDescriptors(draft);
+        return draft;
     }
+
+    private string BuildInterviewDraftReply(HighLevelTaskDraft draft, int designVersion)
+        => BilingualProjectInterviewMessage(
+            string.Join('\n', new[]
+            {
+                $"設計 v{designVersion} 已確認，尚未開始建置。",
+                _systemScaffoldService.BuildDraftReply(draft),
+                "回覆 y 確認建置，或回覆 n 取消。"
+            }),
+            $"Design v{designVersion} approved. A system scaffold draft was created; nothing has been built yet. Reply y to confirm the build, or n to cancel.");
 
     private static IReadOnlyList<string> BuildCompileAssertions(IReadOnlyList<ProjectInterviewAssertion> assertions)
     {
@@ -1988,12 +2019,14 @@ public class HighLevelCoordinator
         });
     }
 
+    // 以下回覆會送到 LINE 與 portal：只放專案資料夾名、相對檔名與封裝檔名，
+    // 失敗訊息中的絕對路徑只保留最後一段。
     internal static string BuildArtifactReply(HighLevelDocumentArtifactResult artifactResult)
     {
         if (artifactResult.Delivery == null)
             return artifactResult.Success
                 ? "文件已生成，稍後將透過此對話發送下載連結。"
-                : $"文件生成失敗：{artifactResult.Message}";
+                : $"文件生成失敗：{HighLevelReplyRedactor.SanitizeDetail(artifactResult.Message)}";
 
         if (artifactResult.Success)
         {
@@ -2003,23 +2036,27 @@ public class HighLevelCoordinator
             return $"文件「{artifactResult.FileName}」已生成，但雲端上傳未完成。管理員將協助提供下載連結。";
         }
 
-        return $"文件生成失敗：{artifactResult.Message}";
+        return $"文件生成失敗：{HighLevelReplyRedactor.SanitizeDetail(artifactResult.Message)}";
     }
 
     internal static string BuildCodeArtifactReply(HighLevelCodeArtifactResult artifactResult)
     {
         if (!artifactResult.Success)
-            return $"網站原型生成失敗：{artifactResult.Message}";
+            return $"網站原型生成失敗：{HighLevelReplyRedactor.SanitizeDetail(artifactResult.Message)}";
 
         var lines = new List<string>
         {
             string.IsNullOrWhiteSpace(artifactResult.PackageFilePath) ? "已生成網站原型。" : "已生成離線網站封裝。",
-            $"project_root: {artifactResult.ProjectRoot}",
-            $"entry_file: {artifactResult.EntryFilePath}"
+            string.IsNullOrWhiteSpace(artifactResult.ProjectRoot)
+                ? string.Empty
+                : $"project_folder: {HighLevelReplyRedactor.LeafName(artifactResult.ProjectRoot)}",
+            string.IsNullOrWhiteSpace(artifactResult.EntryFilePath)
+                ? string.Empty
+                : $"entry_file: {HighLevelReplyRedactor.RelativeName(artifactResult.ProjectRoot, artifactResult.EntryFilePath)}"
         };
 
         if (!string.IsNullOrWhiteSpace(artifactResult.PackageFilePath))
-            lines.Add($"package_file: {artifactResult.PackageFilePath}");
+            lines.Add($"package_file: {HighLevelReplyRedactor.LeafName(artifactResult.PackageFilePath)}");
 
         if (artifactResult.Delivery?.GoogleDrive?.Success == true)
         {
@@ -2038,13 +2075,17 @@ public class HighLevelCoordinator
     internal static string BuildSystemScaffoldReply(HighLevelSystemScaffoldResult artifactResult)
     {
         if (!artifactResult.Success)
-            return $"系統雛形生成失敗：{artifactResult.Message}";
+            return $"系統雛形生成失敗：{HighLevelReplyRedactor.SanitizeDetail(artifactResult.Message)}";
 
         var lines = new List<string>
         {
             "已生成並封裝系統雛形。",
-            $"project_root: {artifactResult.ProjectRoot}",
-            $"package_file: {artifactResult.PackageFilePath}"
+            string.IsNullOrWhiteSpace(artifactResult.ProjectRoot)
+                ? string.Empty
+                : $"project_folder: {HighLevelReplyRedactor.LeafName(artifactResult.ProjectRoot)}",
+            string.IsNullOrWhiteSpace(artifactResult.PackageFilePath)
+                ? string.Empty
+                : $"package_file: {HighLevelReplyRedactor.LeafName(artifactResult.PackageFilePath)}"
         };
 
         if (artifactResult.Delivery?.GoogleDrive?.Success == true)
@@ -2064,7 +2105,7 @@ public class HighLevelCoordinator
     internal static string BuildSiteRebuildReply(HighLevelSiteRebuildResult artifactResult)
     {
         if (!artifactResult.Success)
-            return $"網站重製失敗：{artifactResult.Message}";
+            return $"網站重製失敗：{HighLevelReplyRedactor.SanitizeDetail(artifactResult.Message)}";
 
         var lines = new List<string>
         {
@@ -2073,7 +2114,9 @@ public class HighLevelCoordinator
             $"depth: {artifactResult.MaxDepth}",
             $"pages: {artifactResult.PagesCrawled}",
             $"routes: {artifactResult.RoutesGenerated}",
-            $"package_file: {artifactResult.PackageFilePath}"
+            string.IsNullOrWhiteSpace(artifactResult.PackageFilePath)
+                ? string.Empty
+                : $"package_file: {HighLevelReplyRedactor.LeafName(artifactResult.PackageFilePath)}"
         };
 
         if (artifactResult.Delivery?.GoogleDrive?.Success == true)
@@ -2311,40 +2354,6 @@ public class HighLevelCoordinator
         };
     }
 
-    private static string BuildDraftConfirmationReply(HighLevelTaskDraft draft)
-    {
-        var permissions = HighLevelUserPermissions.CreateDefault();
-        return string.Join('\n', new[]
-        {
-            $"- 受控網路搜尋：{(permissions.AllowQuery ? "允許" : "停用")}",
-            $"- 交通查詢：{(permissions.AllowTransport ? "允許" : "停用")}",
-            $"- Production 任務：{(permissions.AllowProduction ? "允許" : "停用")}",
-            $"- 使用者授權網站：{(permissions.AllowBrowserDelegated ? "允許" : "停用")}",
-            $"- 佈署能力：{(permissions.AllowDeployment ? "允許" : "停用")}",
-            $"- 受控網路搜尋：{(permissions.AllowQuery ? "允許" : "停用")}",
-            $"- 交通查詢：{(permissions.AllowTransport ? "允許" : "停用")}",
-            $"- Production 任務：{(permissions.AllowProduction ? "允許" : "停用")}",
-            $"- 使用者授權網站：{(permissions.AllowBrowserDelegated ? "允許" : "停用")}",
-            $"- 佈署能力：{(permissions.AllowDeployment ? "允許" : "停用")}",
-            "\u6211\u5224\u65b7\u9019\u662f\u4e00\u500b production \u8acb\u6c42\uff0c\u6e96\u5099\u9032\u5165\u53d7\u63a7\u4efb\u52d9\u6d41\u7a0b\u3002",
-            $"task_type: {draft.TaskType}",
-            $"title: {draft.Title}",
-            $"summary: {draft.Summary}",
-            string.IsNullOrWhiteSpace(draft.ProjectName) ? null : $"project_name: {draft.ProjectName}",
-            $"agent_access_root: {draft.ManagedPaths.AccessRoot}",
-            $"user_root: {draft.ManagedPaths.UserRoot}",
-            $"documents_root: {draft.ManagedPaths.DocumentsRoot}",
-            $"conversations_root: {draft.ManagedPaths.ConversationsRoot}",
-            string.IsNullOrWhiteSpace(draft.ManagedPaths.ProjectRoot) ? null : $"project_root: {draft.ManagedPaths.ProjectRoot}",
-            "",
-            "\u9810\u8a08 phases:",
-            string.Join('\n', draft.ProposedPhases.Select((phase, index) => $"{index + 1}. {phase.Title} ({phase.Kind})")),
-            "",
-            "\u82e5\u78ba\u8a8d\u8981\u5efa\u7acb task / plan\uff0c\u8acb\u56de\u8986\u300c\u78ba\u8a8d\u300d\u3001confirm \u6216 y\u3002",
-            "\u82e5\u8981\u53d6\u6d88\uff0c\u8acb\u56de\u8986\u300c\u53d6\u6d88\u300d\u3001cancel \u6216 n\u3002"
-        }.Skip(10).Where(line => !string.IsNullOrWhiteSpace(line)));
-    }
-
     private static string BuildPendingDraftReminder(HighLevelTaskDraft draft)
     {
         return string.Join('\n', new[]
@@ -2365,14 +2374,11 @@ public class HighLevelCoordinator
         {
             "\u9019\u662f\u4e00\u500b\u9700\u8981\u5efa\u7acb\u5c08\u6848\u76ee\u9304\u7684 production \u8acb\u6c42\u3002",
             $"task_type: {draft.TaskType}",
-            $"agent_access_root: {draft.ManagedPaths.AccessRoot}",
-            $"user_root: {draft.ManagedPaths.UserRoot}",
-            $"projects_root: {draft.ManagedPaths.ProjectsRoot}",
             "",
             string.IsNullOrWhiteSpace(draft.ProjectNameValidationError)
                 ? "\u8acb\u4ee5 # \u958b\u982d\u63d0\u4f9b\u5c08\u6848\u540d\u7a31\uff0c\u4f8b\u5982\uff1a#MySite\u3002"
                 : draft.ProjectNameValidationError,
-            "\u5c08\u6848\u540d\u7a31\u6703\u5728\u4f60\u7684 user_root/projects \u4e0b\u5efa\u7acb\u5c08\u5c6c\u76ee\u9304\uff0c\u540c\u540d\u5c08\u6848\u4e0d\u6703\u91cd\u8907\u5efa\u7acb\u3002",
+            "\u5c08\u6848\u540d\u7a31\u6703\u5728\u4f60\u7684\u5de5\u4f5c\u5340 projects \u8cc7\u6599\u593e\u4e0b\u5efa\u7acb\u5c08\u5c6c\u76ee\u9304\uff0c\u540c\u540d\u5c08\u6848\u4e0d\u6703\u91cd\u8907\u5efa\u7acb\u3002",
             "\u82e5\u8981\u53d6\u6d88\uff0c\u8acb\u56de\u8986\u300c\u53d6\u6d88\u300d\u3001cancel \u6216 n\u3002"
         }.Where(line => !string.IsNullOrWhiteSpace(line)));
     }
@@ -2465,10 +2471,8 @@ public class HighLevelCoordinator
             $"line_user_id: {profile.UserId}",
             $"display_name: {profile.PreferredDisplayName ?? "(not set)"}",
             $"user_code: {profile.PreferredUserCode ?? "(not set)"}",
-            $"user_root: {managedPaths.UserRoot}",
-            $"documents_root: {managedPaths.DocumentsRoot}",
-            $"conversations_root: {managedPaths.ConversationsRoot}",
-            $"projects_root: {managedPaths.ProjectsRoot}",
+            $"workspace: {ToWorkspaceRelativeName(managedPaths.UserRoot)}",
+            "workspace_folders: documents、conversations、projects",
             draft?.DraftId is null ? null : $"pending_draft_id: {draft.DraftId}",
             "",
             BuildPermissionSummary(profile),
@@ -2501,7 +2505,7 @@ public class HighLevelCoordinator
         {
             $"已更新稱呼為 {displayName}。",
             $"之後回覆會優先使用這個稱呼。",
-            $"目前 user_root: {managedPaths.UserRoot}"
+            $"目前工作區：{ToWorkspaceRelativeName(managedPaths.UserRoot)}"
         });
         return true;
     }
@@ -2587,7 +2591,7 @@ public class HighLevelCoordinator
             result = BuildPermissionDeniedResult(
                 channel, userId, message, profile, trustedParse, workflow,
                 HighLevelRouteMode.Production,
-                "目前你的帳戶不能建立 production 任務。若需要此權限，請聯絡管理員。",
+                ProductionPermissionDeniedReply,
                 "production_disabled");
             return true;
         }
@@ -2702,7 +2706,7 @@ public class HighLevelCoordinator
         {
             $"已更新使用者 ID 為 {userCode}。",
             $"之後個人工作區與延伸服務識別會使用這個 ID。",
-            $"目前 user_root: {nextPaths.UserRoot}"
+            $"目前工作區：{ToWorkspaceRelativeName(nextPaths.UserRoot)}"
         });
         return true;
     }
@@ -2717,7 +2721,7 @@ public class HighLevelCoordinator
 
         if (Directory.Exists(nextPaths.UserRoot))
         {
-            error = $"目標 user_root 已存在：{nextPaths.UserRoot}。請換一個不重複的使用者 ID。";
+            error = $"目標工作區已存在：{ToWorkspaceRelativeName(nextPaths.UserRoot)}。請換一個不重複的使用者 ID。";
             return false;
         }
 
@@ -2949,6 +2953,17 @@ public class HighLevelCoordinator
         };
     }
 
+    // 回覆中的工作區位置一律相對於受管根目錄（例如 line/bricks001），不帶主機絕對路徑。
+    private string ToWorkspaceRelativeName(string path)
+        => HighLevelReplyRedactor.RelativeName(_accessRoot, path);
+
+    /// <summary>
+    /// 把文字中受管工作區根目錄底下的主機絕對路徑改寫成相對名稱；
+    /// 所有高階回覆在回傳前都經過這一步，portal 顯示歷史回覆時也使用。
+    /// </summary>
+    public string RedactHostPaths(string? text)
+        => HighLevelReplyRedactor.RedactRoot(text, _accessRoot);
+
     private void EnsureManagedWorkspaceLayout(HighLevelManagedPaths paths)
     {
         Directory.CreateDirectory(paths.AccessRoot);
@@ -3011,7 +3026,7 @@ public class HighLevelCoordinator
         {
             $"Origin: {draft.Channel}:{draft.UserId}",
             $"Project name: {projectName}",
-            $"Project root: {managedPaths.ProjectRoot}",
+            $"Project folder: {projectFolderName}",
             "",
             "User request:",
             draft.OriginalMessage
@@ -3816,6 +3831,14 @@ public class HighLevelCoordinator
         {
             result.EffectiveUserId = userId;
         }
+
+        // 最後一道防線：回覆、後續訊息與診斷欄位都不帶受管工作區的主機絕對路徑。
+        result.Reply = RedactHostPaths(result.Reply);
+        result.FollowUpMessages = result.FollowUpMessages?.Select(RedactHostPaths).ToList();
+        if (result.Error != null)
+            result.Error = RedactHostPaths(result.Error);
+        if (result.DecisionReason != null)
+            result.DecisionReason = RedactHostPaths(result.DecisionReason);
 
         var parsed = trustedParse.Parsed;
         try

@@ -18,6 +18,7 @@ public class ProjectInterviewLifecycleTests : IClassFixture<BrokerFixture>
     {
         const string userId = "line-project-lifecycle";
         var projectName = $"#AlphaPortalLifecycle{Guid.NewGuid():N}";
+        await _fixture.EnableLineProductionAsync(userId);
         using var start = await _fixture.SendHighLevelLineTextAsync("/proj", userId);
         start.RootElement.GetProperty("data").GetProperty("reply").GetString().Should().Contain("專案訪談已開始");
         start.RootElement.GetProperty("data").GetProperty("reply").GetString().Should().Contain("Project interview started");
@@ -36,6 +37,7 @@ public class ProjectInterviewLifecycleTests : IClassFixture<BrokerFixture>
     public async Task ProjectInterview_RequiresExplicitProjectNameInBilingualReply()
     {
         const string userId = "line-project-name-bilingual";
+        await _fixture.EnableLineProductionAsync(userId);
         await _fixture.SendHighLevelLineTextAsync("/proj", userId);
 
         using var reply = await _fixture.SendHighLevelLineTextAsync("我要做一個內部系統", userId);
@@ -51,6 +53,7 @@ public class ProjectInterviewLifecycleTests : IClassFixture<BrokerFixture>
         const string userId = "line-project-scale-friendly";
         var projectName = $"#FriendlyScale{Guid.NewGuid():N}";
 
+        await _fixture.EnableLineProductionAsync(userId);
         await _fixture.SendHighLevelLineTextAsync("/proj", userId);
         using var scalePrompt = await _fixture.SendHighLevelLineTextAsync(projectName, userId);
         var message = scalePrompt.RootElement.GetProperty("data").GetProperty("reply").GetString();
@@ -68,6 +71,7 @@ public class ProjectInterviewLifecycleTests : IClassFixture<BrokerFixture>
         const string userId = "line-project-template-friendly";
         var projectName = $"#FriendlyTemplate{Guid.NewGuid():N}";
 
+        await _fixture.EnableLineProductionAsync(userId);
         await _fixture.SendHighLevelLineTextAsync("/proj", userId);
         await _fixture.SendHighLevelLineTextAsync(projectName, userId);
         using var templatePrompt = await _fixture.SendHighLevelLineTextAsync("2", userId);
@@ -83,6 +87,7 @@ public class ProjectInterviewLifecycleTests : IClassFixture<BrokerFixture>
     {
         const string userId = "line-project-expired-session";
 
+        await _fixture.EnableLineProductionAsync(userId);
         await _fixture.SendHighLevelLineTextAsync("/proj", userId);
         await _fixture.AgeProjectInterviewRequirementsAsync("line", userId, TimeSpan.FromHours(2));
 

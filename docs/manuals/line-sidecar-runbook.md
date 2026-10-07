@@ -474,7 +474,15 @@ Current happy-path sequence:
 
 6. answer with `/ok`, `/revise`, or `/cancel`
 
+7. after `/ok`, reply `y` to build or `n` to cancel
+
 Important notes:
+
+- `/proj` and `/ok` require the production permission (a member-tier account with production enabled by an administrator); a basic-tier account gets the same "cannot create production tasks" reply as `/建立`
+
+- `/ok` only creates a system scaffold draft; nothing is built until the user replies `y`, which goes through the same draft confirmation as `/建立` (project-name re-check, promotion gate, task, plan, handoff)
+
+- replies name the project folder, package file, and workspace relative to the managed root; they never contain absolute host paths
 
 - prompts are bilingual
 

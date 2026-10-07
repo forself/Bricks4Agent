@@ -577,9 +577,21 @@ npm run signing:wdac-repair -- -Deploy
 <li>
 <p>用 <code>/ok</code>、<code>/revise</code>、<code>/cancel</code> 表態</p>
 </li>
+<li>
+<p><code>/ok</code> 之後回 <code>y</code> 開始建置，回 <code>n</code> 取消</p>
+</li>
 </ol>
 <p>補充：</p>
 <ul>
+<li>
+<p><code>/proj</code> 與 <code>/ok</code> 需要 production 權限（會員層級，且管理員已開啟 production 任務）；基本註冊者會收到與 <code>/建立</code> 相同的權限不足回覆</p>
+</li>
+<li>
+<p><code>/ok</code> 只建立系統雛形 draft，使用者回 <code>y</code> 才建置，走與 <code>/建立</code> 相同的 draft 確認（專案名稱重查、升格閘、task、plan、handoff）</p>
+</li>
+<li>
+<p>回覆只寫專案資料夾名、封裝檔名與相對於受管根目錄的工作區位置，不寫主機絕對路徑</p>
+</li>
 <li>
 <p>prompts 目前是中英文雙語</p>
 </li>

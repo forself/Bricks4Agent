@@ -49,6 +49,8 @@ Status: **已實作 + 驗證(2026-06-14)** —— 模型/遮罩/註冊閘門/晉
 
 - 編輯(`SetLineUserPermissions`)維持寫 raw 旗標(管理員指派的意圖),由 effective 遮罩決定是否生效。
 
+- 2026-10-07 補上:專案訪談的 `/proj` 起手與 `/ok` 也檢查 effective `AllowProduction`,被拒時的回覆與錯誤碼(`production_disabled`)和 `/建立` 相同;先前這兩個指令在權限閘之前處理,Basic 層也能觸發建置。
+
 ### 註冊閘門(`TryHandleRegistrationGate`)
 
 - 新使用者:`deny_all` → 擋;否則 → Basic + Approved,放行。

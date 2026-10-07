@@ -558,9 +558,21 @@ npm run signing:wdac-repair -- -Deploy
 <li>
 <p>answer with <code>/ok</code>, <code>/revise</code>, or <code>/cancel</code></p>
 </li>
+<li>
+<p>after <code>/ok</code>, reply <code>y</code> to build or <code>n</code> to cancel</p>
+</li>
 </ol>
 <p>Important notes:</p>
 <ul>
+<li>
+<p><code>/proj</code> and <code>/ok</code> require the production permission (a member-tier account with production enabled by an administrator); a basic-tier account gets the same "cannot create production tasks" reply as <code>/建立</code></p>
+</li>
+<li>
+<p><code>/ok</code> only creates a system scaffold draft; nothing is built until the user replies <code>y</code>, which goes through the same draft confirmation as <code>/建立</code> (project-name re-check, promotion gate, task, plan, handoff)</p>
+</li>
+<li>
+<p>replies name the project folder, package file, and workspace relative to the managed root; they never contain absolute host paths</p>
+</li>
 <li>
 <p>prompts are bilingual</p>
 </li>

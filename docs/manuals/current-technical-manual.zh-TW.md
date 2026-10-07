@@ -586,6 +586,10 @@ Project interview commands:
 
 - `/cancel`
 
+`/proj`（起手）與 `/ok` 和 `/建立` 走同一個權限判斷：effective `AllowProduction`（Basic 層一律遮罩為 false）不成立時回 `production_disabled`，回覆與 `/建立` 被拒時相同，不建立訪談狀態，也不建立 draft。`/revise`、`/cancel` 與訪談中的回答不另設閘。
+
+`/ok` 在審查階段只做兩件事：把訪談標為 Confirmed，並把編譯出的專案定義轉成 `system_scaffold` draft（模板家族與已確認的需求寫入 scaffold spec）。它不建置任何檔案。使用者回 `y` 後，draft 走與 `/建立` 相同的 `ConfirmDraft`：專案名稱重查、promotion gate、execution intent、task、plan、handoff，之後才執行生成。使用者工作區已有同名專案資料夾時，draft 不帶專案名稱，改走 `#名稱` 補件。
+
 ### 9.2 Workflow states
 
 High-level workflow separates：
@@ -617,6 +621,13 @@ Workspace service uses:
 ```
 
 Document/code/site artifacts are written to managed workspace and represented in shared context / DB records for admin listing and delivery.
+
+使用者看得到的高階回覆（LINE 與 portal 的 `reply`、`follow_up_messages`，以及 portal 結果紀錄）不帶主機絕對路徑：
+
+- 回覆只寫 `project_folder`、相對於專案資料夾的 `entry_file`、`package_file` 檔名，以及相對於 `AccessRoot` 的工作區位置（例如 `workspace: line/<user>`）。
+- 生成失敗訊息中的絕對路徑只保留最後一段。
+- `FinalizeResult` 會把 `AccessRoot` 底下的路徑改寫成相對名稱，作為最後一道防線；portal 的 `/portal/results` 顯示歷史紀錄時也套用同樣的改寫。
+- `/high-level/line/process` 回給 line-worker 的結構化欄位（`draft`、`handoff`、`created_task`）仍帶工作區路徑，供受信任的 worker 與管理端使用，line-worker 只轉送 `reply` 與 `follow_up_messages`。
 
 ## 10. Agent Runtime
 

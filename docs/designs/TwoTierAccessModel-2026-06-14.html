@@ -88,6 +88,9 @@ Status: <strong>已實作 + 驗證(2026-06-14)</strong> —— 模型/遮罩/註
 <li>
 <p>編輯(<code>SetLineUserPermissions</code>)維持寫 raw 旗標(管理員指派的意圖),由 effective 遮罩決定是否生效。</p>
 </li>
+<li>
+<p>2026-10-07 補上:專案訪談的 <code>/proj</code> 起手與 <code>/ok</code> 也檢查 effective <code>AllowProduction</code>,被拒時的回覆與錯誤碼(<code>production_disabled</code>)和 <code>/建立</code> 相同;先前這兩個指令在權限閘之前處理,Basic 層也能觸發建置。</p>
+</li>
 </ul>
 <h3>註冊閘門(<code>TryHandleRegistrationGate</code>)</h3>
 <ul>

@@ -1848,6 +1848,9 @@ try
         AssertTrue(profileView.Reply.Contains("user_code: bricks001", StringComparison.Ordinal), "profile query shows preferred alphanumeric user id");
         AssertTrue(profileView.Reply.Contains("目前擁有的權限：", StringComparison.Ordinal), "profile query shows current permission summary");
         AssertTrue(profileView.Reply.Contains("交通查詢：?rail、?hsr、?bus、?flight", StringComparison.Ordinal), "profile query lists transport query permissions");
+        var verifyAccessRoot = Path.Combine(sandboxRoot, "managed");
+        AssertTrue(!profileView.Reply.Contains(verifyAccessRoot, StringComparison.OrdinalIgnoreCase), "profile query does not expose the host workspace path");
+        AssertTrue(profileView.Reply.Contains("workspace: line/bricks001", StringComparison.Ordinal), "profile query shows the workspace as a relative name");
 
         var updatedPermissions = coordinator.SetLineUserPermissions("line-user-a", new HighLevelUserPermissionsPatch
         {
@@ -1877,6 +1880,10 @@ try
 
         var basicStillDenied = await coordinator.ProcessLineMessageAsync("line-user-a", "/build website prototype");
         AssertTrue(basicStillDenied.Error == "production_disabled", "basic tier still masks production even when raw production flag is true");
+        var basicInterviewDenied = await coordinator.ProcessLineMessageAsync("line-user-a", "/proj");
+        AssertTrue(basicInterviewDenied.Error == "production_disabled", "basic tier cannot start a /proj interview");
+        var basicApproveDenied = await coordinator.ProcessLineMessageAsync("line-user-a", "/ok");
+        AssertTrue(basicApproveDenied.Error == "production_disabled", "basic tier cannot approve a /proj design");
 
         var promotedUser = coordinator.ReviewLineUserRegistration("line-user-a", "promote", "verify production access");
         AssertTrue(promotedUser?.AccessTier == HighLevelAccessTier.Member, "registration review promotes user to member tier");
@@ -1928,6 +1935,8 @@ try
         AssertTrue(!string.IsNullOrWhiteSpace(inlineProjectConfirmed.Reply), "code_gen confirm reply is not empty");
         AssertTrue(inlineProjectConfirmed.Reply.Contains("已生成網站原型", StringComparison.Ordinal), "code_gen confirm reply reports generated website prototype");
         AssertTrue(!inlineProjectConfirmed.Reply.Contains("目前擁有的權限", StringComparison.Ordinal), "code_gen confirm reply no longer appends the full command guide");
+        AssertTrue(!inlineProjectConfirmed.Reply.Contains(verifyAccessRoot, StringComparison.OrdinalIgnoreCase), "code_gen confirm reply does not expose host paths");
+        AssertTrue(inlineProjectConfirmed.Reply.Contains("project_folder: proj1", StringComparison.Ordinal), "code_gen confirm reply names only the project folder");
         AssertTrue(!string.IsNullOrWhiteSpace(inlineProjectRoot), "code_gen draft captures project root");
         AssertTrue(File.Exists(Path.Combine(inlineProjectRoot, "index.html")), "code_gen confirm writes index.html into project root");
         var generatedSiteContent = File.ReadAllText(Path.Combine(inlineProjectRoot, "index.html"), Encoding.UTF8);
@@ -1978,6 +1987,8 @@ try
         var scaffoldConfirmed = await coordinator.ProcessLineMessageAsync("line-scaffold-user", "confirm");
         AssertTrue(scaffoldConfirmed.CreatedTask != null && scaffoldConfirmed.CreatedTask.TaskType == "system_scaffold", "confirm creates broker task for system scaffold draft");
         AssertTrue(scaffoldConfirmed.Reply.Contains("已生成並封裝系統雛形", StringComparison.Ordinal), "system scaffold confirm reply reports packaged scaffold generation");
+        AssertTrue(!scaffoldConfirmed.Reply.Contains(verifyAccessRoot, StringComparison.OrdinalIgnoreCase), "system scaffold confirm reply does not expose host paths");
+        AssertTrue(scaffoldConfirmed.Reply.Contains("package_file: scaffoldproj-scaffold.zip", StringComparison.Ordinal), "system scaffold confirm reply names only the package file");
         var scaffoldPaths = coordinator.GetLineManagedPaths("line-scaffold-user");
         AssertTrue(scaffoldPaths != null, "system scaffold managed paths can be resolved");
         var scaffoldProjectRoot = scaffoldPaths is null ? throw new Exception("system scaffold managed paths unexpectedly null") : Path.Combine(scaffoldPaths.ProjectsRoot, "scaffoldproj");
@@ -1988,6 +1999,25 @@ try
         var scaffoldArtifacts = coordinatorWorkspaceService.ListArtifacts("line-scaffold-user");
         AssertTrue(scaffoldArtifacts.Any(item => item.RelatedTaskType == "system_scaffold" && item.FileName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)), "system scaffold confirm records packaged zip artifact");
         AssertTrue(scaffoldConfirmed.FollowUpMessages != null && scaffoldConfirmed.FollowUpMessages.Any(item => item.Contains("進度：", StringComparison.Ordinal)), "system scaffold confirm returns phase progress follow-up messages");
+
+        // /proj 訪談：/ok 只建立 system_scaffold draft，回 y 之後才走 ConfirmDraft 建立 task 與 handoff
+        await PromoteLineUserForProductionAsync("line-interview-user");
+        var interviewStart = await coordinator.ProcessLineMessageAsync("line-interview-user", "/proj");
+        AssertTrue(interviewStart.Error == null && interviewStart.Reply.Contains("專案訪談已開始", StringComparison.Ordinal), "member tier can start a /proj interview");
+        await coordinator.ProcessLineMessageAsync("line-interview-user", "#VerifyInterview");
+        await coordinator.ProcessLineMessageAsync("line-interview-user", "2");
+        var interviewReview = await coordinator.ProcessLineMessageAsync("line-interview-user", "1");
+        AssertTrue(interviewReview.Reply.Contains("/ok", StringComparison.Ordinal), "project interview reaches review with /ok guidance");
+        var interviewApproved = await coordinator.ProcessLineMessageAsync("line-interview-user", "/ok");
+        AssertTrue(interviewApproved.Draft?.TaskType == "system_scaffold", "/ok creates a system_scaffold draft");
+        AssertTrue(interviewApproved.CreatedTask == null, "/ok does not create a task before confirmation");
+        AssertTrue(!Directory.Exists(interviewApproved.Draft!.ManagedPaths.ProjectRoot), "/ok does not build the project before confirmation");
+        AssertTrue(interviewApproved.FollowUpMessages != null && interviewApproved.FollowUpMessages.Contains("y"), "/ok draft exposes the y confirm follow-up");
+        var interviewConfirmed = await coordinator.ProcessLineMessageAsync("line-interview-user", "y");
+        AssertTrue(interviewConfirmed.CreatedTask?.TaskType == "system_scaffold", "confirming the /ok draft creates a system_scaffold task");
+        AssertTrue(interviewConfirmed.Handoff != null, "confirming the /ok draft writes a handoff");
+        AssertTrue(interviewConfirmed.Reply.Contains("已生成並封裝系統雛形", StringComparison.Ordinal), "confirming the /ok draft builds through the legacy scaffold path");
+        AssertTrue(!interviewConfirmed.Reply.Contains(verifyAccessRoot, StringComparison.OrdinalIgnoreCase), "interview build reply does not expose host paths");
 
         await PromoteLineUserForProductionAsync("line-site-rebuild-user");
         var siteRebuildDraft = await coordinator.ProcessLineMessageAsync("line-site-rebuild-user", "/重製網站 https://example.edu/ 深度3 #sitecopy");

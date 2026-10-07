@@ -10,6 +10,18 @@ B4A 只收通用元件與通用能力；任何業務系統的專屬元件都不�
 
 ## 未發行
 
+### 預設行為變更：`/proj` 與 `/ok` 需要 production 權限、`/ok` 改為建立 draft、高階回覆不帶主機路徑（2026-10-07）
+
+**預設行為變更**
+
+- 專案訪談的 `/proj`（起手）與 `/ok` 和 `/建立` 走同一個權限判斷：effective `AllowProduction` 不成立（Basic 層一律如此）時回 `production_disabled`，回覆與 `/建立` 被拒時相同，不會開始訪談，也不會建立 draft。先前這兩個指令在權限閘之前處理，Basic 層也能走到建置。既有的訪談整合測試要先以會員身分開啟 production（測試 fixture 已改為先呼叫 `EnableLineProductionAsync`）。
+- `/ok` 不再當下建置。它把訪談標為 Confirmed，並把編譯出的專案定義轉成 `system_scaffold` draft，回覆摘要並請使用者回 `y` 確認或回 `n` 取消。回 `y` 後走與 `/建立` 相同的 draft 確認：專案名稱重查、升格閘、execution intent、task、plan、handoff，之後才生成與交付。使用者工作區已有同名專案資料夾時，draft 不帶專案名稱，改請使用者以 `#名稱` 補件。
+- 高階回覆不帶主機絕對路徑。`?profile`、`/name`、`/id` 的回覆改寫 `workspace: line/<user>` 這類相對位置；code_gen、system_scaffold、site_rebuild 的完成回覆只寫 `project_folder`、相對的 `entry_file` 與 `package_file` 檔名；要求專案名稱的回覆不再列出工作區根目錄；生成失敗訊息中的絕對路徑只保留最後一段。回覆、後續訊息與診斷欄位在回傳前會把受管工作區根目錄底下的路徑改寫成相對名稱，portal 的結果紀錄顯示時也套用同樣的改寫。draft 與 plan 的描述改寫專案資料夾名，不再寫專案的絕對路徑。
+- 新增 `HighLevelReplyRedactor`（路徑改寫工具）與 `HighLevelCoordinator.RedactHostPaths`。
+- 整合測試的 `BrokerFixture` 改以 `UseSetting` 設定資料庫路徑、受管工作區根目錄與執行模型建議開關（`HighLevelExecutionModelPolicy:Enabled=false`，確認 draft 時不連本機模型）。這些值在 host 建置前就被讀取，先前以 `ConfigureAppConfiguration` 覆寫沒有生效，測試共用 bin 下的 `broker.db` 並寫入本機的受管工作區；結束時改為先釋放 SQLite 連線池再刪除暫存檔。
+
+驗證入口：`dotnet test packages/csharp/tests/integration/Integration.Tests.csproj`（ProjectInterviewGateTests、ProjectInterviewLifecycleTests、ProjectInterviewReviewTests、PortalEndpointTests）、`dotnet test packages/csharp/tests/unit/Unit.Tests.csproj`（HighLevelReplyRedactorTests）、`npm run validate:broker-scope`。
+
 ### 預設行為變更：session 註冊需要註冊憑證、token 綁定所屬 session 並可續發（2026-10-05）
 
 **預設行為變更**

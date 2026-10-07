@@ -120,14 +120,16 @@ public static class PortalEndpoints
         portal.MapGet("/results", (
             HttpContext ctx,
             PortalAuthService auth,
-            HighLevelInteractionRecorder interactions) =>
+            HighLevelInteractionRecorder interactions,
+            HighLevelCoordinator coordinator) =>
         {
             if (!auth.TryRequireAuthenticated(ctx, out var session, out var denied))
                 return denied;
 
             var limit = ReadLimit(ctx, 30);
+            // 歷史紀錄可能是本次修正前寫入的，顯示前同樣改寫主機路徑。
             var items = interactions.ReadLatest("line", session.UserId, limit)
-                .Select(ToInteractionDto)
+                .Select(record => ToInteractionDto(record, coordinator))
                 .ToArray();
 
             return Results.Ok(ApiResponseHelper.Success(new
@@ -246,17 +248,17 @@ public static class PortalEndpoints
             rag_snippets = result.RagSnippets ?? []
         };
 
-    private static object ToInteractionDto(HighLevelInteractionRecord record)
+    private static object ToInteractionDto(HighLevelInteractionRecord record, HighLevelCoordinator coordinator)
         => new
         {
             interaction_id = record.InteractionId,
             occurred_at = record.OccurredAt,
             user_message = record.RawInput,
-            reply = record.RawReply,
+            reply = coordinator.RedactHostPaths(record.RawReply),
             route_mode = record.RouteMode,
             workflow_action = record.WorkflowAction,
-            decision_reason = record.DecisionReason,
-            error = record.Error,
+            decision_reason = record.DecisionReason == null ? null : coordinator.RedactHostPaths(record.DecisionReason),
+            error = record.Error == null ? null : coordinator.RedactHostPaths(record.Error),
             draft_id = record.DraftId,
             task_id = record.TaskId,
             plan_id = record.PlanId
