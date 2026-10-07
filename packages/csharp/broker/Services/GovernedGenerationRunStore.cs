@@ -143,14 +143,16 @@ public sealed class GovernedGenerationRunStore
     /// <summary>仍在進行中（啟動中、執行中、待交付）的執行。</summary>
     public IReadOnlyList<GovernedGenerationRun> ListOpen()
     {
-        var trusted = SystemContextDocuments.TrustedGlobalCondition("e");
-        var trustedLatest = SystemContextDocuments.TrustedGlobalCondition("x");
         var rows = _db.Query<SharedContextEntry>(
-            $@"SELECT e.* FROM shared_context_entries e
-               WHERE e.document_id LIKE @prefix AND {trusted}
-                 AND e.version = (SELECT MAX(x.version) FROM shared_context_entries x
-                                  WHERE x.document_id = e.document_id AND {trustedLatest})",
-            new { prefix = DocumentPrefix + "%" });
+            BuildListOpenSql(_db.Db.DatabaseType),
+            new
+            {
+                prefix = DocumentPrefix + "%",
+                lower = DocumentPrefix,
+                upper = DocumentPrefixUpperBound,
+                delivered = StatusPattern(GovernedGenerationRunStatus.Delivered),
+                failed = StatusPattern(GovernedGenerationRunStatus.Failed)
+            });
 
         return rows
             .Select(row => Deserialize(row.ContentRef))
@@ -158,6 +160,40 @@ public sealed class GovernedGenerationRunStore
             .Select(run => run!)
             .OrderBy(run => run.CreatedAt)
             .ToList();
+    }
+
+    /// <summary>
+    /// 前綴的上界：把 <see cref="DocumentPrefix"/> 最後的 '.' 換成下一個字元 '/'。
+    /// 依位元組比較時，<c>document_id &gt;= 前綴 AND document_id &lt; 上界</c> 恰好是以前綴開頭的所有 id。
+    /// </summary>
+    internal const string DocumentPrefixUpperBound = "generation.run/";
+
+    /// <summary>
+    /// <see cref="ListOpen"/> 的查詢。
+    /// SQLite 的 LIKE 不分大小寫，用不到 BINARY 定序的 (document_id, version) 索引，會掃過整張 shared_context_entries
+    /// （這張表也存放對話紀錄與其他系統文件，會持續變大）；所以 SQLite 改用範圍條件。其他資料庫的定序不一定依位元組排序，
+    /// 範圍條件可能漏掉文件，沿用前綴 LIKE（這些資料庫的前綴 LIKE 可以走索引）。
+    /// 最新版本已結束（delivered、failed）的執行在查詢中先排除，不必逐筆反序列化；是否進行中仍以反序列化後的狀態為準。
+    /// </summary>
+    internal static string BuildListOpenSql(BaseOrm.DbType databaseType)
+    {
+        var trusted = SystemContextDocuments.TrustedGlobalCondition("e");
+        var trustedLatest = SystemContextDocuments.TrustedGlobalCondition("x");
+        var prefixCondition = databaseType == BaseOrm.DbType.SQLite
+            ? "e.document_id >= @lower AND e.document_id < @upper"
+            : "e.document_id LIKE @prefix";
+        return $@"SELECT e.* FROM shared_context_entries e
+               WHERE {prefixCondition} AND {trusted}
+                 AND e.content_ref NOT LIKE @delivered AND e.content_ref NOT LIKE @failed
+                 AND e.version = (SELECT MAX(x.version) FROM shared_context_entries x
+                                  WHERE x.document_id = e.document_id AND {trustedLatest})";
+    }
+
+    /// <summary>執行紀錄 JSON 中某個狀態的片段（與 <see cref="Append"/> 的序列化方式相同），供查詢先排除已結束的執行。</summary>
+    internal static string StatusPattern(string status)
+    {
+        var fragment = JsonSerializer.Serialize(new Dictionary<string, string> { [nameof(GovernedGenerationRun.Status)] = status });
+        return "%" + fragment[1..^1] + "%";
     }
 
     private void Append(GovernedGenerationRun run, string author)

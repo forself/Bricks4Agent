@@ -16,6 +16,7 @@ namespace GenerationWorker.Handlers;
 ///   （broker 逾時重派不會重複生成）；否則清空該 requestId 目錄（只會由本 worker 建立）後重做。
 /// - 生成器先跑與 validate 相同的驗證；不通過時回 Success=false，錯誤訊息是結構化 errors 的 JSON。
 /// - zip 以決定性方式產生（排序、固定時間戳與權限位元），頂層只有 <c>site/</c> 與 <c>report/</c>。
+/// - 保留期限：每次生成前刪除超過 <c>Generation:RetentionHours</c> 的請求目錄（<see cref="OutputRetention"/>）。
 /// - 回傳的 payload 不含檔案內容，也不含主機的絕對路徑：zip 路徑相對於 OutputRoot。
 /// </summary>
 public sealed class ScaffoldGenerateHandler : ICapabilityHandler
@@ -105,6 +106,9 @@ public sealed class ScaffoldGenerateHandler : ICapabilityHandler
     {
         var outputRoot = Path.GetFullPath(_options.OutputRoot);
         Directory.CreateDirectory(outputRoot);
+
+        // 先清掉超過保留期限的產物（在生成的鎖內，不會碰到正在寫入的目錄）。
+        OutputRetention.Sweep(outputRoot, _options.Retention, DateTimeOffset.UtcNow, _logger);
 
         var slotDirectory = Path.Combine(outputRoot, scope.OutputSlot);
         var requestDirectory = Path.Combine(slotDirectory, requestId);

@@ -61,7 +61,7 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <tr>
 <td><code>page_ids</code></td>
 <td>array of strings, each at most 64 characters</td>
-<td>Generate only these pages</td>
+<td>Generate only these pages (the whole definition is still validated)</td>
 </tr>
 <tr>
 <td><code>title</code></td>
@@ -95,7 +95,7 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 </tr>
 <tr>
 <td><code>max_pages</code></td>
-<td>Maximum number of pages (integer)</td>
+<td>Maximum number of pages, an integer from 1 to 12 (the worker refuses other values)</td>
 </tr>
 <tr>
 <td><code>package</code></td>

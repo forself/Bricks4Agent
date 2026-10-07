@@ -54,10 +54,13 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <h2>輸出位置、冪等與回傳內容</h2>
 <ul>
 <li>
-<p>輸出位置<strong>只取自 grant scope</strong>（broker 寫入）：<code>{Generation:OutputRoot}/{output_slot}/{requestId}/</code>。scope 必須含 <code>output_slot</code>、<code>package_name</code>（兩者只能是英數、底線、連字號，1～80 字）、<code>max_pages</code>（1～12 的整數，與生成器驗證的頁數上限相同）與 <code>package: "definition-site-v1"</code>，缺少或格式不符就拒絕。請求參數中任何路徑類欄位一律不採用。</p>
+<p>輸出位置<strong>只取自 grant scope</strong>（broker 寫入）：<code>{Generation:OutputRoot}/{output_slot}/{requestId}/</code>。scope 必須含 <code>output_slot</code>、<code>package_name</code>（兩者只能是英數、底線、連字號，1～80 字，整個字串都要符合，結尾不得帶換行）、<code>max_pages</code>（1～12 的整數，與生成器驗證的頁數上限相同）與 <code>package: "definition-site-v1"</code>，缺少或格式不符就拒絕。請求參數中任何路徑類欄位一律不採用。</p>
 </li>
 <li>
 <p>冪等：同一 requestId 的 <code>result.json</code> 已存在，且 zip 的 sha256 與大小相符時，直接回傳同一結果（broker 逾時重派不會重複生成）；否則清空該 requestId 目錄後重做。worker 一次只處理一個請求（<code>MaxConcurrent=1</code>），同一請求的並行重派會等前一次完成後取用其結果。</p>
+</li>
+<li>
+<p>保留期限：產物（zip 與 <code>result.json</code>）在輸出根目錄保留 <code>Generation:RetentionHours</code>（預設 24 小時）。worker 啟動時與每次 generate 之前，刪除最後修改時間超過期限的 <code>{output_slot}/{requestId}/</code> 目錄，以及因此變空的 slot 目錄；只處理名稱符合上述格式的目錄，符號連結與 junction 一律略過（不跟隨、不刪除），含連結的請求目錄也不動。zip 含使用者的需求內容：broker 收下時已複製到使用者的文件區，被拒收、逾時後才產出或代理重試留下的套件也在期限後刪除。compose 中 broker 唯讀掛載輸出根目錄，清理只由 worker 做。</p>
 </li>
 <li>
 <p>定義不通過：回傳失敗，錯誤訊息是 <code>{"ok":false,"errors":[...]}</code>，不留下任何檔案。頁數超過 scope 的 <code>max_pages</code> 也以同樣格式回報（<code>MAX_PAGES_EXCEEDED</code>）。</p>
@@ -119,6 +122,10 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <tr>
 <td><code>Generation:MaxOldSpaceMegabytes</code></td>
 <td>node 子程序的 V8 heap 上限（MB），預設 256，最小 64</td>
+</tr>
+<tr>
+<td><code>Generation:RetentionHours</code></td>
+<td>產物保留時數，預設 24，範圍 1～8760；超過的請求目錄在啟動時與每次 generate 之前刪除</td>
 </tr>
 <tr>
 <td><code>Worker:Auth:*</code></td>

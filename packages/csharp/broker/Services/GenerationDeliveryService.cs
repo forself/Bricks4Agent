@@ -97,7 +97,8 @@ public sealed class GenerationDeliveryService : BackgroundService
         BrokerDb db,
         GenerationDeliverySignal signal,
         ILogger<GenerationDeliveryService> logger,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        HighLevelCoordinatorOptions? coordinatorOptions = null)
     {
         _options = options;
         _runs = runs;
@@ -109,16 +110,34 @@ public sealed class GenerationDeliveryService : BackgroundService
         _signal = signal;
         _logger = logger;
         _time = timeProvider ?? TimeProvider.System;
+        // 未提供時視為 Governed（照常輪詢）；設定值無效時 UsesGovernedPath 也是 true（fail-closed）。
+        _pollWhenIdle = coordinatorOptions?.Generation.UsesGovernedPath ?? true;
     }
 
+    private readonly bool _pollWhenIdle;
+
+    /// <summary>
+    /// Governed：依間隔輪詢（ingest 收下產物時立即喚醒）。
+    /// Legacy（預設）：不會再有新的受治理生成，只在啟動時接手先前以 Governed 模式啟動、尚未結束的執行；
+    /// 沒有進行中的執行時就停止輪詢，不再每隔幾秒查詢 shared_context_entries。
+    /// </summary>
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        var waitFirst = _pollWhenIdle;
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
-                await _signal.WaitAsync(_options.WatchdogInterval, stoppingToken);
-                await ProcessPendingAsync(stoppingToken);
+                if (waitFirst)
+                    await _signal.WaitAsync(_options.WatchdogInterval, stoppingToken);
+                waitFirst = true;
+
+                var open = await ProcessPendingAsync(stoppingToken);
+                if (!_pollWhenIdle && open == 0)
+                {
+                    _logger.LogInformation("System scaffold mode is Legacy and no governed generation run is open; the generation watchdog is idle.");
+                    break;
+                }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -131,13 +150,17 @@ public sealed class GenerationDeliveryService : BackgroundService
         }
     }
 
-    /// <summary>處理一次所有進行中的執行（測試與 hosted loop 共用；同一時間只有一個在跑）。</summary>
-    public async Task ProcessPendingAsync(CancellationToken cancellationToken = default)
+    /// <summary>
+    /// 處理一次所有進行中的執行（測試與 hosted loop 共用；同一時間只有一個在跑）。
+    /// 回傳這一輪開始時進行中的執行數。
+    /// </summary>
+    public async Task<int> ProcessPendingAsync(CancellationToken cancellationToken = default)
     {
         await _processing.WaitAsync(cancellationToken);
         try
         {
-            foreach (var run in _runs.ListOpen())
+            var open = _runs.ListOpen();
+            foreach (var run in open)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 try
@@ -152,6 +175,8 @@ public sealed class GenerationDeliveryService : BackgroundService
                     _logger.LogError(ex, "Governed generation run for task {TaskId} could not be processed.", run.TaskId);
                 }
             }
+
+            return open.Count;
         }
         finally
         {

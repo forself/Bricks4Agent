@@ -79,8 +79,8 @@ test('overview is the default section and field_types lists only open types', ()
     assert.ok(overview.content.page_definition.type.includes('list'));
     const fieldTypes = queryCatalog({ section: 'field_types' }, summary).content;
     const open = fieldTypes.types.map(entry => entry.type);
-    assert.equal(open.length, 20);
-    for (const closed of ['tel', 'slider', 'richtext', 'address', 'datetime', 'file']) {
+    assert.equal(open.length, 18);
+    for (const closed of ['tel', 'slider', 'richtext', 'address', 'datetime', 'file', 'list', 'chained']) {
         assert.ok(!open.includes(closed));
         assert.ok(fieldTypes.not_supported.includes(closed));
         assert.ok(open.includes(fieldTypes.use_instead[closed]), `${closed} substitute must be open`);

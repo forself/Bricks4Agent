@@ -9,7 +9,7 @@ const util = require('util');
 const { AgentLoop } = require('../lib/agent-loop');
 const { BrokerClient } = require('../lib/broker-client');
 const { LineListener } = require('../lib/line-listener');
-const { GENERATION_BASE_PROMPT } = require('../lib/system-prompt');
+const { GENERATION_BASE_PROMPT, GENERATION_CONTINUE_REMINDER, isGenerationTask } = require('../lib/system-prompt');
 
 const ROOT = path.resolve(__dirname, '..', '..', '..');
 // A per-run value, so a match in the prompt can only come from the governed config.
@@ -821,6 +821,257 @@ async function testGenerationTools() {
     await plainAgent.close();
 }
 
+/**
+ * Only a system_scaffold task, or a generate grant whose scope carries the output slot, is a generation task.
+ * The low-risk catalog and validate capabilities can reach ordinary agents (default capability sets or an
+ * administrator's choice); such an agent keeps the general base prompt and the project manual.
+ */
+async function testLowRiskGenerationGrantsKeepTheGeneralPrompt() {
+    const grant = (capabilityId, scopeOverride = {}) => ({ capabilityId, scopeOverride });
+    assert.strictEqual(isGenerationTask({
+        allowedCapabilities: [grant('file.read'), grant('generation.catalog.query'), grant('generation.definition.validate')],
+    }), false, 'catalog and validate grants alone do not make a generation task');
+    assert.strictEqual(isGenerationTask({
+        allowedCapabilities: [grant('generation.scaffold.generate', { routes: ['generate_scaffold'] })],
+    }), false, 'a generate grant without an output slot does not make a generation task');
+    assert.strictEqual(isGenerationTask({
+        allowedCapabilities: [grant('generation.scaffold.generate', { routes: ['generate_scaffold'], output_slot: '  ' })],
+    }), false, 'a blank output slot does not count');
+    assert.strictEqual(isGenerationTask({
+        allowedCapabilities: [grant('generation.scaffold.generate', { routes: ['generate_scaffold'], output_slot: 'task_x' })],
+    }), true, 'a generate grant with an output slot is a generation task');
+    assert.strictEqual(isGenerationTask({ allowedCapabilities: [], runtimeSpec: { taskType: 'system_scaffold' } }), true);
+    assert.strictEqual(isGenerationTask({ allowedCapabilities: [], runtimeSpec: { taskType: 'analysis' } }), false);
+    assert.strictEqual(isGenerationTask(null), false);
+
+    // An analysis agent that also holds the two low-risk generation grants.
+    const client = createFakeClient();
+    const specs = readGenerationToolSpecs().filter((spec) => spec.capability_template.risk_level === 'low');
+    assert.deepStrictEqual(specs.map((spec) => spec.tool_id), ['generation.catalog.query', 'generation.definition.validate']);
+    const baseCapabilities = client.listCapabilities.bind(client);
+    const baseGrants = client.listGrants.bind(client);
+    client.listCapabilities = async () => {
+        const response = await baseCapabilities();
+        return {
+            ...response,
+            data: [...response.data, ...specs.map((spec) => ({
+                capabilityId: spec.capability_bindings[0].capability_id,
+                route: spec.capability_bindings[0].route,
+                approvalPolicy: spec.capability_template.approval_policy,
+                riskLevelValue: 0,
+                resourceType: spec.capability_template.resource_type,
+                paramSchema: JSON.stringify(spec.input_schema),
+            }))],
+        };
+    };
+    client.listGrants = async () => {
+        const response = await baseGrants();
+        return {
+            ...response,
+            data: [...response.data, ...specs.map((spec) => ({
+                capabilityId: spec.capability_bindings[0].capability_id,
+                scopeOverride: JSON.stringify({ routes: [spec.capability_bindings[0].route] }),
+                remainingQuota: 5,
+                expiresAt: '2030-01-01T00:00:00Z',
+                statusValue: 0,
+            }))],
+        };
+    };
+    const baseRuntimeSpec = client.getRuntimeSpec.bind(client);
+    client.getRuntimeSpec = async () => {
+        const response = await baseRuntimeSpec();
+        return { ...response, data: { ...response.data, task_type: 'analysis', task_id: 'task_test' } };
+    };
+
+    const agent = new AgentLoop({
+        model: 'user-requested-model',
+        provider: createForbiddenDirectProvider(),
+        projectRoot: ROOT,
+        stream: false,
+        governed: {
+            brokerUrl: 'http://broker.local:5000',
+            brokerPubKey: 'fake-pub-key',
+            principalId: 'prn_test',
+            taskId: 'task_test',
+            roleId: 'role_reader',
+            registrationSecret: TEST_REGISTRATION_SECRET,
+            clientFactory: () => client,
+        },
+    });
+    await agent.init();
+    const toolNames = agent.getAvailableToolDefinitions().map((def) => def.function.name);
+    assert.deepStrictEqual(toolNames, ['read_file', 'query_component_catalog', 'validate_definition']);
+    const prompt = agent.messages[0].content;
+    assert.strictEqual(agent.generationTask, false);
+    assert(!prompt.startsWith(GENERATION_BASE_PROMPT), 'an ordinary agent keeps the general base prompt');
+    assert(!prompt.includes('## Governed Generation Workflow'), 'an ordinary agent gets no generation workflow');
+    assert(prompt.includes('## Project Manual'), 'an ordinary agent still gets the project manual');
+    await agent.close();
+}
+
+/** A scripted broker LLM: each call returns the next reply (text, or tool calls). */
+function scriptLlm(client, replies) {
+    const seen = [];
+    client.llmChat = async (body) => {
+        seen.push(body.messages.map((message) => ({ role: message.role, content: message.content })));
+        const reply = replies.shift();
+        assert(reply, 'the agent asked the model more often than the script expected');
+        return {
+            success: true,
+            data: {
+                content: reply.content || '',
+                tool_calls: (reply.tools || []).map(([name, args], index) => ({ id: `call_${seen.length}_${index}`, function: { name, arguments: args } })),
+                done: true,
+                model: 'broker-model',
+            },
+        };
+    };
+    return seen;
+}
+
+function generationAgent(client, maxIterations = 12) {
+    return new AgentLoop({
+        model: 'user-requested-model',
+        provider: createForbiddenDirectProvider(),
+        projectRoot: ROOT,
+        stream: false,
+        maxIterations,
+        governed: {
+            brokerUrl: 'http://broker.local:5000',
+            brokerPubKey: 'fake-pub-key',
+            principalId: 'prn_test',
+            taskId: 'task_test',
+            roleId: 'role_executor',
+            registrationSecret: TEST_REGISTRATION_SECRET,
+            clientFactory: () => client,
+        },
+    });
+}
+
+/**
+ * The generation prompt states that the run is unattended: a tool call in every turn until the summary, no
+ * definition in text, no questions. The loop backs this up with one reminder when the model replies without a
+ * tool call before a generate succeeded; a second such reply ends the run, and a summary after a successful
+ * generate ends it at once.
+ */
+async function testGenerationRunNeedsAToolCallEveryTurn() {
+    const template = { kind: 'definition-template', version: '0.1.0' };
+    const generateOk = JSON.stringify({ ok: true, zip: { path: 'slot/req/contacts-scaffold.zip', sha256: 'a'.repeat(64), size: 10 } });
+
+    // The prompt rules.
+    {
+        const client = createGenerationFakeClient();
+        const agent = generationAgent(client);
+        await agent.init();
+        const prompt = agent.messages[0].content.replace(/\s+/g, ' ');
+        assert(prompt.includes('Call a tool in every turn until the final summary'), 'the prompt requires a tool call every turn');
+        assert(prompt.includes('Never write the definition in your reply text'), 'the prompt forbids the definition in text');
+        assert(prompt.includes('You cannot ask the user anything'), 'the prompt forbids questions');
+        assert(prompt.includes('make reasonable assumptions'), 'the prompt asks for assumptions');
+        assert(prompt.includes('submit it directly with validate_definition'), 'step 2 submits the definition with validate_definition');
+        await agent.close();
+    }
+
+    // The definition written as text first: one reminder, then the normal flow and the summary.
+    {
+        const client = createGenerationFakeClient();
+        client.submitRequest = async (capabilityId) => ({
+            success: true,
+            data: {
+                execution_state: 'Succeeded',
+                result_payload: capabilityId === 'generation.scaffold.generate' ? generateOk : '{"ok":true}',
+            },
+        });
+        const seen = scriptLlm(client, [
+            { content: 'Here is the definition: {"kind":"definition-template"}' },
+            { tools: [['validate_definition', { template }]] },
+            { tools: [['generate_scaffold', { template, title: 'Contacts' }]] },
+            { content: 'Generated 3 pages.' },
+        ]);
+        const agent = generationAgent(client);
+        await agent.init();
+        assert.strictEqual(agent.generationTask, true);
+        const reply = await agent.send('build it');
+        assert.strictEqual(reply, 'Generated 3 pages.');
+        assert.strictEqual(seen.length, 4);
+        const reminders = agent.messages.filter((message) => message.role === 'user' && message.content === GENERATION_CONTINUE_REMINDER);
+        assert.strictEqual(reminders.length, 1, 'exactly one reminder');
+        assert.strictEqual(seen[1][seen[1].length - 1].content, GENERATION_CONTINUE_REMINDER, 'the reminder follows the text-only reply');
+        await agent.close();
+    }
+
+    // A clarifying question twice: one reminder, and the second text-only reply ends the run.
+    {
+        const client = createGenerationFakeClient();
+        const seen = scriptLlm(client, [
+            { content: 'Which fields do you need?' },
+            { content: 'I still need the field list.' },
+        ]);
+        const agent = generationAgent(client);
+        await agent.init();
+        const reply = await agent.send('build it');
+        assert.strictEqual(reply, 'I still need the field list.');
+        assert.strictEqual(seen.length, 2, 'only one reminder, then the run ends');
+        await agent.close();
+    }
+
+    // The reminder counts against the iteration limit.
+    {
+        const client = createGenerationFakeClient();
+        const seen = scriptLlm(client, [{ content: 'Which fields do you need?' }]);
+        const agent = generationAgent(client, 1);
+        await agent.init();
+        await agent.send('build it');
+        assert.strictEqual(seen.length, 1, 'no reminder when the iteration limit is reached');
+        await agent.close();
+    }
+
+    // A failed generate is not a success: a text-only reply after it still gets the one reminder.
+    {
+        const client = createGenerationFakeClient();
+        client.submitRequest = async () => ({ success: true, data: { execution_state: 'Failed', result_payload: '{"ok":false,"errors":[]}' } });
+        const seen = scriptLlm(client, [
+            { tools: [['generate_scaffold', { template }]] },
+            { content: 'Generation failed.' },
+            { content: 'Generation failed again; stopping.' },
+        ]);
+        const agent = generationAgent(client);
+        await agent.init();
+        await agent.send('build it');
+        assert.strictEqual(seen.length, 3);
+        await agent.close();
+    }
+
+    // Other tasks never get the reminder.
+    {
+        const client = createFakeClient();
+        let calls = 0;
+        client.llmChat = async () => {
+            calls += 1;
+            return { success: true, data: { content: 'done', tool_calls: [], done: true, model: 'broker-model' } };
+        };
+        const agent = new AgentLoop({
+            model: 'user-requested-model',
+            provider: createForbiddenDirectProvider(),
+            projectRoot: ROOT,
+            stream: false,
+            governed: {
+                brokerUrl: 'http://broker.local:5000',
+                brokerPubKey: 'fake-pub-key',
+                principalId: 'prn_test',
+                taskId: 'task_test',
+                roleId: 'role_reader',
+                registrationSecret: TEST_REGISTRATION_SECRET,
+                clientFactory: () => client,
+            },
+        });
+        await agent.init();
+        assert.strictEqual(await agent.send('hello'), 'done');
+        assert.strictEqual(calls, 1);
+        await agent.close();
+    }
+}
+
 /** AGENT_MAX_ITERATIONS and --max-iterations accept integers from 1 to 100; anything else keeps the default. */
 function testMaxIterationsParsing() {
     const { parseMaxIterations, DEFAULT_MAX_ITERATIONS } = require('../lib/utils');
@@ -938,6 +1189,8 @@ async function main() {
     await testKillSwitchSeenOnlyWhenRegisteringAgain();
     await testRegistrationRefusalEndsTheExecutor();
     await testGenerationTools();
+    await testLowRiskGenerationGrantsKeepTheGeneralPrompt();
+    await testGenerationRunNeedsAToolCallEveryTurn();
     testMaxIterationsParsing();
     console.log('Governed mode tests passed.');
 }

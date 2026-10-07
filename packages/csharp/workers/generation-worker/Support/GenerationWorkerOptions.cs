@@ -45,6 +45,17 @@ public sealed class GenerationWorkerOptions
     /// <summary>單一產物未壓縮總大小上限（位元組）。</summary>
     public long MaxPackageBytes { get; set; } = 256L * 1024 * 1024;
 
+    /// <summary>保留期限的上限（小時，一年）。</summary>
+    public const int MaxRetentionHours = 24 * 365;
+
+    /// <summary>
+    /// 產物在 <see cref="OutputRoot"/> 保留的時數（設定 <c>Generation:RetentionHours</c>，預設 24，範圍 1～8760）。
+    /// 超過期限的 <c>{output_slot}/{requestId}/</c> 目錄在 worker 啟動時與每次 generate 之前刪除。
+    /// </summary>
+    public int RetentionHours { get; set; } = 24;
+
+    public TimeSpan Retention => TimeSpan.FromHours(RetentionHours);
+
     public string CliPath => Path.Combine(ToolsRoot, CliRelativePath.Replace('/', Path.DirectorySeparatorChar));
 
     /// <summary>
@@ -81,6 +92,8 @@ public sealed class GenerationWorkerOptions
             return "Generation size limits must be positive.";
         if (MaxOldSpaceMegabytes < 64)
             return "Generation:MaxOldSpaceMegabytes must be at least 64.";
+        if (RetentionHours < 1 || RetentionHours > MaxRetentionHours)
+            return $"Generation:RetentionHours must be between 1 and {MaxRetentionHours}.";
         return null;
     }
 }

@@ -260,6 +260,7 @@ compose 中 adapter 服務以 **profile 隔離**(`--profile adapters`),預設不
 
 - 不呼叫 LLM、不連外:compose 中只接 internal 的 `generation-net`(成員只有 broker 與它),以 `--profile generation` 啟動。
 - 輸出位置只取自 grant scope(`output_slot`、`package_name`、`max_pages`、`package`),寫到 `generation-out` volume 的 `/out`;broker 以唯讀掛同一個 volume 在 `/generation-out`(`Generation__OutputRoot`)。請求參數中的路徑一律不採用。
+- 保留期限:產物在 `generation-out` 保留 `Generation:RetentionHours`(預設 24 小時,compose 可用 `WORKER_Generation__RetentionHours` 調整)。worker 啟動時與每次 generate 之前刪除超過期限的請求目錄;broker 唯讀掛載,清理只由 worker 做。zip 含使用者的需求內容,所以不無限期保留。
 - 加固:uid 10008、read-only rootfs、`/tmp` tmpfs、cap-drop ALL、no-new-privileges、`pids_limit: 128`;映像只從 node:22 取 node 執行檔放進 aspnet:10.0,建置時先執行一次確認相容。
 - 憑證是 broker 的 credential index 3(`GENERATION_WORKER_AUTH_KEY_ID`、`GENERATION_WORKER_AUTH_SHARED_SECRET`,由 `gen-stack-secrets.mjs` 產生)。
 - `AGENT_MAX_ITERATIONS` 可由環境變數設定(compose 預設 4;生成流程需要更多回合)。

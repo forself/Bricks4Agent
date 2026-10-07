@@ -3,7 +3,8 @@
 // 1. 以 golden 範例經 CLI build 到 .test-output/，用帶嚴格 CSP 標頭的本機伺服器提供 site/。
 // 2. 以 Edge（playwright-core，沿用 studio smoke 的載入方式）逐一走訪每個路由，確認渲染出預期數量的欄位或欄。
 // 3. 記憶體資料流程：列表新增一筆 → 明細看得到 → 表單編輯後列表更新 → 刪除。
-// 4. 另以涵蓋本切片全部開放欄位型別的定義重跑一次表單、列表、明細，確認每種型別在瀏覽器中可渲染。
+// 4. 另以涵蓋本切片全部開放欄位型別的定義重跑一次表單、列表、明細，確認每種型別在瀏覽器中可渲染；
+//    可直接輸入的型別與列表類型別都填入值（列表類的每一列都必須有輸入框），存檔後在明細頁核對存回的值。
 // 5. 只能新增的表單（只有 api.create，沒有列表或明細）可以連續送出多筆，每次送出後回到空白的新增表單。
 // 全程 console error、pageerror、HTTP 錯誤、CSP 違規為 0；DOM 中 svg、<style>、inline handler 為 0。
 // 結束時刪除本次的 .test-output 子目錄（.test-output 若因此變空也一併刪除）。
@@ -14,7 +15,7 @@ import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { applyListColumns } from '../../templates/definition-site/site-model.js';
-import { computeSliceFieldTypes, OPTION_TYPES } from '../generation/field-types.mjs';
+import { computeSliceFieldTypes, FIELD_TYPE_NOTES, OPTION_TYPES } from '../generation/field-types.mjs';
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, '..', '..');
@@ -134,6 +135,22 @@ function cleanup() {
 function expectedListColumns(definition) {
     const runtimeFields = definition.fields.map(field => ({ fieldType: field.type }));
     return applyListColumns(runtimeFields).filter(field => field.listOrder > 0).length;
+}
+
+// all-types 表單中直接輸入的值（存檔後在明細頁核對）。列表類欄位填在第一列的第一個文字輸入框。
+const TYPED_VALUES = Object.freeze({
+    text: 'Sample text',
+    email: 'sample@example.test',
+    textarea: 'Sample notes',
+    number: '73',
+    personinfo: 'Row Person',
+    phonelist: '0911222333',
+    socialmedia: 'row_social'
+});
+
+/** 列表類欄位：以 maxItems 限制列數的型別（每一列由元件自己的輸入框組成）。 */
+function isRepeatableType(type) {
+    return FIELD_TYPE_NOTES[type]?.validation.includes('maxItems') === true;
 }
 
 function buildAllTypesTemplate() {
@@ -350,7 +367,34 @@ async function allTypesScenario(browser, baseUrl, template) {
         check(`Form renders every field type open in this slice (${fields.length})`, missing.length === 0 && rendered.length === fields.length, `missing: ${missing.join(', ')}`);
         audits.push(['all-types form', await domAudit(page)]);
 
-        await page.fill('.form-field[data-field="f_text"] input', 'Sample text');
+        // 每種可直接輸入的型別都填一個值。列表類欄位的每一列都必須有輸入框：沒有輸入框的列只會存下空物件
+        // （list 型別因此被擋下），所以先確認有列（沒有就按新增），再在第一列的文字輸入框填值。
+        const typed = [];
+        const repeatable = fields.filter(field => isRepeatableType(field.type));
+        check('All-types form has the repeatable list types to fill in', repeatable.length > 0, JSON.stringify(fields.map(field => field.type)));
+        for (const field of fields) {
+            const value = TYPED_VALUES[field.type];
+            const fieldSelector = `.form-field[data-field="${field.name}"]`;
+            if (isRepeatableType(field.type)) {
+                const rows = page.locator(`${fieldSelector} .list-input__item`);
+                if (await rows.count() === 0) {
+                    await page.locator(`${fieldSelector} button`, { hasText: '+' }).last().click();
+                }
+                const rowCount = await rows.count();
+                const rowInputs = rowCount > 0 ? await rows.first().locator('input.text-input').count() : 0;
+                check(`${field.type} rows have input fields`, rowCount > 0 && rowInputs > 0, `rows ${rowCount}, text inputs in the first row ${rowInputs}`);
+                if (rowInputs > 0 && value) {
+                    await rows.first().locator('input.text-input').first().fill(value);
+                    typed.push([field, value]);
+                }
+            } else if (value) {
+                await page.locator(`${fieldSelector} input, ${fieldSelector} textarea`).first().fill(value);
+                typed.push([field, value]);
+            }
+        }
+        check('Every repeatable list type got a value', repeatable.every(field => typed.some(([entry]) => entry === field)),
+            JSON.stringify(typed.map(([field]) => field.type)));
+
         await page.getByRole('button', { name: '儲存' }).click();
         await waitForRoute(page, 'items-list');
         await page.waitForSelector('[data-site-main][data-record-count="1"]', { timeout: 10000 });
@@ -368,6 +412,9 @@ async function allTypesScenario(browser, baseUrl, template) {
         // 每種開放型別存下的值在明細頁都要顯示成文字（例如 {date,time} 這類物件值不得變成 [object Object]）。
         const detailText = await page.locator('.dynamic-detail').innerText();
         check('Detail shows every open type as text, never a raw object', !detailText.includes('[object'), detailText);
+        const missingValues = typed.filter(([, value]) => !detailText.includes(value)).map(([field, value]) => `${field.type}=${value}`);
+        check(`Detail shows the ${typed.length} values typed into the form, including list rows`, typed.length > 0 && missingValues.length === 0,
+            `missing: ${missingValues.join(', ')}; detail: ${detailText.replace(/\s+/g, ' ')}`);
         audits.push(['all-types detail', await domAudit(page)]);
 
         await page.locator('.dynamic-detail__footer button', { hasText: '編輯' }).click();

@@ -421,4 +421,149 @@ public sealed class GenerationDeliveryServiceTests : IDisposable
         TaskOf(failed).State.Should().Be(TaskState.Active);
         Notifications().Should().BeEmpty();
     }
+
+    // ── watchdog 的查詢與 Legacy 模式 ──
+
+    /// <summary>EXPLAIN QUERY PLAN 的一列（只取 detail）。</summary>
+    public sealed class QueryPlanRow
+    {
+        public string Detail { get; set; } = string.Empty;
+    }
+
+    /// <summary>
+    /// shared_context_entries 也存放對話紀錄與其他系統文件：watchdog 每輪的查詢在 SQLite 上必須走 (document_id, version) 索引，
+    /// 不能掃整張表（SQLite 的 LIKE 不分大小寫，用不到 BINARY 定序的索引）。
+    /// </summary>
+    [Fact]
+    public void ListOpenQuery_UsesTheDocumentIndex_OnSqlite()
+    {
+        var sql = GovernedGenerationRunStore.BuildListOpenSql(BaseOrm.DbType.SQLite);
+        var plan = _env.Db.Query<QueryPlanRow>("EXPLAIN QUERY PLAN " + sql, new
+        {
+            prefix = GovernedGenerationRunStore.DocumentPrefix + "%",
+            lower = GovernedGenerationRunStore.DocumentPrefix,
+            upper = GovernedGenerationRunStore.DocumentPrefixUpperBound,
+            delivered = GovernedGenerationRunStore.StatusPattern(GovernedGenerationRunStatus.Delivered),
+            failed = GovernedGenerationRunStore.StatusPattern(GovernedGenerationRunStatus.Failed)
+        }).Select(row => row.Detail).ToList();
+
+        plan.Should().NotBeEmpty();
+        plan.Should().Contain(detail => detail.Contains("idx_shared_context_doc_ver") && detail.Contains("document_id>?") && detail.Contains("document_id<?"),
+            string.Join(" | ", plan));
+        plan.Should().NotContain(detail => detail.StartsWith("SCAN", StringComparison.OrdinalIgnoreCase),
+            "no full table scan: " + string.Join(" | ", plan));
+
+        GovernedGenerationRunStore.BuildListOpenSql(BaseOrm.DbType.SqlServer).Should().Contain("LIKE @prefix",
+            "other databases keep the prefix LIKE, because their collations need not sort by bytes");
+    }
+
+    [Fact]
+    public void ListOpen_ReturnsOnlyOpenRuns_AndIgnoresDocumentsOutsideThePrefix()
+    {
+        GovernedGenerationRunStore.DocumentPrefixUpperBound.Should().Be(
+            GovernedGenerationRunStore.DocumentPrefix[..^1] + (char)(GovernedGenerationRunStore.DocumentPrefix[^1] + 1));
+        GovernedGenerationRunStore.StatusPattern(GovernedGenerationRunStatus.Failed).Should().Be("%\"Status\":\"failed\"%");
+
+        var running = _env.SeedRun();
+        var launching = _env.SeedRun(status: GovernedGenerationRunStatus.Launching);
+        var ingested = _env.SeedRun();
+        Ingested(ingested);
+        var endedLater = _env.SeedRun();
+        _env.Runs.TryUpdate(endedLater, "system:test", run =>
+        {
+            run.Status = GovernedGenerationRunStatus.Failed;
+            return true;
+        }).Should().BeTrue();
+        _env.SeedRun(status: GovernedGenerationRunStatus.Delivered);
+
+        // 前綴之外、但只差一個字元或大小寫的系統文件：不是執行紀錄，不能被當成進行中的執行。
+        foreach (var lookalike in new[] { "generation.run/x", "generation.runs.x", "GENERATION.RUN.x", "generation.ru" })
+        {
+            _env.Db.Insert(new SharedContextEntry
+            {
+                EntryId = IdGen.New("ctx"),
+                DocumentId = lookalike,
+                Version = 1,
+                Key = lookalike,
+                ContentRef = "{\"TaskId\":\"task_lookalike\",\"Status\":\"running\"}",
+                ContentType = "application/json",
+                Acl = "{}",
+                AuthorPrincipalId = "system:test",
+                TaskId = SystemContextDocuments.GlobalTaskId,
+                CreatedAt = DateTime.UtcNow
+            });
+        }
+
+        _env.Runs.ListOpen().Select(run => run.TaskId).Should().BeEquivalentTo(new[] { running, launching, ingested });
+    }
+
+    private GenerationDeliveryService ServiceInMode(string mode) => new(
+        _env.Options,
+        _env.Runs,
+        _delivery,
+        _spawnService,
+        _containers,
+        _env.Workspace,
+        _env.Db,
+        _env.Signal,
+        NullLogger<GenerationDeliveryService>.Instance,
+        _time,
+        new HighLevelCoordinatorOptions { Generation = new HighLevelGenerationOptions { SystemScaffoldMode = mode } });
+
+    [Fact]
+    public async Task LegacyMode_WithoutOpenRuns_StopsPolling()
+    {
+        var service = ServiceInMode(SystemScaffoldModes.Legacy);
+
+        await service.StartAsync(CancellationToken.None);
+        try
+        {
+            var finished = await Task.WhenAny(service.ExecuteTask!, Task.Delay(TimeSpan.FromSeconds(10)));
+            finished.Should().BeSameAs(service.ExecuteTask, "Legacy mode has nothing to watch and stops after the first pass");
+        }
+        finally
+        {
+            await service.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task LegacyMode_FinishesRunsLeftByGovernedMode_ThenStopsPolling()
+    {
+        _env.Options.WatchdogIntervalSeconds = 1;
+        var taskId = _env.SeedRun(containerId: "c0ffee000009");
+        Ingested(taskId);
+        var service = ServiceInMode(SystemScaffoldModes.Legacy);
+
+        await service.StartAsync(CancellationToken.None);
+        try
+        {
+            var finished = await Task.WhenAny(service.ExecuteTask!, Task.Delay(TimeSpan.FromSeconds(15)));
+            finished.Should().BeSameAs(service.ExecuteTask, "the loop stops once no run is open");
+        }
+        finally
+        {
+            await service.StopAsync(CancellationToken.None);
+        }
+
+        _env.Runs.Get(taskId)!.Status.Should().Be(GovernedGenerationRunStatus.Delivered, "a run left by Governed mode is still delivered");
+        _delivery.Delivered.Should().ContainSingle(run => run.TaskId == taskId);
+    }
+
+    [Fact]
+    public async Task GovernedMode_KeepsPolling_WithoutOpenRuns()
+    {
+        var service = ServiceInMode(SystemScaffoldModes.Governed);
+
+        await service.StartAsync(CancellationToken.None);
+        try
+        {
+            var finished = await Task.WhenAny(service.ExecuteTask!, Task.Delay(TimeSpan.FromSeconds(2)));
+            finished.Should().NotBeSameAs(service.ExecuteTask, "Governed mode keeps watching for new runs");
+        }
+        finally
+        {
+            await service.StopAsync(CancellationToken.None);
+        }
+    }
 }

@@ -10,6 +10,28 @@ B4A 只收通用元件與通用能力；任何業務系統的專屬元件都不�
 
 ## 未發行
 
+### 修正：受治理生成的第三輪審查修正（2026-10-07）
+
+**預設行為變更**
+
+- 一般代理不再被切成生成模式。`/agents/create`、dashboard 預選的清單（`/agents/capabilities/defaults`）與各任務類型（analysis、rag、assistant、full）的預設能力集合都不含 `generation.*`：生成授予只由受治理生成的啟動流程寫入，管理員仍可明確選取。代理只在任務類型是 `system_scaffold`，或 generate 授予的 scope 帶 `output_slot` 時才改用生成用的 system prompt；只拿到 catalog 或 validate 授予的代理照常使用一般的基礎提示與專案手冊。先前 Legacy 模式下沒有指定能力的一般代理也會拿到這兩個低風險授予，基礎提示因此被換掉、也不再附專案手冊。
+- 生成器的欄位型別再擋下 `list`（每一列都沒有輸入框，存下的是空物件，改用 `textarea`）與 `chained`（連動層級無法設定，改用 `select`；先前只發 `FIELD_TYPE_LIMITED` warning），實際開放 18 種；驗證器版本改為 `definition-validator/1.3.0`。
+- validate 帶 `page_ids` 時，跨頁一致性 warning 只看選取的頁，也就是 generate 會生成的頁：只選列表或明細、沒選同資源的表單時回 `RESOURCE_WITHOUT_FORM`。整份定義仍逐層驗證，沒選取的頁有錯時照樣不通過；代理工具的說明與兩個 TOOL.md 改為與這個行為一致。
+- 生成代理的工作流程明寫這是無人應答的執行：最後的摘要之前每一回合都要呼叫工具，定義直接放進 `validate_definition` 與 `generate_scaffold` 的參數，不向使用者提問而是自行假設並在摘要中說明。還沒有成功生成就回了沒有工具呼叫的訊息時，代理迴圈追加一次提醒（仍受回合上限約束）。`AGENT_RUN` 的說明與重試規則一致，不再寫「generate once」。
+- generation-worker 的產物保留期限：新設定 `Generation:RetentionHours`（預設 24，範圍 1～8760）。worker 啟動時與每次 generate 之前，刪除超過期限的 `{output_slot}/{requestId}/` 目錄（只處理名稱符合格式的目錄，符號連結與 junction 略過）。先前 zip 與其中的使用者需求內容一直留在輸出根目錄。
+- sidecar 的 `-GenerationMode Governed` 在沒有 Anthropic 或 OpenAI 金鑰時，啟動前先確認 LlmProxy 沿用的本機 Ollama（`LlmProxy:BaseUrl`）可達且有 `LlmProxy:DefaultModel`，不成立就停止並說明原因。先前就緒檢查只看 LlmProxy 是否啟用，每次確認都會建立注定失敗的任務。
+- Legacy 模式的交付與 watchdog 只在啟動時接手先前以 Governed 模式啟動、尚未結束的執行，沒有進行中的執行就停止輪詢。
+
+**修正**
+
+- 證據文件 `generation.execution.{requestId}` 改在執行紀錄的鎖內、確認任務仍在等待產物之後才寫入，與 ingested 狀態一起生效：任務在 ingest 途中結束（watchdog 期限或管理員停止）時，不再留下宣稱「已排入交付」的證據。
+- watchdog 的查詢在 SQLite 上改以範圍條件走 `(document_id, version)` 索引，不再每輪掃過整張 `shared_context_entries`；最新版本已結束的執行先在查詢中排除。前綴之外、只差大小寫的系統文件也不會再被當成執行紀錄。
+- `output_slot`、`package_name`、requestId 以及 broker 端的路徑段、zip 檔名與 sha256 的格式檢查改為整個字串都要符合（以 `\z` 結尾）。先前 .NET 的 `$` 讓結尾帶換行的值通過，管理員以 `/tasks/create` 自行撰寫 scope 時，可能在 Linux 上建立名稱含換行的目錄。
+- 文件：設計文件的 D5 引用與實作相同的回覆字串，D10 改寫成原決策與實際採用（PR-0 的決策列）；sidecar runbook（中英）與設計文件更正 LlmProxy 的前置條件（沒有金鑰時仍啟用並指向本機 Ollama）；generate 的 TOOL.md 寫明 `max_pages` 是 1～12 的整數；compose 必須補上的 env 變數改列在「預設行為變更」。
+- 定義網站的瀏覽器 smoke 在 all-types 表單對可直接輸入的型別與列表類型別填值，確認列表類的每一列都有輸入框，存檔後在明細頁核對存回的值。
+
+驗證入口：`npm run test:generation`、`npm run test:definition-site:browser`、`npm run validate:agent-governed`、`npm run validate:agent-container-config`、`dotnet test packages/csharp/tests/unit/Unit.Tests.csproj`（GenerationToolSpecTests、GenerationHandlerTests、GenerationIngestTests、GenerationDeliveryServiceTests、GovernedGenerationLauncherTests）。
+
 ### 修正：受治理生成的第二輪審查修正（2026-10-07）
 
 **預設行為變更**
@@ -57,13 +79,19 @@ B4A 只收通用元件與通用能力；任何業務系統的專屬元件都不�
 
 驗證入口：`npm run test:generation`、`npm run validate:agent-governed`、`dotnet test packages/csharp/tests/unit/Unit.Tests.csproj`（GovernedGenerationLauncherTests、GenerationDeliveryServiceTests、GenerationIngestTests、DefinitionValidateTruncationTests）、`dotnet test packages/csharp/tests/integration/Integration.Tests.csproj`（GovernedGenerationTests、ProjectInterviewGateTests）、`npm run validate:broker-scope`。
 
+### 預設行為變更：compose 的 broker 需要生成 worker 的 WorkerAuth 變數（2026-10-07）
+
+**預設行為變更**
+
+- `tools/agent/container/compose.yml` 的 broker 服務新增必填的 `GENERATION_WORKER_AUTH_KEY_ID` 與 `GENERATION_WORKER_AUTH_SHARED_SECRET`，不論是否啟用 generation profile，`up` 與 `down` 都需要：既有的 env 檔沒有這兩個變數時，堆疊無法啟動也無法拆除。升級時只需補上這兩個變數，不必輪替其他金鑰（可用 `gen-stack-secrets.mjs --out` 在 repo 以外產生一份暫存檔，只複製這兩行，再刪除暫存檔）。
+
 ### 新增：受治理生成（system_scaffold 第一個切片）（2026-10-07）
 
 **新增**
 
 - 新的模式開關 `HighLevelCoordinator:Generation:SystemScaffoldMode`：`Legacy`（預設，行為不變）或 `Governed`。Governed 時，使用者確認系統雛形 draft 後，broker 不在程序內寫任何專案檔案：任務指派給自己的 AI 主體與 `role_executor`、帶三個生成 grant，broker 啟動受控代理並立即回覆「已受理（任務 id）」；代理經 LLM 代理撰寫 DefinitionTemplate，經 `generation.catalog.query`、`generation.definition.validate`、`generation.scaffold.generate` 三個能力走 PEP，generation-worker 確定性產出多頁前端原型（list、detail、form，瀏覽器內記憶體 store，不含後端）並打成 zip；broker 驗證路徑與 sha256、寫入證據文件後，以既有的產物紀錄、Drive 或簽章下載連結與 LINE 通知交付，任務 Completed 並停用代理。前置條件不滿足時回「系統雛形生成暫不可用」且不建立任務，不退回程序內生成；逾時或代理未產出時由 watchdog 把任務標為 Failed 並通知使用者。流程、設定與部署見 [GovernedGeneration.md](docs/designs/GovernedGeneration.md)。
 - 生成器 `tools/generation/`（`cli.mjs` 的 catalog、validate、build，零依賴、Node 22）與通用外殼 `templates/definition-site/`（嚴格 CSP、hash 路由），golden 範例是通用的聯絡人三頁。外殼納入 `audit:csp` 掃描。欄位型別白名單是 page-gen 型別清單與 support matrix 的交集（28 種），本切片再擋下無後端原型中無法正確使用的型別，實際開放 20 種（被擋的型別、原因與替代見設計文件 §3.1）。
-- 新的 worker `packages/csharp/workers/generation-worker/`（Containerfile、compose 的 `generation` profile 與 internal 的 `generation-net`、sidecar 的 `-GenerationMode Governed`、`run-worker.ps1 -Worker generation`）。compose 的 broker 服務新增必填的 `GENERATION_WORKER_AUTH_KEY_ID` 與 `GENERATION_WORKER_AUTH_SHARED_SECRET`，不論是否啟用 generation profile，up 與 down 都需要：既有的 env 檔只需補上這兩個變數，不必輪替其他金鑰（可用 `gen-stack-secrets.mjs --out` 在 repo 以外產生一份暫存檔，只複製這兩行，再刪除暫存檔）；三個能力以 tool-spec 為唯一來源；代理新增 `query_component_catalog`、`validate_definition`、`generate_scaffold` 三個工具，生成類任務的 system prompt 說明工作流程與上限，`AGENT_MAX_ITERATIONS` 可由環境變數設定。
+- 新的 worker `packages/csharp/workers/generation-worker/`（Containerfile、compose 的 `generation` profile 與 internal 的 `generation-net`、sidecar 的 `-GenerationMode Governed`、`run-worker.ps1 -Worker generation`）。compose 的 broker 服務因此需要兩個新的必填 env 變數，屬於相容性變更，見同日的「預設行為變更：compose 的 broker 需要生成 worker 的 WorkerAuth 變數」；三個能力以 tool-spec 為唯一來源；代理新增 `query_component_catalog`、`validate_definition`、`generate_scaffold` 三個工具，生成類任務的 system prompt 說明工作流程與上限，`AGENT_MAX_ITERATIONS` 可由環境變數設定。
 - broker：`GovernedGenerationLauncher`、`GenerationIngestingDispatcher`（只處理 `generate_scaffold`）、`GenerationDeliveryService`（交付與 watchdog）、`AgentContainerLauncher`（`/agents/spawn` 與受治理生成共用的容器啟動，行為不變）；設定區段 `Generation`（`OutputRoot`、`DeadlineMinutes`、`AgentMaxIterations`、`MaxPages`、`WatchdogIntervalSeconds`、`MaxPackageBytes`）；保留前綴 `generation.execution.` 與 `generation.run.`；generate 超出 scope 送審時，審批畫面顯示標題、各頁摘要與定義內容。
 - 任務狀態新增 `Failed`（終止狀態，與 Completed、Cancelled 一樣不再接受註冊、續期、憑證簽發與取消）；`AgentSpawnService.DeactivateTaskAgent` 依任務指派的主體停用代理。
 - npm script：`test:generation`（已接進 `npm test`）與 `test:definition-site:browser`。

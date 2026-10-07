@@ -1,7 +1,7 @@
 'use strict';
 
 const { TOOL_DEFINITIONS, executeTool, getToolDescriptions } = require('./tool-registry');
-const { buildSystemPrompt } = require('./system-prompt');
+const { buildSystemPrompt, isGenerationTask, GENERATION_CONTINUE_REMINDER } = require('./system-prompt');
 const { parseToolCalls, stripToolCalls, formatToolResult } = require('./react-parser');
 const { colorize, bold, logInfo, logWarn, logError, logTool, formatDuration } = require('./utils');
 const { GovernedExecutor } = require('./governed-executor');
@@ -22,6 +22,7 @@ class AgentLoop {
         this.governedExecutor = null;
 
         this.messages = [];
+        this.generationTask = false;
         this.useNativeTools = true;
         this.toolDefinitions = TOOL_DEFINITIONS.slice();
         this.toolDescriptions = getToolDescriptions();
@@ -77,12 +78,14 @@ class AgentLoop {
             }
         }
 
+        const governedContext = this.governedExecutor ? this.governedExecutor.getPromptContext() : null;
+        this.generationTask = Boolean(governedContext) && isGenerationTask(governedContext);
         const systemPrompt = buildSystemPrompt({
             projectRoot: this.projectRoot,
             useReact: !this.useNativeTools,
             verbose: this.verbose,
             toolDescriptions: this.toolDescriptions,
-            governed: this.governedExecutor ? this.governedExecutor.getPromptContext() : null,
+            governed: governedContext,
             maxIterations: this.maxIterations,
         });
 
@@ -101,6 +104,9 @@ class AgentLoop {
 
         let iterations = 0;
         const startTime = Date.now();
+        // 生成任務：還沒有成功的 generate_scaffold 時遇到沒有工具呼叫的回合，追加一次提醒再繼續（仍受迭代上限約束）。
+        let generated = false;
+        let reminded = false;
 
         while (iterations < this.maxIterations) {
             iterations++;
@@ -164,6 +170,13 @@ class AgentLoop {
 
                 this.messages.push({ role: 'assistant', content });
 
+                if (this.generationTask && !generated && !reminded && iterations < this.maxIterations) {
+                    reminded = true;
+                    logWarn('Generation task replied without a tool call before generating; sending one reminder');
+                    this.messages.push({ role: 'user', content: GENERATION_CONTINUE_REMINDER });
+                    continue;
+                }
+
                 if (this.verbose) {
                     const elapsed = Date.now() - startTime;
                     logInfo(`Completed in ${iterations} iterations, ${formatDuration(elapsed)}`);
@@ -209,6 +222,10 @@ class AgentLoop {
                         noConfirm: this.noConfirm,
                         verbose: this.verbose,
                     });
+
+                if (toolName === 'generate_scaffold' && isSuccessfulGenerateResult(toolResult)) {
+                    generated = true;
+                }
 
                 if (this.useNativeTools) {
                     const toolMsg = { role: 'tool', content: toolResult };
@@ -315,6 +332,19 @@ class AgentLoop {
             const display = typeof value === 'string' && value.length > 50 ? `${value.slice(0, 50)}...` : value;
             return `${key}: ${JSON.stringify(display)}`;
         }).join(', ');
+    }
+}
+
+/** generate_scaffold 成功時，broker 回傳 ok: true 與 zip 的 sha256（失敗時是錯誤訊息或 ok: false）。 */
+function isSuccessfulGenerateResult(result) {
+    if (typeof result !== 'string') {
+        return false;
+    }
+    try {
+        const parsed = JSON.parse(result);
+        return parsed?.ok === true && typeof parsed?.zip?.sha256 === 'string' && parsed.zip.sha256.length > 0;
+    } catch (_) {
+        return false;
     }
 }
 

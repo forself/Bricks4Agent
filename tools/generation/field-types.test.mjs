@@ -58,8 +58,14 @@ test('page-gen exposes its field type list without running its CLI', () => {
 
 test('the slice blocks the types that cannot render, round-trip or keep a value without a backend', () => {
     const slice = computeSliceFieldTypes();
-    assert.deepEqual([...slice.blocked].sort(), ['address', 'addresslist', 'canvas', 'datetime', 'file', 'image', 'organization', 'richtext']);
-    assert.equal(slice.allowed.length, 20);
+    assert.deepEqual([...slice.blocked].sort(), [
+        'address', 'addresslist', 'canvas', 'chained', 'datetime', 'file', 'image', 'list', 'organization', 'richtext'
+    ]);
+    assert.equal(slice.allowed.length, 18);
+    assert.deepEqual([...slice.allowed].sort(), [
+        'checkbox', 'color', 'date', 'email', 'hidden', 'multiselect', 'number', 'password', 'personinfo',
+        'phonelist', 'radio', 'select', 'socialmedia', 'student', 'text', 'textarea', 'time', 'toggle'
+    ]);
     for (const type of slice.blocked) assert.ok(!slice.allowed.includes(type));
     for (const type of Object.keys(RUNTIME_BLOCKED_FIELD_TYPES)) {
         assert.ok(EXPECTED_INTERSECTION.includes(type), `${type} must come from the intersection`);
@@ -96,7 +102,16 @@ test('field type descriptions carry the matrix default component', () => {
     assert.equal(select.component, 'Dropdown');
     assert.match(select.requires, /options/);
     assert.equal(entries.find(entry => entry.type === 'hidden').component, null);
-    assert.equal(entries.length, 20);
+    assert.equal(entries.length, 18);
+});
+
+test('list and chained are closed: their rows or levels cannot be filled in, so they never store a value', () => {
+    const { allowed } = computeSliceFieldTypes();
+    assert.ok(!allowed.includes('list'));
+    assert.ok(!allowed.includes('chained'));
+    assert.equal(FIELD_TYPE_SUBSTITUTES.list, 'textarea');
+    assert.equal(FIELD_TYPE_SUBSTITUTES.chained, 'select');
+    assert.ok(!describeFieldTypes().some(entry => entry.type === 'list' || entry.type === 'chained'));
 });
 
 test('repeatable list types offer maxItems only and no required, because empty rows count as values', () => {

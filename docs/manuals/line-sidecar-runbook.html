@@ -193,15 +193,16 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <p>A container runtime (podman or docker, selectable with <code>B4A_CONTAINER_RUNTIME</code>) is on PATH, so the ContainerManager is enabled (or enable it explicitly with <code>B4A_CONTAINER_MANAGER_ENABLED</code>).</p>
 </li>
 <li>
-<p>LlmProxy is enabled: the sidecar enables it only when an API key for an LLM provider is configured.</p>
+<p>LlmProxy can reach a model: with an Anthropic or OpenAI API key the sidecar switches LlmProxy to that provider. Without a key LlmProxy stays enabled with the local Ollama from the broker <code>appsettings.json</code> (<code>LlmProxy:BaseUrl</code> and <code>LlmProxy:DefaultModel</code>), so that Ollama and model must be available; <code>-GenerationMode Governed</code> checks this before it starts and stops with the reason when it fails.</p>
 </li>
 <li>
 <p>generation-worker can find node: <code>B4A_NODE_PATH</code> or <code>node</code> on PATH.</p>
 </li>
 </ol>
-<p>When step 2 or 3 is missing, confirming a system scaffold replies that system scaffold generation is unavailable and creates no task. The readiness check cannot detect a missing step 1 or 4 (it does not look at the image version or check that the worker can run node); every generation then fails only when the agent exits or the watchdog deadline passes, so check them before you enable the mode.</p>
+<p>When step 2 is missing, confirming a system scaffold replies that system scaffold generation is unavailable and creates no task; step 3 is checked by the start script (the readiness check only sees that LlmProxy is enabled, not whether its provider can be reached). The readiness check cannot detect a missing step 1 or 4 (it does not look at the image version or check that the worker can run node); every generation then fails only when the agent exits or the watchdog deadline passes, so check them before you enable the mode.</p>
 <p>Without <code>-GenerationMode</code> (or with <code>Legacy</code>) nothing changes. Spawned agents in the sidecar use the documented <code>AllowAgentDefaultNetwork</code> exception (they are not on an internal network), so the request text an agent sees could leave the host; a dedicated internal agent network is planned.</p>
 <p>To run the worker by hand against a running broker: <code>run-worker.ps1 -Worker generation</code> (add <code>-GenerationOutputRoot</code> to use another output root; the broker must use the same one).</p>
+<p>Package retention: generation-worker removes request directories in <code>generation-out</code> that are older than <code>Generation:RetentionHours</code> (default 24 hours) when it starts and before every generation. A zip holds the user's requirement text; the broker copies it into the user's documents when it accepts the package, and once the user deletes that copy, the one in <code>generation-out</code> is gone after the retention period at the latest.</p>
 <h3>3.2 LINE outbound rate limit</h3>
 <p>line-worker applies worker-local outbound rate limiting to <code>line.message.send</code> and <code>line.audio.send</code>, keyed by recipient + capability. Defaults live in <code>packages/csharp/workers/line-worker/appsettings*.json</code>:</p>
 <ul>

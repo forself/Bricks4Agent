@@ -129,6 +129,44 @@ public sealed class GenerationToolSpecTests : IDisposable
         validator.Validate("""{"title":"Contacts"}""", Schema("generation.scaffold.generate")).IsValid.Should().BeFalse();
     }
 
+    /// <summary>
+    /// catalog 與 validate 是低風險、beta（視為啟用）的能力，Legacy 模式下也會同步進能力表；
+    /// 但生成授予只由受治理生成的啟動流程寫入，所以 /agents/create 與 dashboard 的預設能力集合都不含 generation.*。
+    /// </summary>
+    [Fact]
+    public async Task DefaultAgentCapabilitySets_LeaveOutTheGenerationCapabilities()
+    {
+        await new ToolSpecCapabilitySyncService(LoadRepositoryRegistry(), _db, NullLogger<ToolSpecCapabilitySyncService>.Instance)
+            .StartAsync(CancellationToken.None);
+        _db.Get<Capability>("generation.catalog.query")!.RiskLevel.Should().Be(RiskLevel.Low, "the regression needs a low-risk generation capability in the table");
+
+        var spawn = new AgentSpawnService(_db);
+        spawn.GetDefaultCapabilities().Should().NotBeEmpty()
+            .And.NotContain(id => id.StartsWith("generation.", StringComparison.Ordinal));
+        foreach (var taskType in new[] { "analysis", "rag", "assistant", "full", "other" })
+        {
+            spawn.GetCapabilitiesForTaskType(taskType).Should().NotBeEmpty(taskType)
+                .And.NotContain(id => id.StartsWith("generation.", StringComparison.Ordinal), taskType);
+        }
+
+        var defaultAgent = spawn.CreateAgent(new AgentSpawnRequest { AgentId = "defaults", RequestedBy = "test" });
+        defaultAgent.Success.Should().BeTrue(defaultAgent.Error);
+        defaultAgent.GrantedCapabilities.Should().NotContain(id => id.StartsWith("generation.", StringComparison.Ordinal));
+        defaultAgent.RuntimeDescriptor.Should().NotContain("generation.");
+
+        var analysisAgent = spawn.CreateAgent(new AgentSpawnRequest { AgentId = "analysis", TaskType = "analysis", RequestedBy = "test" });
+        analysisAgent.GrantedCapabilities.Should().NotContain(id => id.StartsWith("generation.", StringComparison.Ordinal));
+
+        // 管理員明確選取時仍可授予（預設集合之外的選擇不受影響）。
+        var chosen = spawn.CreateAgent(new AgentSpawnRequest
+        {
+            AgentId = "chosen",
+            RequestedBy = "test",
+            CapabilityIds = new List<string> { "generation.catalog.query" }
+        });
+        chosen.GrantedCapabilities.Should().Equal("generation.catalog.query");
+    }
+
     [Fact]
     public void InProcessDispatcher_DoesNotHandleTheGenerationRoutes()
     {

@@ -38,6 +38,7 @@ var generationOptions = new GenerationWorkerOptions
     BuildTimeout = TimeSpan.FromSeconds(config.GetValue("Generation:BuildTimeoutSeconds", 120)),
     MaxStdoutBytes = config.GetValue("Generation:MaxStdoutBytes", 4 * 1024 * 1024),
     MaxOldSpaceMegabytes = config.GetValue("Generation:MaxOldSpaceMegabytes", 256),
+    RetentionHours = config.GetValue("Generation:RetentionHours", 24),
 };
 
 var configurationError = generationOptions.Validate();
@@ -48,6 +49,8 @@ if (configurationError != null)
 }
 
 Directory.CreateDirectory(generationOptions.OutputRoot);
+// 產物含使用者的需求內容：啟動時先清掉超過保留期限的請求目錄（之後每次 generate 前也會清）。
+OutputRetention.Sweep(generationOptions.OutputRoot, generationOptions.Retention, DateTimeOffset.UtcNow, handlerLogger);
 
 var options = new WorkerHostOptions
 {

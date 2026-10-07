@@ -284,6 +284,12 @@ public sealed class GovernedGenerationLauncherTests : IDisposable
         workItem["kind"]!.GetValue<string>().Should().Be("system_scaffold_generation");
         workItem["limits"]!["max_pages"]!.GetValue<int>().Should().Be(12);
         run.Should().NotContain(_env.Root);
+
+        // 與 system prompt 的工作流程一致：代理無人應答、每一回合都要呼叫工具，generate 只在流程允許時重試。
+        var instructions = run[..run.IndexOf("WORK_ITEM_JSON: ", StringComparison.Ordinal)];
+        instructions.Should().Contain("call a tool in every turn until the final summary");
+        instructions.Should().Contain("call it again only when the workflow allows a retry");
+        instructions.Should().NotContain("generate once");
     }
 
     [Fact]

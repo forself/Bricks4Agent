@@ -513,7 +513,7 @@ const TOOL_DEFINITIONS = [
                     page_ids: {
                         type: 'array',
                         items: { type: 'string', maxLength: 64 },
-                        description: '只驗證這些頁面 id（省略則全部）',
+                        description: '仍驗證整份定義；pages 與跨頁一致性的 warning 只看這些頁面 id，也就是 generate_scaffold 會生成的頁（省略則全部）',
                     },
                 },
                 required: ['template'],
@@ -532,7 +532,7 @@ const TOOL_DEFINITIONS = [
                     page_ids: {
                         type: 'array',
                         items: { type: 'string', maxLength: 64 },
-                        description: '只生成這些頁面 id（省略則全部）',
+                        description: '只生成這些頁面 id，但仍驗證整份定義（省略則全部）',
                     },
                     title: { type: 'string', maxLength: 120, description: '原型的標題' },
                 },
@@ -576,12 +576,18 @@ const TOOL_TO_CAPABILITY = {
     generate_scaffold: 'generation.scaffold.generate',
 };
 
-/** 受治理生成的能力：任一個出現在授予中，就是生成類任務（system prompt 會加上工作流程與上限）。 */
+/** 受治理生成的三個能力。 */
 const GENERATION_CAPABILITY_IDS = Object.freeze([
     'generation.catalog.query',
     'generation.definition.validate',
     'generation.scaffold.generate',
 ]);
+
+/**
+ * generate 能力。只有它的授予（scope 帶 output_slot）或 system_scaffold 任務類型會讓 system prompt 切成生成模式；
+ * catalog 與 validate 是低風險能力，一般代理也可能拿到。
+ */
+const GENERATION_SCAFFOLD_CAPABILITY_ID = 'generation.scaffold.generate';
 
 // ─── 工具分派 ───
 
@@ -672,6 +678,7 @@ function getToolDescriptions(options = {}) {
 
 module.exports = {
     GENERATION_CAPABILITY_IDS,
+    GENERATION_SCAFFOLD_CAPABILITY_ID,
     TOOL_DEFINITIONS,
     TOOL_TO_CAPABILITY,
     capabilityIdForTool,

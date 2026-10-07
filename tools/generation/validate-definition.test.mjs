@@ -274,8 +274,8 @@ test('the request envelope is strict about keys, page_ids and title', async () =
     assert.equal((await validateRequest({ template: golden(), page_ids: null, title: '聯絡人' })).ok, true);
 });
 
-test('datetime and file are closed in this slice and point to open substitutes', async () => {
-    for (const [type, substitute] of [['datetime', 'date'], ['file', 'text']]) {
+test('datetime, file, list and chained are closed in this slice and point to open substitutes', async () => {
+    for (const [type, substitute] of [['datetime', 'date'], ['file', 'text'], ['list', 'textarea'], ['chained', 'select']]) {
         const template = golden();
         formFields(template)[4].type = type;
         const error = assertRejected(await validateRequest({ template }), 'FIELD_TYPE_UNSUPPORTED', 'definitions.pages[2].definition.fields[4].type');
@@ -498,7 +498,7 @@ test('defaults must have the form each field type handles at runtime', async () 
 });
 
 test('required is rejected where the form cannot tell an empty value, and minItems is not offered', async () => {
-    for (const type of ['phonelist', 'personinfo', 'list', 'socialmedia', 'checkbox', 'toggle', 'student']) {
+    for (const type of ['phonelist', 'personinfo', 'socialmedia', 'checkbox', 'toggle', 'student']) {
         const template = golden();
         formFields(template).push({ name: 'extraField', type, label: '額外', required: true });
         assertRejected(await validateRequest({ template }), 'REQUIRED_NOT_SUPPORTED', 'definitions.pages[2].definition.fields[7].required');
@@ -516,6 +516,32 @@ test('required is rejected where the form cannot tell an empty value, and minIte
 test('the golden example has no cross-page warnings', async () => {
     const result = await validateRequest({ template: golden() });
     assert.deepEqual(result.warnings, []);
+});
+
+test('with page_ids the cross-page checks look only at the selected pages, but every page is still validated', async () => {
+    // 只選列表：同資源的表單不會被生成，列表永遠沒有資料，要發 warning（不擋生成）。
+    const listOnly = await validateRequest({ template: golden(), page_ids: ['contacts-list'] });
+    assert.equal(listOnly.ok, true, JSON.stringify(listOnly.errors));
+    assert.deepEqual(listOnly.pages.map(page => page.id), ['contacts-list']);
+    assert.deepEqual(listOnly.warnings.map(entry => [entry.code, entry.path]),
+        [['RESOURCE_WITHOUT_FORM', 'definitions.pages[0].definition.api']], JSON.stringify(listOnly.warnings));
+
+    // 只選表單：沒有同資源的列表，記錄不會出現在任何地方。
+    const formOnly = await validateRequest({ template: golden(), page_ids: ['contact-form'] });
+    assert.equal(formOnly.ok, true);
+    assert.deepEqual(formOnly.warnings.map(entry => [entry.code, entry.path]),
+        [['FORM_WITHOUT_LIST', 'definitions.pages[2].definition.api']], JSON.stringify(formOnly.warnings));
+
+    // 列表與表單一起選：同一資源的流程完整，沒有 warning；沒選的明細頁不影響結果。
+    const listAndForm = await validateRequest({ template: golden(), page_ids: ['contacts-list', 'contact-form'] });
+    assert.equal(listAndForm.ok, true);
+    assert.deepEqual(listAndForm.warnings, []);
+
+    // 沒被選取的頁仍逐層驗證：它的錯誤照樣讓結果不通過。
+    const brokenDetail = golden();
+    brokenDetail.definitions.pages[1].definition.fields[0].type = 'slider';
+    const selectedOk = await validateRequest({ template: brokenDetail, page_ids: ['contacts-list', 'contact-form'] });
+    assertRejected(selectedOk, 'FIELD_TYPE_UNSUPPORTED', 'definitions.pages[1].definition.fields[0].type');
 });
 
 test('layer 7 warns when pages of one resource do not line up', async () => {

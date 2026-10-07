@@ -154,12 +154,14 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\run-worker.ps
 
 1. 以 `tools/agent/Containerfile` 重建 `bricks4agent-agent:latest`（在 repo 根目錄執行 `podman build -t bricks4agent-agent:latest -f tools/agent/Containerfile .`，使用 docker 時把 `podman` 換成 `docker`）。三個生成工具與生成用的 system prompt 都烤在這個映像裡；sidecar 直接使用本機既有的映像、不會自己建置，就緒檢查也不看映像版本。舊映像啟動的代理沒有這三個工具，每次生成都要等到代理結束或 watchdog 期限才失敗。
 2. 容器執行環境（podman 或 docker，可用 `B4A_CONTAINER_RUNTIME` 指定）在 PATH 上，ContainerManager 因此啟用（或以 `B4A_CONTAINER_MANAGER_ENABLED` 明確開啟）。
-3. LlmProxy 已啟用：sidecar 在設定了 LLM 供應者的 API 金鑰時才啟用它。
+3. LlmProxy 有模型可用：有 Anthropic 或 OpenAI 的 API 金鑰時，sidecar 把 LlmProxy 切到該供應者。沒有金鑰時 LlmProxy 仍是啟用的，沿用 broker `appsettings.json` 的本機 Ollama（`LlmProxy:BaseUrl` 與 `LlmProxy:DefaultModel`），這時必須有可用的 Ollama 與該模型；`-GenerationMode Governed` 啟動前會檢查，不成立就停止並說明原因。
 4. generation-worker 找得到 node：`B4A_NODE_PATH` 或 PATH 上的 `node`。
 
-第 2、3 項不成立時，確認系統雛形會回「系統雛形生成暫不可用」且不建立任務。第 1、4 項不成立時就緒檢查看不出來（它不看映像版本，也不檢查 worker 能否執行 node），每次生成都要等到代理結束或 watchdog 期限才失敗，所以啟用前請先確認。
+第 2 項不成立時，確認系統雛形會回「系統雛形生成暫不可用」且不建立任務；第 3 項由啟動腳本檢查（就緒檢查只看 LlmProxy 是否啟用，看不出供應者是否可達）。第 1、4 項不成立時就緒檢查看不出來（它不看映像版本，也不檢查 worker 能否執行 node），每次生成都要等到代理結束或 watchdog 期限才失敗，所以啟用前請先確認。
 
 要對執行中的 broker 手動啟動 worker：`run-worker.ps1 -Worker generation`（加 `-GenerationOutputRoot` 可改用其他輸出根目錄；broker 必須使用同一個）。
+
+產物的保留期限：generation-worker 在啟動時與每次生成之前，刪除 `generation-out` 中超過 `Generation:RetentionHours`（預設 24 小時）的請求目錄。zip 含使用者的需求內容；broker 收下時已複製到使用者的文件區，使用者刪除自己文件區中的產物後，`generation-out` 中的副本最遲在保留期限後消失。
 
 ### 3.2 LINE outbound rate limit
 

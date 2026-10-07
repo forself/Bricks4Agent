@@ -263,6 +263,7 @@ public sealed class GenerationIngestTests : IDisposable
     [Theory]
     [InlineData("{}")]
     [InlineData("""{"routes":["generate_scaffold"],"output_slot":"../x"}""")]
+    [InlineData("""{"routes":["generate_scaffold"],"output_slot":"task_x\n"}""")]
     [InlineData("not json")]
     public async Task GrantScopeWithoutAValidSlot_IsRefusedBeforeDispatch(string scope)
     {
@@ -274,6 +275,75 @@ public sealed class GenerationIngestTests : IDisposable
 
         result.Success.Should().BeFalse();
         inner.Calls.Should().Be(0);
+    }
+
+    /// <summary>
+    /// 名稱的格式檢查要涵蓋整個字串：.NET 的 <c>$</c> 也接受結尾的換行，結尾帶換行的 slot、請求 id 或 zip 檔名都不是安全的路徑段。
+    /// </summary>
+    [Theory]
+    [InlineData("task_slot\n", "req_1", "task_slot\n/req_1/ContactsDemo-scaffold.zip")]
+    [InlineData("task_slot", "req_1\n", "task_slot/req_1\n/ContactsDemo-scaffold.zip")]
+    [InlineData("task_slot", "req_1", "task_slot/req_1/ContactsDemo-scaffold.zip\n")]
+    public void NamesWithATrailingNewline_AreNotSafePathSegments(string slot, string requestId, string zipPath)
+    {
+        GenerationPackageIngestor.TryResolvePackage(_env.OutputRoot, slot, requestId, zipPath, out var packagePath, out var error)
+            .Should().BeFalse();
+        packagePath.Should().BeEmpty();
+        error.Should().Be("the zip path is not under this request's output slot");
+
+        GenerationPackageIngestor.TryResolvePackage(_env.OutputRoot, "task_slot", "req_1", "task_slot/req_1/ContactsDemo-scaffold.zip", out _, out _)
+            .Should().BeTrue("the same names without the newline are accepted");
+    }
+
+    [Fact]
+    public void ScopeSlotWithATrailingNewline_IsNotAValidSlot()
+    {
+        GenerationPackageIngestor.TryReadScopeSlot("""{"output_slot":"task_slot\n"}""", out _).Should().BeFalse();
+        GenerationPackageIngestor.TryReadScopeSlot("""{"output_slot":"task_slot"}""", out var slot).Should().BeTrue();
+        slot.Should().Be("task_slot");
+    }
+
+    /// <summary>
+    /// 任務在 ingest 途中結束（例如 watchdog 期限或管理員停止，發生在複製之後、狀態轉換之前）：
+    /// 這次執行失敗、已複製的檔案移除、不通知交付，也不留下宣稱「已排入交付」的證據。
+    /// </summary>
+    [Fact]
+    public async Task RunEndingDuringIngest_IsRefused_WithoutEvidence()
+    {
+        var taskId = _env.SeedRun();
+        var requestId = IdGen.New("req");
+        var (zipPath, sha, size) = _env.WriteWorkerPackage(taskId, requestId);
+        var ingestor = Ingestor();
+        var copiedBeforeTransition = false;
+        ingestor.BeforeRunTransitionForTesting = endingTaskId =>
+        {
+            copiedBeforeTransition = Directory.EnumerateFiles(_env.DocumentsRoot).Any();
+            _env.Runs.TryUpdate(endingTaskId, "system:test", run =>
+            {
+                run.Status = GovernedGenerationRunStatus.Failed;
+                run.FailureReason = "deadline_exceeded";
+                return true;
+            }).Should().BeTrue();
+        };
+        var dispatcher = new GenerationIngestingDispatcher(
+            new StubDispatcher(_ => WorkerOk(requestId, GovernedGenerationTestSupport.WorkerPayload(taskId, requestId, zipPath, sha, size))),
+            ingestor);
+
+        var result = await dispatcher.DispatchAsync(Request(taskId, requestId));
+
+        copiedBeforeTransition.Should().BeTrue("the hook runs after the copy, where the race happens");
+        result.Success.Should().BeFalse();
+        result.ErrorMessage.Should().Contain("the task ended while the package was being verified");
+        result.EvidenceRef.Should().BeNullOrEmpty();
+        Directory.EnumerateFiles(_env.DocumentsRoot).Should().BeEmpty("the copied package is removed");
+        var run = _env.Runs.Get(taskId)!;
+        run.Status.Should().Be(GovernedGenerationRunStatus.Failed);
+        run.EvidenceDocumentId.Should().BeEmpty();
+        _env.Db.Query<SharedContextEntry>(
+                "SELECT * FROM shared_context_entries WHERE document_id = @id",
+                new { id = GovernedGenerationRunStore.BuildEvidenceDocumentId(requestId) })
+            .Should().BeEmpty("no evidence claims a queued delivery for a refused package");
+        (await _env.Signal.WaitAsync(TimeSpan.Zero, CancellationToken.None)).Should().BeFalse("delivery is not woken up");
     }
 
     [Fact]

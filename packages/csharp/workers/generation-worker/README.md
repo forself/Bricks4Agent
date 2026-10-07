@@ -16,8 +16,9 @@
 
 ## 輸出位置、冪等與回傳內容
 
-- 輸出位置**只取自 grant scope**（broker 寫入）：`{Generation:OutputRoot}/{output_slot}/{requestId}/`。scope 必須含 `output_slot`、`package_name`（兩者只能是英數、底線、連字號，1～80 字）、`max_pages`（1～12 的整數，與生成器驗證的頁數上限相同）與 `package: "definition-site-v1"`，缺少或格式不符就拒絕。請求參數中任何路徑類欄位一律不採用。
+- 輸出位置**只取自 grant scope**（broker 寫入）：`{Generation:OutputRoot}/{output_slot}/{requestId}/`。scope 必須含 `output_slot`、`package_name`（兩者只能是英數、底線、連字號，1～80 字，整個字串都要符合，結尾不得帶換行）、`max_pages`（1～12 的整數，與生成器驗證的頁數上限相同）與 `package: "definition-site-v1"`，缺少或格式不符就拒絕。請求參數中任何路徑類欄位一律不採用。
 - 冪等：同一 requestId 的 `result.json` 已存在，且 zip 的 sha256 與大小相符時，直接回傳同一結果（broker 逾時重派不會重複生成）；否則清空該 requestId 目錄後重做。worker 一次只處理一個請求（`MaxConcurrent=1`），同一請求的並行重派會等前一次完成後取用其結果。
+- 保留期限：產物（zip 與 `result.json`）在輸出根目錄保留 `Generation:RetentionHours`（預設 24 小時）。worker 啟動時與每次 generate 之前，刪除最後修改時間超過期限的 `{output_slot}/{requestId}/` 目錄，以及因此變空的 slot 目錄；只處理名稱符合上述格式的目錄，符號連結與 junction 一律略過（不跟隨、不刪除），含連結的請求目錄也不動。zip 含使用者的需求內容：broker 收下時已複製到使用者的文件區，被拒收、逾時後才產出或代理重試留下的套件也在期限後刪除。compose 中 broker 唯讀掛載輸出根目錄，清理只由 worker 做。
 - 定義不通過：回傳失敗，錯誤訊息是 `{"ok":false,"errors":[...]}`，不留下任何檔案。頁數超過 scope 的 `max_pages` 也以同樣格式回報（`MAX_PAGES_EXCEEDED`）。
 - zip：`{package_name}-scaffold.zip`，頂層只有 `site/` 與 `report/`；條目依路徑排序、固定時間戳與權限位元，同樣的內容永遠得到同樣的 sha256。生成器輸出含符號連結、未回報的檔案、頂層多出其他項目，或 report 中出現本機路徑時都拒絕。
 - 回傳 payload 不含檔案內容與主機路徑：
@@ -52,6 +53,7 @@ CLI 以 `node <ToolsRoot>/tools/generation/cli.mjs <command>` 執行：不經 sh
 | `Generation:BuildTimeoutSeconds` | build 逾時，預設 120 |
 | `Generation:MaxStdoutBytes` | CLI 輸出上限，預設 4 MiB |
 | `Generation:MaxOldSpaceMegabytes` | node 子程序的 V8 heap 上限（MB），預設 256，最小 64 |
+| `Generation:RetentionHours` | 產物保留時數，預設 24，範圍 1～8760；超過的請求目錄在啟動時與每次 generate 之前刪除 |
 | `Worker:Auth:*` | worker 憑證（WorkerType `generation-worker`） |
 
 設定也可用 `WORKER_` 前綴的環境變數提供，例如 `WORKER_Generation__OutputRoot`。

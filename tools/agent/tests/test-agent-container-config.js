@@ -723,6 +723,16 @@ for (const docPath of [
     assertIncludes('sidecar defaults to the legacy generation mode', sidecarScript, '[string]$GenerationMode = "Legacy"');
     assertIncludes('sidecar switches the broker to governed generation', sidecarScript, 'SystemScaffoldMode = "Governed"');
     assertIncludes('sidecar shares the output root with the broker', sidecarScript, 'OutputRoot = $generationOutputRoot');
+    // 沒有供應者金鑰時 LlmProxy 沿用 appsettings 的 Ollama：Governed 啟動前先確認 Ollama 可達且有該模型。
+    assertIncludes('sidecar checks the Ollama model for governed generation without a key', sidecarScript,
+        'if ($governedGeneration -and [string]::IsNullOrWhiteSpace($anthropicApiKey) -and [string]::IsNullOrWhiteSpace($openAiApiKey)) {\n    Assert-GovernedLlmProxyModel');
+    assertIncludes('the Ollama check reads LlmProxy:BaseUrl', sidecarScript, '-Section "LlmProxy" -Name "BaseUrl"');
+    assertIncludes('the Ollama check reads LlmProxy:DefaultModel', sidecarScript, '-Section "LlmProxy" -Name "DefaultModel"');
+    assertIncludes('the Ollama check lists the models', sidecarScript, '"/api/tags"');
+    assert(sidecarScript.indexOf('Assert-GovernedLlmProxyModel `') < sidecarScript.indexOf('$productionOverrideMap = @{'),
+        'the Ollama check runs before the broker configuration is written');
+    const generationWorkerSettings = JSON.parse(read('packages/csharp/workers/generation-worker/appsettings.json'));
+    assert.strictEqual(generationWorkerSettings.Generation.RetentionHours, 24, 'generation worker keeps packages for 24 hours by default');
     const runWorker = read('packages/csharp/workers/run-worker.ps1');
     assertIncludes('run-worker can start the generation worker', runWorker, '"site-crawler", "generation")]');
     assertIncludes('run-worker maps the generation worker type', runWorker, 'Type = "generation-worker"');

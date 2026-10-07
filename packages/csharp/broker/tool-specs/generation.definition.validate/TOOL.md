@@ -21,7 +21,7 @@ Validates a DefinitionTemplate with the same layered, fail-closed checks that ge
 | Field | Type | Meaning |
 |---|---|---|
 | `template` | object (required) | The DefinitionTemplate to validate |
-| `page_ids` | array of strings, each at most 64 characters | Validate only these pages |
+| `page_ids` | array of strings, each at most 64 characters | The pages that generation would select. The whole definition is still validated; `pages` and the cross-page warnings cover only these pages |
 
 ## Output
 
@@ -39,7 +39,7 @@ The worker cuts a result that is larger than its `MaxResultBytes` the same way (
 
 When the grant scope carries `max_pages` and the selected pages exceed it, the result is `ok: false` with the error code `MAX_PAGES_EXCEEDED` first. The page limit is at most 12.
 
-Warnings do not block generation. The cross-page warnings (`RESOURCE_WITHOUT_FORM`, `FORM_WITHOUT_LIST`, `FIELD_NOT_IN_FORM`, `OPTIONS_MISMATCH`) point at pages of one resource that do not share the api base path, field names or options, which breaks the prototype's list, detail and form flow.
+Warnings do not block generation. The cross-page warnings (`RESOURCE_WITHOUT_FORM`, `FORM_WITHOUT_LIST`, `FIELD_NOT_IN_FORM`, `OPTIONS_MISMATCH`) point at pages of one resource that do not share the api base path, field names or options, which breaks the prototype's list, detail and form flow. With `page_ids` they compare only the selected pages, so a list or detail page selected without the form of its resource is reported.
 
 A definition that fails validation is a successful call with `ok: false`, so the agent can correct the definition and validate again. Only internal failures (time-out, oversized output, generator crash) and malformed input (for example an object key longer than 128 characters) fail the execution.
 

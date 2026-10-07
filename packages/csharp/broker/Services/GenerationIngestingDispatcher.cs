@@ -106,9 +106,10 @@ public sealed class GenerationPackageIngestor
 {
     public const string Author = "system:generation-ingestor";
 
-    private static readonly Regex SafeSegment = new("^[A-Za-z0-9_-]{1,80}$", RegexOptions.CultureInvariant);
-    private static readonly Regex ZipFileName = new("^[A-Za-z0-9_-]{1,80}-scaffold\\.zip$", RegexOptions.CultureInvariant);
-    private static readonly Regex Sha256Hex = new("^[0-9a-fA-F]{64}$", RegexOptions.CultureInvariant);
+    // 以 \z 結尾：.NET 的 $ 也接受結尾的換行，這些名稱必須整個字串都符合。
+    private static readonly Regex SafeSegment = new(@"^[A-Za-z0-9_-]{1,80}\z", RegexOptions.CultureInvariant);
+    private static readonly Regex ZipFileName = new(@"^[A-Za-z0-9_-]{1,80}-scaffold\.zip\z", RegexOptions.CultureInvariant);
+    private static readonly Regex Sha256Hex = new(@"^[0-9a-fA-F]{64}\z", RegexOptions.CultureInvariant);
 
     private readonly GovernedGenerationOptions _options;
     private readonly GovernedGenerationRunStore _runs;
@@ -233,27 +234,46 @@ public sealed class GenerationPackageIngestor
         }
 
         var evidenceId = GovernedGenerationRunStore.BuildEvidenceDocumentId(request.RequestId);
-        WriteEvidence(evidenceId, request, payload, zipPath, actualSha, info.Length, deliveredFileName, run != null);
 
         if (run != null)
         {
             var pages = payload["pages"] as JsonArray;
             var fileCount = payload["file_count"] is JsonValue countNode && countNode.TryGetValue<int>(out var count) ? count : 0;
-            var updated = _runs.TryUpdate(request.TaskId, Author, current =>
+            BeforeRunTransitionForTesting?.Invoke(request.TaskId);
+
+            // 證據只在狀態轉換確定會寫入時才留下：在執行紀錄的鎖內、確認任務仍在等待產物之後才寫證據，
+            // 再寫入 ingested 版本。任務在 ingest 途中結束（watchdog 期限、管理員停止）時不會留下
+            // 宣稱「已排入交付」的證據。
+            var evidenceWritten = false;
+            bool updated;
+            try
             {
-                if (current.Status is not (GovernedGenerationRunStatus.Running or GovernedGenerationRunStatus.Launching))
-                    return false;
-                current.Status = GovernedGenerationRunStatus.Ingested;
-                current.RequestId = request.RequestId;
-                current.ZipSha256 = actualSha;
-                current.ZipSize = info.Length;
-                current.PageCount = pages?.Count ?? 0;
-                current.FileCount = fileCount;
-                current.DeliveredFileName = deliveredFileName;
-                current.DeliveredFilePath = deliveredFilePath;
-                current.EvidenceDocumentId = evidenceId;
-                return true;
-            });
+                updated = _runs.TryUpdate(request.TaskId, Author, current =>
+                {
+                    if (current.Status is not (GovernedGenerationRunStatus.Running or GovernedGenerationRunStatus.Launching))
+                        return false;
+                    current.Status = GovernedGenerationRunStatus.Ingested;
+                    current.RequestId = request.RequestId;
+                    current.ZipSha256 = actualSha;
+                    current.ZipSize = info.Length;
+                    current.PageCount = pages?.Count ?? 0;
+                    current.FileCount = fileCount;
+                    current.DeliveredFileName = deliveredFileName;
+                    current.DeliveredFilePath = deliveredFilePath;
+                    current.EvidenceDocumentId = evidenceId;
+                    WriteEvidence(evidenceId, request, payload, zipPath, actualSha, info.Length, deliveredFileName, "queued", null);
+                    evidenceWritten = true;
+                    return true;
+                });
+            }
+            catch
+            {
+                // 寫入失敗時不交付：移除已複製的檔案；證據已寫入但狀態沒有轉換時，以拒收版本蓋過。
+                TryDelete(deliveredFilePath);
+                if (evidenceWritten)
+                    TryWriteRefusedEvidence(evidenceId, request, payload, zipPath, actualSha, info.Length, "the run could not be updated");
+                throw;
+            }
 
             if (!updated)
             {
@@ -262,6 +282,10 @@ public sealed class GenerationPackageIngestor
             }
 
             _signal.Notify();
+        }
+        else
+        {
+            WriteEvidence(evidenceId, request, payload, zipPath, actualSha, info.Length, string.Empty, "none", null);
         }
 
         _logger.LogInformation(
@@ -438,7 +462,8 @@ public sealed class GenerationPackageIngestor
         string sha256,
         long size,
         string deliveredFileName,
-        bool delivered)
+        string delivery,
+        string? refusedReason)
     {
         var evidence = new JsonObject
         {
@@ -459,9 +484,11 @@ public sealed class GenerationPackageIngestor
             ["generator_version"] = payload["generator_version"]?.DeepClone(),
             ["catalog_sha256"] = payload["catalog_sha256"]?.DeepClone(),
             ["delivered_file_name"] = deliveredFileName,
-            ["delivery"] = delivered ? "queued" : "none",
+            ["delivery"] = delivery,
             ["verified_at"] = DateTimeOffset.UtcNow.ToString("O")
         };
+        if (refusedReason != null)
+            evidence["refused"] = refusedReason;
 
         var latestVersion = _db.Scalar<int?>(
             "SELECT MAX(version) FROM shared_context_entries WHERE document_id = @docId",
@@ -483,6 +510,31 @@ public sealed class GenerationPackageIngestor
             CreatedAt = DateTime.UtcNow
         });
     }
+
+    /// <summary>證據已寫入、狀態卻沒有轉換時，寫一個拒收的新版本（delivery: none），讓最新版本與稽核結果一致。</summary>
+    private void TryWriteRefusedEvidence(
+        string evidenceId,
+        ApprovedRequest request,
+        JsonObject payload,
+        string zipPath,
+        string sha256,
+        long size,
+        string reason)
+    {
+        try
+        {
+            WriteEvidence(evidenceId, request, payload, zipPath, sha256, size, string.Empty, "none", reason);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Refused evidence for request {RequestId} could not be written.", request.RequestId);
+        }
+    }
+
+    /// <summary>
+    /// 測試用：在複製到使用者文件區之後、狀態轉換之前呼叫（參數為任務 id），用來重現任務在 ingest 途中結束的情況。
+    /// </summary>
+    internal Action<string>? BeforeRunTransitionForTesting { get; set; }
 
     private ExecutionResult Refuse(ApprovedRequest request, string reason)
     {

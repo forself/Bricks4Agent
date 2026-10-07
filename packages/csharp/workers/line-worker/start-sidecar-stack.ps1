@@ -742,6 +742,40 @@ if ([string]::IsNullOrWhiteSpace($anthropicApiKey)) {
 if (-not [string]::IsNullOrWhiteSpace($anthropicApiKey)) {
     $anthropicApiKey = $anthropicApiKey.Trim()
 }
+
+# Without an Anthropic or OpenAI key the sidecar leaves LlmProxy as appsettings.json has it: enabled, Ollama at
+# LlmProxy:BaseUrl with LlmProxy:DefaultModel. The broker's readiness check only sees that LlmProxy is enabled, so
+# governed generation would accept every confirmation and start an agent that cannot reach a model. Check the
+# Ollama endpoint and model here and stop with a clear message instead.
+function Assert-GovernedLlmProxyModel {
+    param(
+        [string]$BaseUrl,
+        [string]$Model
+    )
+
+    if ([string]::IsNullOrWhiteSpace($BaseUrl) -or [string]::IsNullOrWhiteSpace($Model)) {
+        throw "GenerationMode Governed without an Anthropic or OpenAI API key needs LlmProxy:BaseUrl and LlmProxy:DefaultModel for Ollama in the broker appsettings.json, or a provider API key."
+    }
+
+    try {
+        $tags = Invoke-RestMethod -Uri ($BaseUrl.TrimEnd('/') + "/api/tags") -Method Get -TimeoutSec 5
+    } catch {
+        throw "GenerationMode Governed without an Anthropic or OpenAI API key uses Ollama at $BaseUrl (LlmProxy:BaseUrl), which is not reachable. Start Ollama with the model '$Model', or set a provider API key."
+    }
+
+    $available = @($tags.models | ForEach-Object { $_.name })
+    $accepted = @($Model, "$($Model):latest")
+    if (-not ($available | Where-Object { $accepted -contains $_ })) {
+        throw "GenerationMode Governed without an Anthropic or OpenAI API key needs the Ollama model '$Model' (LlmProxy:DefaultModel) at $BaseUrl. Pull the model first, or set a provider API key."
+    }
+}
+
+if ($governedGeneration -and [string]::IsNullOrWhiteSpace($anthropicApiKey) -and [string]::IsNullOrWhiteSpace($openAiApiKey)) {
+    Assert-GovernedLlmProxyModel `
+        -BaseUrl (Get-BrokerJsonSectionValue -RawJson $brokerSourceConfigRaw -Section "LlmProxy" -Name "BaseUrl" -DefaultValue "") `
+        -Model (Get-BrokerJsonSectionValue -RawJson $brokerSourceConfigRaw -Section "LlmProxy" -Name "DefaultModel" -DefaultValue "")
+}
+
 $productionOverrideMap = @{
     Database = @{
         Path = $brokerRuntimeDbPath

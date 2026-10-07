@@ -2,7 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { GENERATION_CAPABILITY_IDS, getToolDescriptions } = require('./tool-registry');
+const { GENERATION_SCAFFOLD_CAPABILITY_ID, getToolDescriptions } = require('./tool-registry');
 const { logInfo, logWarn } = require('./utils');
 
 const MAX_AGENT_MD_CHARS_NATIVE = 8000;
@@ -27,6 +27,13 @@ description of a front-end prototype, and hand it to the broker-governed generat
 - Be precise and follow the catalog rules exactly; do not invent keys, types or components.
 - Do not claim to have performed actions you did not actually perform.
 - Only use the routes, capabilities, and scopes explicitly granted.`;
+
+// 生成任務在還沒有成功生成前回了沒有工具呼叫的訊息時，agent loop 追加一次的提醒（之後再沒有工具呼叫就結束）。
+const GENERATION_CONTINUE_REMINDER = `Reminder: this task runs unattended and nothing has been generated yet. A reply
+without a tool call ends the task, and nobody will answer questions. Do not write the definition or questions as
+text: submit the DefinitionTemplate with validate_definition now (then generate_scaffold), and assume what the work
+item leaves open. Reply without a tool call again only if you cannot continue, for example when the
+validate_definition calls are used up; that reply is your final summary.`;
 
 const REACT_INSTRUCTIONS = `
 ## Tool Calls
@@ -205,14 +212,25 @@ Behavioral constraints:
 - Use the broker contract exactly as provided above.`;
 }
 
-/** 生成類任務：授予中有任一個受治理生成能力，或任務類型是 system_scaffold。 */
+/**
+ * 生成類任務：任務類型是 system_scaffold，或有 generate 授予且其 scope 帶輸出位置（output_slot）。
+ * 只有 catalog、validate 這類低風險授予不算：一般代理可能因為預設能力或管理員選取而拿到它們，
+ * 那時仍要用一般的基礎提示與專案手冊。
+ */
 function isGenerationTask(governed) {
     if (!governed) {
         return false;
     }
-    const granted = (governed.allowedCapabilities || []).map((capability) => capability.capabilityId);
-    return granted.some((capabilityId) => GENERATION_CAPABILITY_IDS.includes(capabilityId)) ||
-        governed.runtimeSpec?.taskType === 'system_scaffold';
+    if (governed.runtimeSpec?.taskType === 'system_scaffold') {
+        return true;
+    }
+    return (governed.allowedCapabilities || []).some((capability) => {
+        if (capability?.capabilityId !== GENERATION_SCAFFOLD_CAPABILITY_ID) {
+            return false;
+        }
+        const slot = capability.scopeOverride?.output_slot;
+        return typeof slot === 'string' && slot.trim().length > 0;
+    });
 }
 
 function formatQuota(value) {
@@ -248,17 +266,27 @@ function buildGenerationSection(governed, maxIterations) {
 ## Governed Generation Workflow
 
 This task generates a front-end prototype from a DefinitionTemplate. The broker-governed generation tools do the
-generation; you only write the definition. Work in this order:
+generation; you only write the definition. The task runs unattended and ends at your first reply that has no tool
+call, so:
+- Call a tool in every turn until the final summary in step 5. A reply without a tool call ends the task, and
+  nothing is generated if generate_scaffold has not succeeded yet.
+- Never write the definition in your reply text. Put it directly into the template argument of
+  validate_definition and generate_scaffold.
+- You cannot ask the user anything and nobody will answer. When the work item is unclear or incomplete, make
+  reasonable assumptions that fit it, and state them in the final summary.
+Work in this order:
 1. query_component_catalog: read section "overview" first, then "field_types" and "example". Ask for
    section "component" with a name only when you need the details of one component.
-2. Write one DefinitionTemplate as a single JSON object that follows the catalog rules exactly. Use only the
-   page types and field types the catalog lists. Never put code, HTML, scripts, styles, absolute URLs or file
-   system paths in it (an api value is only the base path form the catalog describes).
-3. validate_definition with that template. When ok is false, fix every reported error (each has code, path,
-   message and hint) and validate again. Do not generate until validation returns ok: true.
+2. Write one DefinitionTemplate (a single JSON object) and submit it directly with validate_definition in the same
+   turn. Follow the catalog rules exactly and use only the page types and field types the catalog lists. Never put
+   code, HTML, scripts, styles, absolute URLs or file system paths in it (an api value is only the base path form
+   the catalog describes).
+3. validate_definition: when it returns ok: false, fix every reported error (each has code, path, message and hint)
+   and call validate_definition again with the corrected template. Do not generate until validation returns ok: true.
 4. generate_scaffold with the same template. Do not pass any output location: the broker decides where the
    package is written and delivers it to the user.
-5. Reply with a short summary: the generated pages, and the zip path and sha256 from the generate result. Then stop.
+5. Reply with a short summary without a tool call: the generated pages, the zip path and sha256 from the generate
+   result, and any assumptions you made. Then stop.
 
 Limits for this task:
 ${limits.join('\n')}
@@ -311,4 +339,10 @@ function resolveAgentManualPath(projectRoot, env = process.env) {
     }
 }
 
-module.exports = { buildSystemPrompt, isGenerationTask, resolveAgentManualPath, GENERATION_BASE_PROMPT };
+module.exports = {
+    buildSystemPrompt,
+    isGenerationTask,
+    resolveAgentManualPath,
+    GENERATION_BASE_PROMPT,
+    GENERATION_CONTINUE_REMINDER,
+};

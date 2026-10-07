@@ -11,8 +11,11 @@ namespace GenerationWorker.Support;
 /// </summary>
 public static partial class GenerationRequest
 {
-    /// <summary>output_slot、package_name 與 requestId 的格式：英數、底線、連字號，1～80 字。</summary>
-    public const string SafeNamePattern = "^[A-Za-z0-9_-]{1,80}$";
+    /// <summary>
+    /// output_slot、package_name 與 requestId 的格式：英數、底線、連字號，1～80 字。
+    /// 以 \z 結尾：.NET 的 $ 也接受結尾的換行，這裡要整個字串都符合。
+    /// </summary>
+    public const string SafeNamePattern = @"^[A-Za-z0-9_-]{1,80}\z";
 
     /// <summary>generate 唯一支援的產物格式。</summary>
     public const string SupportedPackage = "definition-site-v1";
@@ -27,7 +30,7 @@ public static partial class GenerationRequest
     private static partial Regex SafeNameRegex();
 
     // Windows 保留的裝置名稱不能當目錄或檔名（不分大小寫，含 COM1～9、LPT1～9）。
-    [GeneratedRegex("^(CON|PRN|AUX|NUL|COM[0-9]|LPT[0-9])$", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"^(CON|PRN|AUX|NUL|COM[0-9]|LPT[0-9])\z", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
     private static partial Regex ReservedDeviceNameRegex();
 
     /// <summary>名稱是否可安全地當成單一路徑段使用。</summary>

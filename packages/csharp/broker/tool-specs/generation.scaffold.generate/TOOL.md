@@ -21,7 +21,7 @@ Generates a multi-page front-end prototype (form, list and detail pages) from a 
 | Field | Type | Meaning |
 |---|---|---|
 | `template` | object (required) | The validated DefinitionTemplate |
-| `page_ids` | array of strings, each at most 64 characters | Generate only these pages |
+| `page_ids` | array of strings, each at most 64 characters | Generate only these pages (the whole definition is still validated) |
 | `title` | string, at most 120 characters | Title of the prototype |
 
 The request carries no output location. Path-like arguments are ignored.
@@ -35,7 +35,7 @@ The broker writes the output location into the grant scope; the worker validates
 | `routes` | `["generate_scaffold"]` |
 | `output_slot` | Output directory under the generation output root (letters, digits, `_` and `-`, 1 to 80 characters) |
 | `package_name` | Base name of the zip (same character rule) |
-| `max_pages` | Maximum number of pages (integer) |
+| `max_pages` | Maximum number of pages, an integer from 1 to 12 (the worker refuses other values) |
 | `package` | `definition-site-v1` |
 
 ## Output

@@ -634,7 +634,7 @@ function layerCatalog(context, pages) {
 // 第 7 層：切片規則
 // ------------------------------------------------------------
 
-function layerSlice(pages) {
+function layerSlice(pages, selectedIds = null) {
     const errors = [];
     const warnings = [];
     const seenIds = new Map();
@@ -689,15 +689,12 @@ function layerSlice(pages) {
             }
             names.add(field.name);
             if (LIST_COLUMN_TYPES.has(field.type)) listColumns += 1;
-            if (field.type === 'chained') {
-                warnings.push(makeError('FIELD_TYPE_LIMITED', `${base}.fields[${fieldIndex}].type`, 'chained fields cannot be configured in this slice and render empty.', 'Prefer select.'));
-            }
         });
         if (type === 'list' && listColumns === 0) {
             warnings.push(makeError('LIST_NO_COLUMNS', `${base}.fields`, 'None of the list fields can be shown as a table column.', `Table columns support: ${[...LIST_COLUMN_TYPES].join(', ')}.`));
         }
     });
-    warnings.push(...checkResources(pages));
+    warnings.push(...checkResources(pages, selectedIds));
     return { errors, warnings };
 }
 
@@ -708,11 +705,13 @@ function optionsSignature(options) {
 /**
  * 跨頁一致性（只發 warning，不擋生成）。頁面之間的連結與外殼相同：以 pageEndpoint 算出的 api 路徑
  * 完全相等才算同一資源；列表與明細依欄位名讀取表單存下的值，記憶體 store 每個路徑各存一份集合。
+ * 帶 page_ids 時只比對會被生成的頁（selectedIds）：沒被選取的表單不在原型中，不能替選取的列表或明細提供資料。
  */
-function checkResources(pages) {
+function checkResources(pages, selectedIds = null) {
     const warnings = [];
     const entries = pages
         .map((entry, index) => ({ entry, index, definition: entry?.definition }))
+        .filter(({ entry }) => selectedIds === null || (typeof entry?.id === 'string' && selectedIds.has(entry.id)))
         .filter(({ definition }) => isPlainObject(definition) && SUPPORTED_PAGE_TYPES.includes(definition.type))
         .map(item => ({
             ...item,
@@ -1002,8 +1001,10 @@ export async function validateRequest(request, command = 'validate') {
     errors.push(...await runLayer(() => layerPageGenRules(context, pages)));          // 第 4 層
     errors.push(...await runLayer(() => layerIdentifiers(context, pages)));           // 第 5 層
     errors.push(...await runLayer(() => layerCatalog(context, pages)));               // 第 6 層
+    // 跨頁一致性只看會被生成的頁；requestedIds 本身的格式錯誤已由請求檢查回報，這時仍比對全部的頁。
+    const selectedIds = requestedIds && requestedIds.every(id => typeof id === 'string') ? new Set(requestedIds) : null;
     const slice = await runLayer(() => {
-        const sliceResult = layerSlice(pages);
+        const sliceResult = layerSlice(pages, selectedIds);
         warnings.push(...sliceResult.warnings);
         return sliceResult.errors;
     });

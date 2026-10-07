@@ -146,14 +146,16 @@ Before you enable it (repeat step 1 after every upgrade):
 
 1. Rebuild `bricks4agent-agent:latest` from `tools/agent/Containerfile` (from the repository root: `podman build -t bricks4agent-agent:latest -f tools/agent/Containerfile .`, or the same with `docker`). The three generation tools and the generation system prompt are baked into that image; the sidecar uses the existing local image without building it, and the readiness check does not look at the image version. An agent started from an old image has none of the three tools, so every generation fails only when the agent exits or the watchdog deadline passes.
 2. A container runtime (podman or docker, selectable with `B4A_CONTAINER_RUNTIME`) is on PATH, so the ContainerManager is enabled (or enable it explicitly with `B4A_CONTAINER_MANAGER_ENABLED`).
-3. LlmProxy is enabled: the sidecar enables it only when an API key for an LLM provider is configured.
+3. LlmProxy can reach a model: with an Anthropic or OpenAI API key the sidecar switches LlmProxy to that provider. Without a key LlmProxy stays enabled with the local Ollama from the broker `appsettings.json` (`LlmProxy:BaseUrl` and `LlmProxy:DefaultModel`), so that Ollama and model must be available; `-GenerationMode Governed` checks this before it starts and stops with the reason when it fails.
 4. generation-worker can find node: `B4A_NODE_PATH` or `node` on PATH.
 
-When step 2 or 3 is missing, confirming a system scaffold replies that system scaffold generation is unavailable and creates no task. The readiness check cannot detect a missing step 1 or 4 (it does not look at the image version or check that the worker can run node); every generation then fails only when the agent exits or the watchdog deadline passes, so check them before you enable the mode.
+When step 2 is missing, confirming a system scaffold replies that system scaffold generation is unavailable and creates no task; step 3 is checked by the start script (the readiness check only sees that LlmProxy is enabled, not whether its provider can be reached). The readiness check cannot detect a missing step 1 or 4 (it does not look at the image version or check that the worker can run node); every generation then fails only when the agent exits or the watchdog deadline passes, so check them before you enable the mode.
 
 Without `-GenerationMode` (or with `Legacy`) nothing changes. Spawned agents in the sidecar use the documented `AllowAgentDefaultNetwork` exception (they are not on an internal network), so the request text an agent sees could leave the host; a dedicated internal agent network is planned.
 
 To run the worker by hand against a running broker: `run-worker.ps1 -Worker generation` (add `-GenerationOutputRoot` to use another output root; the broker must use the same one).
+
+Package retention: generation-worker removes request directories in `generation-out` that are older than `Generation:RetentionHours` (default 24 hours) when it starts and before every generation. A zip holds the user's requirement text; the broker copies it into the user's documents when it accepts the package, and once the user deletes that copy, the one in `generation-out` is gone after the retention period at the latest.
 
 ### 3.2 LINE outbound rate limit
 

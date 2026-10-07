@@ -46,6 +46,8 @@ export function computeFieldTypeWhitelist(matrix = readJsonFile(MATRIX_PATH), pa
  * 由 tools/scripts/definition-site-smoke.mjs 在瀏覽器逐一實測得出；修正對應元件或提供資料來源後再移除。
  * datetime：輸入元件的值是 {date,time} 物件，明細頁顯示與再編輯的往返都還不支援。
  * file：上傳元件沒有 getValue，表單不會收集也不會保存它的值。
+ * list：DefinitionTemplate 的欄位沒有 config.fields，ListInput 的每一列都沒有輸入框，存下的是空物件。
+ * chained：連動選單的層級無法設定，渲染出來是空的，也不會存下值。
  */
 export const RUNTIME_BLOCKED_FIELD_TYPES = Object.freeze({
     richtext: 'the field renderer cannot mount the rich text editor yet',
@@ -55,7 +57,9 @@ export const RUNTIME_BLOCKED_FIELD_TYPES = Object.freeze({
     addresslist: 'needs a region data loader that a backend-less prototype does not have',
     organization: 'needs an organisation unit loader that a backend-less prototype does not have',
     datetime: 'the detail page and re-editing cannot show the combined date and time value yet',
-    file: 'the prototype form does not collect or keep file values'
+    file: 'the prototype form does not collect or keep file values',
+    list: 'the rows have no input field, so the stored value is always empty',
+    chained: 'the dependent selects cannot be configured, so the field renders empty and stores no value'
 });
 
 /**
@@ -91,7 +95,9 @@ export const FIELD_TYPE_SUBSTITUTES = Object.freeze({
     addresslist: 'textarea',
     organization: 'select',
     datetime: 'date',
-    file: 'text'
+    file: 'text',
+    list: 'textarea',
+    chained: 'select'
 });
 
 /**
@@ -162,8 +168,8 @@ export const FIELD_TYPE_NOTES = {
     file: { note: 'file picker; the prototype form does not keep file values', validation: ITEM_LIMITS, default: null },
     address: { note: 'postal address with region selectors', validation: [], default: null },
     addresslist: { note: 'repeatable postal addresses', validation: ITEM_LIMITS, default: null },
-    chained: { note: 'dependent selects; not configurable in this slice, prefer select', validation: [], default: null, required: false },
-    list: { note: 'repeatable short text rows', validation: ITEM_LIMITS, default: null, required: false },
+    chained: { note: 'dependent selects; the levels cannot be configured', validation: [], default: null, required: false },
+    list: { note: 'repeatable rows; each row needs its own input fields', validation: ITEM_LIMITS, default: null, required: false },
     personinfo: { note: 'repeatable person entries (name, gender, age, id)', validation: ITEM_LIMITS, default: null, required: false },
     phonelist: { note: 'repeatable phone numbers', validation: ITEM_LIMITS, default: null, required: false },
     socialmedia: { note: 'repeatable social media accounts', validation: ITEM_LIMITS, default: null, required: false },

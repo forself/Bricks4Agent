@@ -245,6 +245,18 @@ public sealed class GenerationHandlerTests : IDisposable
         fixture.Invocations("build").Should().Be(0);
     }
 
+    /// <summary>名稱的格式檢查涵蓋整個字串：.NET 的 <c>$</c> 也接受結尾的換行，這裡不可以。</summary>
+    [Theory]
+    [InlineData("task_0000000000CC", true)]
+    [InlineData("CONSOLE", true)]
+    [InlineData("task_1\n", false)]
+    [InlineData("task_1\r\n", false)]
+    [InlineData("\ntask_1", false)]
+    [InlineData("CON", false)]
+    [InlineData("lpt1", false)]
+    public void IsSafeName_MatchesTheWholeString(string value, bool expected)
+        => GenerationRequest.IsSafeName(value).Should().Be(expected);
+
     [Fact]
     public void HasOverlongKey_ChecksEveryNestedObject()
     {
@@ -468,6 +480,8 @@ public sealed class GenerationHandlerTests : IDisposable
         { Scope(slot: "CON"), "output_slot device name" },
         { Scope(slot: new string('a', 81)), "output_slot too long" },
         { Scope(slot: "task.1"), "output_slot dot" },
+        { Scope(slot: "task_1\n"), "output_slot trailing newline" },
+        { Scope(packageName: "contacts\n"), "package_name trailing newline" },
         { Scope(packageName: null), "package_name missing" },
         { Scope(packageName: "..\\x"), "package_name traversal" },
         { Scope(packageName: "名稱"), "package_name non-ascii" },
@@ -504,6 +518,7 @@ public sealed class GenerationHandlerTests : IDisposable
     [InlineData("req.1")]
     [InlineData("")]
     [InlineData("NUL")]
+    [InlineData("req_1\n")]
     public async Task Generate_UnsafeRequestId_IsRejected(string requestId)
     {
         var fixture = NewFixture();
@@ -598,5 +613,94 @@ public sealed class GenerationHandlerTests : IDisposable
 
         success.Should().BeFalse();
         error.Should().Contain("exceeded");
+    }
+
+    // ── 保留期限 ──
+
+    private static string MakeRequestDirectory(string outputRoot, string slot, string requestId, DateTime? lastWriteUtc = null)
+    {
+        var directory = Path.Combine(outputRoot, slot, requestId);
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(Path.Combine(directory, "contacts-scaffold.zip"), "PK-earlier-package");
+        File.WriteAllText(Path.Combine(directory, ScaffoldGenerateHandler.ResultFileName), "{}");
+        if (lastWriteUtc is { } time)
+        {
+            Directory.SetLastWriteTimeUtc(directory, time);
+            Directory.SetLastWriteTimeUtc(Path.Combine(outputRoot, slot), time);
+        }
+
+        return directory;
+    }
+
+    [Fact]
+    public async Task Generate_FirstRemovesPackagesOlderThanTheRetention()
+    {
+        var fixture = NewFixture();
+        var expired = DateTime.UtcNow.AddHours(-25);
+
+        var expiredRequest = MakeRequestDirectory(fixture.OutputRoot, "task_expired", "req_expired", expired);
+        var recentRequest = MakeRequestDirectory(fixture.OutputRoot, "task_recent", "req_recent");
+        var mixedExpired = MakeRequestDirectory(fixture.OutputRoot, "task_mixed", "req_mixed_old", expired);
+        var mixedRecent = MakeRequestDirectory(fixture.OutputRoot, "task_mixed", "req_mixed_new");
+        // 本 worker 不會建立的名稱（slot 含 '.'）：不動。
+        var foreign = MakeRequestDirectory(fixture.OutputRoot, "not.a.slot", "req_foreign", expired);
+
+        var (success, _, error) = await Generate(fixture).ExecuteAsync(
+            RequestId, ScaffoldGenerateHandler.Route, GeneratePayload(), Scope(), CancellationToken.None);
+
+        success.Should().BeTrue(error);
+        Directory.Exists(expiredRequest).Should().BeFalse("a package older than the retention is removed");
+        Directory.Exists(Path.Combine(fixture.OutputRoot, "task_expired")).Should().BeFalse("a slot left empty by expired requests is removed");
+        Directory.Exists(recentRequest).Should().BeTrue();
+        Directory.Exists(mixedExpired).Should().BeFalse();
+        Directory.Exists(mixedRecent).Should().BeTrue("the slot keeps its recent request");
+        Directory.Exists(foreign).Should().BeTrue("directories the worker never creates are left alone");
+        File.Exists(Path.Combine(fixture.OutputRoot, Slot, RequestId, "contacts-scaffold.zip")).Should().BeTrue("the new package is kept");
+    }
+
+    [Fact]
+    public void RetentionSweep_DoesNotFollowOrRemoveLinks()
+    {
+        var fixture = NewFixture();
+        var expired = DateTime.UtcNow.AddHours(-25);
+        var outside = Path.Combine(fixture.Root, "outside");
+        var outsideRequest = MakeRequestDirectory(outside, "task_target", "req_target", expired);
+
+        Directory.CreateDirectory(fixture.OutputRoot);
+        var linkedSlot = Path.Combine(fixture.OutputRoot, "task_linked");
+        if (!Unit.Tests.Broker.GovernedGenerationTestSupport.TryCreateDirectoryLink(linkedSlot, Path.Combine(outside, "task_target")))
+            return; // 這台機器不能建立連結（沒有 symlink 權限也沒有 junction），無法重現。
+
+        // 請求目錄裡有連結：整個略過，連結指向的內容也不動。
+        var requestWithLink = MakeRequestDirectory(fixture.OutputRoot, "task_plain", "req_with_link");
+        var linkInside = Path.Combine(requestWithLink, "linked");
+        if (!Unit.Tests.Broker.GovernedGenerationTestSupport.TryCreateDirectoryLink(linkInside, Path.Combine(outside, "task_target")))
+            return;
+        Directory.SetLastWriteTimeUtc(requestWithLink, expired);
+
+        var removed = OutputRetention.Sweep(fixture.OutputRoot, TimeSpan.FromHours(24), DateTimeOffset.UtcNow, NullLogger.Instance);
+
+        removed.Should().Be(0);
+        Directory.Exists(linkedSlot).Should().BeTrue("a linked slot is neither followed nor removed");
+        Directory.Exists(requestWithLink).Should().BeTrue("a request directory with a link inside is left in place");
+        File.Exists(Path.Combine(outsideRequest, "contacts-scaffold.zip")).Should().BeTrue("content behind a link is never deleted");
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    [InlineData(GenerationWorkerOptions.MaxRetentionHours + 1)]
+    public void Options_RejectARetentionOutsideTheRange(int hours)
+    {
+        var fixture = NewFixture(options => options.RetentionHours = hours);
+        fixture.Options.Validate().Should().Contain("RetentionHours");
+    }
+
+    [Fact]
+    public void Options_DefaultRetentionIsOneDay()
+    {
+        var fixture = NewFixture();
+        fixture.Options.RetentionHours.Should().Be(24);
+        fixture.Options.Validate().Should().BeNull();
     }
 }

@@ -61,7 +61,7 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <tr>
 <td><code>page_ids</code></td>
 <td>array of strings, each at most 64 characters</td>
-<td>Validate only these pages</td>
+<td>The pages that generation would select. The whole definition is still validated; <code>pages</code> and the cross-page warnings cover only these pages</td>
 </tr>
 </tbody>
 </table>
@@ -92,7 +92,7 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 </table>
 <p>The worker cuts a result that is larger than its <code>MaxResultBytes</code> the same way (first errors and warnings, <code>total_errors</code>, <code>truncated: true</code>); it is still a successful call.</p>
 <p>When the grant scope carries <code>max_pages</code> and the selected pages exceed it, the result is <code>ok: false</code> with the error code <code>MAX_PAGES_EXCEEDED</code> first. The page limit is at most 12.</p>
-<p>Warnings do not block generation. The cross-page warnings (<code>RESOURCE_WITHOUT_FORM</code>, <code>FORM_WITHOUT_LIST</code>, <code>FIELD_NOT_IN_FORM</code>, <code>OPTIONS_MISMATCH</code>) point at pages of one resource that do not share the api base path, field names or options, which breaks the prototype's list, detail and form flow.</p>
+<p>Warnings do not block generation. The cross-page warnings (<code>RESOURCE_WITHOUT_FORM</code>, <code>FORM_WITHOUT_LIST</code>, <code>FIELD_NOT_IN_FORM</code>, <code>OPTIONS_MISMATCH</code>) point at pages of one resource that do not share the api base path, field names or options, which breaks the prototype's list, detail and form flow. With <code>page_ids</code> they compare only the selected pages, so a list or detail page selected without the form of its resource is reported.</p>
 <p>A definition that fails validation is a successful call with <code>ok: false</code>, so the agent can correct the definition and validate again. Only internal failures (time-out, oversized output, generator crash) and malformed input (for example an object key longer than 128 characters) fail the execution.</p>
 <h2>Rules</h2>
 <ul>
