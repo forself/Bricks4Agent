@@ -59,7 +59,7 @@ public static class SessionEndpoints
                 return registration.Reject("task_unknown", credential);
             }
 
-            if (task.State is TaskState.Cancelled or TaskState.Completed)
+            if (TaskStates.IsTerminal(task.State))
             {
                 return Results.BadRequest(ApiResponseHelper.Error("Task is not active."));
             }
@@ -221,7 +221,7 @@ public static class SessionEndpoints
             var credentialRevoked = !string.IsNullOrEmpty(session.RegistrationCredentialId) &&
                                     registrationCredentials.IsRevoked(session.RegistrationCredentialId);
             if (principal == null || principal.Status != EntityStatus.Active ||
-                task == null || task.State is TaskState.Cancelled or TaskState.Completed ||
+                task == null || TaskStates.IsTerminal(task.State) ||
                 credentialRevoked)
             {
                 keyStore.Remove(session.SessionId);

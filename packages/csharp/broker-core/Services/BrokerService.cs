@@ -1,4 +1,6 @@
+using System.Text.Encodings.Web;
 using System.Text.Json;
+using System.Text.Unicode;
 using BrokerCore.Contracts;
 using BrokerCore.Data;
 using BrokerCore.Models;
@@ -116,7 +118,7 @@ public class BrokerService : IBrokerService
     public bool CancelTask(string taskId, string cancelledBy, string reason)
     {
         var task = _db.Get<BrokerTask>(taskId);
-        if (task == null || task.State is TaskState.Completed or TaskState.Cancelled)
+        if (task == null || TaskStates.IsTerminal(task.State))
             return false;
 
         // 更新任務狀態
@@ -473,6 +475,8 @@ public class BrokerService : IBrokerService
                         Path = S("path") ?? string.Empty,
                         ContentPreview = content.Length > 2000 ? content[..2000] + "…" : content
                     };
+                case "generation.scaffold.generate":
+                    return RenderGenerationRequest(args, S("title"));
                 default:
                     return new RenderedContent
                     {
@@ -485,6 +489,68 @@ public class BrokerService : IBrokerService
         {
             return new RenderedContent { Kind = "json", Payload = payload };
         }
+    }
+
+    /// <summary>審批畫面上顯示的定義內容上限（字元）。</summary>
+    internal const int RenderedDefinitionPreviewLimit = 6000;
+
+    // 審批畫面只是顯示：保留中文等字元，HTML 特殊字元仍跳脫（介面另以 escapeHtml 顯示）。
+    private static readonly JsonSerializerOptions RenderedDefinitionJsonOptions = new()
+    {
+        WriteIndented = true,
+        Encoder = JavaScriptEncoder.Create(UnicodeRanges.All)
+    };
+
+    /// <summary>
+    /// generate 的審批畫面（超出 scope 時送審用）：標題、各頁的 id／頁型／欄位數，以及定義本身（截斷到上限）。
+    /// 介面不認得的 kind 會顯示 <see cref="RenderedContent.Payload"/>，所以摘要放在 Payload。
+    /// </summary>
+    internal static RenderedContent RenderGenerationRequest(JsonElement args, string? title)
+    {
+        var lines = new List<string> { $"title: {(string.IsNullOrWhiteSpace(title) ? "(none)" : title)}" };
+        var template = args.ValueKind == JsonValueKind.Object && args.TryGetProperty("template", out var t) ? t : default;
+
+        if (template.ValueKind == JsonValueKind.Object &&
+            template.TryGetProperty("definitions", out var definitions) &&
+            definitions.ValueKind == JsonValueKind.Object &&
+            definitions.TryGetProperty("pages", out var pages) &&
+            pages.ValueKind == JsonValueKind.Array)
+        {
+            lines.Add($"pages: {pages.GetArrayLength()}");
+            foreach (var page in pages.EnumerateArray())
+            {
+                var id = page.ValueKind == JsonValueKind.Object && page.TryGetProperty("id", out var idNode) && idNode.ValueKind == JsonValueKind.String
+                    ? idNode.GetString()
+                    : "?";
+                var definition = page.ValueKind == JsonValueKind.Object && page.TryGetProperty("definition", out var d) ? d : default;
+                var type = definition.ValueKind == JsonValueKind.Object && definition.TryGetProperty("type", out var typeNode) && typeNode.ValueKind == JsonValueKind.String
+                    ? typeNode.GetString()
+                    : "?";
+                var fields = definition.ValueKind == JsonValueKind.Object && definition.TryGetProperty("fields", out var fieldsNode) && fieldsNode.ValueKind == JsonValueKind.Array
+                    ? fieldsNode.GetArrayLength()
+                    : 0;
+                lines.Add($"- {id} ({type}, {fields} fields)");
+            }
+        }
+        else
+        {
+            lines.Add("pages: (template has no definitions.pages array)");
+        }
+
+        if (args.ValueKind == JsonValueKind.Object && args.TryGetProperty("page_ids", out var pageIds) && pageIds.ValueKind == JsonValueKind.Array)
+            lines.Add($"page_ids: {pageIds.GetRawText()}");
+
+        var definitionText = template.ValueKind == JsonValueKind.Undefined
+            ? "(no template)"
+            : JsonSerializer.Serialize(template, RenderedDefinitionJsonOptions);
+        if (definitionText.Length > RenderedDefinitionPreviewLimit)
+            definitionText = definitionText[..RenderedDefinitionPreviewLimit] + "…";
+
+        return new RenderedContent
+        {
+            Kind = "definition",
+            Payload = string.Join('\n', lines) + "\n\n" + definitionText
+        };
     }
 
     /// <summary>

@@ -556,6 +556,24 @@ startupLogger.LogInformation(
 var highLevelCoordinatorConfig = builder.Configuration.GetSection("HighLevelCoordinator").Get<Broker.Services.HighLevelCoordinatorOptions>()
     ?? new Broker.Services.HighLevelCoordinatorOptions();
 builder.Services.AddSingleton(highLevelCoordinatorConfig);
+
+// ── 受治理生成（HighLevelCoordinator:Generation:SystemScaffoldMode = Governed）──
+// broker 依任務啟動受控代理；代理經三個生成能力走 PEP，generation-worker 產出原型，
+// broker 驗證產物（路徑、sha256）後交付。Legacy（預設）時這些服務不會被用到，
+// 但交付與 watchdog 仍會接手先前以 Governed 模式啟動、尚未結束的任務。
+var governedGenerationOptions = builder.Configuration.GetSection(Broker.Services.GovernedGenerationOptions.SectionName).Get<Broker.Services.GovernedGenerationOptions>()
+    ?? new Broker.Services.GovernedGenerationOptions();
+builder.Services.AddSingleton(governedGenerationOptions);
+builder.Services.AddSingleton<Broker.Services.AgentContainerLauncher>();
+builder.Services.AddSingleton<Broker.Services.GovernedGenerationRunStore>();
+builder.Services.AddSingleton<Broker.Services.IGovernedGenerationReadiness, Broker.Services.GovernedGenerationReadiness>();
+builder.Services.AddSingleton<Broker.Services.GovernedGenerationLauncher>();
+builder.Services.AddSingleton<Broker.Services.GenerationDeliverySignal>();
+builder.Services.AddSingleton<Broker.Services.GenerationPackageIngestor>();
+builder.Services.AddSingleton<Broker.Services.IGeneratedPackageDelivery, Broker.Services.LineGeneratedPackageDelivery>();
+builder.Services.AddSingleton<Broker.Services.GenerationDeliveryService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.GenerationDeliveryService>());
+
 builder.Services.AddSingleton<Broker.Services.HighLevelCoordinator>();
 builder.Services.AddSingleton<Broker.Services.BrowserBindingService>();
 startupLogger.LogInformation(
@@ -582,7 +600,11 @@ builder.Services.AddSingleton<IBrokerService>(sp =>
         sp.GetRequiredService<ISessionService>(),
         sp.GetRequiredService<IRevocationService>(),
         sp.GetRequiredService<ITaskRouter>(),
-        sp.GetRequiredService<IExecutionDispatcher>(),
+        // generate_scaffold 的結果先經 broker 驗證並收下產物（路徑、sha256、證據）才算成功；
+        // 包在註冊的分派器外層，不論分派器是 pool、strict 或 in-process（測試替換的也一樣）。
+        new Broker.Services.GenerationIngestingDispatcher(
+            sp.GetRequiredService<IExecutionDispatcher>(),
+            sp.GetRequiredService<Broker.Services.GenerationPackageIngestor>()),
         sp.GetRequiredService<IToolSpecStatusChecker>(),
         sp.GetRequiredService<IApprovalNotifier>()));
 

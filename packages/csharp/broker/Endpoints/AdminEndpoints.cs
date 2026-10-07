@@ -102,7 +102,7 @@ public static class AdminEndpoints
                 return Results.BadRequest(ApiResponseHelper.Error("Principal is missing or not active."));
 
             var task = db.Get<BrokerTask>(taskId);
-            if (task == null || task.State is TaskState.Cancelled or TaskState.Completed)
+            if (task == null || TaskStates.IsTerminal(task.State))
                 return Results.BadRequest(ApiResponseHelper.Error("Task is missing or not active."));
             if (!string.Equals(task.AssignedPrincipalId, principalId, StringComparison.Ordinal) ||
                 string.IsNullOrWhiteSpace(task.AssignedRoleId))

@@ -48,7 +48,13 @@ public class BrokerAuthorizationFixture : IAsyncLifetime
     /// <param name="configureTestServices">
     /// Runs after the broker's own service registrations (for example to decorate a broker service).
     /// </param>
-    protected BrokerAuthorizationFixture(bool enforceWorkerAuth, Action<IServiceCollection>? configureTestServices = null)
+    /// <param name="hostSettings">
+    /// Extra settings passed with UseSetting, so they also reach the values Program.cs reads before the host is built.
+    /// </param>
+    protected BrokerAuthorizationFixture(
+        bool enforceWorkerAuth,
+        Action<IServiceCollection>? configureTestServices = null,
+        IReadOnlyDictionary<string, string?>? hostSettings = null)
     {
         WorkerAuthEnforced = enforceWorkerAuth;
         _workDirectory = Path.Combine(Path.GetTempPath(), $"b4a-authz-{Guid.NewGuid():N}");
@@ -64,6 +70,10 @@ public class BrokerAuthorizationFixture : IAsyncLifetime
             builder.UseSetting("Database:Path", databasePath);
             builder.UseSetting("HighLevelCoordinator:AccessRoot", accessRoot);
             builder.UseSetting("Broker:IpRateLimit:Enabled", "false");
+            foreach (var (key, value) in hostSettings ?? new Dictionary<string, string?>())
+            {
+                builder.UseSetting(key, value);
+            }
 
             builder.ConfigureAppConfiguration((_, config) =>
             {

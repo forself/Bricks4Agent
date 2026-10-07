@@ -464,15 +464,20 @@ assertIncludes('agent prompt names ui component runtime', agentSystemPrompt, './
 assertIncludes('agent prompt names key components', agentSystemPrompt, 'BasicButton, ButtonGroup, FeatureCard');
 
 const agentEndpoints = read('packages/csharp/broker/Endpoints/AgentEndpoints.cs');
-assertIncludes('spawn defaults to non-legacy mode', agentEndpoints, '["AGENT_LINE_LISTEN"] = "0"');
-assertIncludes('spawn has legacy opt-in flag', agentEndpoints, '["AGENT_ENABLE_LEGACY_LINE_LISTEN"] = "1"');
-assertIncludes('spawn one-shot run fallback', agentEndpoints, 'Reply with the exact text AGENT_READY.');
+// /agents/spawn 與受治理生成共用 AgentContainerLauncher：環境變數、註冊憑證與容器啟動都在那裡組成。
+const agentLauncher = read('packages/csharp/broker/Services/AgentContainerLauncher.cs');
+assertIncludes('spawn defaults to non-legacy mode', agentLauncher, '["AGENT_LINE_LISTEN"] = "0"');
+assertIncludes('spawn has legacy opt-in flag', agentLauncher, '["AGENT_ENABLE_LEGACY_LINE_LISTEN"] = "1"');
+assertIncludes('spawn one-shot run fallback', agentLauncher, 'Reply with the exact text AGENT_READY.');
 assertIncludes('spawn normalizes requested agent id', agentEndpoints, 'agentId = AgentSpawnService.NormalizeAgentId(agentId);');
 assertIncludes('spawn resolves configurable agent broker url', agentEndpoints, 'ResolveAgentBrokerUrl(body, configuration)');
-assertIncludes('spawn uses resolved broker url', agentEndpoints, '["BROKER_URL"] = agentBrokerUrl');
-assertIncludes('spawn uses high-level model by default', agentEndpoints, '["AGENT_MODEL"] = highLevelLlmOptions.DefaultModel');
-assertNotIncludes('spawn does not pass direct provider', agentEndpoints, 'envOverrides["AGENT_PROVIDER"]');
-assertNotIncludes('spawn does not pass direct api key', agentEndpoints, 'envOverrides["OPENAI_API_KEY"]');
+assertIncludes('spawn goes through the shared launcher', agentEndpoints, 'launcher.SpawnAsync(');
+assertIncludes('spawn uses resolved broker url', agentLauncher, '["BROKER_URL"] = brokerUrl');
+assertIncludes('spawn uses high-level model by default', agentLauncher, 'string.IsNullOrWhiteSpace(request.Model) ? _llmOptions.DefaultModel');
+for (const source of [agentEndpoints, agentLauncher]) {
+    assertNotIncludes('spawn does not pass direct provider', source, '["AGENT_PROVIDER"]');
+    assertNotIncludes('spawn does not pass direct api key', source, '["OPENAI_API_KEY"]');
+}
 assertNotIncludes('create lets task type choose default caps', agentEndpoints, 'capabilityIds = spawnService.GetDefaultCapabilities();');
 assertNotIncludes('stop only matches requested agent container', agentEndpoints, 'c.WorkerId == agentId || c.WorkerType == "agent"');
 assertIncludes('stop requires agent worker type and id', agentEndpoints, 'c.WorkerType == "agent" && c.WorkerId == agentId');
@@ -536,14 +541,17 @@ const workerEndpoints = read('packages/csharp/broker/Endpoints/WorkerEndpoints.c
 assertIncludes('workers/spawn refuses agents', workerEndpoints, 'ContainerManager.IsAgentWorkerType(workerType)');
 assertNotIncludes('workers/spawn no longer copies a request environment', workerEndpoints, 'envOverrides[prop.Name]');
 assertIncludes('workers/spawn reports a missing runtime CLI', workerEndpoints, 'catch (Win32Exception)');
-assertIncludes('agents/spawn caps max_iterations', agentEndpoints, 'ClampMaxIterations(maxIterations)');
-assertIncludes('agents/spawn only accepts the configured broker url', agentEndpoints, 'Agent broker_url must match the configured AgentBrokerUrl.');
+assertIncludes('agents/spawn caps max_iterations', agentEndpoints, 'maxIterations = ClampMaxIterations(requestedIterations)');
+assertIncludes('agent launcher caps max_iterations', agentLauncher, 'ClampMaxIterations(request.MaxIterations)');
+assertIncludes('agents/spawn only accepts the configured broker url', agentLauncher, 'Agent broker_url must match the configured AgentBrokerUrl.');
 // 註冊憑證只經 SecretEnvironment 交給容器（參數中只有 -e NAME），不放進 TrustedEnvironment。
-assertIncludes('agents/spawn issues a registration credential', agentEndpoints, 'spawnService.SpawnWithCredentialAsync(');
-assertIncludes('agents/spawn hands the secret over as a secret environment', agentEndpoints, '[RegistrationSecretEnvironmentVariable] = secret');
-assertIncludes('agents/spawn names the container variable', agentEndpoints, 'RegistrationSecretEnvironmentVariable = "BROKER_REGISTRATION_SECRET"');
-assertNotIncludes('agents/spawn keeps the secret out of the trusted environment', agentEndpoints, 'envOverrides["BROKER_REGISTRATION_SECRET"]');
-assertNotIncludes('agents/spawn keeps the secret out of the trusted environment (indexer form)', agentEndpoints, '["BROKER_REGISTRATION_SECRET"] =');
+assertIncludes('agents/spawn issues a registration credential', agentLauncher, '_spawnService.SpawnWithCredentialAsync(');
+assertIncludes('agents/spawn hands the secret over as a secret environment', agentLauncher, '[RegistrationSecretEnvironmentVariable] = secret');
+assertIncludes('agents/spawn names the container variable', agentLauncher, 'RegistrationSecretEnvironmentVariable = "BROKER_REGISTRATION_SECRET"');
+for (const source of [agentEndpoints, agentLauncher]) {
+    assertNotIncludes('agents/spawn keeps the secret out of the trusted environment', source, 'envOverrides["BROKER_REGISTRATION_SECRET"]');
+    assertNotIncludes('agents/spawn keeps the secret out of the trusted environment (indexer form)', source, '["BROKER_REGISTRATION_SECRET"] =');
+}
 
 const spawnService = read('packages/csharp/broker-core/Services/AgentSpawnService.cs');
 // spawn 的憑證：先簽發新的、啟動容器，成功後才撤銷先前 spawn 的憑證（新的除外）；失敗只撤銷新的這把。

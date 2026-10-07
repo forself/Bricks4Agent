@@ -2019,6 +2019,106 @@ try
         AssertTrue(interviewConfirmed.Reply.Contains("已生成並封裝系統雛形", StringComparison.Ordinal), "confirming the /ok draft builds through the legacy scaffold path");
         AssertTrue(!interviewConfirmed.Reply.Contains(verifyAccessRoot, StringComparison.OrdinalIgnoreCase), "interview build reply does not expose host paths");
 
+        // Governed：確認 system_scaffold draft 後改由受控代理經生成能力產出；broker 程序內不寫出檔案，
+        // 立即回覆「已受理」。前置條件不滿足時 fail-closed，不建立任務也不退回程序內生成。
+        {
+            var governedOutputRoot = Path.Combine(sandboxRoot, "generation-out");
+            Directory.CreateDirectory(governedOutputRoot);
+            var governedContainers = new VerifyRecordingContainerManager();
+            var governedReadiness = new VerifyGovernedReadiness();
+            var governedSpawnService = new AgentSpawnService(coordinatorDb);
+            using var governedCrypto = new BrokerCore.Crypto.EnvelopeCrypto();
+            var governedLauncher = new GovernedGenerationLauncher(
+                new GovernedGenerationOptions { OutputRoot = governedOutputRoot },
+                governedReadiness,
+                new AgentContainerLauncher(
+                    governedSpawnService,
+                    governedContainers,
+                    governedCrypto,
+                    new ConfigurationBuilder()
+                        .AddInMemoryCollection(new Dictionary<string, string?>
+                        {
+                            ["FunctionPool:ContainerManager:AgentBrokerUrl"] = "http://host.containers.internal:5361"
+                        })
+                        .Build(),
+                    new HighLevelLlmOptions { DefaultModel = "verify" },
+                    new RegistrationCredentialOptions()),
+                governedSpawnService,
+                new GovernedGenerationRunStore(coordinatorDb),
+                coordinatorDb,
+                NullLogger<GovernedGenerationLauncher>.Instance);
+            var governedCoordinator = new HighLevelCoordinator(
+                coordinatorDb,
+                new FakeBrokerService(),
+                new FakePlanService(),
+                new FakeTaskRouter(),
+                lineGateway,
+                queryMediator,
+                new HighLevelRelationQueryService(
+                    queryMediator,
+                    new HighLevelLlmOptions
+                    {
+                        Provider = "ollama",
+                        BaseUrl = "http://localhost:11434",
+                        DefaultModel = "verify"
+                    },
+                    new FakeHttpClientFactory(),
+                    NullLogger<HighLevelRelationQueryService>.Instance),
+                new HighLevelCoordinatorOptions
+                {
+                    AccessRoot = Path.Combine(sandboxRoot, "managed"),
+                    CommandGuideReminderMinutes = 60,
+                    Generation = new HighLevelGenerationOptions { SystemScaffoldMode = SystemScaffoldModes.Governed }
+                },
+                new FakeHighLevelExecutionModelPlanner(),
+                coordinatorDocumentArtifactService,
+                coordinatorCodeArtifactService,
+                coordinatorSystemScaffoldService,
+                coordinatorSiteRebuildService,
+                coordinatorArtifactDeliveryService,
+                new BrowserBindingService(coordinatorDb),
+                coordinatorProjectInterviewStateMachine,
+                coordinatorProjectInterviewStateService,
+                coordinatorProjectInterviewRestatementService,
+                coordinatorProjectInterviewTemplateCatalogService,
+                coordinatorProjectInterviewCompiler,
+                coordinatorProjectInterviewWorkflowDesignService,
+                coordinatorProjectInterviewPdfRenderService,
+                NullLogger<HighLevelCoordinator>.Instance,
+                governedGenerationLauncher: governedLauncher);
+
+            await PromoteLineUserForProductionAsync("line-governed-user");
+            var governedDraft = await governedCoordinator.ProcessLineMessageAsync("line-governed-user", "/建立 完整系統雛形 #governedproj");
+            AssertTrue(governedDraft.Draft?.TaskType == "system_scaffold", "governed mode still creates a system_scaffold draft");
+
+            governedReadiness.Ready = false;
+            var governedUnavailable = await governedCoordinator.ProcessLineMessageAsync("line-governed-user", "y");
+            AssertTrue(governedUnavailable.Error == "generation_unavailable", "governed mode fails closed when its prerequisites are missing");
+            AssertTrue(governedUnavailable.CreatedTask == null, "governed mode creates no task when it is not ready");
+            AssertTrue(governedUnavailable.Reply.Contains("暫不可用", StringComparison.Ordinal), "governed mode tells the user generation is unavailable");
+            AssertTrue(governedContainers.Spawned.Count == 0, "governed mode starts no agent when it is not ready");
+
+            governedReadiness.Ready = true;
+            var governedConfirmed = await governedCoordinator.ProcessLineMessageAsync("line-governed-user", "y");
+            AssertTrue(governedConfirmed.Error == null, "governed confirm succeeds once ready");
+            AssertTrue(governedConfirmed.CreatedTask?.TaskType == "system_scaffold", "governed confirm creates a system_scaffold task");
+            AssertTrue(governedConfirmed.Reply.Contains("已受理", StringComparison.Ordinal), "governed confirm replies that the request was accepted");
+            AssertTrue(governedConfirmed.Reply.Contains(governedConfirmed.CreatedTask!.TaskId, StringComparison.Ordinal), "governed confirm reply names the task id");
+            AssertTrue(!governedConfirmed.Reply.Contains("已生成並封裝系統雛形", StringComparison.Ordinal), "governed confirm does not run the in-process scaffold");
+            AssertTrue(!governedConfirmed.Reply.Contains(verifyAccessRoot, StringComparison.OrdinalIgnoreCase), "governed confirm reply does not expose host paths");
+            AssertTrue(governedConfirmed.CreatedTask.AssignedRoleId == "role_executor", "governed task is assigned to role_executor");
+            AssertTrue(governedConfirmed.CreatedTask.AssignedPrincipalId == GovernedGenerationLauncher.BuildPrincipalId(governedConfirmed.CreatedTask.TaskId), "governed task is assigned to its own AI principal");
+            AssertTrue(TaskRuntimeDescriptor.Parse(governedConfirmed.CreatedTask.RuntimeDescriptor).CapabilityGrants.Count == 3, "governed task carries the three generation grants");
+            AssertTrue(governedConfirmed.Handoff?.GenerationRequest != null, "governed handoff carries the sanitized generation request");
+            AssertTrue(governedContainers.Spawned.Count == 1 && governedContainers.Spawned[0].TrustedEnvironment.ContainsKey("AGENT_RUN"), "governed confirm starts one agent with a work item");
+            AssertTrue(governedContainers.Spawned[0].SecretEnvironment.ContainsKey(AgentContainerLauncher.RegistrationSecretEnvironmentVariable), "governed agent receives its registration credential as a secret");
+            var governedPaths = governedCoordinator.GetLineManagedPaths("line-governed-user")!;
+            var governedProjectRoot = Path.Combine(governedPaths.ProjectsRoot, "governedproj");
+            AssertTrue(!Directory.Exists(governedProjectRoot) || !Directory.EnumerateFileSystemEntries(governedProjectRoot, "*", SearchOption.AllDirectories).Any(), "governed confirm writes no project files in the broker process");
+            AssertTrue(!Directory.Exists(governedPaths.DocumentsRoot) || !Directory.EnumerateFiles(governedPaths.DocumentsRoot).Any(), "governed confirm writes no package in the broker process");
+            AssertTrue(governedCoordinator.GetLineDraft("line-governed-user") == null, "governed confirm removes the draft once the agent started");
+        }
+
         await PromoteLineUserForProductionAsync("line-site-rebuild-user");
         var siteRebuildDraft = await coordinator.ProcessLineMessageAsync("line-site-rebuild-user", "/重製網站 https://example.edu/ 深度3 #sitecopy");
         AssertTrue(siteRebuildDraft.Draft != null && siteRebuildDraft.Draft.TaskType == "site_rebuild", "site rebuild command with URL creates site_rebuild draft");
@@ -2508,6 +2608,43 @@ file sealed class FakeLlmHandler : HttpMessageHandler
             Content = new StringContent(body)
         });
     }
+}
+
+file sealed class VerifyGovernedReadiness : IGovernedGenerationReadiness
+{
+    public bool Ready { get; set; } = true;
+
+    public Task<GovernedGenerationReadinessResult> CheckAsync(CancellationToken cancellationToken = default)
+    {
+        var result = new GovernedGenerationReadinessResult();
+        if (!Ready)
+            result.Reasons.Add("verify: not ready");
+        return Task.FromResult(result);
+    }
+}
+
+file sealed class VerifyRecordingContainerManager : FunctionPool.Container.IContainerManager
+{
+    public List<FunctionPool.Container.ContainerSpawnRequest> Spawned { get; } = new();
+
+    public Task<string> SpawnWorkerAsync(FunctionPool.Container.ContainerSpawnRequest request, CancellationToken ct = default)
+    {
+        Spawned.Add(request);
+        return Task.FromResult($"verify{Spawned.Count:D6}");
+    }
+
+    public Task StopWorkerAsync(string containerId, CancellationToken ct = default) => Task.CompletedTask;
+
+    public Task<List<FunctionPool.Container.ManagedContainer>> ListManagedAsync(CancellationToken ct = default)
+        => Task.FromResult(new List<FunctionPool.Container.ManagedContainer>());
+
+    public Task<string> GetLogsAsync(string containerId, int tailLines = 50, CancellationToken ct = default)
+        => Task.FromResult(string.Empty);
+
+    public Task<bool> IsRuntimeAvailableAsync(CancellationToken ct = default) => Task.FromResult(true);
+
+    public Task<List<FunctionPool.Container.ContainerStats>> GetStatsAsync(CancellationToken ct = default)
+        => Task.FromResult(new List<FunctionPool.Container.ContainerStats>());
 }
 
 file sealed class FakeBrokerService : IBrokerService

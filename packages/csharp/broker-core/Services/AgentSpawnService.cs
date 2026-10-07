@@ -282,6 +282,46 @@ public class AgentSpawnService
     }
 
     /// <summary>
+    /// 結束一個由 broker 指派主體的任務（例如受治理生成）：主體標為 Disabled，撤銷這組主體與任務的註冊憑證與 session，
+    /// 任務改為 <paramref name="finalState"/>（Completed 或 Failed）。任務已在終止狀態時不改它的狀態。
+    /// 與 <see cref="DeactivateAgent"/> 不同，這裡不假設任務 id 是 <c>task_agent_*</c> 的形式，而是以任務指派的主體為準。
+    /// 回傳任務是否存在。
+    /// </summary>
+    public bool DeactivateTaskAgent(string taskId, TaskState finalState, string reason, string revokedBy)
+    {
+        if (finalState is not (TaskState.Completed or TaskState.Failed))
+            throw new ArgumentOutOfRangeException(nameof(finalState), "A task agent ends as Completed or Failed.");
+
+        var task = _db.Get<BrokerTask>(taskId);
+        if (task == null)
+            return false;
+
+        var principalId = task.AssignedPrincipalId;
+        if (!string.IsNullOrWhiteSpace(principalId))
+        {
+            var principal = _db.Get<Principal>(principalId);
+            if (principal != null && principal.Status != EntityStatus.Disabled)
+            {
+                principal.Status = EntityStatus.Disabled;
+                _db.Update(principal);
+            }
+
+            _credentials.RevokeFor(principalId, taskId, reason, revokedBy);
+        }
+
+        _sessions.RevokeSessionsByTask(taskId, reason, revokedBy);
+
+        if (!TaskStates.IsTerminal(task.State))
+        {
+            _db.Execute(
+                "UPDATE broker_tasks SET state = @state, completed_at = @now WHERE task_id = @taskId",
+                new { state = (int)finalState, now = DateTime.UtcNow, taskId });
+        }
+
+        return true;
+    }
+
+    /// <summary>
     /// 以新簽發的註冊憑證啟動 agent 容器：先簽發新憑證，再呼叫 <paramref name="spawnContainer"/>
     /// （傳入新憑證的明文，呼叫端以 SecretEnvironment 交給容器，回傳容器 id）。
     /// 啟動成功後，才撤銷這個 agent 先前 spawn 時簽發的憑證（新的這把除外）；

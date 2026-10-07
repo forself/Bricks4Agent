@@ -12,6 +12,7 @@ public class HighLevelCoordinator
     private const string SystemPrincipalId = "system:high-level-coordinator";
     private const string ConversationDocumentPrefix = "convlog:";
     private const string ProductionPermissionDeniedReply = "目前你的帳戶不能建立 production 任務。若需要此權限，請聯絡管理員。";
+    private const string GovernedGenerationUnavailableReply = "系統雛形生成暫不可用，這次沒有建立任務。請稍後再試，或聯絡管理員。";
     private static readonly Regex PreferredUserCodePattern = new("^[A-Za-z0-9]{3,32}$", RegexOptions.CultureInvariant);
     private static readonly Regex LineUserIdPattern = new("^U[a-fA-F0-9]{32}$", RegexOptions.CultureInvariant);
 
@@ -55,6 +56,7 @@ public class HighLevelCoordinator
     private readonly ProjectInterviewPdfRenderService _projectInterviewPdfRenderService;
     private readonly ILogger<HighLevelCoordinator> _logger;
     private readonly PortalLineVerificationService? _lineVerification;
+    private readonly GovernedGenerationLauncher? _governedGenerationLauncher;
     private readonly string _accessRoot;
 
     public HighLevelCoordinator(
@@ -81,7 +83,8 @@ public class HighLevelCoordinator
         ProjectInterviewWorkflowDesignService projectInterviewWorkflowDesignService,
         ProjectInterviewPdfRenderService projectInterviewPdfRenderService,
         ILogger<HighLevelCoordinator> logger,
-        PortalLineVerificationService? lineVerification = null)
+        PortalLineVerificationService? lineVerification = null,
+        GovernedGenerationLauncher? governedGenerationLauncher = null)
     {
         _db = db;
         _brokerService = brokerService;
@@ -115,6 +118,7 @@ public class HighLevelCoordinator
         _projectInterviewPdfRenderService = projectInterviewPdfRenderService;
         _logger = logger;
         _lineVerification = lineVerification;
+        _governedGenerationLauncher = governedGenerationLauncher;
         _accessRoot = ResolveAccessRoot(_options.AccessRoot);
     }
 
@@ -1838,6 +1842,22 @@ public class HighLevelCoordinator
             }, profile);
         }
 
+        // Governed 模式：前置條件不滿足就 fail-closed，不建立任務，也不退回程序內生成。
+        // 在建立專案資料夾之前檢查，使用者之後可用同一個名稱再試。
+        var governedGeneration = IsGovernedSystemScaffold(draft);
+        if (governedGeneration &&
+            (_governedGenerationLauncher == null || !await _governedGenerationLauncher.IsReadyAsync(cancellationToken)))
+        {
+            return (new HighLevelProcessResult
+            {
+                Mode = HighLevelRouteMode.Production,
+                Reply = GovernedGenerationUnavailableReply,
+                Draft = draft,
+                Error = "generation_unavailable",
+                DecisionReason = "governed generation is not ready"
+            }, profile);
+        }
+
         EnsureManagedWorkspaceLayout(draft.ManagedPaths);
 
         var memory = ResolvePromotableMemory(channel, userId, profile, draft);
@@ -1859,9 +1879,16 @@ public class HighLevelCoordinator
         _executionIntentStore.Write(executionIntent);
 
         var submittedBy = $"{channel}:{userId}";
-        var assignedRole = _taskRouter.RecommendRole(draft.TaskType);
+        var assignedRole = governedGeneration
+            ? GenerationCapabilities.ExecutorRole
+            : _taskRouter.RecommendRole(draft.TaskType);
         var promotedRuntimeDescriptor = BuildPromotedRuntimeDescriptor(draft, executionIntent);
         var promotedScopeDescriptor = BuildPromotedScopeDescriptor(draft, executionIntent);
+        if (governedGeneration)
+        {
+            // scope 會隨 token 與 runtime spec 交給代理：受治理任務不帶主機路徑。
+            promotedScopeDescriptor = GovernedGenerationLauncher.BuildGovernedScopeDescriptor(promotedScopeDescriptor);
+        }
 
         var task = _brokerService.CreateTask(
             submittedBy,
@@ -1871,8 +1898,17 @@ public class HighLevelCoordinator
             runtimeDescriptor: promotedRuntimeDescriptor);
 
         var plan = _planService.CreatePlan(task.TaskId, submittedBy, draft.Title, draft.Description);
+        var preparation = governedGeneration
+            ? _governedGenerationLauncher!.Prepare(task, draft, promotedRuntimeDescriptor, _accessRoot)
+            : null;
         var handoff = BuildHandoff(task, plan, draft, executionIntent, channel, userId);
+        handoff.GenerationRequest = preparation?.Request;
         SaveHandoff(task.TaskId, handoff);
+
+        if (preparation != null)
+        {
+            return await LaunchGovernedGenerationAsync(channel, userId, profile, draft, task, plan, handoff, preparation, cancellationToken);
+        }
 
         DeleteDocument(BuildDraftDocumentId(channel, userId));
 
@@ -1947,6 +1983,96 @@ public class HighLevelCoordinator
             CreatedPlan = plan,
             Handoff = handoff
         }, profile);
+    }
+
+    private bool IsGovernedSystemScaffold(HighLevelTaskDraft draft)
+        => string.Equals(draft.TaskType, "system_scaffold", StringComparison.OrdinalIgnoreCase) &&
+           _options.Generation.UsesGovernedPath;
+
+    /// <summary>
+    /// 受治理生成：啟動受控代理後立即回覆「已受理」，結果之後以 LINE 通知與 portal 產物清單送達。
+    /// 代理啟動成功才刪除 draft；失敗時任務已標為 Failed，draft 保留讓使用者再回 y 重試
+    /// （專案資料夾若仍是空的就移除，名稱可沿用）。
+    /// </summary>
+    private async Task<(HighLevelProcessResult Result, HighLevelUserProfile Profile)> LaunchGovernedGenerationAsync(
+        string channel,
+        string userId,
+        HighLevelUserProfile profile,
+        HighLevelTaskDraft draft,
+        BrokerTask task,
+        Plan plan,
+        HighLevelTaskHandoff handoff,
+        GovernedGenerationPreparation preparation,
+        CancellationToken cancellationToken)
+    {
+        var launch = await _governedGenerationLauncher!.LaunchAsync(task, plan, draft, preparation, cancellationToken);
+        if (!launch.Success)
+        {
+            TryRemoveEmptyProjectRoot(draft.ManagedPaths);
+            return (new HighLevelProcessResult
+            {
+                Mode = HighLevelRouteMode.Production,
+                Reply = $"系統雛形生成暫不可用：生成代理無法啟動，任務 {task.TaskId} 已標為失敗。請稍後回覆 y 再試一次，或聯絡管理員。",
+                Draft = draft,
+                Error = launch.ErrorCode ?? "generation_launch_failed",
+                DecisionReason = "governed generation agent could not be started",
+                CreatedTask = task,
+                CreatedPlan = plan,
+                Handoff = handoff
+            }, profile);
+        }
+
+        DeleteDocument(BuildDraftDocumentId(channel, userId));
+        ClearPendingDraftSnapshot(profile);
+        profile.LastTaskId = task.TaskId;
+        profile.LastPlanId = plan.PlanId;
+        profile.LastDecision = HighLevelRouteMode.Production.ToString();
+        profile.LastUpdatedAt = DateTime.UtcNow;
+
+        _logger.LogInformation(
+            "High-level confirmed (governed generation): task={TaskId} plan={PlanId}",
+            task.TaskId, plan.PlanId);
+
+        return (new HighLevelProcessResult
+        {
+            Mode = HighLevelRouteMode.Production,
+            Reply = BuildGovernedGenerationAcceptedReply(draft, task),
+            CreatedTask = task,
+            CreatedPlan = plan,
+            Handoff = handoff,
+            DecisionReason = "governed generation accepted"
+        }, profile);
+    }
+
+    internal static string BuildGovernedGenerationAcceptedReply(HighLevelTaskDraft draft, BrokerTask task)
+    {
+        var lines = new List<string>
+        {
+            $"已確認任務：{draft.Title}",
+            $"已受理系統雛形生成（任務 {task.TaskId}）。",
+            "受控代理會依確認的需求撰寫頁面定義，經驗證後由生成服務產出多頁前端原型。",
+            "完成後會以 LINE 通知送出下載連結，使用者入口的產物清單也看得到。"
+        };
+        if (!string.IsNullOrWhiteSpace(draft.ProjectFolderName))
+            lines.Add($"project_folder: {draft.ProjectFolderName}");
+        return string.Join('\n', lines);
+    }
+
+    private static void TryRemoveEmptyProjectRoot(HighLevelManagedPaths paths)
+    {
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(paths.ProjectRoot) &&
+                Directory.Exists(paths.ProjectRoot) &&
+                !Directory.EnumerateFileSystemEntries(paths.ProjectRoot).Any())
+            {
+                Directory.Delete(paths.ProjectRoot);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // 留著也只是空資料夾；使用者可改用新名稱。
+        }
     }
 
     private async Task<HighLevelProcessResult> HandleTransportQueryAsync(
@@ -4047,6 +4173,10 @@ public class HighLevelCoordinatorOptions
     public int MaxDraftSummaryLength { get; set; } = 160;
     public int CommandGuideReminderMinutes { get; set; } = 60;
     public string AccessRoot { get; set; } = HighLevelCoordinatorDefaults.DefaultAccessRoot;
+
+    /// <summary>生成模式（<c>HighLevelCoordinator:Generation:SystemScaffoldMode</c>：Legacy 或 Governed）。</summary>
+    public HighLevelGenerationOptions Generation { get; set; } = new();
+
     public string AnonymousRegistrationPolicy { get; set; } = HighLevelAnonymousRegistrationPolicy.AllowAll;
     public string[] QueryPrefixes { get; set; } = new[] { "?", "\uFF1F" };
     public string[] ProductionPrefixes { get; set; } = new[] { "/", "\uFF0F" };
@@ -4433,6 +4563,11 @@ public class HighLevelTaskHandoff
     public JsonElement ScopeDescriptor { get; set; }
     public JsonElement RuntimeDescriptor { get; set; }
     public List<HighLevelTaskPhase> ProposedPhases { get; set; } = new();
+
+    /// <summary>受治理生成的工作項（淨化過：不含主機路徑與 hlm 文件 id）；其他任務為 null。</summary>
+    [System.Text.Json.Serialization.JsonPropertyName("generation_request")]
+    public GovernedGenerationRequest? GenerationRequest { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 
