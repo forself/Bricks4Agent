@@ -479,6 +479,67 @@ const TOOL_DEFINITIONS = [
             },
         },
     },
+
+    // ── 受治理生成工具（generation-worker；參數與 broker 的 tool-spec input_schema 一致） ──
+
+    {
+        type: 'function',
+        function: {
+            name: 'query_component_catalog',
+            description: '生成流程第 1 步：查詢元件型錄摘要。先讀 section=overview（DefinitionTemplate 規則、頁型與上限），再讀 field_types（可用的欄位型別）與 example（範例定義）；只有需要單一元件細節時才用 section=component 並帶 name。回傳 JSON：ok、content、catalog_sha256。',
+            parameters: {
+                type: 'object',
+                properties: {
+                    section: {
+                        type: 'string',
+                        enum: ['overview', 'field_types', 'example', 'component'],
+                        description: '要讀的段落，預設 overview',
+                    },
+                    name: { type: 'string', maxLength: 64, description: 'section=component 時的元件名稱' },
+                },
+                required: [],
+            },
+        },
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'validate_definition',
+            description: '生成流程第 3 步：驗證撰寫好的 DefinitionTemplate（沒有副作用，與生成時的檢查完全相同）。回傳 ok 與 errors（每筆含 code、path、message、hint）。ok 為 false 時依每筆 error 修正定義後再驗證，直到 ok 為 true 才能呼叫 generate_scaffold。',
+            parameters: {
+                type: 'object',
+                properties: {
+                    template: { type: 'object', description: '完整的 DefinitionTemplate JSON 物件' },
+                    page_ids: {
+                        type: 'array',
+                        items: { type: 'string', maxLength: 64 },
+                        description: '只驗證這些頁面 id（省略則全部）',
+                    },
+                },
+                required: ['template'],
+            },
+        },
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'generate_scaffold',
+            description: '生成流程第 4 步：以已通過 validate_definition 的同一份 DefinitionTemplate 生成多頁前端原型並打包成 zip。輸出位置由 broker 決定，不需要也不能指定任何路徑。回傳 zip 的相對路徑、sha256 與頁面清單；定義不通過時回傳結構化 errors。',
+            parameters: {
+                type: 'object',
+                properties: {
+                    template: { type: 'object', description: '已通過驗證的 DefinitionTemplate JSON 物件' },
+                    page_ids: {
+                        type: 'array',
+                        items: { type: 'string', maxLength: 64 },
+                        description: '只生成這些頁面 id（省略則全部）',
+                    },
+                    title: { type: 'string', maxLength: 120, description: '原型的標題' },
+                },
+                required: ['template'],
+            },
+        },
+    },
 ];
 
 const TOOL_TO_CAPABILITY = {
@@ -510,7 +571,17 @@ const TOOL_TO_CAPABILITY = {
     stop_agent: 'agent.stop',
     apply_patch: 'repo.patch.apply',
     run_build_test: 'build.test.run',
+    query_component_catalog: 'generation.catalog.query',
+    validate_definition: 'generation.definition.validate',
+    generate_scaffold: 'generation.scaffold.generate',
 };
+
+/** 受治理生成的能力：任一個出現在授予中，就是生成類任務（system prompt 會加上工作流程與上限）。 */
+const GENERATION_CAPABILITY_IDS = Object.freeze([
+    'generation.catalog.query',
+    'generation.definition.validate',
+    'generation.scaffold.generate',
+]);
 
 // ─── 工具分派 ───
 
@@ -600,6 +671,7 @@ function getToolDescriptions(options = {}) {
 }
 
 module.exports = {
+    GENERATION_CAPABILITY_IDS,
     TOOL_DEFINITIONS,
     TOOL_TO_CAPABILITY,
     capabilityIdForTool,

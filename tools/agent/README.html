@@ -181,6 +181,35 @@ node tools/agent/agent.js --governed
 <li><code>AgentLoop</code> uses the governed executor as its effective provider</li>
 <li>LLM traffic is broker-mediated rather than agent-direct</li>
 </ul>
+<h3>Governed generation tools</h3>
+<p>When the session holds the generation grants, the agent has three tools that map to the generation capabilities (executed by <code>generation-worker</code>):</p>
+<table>
+<thead>
+<tr>
+<th>Tool (route)</th>
+<th>Capability</th>
+<th>Use</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>query_component_catalog</code></td>
+<td><code>generation.catalog.query</code></td>
+<td>Read the catalog summary: <code>overview</code>, <code>field_types</code>, <code>example</code>, or one <code>component</code></td>
+</tr>
+<tr>
+<td><code>validate_definition</code></td>
+<td><code>generation.definition.validate</code></td>
+<td>Validate a DefinitionTemplate; <code>ok: false</code> comes with structured errors to fix</td>
+</tr>
+<tr>
+<td><code>generate_scaffold</code></td>
+<td><code>generation.scaffold.generate</code></td>
+<td>Generate and package the prototype from the validated template; the broker decides the output location</td>
+</tr>
+</tbody>
+</table>
+<p>For such a task (any generation grant, or task type <code>system_scaffold</code>) the system prompt adds the workflow (catalog, write, validate and fix, generate, report) and the limits taken from the grants: remaining quota per tool, the page limit and the iteration limit. It carries no secret, host path or output location. The payload stays <code>{ route, args, project_root }</code>.</p>
 <h2>Legacy Direct LINE Listener</h2>
 <p><code>--line-listen</code> still exists, but it is not the canonical production path.</p>
 <p>Use it only for development experiments where you explicitly want the agent process to poll LINE directly. The repo's current production-style ingress path is the worker-side bridge under:</p>
@@ -295,7 +324,7 @@ npm run validate:broker-llm-proxy
 <tr>
 <td><code>--max-iterations &lt;n&gt;</code></td>
 <td></td>
-<td>Max iterations</td>
+<td>Max iterations, 1 to 100 (default: <code>AGENT_MAX_ITERATIONS</code>, else 20)</td>
 </tr>
 <tr>
 <td><code>--generate</code></td>

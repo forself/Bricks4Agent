@@ -25,9 +25,12 @@ function hasNot(name, text, needle) {
 const compose = read('tools/agent/container/compose.yml');
 const adapterIdx = compose.indexOf('execution-adapter-worker:');
 assert(adapterIdx >= 0, 'compose declares execution-adapter-worker service');
-// the adapter block runs until the next top-level "  # ──" comment after it
+// the adapter block runs until the next service-level "  # ──" comment after it
+// (the generation worker follows it, then the agent)
 const afterAdapter = compose.slice(adapterIdx);
-const block = afterAdapter.slice(0, afterAdapter.indexOf('# ── Agent ──'));
+const nextServiceMarker = afterAdapter.search(/\n {2}# ── /);
+assert(nextServiceMarker > 0, 'compose has a service marker after the adapter block');
+const block = afterAdapter.slice(0, nextServiceMarker);
 
 has('adapter-profile-gated', block, 'profiles: ["adapters"]');
 has('adapter-read-only', block, 'read_only: true');
@@ -44,6 +47,13 @@ has('adapter-evidence-on-tmpfs', block, 'EvidenceRoot: "/tmp/b4a-evidence"');
 hasNot('adapter-no-docker-socket', block, 'docker.sock');
 // default workspace must not be the real repo bind mount
 hasNot('adapter-not-real-repo', block, '../../..:/workspace');
+// the adapter is not part of governed generation: no generation network, no generated packages
+hasNot('adapter-not-on-generation-net', block, 'generation-net');
+hasNot('adapter-no-generation-volume', block, 'generation-out');
+hasNot('adapter-block-ends-before-generation-worker', block, 'generation-worker');
+// the adapter keeps credential index 2; the generation worker takes index 3
+has('adapter-credential-index', compose, 'WorkerAuth__Credentials__2__WorkerType: "execution-adapter-worker"');
+has('generation-credential-index', compose, 'WorkerAuth__Credentials__3__WorkerType: "generation-worker"');
 
 // 1b) adapter image: .NET 10 SDK runtime pinned by digest, git from the SDK image, no VOLUME
 const containerfile = read('packages/csharp/workers/execution-adapter-worker/Containerfile');

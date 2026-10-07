@@ -2,7 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { getToolDescriptions } = require('./tool-registry');
+const { GENERATION_CAPABILITY_IDS, getToolDescriptions } = require('./tool-registry');
 const { logInfo, logWarn } = require('./utils');
 
 const MAX_AGENT_MD_CHARS_NATIVE = 8000;
@@ -40,12 +40,16 @@ function buildSystemPrompt(options) {
         verbose,
         toolDescriptions = getToolDescriptions(),
         governed = null,
+        maxIterations = null,
     } = options;
 
     const parts = [BASE_PROMPT];
 
     if (governed) {
         parts.push(buildGovernedSection(governed));
+        if (isGenerationTask(governed)) {
+            parts.push(buildGenerationSection(governed, maxIterations));
+        }
     } else {
         parts.push('\n## Execution Mode\n\nYou may use the locally registered tools directly.');
     }
@@ -187,6 +191,67 @@ Behavioral constraints:
 - Use the broker contract exactly as provided above.`;
 }
 
+/** 生成類任務：授予中有任一個受治理生成能力，或任務類型是 system_scaffold。 */
+function isGenerationTask(governed) {
+    if (!governed) {
+        return false;
+    }
+    const granted = (governed.allowedCapabilities || []).map((capability) => capability.capabilityId);
+    return granted.some((capabilityId) => GENERATION_CAPABILITY_IDS.includes(capabilityId)) ||
+        governed.runtimeSpec?.taskType === 'system_scaffold';
+}
+
+function formatQuota(value) {
+    const quota = Number(value);
+    if (!Number.isFinite(quota)) {
+        return 'unknown';
+    }
+    return quota < 0 ? 'unlimited' : String(quota);
+}
+
+/**
+ * 生成類任務的工作流程與上限。只放工具名稱、步驟與授予上的數字（剩餘配額、頁數上限、迭代上限）：
+ * 不放密鑰、主機路徑或 scope 中的輸出位置。
+ */
+function buildGenerationSection(governed, maxIterations) {
+    const byCapability = new Map((governed.allowedCapabilities || []).map((capability) => [capability.capabilityId, capability]));
+    const catalog = byCapability.get('generation.catalog.query');
+    const validate = byCapability.get('generation.definition.validate');
+    const generate = byCapability.get('generation.scaffold.generate');
+    const maxPages = Number(generate?.scopeOverride?.max_pages);
+
+    const limits = [
+        `- Pages per prototype: at most ${Number.isInteger(maxPages) && maxPages > 0 ? maxPages : 12}`,
+        `- query_component_catalog calls left: ${catalog ? formatQuota(catalog.remainingQuota) : 'not granted'}`,
+        `- validate_definition calls left: ${validate ? formatQuota(validate.remainingQuota) : 'not granted'}`,
+        `- generate_scaffold calls left: ${generate ? formatQuota(generate.remainingQuota) : 'not granted'}`,
+    ];
+    if (Number.isInteger(maxIterations) && maxIterations > 0) {
+        limits.push(`- Model turns for the whole task: at most ${maxIterations}`);
+    }
+
+    return `
+## Governed Generation Workflow
+
+This task generates a front-end prototype from a DefinitionTemplate. The broker-governed generation tools do the
+generation; you only write the definition. Work in this order:
+1. query_component_catalog: read section "overview" first, then "field_types" and "example". Ask for
+   section "component" with a name only when you need the details of one component.
+2. Write one DefinitionTemplate as a single JSON object that follows the catalog rules exactly. Use only the
+   page types and field types the catalog lists. Never put code, HTML, scripts, styles, absolute URLs or file
+   system paths in it (an api value is only the base path form the catalog describes).
+3. validate_definition with that template. When ok is false, fix every reported error (each has code, path,
+   message and hint) and validate again. Do not generate until validation returns ok: true.
+4. generate_scaffold with the same template. Do not pass any output location: the broker decides where the
+   package is written and delivers it to the user.
+5. Reply with a short summary: the generated pages, and the zip path and sha256 from the generate result. Then stop.
+
+Limits for this task:
+${limits.join('\n')}
+If validation still fails when the validate_definition calls run out, stop and report the remaining errors
+instead of guessing. Do not retry generate_scaffold with an unchanged template after it failed.`;
+}
+
 function findAgentMd(startDir) {
     let dir = startDir;
     const root = path.parse(dir).root;
@@ -226,4 +291,4 @@ function resolveAgentManualPath(projectRoot, env = process.env) {
     }
 }
 
-module.exports = { buildSystemPrompt, resolveAgentManualPath };
+module.exports = { buildSystemPrompt, isGenerationTask, resolveAgentManualPath };

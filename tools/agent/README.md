@@ -204,6 +204,18 @@ This means the question is not only "may this agent read a file", but "may this 
 
 - LLM traffic is broker-mediated rather than agent-direct
 
+### Governed generation tools
+
+When the session holds the generation grants, the agent has three tools that map to the generation capabilities (executed by `generation-worker`):
+
+| Tool (route) | Capability | Use |
+|---|---|---|
+| `query_component_catalog` | `generation.catalog.query` | Read the catalog summary: `overview`, `field_types`, `example`, or one `component` |
+| `validate_definition` | `generation.definition.validate` | Validate a DefinitionTemplate; `ok: false` comes with structured errors to fix |
+| `generate_scaffold` | `generation.scaffold.generate` | Generate and package the prototype from the validated template; the broker decides the output location |
+
+For such a task (any generation grant, or task type `system_scaffold`) the system prompt adds the workflow (catalog, write, validate and fix, generate, report) and the limits taken from the grants: remaining quota per tool, the page limit and the iteration limit. It carries no secret, host path or output location. The payload stays `{ route, args, project_root }`.
+
 ## Legacy Direct LINE Listener
 
 `--line-listen` still exists, but it is not the canonical production path.
@@ -296,7 +308,7 @@ These checks cover:
 | `--no-stream` |  | Disable streaming |
 | `--force-react` |  | Force ReAct XML |
 | `--force-native` |  | Force native tool-calling |
-| `--max-iterations <n>` |  | Max iterations |
+| `--max-iterations <n>` |  | Max iterations, 1 to 100 (default: `AGENT_MAX_ITERATIONS`, else 20) |
 | `--generate` | `-g` | Run `project.json` generation |
 | `--pipeline <type>` |  | Run a named pipeline |
 | `--project-path <path>` |  | Target project path |

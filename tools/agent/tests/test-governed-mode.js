@@ -628,6 +628,207 @@ async function testRegistrationRefusalEndsTheExecutor() {
     await agent.close();
 }
 
+/** The three generation capabilities as the broker syncs them from their tool-specs. */
+function readGenerationToolSpecs() {
+    const fs = require('fs');
+    const specRoot = path.join(ROOT, 'packages', 'csharp', 'broker', 'tool-specs');
+    return ['generation.catalog.query', 'generation.definition.validate', 'generation.scaffold.generate']
+        .map((toolId) => JSON.parse(fs.readFileSync(path.join(specRoot, toolId, 'tool.json'), 'utf8')));
+}
+
+/** A fake broker client for a governed generation task: the three generation grants and a system_scaffold task. */
+function createGenerationFakeClient() {
+    const client = createFakeClient();
+    const specs = readGenerationToolSpecs();
+    const submitted = [];
+    const riskValue = { low: 0, medium: 1, high: 2, critical: 3 };
+    const quotas = { 'generation.catalog.query': 20, 'generation.definition.validate': 6, 'generation.scaffold.generate': 2 };
+    const scopes = {
+        'generation.catalog.query': { routes: ['query_component_catalog'] },
+        'generation.definition.validate': { routes: ['validate_definition'] },
+        'generation.scaffold.generate': {
+            routes: ['generate_scaffold'],
+            output_slot: 'task_test',
+            package_name: 'contacts',
+            max_pages: 12,
+            package: 'definition-site-v1',
+        },
+    };
+
+    client.listCapabilities = async () => ({
+        success: true,
+        data: specs.map((spec) => ({
+            capabilityId: spec.capability_bindings[0].capability_id,
+            route: spec.capability_bindings[0].route,
+            approvalPolicy: spec.capability_template.approval_policy,
+            riskLevelValue: riskValue[spec.capability_template.risk_level],
+            resourceType: spec.capability_template.resource_type,
+            paramSchema: JSON.stringify(spec.input_schema),
+        })),
+    });
+    client.listGrants = async () => ({
+        success: true,
+        data: Object.entries(scopes).map(([capabilityId, scope]) => ({
+            capabilityId,
+            scopeOverride: JSON.stringify(scope),
+            remainingQuota: quotas[capabilityId],
+            expiresAt: '2030-01-01T00:00:00Z',
+            statusValue: 0,
+        })),
+    });
+    const baseRuntimeSpec = client.getRuntimeSpec.bind(client);
+    client.getRuntimeSpec = async () => {
+        const response = await baseRuntimeSpec();
+        return { ...response, data: { ...response.data, task_type: 'system_scaffold', task_id: 'task_test' } };
+    };
+    client.submitRequest = async (capabilityId, payload, idempotencyKey, intent) => {
+        submitted.push({ capabilityId, payload, idempotencyKey, intent });
+        return { success: true, data: { execution_state: 'Succeeded', result_payload: '{"ok":true}' } };
+    };
+    client.getSubmitted = () => submitted.slice();
+    return client;
+}
+
+/**
+ * Governed generation: the three generation tools map to the generation capabilities, their parameters match
+ * the broker tool-specs, the payload stays { route, args, project_root }, and a generation task gets the
+ * workflow and its limits in the system prompt (no secret, no host path). Other tasks do not get that section.
+ */
+async function testGenerationTools() {
+    const { TOOL_DEFINITIONS, TOOL_TO_CAPABILITY } = require('../lib/tool-registry');
+
+    // Tool parameters agree with the broker tool-spec input_schema (names, required, types, enum, maxLength, items).
+    const normalize = (schema) => {
+        if (!schema || typeof schema !== 'object') return schema;
+        const result = {};
+        for (const key of ['type', 'enum', 'maxLength']) {
+            if (schema[key] !== undefined) result[key] = schema[key];
+        }
+        if (schema.items) result.items = normalize(schema.items);
+        if (schema.properties) {
+            result.properties = Object.fromEntries(Object.entries(schema.properties).map(([name, child]) => [name, normalize(child)]));
+        }
+        result.required = [...(schema.required || [])].sort();
+        return result;
+    };
+    for (const spec of readGenerationToolSpecs()) {
+        const binding = spec.capability_bindings[0];
+        assert.strictEqual(spec.execution_rules.runtime_required, 'generation-worker', `${spec.tool_id} runtime`);
+        assert.strictEqual(TOOL_TO_CAPABILITY[binding.route], binding.capability_id, `${binding.route} maps to ${binding.capability_id}`);
+        const definition = TOOL_DEFINITIONS.find((def) => def.function.name === binding.route);
+        assert(definition, `tool definition for ${binding.route}`);
+        const toolSchema = normalize(definition.function.parameters);
+        const specSchema = normalize(spec.input_schema);
+        if (specSchema.properties) {
+            for (const child of Object.values(specSchema.properties)) {
+                if (child && child.required && child.required.length === 0) delete child.required;
+            }
+        }
+        if (toolSchema.properties) {
+            for (const child of Object.values(toolSchema.properties)) {
+                if (child && child.required && child.required.length === 0) delete child.required;
+            }
+        }
+        assert.deepStrictEqual(toolSchema, specSchema, `${binding.route} parameters match the tool-spec input_schema`);
+    }
+
+    const fakeClient = createGenerationFakeClient();
+    const agent = new AgentLoop({
+        model: 'user-requested-model',
+        provider: createForbiddenDirectProvider(),
+        projectRoot: ROOT,
+        stream: false,
+        maxIterations: 12,
+        governed: {
+            brokerUrl: 'http://broker.local:5000',
+            brokerPubKey: 'fake-pub-key',
+            principalId: 'prn_test',
+            taskId: 'task_test',
+            roleId: 'role_executor',
+            registrationSecret: TEST_REGISTRATION_SECRET,
+            clientFactory: () => fakeClient,
+        },
+    });
+    await agent.init();
+
+    const toolNames = agent.getAvailableToolDefinitions().map((def) => def.function.name);
+    assert.deepStrictEqual(toolNames, ['query_component_catalog', 'validate_definition', 'generate_scaffold']);
+
+    const prompt = agent.messages[0].content;
+    const start = prompt.indexOf('## Governed Generation Workflow');
+    assert(start >= 0, 'a generation task gets the workflow section');
+    const nextSection = prompt.indexOf('\n## ', start + 1);
+    const section = prompt.slice(start, nextSection > start ? nextSection : undefined);
+    const order = ['query_component_catalog', 'validate_definition', 'generate_scaffold'].map((name) => section.indexOf(`. ${name}`));
+    assert(order.every((index) => index > 0) && order[0] < order[1] && order[1] < order[2], 'workflow lists catalog, validate, generate in order');
+    assert(section.includes('Pages per prototype: at most 12'), section);
+    assert(section.includes('validate_definition calls left: 6'), section);
+    assert(section.includes('generate_scaffold calls left: 2'), section);
+    assert(section.includes('Model turns for the whole task: at most 12'), section);
+    for (const forbidden of [ROOT, ROOT.replace(/\\/g, '/'), TEST_REGISTRATION_SECRET, 'output_slot', 'task_test']) {
+        assert(!section.includes(forbidden), `the workflow section must not contain ${forbidden}`);
+    }
+    assertSecretNotExposed(agent.getGovernedPromptContext(), prompt);
+
+    // The payload keeps the broker contract; the route is the tool name and the capability is the generation one.
+    const context = { projectRoot: '/workspace', noConfirm: true, verbose: false };
+    const template = { kind: 'definition-template', version: '0.1.0' };
+    assert.strictEqual(await agent.governedExecutor.executeTool('query_component_catalog', { section: 'overview' }, context), '{"ok":true}');
+    await agent.governedExecutor.executeTool('validate_definition', { template }, context);
+    await agent.governedExecutor.executeTool('generate_scaffold', { template, title: 'Contacts' }, context);
+    const submitted = fakeClient.getSubmitted();
+    assert.deepStrictEqual(submitted.map((item) => item.capabilityId), [
+        'generation.catalog.query', 'generation.definition.validate', 'generation.scaffold.generate',
+    ]);
+    for (const item of submitted) {
+        assert.deepStrictEqual(Object.keys(item.payload), ['route', 'args', 'project_root']);
+        assert.strictEqual(item.payload.route, TOOL_DEFINITIONS.find((def) => TOOL_TO_CAPABILITY[def.function.name] === item.capabilityId).function.name);
+    }
+    assert.deepStrictEqual(submitted[2].payload.args, { template, title: 'Contacts' });
+    assert.strictEqual(submitted[2].intent, 'Generate scaffold: Contacts');
+    await agent.close();
+
+    // A session without generation grants does not get the workflow section.
+    const plainClient = createFakeClient();
+    const plainAgent = new AgentLoop({
+        model: 'user-requested-model',
+        provider: createForbiddenDirectProvider(),
+        projectRoot: ROOT,
+        stream: false,
+        governed: {
+            brokerUrl: 'http://broker.local:5000',
+            brokerPubKey: 'fake-pub-key',
+            principalId: 'prn_test',
+            taskId: 'task_test',
+            roleId: 'role_reader',
+            registrationSecret: TEST_REGISTRATION_SECRET,
+            clientFactory: () => plainClient,
+        },
+    });
+    await plainAgent.init();
+    assert(!plainAgent.messages[0].content.includes('## Governed Generation Workflow'));
+    await plainAgent.close();
+}
+
+/** AGENT_MAX_ITERATIONS and --max-iterations accept integers from 1 to 100; anything else keeps the default. */
+function testMaxIterationsParsing() {
+    const { parseMaxIterations, DEFAULT_MAX_ITERATIONS } = require('../lib/utils');
+    assert.strictEqual(DEFAULT_MAX_ITERATIONS, 20);
+    assert.strictEqual(parseMaxIterations('12'), 12);
+    assert.strictEqual(parseMaxIterations(' 4 '), 4);
+    assert.strictEqual(parseMaxIterations(100), 100);
+    for (const invalid of [undefined, '', '0', '-3', '101', '7x', '1.5', 'NaN']) {
+        assert.strictEqual(parseMaxIterations(invalid), DEFAULT_MAX_ITERATIONS, `rejects ${invalid}`);
+    }
+    assert.strictEqual(parseMaxIterations('abc', 9), 9);
+
+    const fs = require('fs');
+    const agentCli = fs.readFileSync(path.join(ROOT, 'tools', 'agent', 'agent.js'), 'utf8');
+    assert(agentCli.includes('parseMaxIterations(process.env.AGENT_MAX_ITERATIONS'), 'agent.js reads AGENT_MAX_ITERATIONS');
+    const entrypoint = fs.readFileSync(path.join(ROOT, 'tools', 'agent', 'container', 'entrypoint.sh'), 'utf8');
+    assert(entrypoint.includes('--max-iterations "$AGENT_MAX_ITERATIONS"'), 'the container entrypoint passes AGENT_MAX_ITERATIONS');
+}
+
 /** The registration secret must never reach the prompt context or the system prompt (both go to the model). */
 function assertSecretNotExposed(promptContext, prompt) {
     assert(!JSON.stringify(promptContext).includes(TEST_REGISTRATION_SECRET), 'prompt context must not contain the registration secret');
@@ -725,6 +926,8 @@ async function main() {
     await testKillSwitchEndsTheExecutor();
     await testKillSwitchSeenOnlyWhenRegisteringAgain();
     await testRegistrationRefusalEndsTheExecutor();
+    await testGenerationTools();
+    testMaxIterationsParsing();
     console.log('Governed mode tests passed.');
 }
 

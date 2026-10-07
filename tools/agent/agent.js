@@ -7,7 +7,7 @@ const { StateMachine } = require('./lib/state-machine');
 const { buildCrudPipeline } = require('./lib/pipelines/crud-pipeline');
 const { runPipelines } = require('./lib/pipelines/pipeline-runner');
 const { createProvider, listProviders } = require('./lib/providers/provider-factory');
-const { resolveProjectRoot, bold, logInfo, logError, logWarn } = require('./lib/utils');
+const { resolveProjectRoot, bold, logInfo, logError, logWarn, parseMaxIterations, DEFAULT_MAX_ITERATIONS } = require('./lib/utils');
 
 function parseArgs(argv) {
     const args = {
@@ -26,7 +26,8 @@ function parseArgs(argv) {
         apiKey: null,
         stream: true,
         forceStrategy: null,
-        maxIterations: 20,
+        // 預設可由環境變數 AGENT_MAX_ITERATIONS 設定（容器與 spawn 以它傳入）；--max-iterations 優先。
+        maxIterations: parseMaxIterations(process.env.AGENT_MAX_ITERATIONS, DEFAULT_MAX_ITERATIONS),
         noConfirm: false,
         verbose: false,
         listModels: false,
@@ -74,7 +75,7 @@ function parseArgs(argv) {
                 args.forceStrategy = 'native';
                 break;
             case '--max-iterations':
-                args.maxIterations = parseInt(argv[++i], 10) || 20;
+                args.maxIterations = parseMaxIterations(argv[++i], args.maxIterations);
                 break;
             case '--no-confirm':
                 args.noConfirm = true;
@@ -166,7 +167,7 @@ General:
   --no-stream              Disable streaming output
   --force-react            Force ReAct XML tool mode
   --force-native           Force native tool calling mode
-  --max-iterations <n>     Max agent iterations (default: 20)
+  --max-iterations <n>     Max agent iterations, 1-100 (default: AGENT_MAX_ITERATIONS or 20)
   --no-confirm             Skip confirmation prompts
   --verbose, -v            Verbose logging
   --list-models            List available models

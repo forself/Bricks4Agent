@@ -180,13 +180,14 @@ for (const tool of ['tools/agent/container/resolve-base-image-digests.mjs', 'too
 const resolverSource = fs.readFileSync(path.join(ROOT, 'tools/agent/container/resolve-base-image-digests.mjs'), 'utf8');
 assert(resolverSource.includes('tools/agent/tests/test-container-image-tools.mjs'), 'the resolver should point at its offline test');
 
-// ── repo 內實際的 Containerfile 都要通過，且涵蓋全部七個映像 ──
+// ── repo 內實際的 Containerfile 都要通過，且涵蓋全部八個映像 ──
 const discovered = resolver.discoverContainerfiles(ROOT);
 for (const expected of [
     'packages/csharp/broker/Containerfile',
     'packages/csharp/workers/file-worker/Containerfile',
     'packages/csharp/workers/line-worker/Containerfile',
     'packages/csharp/workers/execution-adapter-worker/Containerfile',
+    'packages/csharp/workers/generation-worker/Containerfile',
     'tools/agent/Containerfile',
     'tools/agent/container/mock-ollama.Containerfile',
     'tools/agent/container/mock-openai.Containerfile',

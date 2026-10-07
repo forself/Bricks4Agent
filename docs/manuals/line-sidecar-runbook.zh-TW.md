@@ -128,7 +128,7 @@
 
 目前 sidecar 會：
 
-- 啟動時為缺少憑證的 worker 類型自動產生並持久化（line-worker、file-worker、browser-worker、transport-tdx、site-crawler-worker）
+- 啟動時為缺少憑證的 worker 類型自動產生並持久化（line-worker、file-worker、browser-worker、transport-tdx、site-crawler-worker、generation-worker）
 
 - 將全部憑證注入 broker runtime 設定，並開啟 `WorkerAuth.Enforce = true`
 
@@ -142,7 +142,15 @@
 powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\run-worker.ps1 -Worker site-crawler
 ```
 
-（`-Worker` 可用 `file`、`browser`、`transport-tdx`、`site-crawler`。）此腳本讀取同一憑證庫，註冊即可通過 worker 身分驗證。
+（`-Worker` 可用 `file`、`browser`、`transport-tdx`、`site-crawler`、`generation`。）此腳本讀取同一憑證庫，註冊即可通過 worker 身分驗證。
+
+### 3.1.1 受治理生成（選用）
+
+`line-sidecar.ps1 up -GenerationMode Governed`（或 `restart`）會另外發布並以主機程序啟動 `generation-worker`（與其他 sidecar worker 相同），並把 broker 切到 `HighLevelCoordinator:Generation:SystemScaffoldMode = Governed`。之後確認過的系統雛形需求，改由 broker 啟動的受控代理經三個生成能力產出，不再在 broker 程序內生成。broker 與 worker 共用 `Generation:OutputRoot`，位置是 `.run\line-sidecar\data\generation-out`，在各使用者工作區之外。worker 執行的 node 取自 `B4A_NODE_PATH`（有設定時），否則用 PATH 上的 `node`。
+
+不加 `-GenerationMode`（或設為 `Legacy`）時行為不變。sidecar 上啟動的代理沿用已記載的 `AllowAgentDefaultNetwork` 例外（不在 internal 網路上），代理看到的需求文字有外流的可能；專用的 internal 代理網路列為後續。
+
+要對執行中的 broker 手動啟動 worker：`run-worker.ps1 -Worker generation`（加 `-GenerationOutputRoot` 可改用其他輸出根目錄；broker 必須使用同一個）。
 
 ### 3.2 LINE outbound rate limit
 

@@ -1,0 +1,70 @@
+{
+  "tool_id": "generation.scaffold.generate",
+  "display_name": "Generate Scaffold",
+  "summary": "Generate a multi-page front-end prototype from a validated DefinitionTemplate with the component library, and package it as a deterministic zip.",
+  "kind": "generator",
+  "status": "beta",
+  "version": "2026-10-07",
+  "tags": ["generation", "definition-template", "scaffold", "package", "governed"],
+  "capability_template": {
+    "action_type": "write",
+    "resource_type": "generated_artifact",
+    "risk_level": "medium",
+    "approval_policy": "auto_if_task_scope_match",
+    "ttl_seconds": 1800,
+    "audit_level": "full",
+    "quota": { "max_calls": 2, "per_window_seconds": 3600 }
+  },
+  "capability_bindings": [
+    {
+      "capability_id": "generation.scaffold.generate",
+      "route": "generate_scaffold",
+      "purpose": "Generate and package a definition-driven prototype into the output slot that the broker wrote into the grant scope."
+    }
+  ],
+  "input_schema": {
+    "type": "object",
+    "required": ["template"],
+    "properties": {
+      "template": { "type": "object" },
+      "page_ids": { "type": "array", "items": { "type": "string", "maxLength": 64 } },
+      "title": { "type": "string", "maxLength": 120 }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "output_slot": { "type": "string" },
+      "request_id": { "type": "string" },
+      "zip": { "type": "object" },
+      "pages": { "type": "array" },
+      "file_count": { "type": "integer" },
+      "validation_digest": { "type": "string" },
+      "generator_version": { "type": "string" },
+      "catalog_sha256": { "type": "string" }
+    }
+  },
+  "source_policy": {
+    "allowed_sources": ["agent_definition_template"]
+  },
+  "execution_rules": {
+    "runtime_required": "generation-worker",
+    "mediation_required": true,
+    "deterministic": true,
+    "calls_llm": false,
+    "network_access": false,
+    "output_location_from_grant_scope": true,
+    "required_scope_keys": ["output_slot", "package_name", "max_pages", "package"],
+    "package": "definition-site-v1",
+    "idempotent_by_request_id": true,
+    "deterministic_zip": true,
+    "payload_contains_file_contents": false,
+    "payload_contains_absolute_paths": false
+  },
+  "response_contract": {
+    "must_include_zip_path": true,
+    "must_include_zip_sha256": true,
+    "must_include_pages": true,
+    "result_wording": "The zip path is relative to the generation output root and lies under the task's output slot. The broker verifies the path and sha256 before delivering the package to the user. A definition that fails validation returns a failed execution whose error message is the structured errors JSON."
+  }
+}

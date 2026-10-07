@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>generation-worker</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>generation-worker</h1>
+<p>受治理生成（governed generation）的執行節點。broker 把三個生成能力派給它；它以 Node 執行 B4A 的確定性生成器（<code>tools/generation/cli.mjs</code>），用元件庫產出 DefinitionTemplate 驅動的多頁前端原型，並打包成 zip。</p>
+<p>它只做確定性工作：不呼叫 LLM、不連外、不讀寫輸出根目錄以外的位置。撰寫定義的是 broker 依任務啟動的受控代理；代理碰不到這個 worker，只有 broker 會派工給它。</p>
+<h2>能力</h2>
+<table>
+<thead>
+<tr>
+<th>能力</th>
+<th>route（代理工具名）</th>
+<th>行為</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>generation.catalog.query</code></td>
+<td><code>query_component_catalog</code></td>
+<td>轉呼叫 CLI 的 <code>catalog</code>，原樣回傳 JSON（型錄摘要的 overview、field_types、example、component 四節）</td>
+</tr>
+<tr>
+<td><code>generation.definition.validate</code></td>
+<td><code>validate_definition</code></td>
+<td>轉呼叫 CLI 的 <code>validate</code>，原樣回傳 JSON；定義不通過時仍是成功的呼叫（<code>ok:false</code> 加結構化 errors），代理依錯誤修正</td>
+</tr>
+<tr>
+<td><code>generation.scaffold.generate</code></td>
+<td><code>generate_scaffold</code></td>
+<td>CLI 的 <code>build</code>（先跑與 validate 相同的驗證）寫到工作目錄，再由 C# 以決定性方式打包成 zip</td>
+</tr>
+</tbody>
+</table>
+<p>三個能力的定義以 <code>packages/csharp/broker/tool-specs/generation.*/tool.json</code> 為唯一來源，broker 啟動時同步成 capability。三個 route 都不在 broker 的程序內降級清單中：沒有這個 worker 時請求直接失敗，不會在 broker 程序內生成。</p>
+<h2>輸出位置、冪等與回傳內容</h2>
+<ul>
+<li>
+<p>輸出位置<strong>只取自 grant scope</strong>（broker 寫入）：<code>{Generation:OutputRoot}/{output_slot}/{requestId}/</code>。scope 必須含 <code>output_slot</code>、<code>package_name</code>（兩者只能是英數、底線、連字號，1～80 字）、<code>max_pages</code>（1～100 的整數）與 <code>package: "definition-site-v1"</code>，缺少或格式不符就拒絕。請求參數中任何路徑類欄位一律不採用。</p>
+</li>
+<li>
+<p>冪等：同一 requestId 的 <code>result.json</code> 已存在，且 zip 的 sha256 與大小相符時，直接回傳同一結果（broker 逾時重派不會重複生成）；否則清空該 requestId 目錄後重做。worker 一次只處理一個請求（<code>MaxConcurrent=1</code>），同一請求的並行重派會等前一次完成後取用其結果。</p>
+</li>
+<li>
+<p>定義不通過：回傳失敗，錯誤訊息是 <code>{"ok":false,"errors":[...]}</code>，不留下任何檔案。頁數超過 scope 的 <code>max_pages</code> 也以同樣格式回報（<code>MAX_PAGES_EXCEEDED</code>）。</p>
+</li>
+<li>
+<p>zip：<code>{package_name}-scaffold.zip</code>，頂層只有 <code>site/</code> 與 <code>report/</code>；條目依路徑排序、固定時間戳與權限位元，同樣的內容永遠得到同樣的 sha256。生成器輸出含符號連結、未回報的檔案、頂層多出其他項目，或 report 中出現本機路徑時都拒絕。</p>
+</li>
+<li>
+<p>回傳 payload 不含檔案內容與主機路徑：</p>
+</li>
+</ul>
+<pre><code class="language-json">{
+  "output_slot": "task_…",
+  "request_id": "req_…",
+  "zip": { "path": "&lt;output_slot&gt;/&lt;requestId&gt;/&lt;package_name&gt;-scaffold.zip", "sha256": "…", "size": 0 },
+  "pages": [{ "id": "…", "type": "list", "field_count": 0 }],
+  "file_count": 0,
+  "validation_digest": "…",
+  "generator_version": "…",
+  "catalog_sha256": "…"
+}
+</code></pre>
+<p><code>zip.path</code> 相對於輸出根目錄。broker 端依自己的 <code>Generation:OutputRoot</code> 解析，驗證路徑與 sha256 後才交付給使用者。</p>
+<h2>子程序</h2>
+<p>CLI 以 <code>node &lt;ToolsRoot&gt;/tools/generation/cli.mjs &lt;command&gt;</code> 執行：不經 shell、參數陣列、輸入只經 stdin、有逾時（catalog／validate 30 秒、build 120 秒）、stdout 超過上限即終止子程序並視為失敗、stderr 只寫進日誌。子程序的環境變數會移除 worker 憑證與其他密鑰類變數，以及 <code>NODE_OPTIONS</code>、<code>NODE_PATH</code>。</p>
+<h2>設定</h2>
+<table>
+<thead>
+<tr>
+<th>鍵</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Generation:ToolsRoot</code></td>
+<td>含 <code>tools/generation/cli.mjs</code> 的 repo 子集根目錄（必填；啟動時檢查）</td>
+</tr>
+<tr>
+<td><code>Generation:OutputRoot</code></td>
+<td>產物根目錄（必填，絕對路徑）；broker 端要指向同一份內容</td>
+</tr>
+<tr>
+<td><code>Generation:NodePath</code></td>
+<td>node 執行檔；未設時用環境變數 <code>B4A_NODE_PATH</code>（檔案存在時），再退到 PATH 上的 <code>node</code></td>
+</tr>
+<tr>
+<td><code>Generation:QueryTimeoutSeconds</code></td>
+<td>catalog／validate 逾時，預設 30</td>
+</tr>
+<tr>
+<td><code>Generation:BuildTimeoutSeconds</code></td>
+<td>build 逾時，預設 120</td>
+</tr>
+<tr>
+<td><code>Generation:MaxStdoutBytes</code></td>
+<td>CLI 輸出上限，預設 4 MiB</td>
+</tr>
+<tr>
+<td><code>Worker:Auth:*</code></td>
+<td>worker 憑證（WorkerType <code>generation-worker</code>）</td>
+</tr>
+</tbody>
+</table>
+<p>設定也可用 <code>WORKER_</code> 前綴的環境變數提供，例如 <code>WORKER_Generation__OutputRoot</code>。</p>
+<h2>部署</h2>
+<ul>
+<li>
+<p>compose 測試堆疊：<code>generation-worker</code> 服務只在 <code>--profile generation</code> 時啟動，只接 internal 的 <code>generation-net</code>（成員只有 broker 與這個 worker），寫入 <code>generation-out</code> volume，broker 以唯讀方式掛同一個 volume 在 <code>/generation-out</code>。憑證由 <code>gen-stack-secrets.mjs</code> 產生（<code>GENERATION_WORKER_AUTH_KEY_ID</code>、<code>GENERATION_WORKER_AUTH_SHARED_SECRET</code>）。見 <a href="../../../../tools/agent/container/README.html">tools/agent/container/README.md</a>。</p>
+</li>
+<li>
+<p>映像：<code>Containerfile</code> 以 sdk:10.0 建置、從 node:22-bookworm-slim 只取 node 執行檔、最終為 aspnet:10.0，三者都以 digest 釘選；只複製生成器需要的 repo 子集（元件庫排除 data、refresource、示範頁與測試），建置時產生型錄摘要；以 uid 10008 執行，不宣告 VOLUME。</p>
+</li>
+<li>
+<p>Windows sidecar：<code>start-sidecar-stack.ps1 -GenerationMode Governed</code> 會發布並以主機程序啟動這個 worker，並把 broker 切到 <code>HighLevelCoordinator:Generation:SystemScaffoldMode=Governed</code>；兩者共用 sidecar 資料目錄下的 <code>generation-out</code>（在各使用者工作區之外）。預設（<code>Legacy</code>）行為不變。</p>
+</li>
+<li>
+<p>手動啟動：<code>run-worker.ps1 -Worker generation</code>（可加 <code>-GenerationOutputRoot</code>）。</p>
+</li>
+</ul>
+<h2>測試</h2>
+<pre><code class="language-bash"># handler、scope、冪等、zip 決定性、逾時與輸出過大、frame 讀寫（以測試用的假 CLI 執行真正的 node 子程序）
+dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter "FullyQualifiedName~Generation|FullyQualifiedName~Workers.Sdk"
+# compose 接線、映像與 sidecar 的靜態檢查
+npm run validate:agent-container-config
+# 代理工具與 system prompt
+npm run validate:agent-governed
+</code></pre>
+</main>
+</body>
+</html>

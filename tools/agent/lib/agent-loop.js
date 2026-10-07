@@ -83,6 +83,7 @@ class AgentLoop {
             verbose: this.verbose,
             toolDescriptions: this.toolDescriptions,
             governed: this.governedExecutor ? this.governedExecutor.getPromptContext() : null,
+            maxIterations: this.maxIterations,
         });
 
         this.messages = [{ role: 'system', content: systemPrompt }];

@@ -117,7 +117,12 @@ public class PolicyEngine : IPolicyEngine
         }
     }
 
-    private static bool IsScopeValid(string payload, string requestedRoute, string grantScope, string taskScope)
+    /// <summary>
+    /// 請求是否在 grant（或 task）的 scope 之內。
+    /// fail-closed：scope 的 routes／paths 格式不正確，或判斷過程中發生任何例外，都視為不在 scope 內，
+    /// 由呼叫端依審批政策改為 Deny 或送審，絕不因例外而放行。
+    /// </summary>
+    internal static bool IsScopeValid(string payload, string requestedRoute, string grantScope, string taskScope)
     {
         if (!IsScopeJsonValid(grantScope) || !IsScopeJsonValid(taskScope))
             return false;
@@ -153,7 +158,8 @@ public class PolicyEngine : IPolicyEngine
         }
         catch
         {
-            return true;
+            // fail-closed：無法判斷就不在 scope 內。
+            return false;
         }
     }
 
@@ -372,45 +378,44 @@ public class PolicyEngine : IPolicyEngine
     }
 
     private static List<string>? ExtractScopePaths(string json)
-    {
-        try
-        {
-            using var doc = JsonDocument.Parse(json);
-            if (doc.RootElement.TryGetProperty("paths", out var paths) && paths.ValueKind == JsonValueKind.Array)
-            {
-                return paths.EnumerateArray()
-                    .Select(path => path.GetString() ?? "")
-                    .Where(path => !string.IsNullOrWhiteSpace(path))
-                    .ToList();
-            }
-
-            return null;
-        }
-        catch
-        {
-            return null;
-        }
-    }
+        => ExtractScopeStringList(json, "paths");
 
     private static List<string>? ExtractRoutes(string json)
-    {
-        try
-        {
-            using var doc = JsonDocument.Parse(json);
-            if (doc.RootElement.TryGetProperty("routes", out var routes) && routes.ValueKind == JsonValueKind.Array)
-            {
-                return routes.EnumerateArray()
-                    .Select(route => route.GetString() ?? "")
-                    .Where(route => !string.IsNullOrWhiteSpace(route))
-                    .ToList();
-            }
+        => ExtractScopeStringList(json, "routes");
 
+    /// <summary>
+    /// scope 中某個字串陣列鍵的值。scope 為空或沒有這個鍵時回傳 null（不限制）。
+    /// 鍵存在但不是字串陣列（例如字串、物件，或陣列中有非字串元素）時丟出 <see cref="FormatException"/>：
+    /// 格式錯誤的限制不能被當成「沒有限制」，由 <see cref="IsScopeValid"/> 的 catch 視為不在 scope 內。
+    /// </summary>
+    private static List<string>? ExtractScopeStringList(string json, string propertyName)
+    {
+        if (string.IsNullOrWhiteSpace(json))
             return null;
-        }
-        catch
+
+        using var doc = JsonDocument.Parse(json);
+        if (doc.RootElement.ValueKind != JsonValueKind.Object ||
+            !doc.RootElement.TryGetProperty(propertyName, out var values) ||
+            values.ValueKind == JsonValueKind.Null)
         {
             return null;
         }
+
+        if (values.ValueKind != JsonValueKind.Array)
+            throw new FormatException($"Scope '{propertyName}' must be an array of strings.");
+
+        var result = new List<string>();
+        foreach (var value in values.EnumerateArray())
+        {
+            if (value.ValueKind != JsonValueKind.String)
+                throw new FormatException($"Scope '{propertyName}' must be an array of strings.");
+
+            var text = value.GetString();
+            if (!string.IsNullOrWhiteSpace(text))
+                result.Add(text);
+        }
+
+        return result;
     }
 
     private static string? ResolvePath(string path, string? projectRoot)
