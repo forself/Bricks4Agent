@@ -118,10 +118,30 @@ function logWarn(msg) { log(`⚠ ${msg}`, 'yellow'); }
 function logError(msg) { log(`✗ ${msg}`, 'red'); }
 function logTool(name, msg) { log(`  🔧 [${name}] ${msg}`, 'gray'); }
 
+/** 代理迴圈的迭代上限允許範圍。 */
+const MAX_ITERATIONS_LIMIT = 100;
+const DEFAULT_MAX_ITERATIONS = 20;
+
+/**
+ * 解析迭代上限（--max-iterations 或環境變數 AGENT_MAX_ITERATIONS）：
+ * 1～100 的整數才採用，其他值（空白、非數字、0、負數、過大）都回到 fallback。
+ */
+function parseMaxIterations(value, fallback = DEFAULT_MAX_ITERATIONS) {
+    const text = typeof value === 'number' ? String(value) : String(value ?? '').trim();
+    if (!/^\d+$/.test(text)) {
+        return fallback;
+    }
+    const parsed = Number(text);
+    return parsed >= 1 && parsed <= MAX_ITERATIONS_LIMIT ? parsed : fallback;
+}
+
 module.exports = {
     COLORS,
+    DEFAULT_MAX_ITERATIONS,
+    MAX_ITERATIONS_LIMIT,
     colorize,
     bold,
+    parseMaxIterations,
     resolveProjectRoot,
     formatBytes,
     formatDuration,

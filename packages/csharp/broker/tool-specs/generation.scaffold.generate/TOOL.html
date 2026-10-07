@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Generate Scaffold</title>
+<style>
+:root { color-scheme: light dark; --bg:#f6f8fb; --card:#fff; --text:#172033; --muted:#526078; --line:#d9e0ea; --accent:#1769e0; --code:#eef2f7; }
+@media (prefers-color-scheme:dark) { :root { --bg:#10141c; --card:#171d28; --text:#edf2fa; --muted:#abb7ca; --line:#303a4b; --accent:#72a8ff; --code:#202838; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; }
+main { width:min(1080px,calc(100% - 32px)); margin:40px auto; padding:48px; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px rgb(0 0 0 / 8%); }
+h1 { margin-top:0; font-size:2.25rem; line-height:1.2; } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+p,li { color:var(--muted); } a { color:var(--accent); } code { padding:.15em .35em; background:var(--code); border-radius:5px; color:var(--text); }
+pre { overflow:auto; padding:16px 18px; background:var(--code); border:1px solid var(--line); border-radius:10px; } pre code { padding:0; background:none; }
+table { display:block; overflow:auto; width:max-content; max-width:100%; border-collapse:collapse; } th,td { padding:8px 12px; border:1px solid var(--line); text-align:left; }
+img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1rem; border-left:4px solid var(--line); }
+@media (max-width:640px) { main { margin:0; width:100%; padding:24px 18px; border:0; border-radius:0; } h1 { font-size:1.8rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Generate Scaffold</h1>
+<p>Generates a multi-page front-end prototype (form, list and detail pages) from a validated DefinitionTemplate with the component library, and packages it as a deterministic zip.</p>
+<h2>Capability</h2>
+<ul>
+<li>
+<p>Tool ID: <code>generation.scaffold.generate</code></p>
+</li>
+<li>
+<p>Capability ID: <code>generation.scaffold.generate</code></p>
+</li>
+<li>
+<p>Route: <code>generate_scaffold</code></p>
+</li>
+<li>
+<p>Status: <code>beta</code></p>
+</li>
+<li>
+<p>Risk: medium, approval <code>auto_if_task_scope_match</code> (inside the granted scope it runs without further approval; outside it needs administrator approval)</p>
+</li>
+<li>
+<p>Runtime: <code>generation-worker</code></p>
+</li>
+</ul>
+<h2>Input</h2>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>template</code></td>
+<td>object (required)</td>
+<td>The validated DefinitionTemplate</td>
+</tr>
+<tr>
+<td><code>page_ids</code></td>
+<td>array of strings, each at most 64 characters</td>
+<td>Generate only these pages</td>
+</tr>
+<tr>
+<td><code>title</code></td>
+<td>string, at most 120 characters</td>
+<td>Title of the prototype</td>
+</tr>
+</tbody>
+</table>
+<p>The request carries no output location. Path-like arguments are ignored.</p>
+<h2>Grant scope</h2>
+<p>The broker writes the output location into the grant scope; the worker validates it and refuses the request when any key is missing or malformed.</p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>routes</code></td>
+<td><code>["generate_scaffold"]</code></td>
+</tr>
+<tr>
+<td><code>output_slot</code></td>
+<td>Output directory under the generation output root (letters, digits, <code>_</code> and <code>-</code>, 1 to 80 characters)</td>
+</tr>
+<tr>
+<td><code>package_name</code></td>
+<td>Base name of the zip (same character rule)</td>
+</tr>
+<tr>
+<td><code>max_pages</code></td>
+<td>Maximum number of pages (integer)</td>
+</tr>
+<tr>
+<td><code>package</code></td>
+<td><code>definition-site-v1</code></td>
+</tr>
+</tbody>
+</table>
+<h2>Output</h2>
+<pre><code class="language-json">{
+  "output_slot": "&lt;output_slot&gt;",
+  "request_id": "&lt;request id&gt;",
+  "zip": { "path": "&lt;output_slot&gt;/&lt;request id&gt;/&lt;package_name&gt;-scaffold.zip", "sha256": "&lt;hex&gt;", "size": 0 },
+  "pages": [{ "id": "&lt;page id&gt;", "type": "list", "field_count": 0 }],
+  "file_count": 0,
+  "validation_digest": "&lt;hex&gt;",
+  "generator_version": "&lt;version&gt;",
+  "catalog_sha256": "&lt;hex&gt;"
+}
+</code></pre>
+<p>The zip path is relative to the generation output root. The payload contains no file contents and no host paths. The zip holds <code>site/</code> (the prototype) and <code>report/</code> (validation report and file manifest).</p>
+<p>A definition that fails validation fails the execution; its error message is <code>{"ok":false,"errors":[...]}</code> with the same structured errors as <code>validate_definition</code>.</p>
+<h2>Rules</h2>
+<ul>
+<li>
+<p>Idempotent per request: a retried request returns the stored result when the zip still matches its recorded sha256.</p>
+</li>
+<li>
+<p>The zip is deterministic: sorted entries, fixed timestamps and permissions.</p>
+</li>
+<li>
+<p>The broker verifies the zip path and sha256 before it delivers the package to the user.</p>
+</li>
+</ul>
+</main>
+</body>
+</html>

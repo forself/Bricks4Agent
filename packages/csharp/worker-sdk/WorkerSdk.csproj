@@ -22,4 +22,9 @@
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.10" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- 單元測試直接驗證 frame 讀寫（一次讀到多個 frame、並行寫入不交錯） -->
+    <InternalsVisibleTo Include="Unit.Tests" />
+  </ItemGroup>
+
 </Project>

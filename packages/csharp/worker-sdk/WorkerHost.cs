@@ -32,6 +32,8 @@ public class WorkerHost
 
     private TcpClient? _tcpClient;
     private NetworkStream? _stream;
+    private FrameReader? _reader;
+    private FrameWriter? _writer;
     private Timer? _heartbeatTimer;
     private volatile bool _running;
 
@@ -132,6 +134,9 @@ public class WorkerHost
             _options.BrokerHost, _options.BrokerPort, timeoutCts.Token);
 
         _stream = _tcpClient.GetStream();
+        // 每條連線一組 reader/writer：reader 保留同一次讀到的後續 frame，writer 讓所有寫入互斥。
+        _reader = new FrameReader(_stream);
+        _writer = new FrameWriter(_stream);
     }
 
     /// <summary>發送 WORKER_REGISTER 並等待 ACK</summary>
@@ -169,8 +174,7 @@ public class WorkerHost
         var payload = JsonSerializer.SerializeToUtf8Bytes(registerMsg, JsonOptions);
         var frame = FrameCodec.Encode(OpCodes.WORKER_REGISTER, payload);
 
-        await _stream!.WriteAsync(frame, ct);
-        await _stream.FlushAsync(ct);
+        await SendFrameAsync(frame, ct);
 
         // 等待 ACK
         var (ackOpCode, ackPayload) = await ReceiveFrameAsync(ct);
@@ -280,8 +284,7 @@ public class WorkerHost
         var payload = JsonSerializer.SerializeToUtf8Bytes(result, JsonOptions);
         var frame = FrameCodec.Encode(OpCodes.WORKER_RESULT, payload);
 
-        await _stream!.WriteAsync(frame, ct);
-        await _stream.FlushAsync(ct);
+        await SendFrameAsync(frame, ct);
     }
 
     /// <summary>處理 WORKER_STATUS 查詢</summary>
@@ -291,59 +294,28 @@ public class WorkerHost
         var payload = JsonSerializer.SerializeToUtf8Bytes(status, JsonOptions);
         var frame = FrameCodec.Encode(OpCodes.WORKER_STATUS_ACK, payload);
 
-        await _stream!.WriteAsync(frame, ct);
-        await _stream.FlushAsync(ct);
+        await SendFrameAsync(frame, ct);
     }
 
-    /// <summary>接收一個完整 frame</summary>
-    private async Task<(byte OpCode, ReadOnlyMemory<byte> Payload)> ReceiveFrameAsync(
+    /// <summary>
+    /// 寫入一個完整 frame。結果、心跳與狀態回覆都經過同一個 <see cref="FrameWriter"/>，
+    /// 寫入互斥，不會在同一條 stream 上交錯。
+    /// </summary>
+    private Task SendFrameAsync(byte[] frame, CancellationToken ct)
+    {
+        var writer = _writer ?? throw new IOException("Not connected to broker");
+        return writer.WriteFrameAsync(frame, ct);
+    }
+
+    /// <summary>
+    /// 接收一個完整 frame。同一次讀取帶進來的後續 frame 留在 <see cref="FrameReader"/> 的緩衝區，
+    /// 下一次呼叫直接取出，不會遺失。
+    /// </summary>
+    private Task<(byte OpCode, ReadOnlyMemory<byte> Payload)> ReceiveFrameAsync(
         CancellationToken ct)
     {
-        var buffer = new byte[4096];
-        int filled = 0;
-
-        while (!ct.IsCancellationRequested)
-        {
-            var bytesRead = await _stream!.ReadAsync(
-                buffer.AsMemory(filled, buffer.Length - filled), ct);
-
-            if (bytesRead == 0)
-                throw new IOException("Connection closed by broker");
-
-            filled += bytesRead;
-
-            // 同步解析（避免 Span 跨 await）
-            var result = TryParseFromBuffer(buffer, filled);
-            if (result.HasValue)
-                return result.Value;
-
-            // 擴容
-            if (filled >= buffer.Length)
-            {
-                var newBuffer = new byte[buffer.Length * 2];
-                Buffer.BlockCopy(buffer, 0, newBuffer, 0, filled);
-                buffer = newBuffer;
-            }
-        }
-
-        throw new OperationCanceledException();
-    }
-
-    /// <summary>同步 frame 解析</summary>
-    private static (byte OpCode, ReadOnlyMemory<byte> Payload)? TryParseFromBuffer(
-        byte[] buffer, int filled)
-    {
-        if (filled < FrameCodec.HeaderSize)
-            return null;
-
-        var span = buffer.AsSpan(0, filled);
-        if (FrameCodec.TryParse(span, out var frame))
-        {
-            var payload = new byte[frame.Payload.Length];
-            frame.Payload.Span.CopyTo(payload);
-            return (frame.OpCode, payload);
-        }
-        return null;
+        var reader = _reader ?? throw new IOException("Not connected to broker");
+        return reader.ReadFrameAsync(ct);
     }
 
     /// <summary>啟動心跳 Timer</summary>
@@ -354,11 +326,11 @@ public class WorkerHost
         {
             try
             {
-                if (_stream != null && _tcpClient?.Connected == true)
+                var writer = _writer;
+                if (writer != null && _tcpClient?.Connected == true)
                 {
                     var ping = FrameCodec.EncodeEmpty(OpCodes.PING);
-                    await _stream.WriteAsync(ping);
-                    await _stream.FlushAsync();
+                    await writer.WriteFrameAsync(ping, CancellationToken.None);
                 }
             }
             catch
@@ -380,6 +352,8 @@ public class WorkerHost
     {
         try { _stream?.Dispose(); } catch { }
         try { _tcpClient?.Dispose(); } catch { }
+        _reader = null;
+        _writer = null;
         _stream = null;
         _tcpClient = null;
     }

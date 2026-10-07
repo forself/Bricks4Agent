@@ -574,6 +574,13 @@ class GovernedExecutor {
                 return `Apply repo patch${args.base_commit ? ` (base ${String(args.base_commit).substring(0, 12)})` : ''}`;
             case 'run_build_test':
                 return `Run build/test: ${(args.command || '').substring(0, 100)}`;
+            case 'query_component_catalog':
+                return `Query component catalog: ${String(args.section || 'overview').substring(0, 32)}` +
+                    (args.name ? ` (${String(args.name).substring(0, 64)})` : '');
+            case 'validate_definition':
+                return 'Validate generation definition';
+            case 'generate_scaffold':
+                return `Generate scaffold${args.title ? `: ${String(args.title).substring(0, 120)}` : ''}`;
             default:
                 return `Tool call: ${toolName}`;
         }

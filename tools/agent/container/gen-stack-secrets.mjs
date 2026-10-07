@@ -46,6 +46,8 @@ export const STACK_SECRET_VARIABLES = Object.freeze([
     'FILE_WORKER_AUTH_SHARED_SECRET',
     'EXEC_ADAPTER_AUTH_KEY_ID',
     'EXEC_ADAPTER_AUTH_SHARED_SECRET',
+    'GENERATION_WORKER_AUTH_KEY_ID',
+    'GENERATION_WORKER_AUTH_SHARED_SECRET',
 ]);
 
 /** 三個 compose 檔都需要的 broker 變數（另兩個 compose 檔沒有 worker）。明確列出，不依賴順序。 */
@@ -85,6 +87,8 @@ export function generateStackSecrets() {
         FILE_WORKER_AUTH_SHARED_SECRET: randomBytes(32).toString('base64'),
         EXEC_ADAPTER_AUTH_KEY_ID: `exec-adapter-${keySuffix}`,
         EXEC_ADAPTER_AUTH_SHARED_SECRET: randomBytes(32).toString('base64'),
+        GENERATION_WORKER_AUTH_KEY_ID: `generation-worker-${keySuffix}`,
+        GENERATION_WORKER_AUTH_SHARED_SECRET: randomBytes(32).toString('base64'),
     };
 }
 

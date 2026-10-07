@@ -42,6 +42,9 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <li>
 <p><code>execution-adapter-worker</code>: patch and build/test worker, started only with <code>--profile adapters</code></p>
 </li>
+<li>
+<p><code>generation-worker</code>: deterministic generator for the governed generation capabilities, started only with <code>--profile generation</code></p>
+</li>
 </ul>
 <p>Every service runs hardened (non-root, read-only root filesystem, no capabilities); see <a href="#container-hardening">Container Hardening</a>.</p>
 <h2>Scope</h2>
@@ -135,6 +138,18 @@ podman compose --env-file &quot;$HOME/.bricks4agent/agent-stack.env&quot; -f too
 <p>To stop and remove a stack (<code>down</code> also needs the env file, because compose expands the required variables for every command):</p>
 <pre><code class="language-powershell">podman compose --env-file &quot;$HOME/.bricks4agent/agent-stack.env&quot; -f tools/agent/container/compose.yml down -v
 </code></pre>
+<h3 id="governed-generation">Governed Generation</h3>
+<p>The <code>generation</code> profile adds <code>generation-worker</code>, the node for the three governed generation capabilities (<code>generation.catalog.query</code>, <code>generation.definition.validate</code>, <code>generation.scaffold.generate</code>). An agent queries the catalog, writes a DefinitionTemplate, validates it and asks for generation; the broker dispatches each request to this worker, which runs the component-library generator and packages the prototype as a deterministic zip. The worker calls no LLM and has no network access besides the broker.</p>
+<ul>
+<li>It sits only on <code>generation-net</code> (<code>internal: true</code>, members: the broker and this worker).</li>
+<li>It writes packages to the <code>generation-out</code> volume at <code>/out</code>, under the output slot the broker wrote into the grant scope; path arguments in a request are ignored. The broker mounts the same volume read-only at <code>/generation-out</code> (<code>Generation__OutputRoot</code>), verifies the zip path and sha256, and copies the package for delivery.</li>
+<li>Its credential is credential index 3 (<code>GENERATION_WORKER_AUTH_KEY_ID</code>, <code>GENERATION_WORKER_AUTH_SHARED_SECRET</code>).</li>
+<li><code>AGENT_MAX_ITERATIONS</code> (default <code>4</code> in this stack) sets the agent's iteration limit; a generation run needs more turns than the smoke test.</li>
+</ul>
+<p>Start it with the profile (the worker image builds only once the generator under <code>tools/generation</code> and the shell under <code>templates/definition-site</code> are present):</p>
+<pre><code class="language-powershell">podman compose --env-file &quot;$HOME/.bricks4agent/agent-stack.env&quot; -f tools/agent/container/compose.yml --profile generation up -d broker generation-worker
+</code></pre>
+<p>See <a href="../../../packages/csharp/workers/generation-worker/README.html">packages/csharp/workers/generation-worker/README.md</a> for the worker's contract.</p>
 <h2>Port Notes</h2>
 <p>Default exposed broker ports:</p>
 <ul>
@@ -192,13 +207,13 @@ podman compose --env-file &quot;$HOME/.bricks4agent/agent-stack.env&quot; -f too
 <p>all three compose files: <code>BROKER_SCOPED_TOKEN_SECRET</code>, <code>BROKER_MASTER_KEY_BASE64</code>, <code>BROKER_ECDH_PRIVATE_KEY_BASE64</code>, <code>BROKER_ECDH_PUBLIC_KEY_BASE64</code> (the agent pins this public key; it must be the pair of the private key), and <code>BROKER_REGISTRATION_SECRET</code> (the seeded task's registration secret; see <a href="#registration-secret">Registration Secret</a>)</p>
 </li>
 <li>
-<p><code>compose.yml</code> also: <code>LINE_WORKER_AUTH_KEY_ID</code>, <code>LINE_WORKER_AUTH_SHARED_SECRET</code>, <code>FILE_WORKER_AUTH_KEY_ID</code>, <code>FILE_WORKER_AUTH_SHARED_SECRET</code>, <code>EXEC_ADAPTER_AUTH_KEY_ID</code>, and <code>EXEC_ADAPTER_AUTH_SHARED_SECRET</code> (the broker side and the worker side read the same variables)</p>
+<p><code>compose.yml</code> also: <code>LINE_WORKER_AUTH_KEY_ID</code>, <code>LINE_WORKER_AUTH_SHARED_SECRET</code>, <code>FILE_WORKER_AUTH_KEY_ID</code>, <code>FILE_WORKER_AUTH_SHARED_SECRET</code>, <code>EXEC_ADAPTER_AUTH_KEY_ID</code>, <code>EXEC_ADAPTER_AUTH_SHARED_SECRET</code>, <code>GENERATION_WORKER_AUTH_KEY_ID</code>, and <code>GENERATION_WORKER_AUTH_SHARED_SECRET</code> (the broker side and the worker side read the same variables; compose expands them even when the profile of the worker that uses them is not started)</p>
 </li>
 </ul>
 <p><code>node tools/agent/container/gen-stack-secrets.mjs</code> generates all of them with <code>node:crypto</code> and writes them to <code>$BRICKS4AGENT_SECRETS_DIR/agent-stack.env</code>, or <code>~/.bricks4agent/agent-stack.env</code> when that variable is not set. It never prints the values, refuses any path inside the repository, and refuses to overwrite an existing file unless you pass <code>--force</code> (which rotates every key; recreate the stack with <code>down -v</code> afterwards). <code>--self-test</code> checks the generator without writing anything. <a href="agent-stack.env.example"><code>agent-stack.env.example</code></a> lists the variable names only.</p>
 <p>Keep the file outside the repository. The agent no longer mounts anything, but the file worker serves the repository read-only to the agent through the broker; its deny list refuses <code>.env</code>, <code>.env.*</code> and <code>agent-stack.env</code>, yet any other name you give a key file inside the repository would be readable by the untrusted agent. Compose also auto-loads a <code>.env</code> next to the compose files.</p>
 <p>The broker runs in the Production environment in these stacks and validates its keys at startup: it refuses placeholder values (empty, <code>CHANGE_ME*</code>, <code>REPLACE_WITH_*</code>) and any key that was ever published as a compose default, and it checks key formats. Do not set <code>ASPNETCORE_ENVIRONMENT=Development</code> in the compose files to get around this.</p>
-<p><code>WORKER_AUTH_ENFORCE</code> defaults to <code>true</code>: the broker verifies worker credentials on function pool registration and on the LINE worker HTTP routes. The broker also trusts the execution adapter credential (credential index 2), which replaces the template credential at that index in <code>appsettings.json</code>.</p>
+<p><code>WORKER_AUTH_ENFORCE</code> defaults to <code>true</code>: the broker verifies worker credentials on function pool registration and on the LINE worker HTTP routes. The broker also trusts the execution adapter credential (credential index 2), which replaces the template credential at that index in <code>appsettings.json</code>, and the generation worker credential (credential index 3).</p>
 <h3 id="registration-secret">Registration Secret</h3>
 <p>Knowing a principal id and a task id is not enough to register a session: the register request must carry that task's registration secret inside the encrypted handshake payload. The broker stores only a SHA-256 hash of each secret. A missing, wrong, expired or revoked secret gets the same HTTP 401 (<code>Registration rejected.</code>), so the response does not tell which part was wrong; the broker log and audit trail record the reason, never the secret.</p>
 <ul>
@@ -222,7 +237,7 @@ podman compose --env-file &quot;$HOME/.bricks4agent/agent-stack.env&quot; -f too
 <tbody>
 <tr>
 <td>user</td>
-<td>non-root UID from the image: agent 10001, broker 10002, file-worker 10003, execution-adapter 10004, line-worker 10005, mock-ollama 10006, mock-openai 10007</td>
+<td>non-root UID from the image: agent 10001, broker 10002, file-worker 10003, execution-adapter 10004, line-worker 10005, mock-ollama 10006, mock-openai 10007, generation-worker 10008</td>
 </tr>
 <tr>
 <td><code>read_only</code></td>
@@ -242,14 +257,14 @@ podman compose --env-file &quot;$HOME/.bricks4agent/agent-stack.env&quot; -f too
 </tr>
 <tr>
 <td><code>pids_limit</code></td>
-<td><code>1024</code> for the broker (.NET thread pool and sockets), <code>256</code> for every other service</td>
+<td><code>1024</code> for the broker (.NET thread pool and sockets), <code>128</code> for the generation worker (one node process at a time), <code>256</code> for every other service</td>
 </tr>
 </tbody>
 </table>
 <p>Mounts:</p>
 <ul>
 <li>
-<p>broker: the named volume at <code>/data</code> (SQLite database and workspaces). No container runtime socket is mounted, so dynamic spawn is not available inside these stacks; keep <code>CONTAINER_MANAGER_ENABLED</code> at <code>false</code>.</p>
+<p>broker: the named volume at <code>/data</code> (SQLite database and workspaces) and the <code>generation-out</code> volume at <code>/generation-out</code>, read-only. No container runtime socket is mounted, so dynamic spawn is not available inside these stacks; keep <code>CONTAINER_MANAGER_ENABLED</code> at <code>false</code>.</p>
 </li>
 <li>
 <p>agent: nothing. <code>/workspace</code> is an empty directory in the image that only serves as the logical root the broker grants are scoped to; the project manual is baked in at <code>/app/AGENT.md</code> (<code>AGENT_MANUAL_PATH</code>).</p>
@@ -262,6 +277,9 @@ podman compose --env-file &quot;$HOME/.bricks4agent/agent-stack.env&quot; -f too
 </li>
 <li>
 <p>line-worker: nothing; audio scratch files go to <code>/tmp/audio_temp</code> (<code>WORKER_Line__AudioTempPath</code>).</p>
+</li>
+<li>
+<p>generation-worker: the <code>generation-out</code> volume at <code>/out</code>, writable; it is the only place the worker writes besides <code>/tmp</code>. The image creates <code>/out</code> for uid 10008, and generated files are world-readable so the broker (uid 10002) can read them through its read-only mount.</p>
 </li>
 </ul>
 <h3 id="dynamic-spawn">Dynamic Spawn</h3>
@@ -284,7 +302,7 @@ podman compose --env-file &quot;$HOME/.bricks4agent/agent-stack.env&quot; -f too
 <p>Each <code>/api/v1/agents/spawn</code> issues a new registration credential for the agent and hands the secret to the container as <code>BROKER_REGISTRATION_SECRET</code> in that way; the response carries only the credential id. Only after the container has started does the broker revoke the credentials of the agent's earlier spawns. The credential lasts <code>Broker:RegistrationCredential:SpawnedAgentLifetimeHours</code> (default 24), which covers container restarts; after that the agent must be spawned again. A failed spawn (for example while the agent's previous container still exists, because container names are fixed, or when <code>MaxContainersPerType</code> is reached) revokes only the credential it was given, so a container that is still running keeps its own and can still register again (verification compares only credentials that are still valid, so the revoked records failed spawns leave behind do not crowd it out). <code>/api/v1/agents/stop</code> (and the agent stop tool) revokes the agent's credentials and sessions, so neither its tokens nor its secret work afterwards.</p>
 <p>After upgrading the broker, rebuild <code>bricks4agent-agent:latest</code> from <code>tools/agent/Containerfile</code> (the Windows sidecar uses whatever local image it finds and does not build it): an agent image from before registration credentials does not send the secret, so every agent the broker spawns fails to register and stops once its restarts are used up.</p>
 <h3>Images</h3>
-<p>All images build from <code>main</code>: the .NET services use <code>mcr.microsoft.com/dotnet/sdk:10.0</code> and <code>aspnet:10.0</code> (the execution adapter keeps the SDK at run time for <code>git</code> and <code>dotnet build/test</code>), and the Node services use <code>node:22-bookworm-slim</code>. Every <code>FROM</code> is pinned to the multi-arch index digest, so base image fixes arrive only when you refresh the digests and rebuild:</p>
+<p>All images build from <code>main</code>: the .NET services use <code>mcr.microsoft.com/dotnet/sdk:10.0</code> and <code>aspnet:10.0</code> (the execution adapter keeps the SDK at run time for <code>git</code> and <code>dotnet build/test</code>; the generation worker copies only the node binary from <code>node:22-bookworm-slim</code> into its <code>aspnet:10.0</code> image and runs it once at build time), and the Node services use <code>node:22-bookworm-slim</code>. Every <code>FROM</code> is pinned to the multi-arch index digest, so base image fixes arrive only when you refresh the digests and rebuild:</p>
 <pre><code class="language-bash">node tools/agent/container/resolve-base-image-digests.mjs
 node tools/agent/container/resolve-base-image-digests.mjs --engine podman
 node tools/agent/container/resolve-base-image-digests.mjs --check
