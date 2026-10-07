@@ -1,0 +1,91 @@
+{
+  "kind": "definition-template",
+  "version": "0.1.0",
+  "meta": {
+    "title": "聯絡人管理",
+    "description": "通用範例：聯絡人的列表、明細與表單三頁原型"
+  },
+  "definitions": {
+    "pages": [
+      {
+        "id": "contacts-list",
+        "definition": {
+          "name": "ContactListPage",
+          "type": "list",
+          "description": "聯絡人列表",
+          "fields": [
+            { "name": "fullName", "type": "text", "label": "姓名" },
+            { "name": "email", "type": "email", "label": "電子郵件" },
+            { "name": "phone", "type": "text", "label": "電話" },
+            {
+              "name": "category",
+              "type": "select",
+              "label": "類別",
+              "options": [
+                { "value": "customer", "label": "客戶" },
+                { "value": "supplier", "label": "供應商" },
+                { "value": "partner", "label": "合作夥伴" }
+              ]
+            },
+            { "name": "active", "type": "toggle", "label": "啟用" }
+          ],
+          "api": { "list": "/api/contacts", "delete": "/api/contacts" }
+        }
+      },
+      {
+        "id": "contact-detail",
+        "definition": {
+          "name": "ContactDetailPage",
+          "type": "detail",
+          "description": "聯絡人明細",
+          "fields": [
+            { "name": "fullName", "type": "text", "label": "姓名" },
+            { "name": "email", "type": "email", "label": "電子郵件" },
+            { "name": "phone", "type": "text", "label": "電話" },
+            {
+              "name": "category",
+              "type": "select",
+              "label": "類別",
+              "options": [
+                { "value": "customer", "label": "客戶" },
+                { "value": "supplier", "label": "供應商" },
+                { "value": "partner", "label": "合作夥伴" }
+              ]
+            },
+            { "name": "lastContactDate", "type": "date", "label": "最近聯絡日" },
+            { "name": "active", "type": "toggle", "label": "啟用" },
+            { "name": "notes", "type": "textarea", "label": "備註" }
+          ],
+          "api": { "get": "/api/contacts" }
+        }
+      },
+      {
+        "id": "contact-form",
+        "definition": {
+          "name": "ContactFormPage",
+          "type": "form",
+          "description": "編輯聯絡人",
+          "fields": [
+            { "name": "fullName", "type": "text", "label": "姓名", "required": true, "validation": { "maxLength": 50 } },
+            { "name": "email", "type": "email", "label": "電子郵件", "validation": { "maxLength": 100 } },
+            { "name": "phone", "type": "text", "label": "電話", "validation": { "maxLength": 20 } },
+            {
+              "name": "category",
+              "type": "select",
+              "label": "類別",
+              "options": [
+                { "value": "customer", "label": "客戶" },
+                { "value": "supplier", "label": "供應商" },
+                { "value": "partner", "label": "合作夥伴" }
+              ]
+            },
+            { "name": "lastContactDate", "type": "date", "label": "最近聯絡日" },
+            { "name": "active", "type": "toggle", "label": "啟用", "default": true },
+            { "name": "notes", "type": "textarea", "label": "備註", "validation": { "maxLength": 500 } }
+          ],
+          "api": { "get": "/api/contacts", "create": "/api/contacts", "update": "/api/contacts" }
+        }
+      }
+    ]
+  }
+}

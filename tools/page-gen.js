@@ -884,7 +884,19 @@ async function main() {
     }
 }
 
-main().catch(e => {
-    outputError([e.message || '未預期的錯誤']);
-    process.exit(1);
-});
+// 直接執行時才跑 CLI；被 require 時只提供型別清單與驗證函式（tools/generation 重用，
+// 讓欄位型別白名單以程式計算交集，而不是另抄一份清單）
+if (require.main === module) {
+    main().catch(e => {
+        outputError([e.message || '未預期的錯誤']);
+        process.exit(1);
+    });
+}
+
+module.exports = {
+    VALID_FIELD_TYPES,
+    VALID_TRIGGER_ON,
+    VALID_TRIGGER_ACTIONS,
+    VALID_OPTIONS_SOURCE_TYPES,
+    validateNewDefinition
+};
