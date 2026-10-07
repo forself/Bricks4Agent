@@ -137,7 +137,7 @@ broker 重啟後由執行紀錄接手；容器清單遺失時找不到容器就�
 - 生成器與外殼：`npm run test:generation`、`npm run test:definition-site:browser`。
 - worker：`GenerationHandlerTests`（假 CLI 的邊界行為）與 `GenerationCliContractTests`（真正的 CLI：zip 內容與 build 輸出逐位元組相同、兩次生成 sha256 相同）。
 - broker：`GenerationIngestTests`（路徑逃逸、連結、sha256 或大小不符、檔案遺失、slot 或請求 id 不符都失敗且不交付）、`GenerationDeliveryServiceTests`（交付、期限、代理結束未產出、交付失敗）、`GovernedGenerationLauncherTests`（grant 與 scope、工作項與 `AGENT_RUN` 上限、啟動失敗、就緒檢查）、`GenerationApprovalRenderTests`。
-- 整合：`GovernedGenerationTests`（確認後的任務、主體、grant 與代理啟動；代理 session 依序呼叫三個能力，稽核鏈 RECEIVED → DISPATCHED → SUCCEEDED 並帶 evidenceRef；交付後任務 Completed；沒有 grant 時 Denied；未就緒與啟動失敗時 fail-closed）。
+- 整合：`GovernedGenerationTests`（確認後的任務、主體、grant 與代理啟動；代理 session 依序呼叫三個能力，稽核鏈 RECEIVED → DISPATCHED → SUCCEEDED 並帶 evidenceRef；交付後任務 Completed；沒有 grant 時 Denied；未就緒與啟動失敗時 fail-closed）。其中一個是程序內端到端案例：同一條路改由 generation-worker 真正的 handler 與 repo 中的 `tools/generation/cli.mjs` 處理 golden 範例（catalog → validate 一次失敗、依結構化錯誤修正 → generate），確認 broker 收下的 zip、證據文件與報告中的 manifest 逐檔一致，並完成交付；只省略 worker 與 broker 之間的 TCP frame。這個案例需要 node（`B4A_NODE_PATH` 或 PATH 上的 node）。
 - `npm run validate:broker-scope`：Legacy 斷言保留；Governed 斷言確認回覆「已受理」、程序內沒有寫出檔案、未就緒時不建立任務。
 
 ## 13. 後續

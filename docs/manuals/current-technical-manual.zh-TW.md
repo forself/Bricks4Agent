@@ -1372,6 +1372,8 @@ dotnet test packages/csharp/tests/integration/Integration.Tests.csproj
 dotnet test packages/csharp/tests/integration/Integration.Tests.csproj --filter PortalEndpointTests
 ```
 
+`GovernedGenerationTests` 含一個程序內端到端案例，以 generation-worker 的 handler 與 repo 中的 `tools/generation/cli.mjs` 處理 golden 範例，需要 node（`B4A_NODE_PATH` 或 PATH 上的 node）。
+
 ### 20.4 BaseOrm and broker verify
 
 ```powershell

@@ -21,7 +21,9 @@ namespace Integration.Tests.Fixtures;
 ///     handed over as a secret environment value) and every stop, and can refuse spawns;
 ///   - <see cref="FakeGenerationWorkerRegistry"/>: reports the generation capabilities as served, or not;
 ///   - <see cref="FakeGenerationDispatcher"/>: plays the generation worker — it writes a small deterministic zip
-///     into Generation:OutputRoot under the slot from the grant scope and returns the worker payload.
+///     into Generation:OutputRoot under the slot from the grant scope and returns the worker payload; a test can
+///     hand its requests to <see cref="InProcessGenerationWorker"/> instead (the worker's real handlers and the
+///     repository's generator CLI, writing into the same output root).
 /// The broker's own GenerationIngestingDispatcher still wraps the dispatcher, so the ingest checks run for real.
 /// </summary>
 public sealed class GovernedGenerationFixture : BrokerAuthorizationFixture, IAsyncLifetime
@@ -154,6 +156,8 @@ public sealed class FakeGenerationWorkerRegistry : IWorkerRegistry
 /// Stands in for the generation worker. catalog and validate answer like the generator CLI; generate writes
 /// <c>{OutputRoot}/{output_slot}/{requestId}/{package_name}-scaffold.zip</c> (output location only from the grant
 /// scope, as the real worker does) and returns the worker payload with a relative zip path.
+/// When <see cref="Worker"/> is set, requests go to that dispatcher instead (for example
+/// <see cref="InProcessGenerationWorker"/>, the real handlers with the repository's generator CLI).
 /// </summary>
 public sealed class FakeGenerationDispatcher : IExecutionDispatcher
 {
@@ -166,10 +170,16 @@ public sealed class FakeGenerationDispatcher : IExecutionDispatcher
 
     public List<ApprovedRequest> Dispatched { get; } = new();
 
+    /// <summary>Dispatcher that answers instead of the fake (null: the fake answers).</summary>
+    public IExecutionDispatcher? Worker { get; set; }
+
     public Task<ExecutionResult> DispatchAsync(ApprovedRequest approvedRequest)
     {
         lock (Dispatched)
             Dispatched.Add(approvedRequest);
+
+        if (Worker != null)
+            return Worker.DispatchAsync(approvedRequest);
 
         return Task.FromResult(approvedRequest.Route switch
         {
@@ -245,6 +255,78 @@ public sealed class FakeGenerationDispatcher : IExecutionDispatcher
         });
 
         var result = ExecutionResult.Ok(request.RequestId, payload);
+        result.AnsweredByWorker = true;
+        return result;
+    }
+}
+
+/// <summary>
+/// The generation worker inside the test process: the worker's real handlers
+/// (catalog, validate, generate) with the repository's generator CLI (tools/generation/cli.mjs run by node),
+/// writing into the same Generation:OutputRoot the broker reads. Requests are routed by capability id and the
+/// handler result is mapped the way the function pool maps a WORKER_RESULT frame, so the broker sees exactly
+/// what a registered generation-worker would answer; only the TCP frame transport is left out.
+/// </summary>
+public sealed class InProcessGenerationWorker : IExecutionDispatcher
+{
+    private readonly Dictionary<string, WorkerSdk.ICapabilityHandler> _handlers;
+
+    public InProcessGenerationWorker(string outputRoot)
+    {
+        Options = new GenerationWorker.Support.GenerationWorkerOptions
+        {
+            NodePath = GenerationWorker.Support.GenerationWorkerOptions.ResolveNodePath(null),
+            ToolsRoot = FindRepositoryRoot(),
+            OutputRoot = outputRoot,
+            QueryTimeout = TimeSpan.FromSeconds(60),
+            BuildTimeout = TimeSpan.FromSeconds(120),
+        };
+        var configurationError = Options.Validate();
+        if (configurationError != null)
+            throw new InvalidOperationException(configurationError);
+
+        var logger = Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
+        var cli = new GenerationWorker.Support.NodeGeneratorCli(Options, logger);
+        _handlers = new WorkerSdk.ICapabilityHandler[]
+        {
+            new GenerationWorker.Handlers.CatalogQueryHandler(Options, cli, logger),
+            new GenerationWorker.Handlers.DefinitionValidateHandler(Options, cli, logger),
+            new GenerationWorker.Handlers.ScaffoldGenerateHandler(Options, cli, logger),
+        }.ToDictionary(handler => handler.CapabilityId, StringComparer.Ordinal);
+    }
+
+    public GenerationWorker.Support.GenerationWorkerOptions Options { get; }
+
+    /// <summary>The repository root (the directory that contains tools/generation/cli.mjs).</summary>
+    public static string FindRepositoryRoot()
+    {
+        for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory != null; directory = directory.Parent)
+        {
+            if (File.Exists(Path.Combine(directory.FullName, "tools", "generation", "cli.mjs")))
+                return directory.FullName;
+        }
+
+        throw new InvalidOperationException("tools/generation/cli.mjs not found above the test output.");
+    }
+
+    public async Task<ExecutionResult> DispatchAsync(ApprovedRequest approvedRequest)
+    {
+        if (!_handlers.TryGetValue(approvedRequest.CapabilityId, out var handler))
+        {
+            return Answered(ExecutionResult.Fail(approvedRequest.RequestId,
+                $"No handler for capability '{approvedRequest.CapabilityId}'"));
+        }
+
+        var (success, resultPayload, error) = await handler.ExecuteAsync(
+            approvedRequest.RequestId, approvedRequest.Route, approvedRequest.Payload, approvedRequest.Scope, CancellationToken.None);
+
+        return Answered(success
+            ? ExecutionResult.Ok(approvedRequest.RequestId, resultPayload ?? "{}")
+            : ExecutionResult.Fail(approvedRequest.RequestId, error ?? "Worker execution failed"));
+    }
+
+    private static ExecutionResult Answered(ExecutionResult result)
+    {
         result.AnsweredByWorker = true;
         return result;
     }

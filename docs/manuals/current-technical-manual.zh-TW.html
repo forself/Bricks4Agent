@@ -2324,6 +2324,7 @@ $env:WORKER_Line__OutboundRateLimit__PermitLimit='20'
 dotnet test packages/csharp/tests/integration/Integration.Tests.csproj
 dotnet test packages/csharp/tests/integration/Integration.Tests.csproj --filter PortalEndpointTests
 </code></pre>
+<p><code>GovernedGenerationTests</code> 含一個程序內端到端案例，以 generation-worker 的 handler 與 repo 中的 <code>tools/generation/cli.mjs</code> 處理 golden 範例，需要 node（<code>B4A_NODE_PATH</code> 或 PATH 上的 node）。</p>
 <h3>20.4 BaseOrm and broker verify</h3>
 <pre><code class="language-powershell">npm run validate:baseorm
 npm run validate:baseorm-sync

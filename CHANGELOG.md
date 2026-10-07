@@ -26,7 +26,7 @@ B4A 只收通用元件與通用能力；任何業務系統的專屬元件都不�
 - worker-sdk 的 `WorkerHost`：送結果、心跳與狀態回覆經同一個寫入鎖，不再交錯寫入同一個 stream；接收端保留同一次讀到的後續 frame。影響所有 worker。
 - `PolicyEngine.IsScopeValid` 遇到例外時改為不在 scope 內；scope 的 `routes`、`paths` 存在但不是字串陣列時也視為不在 scope 內（先前會被當成沒有限制）。依審批政策改為 Deny 或送審。
 
-驗證入口：`npm run test:generation`、`npm run test:definition-site:browser`、`dotnet test packages/csharp/tests/unit/Unit.Tests.csproj`（GenerationHandlerTests、GenerationCliContractTests、GenerationIngestTests、GenerationDeliveryServiceTests、GovernedGenerationLauncherTests、GenerationApprovalRenderTests、WorkerFrameIoTests、PolicyEngineScopeFailClosedTests、GenerationToolSpecTests）、`dotnet test packages/csharp/tests/integration/Integration.Tests.csproj`（GovernedGenerationTests）、`npm run validate:broker-scope`、`npm run validate:agent-governed`、`npm run validate:agent-container-config`。
+驗證入口：`npm run test:generation`、`npm run test:definition-site:browser`、`dotnet test packages/csharp/tests/unit/Unit.Tests.csproj`（GenerationHandlerTests、GenerationCliContractTests、GenerationIngestTests、GenerationDeliveryServiceTests、GovernedGenerationLauncherTests、GenerationApprovalRenderTests、WorkerFrameIoTests、PolicyEngineScopeFailClosedTests、GenerationToolSpecTests）、`dotnet test packages/csharp/tests/integration/Integration.Tests.csproj`（GovernedGenerationTests，含以真正的 worker handler 與生成器 CLI 跑 golden 範例的程序內端到端案例，需要 node）、`npm run validate:broker-scope`、`npm run validate:agent-governed`、`npm run validate:agent-container-config`。
 
 ### 預設行為變更：`/proj` 與 `/ok` 需要 production 權限、`/ok` 改為建立 draft、高階回覆不帶主機路徑（2026-10-07）
 

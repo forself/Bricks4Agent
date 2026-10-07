@@ -22,7 +22,7 @@ Bricks4Agent's end state is an **AI agent service**: it takes requests from huma
 
 - Style-token audit: `npm run audit:ui-styles`
 
-- Governed generation (DefinitionTemplate → multi-page prototype): `npm run test:generation` (node:test for `tools/generation/`: layered validation, catalog summary, deterministic build, CLI exit-code contract); `npm run test:definition-site:browser` builds the golden example into `.test-output/` and drives every route in Edge (hard-imports playwright-core from `../tim-web/poc`). Broker side: `GovernedGenerationTests` in the integration suite; design and settings in [GovernedGeneration.md](docs/designs/GovernedGeneration.md)
+- Governed generation (DefinitionTemplate → multi-page prototype): `npm run test:generation` (node:test for `tools/generation/`: layered validation, catalog summary, deterministic build, CLI exit-code contract); `npm run test:definition-site:browser` builds the golden example into `.test-output/` and drives every route in Edge (hard-imports playwright-core from `../tim-web/poc`). Broker side: `GovernedGenerationTests` in the integration suite (one case runs the real generation-worker handlers and `tools/generation/cli.mjs` in process, so the integration suite needs node); design and settings in [GovernedGeneration.md](docs/designs/GovernedGeneration.md)
 
 - All SDK-style .NET 10 projects, with every warning treated as an error: `npm run test:dotnet10`
 

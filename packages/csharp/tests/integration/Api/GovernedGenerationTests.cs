@@ -18,7 +18,9 @@ namespace Integration.Tests.Api;
 ///   稽核鏈依序 RECEIVED → DISPATCHED → SUCCEEDED；交付後有產物紀錄（portal 產物清單）與 LINE 通知，任務 Completed、容器停止；
 /// - 沒有生成 grant 的 session 送 generate 得到 Denied；
 /// - 前置條件不滿足（沒有 generation-worker、沒有容器執行環境）時 fail-closed：不建立任務、不啟動代理、不退回程序內生成；
-/// - 代理啟動失敗時任務標為 Failed，draft 保留，專案名稱可再用。
+/// - 代理啟動失敗時任務標為 Failed，draft 保留，專案名稱可再用；
+/// - 程序內端到端：同一條路改由 generation-worker 真正的 handler 與 repo 中的生成器 CLI 處理 golden 範例
+///   （catalog → validate 失敗後修正 → generate），broker 驗證收下的 zip 與 manifest 一致並交付。
 /// </summary>
 public sealed class GovernedGenerationTests : IClassFixture<GovernedGenerationFixture>
 {
@@ -36,6 +38,7 @@ public sealed class GovernedGenerationTests : IClassFixture<GovernedGenerationFi
         _fixture.Registry.Registered = true;
         _fixture.Containers.RuntimeAvailable = true;
         _fixture.Containers.RefuseSpawns = false;
+        _fixture.Dispatcher.Worker = null;
     }
 
     private HighLevelCoordinator Coordinator => _fixture.Services.GetRequiredService<HighLevelCoordinator>();
@@ -280,5 +283,198 @@ public sealed class GovernedGenerationTests : IClassFixture<GovernedGenerationFi
         var retried = await SendLineAsync(userId, "y");
         ReadString(retried, "reply").Should().Contain("已受理");
         TasksSubmittedBy(userId).Should().HaveCount(2);
+    }
+
+    private static JsonObject GoldenTemplate()
+        => JsonNode.Parse(File.ReadAllText(Path.Combine(
+            InProcessGenerationWorker.FindRepositoryRoot(), "tools", "generation", "examples", "golden.definition-template.json")))!.AsObject();
+
+    private static JsonObject ResultPayload(BrokerReply reply)
+        => JsonNode.Parse(BrokerJson.ReadString(reply.Body, "data", "result_payload")!)!.AsObject();
+
+    private static string Sha256Hex(byte[] bytes)
+        => Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)).ToLowerInvariant();
+
+    /// <summary>
+    /// 程序內端到端：使用者確認 → broker 啟動受控代理（假的容器管理器）→ 以代理的註冊憑證開 session，
+    /// 依代理的工作流程呼叫三個能力，由 generation-worker 真正的 handler 與 repo 中的生成器 CLI 處理 golden 範例：
+    /// catalog → validate（一次失敗、依結構化錯誤修正後通過）→ generate。
+    /// 驗證 broker 的 ingest（路徑、sha256）、證據文件、稽核鏈、產物紀錄、LINE 通知、任務 Completed，
+    /// 交付的 zip 與 worker 寫出的檔案、報告中的 manifest 逐檔一致，且 broker 沒有在專案資料夾寫入任何檔案。
+    /// </summary>
+    [Fact]
+    public async Task ConfirmedScaffold_WithTheRealGenerationWorker_GeneratesVerifiesAndDeliversTheGoldenPrototype()
+    {
+        var worker = new InProcessGenerationWorker(_fixture.OutputRoot);
+        var repositoryRoot = worker.Options.ToolsRoot;
+
+        var userId = await NewProductionUserAsync("line-gengov-e2e");
+        var draft = await SendLineAsync(userId, "/建立 完整系統雛形 聯絡人管理原型 #GoldenDemo");
+        IsNullOrMissing(draft, "error").Should().BeTrue("the draft reply was {0}", draft);
+
+        var confirmed = await SendLineAsync(userId, "y");
+        IsNullOrMissing(confirmed, "error").Should().BeTrue("the confirm reply was {0}", confirmed);
+        ReadString(confirmed, "reply")!.Should().Contain("已受理");
+
+        var task = TasksSubmittedBy(userId).Single();
+        var spawn = _fixture.Containers.Spawned.Single(request => request.TrustedEnvironment["BROKER_TASK_ID"] == task.TaskId);
+
+        // 代理收到的工作項（AGENT_RUN 的 WORK_ITEM_JSON）：生成類型與上限，與 handoff 的 generation_request 相同。
+        var agentRun = spawn.TrustedEnvironment["AGENT_RUN"];
+        var workItemJson = agentRun[(agentRun.IndexOf("WORK_ITEM_JSON: ", StringComparison.Ordinal) + "WORK_ITEM_JSON: ".Length)..];
+        var workItem = JsonNode.Parse(workItemJson)!.AsObject();
+        workItem["kind"]!.GetValue<string>().Should().Be("system_scaffold_generation");
+        workItem["limits"]!["max_pages"]!.GetValue<int>().Should().Be(12);
+        workItem["limits"]!["page_types"]!.AsArray().Select(type => type!.GetValue<string>()).Should().Equal("list", "detail", "form");
+        JsonNode.DeepEquals(workItem, JsonNode.Parse(_fixture.FindContextEntries($"hlm.handoff.{task.TaskId}").Last().ContentRef)!["generation_request"])
+            .Should().BeTrue("the agent works from the same sanitized request the handoff records");
+
+        var registered = await _client.RegisterAsync(
+            task.AssignedPrincipalId!, task.TaskId, remoteAddress: LoopbackAddress,
+            registrationSecret: spawn.SecretEnvironment["BROKER_REGISTRATION_SECRET"]);
+        registered.StatusCode.Should().Be(HttpStatusCode.OK, "the register response was {0}", registered);
+        var session = registered.Session!;
+
+        _fixture.Dispatcher.Worker = worker;
+
+        // ── 1. 查型錄：overview 與 field_types，回傳內容與型錄 hash 一致 ──
+        var overview = await SubmitAsync(session, "generation.catalog.query", "query_component_catalog", new { section = "overview" });
+        BrokerJson.ReadString(overview.Body, "data", "execution_state").Should().Be("Succeeded", "the catalog response was {0}", overview);
+        var overviewPayload = ResultPayload(overview);
+        overviewPayload["ok"]!.GetValue<bool>().Should().BeTrue();
+        overviewPayload["section"]!.GetValue<string>().Should().Be("overview");
+        var catalogSha = overviewPayload["catalog_sha256"]!.GetValue<string>();
+        catalogSha.Should().MatchRegex("^[0-9a-f]{64}$");
+
+        var fieldTypes = await SubmitAsync(session, "generation.catalog.query", "query_component_catalog", new { section = "field_types" });
+        BrokerJson.ReadString(fieldTypes.Body, "data", "execution_state").Should().Be("Succeeded", "the catalog response was {0}", fieldTypes);
+        ResultPayload(fieldTypes)["catalog_sha256"]!.GetValue<string>().Should().Be(catalogSha);
+
+        // ── 2. 驗證：生成器不支援的欄位型別 → 成功的呼叫、ok:false、結構化錯誤；修正後 ok:true ──
+        var broken = GoldenTemplate();
+        broken["definitions"]!["pages"]![2]!["definition"]!["fields"]![0]!["type"] = "slider";
+        var rejected = await SubmitAsync(session, "generation.definition.validate", "validate_definition", new { template = broken });
+        BrokerJson.ReadString(rejected.Body, "data", "execution_state").Should().Be("Succeeded", "the validate response was {0}", rejected);
+        var rejectedPayload = ResultPayload(rejected);
+        rejectedPayload["ok"]!.GetValue<bool>().Should().BeFalse();
+        rejectedPayload["errors"]![0]!["code"]!.GetValue<string>().Should().Be("FIELD_TYPE_UNSUPPORTED");
+        rejectedPayload["errors"]![0]!["path"]!.GetValue<string>().Should().Be("definitions.pages[2].definition.fields[0].type");
+
+        var accepted = await SubmitAsync(session, "generation.definition.validate", "validate_definition", new { template = GoldenTemplate() });
+        BrokerJson.ReadString(accepted.Body, "data", "execution_state").Should().Be("Succeeded", "the validate response was {0}", accepted);
+        var acceptedPayload = ResultPayload(accepted);
+        acceptedPayload["ok"]!.GetValue<bool>().Should().BeTrue("the validation result was {0}", acceptedPayload);
+        var validationDigest = acceptedPayload["validation_digest"]!.GetValue<string>();
+
+        // ── 3. 生成：args 中的輸出位置不被採用，產物寫在 grant scope 的 slot 之下 ──
+        var generate = await SubmitAsync(session, "generation.scaffold.generate", "generate_scaffold", new
+        {
+            template = GoldenTemplate(),
+            title = "Contacts prototype",
+            out_dir = Path.Combine(_fixture.OutputRoot, "elsewhere"),
+            output_slot = "someone_else"
+        });
+        BrokerJson.ReadString(generate.Body, "data", "execution_state").Should().Be("Succeeded", "the generate response was {0}", generate);
+        var requestId = BrokerJson.ReadString(generate.Body, "data", "request_id")!;
+        var generated = ResultPayload(generate);
+        generated["ok"]!.GetValue<bool>().Should().BeTrue();
+        generated["delivery"]!.GetValue<string>().Should().Be("queued");
+        generated["evidence_ref"]!.GetValue<string>().Should().Be($"generation.execution.{requestId}");
+        generated["validation_digest"]!.GetValue<string>().Should().Be(validationDigest);
+        generated["catalog_sha256"]!.GetValue<string>().Should().Be(catalogSha);
+        generated["pages"]!.AsArray().Select(page => page!["type"]!.GetValue<string>()).Should().Equal("list", "detail", "form");
+        var zipRelativePath = generated["zip"]!["path"]!.GetValue<string>();
+        zipRelativePath.Should().Be($"{task.TaskId}/{requestId}/GoldenDemo-scaffold.zip");
+        var zipSha = generated["zip"]!["sha256"]!.GetValue<string>();
+        foreach (var hostPath in new[] { _fixture.OutputRoot, repositoryRoot, Paths(userId).AccessRoot })
+        {
+            generate.Body.Should().NotContain(hostPath.Replace("\\", "\\\\")).And.NotContain(hostPath.Replace('\\', '/'));
+        }
+
+        Directory.EnumerateDirectories(_fixture.OutputRoot).Select(Path.GetFileName).Should().NotContain(new[] { "elsewhere", "someone_else" });
+        var workerZip = Path.Combine(_fixture.OutputRoot, zipRelativePath.Replace('/', Path.DirectorySeparatorChar));
+        Sha256Hex(File.ReadAllBytes(workerZip)).Should().Be(zipSha);
+
+        // ── ingest：執行請求 Succeeded、evidenceRef、稽核鏈；證據文件屬於該任務、由 ingestor 寫入 ──
+        var stored = _fixture.Db.Get<ExecutionRequest>(requestId)!;
+        stored.ExecutionState.Should().Be(ExecutionState.Succeeded);
+        stored.EvidenceRef.Should().Be($"generation.execution.{requestId}");
+        _fixture.Db.Query<AuditEvent>(
+                "SELECT * FROM audit_events WHERE trace_id = @traceId ORDER BY event_id",
+                new { traceId = stored.TraceId })
+            .Select(item => item.EventType)
+            .Where(type => type.StartsWith("EXECUTION_", StringComparison.Ordinal))
+            .Should().ContainInOrder("EXECUTION_RECEIVED", "EXECUTION_DISPATCHED", "EXECUTION_SUCCEEDED");
+
+        var evidenceEntry = _fixture.FindContextEntries(stored.EvidenceRef!).Single();
+        evidenceEntry.TaskId.Should().Be(task.TaskId);
+        evidenceEntry.AuthorPrincipalId.Should().Be(GenerationPackageIngestor.Author);
+        var evidence = JsonNode.Parse(evidenceEntry.ContentRef)!.AsObject();
+        evidence["zip"]!["sha256"]!.GetValue<string>().Should().Be(zipSha);
+        evidence["zip"]!["path"]!.GetValue<string>().Should().Be(zipRelativePath);
+        evidence["validation_digest"]!.GetValue<string>().Should().Be(validationDigest);
+        evidence["delivered_file_name"]!.GetValue<string>().Should().Be("GoldenDemo-scaffold.zip");
+
+        // ── 交付：產物紀錄、LINE 通知、任務 Completed、代理撤銷、容器停止 ──
+        await _fixture.Services.GetRequiredService<GenerationDeliveryService>().ProcessPendingAsync();
+
+        var paths = Paths(userId);
+        var workspace = _fixture.Services.GetRequiredService<HighLevelLineWorkspaceService>();
+        var artifact = workspace.ListArtifacts(userId).Single(item => item.RelatedTaskId == task.TaskId);
+        artifact.Success.Should().BeTrue();
+        artifact.Source.Should().Be("governed_generation");
+        artifact.FileName.Should().Be("GoldenDemo-scaffold.zip");
+        var notification = _fixture.FindContextEntries($"hlm.notify.line.{artifact.NotificationId}");
+        notification.Should().NotBeEmpty();
+        var notice = JsonNode.Parse(notification.Last().ContentRef)!.AsObject();
+        notice["Title"]!.GetValue<string>().Should().Be("系統雛形已生成");
+        notice["UserId"]!.GetValue<string>().Should().Be(userId);
+
+        _fixture.FindTask(task.TaskId)!.State.Should().Be(TaskState.Completed);
+        _fixture.Db.Get<Principal>(task.AssignedPrincipalId!)!.Status.Should().Be(EntityStatus.Disabled);
+        _fixture.FindSession(session.SessionId)!.Status.Should().Be(SessionStatus.Revoked);
+        var run = _fixture.Services.GetRequiredService<GovernedGenerationRunStore>().Get(task.TaskId)!;
+        run.Status.Should().Be(GovernedGenerationRunStatus.Delivered);
+        run.ZipSha256.Should().Be(zipSha);
+        _fixture.Containers.Stopped.Should().Contain(run.ContainerId);
+
+        // ── 交付的 zip：與 worker 寫出的檔案相同，內容與報告中的 manifest 逐檔一致 ──
+        var deliveredZip = Path.Combine(paths.DocumentsRoot, "GoldenDemo-scaffold.zip");
+        Sha256Hex(File.ReadAllBytes(deliveredZip)).Should().Be(zipSha);
+        using (var archive = System.IO.Compression.ZipFile.OpenRead(deliveredZip))
+        {
+            var entries = archive.Entries.ToDictionary(entry => entry.FullName, StringComparer.Ordinal);
+            entries.Keys.Should().Contain(new[] { "site/index.html", "site/boot.js", "site/README.txt", "site/definition-template.json", "report/validation.json", "report/manifest.json" });
+            entries.Keys.Should().Contain(new[] { "site/definitions/contacts-list.json", "site/definitions/contact-detail.json", "site/definitions/contact-form.json" });
+            entries.Keys.Should().OnlyContain(name => name.StartsWith("site/", StringComparison.Ordinal) || name.StartsWith("report/", StringComparison.Ordinal));
+
+            JsonObject manifest;
+            using (var reader = new StreamReader(entries["report/manifest.json"].Open()))
+                manifest = JsonNode.Parse(reader.ReadToEnd())!.AsObject();
+            manifest["format"]!.GetValue<string>().Should().Be("definition-site-v1");
+            manifest["catalog_sha256"]!.GetValue<string>().Should().Be(catalogSha);
+            manifest["validation_digest"]!.GetValue<string>().Should().Be(validationDigest);
+
+            var listed = manifest["files"]!.AsArray().Select(file => file!.AsObject()).ToList();
+            listed.Select(file => file["path"]!.GetValue<string>()).Append("report/manifest.json")
+                .Should().BeEquivalentTo(entries.Keys, "the zip holds exactly the files the manifest lists");
+            foreach (var file in listed)
+            {
+                using var stream = new MemoryStream();
+                using (var entryStream = entries[file["path"]!.GetValue<string>()].Open())
+                    entryStream.CopyTo(stream);
+                var bytes = stream.ToArray();
+                Sha256Hex(bytes).Should().Be(file["sha256"]!.GetValue<string>(), $"{file["path"]} matches the manifest");
+                bytes.LongLength.Should().Be(file["size"]!.GetValue<long>());
+            }
+
+            generated["file_count"]!.GetValue<int>().Should().Be(entries.Count);
+        }
+
+        // ── broker 程序沒有寫出專案檔案：專案資料夾仍是空的，文件區只有交付的 zip ──
+        var projectRoot = Path.Combine(paths.ProjectsRoot, "GoldenDemo");
+        (Directory.Exists(projectRoot) ? Directory.EnumerateFileSystemEntries(projectRoot, "*", SearchOption.AllDirectories) : Array.Empty<string>())
+            .Should().BeEmpty("the broker writes no project files in Governed mode");
+        Directory.EnumerateFiles(paths.DocumentsRoot).Select(Path.GetFileName).Should().Equal("GoldenDemo-scaffold.zip");
     }
 }
