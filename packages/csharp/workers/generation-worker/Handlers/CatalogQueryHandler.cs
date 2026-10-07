@@ -77,15 +77,30 @@ public sealed class CatalogQueryHandler : ICapabilityHandler
 /// <summary>catalog 與 validate 共用：把 CLI 的 JSON 原樣回傳前做大小與本機路徑檢查。</summary>
 internal static class GeneratorResponses
 {
+    /// <summary>超過大小上限時，validate 結果保留的錯誤與警告筆數起點（放不下時逐次減半）。</summary>
+    internal const int TruncatedErrorCount = 50;
+    internal const int TruncatedWarningCount = 20;
+
+    /// <param name="truncateIssues">
+    /// validate 用：結果超過上限時改回結構化的截斷結果（Success=true、保留 ok、前幾筆 errors／warnings、
+    /// total_errors 與 truncated:true），代理仍能依錯誤修正；其他指令超過上限時回 Success=false。
+    /// </param>
     public static (bool Success, string? ResultPayload, string? Error) PassThrough(
-        GeneratorCliResult result, GenerationWorkerOptions options, ILogger logger, string capabilityId)
+        GeneratorCliResult result, GenerationWorkerOptions options, ILogger logger, string capabilityId, bool truncateIssues = false)
     {
         if (!result.Succeeded)
             return (false, null, result.Failure);
 
         var json = result.RawJson!;
         if (Encoding.UTF8.GetByteCount(json) > options.MaxResultBytes)
-            return (false, null, $"{capabilityId} result exceeded {options.MaxResultBytes} bytes.");
+        {
+            var truncated = truncateIssues ? TruncateIssues(result.Output!, options.MaxResultBytes) : null;
+            if (truncated == null)
+                return (false, null, $"{capabilityId} result exceeded {options.MaxResultBytes} bytes.");
+
+            logger.LogWarning("{Capability} result exceeded {Limit} bytes; returning the first errors only.", capabilityId, options.MaxResultBytes);
+            json = truncated;
+        }
 
         if (LocalPathGuard.ContainsLocalPath(json, options.ToolsRoot, options.OutputRoot))
         {
@@ -95,4 +110,50 @@ internal static class GeneratorResponses
 
         return (true, json, null);
     }
+
+    /// <summary>
+    /// 只保留前幾筆 errors 與 warnings，附上 total_errors／total_warnings 與 truncated:true；ok 與其他欄位照 CLI 的結果。
+    /// 仍放不下時逐次減半，連一筆都放不下才回傳 null。
+    /// </summary>
+    internal static string? TruncateIssues(JsonObject output, int maxBytes)
+    {
+        if (output["errors"] is not JsonArray errors)
+            return null;
+
+        var warnings = output["warnings"] as JsonArray ?? new JsonArray();
+        var totalErrors = ReadCount(output, "total_errors", errors.Count);
+        var totalWarnings = ReadCount(output, "total_warnings", warnings.Count);
+        var keepErrors = Math.Min(errors.Count, TruncatedErrorCount);
+        var keepWarnings = Math.Min(warnings.Count, TruncatedWarningCount);
+
+        while (true)
+        {
+            var copy = new JsonObject();
+            foreach (var (key, value) in output)
+            {
+                if (key is "errors" or "warnings" or "total_errors" or "total_warnings" or "truncated" or "warnings_truncated")
+                    continue;
+                copy[key] = value?.DeepClone();
+            }
+
+            copy["errors"] = new JsonArray(errors.Take(keepErrors).Select(item => item?.DeepClone()).ToArray());
+            copy["warnings"] = new JsonArray(warnings.Take(keepWarnings).Select(item => item?.DeepClone()).ToArray());
+            copy["total_errors"] = totalErrors;
+            copy["truncated"] = true;
+            copy["total_warnings"] = totalWarnings;
+            copy["warnings_truncated"] = keepWarnings < totalWarnings;
+
+            var text = copy.ToJsonString();
+            if (Encoding.UTF8.GetByteCount(text) <= maxBytes)
+                return text;
+            if (keepErrors <= 1 && keepWarnings == 0)
+                return null;
+
+            keepErrors = Math.Max(1, keepErrors / 2);
+            keepWarnings /= 2;
+        }
+    }
+
+    private static int ReadCount(JsonObject output, string name, int fallback)
+        => output[name] is JsonValue value && value.TryGetValue<int>(out var count) && count >= fallback ? count : fallback;
 }

@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Broker.Services;
 using BrokerCore.Contracts;
 using BrokerCore.Services;
 using FunctionPool.Container;
@@ -20,6 +21,7 @@ namespace Integration.Tests.Fixtures;
 ///   - <see cref="RecordingContainerManager"/>: records every agent spawn (including the registration secret
 ///     handed over as a secret environment value) and every stop, and can refuse spawns;
 ///   - <see cref="FakeGenerationWorkerRegistry"/>: reports the generation capabilities as served, or not;
+///   - <see cref="ScriptedExecutionModelPlanner"/>: the execution model recommendation a test sets (none by default);
 ///   - <see cref="FakeGenerationDispatcher"/>: plays the generation worker — it writes a small deterministic zip
 ///     into Generation:OutputRoot under the slot from the grant scope and returns the worker payload; a test can
 ///     hand its requests to <see cref="InProcessGenerationWorker"/> instead (the worker's real handlers and the
@@ -33,11 +35,16 @@ public sealed class GovernedGenerationFixture : BrokerAuthorizationFixture, IAsy
     public GovernedGenerationFixture()
         : this(Path.Combine(Path.GetTempPath(), $"b4a-gengov-it-{Guid.NewGuid():N}"),
             new RecordingContainerManager(),
-            new FakeGenerationWorkerRegistry())
+            new FakeGenerationWorkerRegistry(),
+            new ScriptedExecutionModelPlanner())
     {
     }
 
-    private GovernedGenerationFixture(string generationRoot, RecordingContainerManager containers, FakeGenerationWorkerRegistry registry)
+    private GovernedGenerationFixture(
+        string generationRoot,
+        RecordingContainerManager containers,
+        FakeGenerationWorkerRegistry registry,
+        ScriptedExecutionModelPlanner planner)
         : base(
             enforceWorkerAuth: true,
             configureTestServices: services =>
@@ -47,12 +54,16 @@ public sealed class GovernedGenerationFixture : BrokerAuthorizationFixture, IAsy
                 services.AddSingleton<IWorkerRegistry>(registry);
                 services.RemoveAll<IExecutionDispatcher>();
                 services.AddSingleton<IExecutionDispatcher>(new FakeGenerationDispatcher(Path.Combine(generationRoot, "out")));
+                services.RemoveAll<IHighLevelExecutionModelPlanner>();
+                services.AddSingleton<IHighLevelExecutionModelPlanner>(planner);
             },
             hostSettings: new Dictionary<string, string?>
             {
                 ["HighLevelCoordinator:Generation:SystemScaffoldMode"] = "Governed",
                 ["Generation:OutputRoot"] = Path.Combine(generationRoot, "out"),
                 ["Generation:WatchdogIntervalSeconds"] = "300",
+                // 各測試類別共用同一個 host，先前測試留下的執行會占用名額；上限的測試自行調低。
+                ["Generation:MaxConcurrentRuns"] = "50",
                 ["LlmProxy:Enabled"] = "true",
                 // 確認 draft 時不向本機模型詢問執行模型建議
                 ["HighLevelExecutionModelPolicy:Enabled"] = "false",
@@ -63,11 +74,13 @@ public sealed class GovernedGenerationFixture : BrokerAuthorizationFixture, IAsy
         Directory.CreateDirectory(OutputRoot);
         Containers = containers;
         Registry = registry;
+        Planner = planner;
     }
 
     public string OutputRoot => Path.Combine(_generationRoot, "out");
     public RecordingContainerManager Containers { get; }
     public FakeGenerationWorkerRegistry Registry { get; }
+    public ScriptedExecutionModelPlanner Planner { get; }
 
     public FakeGenerationDispatcher Dispatcher
         => (FakeGenerationDispatcher)Services.GetRequiredService<IExecutionDispatcher>();
@@ -80,14 +93,39 @@ public sealed class GovernedGenerationFixture : BrokerAuthorizationFixture, IAsy
     }
 }
 
+/// <summary>The execution model recommendation the coordinator receives on confirm (null: no recommendation).</summary>
+public sealed class ScriptedExecutionModelPlanner : IHighLevelExecutionModelPlanner
+{
+    public HighLevelExecutionModelRequest? Recommendation { get; set; }
+
+    public Task<HighLevelExecutionModelRequest?> RecommendAsync(
+        HighLevelTaskDraft draft,
+        HighLevelMemoryState memory,
+        CancellationToken cancellationToken = default)
+        => Task.FromResult(Recommendation);
+}
+
 public sealed class RecordingContainerManager : IContainerManager
 {
     private int _counter;
+    private TaskCompletionSource _runtimeCheckStarted = NewSignal();
 
     public List<ContainerSpawnRequest> Spawned { get; } = new();
     public List<string> Stopped { get; } = new();
     public bool RuntimeAvailable { get; set; } = true;
     public bool RefuseSpawns { get; set; }
+
+    /// <summary>
+    /// When set, the runtime check of the governed readiness test waits for it, so a confirm can be held
+    /// between the project name re-check and the task creation; <see cref="RuntimeCheckStarted"/> signals the first wait.
+    /// </summary>
+    public TaskCompletionSource? HoldRuntimeChecks { get; set; }
+
+    public Task RuntimeCheckStarted => _runtimeCheckStarted.Task;
+
+    public void ResetRuntimeCheckStarted() => _runtimeCheckStarted = NewSignal();
+
+    private static TaskCompletionSource NewSignal() => new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public Task<string> SpawnWorkerAsync(ContainerSpawnRequest request, CancellationToken ct = default)
     {
@@ -114,8 +152,17 @@ public sealed class RecordingContainerManager : IContainerManager
     public Task<string> GetLogsAsync(string containerId, int tailLines = 50, CancellationToken ct = default)
         => Task.FromResult(string.Empty);
 
-    public Task<bool> IsRuntimeAvailableAsync(CancellationToken ct = default)
-        => Task.FromResult(RuntimeAvailable);
+    public async Task<bool> IsRuntimeAvailableAsync(CancellationToken ct = default)
+    {
+        var hold = HoldRuntimeChecks;
+        if (hold != null)
+        {
+            _runtimeCheckStarted.TrySetResult();
+            await hold.Task;
+        }
+
+        return RuntimeAvailable;
+    }
 
     public Task<List<ContainerStats>> GetStatsAsync(CancellationToken ct = default)
         => Task.FromResult(new List<ContainerStats>());

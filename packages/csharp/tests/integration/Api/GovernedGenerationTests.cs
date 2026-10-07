@@ -5,6 +5,7 @@ using Broker.Services;
 using BrokerCore.Data;
 using BrokerCore.Models;
 using BrokerCore.Services;
+using FunctionPool.Container;
 using Integration.Tests.Fixtures;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -19,6 +20,11 @@ namespace Integration.Tests.Api;
 /// - 沒有生成 grant 的 session 送 generate 得到 Denied；
 /// - 前置條件不滿足（沒有 generation-worker、沒有容器執行環境）時 fail-closed：不建立任務、不啟動代理、不退回程序內生成；
 /// - 代理啟動失敗時任務標為 Failed，draft 保留，專案名稱可再用；
+/// - 同一份 draft 並行確認只建立一個任務；同一使用者已有進行中的生成、或全部生成已達上限時不建立任務；
+/// - 綁定任務的代理 session 經 /tasks/query、/runtime/spec、context 與 plans 讀不到受管根目錄或發起使用者的 id；
+/// - 管理員能以 /agents/list 列出的 id 經 /agents/stop 停止受治理生成的代理；
+/// - 代理重新註冊（容器重啟）時，生成能力的配額以任務累計；
+/// - 執行模型的推薦只在供應者與 LlmProxy 相同時採用，否則代理用 LlmProxy:DefaultModel；
 /// - 程序內端到端：同一條路改由 generation-worker 真正的 handler 與 repo 中的生成器 CLI 處理 golden 範例
 ///   （catalog → validate 失敗後修正 → generate），broker 驗證收下的 zip 與 manifest 一致並交付。
 /// </summary>
@@ -38,7 +44,9 @@ public sealed class GovernedGenerationTests : IClassFixture<GovernedGenerationFi
         _fixture.Registry.Registered = true;
         _fixture.Containers.RuntimeAvailable = true;
         _fixture.Containers.RefuseSpawns = false;
+        _fixture.Containers.HoldRuntimeChecks = null;
         _fixture.Dispatcher.Worker = null;
+        _fixture.Planner.Recommendation = null;
     }
 
     private HighLevelCoordinator Coordinator => _fixture.Services.GetRequiredService<HighLevelCoordinator>();
@@ -283,6 +291,239 @@ public sealed class GovernedGenerationTests : IClassFixture<GovernedGenerationFi
         var retried = await SendLineAsync(userId, "y");
         ReadString(retried, "reply").Should().Contain("已受理");
         TasksSubmittedBy(userId).Should().HaveCount(2);
+    }
+
+    private async Task<(string UserId, BrokerTask Task, ContainerSpawnRequest Spawn)> StartGovernedRunAsync(string prefix, string projectName)
+    {
+        var userId = await NewProductionUserAsync(prefix);
+        await SendLineAsync(userId, $"/建立 完整系統雛形 聯絡人管理 #{projectName}");
+        var confirmed = await SendLineAsync(userId, "y");
+        IsNullOrMissing(confirmed, "error").Should().BeTrue("the confirm reply was {0}", confirmed);
+        var task = TasksSubmittedBy(userId).Single();
+        var spawn = _fixture.Containers.Spawned.Single(request => request.TrustedEnvironment["BROKER_TASK_ID"] == task.TaskId);
+        return (userId, task, spawn);
+    }
+
+    private static IEnumerable<string> HostPathForms(string path)
+    {
+        var trimmed = path.TrimEnd('\\', '/');
+        return new[] { trimmed, trimmed.Replace('\\', '/'), trimmed.Replace("\\", "\\\\") };
+    }
+
+    [Fact]
+    public async Task ConcurrentConfirmations_OfOneDraft_CreateOneTaskAndOneAgent()
+    {
+        var userId = await NewProductionUserAsync("line-gengov-race");
+        await SendLineAsync(userId, "/建立 完整系統雛形 #RaceDemo");
+        var hold = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _fixture.Containers.ResetRuntimeCheckStarted();
+        _fixture.Containers.HoldRuntimeChecks = hold;
+
+        // 第一個 y 停在就緒檢查（名稱重查之後、建立專案資料夾與任務之前）時送出第二個 y：
+        // 第二個必須等第一個結束，看到 draft 已被用掉，不再建立任務。
+        var first = SendLineAsync(userId, "y");
+        await _fixture.Containers.RuntimeCheckStarted.WaitAsync(TimeSpan.FromSeconds(30));
+        var second = SendLineAsync(userId, "y");
+        await Task.Delay(300);
+        _fixture.Containers.HoldRuntimeChecks = null;
+        hold.SetResult();
+        var replies = await Task.WhenAll(first, second);
+
+        var task = TasksSubmittedBy(userId).Should().ContainSingle("one draft is confirmed once").Subject;
+        _fixture.Containers.Spawned.Count(request => request.TrustedEnvironment["BROKER_TASK_ID"] == task.TaskId).Should().Be(1);
+        replies.Count(reply => ReadString(reply, "reply")?.Contains("已受理") == true).Should().Be(1);
+        replies.Select(reply => ReadString(reply, "error")).Should().Contain("draft_not_pending");
+        Coordinator.GetLineDraft(userId).Should().BeNull();
+    }
+
+    [Fact]
+    public async Task UserWithAGenerationInProgress_IsAskedToWait_WithoutATask()
+    {
+        var (userId, _, _) = await StartGovernedRunAsync("line-gengov-busyuser", "FirstRunDemo");
+        await SendLineAsync(userId, "/建立 完整系統雛形 #SecondRunDemo");
+        var spawnsBefore = _fixture.Containers.Spawned.Count;
+
+        var second = await SendLineAsync(userId, "y");
+
+        ReadString(second, "error").Should().Be("generation_in_progress");
+        ReadString(second, "reply").Should().Contain("正在進行");
+        IsNullOrMissing(second, "created_task").Should().BeTrue();
+        TasksSubmittedBy(userId).Should().ContainSingle("the second request creates no task");
+        _fixture.Containers.Spawned.Count.Should().Be(spawnsBefore);
+        Coordinator.GetLineDraft(userId).Should().NotBeNull("the draft stays for a later try");
+        Directory.Exists(Path.Combine(Paths(userId).ProjectsRoot, "SecondRunDemo")).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task GlobalLimit_RejectsNewGenerations_UntilARunEnds()
+    {
+        await StartGovernedRunAsync("line-gengov-cap-a", "CapDemoA");
+        var options = _fixture.Services.GetRequiredService<GovernedGenerationOptions>();
+        var runs = _fixture.Services.GetRequiredService<GovernedGenerationRunStore>();
+        var saved = options.MaxConcurrentRuns;
+        options.MaxConcurrentRuns = runs.ListOpen().Count;
+        try
+        {
+            var userId = await NewProductionUserAsync("line-gengov-cap-b");
+            await SendLineAsync(userId, "/建立 完整系統雛形 #CapDemoB");
+            var spawnsBefore = _fixture.Containers.Spawned.Count;
+
+            var rejected = await SendLineAsync(userId, "y");
+
+            ReadString(rejected, "error").Should().Be("generation_busy");
+            ReadString(rejected, "reply").Should().Contain("忙碌");
+            TasksSubmittedBy(userId).Should().BeEmpty();
+            _fixture.Containers.Spawned.Count.Should().Be(spawnsBefore);
+            Coordinator.GetLineDraft(userId).Should().NotBeNull();
+
+            options.MaxConcurrentRuns = runs.ListOpen().Count + 1;
+            var accepted = await SendLineAsync(userId, "y");
+            ReadString(accepted, "reply").Should().Contain("已受理");
+        }
+        finally
+        {
+            options.MaxConcurrentRuns = saved;
+        }
+    }
+
+    [Fact]
+    public async Task AgentSession_ReadsNoHostPathOrRequesterIdentity()
+    {
+        var (userId, task, spawn) = await StartGovernedRunAsync("line-gengov-redact", "RedactDemo");
+        var accessRoot = Paths(userId).AccessRoot;
+        var registered = await _client.RegisterAsync(
+            task.AssignedPrincipalId!, task.TaskId, remoteAddress: LoopbackAddress,
+            registrationSecret: spawn.SecretEnvironment["BROKER_REGISTRATION_SECRET"]);
+        registered.StatusCode.Should().Be(HttpStatusCode.OK, "the register response was {0}", registered);
+        var session = registered.Session!;
+
+        void AssertClean(BrokerReply reply, string what)
+        {
+            foreach (var form in HostPathForms(accessRoot))
+                reply.Body.Should().NotContainEquivalentOf(form, $"{what} must not expose the managed root");
+            reply.Body.Should().NotContain(userId, $"{what} must not expose the requesting user");
+        }
+
+        var query = await _client.SendEncryptedAsync(session, "/api/v1/tasks/query", new { task_id = task.TaskId }, session.ScopedToken);
+        query.StatusCode.Should().Be(HttpStatusCode.OK, "the task query was {0}", query);
+        BrokerJson.ReadString(query.Body, "data", "taskId").Should().Be(task.TaskId);
+        AssertClean(query, "/tasks/query");
+        BrokerJson.ReadString(query.Body, "data", "submittedBy").Should().BeEmpty("the agent is not the submitter");
+        JsonNode.Parse(BrokerJson.ReadString(query.Body, "data", "runtimeDescriptor")!)!.AsObject()
+            .Select(property => property.Key)
+            .Should().BeEquivalentTo(new[] { "capability_grants", "generation" }, "the task row only carries what the agent needs");
+        JsonNode.Parse(BrokerJson.ReadString(query.Body, "data", "scopeDescriptor")!)!.AsObject()
+            .Select(property => property.Key)
+            .Should().NotContain(new[] { "origin_user_id", "execution_intent_document", "path_scope" });
+
+        var spec = await _client.SendEncryptedAsync(session, "/api/v1/runtime/spec", new { }, session.ScopedToken);
+        spec.StatusCode.Should().Be(HttpStatusCode.OK, "the runtime spec was {0}", spec);
+        AssertClean(spec, "/runtime/spec");
+
+        var handoff = await _client.SendEncryptedAsync(session, "/api/v1/context/read", new { document_id = $"hlm.handoff.{task.TaskId}" }, session.ScopedToken);
+        handoff.StatusCode.Should().Be(HttpStatusCode.NotFound, "the agent cannot read the handoff: {0}", handoff);
+        var listed = await _client.SendEncryptedAsync(session, "/api/v1/context/list", new { task_id = task.TaskId }, session.ScopedToken);
+        listed.StatusCode.Should().Be(HttpStatusCode.OK, "the context list was {0}", listed);
+        listed.Body.Should().NotContain("hlm.handoff.");
+        AssertClean(listed, "/context/list");
+
+        var planId = _fixture.Db.Query<Plan>("SELECT * FROM plans WHERE task_id = @taskId", new { taskId = task.TaskId }).Single().PlanId;
+        var plan = await _client.SendEncryptedAsync(session, "/api/v1/plans/get", new { plan_id = planId }, session.ScopedToken);
+        plan.StatusCode.Should().Be(HttpStatusCode.OK, "the plan was {0}", plan);
+        AssertClean(plan, "/plans/get");
+
+        // broker 內部仍保有交付需要的資料：handoff 帶受管路徑，但只有系統讀得到；管理員看得到提交者。
+        var handoffEntry = _fixture.FindContextEntries($"hlm.handoff.{task.TaskId}").Last();
+        handoffEntry.Acl.Should().NotContain("\"*\"");
+        handoffEntry.ContentRef.Should().Contain("ManagedPaths");
+        var admin = _client.OpenSession("role_admin");
+        var adminQuery = await _client.SendEncryptedAsync(admin, "/api/v1/tasks/query", new { task_id = task.TaskId }, admin.ScopedToken);
+        BrokerJson.ReadString(adminQuery.Body, "data", "submittedBy").Should().Be($"line:{userId}");
+    }
+
+    [Fact]
+    public async Task AdminStop_WithTheListedAgentId_StopsTheGovernedAgent()
+    {
+        var (userId, task, _) = await StartGovernedRunAsync("line-gengov-stop", "StopDemo");
+        var admin = _client.OpenSession("role_admin");
+
+        var list = await _client.SendEncryptedAsync(admin, "/api/v1/agents/list", new { }, admin.ScopedToken);
+        list.StatusCode.Should().Be(HttpStatusCode.OK, "the agent list was {0}", list);
+        var agentId = task.TaskId[5..];
+        list.Body.Should().Contain(agentId);
+
+        var stop = await _client.SendEncryptedAsync(admin, "/api/v1/agents/stop", new { agent_id = agentId }, admin.ScopedToken);
+
+        stop.StatusCode.Should().Be(HttpStatusCode.OK, "the stop response was {0}", stop);
+        BrokerJson.ReadString(stop.Body, "data", "status").Should().Be("stopped");
+        _fixture.FindTask(task.TaskId)!.State.Should().Be(TaskState.Failed);
+        _fixture.Db.Get<Principal>(task.AssignedPrincipalId!)!.Status.Should().Be(EntityStatus.Disabled);
+        var run = _fixture.Services.GetRequiredService<GovernedGenerationRunStore>().Get(task.TaskId)!;
+        run.Status.Should().Be(GovernedGenerationRunStatus.Failed);
+        run.FailureReason.Should().Be("stopped_by_admin");
+        _fixture.Containers.Stopped.Should().Contain(run.ContainerId);
+        _fixture.Db.Query<SharedContextEntry>("SELECT * FROM shared_context_entries WHERE document_id LIKE 'hlm.notify.line.%'")
+            .Select(entry => JsonNode.Parse(entry.ContentRef)!)
+            .Should().Contain(notice => notice["UserId"]!.GetValue<string>() == userId);
+
+        // 不是管理員就不能停。
+        var agentSession = _fixture.OpenSeededSession(_client, "role_executor", "system_scaffold");
+        var denied = await _client.SendEncryptedAsync(agentSession, "/api/v1/agents/stop", new { agent_id = agentId }, agentSession.ScopedToken);
+        denied.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task ReRegisteredAgent_GetsOnlyTheRemainingTaskQuota()
+    {
+        var (_, task, spawn) = await StartGovernedRunAsync("line-gengov-quota", "QuotaDemo");
+        var secret = spawn.SecretEnvironment["BROKER_REGISTRATION_SECRET"];
+        var first = (await _client.RegisterAsync(task.AssignedPrincipalId!, task.TaskId, remoteAddress: LoopbackAddress, registrationSecret: secret)).Session!;
+        for (var i = 0; i < 2; i++)
+        {
+            var validate = await SubmitAsync(first, "generation.definition.validate", "validate_definition", new { template = GoldenLikeTemplate() });
+            BrokerJson.ReadString(validate.Body, "data", "execution_state").Should().Be("Succeeded", "the validate response was {0}", validate);
+        }
+
+        // 容器重啟後以同一把註冊憑證再註冊：validate 只剩 6 - 2 次，其他能力不變。
+        var again = await _client.RegisterAsync(task.AssignedPrincipalId!, task.TaskId, remoteAddress: LoopbackAddress, registrationSecret: secret);
+        again.StatusCode.Should().Be(HttpStatusCode.OK, "the second register response was {0}", again);
+        var grants = _fixture.Db.Query<CapabilityGrant>(
+                "SELECT * FROM capability_grants WHERE session_id = @sessionId",
+                new { sessionId = again.Session!.SessionId })
+            .ToDictionary(grant => grant.CapabilityId, grant => grant.RemainingQuota);
+        grants["generation.definition.validate"].Should().Be(4);
+        grants["generation.catalog.query"].Should().Be(20);
+        grants["generation.scaffold.generate"].Should().Be(2);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task ModelRecommendation_IsUsed_OnlyWhenTheLlmProxyProviderServesIt(bool sameProvider)
+    {
+        var proxy = _fixture.Services.GetRequiredService<LlmProxyOptions>();
+        _fixture.Planner.Recommendation = new HighLevelExecutionModelRequest
+        {
+            Alias = "execution-default",
+            Model = "planner-recommended-model",
+            Tier = "standard",
+            Provider = sameProvider ? proxy.Provider : "another-provider",
+            ValidationStatus = "validated"
+        };
+
+        var (_, task, spawn) = await StartGovernedRunAsync($"line-gengov-model-{sameProvider}", $"ModelDemo{sameProvider}");
+
+        var descriptor = TaskRuntimeDescriptor.Parse(task.RuntimeDescriptor);
+        if (sameProvider)
+        {
+            descriptor.Llm.DefaultModel.Should().Be("planner-recommended-model");
+            spawn.TrustedEnvironment["AGENT_MODEL"].Should().Be("planner-recommended-model");
+        }
+        else
+        {
+            descriptor.Llm.DefaultModel.Should().BeEmpty("a model another provider serves is not written into the task");
+            spawn.TrustedEnvironment["AGENT_MODEL"].Should().Be(proxy.DefaultModel);
+        }
     }
 
     private static JsonObject GoldenTemplate()

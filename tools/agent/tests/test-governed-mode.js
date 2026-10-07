@@ -9,6 +9,7 @@ const util = require('util');
 const { AgentLoop } = require('../lib/agent-loop');
 const { BrokerClient } = require('../lib/broker-client');
 const { LineListener } = require('../lib/line-listener');
+const { GENERATION_BASE_PROMPT } = require('../lib/system-prompt');
 
 const ROOT = path.resolve(__dirname, '..', '..', '..');
 // A per-run value, so a match in the prompt can only come from the governed config.
@@ -768,7 +769,15 @@ async function testGenerationTools() {
     for (const forbidden of [ROOT, ROOT.replace(/\\/g, '/'), TEST_REGISTRATION_SECRET, 'output_slot', 'task_test']) {
         assert(!section.includes(forbidden), `the workflow section must not contain ${forbidden}`);
     }
+    assert(section.includes('No available worker'), 'the workflow section explains the busy-worker retry');
     assertSecretNotExposed(agent.getGovernedPromptContext(), prompt);
+
+    // A generation task gets the lean base prompt and no project manual: the manual's CLI examples and field
+    // type tables conflict with the catalog, and the agent has no file tool to read the rest of it.
+    assert(prompt.startsWith(GENERATION_BASE_PROMPT), 'a generation task starts with the generation base prompt');
+    for (const forbidden of ['## Project Manual', '<project_manual>', 'read AGENT.md', 'ui_components', 'PhotoWall', 'ImageViewer', '--fields']) {
+        assert(!prompt.includes(forbidden), `a generation task prompt must not contain ${forbidden}`);
+    }
 
     // The payload keeps the broker contract; the route is the tool name and the capability is the generation one.
     const context = { projectRoot: '/workspace', noConfirm: true, verbose: false };
@@ -807,6 +816,8 @@ async function testGenerationTools() {
     });
     await plainAgent.init();
     assert(!plainAgent.messages[0].content.includes('## Governed Generation Workflow'));
+    assert(!plainAgent.messages[0].content.startsWith(GENERATION_BASE_PROMPT), 'other tasks keep the general base prompt');
+    assert(plainAgent.messages[0].content.includes('## Project Manual'), 'other tasks still get the project manual');
     await plainAgent.close();
 }
 

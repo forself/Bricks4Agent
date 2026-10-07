@@ -79,6 +79,43 @@ public static partial class GenerationRequest
         return true;
     }
 
+    /// <summary>
+    /// grant scope 中可選的 <c>max_pages</c>（validate 用）：scope 空白、沒有這個鍵或值為 null 時沒有上限；
+    /// scope 不是 JSON 物件，或值不是 1～<see cref="MaxPagesLimit"/> 的整數時回傳 false（拒絕）。
+    /// </summary>
+    public static bool TryReadOptionalMaxPages(string? scopeJson, out int? maxPages)
+    {
+        maxPages = null;
+        if (string.IsNullOrWhiteSpace(scopeJson))
+            return true;
+
+        JsonObject? root;
+        try
+        {
+            root = JsonNode.Parse(scopeJson) as JsonObject;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+
+        if (root == null)
+            return false;
+        if (!root.TryGetPropertyValue("max_pages", out var node) || node == null)
+            return true;
+
+        if (node is not JsonValue value ||
+            value.GetValueKind() != JsonValueKind.Number ||
+            !value.TryGetValue<int>(out var limit) ||
+            limit < 1 || limit > MaxPagesLimit)
+        {
+            return false;
+        }
+
+        maxPages = limit;
+        return true;
+    }
+
     /// <summary>可選的字串參數。值存在但不是字串或過長時回傳 false。</summary>
     public static bool TryGetString(JsonObject args, string name, int maxLength, out string? value)
     {

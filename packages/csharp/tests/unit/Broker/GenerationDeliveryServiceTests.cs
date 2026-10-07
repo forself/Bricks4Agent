@@ -1,3 +1,5 @@
+using System.Net;
+using System.Text;
 using System.Text.Json;
 using Broker.Services;
 using BrokerCore;
@@ -12,7 +14,10 @@ namespace Unit.Tests.Broker;
 /// 受治理生成的交付與 watchdog：
 /// - 已收下的產物交付後任務 Completed、代理的主體停用、憑證與 session 撤銷、容器停止；
 /// - 超過期限、或代理已結束卻沒有產物時，任務 Failed、代理停用、容器停止，並以 LINE 通知使用者；
-/// - 期限內且代理仍在執行時不動它。
+/// - 期限內且代理仍在執行時不動它；
+/// - 交付逾時或丟出例外時只算一次嘗試，排在後面的執行照常處理，達到上限才標為失敗；
+/// - Drive 的網路錯誤或逾時改用簽章下載連結，產物紀錄照常寫入；
+/// - 管理員停止時任務 Failed、代理停用、容器停止並通知使用者。
 /// </summary>
 public sealed class GenerationDeliveryServiceTests : IDisposable
 {
@@ -37,9 +42,15 @@ public sealed class GenerationDeliveryServiceTests : IDisposable
         public List<GovernedGenerationRun> Delivered { get; } = new();
         public bool Succeed { get; set; } = true;
 
+        /// <summary>傳回非 null 時，這次交付丟出該例外。</summary>
+        public Func<GovernedGenerationRun, Exception?>? ThrowFor { get; set; }
+
         public Task<GeneratedPackageDeliveryResult> DeliverAsync(GovernedGenerationRun run, CancellationToken cancellationToken)
         {
             Delivered.Add(run);
+            var failure = ThrowFor?.Invoke(run);
+            if (failure != null)
+                return Task.FromException<GeneratedPackageDeliveryResult>(failure);
             return Task.FromResult(new GeneratedPackageDeliveryResult
             {
                 Success = Succeed,
@@ -49,10 +60,10 @@ public sealed class GenerationDeliveryServiceTests : IDisposable
         }
     }
 
-    private GenerationDeliveryService Service() => new(
+    private GenerationDeliveryService Service(IGeneratedPackageDelivery? delivery = null) => new(
         _env.Options,
         _env.Runs,
-        _delivery,
+        delivery ?? _delivery,
         _spawnService,
         _containers,
         _env.Workspace,
@@ -201,6 +212,199 @@ public sealed class GenerationDeliveryServiceTests : IDisposable
         _env.Runs.Get(taskId)!.Status.Should().Be(GovernedGenerationRunStatus.Failed);
         TaskOf(taskId).State.Should().Be(TaskState.Failed);
         Principal(taskId).Status.Should().Be(EntityStatus.Disabled);
+    }
+
+    [Fact]
+    public async Task DeliveryTimeout_DoesNotStopThePass_AndIsRetriedUpToTheLimit()
+    {
+        var stuck = _env.SeedRun(containerId: "c0ffee000005");
+        Ingested(stuck);
+        var late = _env.SeedRun(containerId: "c0ffee000006");
+        _delivery.ThrowFor = run => run.TaskId == stuck
+            ? new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout.")
+            : null;
+        _time.Advance(_env.Options.Deadline + TimeSpan.FromSeconds(1));
+        var service = Service();
+
+        await service.ProcessPendingAsync();
+
+        // 排在後面的執行仍被 watchdog 處理。
+        _env.Runs.Get(late)!.Status.Should().Be(GovernedGenerationRunStatus.Failed);
+        _env.Runs.Get(late)!.FailureReason.Should().Be("deadline_exceeded");
+        await _containers.Received(1).StopWorkerAsync("c0ffee000006", Arg.Any<CancellationToken>());
+        // 逾時的交付只算一次嘗試，留到下一輪。
+        var pending = _env.Runs.Get(stuck)!;
+        pending.Status.Should().Be(GovernedGenerationRunStatus.Ingested);
+        pending.DeliveryAttempts.Should().Be(1);
+        TaskOf(stuck).State.Should().Be(TaskState.Active);
+
+        for (var pass = 1; pass < _env.Options.ResolveMaxDeliveryAttempts(); pass++)
+            await service.ProcessPendingAsync();
+
+        var failed = _env.Runs.Get(stuck)!;
+        failed.Status.Should().Be(GovernedGenerationRunStatus.Failed);
+        failed.FailureReason.Should().Be("delivery_failed");
+        failed.DeliveryAttempts.Should().Be(_env.Options.ResolveMaxDeliveryAttempts());
+        _delivery.Delivered.Count(run => run.TaskId == stuck).Should().Be(_env.Options.ResolveMaxDeliveryAttempts());
+        TaskOf(stuck).State.Should().Be(TaskState.Failed);
+        await _containers.Received(1).StopWorkerAsync("c0ffee000005", Arg.Any<CancellationToken>());
+        Notifications().Should().Contain(notification => notification.Title == "系統雛形生成未完成");
+
+        await service.ProcessPendingAsync();
+        _delivery.Delivered.Count(run => run.TaskId == stuck).Should().Be(_env.Options.ResolveMaxDeliveryAttempts(), "a failed run is not retried");
+    }
+
+    [Fact]
+    public async Task ServiceShutdown_StillStopsThePass()
+    {
+        var taskId = _env.SeedRun();
+        Ingested(taskId);
+        using var stopping = new CancellationTokenSource();
+        _delivery.ThrowFor = _ =>
+        {
+            stopping.Cancel();
+            return new OperationCanceledException(stopping.Token);
+        };
+
+        var pass = () => Service().ProcessPendingAsync(stopping.Token);
+
+        await pass.Should().ThrowAsync<OperationCanceledException>();
+        _env.Runs.Get(taskId)!.Status.Should().Be(GovernedGenerationRunStatus.Ingested, "a shutdown is not a delivery failure");
+        _env.Runs.Get(taskId)!.DeliveryAttempts.Should().Be(0);
+    }
+
+    public static TheoryData<string> DriveFailures => new() { "network", "timeout" };
+
+    [Theory]
+    [MemberData(nameof(DriveFailures))]
+    public async Task DriveFailure_FallsBackToTheSignedLink_AndRecordsTheArtifact(string failure)
+    {
+        var drive = new DriveHarness(_env, failure);
+        var taskId = _env.SeedRun();
+        Ingested(taskId);
+        var run = _env.Runs.Get(taskId)!;
+        Directory.CreateDirectory(Path.GetDirectoryName(run.DeliveredFilePath)!);
+        File.WriteAllBytes(run.DeliveredFilePath, Encoding.UTF8.GetBytes("PK-generated-package"));
+
+        await Service(new LineGeneratedPackageDelivery(drive.Delivery)).ProcessPendingAsync();
+
+        drive.UploadAttempts.Should().BeGreaterThan(0, "the Drive upload was attempted");
+        var delivered = _env.Runs.Get(taskId)!;
+        delivered.Status.Should().Be(GovernedGenerationRunStatus.Delivered);
+        TaskOf(taskId).State.Should().Be(TaskState.Completed);
+
+        var artifact = _env.Workspace.ListArtifacts(GovernedGenerationTestSupport.UserId).Single(item => item.RelatedTaskId == taskId);
+        artifact.ArtifactId.Should().Be(delivered.ArtifactId);
+        artifact.UploadedToGoogleDrive.Should().BeFalse();
+        artifact.DeliveryMode.Should().Be("local_only");
+        artifact.DriveError.Should().StartWith("google_drive_request_failed");
+        artifact.OverallStatus.Should().Be("partial");
+
+        var notification = Notifications().Single(item => item.NotificationId == artifact.NotificationId);
+        notification.Title.Should().Be("系統雛形已生成");
+        notification.Body.Should().Contain($"{DriveHarness.PublicBaseUrl}/api/v1/artifacts/download/").And.NotContain(_env.Root);
+    }
+
+    [Fact]
+    public async Task AdminStop_FailsTheRun_StopsTheAgent_AndNotifiesTheUser()
+    {
+        var taskId = _env.SeedRun(containerId: "c0ffee000007");
+        var session = OpenSession(taskId);
+
+        (await Service().StopByAdminAsync(taskId)).Should().BeTrue();
+
+        var run = _env.Runs.Get(taskId)!;
+        run.Status.Should().Be(GovernedGenerationRunStatus.Failed);
+        run.FailureReason.Should().Be("stopped_by_admin");
+        TaskOf(taskId).State.Should().Be(TaskState.Failed);
+        Principal(taskId).Status.Should().Be(EntityStatus.Disabled);
+        _sessions.GetSession(session.SessionId)!.Status.Should().Be(SessionStatus.Revoked);
+        await _containers.Received(1).StopWorkerAsync("c0ffee000007", Arg.Any<CancellationToken>());
+        Notifications().Should().ContainSingle(notification => notification.Body.Contains("管理員停止"));
+
+        (await Service().StopByAdminAsync("task_not_a_generation_run")).Should().BeFalse();
+    }
+
+    /// <summary>
+    /// 真正的交付鏈（LineArtifactDeliveryService 與 GoogleDriveShareService），Drive 的上傳以假的 HTTP handler 模擬失敗；
+    /// 簽章下載連結的公開網址來自暫存的通道檔。所有值都是測試用的假值，不連外。
+    /// </summary>
+    private sealed class DriveHarness
+    {
+        public const string PublicBaseUrl = "https://sidecar.example.test";
+        private int _uploads;
+
+        public DriveHarness(GovernedGenerationTestSupport env, string failure)
+        {
+            var root = Path.Combine(env.Root, "drive");
+            Directory.CreateDirectory(root);
+            var oauthClient = Path.Combine(root, "oauth-client.json");
+            File.WriteAllText(oauthClient, JsonSerializer.Serialize(new
+            {
+                installed = new
+                {
+                    client_id = "test-client",
+                    project_id = "test-project",
+                    auth_uri = "https://oauth.example.test/auth",
+                    token_uri = "https://oauth.example.test/token",
+                    client_secret = "test-client-secret"
+                }
+            }));
+            var tunnelFile = Path.Combine(root, "last-tunnel-url");
+            File.WriteAllText(tunnelFile, PublicBaseUrl);
+
+            var driveOptions = new GoogleDriveDeliveryOptions
+            {
+                OAuthClientJsonPath = oauthClient,
+                DefaultFolderId = "test-folder",
+                DefaultIdentityMode = "shared_delegated",
+                SharedDelegatedChannel = "line",
+                SharedDelegatedUserId = "drive-owner"
+            };
+            env.Db.Insert(new GoogleDriveDelegatedCredential
+            {
+                CredentialId = IdGen.New("gdc"),
+                Channel = "line",
+                UserId = "drive-owner",
+                RefreshToken = "test-refresh-token",
+                Status = "active"
+            });
+
+            var tokenClient = new HttpClient(new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("{\"access_token\":\"test-access-token\"}", Encoding.UTF8, "application/json")
+            }));
+            var driveClient = new HttpClient(new StubHandler(_ =>
+            {
+                Interlocked.Increment(ref _uploads);
+                throw failure == "timeout"
+                    ? new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout.")
+                    : new HttpRequestException("No such host is known.");
+            }));
+            var oauth = new GoogleDriveOAuthService(env.Db, driveOptions, tokenClient, NullLogger<GoogleDriveOAuthService>.Instance);
+            var share = new GoogleDriveShareService(driveOptions, oauth, driveClient, NullLogger<GoogleDriveShareService>.Instance);
+            var downloadOptions = new BrokerArtifactDownloadOptions
+            {
+                SigningSecret = "unit-test-signing-secret",
+                SidecarLastTunnelUrlPath = tunnelFile
+            };
+            var downloads = new BrokerArtifactDownloadService(env.Workspace, new SidecarPublicUrlResolver(downloadOptions), downloadOptions);
+            Delivery = new LineArtifactDeliveryService(env.Workspace, share, downloads, NullLogger<LineArtifactDeliveryService>.Instance);
+        }
+
+        public LineArtifactDeliveryService Delivery { get; }
+
+        public int UploadAttempts => _uploads;
+    }
+
+    private sealed class StubHandler : HttpMessageHandler
+    {
+        private readonly Func<HttpRequestMessage, HttpResponseMessage> _respond;
+
+        public StubHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) => _respond = respond;
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+            => Task.FromResult(_respond(request));
     }
 
     [Fact]

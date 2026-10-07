@@ -784,6 +784,12 @@ if (-not [string]::IsNullOrWhiteSpace($anthropicApiKey)) {
         TimeoutSeconds = Get-BrokerJsonSectionValue -RawJson $brokerSourceConfigRaw -Section "HighLevelLlm" -Name "TimeoutSeconds" -DefaultValue 120
         MaxOutputTokens = 4096
     }
+    # The execution model catalog in appsettings.json lists local Ollama models. With LlmProxy switched
+    # to another provider those recommendations cannot be served, so the planner is turned off and
+    # agents use LlmProxy:DefaultModel (the broker also ignores a recommendation whose provider differs).
+    $productionOverrideMap["HighLevelExecutionModelPolicy"] = @{
+        Enabled = $false
+    }
 } elseif (-not [string]::IsNullOrWhiteSpace($openAiApiKey)) {
     $productionOverrideMap["HighLevelLlm"] = @{
         ApiKey = $openAiApiKey
@@ -799,6 +805,9 @@ if (-not [string]::IsNullOrWhiteSpace($anthropicApiKey)) {
         SupportsToolCalling = $true
         StreamingEnabled = Get-BrokerJsonSectionValue -RawJson $brokerSourceConfigRaw -Section "HighLevelLlm" -Name "StreamingEnabled" -DefaultValue $false
         TimeoutSeconds = Get-BrokerJsonSectionValue -RawJson $brokerSourceConfigRaw -Section "HighLevelLlm" -Name "TimeoutSeconds" -DefaultValue 120
+    }
+    $productionOverrideMap["HighLevelExecutionModelPolicy"] = @{
+        Enabled = $false
     }
 }
 if ($null -ne $googleOAuthClientFile) {

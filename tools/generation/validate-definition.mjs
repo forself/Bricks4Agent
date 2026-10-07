@@ -7,6 +7,8 @@
 //   第 6 層 型錄：欄位型別白名單（交集扣掉執行期無法使用的型別）、明示元件、頁型與 components 欄位
 //   第 7 層 切片規則：api 基底路徑、頁 id 作檔名、保留名稱
 // 錯誤格式 { code, path, message, hint }；path 以 template 為根，例如 definitions.pages[1].definition.fields[3].type
+// 回給代理的錯誤有上限：相同的錯誤合併成一筆並註明出現次數，合併後最多 MAX_REPORTED_ISSUES 筆
+// （超過時 truncated:true，total_errors 為合併前的筆數），讓一個系統性錯誤不會產生數百 KB 的回應。
 import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
@@ -22,6 +24,7 @@ import {
 } from './paths.mjs';
 import { canonicalJson, hasOwn, isPlainObject, sha256Hex } from './json-util.mjs';
 import {
+    COMMON_TYPE_ALIASES,
     computeSliceFieldTypes,
     FIELD_TYPE_NOTES,
     FIELD_TYPE_SUBSTITUTES,
@@ -476,7 +479,10 @@ function layerCatalog(context, pages) {
             const fieldPath = `${base}.fields[${fieldIndex}]`;
             const type = field.type;
             if (typeof type === 'string' && !context.allowedFieldTypes.has(type)) {
-                const substitute = hasOwn(FIELD_TYPE_SUBSTITUTES, type) ? `Use "${FIELD_TYPE_SUBSTITUTES[type]}" instead. ` : '';
+                const replacement = hasOwn(FIELD_TYPE_SUBSTITUTES, type)
+                    ? FIELD_TYPE_SUBSTITUTES[type]
+                    : hasOwn(COMMON_TYPE_ALIASES, type) ? COMMON_TYPE_ALIASES[type] : null;
+                const substitute = replacement ? `Use "${replacement}" instead. ` : '';
                 const reason = hasOwn(RUNTIME_BLOCKED_FIELD_TYPES, type) ? ` (${RUNTIME_BLOCKED_FIELD_TYPES[type]})` : '';
                 errors.push(makeError('FIELD_TYPE_UNSUPPORTED', `${fieldPath}.type`, `Field type "${type}" is not supported in this slice${reason}.`, `${substitute}The field_types catalog section lists the supported types.`));
             }
@@ -650,6 +656,85 @@ function dedupe(errors) {
     });
 }
 
+export const MAX_REPORTED_ISSUES = 50;
+const MAX_ISSUE_PATH_LENGTH = 300;
+const MAX_ISSUE_MESSAGE_LENGTH = 400;
+const MAX_ISSUE_HINT_LENGTH = 600;
+const MAX_LISTED_UNKNOWN_KEYS = 10;
+const UNKNOWN_KEY_MESSAGE = /^Unknown key "(.*)"\.$/s;
+
+function clip(text, max) {
+    return typeof text === 'string' && text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
+
+// 未知鍵以所在層級（hint 列出的允許鍵）合併，不論鍵名：允許鍵清單每一種只列一次；
+// 其他錯誤在代碼、訊息與 hint 都相同時合併。
+function mergeKey(issue) {
+    return issue.code === 'UNKNOWN_KEY'
+        ? `${issue.code}\u0000${issue.hint}`
+        : `${issue.code}\u0000${issue.message}\u0000${issue.hint}`;
+}
+
+/**
+ * 合併重複的錯誤並設上限。保留第一次出現的順序與路徑；合併的項目在 message 註明出現次數。
+ * @returns {{ issues: object[], total: number, merged: boolean, truncated: boolean }}
+ */
+export function compactIssues(issues, limit = MAX_REPORTED_ISSUES) {
+    const groups = new Map();
+    for (const issue of issues) {
+        const key = mergeKey(issue);
+        let group = groups.get(key);
+        if (!group) {
+            group = { first: issue, count: 0, keys: [] };
+            groups.set(key, group);
+        }
+        group.count += 1;
+        if (issue.code === 'UNKNOWN_KEY') {
+            const name = UNKNOWN_KEY_MESSAGE.exec(issue.message)?.[1];
+            if (name !== undefined && !group.keys.includes(name)) group.keys.push(name);
+        }
+    }
+    const merged = [...groups.values()].map(({ first, count, keys }) => {
+        let message = first.message;
+        if (first.code === 'UNKNOWN_KEY' && keys.length > 1) {
+            const listed = keys.slice(0, MAX_LISTED_UNKNOWN_KEYS).map(name => `"${clip(name, 40)}"`).join(', ');
+            message = `Unknown keys ${listed}${keys.length > MAX_LISTED_UNKNOWN_KEYS ? ', ...' : ''}.`;
+        }
+        if (count > 1) {
+            message += ` The same error occurs at ${count} paths; path shows the first one.`;
+        }
+        return {
+            code: first.code,
+            path: clip(first.path, MAX_ISSUE_PATH_LENGTH),
+            message: clip(message, MAX_ISSUE_MESSAGE_LENGTH),
+            hint: clip(first.hint, MAX_ISSUE_HINT_LENGTH)
+        };
+    });
+    return {
+        issues: merged.slice(0, limit),
+        total: issues.length,
+        merged: merged.length !== issues.length,
+        truncated: merged.length > limit
+    };
+}
+
+// 把錯誤與警告放進結果：有合併或截斷時附上合併前的筆數（total_errors／total_warnings）與截斷旗標。
+function applyIssues(result, errors, warnings) {
+    const compactErrors = compactIssues(errors);
+    const compactWarnings = compactIssues(warnings);
+    result.errors = compactErrors.issues;
+    result.warnings = compactWarnings.issues;
+    if (compactErrors.merged || compactErrors.truncated) {
+        result.total_errors = compactErrors.total;
+        result.truncated = compactErrors.truncated;
+    }
+    if (compactWarnings.merged || compactWarnings.truncated) {
+        result.total_warnings = compactWarnings.total;
+        result.warnings_truncated = compactWarnings.truncated;
+    }
+    result.ok = errors.length === 0;
+}
+
 function computeDigest(context, template, selectedIds, layerOneFailed) {
     let body;
     if (!layerOneFailed) {
@@ -696,7 +781,8 @@ export async function validateRequest(request, command = 'validate') {
     const requestedIds = isPlainObject(request) && Array.isArray(request.page_ids) ? request.page_ids : null;
 
     if (!isPlainObject(template)) {
-        result.errors = requestErrors;
+        applyIssues(result, requestErrors, []);
+        result.ok = false;
         result.validation_digest = computeDigest(context, template ?? null, requestedIds, true);
         return result;
     }
@@ -704,7 +790,7 @@ export async function validateRequest(request, command = 'validate') {
     // 第 1 層
     const envelope = scanEnvelope(template);
     if (envelope.errors.length > 0) {
-        result.errors = [...requestErrors, ...envelope.errors];
+        applyIssues(result, dedupe([...requestErrors, ...envelope.errors]), []);
         result.validation_digest = computeDigest(context, template, requestedIds, true);
         return result;
     }
@@ -756,9 +842,7 @@ export async function validateRequest(request, command = 'validate') {
         type: typeof entry.definition.type === 'string' ? entry.definition.type : null,
         field_count: Array.isArray(entry.definition.fields) ? entry.definition.fields.length : 0
     }));
-    result.errors = dedupe(dropShadowedGenericErrors(errors));
-    result.warnings = dedupe(warnings);
-    result.ok = result.errors.length === 0;
+    applyIssues(result, dedupe(dropShadowedGenericErrors(errors)), dedupe(warnings));
     result.validation_digest = computeDigest(context, template, requestedIds, false);
     return result;
 }

@@ -10,13 +10,37 @@ B4A 只收通用元件與通用能力；任何業務系統的專屬元件都不�
 
 ## 未發行
 
+### 修正：受治理生成與 `/proj` 的審查後修正（2026-10-07）
+
+**預設行為變更**
+
+- 確認 draft（回 `y`）時重新檢查 effective `AllowProduction`：draft 建立後才被降為 Basic 的使用者回 `production_disabled`，draft 保留，權限恢復後可再確認。專案訪談的 `/revise` 與訪談中的回答（會產生並交付審查檔）也要求 `AllowProduction`；訪談中途被降級的使用者只能 `/cancel`。這兩項屬於 `/proj` 權限閘的範圍。
+- `/ok` 不再立即把訪談標為 Confirmed：訪談進入新的 `AwaitBuildConfirmation` 階段，建置任務建立成功後才標為 Confirmed。回 `n` 或 draft 過期後，可以再 `/ok` 重建 draft，或 `/revise` 修訂（修訂時撤下等待確認的舊 draft）。屬於 `/proj` 的範圍。
+- 同一位使用者的 draft 確認依序執行，並在鎖內重新讀取 draft：一份 draft 只會建立一個任務，重複的 `y` 回 `draft_not_pending`。
+- 受治理生成的名額：同一使用者同時只能有 `Generation:MaxConcurrentRunsPerUser`（預設 1）個進行中的生成（回 `generation_in_progress`），全部合計不超過 `Generation:MaxConcurrentRuns`（預設 2，要小於代理容器的 `MaxContainersPerType`）（回 `generation_busy`）；兩者都不建立任務，draft 保留。任務建立後的代理啟動不再跟著請求取消，失敗時一律把任務標為 Failed。
+- 受治理任務交給代理的資料不再帶主機路徑與發起使用者的識別資料：runtime descriptor 只保留三個 grant、生成上限與可用時的 `llm`；scope descriptor 拿掉 `origin_user_id` 與 `execution_intent_document`；handoff 改為只有系統可讀（代理 session 經 context API 讀不到，broker 內部與管理端照常使用）；plan 描述不含來源使用者。`/tasks/query`、`/plans/get` 與 `/plans/status` 對不是提交者、也不是管理員的呼叫者（例如被指派到任務的代理）不回 `submitted_by`。
+- 生成三個 grant 的配額改以任務累計（grant 樣板的 `quota_scope: "task"`）：代理容器重啟或 session 過期後重新註冊，只拿到這個任務尚未用掉的次數。其他任務的 grant 仍是每個 session 一份配額。
+- 執行模型的推薦只在型錄項目標明的供應者（`HighLevelExecutionModelPolicy:Catalog[].Provider`）與 `LlmProxy:Provider` 相同時寫進受治理任務，否則代理用 `LlmProxy:DefaultModel`；先前推薦的本機模型會被送給 LlmProxy 目前的雲端供應者，每次生成都失敗。預設型錄的兩個項目標為 `ollama`；sidecar 把 LlmProxy 切到其他供應者時一併關閉執行模型建議。
+- 生成器的欄位型別再擋下 `datetime`（明細頁顯示與再編輯的往返未支援，改用 `date`）與 `file`（原型不保存檔案值，改用 `text`），實際開放 20 種；驗證器版本改為 `definition-validator/1.1.0`。`string`、`boolean`、`integer` 等程式型別名稱被拒時，hint 直接給出對應的欄位型別，型錄的 `field_types` 也列出這張對照。
+- `Generation:MaxPages` 限制在 1～12（生成器驗證的上限），先前可設到 100；validate 的 grant scope 也帶 `max_pages`，選取的頁數超過時在驗證就回 `MAX_PAGES_EXCEEDED`，不必等到 generate。
+
+**修正**
+
+- 受治理生成的交付：Drive 的網路錯誤、逾時與無效回應改為失敗結果，照常記錄產物並改用簽章下載連結（先前例外讓產物紀錄沒有寫入、任務直接標為失敗）；單筆交付丟出例外（含逾時）不再中斷整輪，排在後面的執行照常交付與檢查期限；已收下產物的交付例外最多嘗試 `Generation:MaxDeliveryAttempts`（預設 3）次才標為失敗。`GoogleDriveShareService` 的這項修正也適用於其他經它上傳的交付。
+- `validate` 的錯誤合併與上限：相同的錯誤合併成一筆並註明出現次數（未知鍵依所在層級合併，允許鍵清單只列一次），合併後最多 50 筆，超過時帶 `truncated: true` 與 `total_errors`。generation-worker 的 validate 結果超過 `MaxResultBytes` 時改回截斷的結構化結果（仍是成功的呼叫），不再只回大小超限。
+- generation-worker 忙碌時（每個 worker 一次處理一件），broker 對三個生成能力在約 15 秒內等它空出來再分派同一個請求，不重複扣配額；代理的工作流程說明遇到 `No available worker` 時可以稍後以相同參數重試。
+- 生成類任務的 system prompt 改用精簡的基礎提示，不附專案手冊（手冊的 CLI 範例與欄位型別表和型錄衝突），也不列元件清單。
+- 管理員可以用 `/agents/list` 列出的 id 經 `/agents/stop` 停止受治理生成的代理：任務標為 Failed、撤銷憑證與 session、停止容器並通知使用者（先前 id 對不上，只能等 watchdog）。
+
+驗證入口：`npm run test:generation`、`npm run validate:agent-governed`、`dotnet test packages/csharp/tests/unit/Unit.Tests.csproj`（GovernedGenerationLauncherTests、GenerationDeliveryServiceTests、GenerationIngestTests、DefinitionValidateTruncationTests）、`dotnet test packages/csharp/tests/integration/Integration.Tests.csproj`（GovernedGenerationTests、ProjectInterviewGateTests）、`npm run validate:broker-scope`。
+
 ### 新增：受治理生成（system_scaffold 第一個切片）（2026-10-07）
 
 **新增**
 
 - 新的模式開關 `HighLevelCoordinator:Generation:SystemScaffoldMode`：`Legacy`（預設，行為不變）或 `Governed`。Governed 時，使用者確認系統雛形 draft 後，broker 不在程序內寫任何專案檔案：任務指派給自己的 AI 主體與 `role_executor`、帶三個生成 grant，broker 啟動受控代理並立即回覆「已受理（任務 id）」；代理經 LLM 代理撰寫 DefinitionTemplate，經 `generation.catalog.query`、`generation.definition.validate`、`generation.scaffold.generate` 三個能力走 PEP，generation-worker 確定性產出多頁前端原型（list、detail、form，瀏覽器內記憶體 store，不含後端）並打成 zip；broker 驗證路徑與 sha256、寫入證據文件後，以既有的產物紀錄、Drive 或簽章下載連結與 LINE 通知交付，任務 Completed 並停用代理。前置條件不滿足時回「系統雛形生成暫不可用」且不建立任務，不退回程序內生成；逾時或代理未產出時由 watchdog 把任務標為 Failed 並通知使用者。流程、設定與部署見 [GovernedGeneration.md](docs/designs/GovernedGeneration.md)。
-- 生成器 `tools/generation/`（`cli.mjs` 的 catalog、validate、build，零依賴、Node 22）與通用外殼 `templates/definition-site/`（嚴格 CSP、hash 路由），golden 範例是通用的聯絡人三頁。外殼納入 `audit:csp` 掃描。
-- 新的 worker `packages/csharp/workers/generation-worker/`（Containerfile、compose 的 `generation` profile 與 internal 的 `generation-net`、sidecar 的 `-GenerationMode Governed`、`run-worker.ps1 -Worker generation`）；三個能力以 tool-spec 為唯一來源；代理新增 `query_component_catalog`、`validate_definition`、`generate_scaffold` 三個工具，生成類任務的 system prompt 說明工作流程與上限，`AGENT_MAX_ITERATIONS` 可由環境變數設定。
+- 生成器 `tools/generation/`（`cli.mjs` 的 catalog、validate、build，零依賴、Node 22）與通用外殼 `templates/definition-site/`（嚴格 CSP、hash 路由），golden 範例是通用的聯絡人三頁。外殼納入 `audit:csp` 掃描。欄位型別白名單是 page-gen 型別清單與 support matrix 的交集（28 種），本切片再擋下無後端原型中無法正確使用的型別，實際開放 20 種（被擋的型別、原因與替代見設計文件 §3.1）。
+- 新的 worker `packages/csharp/workers/generation-worker/`（Containerfile、compose 的 `generation` profile 與 internal 的 `generation-net`、sidecar 的 `-GenerationMode Governed`、`run-worker.ps1 -Worker generation`）。compose 的 broker 服務新增必填的 `GENERATION_WORKER_AUTH_KEY_ID` 與 `GENERATION_WORKER_AUTH_SHARED_SECRET`，不論是否啟用 generation profile，up 與 down 都需要：既有的 env 檔只需補上這兩個變數，不必輪替其他金鑰（可用 `gen-stack-secrets.mjs --out` 在 repo 以外產生一份暫存檔，只複製這兩行，再刪除暫存檔）；三個能力以 tool-spec 為唯一來源；代理新增 `query_component_catalog`、`validate_definition`、`generate_scaffold` 三個工具，生成類任務的 system prompt 說明工作流程與上限，`AGENT_MAX_ITERATIONS` 可由環境變數設定。
 - broker：`GovernedGenerationLauncher`、`GenerationIngestingDispatcher`（只處理 `generate_scaffold`）、`GenerationDeliveryService`（交付與 watchdog）、`AgentContainerLauncher`（`/agents/spawn` 與受治理生成共用的容器啟動，行為不變）；設定區段 `Generation`（`OutputRoot`、`DeadlineMinutes`、`AgentMaxIterations`、`MaxPages`、`WatchdogIntervalSeconds`、`MaxPackageBytes`）；保留前綴 `generation.execution.` 與 `generation.run.`；generate 超出 scope 送審時，審批畫面顯示標題、各頁摘要與定義內容。
 - 任務狀態新增 `Failed`（終止狀態，與 Completed、Cancelled 一樣不再接受註冊、續期、憑證簽發與取消）；`AgentSpawnService.DeactivateTaskAgent` 依任務指派的主體停用代理。
 - npm script：`test:generation`（已接進 `npm test`）與 `test:definition-site:browser`。

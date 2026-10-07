@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using BrokerCore;
@@ -13,6 +14,13 @@ public class HighLevelCoordinator
     private const string ConversationDocumentPrefix = "convlog:";
     private const string ProductionPermissionDeniedReply = "目前你的帳戶不能建立 production 任務。若需要此權限，請聯絡管理員。";
     private const string GovernedGenerationUnavailableReply = "系統雛形生成暫不可用，這次沒有建立任務。請稍後再試，或聯絡管理員。";
+    private const string GovernedGenerationInProgressReply = "你已有一個系統雛形生成正在進行，這次沒有建立任務。等它完成（或結束）後再回覆 y。";
+    private const string GovernedGenerationBusyReply = "系統雛形生成目前忙碌，這次沒有建立任務。請稍後再回覆 y。";
+    private const string DraftNoLongerPendingReply = "這份 draft 已經確認、取消或被取代，這次沒有再建立任務。";
+
+    /// <summary>handoff 的讀取 ACL：受治理任務只有 coordinator 自己能經 context API 讀（代理 session 讀不到）。</summary>
+    private const string SystemOnlyAcl = "{\"read\":[\"system:high-level-coordinator\"],\"write\":[\"system:high-level-coordinator\"]}";
+    private const string SharedReadAcl = "{\"read\":[\"*\"],\"write\":[\"system:high-level-coordinator\"]}";
     private static readonly Regex PreferredUserCodePattern = new("^[A-Za-z0-9]{3,32}$", RegexOptions.CultureInvariant);
     private static readonly Regex LineUserIdPattern = new("^U[a-fA-F0-9]{32}$", RegexOptions.CultureInvariant);
 
@@ -58,6 +66,12 @@ public class HighLevelCoordinator
     private readonly PortalLineVerificationService? _lineVerification;
     private readonly GovernedGenerationLauncher? _governedGenerationLauncher;
     private readonly string _accessRoot;
+
+    // 同一位使用者的 draft 確認依序執行（LINE 與 portal 可能並行送出 y）：一份 draft 只會被確認一次。
+    private readonly ConcurrentDictionary<string, SemaphoreSlim> _confirmGates = new(StringComparer.Ordinal);
+
+    // 受治理生成的「名額檢查 → 建立任務 → 啟動代理」不與其他啟動交錯，進行中的生成數才不會超過上限。
+    private readonly SemaphoreSlim _governedLaunchGate = new(1, 1);
 
     public HighLevelCoordinator(
         BrokerDb db,
@@ -206,7 +220,7 @@ public class HighLevelCoordinator
 
         if (projectInterviewCommand.IsProjectInterview && projectInterviewCommand.Command is { } command)
         {
-            // /proj 起手與 /ok 會建立專案資料夾、review 檔與建置 draft，
+            // /proj 起手、/revise 與 /ok 會建立專案資料夾、review 檔或建置 draft，
             // 與 /建立 相同要求 AllowProduction（Basic 層一律遮罩為 false）。
             if (ProjectInterviewCommandRequiresProduction(command) &&
                 !GetEffectivePermissions(profile).AllowProduction)
@@ -236,6 +250,20 @@ public class HighLevelCoordinator
 
         if (projectInterviewDocument.IsActiveSession)
         {
+            // 訪談的回答會產生並交付審查檔：與 /proj 起手相同要求 AllowProduction。
+            // 訪談中途被降為 Basic 的使用者不能繼續（仍可用 /cancel 結束訪談）。
+            if (!GetEffectivePermissions(profile).AllowProduction)
+            {
+                profile.LastDecision = HighLevelRouteMode.Production.ToString();
+                profile.LastUpdatedAt = DateTime.UtcNow;
+                IncrementDecisionCount(profile, HighLevelRouteMode.Production);
+                return BuildPermissionDeniedResult(
+                    channel, userId, trimmed, profile, trustedParse, workflow,
+                    HighLevelRouteMode.Production,
+                    ProductionPermissionDeniedReply,
+                    "production_disabled");
+            }
+
             var interviewTurnResult = await HandleProjectInterviewTurnAsync(
                 channel,
                 userId,
@@ -352,7 +380,7 @@ public class HighLevelCoordinator
 
             if (workflow.Action == HighLevelWorkflowAction.ConfirmDraft)
             {
-                var confirmed = await ConfirmDraft(channel, userId, profile, draft, cancellationToken);
+                var confirmed = await ConfirmPendingDraftAsync(channel, userId, profile, draft, cancellationToken);
                 confirmed.Result.Reply = PrepareReplyWithoutGuide(confirmed.Profile, confirmed.Result.Reply);
                 SaveUserProfile(channel, userId, confirmed.Profile);
                 return FinalizeResult(channel, userId, envelope, trustedParse, workflow, confirmed.Result);
@@ -689,9 +717,11 @@ public class HighLevelCoordinator
             }
 
             if (command == ProjectInterviewCommand.Revise &&
-                document.SessionState.CurrentPhase == ProjectInterviewPhase.AwaitUserReview &&
+                document.SessionState.CurrentPhase is ProjectInterviewPhase.AwaitUserReview or ProjectInterviewPhase.AwaitBuildConfirmation &&
                 document.CurrentProjectDefinition != null)
             {
+                // 已批准、尚未建置時改為修訂：先撤下等待確認的建置 draft，回 y 才不會建置舊版本。
+                DiscardPendingInterviewDraft(channel, userId, profile);
                 var revisedState = _projectInterviewStateMachine.ApplyCommand(document.SessionState, command);
                 var refreshedDocument = document.WithSessionState(revisedState);
                 var refreshedCompileResult = _projectInterviewProjectDefinitionCompiler.Compile(
@@ -730,9 +760,10 @@ public class HighLevelCoordinator
 
             // 批准 = 確認設計並建立 system_scaffold draft。建置不在這裡執行：
             // 使用者回 y 之後走與 /建立 相同的 ConfirmDraft（名稱重查、升格閘、
-            // execution intent、task、plan、handoff）。
+            // execution intent、task、plan、handoff）。訪談在此只進入「等待建置確認」：
+            // ConfirmDraft 建立任務成功後才標為 Confirmed，回 n 或 draft 過期後仍可再 /ok 或 /revise。
             if (command == ProjectInterviewCommand.Approve &&
-                document.SessionState.CurrentPhase == ProjectInterviewPhase.AwaitUserReview &&
+                document.SessionState.CurrentPhase is ProjectInterviewPhase.AwaitUserReview or ProjectInterviewPhase.AwaitBuildConfirmation &&
                 document.CurrentProjectDefinition != null)
             {
                 var approvedState = _projectInterviewStateMachine.ApplyCommand(document.SessionState, command);
@@ -806,7 +837,45 @@ public class HighLevelCoordinator
     }
 
     private static bool ProjectInterviewCommandRequiresProduction(ProjectInterviewCommand command)
-        => command is ProjectInterviewCommand.StartProjectInterview or ProjectInterviewCommand.Approve;
+        => command is ProjectInterviewCommand.StartProjectInterview or ProjectInterviewCommand.Approve or ProjectInterviewCommand.Revise;
+
+    /// <summary>撤下由訪談 /ok 建立、仍在等待 y 的建置 draft（其他來源的 draft 不動）。</summary>
+    private void DiscardPendingInterviewDraft(string channel, string userId, HighLevelUserProfile profile)
+    {
+        var pending = LoadTaskDraft(channel, userId);
+        if (pending?.SourceInterviewVersion == null)
+            return;
+
+        DeleteDocument(BuildDraftDocumentId(channel, userId));
+        ClearPendingDraftSnapshot(profile);
+    }
+
+    /// <summary>
+    /// 訪談 draft 確認成功（任務已建立）後，訪談才從「等待建置確認」標為 Confirmed。
+    /// 訪談在這之間被重新開始或修訂成其他版本時不動它。更新失敗不影響已建立的任務。
+    /// </summary>
+    private async Task MarkInterviewBuildConfirmedAsync(string channel, string userId, HighLevelTaskDraft draft)
+    {
+        if (draft.SourceInterviewVersion is not { } version)
+            return;
+
+        try
+        {
+            var document = await _projectInterviewStateService.LoadTaskDocumentAsync(channel, userId, CancellationToken.None);
+            if (document.SessionState.CurrentPhase != ProjectInterviewPhase.AwaitBuildConfirmation ||
+                document.CurrentVersion != version)
+            {
+                return;
+            }
+
+            var confirmedState = _projectInterviewStateMachine.Advance(document.SessionState, ProjectInterviewAdvanceReason.BuildConfirmed);
+            await _projectInterviewStateService.SaveTaskDocumentAsync(document.WithSessionState(confirmedState), CancellationToken.None);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or IOException or JsonException)
+        {
+            _logger.LogWarning(ex, "Project interview for {Channel}:{UserId} could not be marked as confirmed.", channel, userId);
+        }
+    }
 
     private async Task<HighLevelProcessResult> HandleProjectInterviewTurnAsync(
         string channel,
@@ -1290,6 +1359,7 @@ public class HighLevelCoordinator
             ProjectNameValidationError = projectNameValidationError,
             RequiresProjectName = true,
             OriginalMessage = $"/proj approved v{document.CurrentVersion}",
+            SourceInterviewVersion = document.CurrentVersion,
             Summary = summary,
             Description = string.Join('\n', new[]
             {
@@ -1812,6 +1882,60 @@ public class HighLevelCoordinator
         return true;
     }
 
+    /// <summary>
+    /// 確認 draft（使用者回 y）。同一位使用者的確認依序執行：鎖內重新讀取 profile 與 draft，
+    /// 只有仍是同一份待確認的 draft 才繼續（另一個並行的確認已用掉它時不再建立任務），
+    /// 並在執行前重新檢查 AllowProduction（draft 建立後被降為 Basic 的使用者不能確認，draft 保留）。
+    /// profile 在鎖內存檔，下一個等候者讀到的就是已清掉的 draft 快照。
+    /// </summary>
+    private async Task<(HighLevelProcessResult Result, HighLevelUserProfile Profile)> ConfirmPendingDraftAsync(
+        string channel,
+        string userId,
+        HighLevelUserProfile profile,
+        HighLevelTaskDraft draft,
+        CancellationToken cancellationToken)
+    {
+        var gate = _confirmGates.GetOrAdd($"{channel}:{userId}", _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync(cancellationToken);
+        try
+        {
+            var currentProfile = LoadUserProfile(channel, userId) ?? profile;
+            var current = ResolvePendingDraft(channel, userId, currentProfile);
+            if (current == null ||
+                !string.Equals(current.DraftId, draft.DraftId, StringComparison.Ordinal) ||
+                IsExpired(current))
+            {
+                return (new HighLevelProcessResult
+                {
+                    Mode = HighLevelRouteMode.Production,
+                    Reply = DraftNoLongerPendingReply,
+                    Error = "draft_not_pending",
+                    DecisionReason = "the draft was already confirmed, cancelled or replaced"
+                }, currentProfile);
+            }
+
+            if (!GetEffectivePermissions(currentProfile).AllowProduction)
+            {
+                return (new HighLevelProcessResult
+                {
+                    Mode = HighLevelRouteMode.Production,
+                    Reply = ProductionPermissionDeniedReply,
+                    Error = "production_disabled",
+                    Draft = current,
+                    DecisionReason = "user permission gate denied draft confirmation"
+                }, currentProfile);
+            }
+
+            var confirmed = await ConfirmDraft(channel, userId, currentProfile, current, cancellationToken);
+            SaveUserProfile(channel, userId, confirmed.Profile);
+            return confirmed;
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
     private async Task<(HighLevelProcessResult Result, HighLevelUserProfile Profile)> ConfirmDraft(
         string channel,
         string userId,
@@ -1853,7 +1977,7 @@ public class HighLevelCoordinator
                 Mode = HighLevelRouteMode.Production,
                 Reply = GovernedGenerationUnavailableReply,
                 Draft = draft,
-                Error = "generation_unavailable",
+                Error = GovernedGenerationErrors.Unavailable,
                 DecisionReason = "governed generation is not ready"
             }, profile);
         }
@@ -1878,6 +2002,47 @@ public class HighLevelCoordinator
         var executionIntent = BuildExecutionIntent(channel, userId, draft, memory!, promotion, requestedExecutionModel);
         _executionIntentStore.Write(executionIntent);
 
+        if (!governedGeneration)
+            return await CreateConfirmedTaskAsync(channel, userId, profile, draft, executionIntent, governedGeneration: false, cancellationToken);
+
+        // 受治理生成：名額檢查 → 建立任務 → 啟動代理，與其他受治理的啟動依序進行。
+        await _governedLaunchGate.WaitAsync(cancellationToken);
+        try
+        {
+            var capacityError = _governedGenerationLauncher!.CheckCapacity(channel, userId);
+            if (capacityError != null)
+            {
+                TryRemoveEmptyProjectRoot(draft.ManagedPaths);
+                return (new HighLevelProcessResult
+                {
+                    Mode = HighLevelRouteMode.Production,
+                    Reply = capacityError == GovernedGenerationErrors.InProgress
+                        ? GovernedGenerationInProgressReply
+                        : GovernedGenerationBusyReply,
+                    Draft = draft,
+                    Error = capacityError,
+                    DecisionReason = "governed generation capacity reached"
+                }, profile);
+            }
+
+            // 任務建立之後的啟動與失敗處理不跟著請求取消：否則任務會停在 Active、draft 留著，再回 y 時多一個代理。
+            return await CreateConfirmedTaskAsync(channel, userId, profile, draft, executionIntent, governedGeneration: true, CancellationToken.None);
+        }
+        finally
+        {
+            _governedLaunchGate.Release();
+        }
+    }
+
+    private async Task<(HighLevelProcessResult Result, HighLevelUserProfile Profile)> CreateConfirmedTaskAsync(
+        string channel,
+        string userId,
+        HighLevelUserProfile profile,
+        HighLevelTaskDraft draft,
+        HighLevelExecutionIntent executionIntent,
+        bool governedGeneration,
+        CancellationToken cancellationToken)
+    {
         var submittedBy = $"{channel}:{userId}";
         var assignedRole = governedGeneration
             ? GenerationCapabilities.ExecutorRole
@@ -1897,13 +2062,16 @@ public class HighLevelCoordinator
             assignedRoleId: assignedRole,
             runtimeDescriptor: promotedRuntimeDescriptor);
 
-        var plan = _planService.CreatePlan(task.TaskId, submittedBy, draft.Title, draft.Description);
+        // 受治理任務的 plan 可由綁定該任務的代理經 plans 端點讀到：描述不帶發起使用者的識別資料。
+        var planDescription = governedGeneration ? WithoutOriginLines(draft.Description) : draft.Description;
+        var plan = _planService.CreatePlan(task.TaskId, submittedBy, draft.Title, planDescription);
         var preparation = governedGeneration
             ? _governedGenerationLauncher!.Prepare(task, draft, promotedRuntimeDescriptor, _accessRoot)
             : null;
         var handoff = BuildHandoff(task, plan, draft, executionIntent, channel, userId);
         handoff.GenerationRequest = preparation?.Request;
-        SaveHandoff(task.TaskId, handoff);
+        // 受治理任務的 handoff 帶受管路徑與使用者原文，只給系統讀：綁定該任務的代理 session 經 context API 讀不到。
+        SaveHandoff(task.TaskId, handoff, systemOnly: preparation != null);
 
         if (preparation != null)
         {
@@ -1911,6 +2079,7 @@ public class HighLevelCoordinator
         }
 
         DeleteDocument(BuildDraftDocumentId(channel, userId));
+        await MarkInterviewBuildConfirmedAsync(channel, userId, draft);
 
         ClearPendingDraftSnapshot(profile);
         profile.LastTaskId = task.TaskId;
@@ -2014,7 +2183,7 @@ public class HighLevelCoordinator
                 Mode = HighLevelRouteMode.Production,
                 Reply = $"系統雛形生成暫不可用：生成代理無法啟動，任務 {task.TaskId} 已標為失敗。請稍後回覆 y 再試一次，或聯絡管理員。",
                 Draft = draft,
-                Error = launch.ErrorCode ?? "generation_launch_failed",
+                Error = launch.ErrorCode ?? GovernedGenerationErrors.LaunchFailed,
                 DecisionReason = "governed generation agent could not be started",
                 CreatedTask = task,
                 CreatedPlan = plan,
@@ -2024,6 +2193,7 @@ public class HighLevelCoordinator
 
         DeleteDocument(BuildDraftDocumentId(channel, userId));
         ClearPendingDraftSnapshot(profile);
+        await MarkInterviewBuildConfirmedAsync(channel, userId, draft);
         profile.LastTaskId = task.TaskId;
         profile.LastPlanId = plan.PlanId;
         profile.LastDecision = HighLevelRouteMode.Production.ToString();
@@ -2057,6 +2227,13 @@ public class HighLevelCoordinator
             lines.Add($"project_folder: {draft.ProjectFolderName}");
         return string.Join('\n', lines);
     }
+
+    /// <summary>去掉 draft 描述中標示發起來源（channel 與使用者 id）的行。</summary>
+    internal static string WithoutOriginLines(string? description)
+        => string.Join('\n', (description ?? string.Empty)
+            .Split('\n')
+            .Where(line => !line.TrimStart().StartsWith("Origin:", StringComparison.Ordinal)))
+            .Trim();
 
     private static void TryRemoveEmptyProjectRoot(HighLevelManagedPaths paths)
     {
@@ -3437,14 +3614,15 @@ public class HighLevelCoordinator
             "global");
     }
 
-    private void SaveHandoff(string taskId, HighLevelTaskHandoff handoff)
+    private void SaveHandoff(string taskId, HighLevelTaskHandoff handoff, bool systemOnly = false)
     {
         UpsertDocument(
             BuildHandoffDocumentId(taskId),
             BuildHandoffDocumentId(taskId),
             JsonSerializer.Serialize(handoff),
             "application/handoff+json",
-            taskId);
+            taskId,
+            systemOnly ? SystemOnlyAcl : SharedReadAcl);
     }
 
     private T? LoadLatestJson<T>(string documentId)
@@ -3474,7 +3652,7 @@ public class HighLevelCoordinator
         }
     }
 
-    private void UpsertDocument(string documentId, string key, string json, string contentType, string? taskId)
+    private void UpsertDocument(string documentId, string key, string json, string contentType, string? taskId, string acl = SharedReadAcl)
     {
         var latest = _db.Query<SharedContextEntry>(
             "SELECT * FROM shared_context_entries WHERE document_id = @docId ORDER BY version DESC LIMIT 1",
@@ -3489,7 +3667,7 @@ public class HighLevelCoordinator
             Key = key,
             ContentRef = json,
             ContentType = contentType,
-            Acl = "{\"read\":[\"*\"],\"write\":[\"system:high-level-coordinator\"]}",
+            Acl = acl,
             AuthorPrincipalId = SystemPrincipalId,
             TaskId = taskId,
             Tags = "[\"high-level\"]",
@@ -4526,6 +4704,9 @@ public class HighLevelTaskDraft
     public string? ProjectName { get; set; }
     public string? ProjectFolderName { get; set; }
     public string? ProjectNameValidationError { get; set; }
+
+    /// <summary>由專案訪談 /ok 建立時為該訪談的版本；確認成功後訪談才標為 Confirmed。其他 draft 為 null。</summary>
+    public int? SourceInterviewVersion { get; set; }
     public HighLevelSystemScaffoldSpec? ScaffoldSpec { get; set; }
     public HighLevelManagedPaths ManagedPaths { get; set; } = new();
     public string ScopeDescriptor { get; set; } = "{}";

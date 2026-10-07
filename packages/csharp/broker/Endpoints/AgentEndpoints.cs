@@ -22,7 +22,7 @@ namespace Broker.Endpoints;
 /// 3. POST /agents/create → 選擇能力 → 建立 Agent（Principal + Task + Grants）
 /// 4. POST /agents/spawn  → 生成 Agent 容器（需先 create）
 /// 5. POST /agents/list → 列出所有 Agent
-/// 6. POST /agents/stop → 停止 Agent 容器 + 停用 Principal
+/// 6. POST /agents/stop → 停止 Agent 容器 + 停用 Principal（受治理生成的代理以 /agents/list 列出的 agent_id 或任務 id 停止）
 /// </summary>
 public static class AgentEndpoints
 {
@@ -31,6 +31,28 @@ public static class AgentEndpoints
         PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
         PropertyNameCaseInsensitive = true
     };
+
+    /// <summary>
+    /// 受治理生成任務的代理：<paramref name="requestedId"/> 是 /agents/list 列出的 agent_id（任務 id 去掉 task_）或任務 id 本身，
+    /// 而且該任務有受治理生成的執行紀錄、指派給自己的 AI 主體時，回傳任務 id；否則回傳 null（照一般代理處理）。
+    /// </summary>
+    internal static string? ResolveGovernedGenerationTaskId(
+        string requestedId,
+        AgentSpawnService spawnService,
+        GovernedGenerationRunStore generationRuns)
+    {
+        var trimmed = (requestedId ?? string.Empty).Trim();
+        if (trimmed.Length == 0 || trimmed.Length > 128)
+            return null;
+
+        var taskId = trimmed.StartsWith("task_", StringComparison.Ordinal) ? trimmed : "task_" + trimmed;
+        if (generationRuns.Get(taskId) == null)
+            return null;
+
+        return spawnService.ListAgents().Any(agent => string.Equals(agent.TaskId, taskId, StringComparison.Ordinal))
+            ? taskId
+            : null;
+    }
 
     public static void Map(RouteGroupBuilder group)
     {
@@ -215,11 +237,31 @@ public static class AgentEndpoints
         });
 
         // ── 6. 停止 Agent ──
-        agents.MapPost("/stop", async (HttpContext ctx, AgentSpawnService spawnService, IContainerManager containerManager) =>
+        agents.MapPost("/stop", async (
+            HttpContext ctx,
+            AgentSpawnService spawnService,
+            IContainerManager containerManager,
+            GovernedGenerationRunStore generationRuns,
+            GenerationDeliveryService generationDelivery) =>
         {
             var body = RequestBodyHelper.GetBody(ctx);
             if (!RequestBodyHelper.TryGetRequired(body, "agent_id", out var agentId, out var err))
                 return err!;
+
+            // 受治理生成的代理：/agents/list 以任務 id 去掉 task_ 前綴列出，不是 agent_ 開頭。
+            // 這類代理改以任務指派的主體停用（撤銷憑證與 session、任務標為 Failed、通知使用者）並停止容器。
+            var governedTaskId = ResolveGovernedGenerationTaskId(agentId, spawnService, generationRuns);
+            if (governedTaskId != null)
+            {
+                await generationDelivery.StopByAdminAsync(governedTaskId);
+                return Results.Ok(ApiResponseHelper.Success(new
+                {
+                    agent_id = governedTaskId[5..],
+                    task_id = governedTaskId,
+                    status = "stopped"
+                }));
+            }
+
             agentId = AgentSpawnService.NormalizeAgentId(agentId);
 
             // 停用資料庫記錄

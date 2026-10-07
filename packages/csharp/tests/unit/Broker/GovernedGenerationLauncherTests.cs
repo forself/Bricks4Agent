@@ -15,8 +15,9 @@ using Microsoft.Extensions.Logging.Abstractions;
 namespace Unit.Tests.Broker;
 
 /// <summary>
-/// 受治理生成的啟動：任務指派主體、角色與三個 grant（scope 由 broker 寫入）、淨化過的工作項、
-/// AGENT_RUN 的大小上限、代理容器的啟動參數與註冊憑證，以及啟動失敗與未就緒時的 fail-closed。
+/// 受治理生成的啟動：任務指派主體、角色與三個 grant（scope 由 broker 寫入、配額以任務累計）、精簡的 runtime descriptor
+/// （不帶受管路徑與使用者識別資料）、淨化過的工作項、AGENT_RUN 的大小上限、代理容器的啟動參數與註冊憑證、
+/// 執行模型只在 LlmProxy 的供應者能服務時採用、名額上限，以及啟動失敗（含取消）與未就緒時的 fail-closed。
 /// </summary>
 public sealed class GovernedGenerationLauncherTests : IDisposable
 {
@@ -38,7 +39,7 @@ public sealed class GovernedGenerationLauncherTests : IDisposable
             => Task.FromResult(GovernedGenerationReadinessResult.ReadyResult());
     }
 
-    private GovernedGenerationLauncher Launcher()
+    private GovernedGenerationLauncher Launcher(LlmProxyOptions? proxy = null, GovernedGenerationOptions? options = null)
     {
         var crypto = Substitute.For<IEnvelopeCrypto>();
         crypto.GetBrokerPublicKey().Returns("broker-public-key");
@@ -57,13 +58,14 @@ public sealed class GovernedGenerationLauncherTests : IDisposable
             new HighLevelLlmOptions { DefaultModel = "broker-default-model" },
             new RegistrationCredentialOptions());
         return new GovernedGenerationLauncher(
-            new GovernedGenerationOptions { OutputRoot = _env.OutputRoot, AgentMaxIterations = 12, MaxPages = 12 },
+            options ?? new GovernedGenerationOptions { OutputRoot = _env.OutputRoot, AgentMaxIterations = 12, MaxPages = 12 },
             new AlwaysReady(),
             containerLauncher,
             spawnService,
             _env.Runs,
             _env.Db,
-            NullLogger<GovernedGenerationLauncher>.Instance);
+            NullLogger<GovernedGenerationLauncher>.Instance,
+            llmProxyOptions: proxy ?? new LlmProxyOptions { Provider = "ollama", DefaultModel = "proxy-default-model" });
     }
 
     private BrokerTask SeedTask()
@@ -106,11 +108,22 @@ public sealed class GovernedGenerationLauncherTests : IDisposable
         }
     };
 
-    private static string PromotedRuntimeDescriptor() => JsonSerializer.Serialize(new
+    // 與 coordinator 的 promoted descriptor 同形：帶受管路徑、使用者識別資料、hlm 文件 id 與推薦的執行模型。
+    private string PromotedRuntimeDescriptor(string? provider = "ollama") => JsonSerializer.Serialize(new
     {
         source = "line",
+        source_user_id = GovernedGenerationTestSupport.UserId,
+        preferred_display_name = "Display Name",
+        preferred_user_code = "usercode01",
         high_level = true,
-        llm = new { default_model = "planner-recommended-model", allow_model_override = false }
+        conversation_document = $"convlog:{GovernedGenerationTestSupport.UserId}",
+        user_profile_document = $"hlm.profile.line.{GovernedGenerationTestSupport.UserId}",
+        execution_intent_document = $"hlm.execution.line.{GovernedGenerationTestSupport.UserId}",
+        requested_execution_model = new { alias = "execution-default", model = "planner-recommended-model", tier = "standard", provider },
+        llm = new { default_model = "planner-recommended-model", allow_model_override = false },
+        managed_paths = new { AccessRoot = _env.AccessRoot, ProjectRoot = Path.Combine(_env.AccessRoot, "line", "u", "projects", "demo") },
+        project = new { required = true, name = "Demo", folder_name = "Demo" },
+        scaffold = new { ScaffoldFamily = "admin_portal" }
     });
 
     [Theory]
@@ -127,20 +140,25 @@ public sealed class GovernedGenerationLauncherTests : IDisposable
     }
 
     [Fact]
-    public void GovernedScopeDescriptor_DropsHostPaths()
+    public void GovernedScopeDescriptor_DropsHostPathsAndRequesterIdentity()
     {
         var promoted = JsonSerializer.Serialize(new
         {
             channel = "line",
             origin_user_id = "u1",
             mode = "production",
+            execution_intent_id = "intent_1",
+            execution_intent_document = "hlm.execution.line.u1",
             path_scope = new { access_root = _env.AccessRoot, paths = new[] { _env.AccessRoot } }
         });
 
         var governed = GovernedGenerationLauncher.BuildGovernedScopeDescriptor(promoted);
 
         governed.Should().NotContain("path_scope").And.NotContain(_env.AccessRoot.Replace("\\", "\\\\"));
-        JsonNode.Parse(governed)!["channel"]!.GetValue<string>().Should().Be("line");
+        governed.Should().NotContain("origin_user_id").And.NotContain("u1").And.NotContain("execution_intent_document");
+        var scope = JsonNode.Parse(governed)!;
+        scope["channel"]!.GetValue<string>().Should().Be("line");
+        scope["generation"]!.GetValue<string>().Should().Be("governed");
     }
 
     [Fact]
@@ -160,6 +178,14 @@ public sealed class GovernedGenerationLauncherTests : IDisposable
         descriptor.CapabilityGrants.Select(grant => grant.CapabilityId).Should().Equal(
             "generation.catalog.query", "generation.definition.validate", "generation.scaffold.generate");
         descriptor.CapabilityGrants.Select(grant => grant.Quota).Should().Equal(20, 6, 2);
+        descriptor.CapabilityGrants.Should().OnlyContain(grant => grant.IsTaskScopedQuota, "the quotas count per task, not per session");
+
+        // 任務資料列會交給代理：只留 grant、生成上限與可用的 llm，不帶受管路徑、使用者識別資料或 hlm 文件 id。
+        JsonNode.Parse(stored.RuntimeDescriptor)!.AsObject().Select(property => property.Key)
+            .Should().BeEquivalentTo("capability_grants", "generation", "llm");
+        stored.RuntimeDescriptor.Should().NotContain(_env.AccessRoot.Replace("\\", "\\\\"))
+            .And.NotContain(GovernedGenerationTestSupport.UserId)
+            .And.NotContain("hlm.");
 
         var generateScope = JsonNode.Parse(descriptor.CapabilityGrants[2].Scope.GetRawText())!.AsObject();
         generateScope["routes"]!.AsArray().Select(route => route!.GetValue<string>()).Should().Equal("generate_scaffold");
@@ -168,11 +194,74 @@ public sealed class GovernedGenerationLauncherTests : IDisposable
         generateScope["max_pages"]!.GetValue<int>().Should().Be(12);
         generateScope["package"]!.GetValue<string>().Should().Be("definition-site-v1");
         JsonNode.Parse(descriptor.CapabilityGrants[0].Scope.GetRawText())!.AsObject().Select(p => p.Key).Should().Equal("routes");
+        var validateScope = JsonNode.Parse(descriptor.CapabilityGrants[1].Scope.GetRawText())!.AsObject();
+        validateScope["routes"]!.AsArray().Select(route => route!.GetValue<string>()).Should().Equal("validate_definition");
+        validateScope["max_pages"]!.GetValue<int>().Should().Be(12, "validate reports too many pages before generate");
 
         preparation.OutputSlot.Should().Be(task.TaskId);
         preparation.Request.Limits.MaxPages.Should().Be(12);
         preparation.Request.Scaffold["family"].Should().Be("admin_portal");
     }
+
+    [Theory]
+    [InlineData("anthropic")]
+    [InlineData(null)]
+    public async Task Prepare_IgnoresARecommendedModelTheLlmProxyProviderCannotServe(string? catalogProvider)
+    {
+        var launcher = Launcher();
+        var task = SeedTask();
+        var draft = Draft();
+
+        var preparation = launcher.Prepare(task, draft, PromotedRuntimeDescriptor(catalogProvider), _env.AccessRoot);
+
+        var stored = _env.Db.Get<BrokerTask>(task.TaskId)!;
+        TaskRuntimeDescriptor.Parse(stored.RuntimeDescriptor).Llm.HasOverrides.Should().BeFalse();
+        JsonNode.Parse(stored.RuntimeDescriptor)!.AsObject().ContainsKey("llm").Should().BeFalse();
+
+        (await launcher.LaunchAsync(task, new Plan { PlanId = IdGen.New("plan"), TaskId = task.TaskId }, draft, preparation, CancellationToken.None))
+            .Success.Should().BeTrue();
+        _spawned.Single().TrustedEnvironment["AGENT_MODEL"].Should().Be("proxy-default-model",
+            "without a servable recommendation the agent uses LlmProxy:DefaultModel");
+    }
+
+    [Theory]
+    [InlineData("ollama", "ollama", true)]
+    [InlineData("Ollama", "ollama", true)]
+    [InlineData("claude", "anthropic", true)]
+    [InlineData("ollama", "anthropic", false)]
+    [InlineData("", "ollama", false)]
+    [InlineData(null, "ollama", false)]
+    public void ProviderMatching_IsCaseInsensitive_AndNeverMatchesAMissingProvider(string? catalog, string proxy, bool expected)
+        => GovernedGenerationLauncher.IsSameProvider(catalog, proxy).Should().Be(expected);
+
+    [Fact]
+    public void Capacity_IsLimitedPerUser_AndInTotal()
+    {
+        var options = new GovernedGenerationOptions { OutputRoot = _env.OutputRoot, MaxConcurrentRuns = 2, MaxConcurrentRunsPerUser = 1 };
+        var launcher = Launcher(options: options);
+        launcher.CheckCapacity("line", GovernedGenerationTestSupport.UserId).Should().BeNull();
+
+        _env.SeedRun();
+        launcher.CheckCapacity("line", GovernedGenerationTestSupport.UserId).Should().Be(GovernedGenerationErrors.InProgress);
+        launcher.CheckCapacity("line", "another-user").Should().BeNull();
+
+        _env.SeedRun(status: GovernedGenerationRunStatus.Ingested);
+        launcher.CheckCapacity("line", "another-user").Should().Be(GovernedGenerationErrors.Busy, "two runs are open");
+
+        _env.SeedRun(status: GovernedGenerationRunStatus.Delivered);
+        _env.SeedRun(status: GovernedGenerationRunStatus.Failed);
+        options.MaxConcurrentRuns = 3;
+        launcher.CheckCapacity("line", "another-user").Should().BeNull("finished runs do not count");
+    }
+
+    [Theory]
+    [InlineData(12, 12)]
+    [InlineData(20, 12)]
+    [InlineData(100, 12)]
+    [InlineData(5, 5)]
+    [InlineData(0, 1)]
+    public void MaxPages_IsLimitedToWhatTheGeneratorValidates(int configured, int resolved)
+        => new GovernedGenerationOptions { MaxPages = configured }.ResolveMaxPages().Should().Be(resolved);
 
     [Fact]
     public void WorkItem_CarriesNoHostPath_AndAgentRunStaysUnderTheLimit()
@@ -250,6 +339,27 @@ public sealed class GovernedGenerationLauncherTests : IDisposable
         var run = _env.Runs.Get(task.TaskId)!;
         run.Status.Should().Be(GovernedGenerationRunStatus.Failed);
         run.FailureReason.Should().Be("agent_launch_failed");
+    }
+
+    [Fact]
+    public async Task LaunchCancelledByTheRequest_StillFailsTheTaskAndTheRun()
+    {
+        using var cancelled = new CancellationTokenSource();
+        cancelled.Cancel();
+        _containers.SpawnWorkerAsync(Arg.Any<ContainerSpawnRequest>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<string>(new OperationCanceledException(cancelled.Token)));
+        var launcher = Launcher();
+        var task = SeedTask();
+        var draft = Draft();
+        var preparation = launcher.Prepare(task, draft, PromotedRuntimeDescriptor(), _env.AccessRoot);
+
+        var result = await launcher.LaunchAsync(task, new Plan { PlanId = IdGen.New("plan"), TaskId = task.TaskId }, draft, preparation, cancelled.Token);
+
+        result.Success.Should().BeFalse();
+        _env.Db.Get<BrokerTask>(task.TaskId)!.State.Should().Be(TaskState.Failed, "a cancelled launch must not leave the task active");
+        _env.Db.Get<Principal>(preparation.PrincipalId)!.Status.Should().Be(EntityStatus.Disabled);
+        _env.Runs.Get(task.TaskId)!.Status.Should().Be(GovernedGenerationRunStatus.Failed);
+        _env.Runs.ListOpen().Should().NotContain(run => run.TaskId == task.TaskId);
     }
 
     // ── 就緒檢查 ──

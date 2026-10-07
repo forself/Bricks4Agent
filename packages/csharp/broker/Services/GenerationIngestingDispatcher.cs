@@ -11,40 +11,84 @@ using BrokerCore.Services;
 namespace Broker.Services;
 
 /// <summary>
-/// 執行分派的裝飾器：只處理受治理生成的 generate（route <c>generate_scaffold</c>），其他請求原樣交給內層分派器。
+/// 執行分派的裝飾器：只處理受治理生成的三個能力，其他請求原樣交給內層分派器。
 ///
-/// generate 由 worker 回報成功後，broker 不直接採信它的結果，而是交給 <see cref="GenerationPackageIngestor"/>
-/// 驗證並收下產物；驗證不通過時這次執行記為失敗、不交付。
+/// - 三個能力：generation-worker 正在處理別的請求（每個 worker 一次只做一件）時，功能池立即回「No available worker」，
+///   而配額在分派前已經扣掉。這裡在有上限的時間內等 worker 空出來再分派同一個請求，不重複扣配額。
+/// - generate：worker 回報成功後，broker 不直接採信它的結果，而是交給 <see cref="GenerationPackageIngestor"/>
+///   驗證並收下產物；驗證不通過時這次執行記為失敗、不交付。
 /// </summary>
 public sealed class GenerationIngestingDispatcher : IExecutionDispatcher
 {
+    /// <summary>worker 忙碌時再分派前的等待（合計約 15 秒）。</summary>
+    public static readonly IReadOnlyList<TimeSpan> DefaultBusyRetryDelays = new[]
+    {
+        TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(4), TimeSpan.FromSeconds(8)
+    };
+
     private readonly IExecutionDispatcher _inner;
     private readonly GenerationPackageIngestor _ingestor;
+    private readonly IReadOnlyList<TimeSpan> _busyRetryDelays;
 
-    public GenerationIngestingDispatcher(IExecutionDispatcher inner, GenerationPackageIngestor ingestor)
+    public GenerationIngestingDispatcher(
+        IExecutionDispatcher inner,
+        GenerationPackageIngestor ingestor,
+        IReadOnlyList<TimeSpan>? busyRetryDelays = null)
     {
         _inner = inner;
         _ingestor = ingestor;
+        _busyRetryDelays = busyRetryDelays ?? DefaultBusyRetryDelays;
     }
 
     public static bool IsGenerateRequest(ApprovedRequest request)
         => string.Equals(request.Route, GenerationCapabilities.GenerateRoute, StringComparison.OrdinalIgnoreCase) ||
            string.Equals(request.CapabilityId, GenerationCapabilities.ScaffoldGenerate, StringComparison.OrdinalIgnoreCase);
 
+    public static bool IsGenerationRequest(ApprovedRequest request)
+        => GenerationCapabilities.All.Contains(request.CapabilityId, StringComparer.OrdinalIgnoreCase) ||
+           string.Equals(request.Route, GenerationCapabilities.CatalogRoute, StringComparison.OrdinalIgnoreCase) ||
+           string.Equals(request.Route, GenerationCapabilities.ValidateRoute, StringComparison.OrdinalIgnoreCase) ||
+           string.Equals(request.Route, GenerationCapabilities.GenerateRoute, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>功能池找不到可用的 worker（沒有交給任何 worker）；worker 自己的拒絕不算。</summary>
+    public static bool IsNoAvailableWorker(ExecutionResult result)
+        => !result.Success &&
+           !result.AnsweredByWorker &&
+           (result.ErrorMessage?.Contains("No available worker", StringComparison.Ordinal) ?? false);
+
     public async Task<ExecutionResult> DispatchAsync(ApprovedRequest approvedRequest)
     {
-        if (!IsGenerateRequest(approvedRequest))
+        if (!IsGenerationRequest(approvedRequest))
             return await _inner.DispatchAsync(approvedRequest);
+
+        if (!IsGenerateRequest(approvedRequest))
+            return await DispatchWhenWorkerFreeAsync(approvedRequest);
 
         var refusal = _ingestor.CheckBeforeDispatch(approvedRequest);
         if (refusal != null)
             return ExecutionResult.Fail(approvedRequest.RequestId, refusal);
 
-        var result = await _inner.DispatchAsync(approvedRequest);
+        var result = await DispatchWhenWorkerFreeAsync(approvedRequest);
         if (!result.Success)
             return result;
 
         return await _ingestor.IngestAsync(approvedRequest, result);
+    }
+
+    private async Task<ExecutionResult> DispatchWhenWorkerFreeAsync(ApprovedRequest request)
+    {
+        var result = await _inner.DispatchAsync(request);
+        foreach (var delay in _busyRetryDelays)
+        {
+            if (!IsNoAvailableWorker(result))
+                return result;
+
+            if (delay > TimeSpan.Zero)
+                await Task.Delay(delay);
+            result = await _inner.DispatchAsync(request);
+        }
+
+        return result;
     }
 }
 

@@ -18,6 +18,16 @@ Follow project instructions exactly, inspect before changing code, and stay with
 - Prefer components from packages/javascript/browser/ui_components or the generated project runtime at ./runtime/ui_components/index.js, including BasicButton, ButtonGroup, FeatureCard, PhotoCard, ImageViewer, SideMenu, TabContainer, DataTable, InfoPanel, and PhotoWall when they match the UI need.
 - Hand-roll native HTML/CSS/JS only for behavior or visuals that the custom component library does not provide, and keep that fallback narrowly scoped.`;
 
+// 生成類任務的精簡基礎提示：不提元件清單、repo 路徑或專案手冊。生成代理只撰寫 DefinitionTemplate，
+// 可用的頁型、欄位型別與規則以 query_component_catalog 的回傳為準；手冊中的 CLI 範例與型別表會和型錄衝突。
+const GENERATION_BASE_PROMPT = `You are a governed generation agent. You write one DefinitionTemplate, a declarative JSON
+description of a front-end prototype, and hand it to the broker-governed generation tools.
+- You do not write code, HTML, styles or files, and you have no file or shell tools.
+- The catalog returned by query_component_catalog is the only source for page types, field types and rules.
+- Be precise and follow the catalog rules exactly; do not invent keys, types or components.
+- Do not claim to have performed actions you did not actually perform.
+- Only use the routes, capabilities, and scopes explicitly granted.`;
+
 const REACT_INSTRUCTIONS = `
 ## Tool Calls
 
@@ -43,18 +53,22 @@ function buildSystemPrompt(options) {
         maxIterations = null,
     } = options;
 
-    const parts = [BASE_PROMPT];
+    const generationTask = Boolean(governed) && isGenerationTask(governed);
+    const parts = [generationTask ? GENERATION_BASE_PROMPT : BASE_PROMPT];
 
     if (governed) {
         parts.push(buildGovernedSection(governed));
-        if (isGenerationTask(governed)) {
+        if (generationTask) {
             parts.push(buildGenerationSection(governed, maxIterations));
         }
     } else {
         parts.push('\n## Execution Mode\n\nYou may use the locally registered tools directly.');
     }
 
-    const agentMdPath = resolveAgentManualPath(projectRoot);
+    // 生成類任務不附專案手冊：手冊的 CLI 範例與欄位型別表會引導模型寫出驗證器拒絕的定義，
+    // 而且生成代理沒有讀檔工具，手冊中「讀 AGENT.md 其餘部分」的指示也做不到。
+    const agentMdPath = generationTask ? null : resolveAgentManualPath(projectRoot);
+    if (generationTask && verbose) logInfo('Project manual skipped for a governed generation task');
     const maxChars = useReact ? MAX_AGENT_MD_CHARS_REACT : MAX_AGENT_MD_CHARS_NATIVE;
     if (agentMdPath) {
         if (verbose) logInfo(`Loading project manual: ${agentMdPath}`);
@@ -76,7 +90,7 @@ function buildSystemPrompt(options) {
         } catch (e) {
             if (verbose) logWarn(`Failed to load AGENT.md: ${e.message}`);
         }
-    } else if (verbose) {
+    } else if (verbose && !generationTask) {
         logInfo('No AGENT.md found near the project root');
     }
 
@@ -249,7 +263,11 @@ generation; you only write the definition. Work in this order:
 Limits for this task:
 ${limits.join('\n')}
 If validation still fails when the validate_definition calls run out, stop and report the remaining errors
-instead of guessing. Do not retry generate_scaffold with an unchanged template after it failed.`;
+instead of guessing. A validate result with truncated: true lists only the first errors (total_errors gives the
+count); errors that repeat across fields are reported once with the number of places they occur.
+Do not retry generate_scaffold with an unchanged template after it failed, with one exception: when a generation
+tool fails with "No available worker", the generation service was busy and the request did not run. Wait briefly,
+then call the same tool again with the same arguments.`;
 }
 
 function findAgentMd(startDir) {
@@ -291,4 +309,4 @@ function resolveAgentManualPath(projectRoot, env = process.env) {
     }
 }
 
-module.exports = { buildSystemPrompt, isGenerationTask, resolveAgentManualPath };
+module.exports = { buildSystemPrompt, isGenerationTask, resolveAgentManualPath, GENERATION_BASE_PROMPT };

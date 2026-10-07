@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Broker.Services;
 using BrokerCore.Data;
 using BrokerCore.Models;
@@ -12,7 +13,8 @@ using Xunit;
 namespace Integration.Tests.Api;
 
 /// <summary>
-/// /proj 起手與 /ok 的 AllowProduction 權限閘、/ok 改建立 draft 走 ConfirmDraft，
+/// /proj 起手、/revise、訪談回答與 /ok 的 AllowProduction 權限閘，draft 確認（y）時重新檢查權限，
+/// /ok 改建立 draft 走 ConfirmDraft（訪談在建置任務建立後才標為 Confirmed，回 n 或 draft 過期後可再 /ok），
 /// 以及高階回覆不帶主機絕對路徑。
 /// </summary>
 public class ProjectInterviewGateTests : IClassFixture<BrokerFixture>
@@ -99,7 +101,8 @@ public class ProjectInterviewGateTests : IClassFixture<BrokerFixture>
         Directory.Exists(projectRoot).Should().BeFalse("/ok 只建立 draft，回 y 之前不建置");
 
         var interview = await _fixture.ReadProjectInterviewReviewAsync("line", userId);
-        interview.SessionState.CurrentPhase.Should().Be(ProjectInterviewPhase.Confirmed);
+        interview.SessionState.CurrentPhase.Should().Be(ProjectInterviewPhase.AwaitBuildConfirmation,
+            "the design is approved, but the interview is confirmed only once the build task exists");
         WithCoordinator(coordinator => coordinator.GetLineDraft(userId)).Should().NotBeNull();
 
         using var confirm = await _fixture.SendHighLevelLineTextAsync("y", userId);
@@ -115,6 +118,8 @@ public class ProjectInterviewGateTests : IClassFixture<BrokerFixture>
         confirmData.GetProperty("reply").GetString().Should().Contain("已確認任務");
 
         WithCoordinator(coordinator => coordinator.GetLineDraft(userId)).Should().BeNull();
+        (await _fixture.ReadProjectInterviewReviewAsync("line", userId)).SessionState.CurrentPhase
+            .Should().Be(ProjectInterviewPhase.Confirmed);
         using (var scope = _fixture.Factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<BrokerDb>();
@@ -157,6 +162,178 @@ public class ProjectInterviewGateTests : IClassFixture<BrokerFixture>
         var task = confirm.RootElement.GetProperty("data").GetProperty("created_task");
         task.ValueKind.Should().Be(JsonValueKind.Object);
         GetProperty(task, "taskType").GetString().Should().Be("system_scaffold");
+    }
+
+    [Fact]
+    public async Task DraftConfirmation_AfterDemotion_IsDenied_AndKeepsTheDraft()
+    {
+        var userId = $"line-proj-demote-y-{Guid.NewGuid():N}";
+        await _fixture.EnableLineProductionAsync(userId);
+        using (var draft = await _fixture.SendHighLevelLineTextAsync($"/建立 完整系統雛形 #DemoteY{Guid.NewGuid():N}"[..40], userId))
+        {
+            IsNullOrMissing(draft.RootElement.GetProperty("data"), "error").Should().BeTrue();
+        }
+
+        WithCoordinator(coordinator => coordinator.ReviewLineUserRegistration(userId, "demote"));
+        using var confirm = await _fixture.SendHighLevelLineTextAsync("y", userId);
+        var data = confirm.RootElement.GetProperty("data");
+
+        data.GetProperty("error").GetString().Should().Be("production_disabled");
+        data.GetProperty("reply").GetString().Should().Contain(ProductionDeniedReply);
+        IsNullOrMissing(data, "created_task").Should().BeTrue();
+        TasksSubmittedBy(userId).Should().BeEmpty("a demoted user cannot confirm a draft");
+        WithCoordinator(coordinator => coordinator.GetLineDraft(userId)).Should().NotBeNull("the draft stays for when the permission is restored");
+
+        // 權限恢復後同一份 draft 回 y 就能確認。
+        WithCoordinator(coordinator => coordinator.ReviewLineUserRegistration(userId, "member"));
+        WithCoordinator(coordinator => coordinator.SetLineUserPermissions(userId, new HighLevelUserPermissionsPatch { AllowProduction = true }));
+        using var retried = await _fixture.SendHighLevelLineTextAsync("y", userId);
+        retried.RootElement.GetProperty("data").GetProperty("created_task").ValueKind.Should().Be(JsonValueKind.Object);
+    }
+
+    [Fact]
+    public async Task InterviewDraftConfirmation_AfterDemotion_IsDenied()
+    {
+        var userId = $"line-proj-demote-ok-y-{Guid.NewGuid():N}";
+        using (await _fixture.CompleteProjectInterviewToReviewAsync(userId)) { }
+        using (await _fixture.SendHighLevelLineTextAsync("/ok", userId)) { }
+        WithCoordinator(coordinator => coordinator.GetLineDraft(userId)).Should().NotBeNull();
+
+        WithCoordinator(coordinator => coordinator.ReviewLineUserRegistration(userId, "demote"));
+        using var confirm = await _fixture.SendHighLevelLineTextAsync("y", userId);
+
+        confirm.RootElement.GetProperty("data").GetProperty("error").GetString().Should().Be("production_disabled");
+        TasksSubmittedBy(userId).Should().BeEmpty();
+        (await _fixture.ReadProjectInterviewReviewAsync("line", userId)).SessionState.CurrentPhase
+            .Should().Be(ProjectInterviewPhase.AwaitBuildConfirmation);
+    }
+
+    [Fact]
+    public async Task InterviewRevisionAndAnswers_AfterDemotion_AreDenied()
+    {
+        // 審查階段被降級：/revise 不得重新產生審查檔
+        var reviewUserId = $"line-proj-demote-rev-{Guid.NewGuid():N}";
+        using (await _fixture.CompleteProjectInterviewToReviewAsync(reviewUserId)) { }
+        var before = await _fixture.ReadProjectInterviewReviewAsync("line", reviewUserId);
+        WithCoordinator(coordinator => coordinator.ReviewLineUserRegistration(reviewUserId, "demote"));
+
+        using (var revise = await _fixture.SendHighLevelLineTextAsync("/revise", reviewUserId))
+        {
+            revise.RootElement.GetProperty("data").GetProperty("error").GetString().Should().Be("production_disabled");
+        }
+        var after = await _fixture.ReadProjectInterviewReviewAsync("line", reviewUserId);
+        after.CurrentVersion.Should().Be(before.CurrentVersion, "no new review version is rendered");
+        after.SessionState.CurrentPhase.Should().Be(ProjectInterviewPhase.AwaitUserReview);
+
+        // 訪談中途被降級：之後的回答（會產生並交付審查檔）也被拒，/cancel 仍可用
+        var midUserId = $"line-proj-demote-mid-{Guid.NewGuid():N}";
+        await _fixture.EnableLineProductionAsync(midUserId);
+        using (await _fixture.SendHighLevelLineTextAsync("/proj", midUserId)) { }
+        using (await _fixture.SendHighLevelLineTextAsync($"#MidPortal{Guid.NewGuid():N}", midUserId)) { }
+        using (await _fixture.SendHighLevelLineTextAsync("2", midUserId)) { }
+        WithCoordinator(coordinator => coordinator.ReviewLineUserRegistration(midUserId, "demote"));
+
+        using (var answer = await _fixture.SendHighLevelLineTextAsync("3", midUserId))
+        {
+            answer.RootElement.GetProperty("data").GetProperty("error").GetString().Should().Be("production_disabled");
+        }
+        var midState = await _fixture.ReadProjectInterviewReviewAsync("line", midUserId);
+        midState.SessionState.CurrentPhase.Should().Be(ProjectInterviewPhase.NarrowTemplateFamily);
+        midState.CurrentProjectDefinition.Should().BeNull("no review artifacts are produced");
+
+        using (var cancel = await _fixture.SendHighLevelLineTextAsync("/cancel", midUserId))
+        {
+            IsNullOrMissing(cancel.RootElement.GetProperty("data"), "error").Should().BeTrue();
+        }
+        (await _fixture.ReadProjectInterviewReviewAsync("line", midUserId)).SessionState.CurrentPhase
+            .Should().Be(ProjectInterviewPhase.Cancelled);
+    }
+
+    [Fact]
+    public async Task ApprovedInterview_AfterDecliningTheDraft_CanBeApprovedAgain()
+    {
+        var userId = $"line-proj-ok-n-ok-{Guid.NewGuid():N}";
+        using (await _fixture.CompleteProjectInterviewToReviewAsync(userId)) { }
+        using (await _fixture.SendHighLevelLineTextAsync("/ok", userId)) { }
+
+        using (var declined = await _fixture.SendHighLevelLineTextAsync("n", userId))
+        {
+            declined.RootElement.GetProperty("data").GetProperty("draft_cleared").GetBoolean().Should().BeTrue();
+        }
+        WithCoordinator(coordinator => coordinator.GetLineDraft(userId)).Should().BeNull();
+        (await _fixture.ReadProjectInterviewReviewAsync("line", userId)).SessionState.CurrentPhase
+            .Should().Be(ProjectInterviewPhase.AwaitBuildConfirmation);
+
+        using (var again = await _fixture.SendHighLevelLineTextAsync("/ok", userId))
+        {
+            var data = again.RootElement.GetProperty("data");
+            IsNullOrMissing(data, "error").Should().BeTrue("the approved design can be approved again: {0}", data);
+            GetProperty(data.GetProperty("draft"), "taskType").GetString().Should().Be("system_scaffold");
+        }
+
+        using var confirm = await _fixture.SendHighLevelLineTextAsync("y", userId);
+        confirm.RootElement.GetProperty("data").GetProperty("created_task").ValueKind.Should().Be(JsonValueKind.Object);
+        (await _fixture.ReadProjectInterviewReviewAsync("line", userId)).SessionState.CurrentPhase
+            .Should().Be(ProjectInterviewPhase.Confirmed);
+    }
+
+    [Fact]
+    public async Task ApprovedInterview_AfterTheDraftExpired_CanBeApprovedAgain()
+    {
+        var userId = $"line-proj-ok-expire-{Guid.NewGuid():N}";
+        using (await _fixture.CompleteProjectInterviewToReviewAsync(userId)) { }
+        using (await _fixture.SendHighLevelLineTextAsync("/ok", userId)) { }
+        ExpireDraft(userId);
+
+        using (var again = await _fixture.SendHighLevelLineTextAsync("/ok", userId))
+        {
+            var data = again.RootElement.GetProperty("data");
+            IsNullOrMissing(data, "error").Should().BeTrue("the approved design can be approved again: {0}", data);
+        }
+
+        using var confirm = await _fixture.SendHighLevelLineTextAsync("y", userId);
+        confirm.RootElement.GetProperty("data").GetProperty("created_task").ValueKind.Should().Be(JsonValueKind.Object);
+    }
+
+    [Fact]
+    public async Task ApprovedInterview_CanStillBeRevised_AndTheOldDraftIsWithdrawn()
+    {
+        var userId = $"line-proj-ok-revise-{Guid.NewGuid():N}";
+        using (await _fixture.CompleteProjectInterviewToReviewAsync(userId)) { }
+        var approvedVersion = (await _fixture.ReadProjectInterviewReviewAsync("line", userId)).CurrentVersion;
+        using (await _fixture.SendHighLevelLineTextAsync("/ok", userId)) { }
+
+        using (var revise = await _fixture.SendHighLevelLineTextAsync("/revise", userId))
+        {
+            IsNullOrMissing(revise.RootElement.GetProperty("data"), "error").Should().BeTrue();
+        }
+
+        WithCoordinator(coordinator => coordinator.GetLineDraft(userId)).Should().BeNull("y must not build the superseded version");
+        var revised = await _fixture.ReadProjectInterviewReviewAsync("line", userId);
+        revised.SessionState.CurrentPhase.Should().Be(ProjectInterviewPhase.AwaitUserReview);
+        revised.CurrentVersion.Should().BeGreaterThan(approvedVersion);
+    }
+
+    private void ExpireDraft(string userId)
+    {
+        using var scope = _fixture.Factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<BrokerDb>();
+        var entry = db.Query<SharedContextEntry>(
+                "SELECT * FROM shared_context_entries WHERE document_id = @docId ORDER BY version DESC LIMIT 1",
+                new { docId = $"hlm.draft.line.{userId}" })
+            .Single();
+        var draft = JsonNode.Parse(entry.ContentRef)!.AsObject();
+        draft["ExpiresAt"] = DateTime.UtcNow.AddMinutes(-1);
+        db.Execute(
+            "UPDATE shared_context_entries SET content_ref = @content WHERE entry_id = @entryId",
+            new { content = draft.ToJsonString(), entryId = entry.EntryId });
+    }
+
+    private List<BrokerTask> TasksSubmittedBy(string userId)
+    {
+        using var scope = _fixture.Factory.Services.CreateScope();
+        return scope.ServiceProvider.GetRequiredService<BrokerDb>()
+            .Query<BrokerTask>("SELECT * FROM broker_tasks WHERE submitted_by = @submittedBy", new { submittedBy = $"line:{userId}" });
     }
 
     [Fact]

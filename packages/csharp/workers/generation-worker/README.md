@@ -9,7 +9,7 @@
 | 能力 | route（代理工具名） | 行為 |
 |---|---|---|
 | `generation.catalog.query` | `query_component_catalog` | 轉呼叫 CLI 的 `catalog`，原樣回傳 JSON（型錄摘要的 overview、field_types、example、component 四節） |
-| `generation.definition.validate` | `validate_definition` | 轉呼叫 CLI 的 `validate`，原樣回傳 JSON；定義不通過時仍是成功的呼叫（`ok:false` 加結構化 errors），代理依錯誤修正 |
+| `generation.definition.validate` | `validate_definition` | 轉呼叫 CLI 的 `validate`，原樣回傳 JSON；定義不通過時仍是成功的呼叫（`ok:false` 加結構化 errors），代理依錯誤修正。結果超過 `MaxResultBytes` 時改回前幾筆錯誤與警告、`total_errors` 與 `truncated: true`（仍是成功的呼叫）。grant scope 帶 `max_pages` 時，選取的頁數超過它也回 `ok:false` 與 `MAX_PAGES_EXCEEDED` |
 | `generation.scaffold.generate` | `generate_scaffold` | CLI 的 `build`（先跑與 validate 相同的驗證）寫到工作目錄，再由 C# 以決定性方式打包成 zip |
 
 三個能力的定義以 `packages/csharp/broker/tool-specs/generation.*/tool.json` 為唯一來源，broker 啟動時同步成 capability。三個 route 都不在 broker 的程序內降級清單中：沒有這個 worker 時請求直接失敗，不會在 broker 程序內生成。

@@ -41,7 +41,7 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <tr>
 <td><code>generation.definition.validate</code></td>
 <td><code>validate_definition</code></td>
-<td>轉呼叫 CLI 的 <code>validate</code>，原樣回傳 JSON；定義不通過時仍是成功的呼叫（<code>ok:false</code> 加結構化 errors），代理依錯誤修正</td>
+<td>轉呼叫 CLI 的 <code>validate</code>，原樣回傳 JSON；定義不通過時仍是成功的呼叫（<code>ok:false</code> 加結構化 errors），代理依錯誤修正。結果超過 <code>MaxResultBytes</code> 時改回前幾筆錯誤與警告、<code>total_errors</code> 與 <code>truncated: true</code>（仍是成功的呼叫）。grant scope 帶 <code>max_pages</code> 時，選取的頁數超過它也回 <code>ok:false</code> 與 <code>MAX_PAGES_EXCEEDED</code></td>
 </tr>
 <tr>
 <td><code>generation.scaffold.generate</code></td>

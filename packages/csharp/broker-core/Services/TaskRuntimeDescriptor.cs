@@ -66,6 +66,20 @@ public sealed class TaskCapabilityGrantTemplate
     [JsonPropertyName("quota")]
     public int? Quota { get; set; }
 
+    /// <summary>
+    /// 配額的計算範圍：省略或 <c>session</c> 時每個 session 註冊都拿到完整的 <see cref="Quota"/>（既有行為）；
+    /// <see cref="TaskQuotaScope"/> 時以任務累計，同一任務的 session 重新註冊（容器重啟、session 過期後再註冊）
+    /// 只拿到這個任務尚未用掉的次數。
+    /// </summary>
+    [JsonPropertyName("quota_scope")]
+    public string? QuotaScope { get; set; }
+
+    /// <summary><see cref="QuotaScope"/> 的任務累計值。</summary>
+    public const string TaskQuotaScope = "task";
+
+    public bool IsTaskScopedQuota
+        => string.Equals(QuotaScope?.Trim(), TaskQuotaScope, StringComparison.OrdinalIgnoreCase);
+
     public string ResolveScopeOverride(string fallbackScope)
     {
         return Scope.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null

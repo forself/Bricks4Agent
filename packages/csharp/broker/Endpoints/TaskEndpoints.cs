@@ -1,5 +1,6 @@
 using Broker.Helpers;
 using Broker.Middleware;
+using BrokerCore.Models;
 using BrokerCore.Services;
 
 namespace Broker.Endpoints;
@@ -63,6 +64,14 @@ public static class TaskEndpoints
                 return Results.NotFound(ApiResponseHelper.Error("Task not found.", 404));
             }
 
+            // 以 token 綁定的任務取得存取權、但不是提交者的呼叫者（例如被指派到這個任務的代理）
+            // 拿不到提交者的識別資料；管理員與提交者看到完整資料列。
+            if (!BrokerAuthorization.IsAdmin(ctx) &&
+                !string.Equals(task.SubmittedBy, RequestBodyHelper.GetPrincipalId(ctx), StringComparison.Ordinal))
+            {
+                return Results.Ok(ApiResponseHelper.Success(WithoutSubmitter(task)));
+            }
+
             return Results.Ok(ApiResponseHelper.Success(task));
         });
 
@@ -93,4 +102,20 @@ public static class TaskEndpoints
             return Results.Ok(ApiResponseHelper.Success<object>(null, "Task cancelled."));
         });
     }
+
+    /// <summary>同一筆任務資料、但不含提交者（submitted_by 為空字串）。</summary>
+    internal static BrokerTask WithoutSubmitter(BrokerTask task) => new()
+    {
+        TaskId = task.TaskId,
+        TaskType = task.TaskType,
+        SubmittedBy = string.Empty,
+        RiskLevelValue = task.RiskLevelValue,
+        StateValue = task.StateValue,
+        ScopeDescriptor = task.ScopeDescriptor,
+        RuntimeDescriptor = task.RuntimeDescriptor,
+        AssignedPrincipalId = task.AssignedPrincipalId,
+        AssignedRoleId = task.AssignedRoleId,
+        CreatedAt = task.CreatedAt,
+        CompletedAt = task.CompletedAt
+    };
 }

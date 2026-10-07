@@ -17,7 +17,7 @@ import {
     SHELL_DIR,
     SUMMARY_VERSION
 } from './paths.mjs';
-import { computeSliceFieldTypes, describeFieldTypes, FIELD_TYPE_SUBSTITUTES } from './field-types.mjs';
+import { COMMON_TYPE_ALIASES, computeSliceFieldTypes, describeFieldTypes, FIELD_TYPE_SUBSTITUTES } from './field-types.mjs';
 import { hasOwn, isPlainObject, prettyJson, sha256Hex } from './json-util.mjs';
 import { LIMITS } from './validate-definition.mjs';
 
@@ -125,7 +125,8 @@ function buildFieldTypes(matrix) {
     return {
         types: describeFieldTypes(matrix, slice.allowed),
         not_supported: excluded,
-        use_instead: substitutes
+        use_instead: substitutes,
+        not_field_types: { ...COMMON_TYPE_ALIASES }
     };
 }
 

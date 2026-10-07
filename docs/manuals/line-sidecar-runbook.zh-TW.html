@@ -159,7 +159,7 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <p>目前 sidecar 會：</p>
 <ul>
 <li>
-<p>優先讀取 <code>ANTHROPIC_API_KEY</code>，並設定 <code>HighLevelLlm</code> / <code>LlmProxy</code> 為 <code>anthropic</code>、<code>claude-sonnet-4-6</code></p>
+<p>優先讀取 <code>ANTHROPIC_API_KEY</code>，並設定 <code>HighLevelLlm</code> / <code>LlmProxy</code> 為 <code>anthropic</code>、<code>claude-sonnet-4-6</code>；LlmProxy 改用雲端供應者時（含 OpenAI-compatible fallback）一併關閉 <code>HighLevelExecutionModelPolicy</code>，代理改用 <code>LlmProxy:DefaultModel</code></p>
 </li>
 <li>
 <p>若沒有 <code>ANTHROPIC_API_KEY</code>，才讀取這個檔案並注入 broker 的 <code>HighLevelLlm.ApiKey</code></p>
@@ -588,10 +588,10 @@ npm run signing:wdac-repair -- -Deploy
 <p>補充：</p>
 <ul>
 <li>
-<p><code>/proj</code> 與 <code>/ok</code> 需要 production 權限（會員層級，且管理員已開啟 production 任務）；基本註冊者會收到與 <code>/建立</code> 相同的權限不足回覆</p>
+<p><code>/proj</code>、<code>/ok</code>、<code>/revise</code>、訪談中的回答與 draft 確認（<code>y</code>）需要 production 權限（會員層級，且管理員已開啟 production 任務）；基本註冊者會收到與 <code>/建立</code> 相同的權限不足回覆，<code>/cancel</code> 不受限</p>
 </li>
 <li>
-<p><code>/ok</code> 只建立系統雛形 draft，使用者回 <code>y</code> 才建置，走與 <code>/建立</code> 相同的 draft 確認（專案名稱重查、升格閘、task、plan、handoff）</p>
+<p><code>/ok</code> 只建立系統雛形 draft，使用者回 <code>y</code> 才建置，走與 <code>/建立</code> 相同的 draft 確認（專案名稱重查、升格閘、task、plan、handoff）；回 <code>n</code> 或 draft 逾時後可再 <code>/ok</code> 或 <code>/revise</code></p>
 </li>
 <li>
 <p>回覆只寫專案資料夾名、封裝檔名與相對於受管根目錄的工作區位置，不寫主機絕對路徑</p>

@@ -485,7 +485,7 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\l
 </code></pre>
 <h3>8.5 專案訪談流程</h3>
 <p>專案訪談用於更結構化地收集需求並產生 artifact。</p>
-<p><code>/proj</code> 與 <code>/ok</code> 需要 production 權限：帳戶必須是會員（Tier 2），而且管理員已開啟 production 任務。基本註冊者（Tier 1）傳這兩個指令時，會收到與 <code>/建立</code> 相同的權限不足回覆，不會開始訪談，也不會建立 draft。</p>
+<p><code>/proj</code>、<code>/ok</code>、<code>/revise</code> 與訪談中的回答需要 production 權限：帳戶必須是會員（Tier 2），而且管理員已開啟 production 任務。基本註冊者（Tier 1）會收到與 <code>/建立</code> 相同的權限不足回覆，不會開始訪談、不會產生審查文件，也不會建立 draft；訪談中途權限被收回時，仍可用 <code>/cancel</code> 結束。確認 draft 時（回 <code>y</code>）也會再檢查一次權限。</p>
 <table>
 <thead>
 <tr>
@@ -538,7 +538,7 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\l
 <p>用 <code>/ok</code>、<code>/revise</code> 或 <code>/cancel</code> 決定下一步。</p>
 </li>
 <li>
-<p><code>/ok</code> 之後系統只建立系統雛形 draft 並列出摘要。回覆 <code>y</code> 才會建立 task / plan / handoff 並開始建置，回覆 <code>n</code> 取消。這一步與 <code>/建立</code> 的 draft 確認相同：專案名稱會再檢查一次，你的工作區若已有同名專案，系統會請你用 <code>#新名稱</code> 回覆。</p>
+<p><code>/ok</code> 之後系統只建立系統雛形 draft 並列出摘要。回覆 <code>y</code> 才會建立 task / plan / handoff 並開始建置，回覆 <code>n</code> 取消。這一步與 <code>/建立</code> 的 draft 確認相同：專案名稱會再檢查一次，你的工作區若已有同名專案，系統會請你用 <code>#新名稱</code> 回覆。回覆 <code>n</code> 或 draft 逾時後，已批准的設計還在：可以再傳 <code>/ok</code> 重新建立 draft，或用 <code>/revise</code> 修訂。</p>
 </li>
 </ol>
 <h3>8.6 使用者 Portal 前台</h3>

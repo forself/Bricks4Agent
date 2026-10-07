@@ -358,4 +358,107 @@ public sealed class GenerationIngestTests : IDisposable
             .Should().ContainSingle();
         Directory.EnumerateFiles(_env.DocumentsRoot).Should().BeEmpty();
     }
+
+    // ── generation-worker 忙碌時：在上限內等它空出來再分派同一個請求（配額只在分派前扣一次） ──
+
+    private static readonly TimeSpan[] NoDelays = { TimeSpan.Zero, TimeSpan.Zero, TimeSpan.Zero };
+
+    private static ExecutionResult NoWorker(string requestId, string capabilityId)
+        => ExecutionResult.Fail(requestId, $"[StrictMode] No available worker for capability '{capabilityId}'. Execution plane unavailable.");
+
+    [Theory]
+    [InlineData("generation.catalog.query", "query_component_catalog")]
+    [InlineData("generation.definition.validate", "validate_definition")]
+    public async Task BusyWorker_IsWaitedFor_ForTheGenerationQueries(string capabilityId, string route)
+    {
+        var requestId = IdGen.New("req");
+        var calls = 0;
+        var inner = new StubDispatcher(_ => ++calls < 3
+            ? NoWorker(requestId, capabilityId)
+            : WorkerOk(requestId, "{\"ok\":true}"));
+        var dispatcher = new GenerationIngestingDispatcher(inner, Ingestor(), NoDelays);
+
+        var result = await dispatcher.DispatchAsync(new ApprovedRequest
+        {
+            RequestId = requestId,
+            CapabilityId = capabilityId,
+            Route = route,
+            Payload = "{}",
+            Scope = "{}",
+            TaskId = IdGen.New("task")
+        });
+
+        result.Success.Should().BeTrue(result.ErrorMessage);
+        inner.Calls.Should().Be(3);
+    }
+
+    [Fact]
+    public async Task BusyWorker_IsWaitedFor_ThenThePackageIsIngested()
+    {
+        var taskId = _env.SeedRun();
+        var requestId = IdGen.New("req");
+        var (zipPath, sha, size) = _env.WriteWorkerPackage(taskId, requestId);
+        var calls = 0;
+        var inner = new StubDispatcher(_ => ++calls == 1
+            ? NoWorker(requestId, GenerationCapabilities.ScaffoldGenerate)
+            : WorkerOk(requestId, GovernedGenerationTestSupport.WorkerPayload(taskId, requestId, zipPath, sha, size)));
+        var dispatcher = new GenerationIngestingDispatcher(inner, Ingestor(), NoDelays);
+
+        var result = await dispatcher.DispatchAsync(Request(taskId, requestId));
+
+        result.Success.Should().BeTrue(result.ErrorMessage);
+        inner.Calls.Should().Be(2);
+        _env.Runs.Get(taskId)!.Status.Should().Be(GovernedGenerationRunStatus.Ingested);
+    }
+
+    [Fact]
+    public async Task BusyWorker_IsWaitedForOnlyUpToTheLimit()
+    {
+        var requestId = IdGen.New("req");
+        var inner = new StubDispatcher(_ => NoWorker(requestId, GenerationCapabilities.DefinitionValidate));
+        var dispatcher = new GenerationIngestingDispatcher(inner, Ingestor(), NoDelays);
+
+        var result = await dispatcher.DispatchAsync(new ApprovedRequest
+        {
+            RequestId = requestId,
+            CapabilityId = GenerationCapabilities.DefinitionValidate,
+            Route = GenerationCapabilities.ValidateRoute,
+            Payload = "{}",
+            Scope = "{}",
+            TaskId = IdGen.New("task")
+        });
+
+        result.Success.Should().BeFalse();
+        result.ErrorMessage.Should().Contain("No available worker");
+        inner.Calls.Should().Be(NoDelays.Length + 1);
+    }
+
+    [Fact]
+    public async Task WorkerRefusalsAndOtherRoutes_AreNotRetried()
+    {
+        var requestId = IdGen.New("req");
+        var refusing = new StubDispatcher(_ => new ExecutionResult
+        {
+            RequestId = requestId,
+            Success = false,
+            ErrorMessage = "No available worker in this answer, but the worker itself refused",
+            AnsweredByWorker = true
+        });
+        var validate = new ApprovedRequest
+        {
+            RequestId = requestId,
+            CapabilityId = GenerationCapabilities.DefinitionValidate,
+            Route = GenerationCapabilities.ValidateRoute,
+            Payload = "{}",
+            Scope = "{}",
+            TaskId = IdGen.New("task")
+        };
+        (await new GenerationIngestingDispatcher(refusing, Ingestor(), NoDelays).DispatchAsync(validate)).Success.Should().BeFalse();
+        refusing.Calls.Should().Be(1, "a worker's own refusal is final");
+
+        var other = new StubDispatcher(_ => NoWorker(requestId, "file.read"));
+        var read = new ApprovedRequest { RequestId = requestId, CapabilityId = "file.read", Route = "read_file", Payload = "{}", Scope = "{}", TaskId = IdGen.New("task") };
+        (await new GenerationIngestingDispatcher(other, Ingestor(), NoDelays).DispatchAsync(read)).Success.Should().BeFalse();
+        other.Calls.Should().Be(1, "other capabilities keep the function pool's fail-fast behaviour");
+    }
 }

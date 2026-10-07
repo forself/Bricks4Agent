@@ -147,7 +147,7 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <p>Current sidecar behavior:</p>
 <ul>
 <li>
-<p><code>start-sidecar-stack.ps1</code> prefers <code>ANTHROPIC_API_KEY</code> and configures broker <code>HighLevelLlm</code> / <code>LlmProxy</code> as <code>anthropic</code> with <code>claude-sonnet-4-6</code></p>
+<p><code>start-sidecar-stack.ps1</code> prefers <code>ANTHROPIC_API_KEY</code> and configures broker <code>HighLevelLlm</code> / <code>LlmProxy</code> as <code>anthropic</code> with <code>claude-sonnet-4-6</code>; whenever LlmProxy is switched to a hosted provider (including the OpenAI-compatible fallback) it also turns off <code>HighLevelExecutionModelPolicy</code>, so agents use <code>LlmProxy:DefaultModel</code></p>
 </li>
 <li>
 <p>if <code>ANTHROPIC_API_KEY</code> is absent, it reads this file and injects the key into broker <code>HighLevelLlm.ApiKey</code></p>
@@ -569,10 +569,10 @@ npm run signing:wdac-repair -- -Deploy
 <p>Important notes:</p>
 <ul>
 <li>
-<p><code>/proj</code> and <code>/ok</code> require the production permission (a member-tier account with production enabled by an administrator); a basic-tier account gets the same "cannot create production tasks" reply as <code>/建立</code></p>
+<p><code>/proj</code>, <code>/ok</code>, <code>/revise</code>, interview answers and the draft confirmation (<code>y</code>) require the production permission (a member-tier account with production enabled by an administrator); a basic-tier account gets the same "cannot create production tasks" reply as <code>/建立</code>, while <code>/cancel</code> stays available</p>
 </li>
 <li>
-<p><code>/ok</code> only creates a system scaffold draft; nothing is built until the user replies <code>y</code>, which goes through the same draft confirmation as <code>/建立</code> (project-name re-check, promotion gate, task, plan, handoff)</p>
+<p><code>/ok</code> only creates a system scaffold draft; nothing is built until the user replies <code>y</code>, which goes through the same draft confirmation as <code>/建立</code> (project-name re-check, promotion gate, task, plan, handoff); after <code>n</code> or an expired draft the user can send <code>/ok</code> again or <code>/revise</code></p>
 </li>
 <li>
 <p>replies name the project folder, package file, and workspace relative to the managed root; they never contain absolute host paths</p>

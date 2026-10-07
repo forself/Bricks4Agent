@@ -64,6 +64,22 @@ public sealed class GovernedGenerationPreparation
     public GovernedGenerationRequest Request { get; init; } = new();
 }
 
+/// <summary>受治理生成回給使用者的錯誤碼。</summary>
+public static class GovernedGenerationErrors
+{
+    /// <summary>前置條件不滿足（fail-closed）。</summary>
+    public const string Unavailable = "generation_unavailable";
+
+    /// <summary>代理無法啟動，任務已標為 Failed。</summary>
+    public const string LaunchFailed = "generation_launch_failed";
+
+    /// <summary>同一使用者已有進行中的生成。</summary>
+    public const string InProgress = "generation_in_progress";
+
+    /// <summary>全部進行中的生成已達上限。</summary>
+    public const string Busy = "generation_busy";
+}
+
 public sealed class GovernedGenerationLaunchResult
 {
     public bool Success { get; init; }
@@ -104,6 +120,7 @@ public sealed class GovernedGenerationLauncher
     private readonly BrokerDb _db;
     private readonly ILogger<GovernedGenerationLauncher> _logger;
     private readonly TimeProvider _time;
+    private readonly LlmProxyOptions _llmProxyOptions;
 
     public GovernedGenerationLauncher(
         GovernedGenerationOptions options,
@@ -113,7 +130,8 @@ public sealed class GovernedGenerationLauncher
         GovernedGenerationRunStore runs,
         BrokerDb db,
         ILogger<GovernedGenerationLauncher> logger,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        LlmProxyOptions? llmProxyOptions = null)
     {
         _options = options;
         _readiness = readiness;
@@ -123,6 +141,24 @@ public sealed class GovernedGenerationLauncher
         _db = db;
         _logger = logger;
         _time = timeProvider ?? TimeProvider.System;
+        _llmProxyOptions = llmProxyOptions ?? new LlmProxyOptions();
+    }
+
+    /// <summary>
+    /// 啟動前的名額檢查（任務建立之前呼叫）：同一使用者已有進行中的生成，或全部進行中的生成已達上限時，
+    /// 回傳給使用者的錯誤碼（<c>generation_in_progress</c> 或 <c>generation_busy</c>）；有名額時回傳 null。
+    /// 呼叫端要讓「檢查 → 建立執行紀錄」不與其他啟動交錯（coordinator 以單一鎖序列化受治理的啟動）。
+    /// </summary>
+    public string? CheckCapacity(string channel, string userId)
+    {
+        var open = _runs.ListOpen();
+        var mine = open.Count(run =>
+            string.Equals(run.Channel, channel, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(run.UserId, userId, StringComparison.Ordinal));
+        if (mine >= _options.ResolveMaxConcurrentRunsPerUser())
+            return GovernedGenerationErrors.InProgress;
+
+        return open.Count >= _options.ResolveMaxConcurrentRuns() ? GovernedGenerationErrors.Busy : null;
     }
 
     public async Task<bool> IsReadyAsync(CancellationToken cancellationToken)
@@ -165,7 +201,10 @@ public sealed class GovernedGenerationLauncher
     public static string BuildPrincipalId(string taskId)
         => "prn_" + (taskId.StartsWith("task_", StringComparison.Ordinal) ? taskId[5..] : taskId);
 
-    /// <summary>受治理任務的 scope：沿用 promoted scope，但不帶主機路徑（path_scope），因為它會隨 token 與 runtime spec 交給代理。</summary>
+    /// <summary>
+    /// 受治理任務的 scope：沿用 promoted scope，但拿掉代理用不到的主機路徑（path_scope）、發起使用者的識別資料
+    /// （origin_user_id）與 hlm 文件 id（execution_intent_document），因為 scope 會隨 token 與 runtime spec 交給代理。
+    /// </summary>
     public static string BuildGovernedScopeDescriptor(string promotedScopeDescriptor)
     {
         JsonObject scope;
@@ -178,14 +217,21 @@ public sealed class GovernedGenerationLauncher
             scope = new JsonObject();
         }
 
-        scope.Remove("path_scope");
+        foreach (var key in GovernedScopeOmittedKeys)
+            scope.Remove(key);
         scope["generation"] = SystemScaffoldModes.Governed.ToLowerInvariant();
         return scope.ToJsonString();
     }
 
+    private static readonly string[] GovernedScopeOmittedKeys = { "path_scope", "origin_user_id", "execution_intent_document" };
+
     /// <summary>
-    /// 任務建立之後：建立 AI 主體，把任務指派給它與 role_executor，runtimeDescriptor 加上三個 grant。
-    /// <paramref name="task"/> 會一併更新（後續 handoff 讀取的就是加上 grant 的 descriptor）。
+    /// 任務建立之後：建立 AI 主體，把任務指派給它與 role_executor，runtimeDescriptor 換成受治理任務的精簡版本。
+    /// <paramref name="task"/> 會一併更新（後續 handoff 讀取的就是這份 descriptor）。
+    ///
+    /// 任務資料列會經 <c>/tasks/query</c> 與 runtime spec 交給代理，因此 runtimeDescriptor 只保留代理需要的部分：
+    /// 三個 grant（scope 由 broker 寫入，配額以任務累計）、生成上限，以及（模型可由 LlmProxy 目前的供應者服務時）llm。
+    /// 受管路徑、發起使用者的識別資料、hlm 文件 id 與 scaffold 規格都不放；需求內容以淨化過的工作項交給代理。
     /// </summary>
     public GovernedGenerationPreparation Prepare(
         BrokerTask task,
@@ -209,36 +255,38 @@ public sealed class GovernedGenerationLauncher
             });
         }
 
-        JsonObject descriptor;
-        try
+        var descriptor = new JsonObject
         {
-            descriptor = JsonNode.Parse(promotedRuntimeDescriptor) as JsonObject ?? new JsonObject();
-        }
-        catch (JsonException)
-        {
-            descriptor = new JsonObject();
-        }
-
-        descriptor["capability_grants"] = new JsonArray
-        {
-            Grant(GenerationCapabilities.CatalogQuery, new JsonObject { ["routes"] = new JsonArray(GenerationCapabilities.CatalogRoute) }, GenerationCapabilities.CatalogQuota),
-            Grant(GenerationCapabilities.DefinitionValidate, new JsonObject { ["routes"] = new JsonArray(GenerationCapabilities.ValidateRoute) }, GenerationCapabilities.ValidateQuota),
-            Grant(GenerationCapabilities.ScaffoldGenerate, new JsonObject
+            ["capability_grants"] = new JsonArray
             {
-                ["routes"] = new JsonArray(GenerationCapabilities.GenerateRoute),
-                ["output_slot"] = task.TaskId,
-                ["package_name"] = packageName,
+                Grant(GenerationCapabilities.CatalogQuery, new JsonObject { ["routes"] = new JsonArray(GenerationCapabilities.CatalogRoute) }, GenerationCapabilities.CatalogQuota),
+                // validate 也帶頁數上限：worker 在驗證時就回報頁數過多，不必等到 generate。
+                Grant(GenerationCapabilities.DefinitionValidate, new JsonObject
+                {
+                    ["routes"] = new JsonArray(GenerationCapabilities.ValidateRoute),
+                    ["max_pages"] = maxPages
+                }, GenerationCapabilities.ValidateQuota),
+                Grant(GenerationCapabilities.ScaffoldGenerate, new JsonObject
+                {
+                    ["routes"] = new JsonArray(GenerationCapabilities.GenerateRoute),
+                    ["output_slot"] = task.TaskId,
+                    ["package_name"] = packageName,
+                    ["max_pages"] = maxPages,
+                    ["package"] = GenerationCapabilities.Package
+                }, GenerationCapabilities.GenerateQuota),
+            },
+            ["generation"] = new JsonObject
+            {
+                ["mode"] = SystemScaffoldModes.Governed.ToLowerInvariant(),
+                ["package"] = GenerationCapabilities.Package,
                 ["max_pages"] = maxPages,
-                ["package"] = GenerationCapabilities.Package
-            }, GenerationCapabilities.GenerateQuota),
+                ["max_iterations"] = _options.ResolveAgentMaxIterations()
+            }
         };
-        descriptor["generation"] = new JsonObject
-        {
-            ["mode"] = SystemScaffoldModes.Governed.ToLowerInvariant(),
-            ["package"] = GenerationCapabilities.Package,
-            ["max_pages"] = maxPages,
-            ["max_iterations"] = _options.ResolveAgentMaxIterations()
-        };
+
+        var llm = ResolveServableLlm(promotedRuntimeDescriptor);
+        if (llm != null)
+            descriptor["llm"] = llm;
 
         var runtimeDescriptor = descriptor.ToJsonString();
         _db.Execute(
@@ -297,7 +345,9 @@ public sealed class GovernedGenerationLauncher
             if (!brokerUrlOk)
                 throw new InvalidOperationException(brokerUrlError ?? "Agent broker URL is not configured.");
 
-            var model = ReadDefaultModel(task.RuntimeDescriptor);
+            // descriptor 沒有 llm（沒有推薦，或推薦的模型不是 LlmProxy 目前的供應者能服務的）時，
+            // 代理用 LlmProxy 的預設模型，與 broker 端 LlmProxy 實際採用的模型一致。
+            var model = ReadDefaultModel(task.RuntimeDescriptor) ?? NullIfBlank(_llmProxyOptions.DefaultModel);
             var spawned = await _containerLauncher.SpawnAsync(
                 new AgentSummary
                 {
@@ -334,8 +384,10 @@ public sealed class GovernedGenerationLauncher
                 task.TaskId, preparation.PrincipalId, spawned.ContainerId);
             return new GovernedGenerationLaunchResult { Success = true };
         }
-        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        catch (Exception ex)
         {
+            // 任務已建立：不論失敗原因（包含請求被取消），都把任務、主體、憑證與執行紀錄收乾淨，
+            // 不讓任務停在 Active、執行紀錄停在 launching，使用者再回 y 時才不會多一個代理。
             // 例外訊息可能含容器執行環境的輸出，只寫進日誌。
             _logger.LogError(ex, "Governed generation agent could not be started for task {TaskId}.", task.TaskId);
             _spawnService.DeactivateTaskAgent(task.TaskId, TaskState.Failed, "Governed generation agent could not be started.", Author);
@@ -345,7 +397,7 @@ public sealed class GovernedGenerationLauncher
                 run.FailureReason = "agent_launch_failed";
                 return true;
             });
-            return new GovernedGenerationLaunchResult { Success = false, ErrorCode = "generation_launch_failed" };
+            return new GovernedGenerationLaunchResult { Success = false, ErrorCode = GovernedGenerationErrors.LaunchFailed };
         }
     }
 
@@ -460,13 +512,71 @@ public sealed class GovernedGenerationLauncher
         return collapsed.Length > maxLength ? collapsed[..maxLength] + "…" : collapsed;
     }
 
+    // 配額以任務累計：代理容器重啟或 session 過期後重新註冊，只拿到這個任務尚未用掉的次數。
     private static JsonObject Grant(string capabilityId, JsonObject scope, int quota)
         => new()
         {
             ["capability_id"] = capabilityId,
             ["scope"] = scope,
-            ["quota"] = quota
+            ["quota"] = quota,
+            ["quota_scope"] = TaskCapabilityGrantTemplate.TaskQuotaScope
         };
+
+    /// <summary>
+    /// promoted descriptor 中 ExecutionModelPlanner 推薦的模型，只在型錄項目標明的供應者就是 LlmProxy 目前的供應者時採用
+    /// （寫成 llm.default_model、不允許覆寫）。沒有推薦、型錄項目沒有標明供應者或供應者不符時回傳 null，
+    /// 代理改用 LlmProxy:DefaultModel；否則 LlmProxy 會把另一個供應者的模型名稱送給目前的供應者，每次生成都失敗。
+    /// </summary>
+    private JsonObject? ResolveServableLlm(string promotedRuntimeDescriptor)
+    {
+        JsonObject? promoted;
+        try
+        {
+            promoted = JsonNode.Parse(promotedRuntimeDescriptor) as JsonObject;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+
+        var model = ReadString(promoted?["llm"] as JsonObject, "default_model");
+        if (string.IsNullOrWhiteSpace(model))
+            return null;
+
+        var requested = promoted!["requested_execution_model"] as JsonObject;
+        if (!string.Equals(ReadString(requested, "model"), model, StringComparison.Ordinal) ||
+            !IsSameProvider(ReadString(requested, "provider"), _llmProxyOptions.Provider))
+        {
+            _logger.LogWarning(
+                "Governed generation ignores the recommended model {Model}: the LlmProxy provider does not serve it; LlmProxy:DefaultModel is used instead.",
+                model);
+            return null;
+        }
+
+        return new JsonObject
+        {
+            ["default_model"] = model,
+            ["allow_model_override"] = false
+        };
+    }
+
+    private static string? ReadString(JsonObject? node, string name)
+        => node?[name] is JsonValue value && value.TryGetValue<string>(out var text) ? text.Trim() : null;
+
+    /// <summary>供應者名稱比對（不分大小寫；claude 與 anthropic 視為同一個）。沒有標明供應者時一律不相符。</summary>
+    public static bool IsSameProvider(string? catalogProvider, string? llmProxyProvider)
+    {
+        static string? Normalize(string? value)
+        {
+            var normalized = value?.Trim().ToLowerInvariant();
+            return normalized == "claude" ? "anthropic" : normalized;
+        }
+
+        var catalog = Normalize(catalogProvider);
+        return !string.IsNullOrEmpty(catalog) && string.Equals(catalog, Normalize(llmProxyProvider), StringComparison.Ordinal);
+    }
+
+    private static string? NullIfBlank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     private static string? ReadDefaultModel(string runtimeDescriptor)
     {

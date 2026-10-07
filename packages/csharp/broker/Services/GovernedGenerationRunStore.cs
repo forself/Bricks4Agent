@@ -20,7 +20,7 @@ public static class GovernedGenerationRunStatus
     /// <summary>已交付（產物紀錄、通知），任務完成。</summary>
     public const string Delivered = "delivered";
 
-    /// <summary>失敗（啟動失敗、逾時、代理未產出、交付失敗）。</summary>
+    /// <summary>失敗（啟動失敗、逾時、代理未產出、交付失敗、管理員停止）。</summary>
     public const string Failed = "failed";
 
     public static bool IsOpen(string? status)
@@ -69,6 +69,9 @@ public sealed class GovernedGenerationRun
     public string EvidenceDocumentId { get; set; } = string.Empty;
     public string ArtifactId { get; set; } = string.Empty;
     public string FailureReason { get; set; } = string.Empty;
+
+    /// <summary>交付時丟出例外的次數（ingested 之後）；達到上限即標為失敗。</summary>
+    public int DeliveryAttempts { get; set; }
 }
 
 /// <summary>

@@ -209,7 +209,7 @@ node tools/agent/agent.js --governed
 </tr>
 </tbody>
 </table>
-<p>For such a task (any generation grant, or task type <code>system_scaffold</code>) the system prompt adds the workflow (catalog, write, validate and fix, generate, report) and the limits taken from the grants: remaining quota per tool, the page limit and the iteration limit. It carries no secret, host path or output location. The payload stays <code>{ route, args, project_root }</code>.</p>
+<p>For such a task (any generation grant, or task type <code>system_scaffold</code>) the system prompt starts from a short generation base prompt (no component list and no project manual, since the manual's CLI examples and field type tables conflict with the catalog and the agent has no file tool) and adds the workflow (catalog, write, validate and fix, generate, report) and the limits taken from the grants: remaining quota per tool, the page limit and the iteration limit. It also explains that a validate result may be truncated (<code>truncated</code>, <code>total_errors</code>) and that a call failing with <code>No available worker</code> can be repeated with the same arguments. It carries no secret, host path or output location. The payload stays <code>{ route, args, project_root }</code>.</p>
 <h2>Legacy Direct LINE Listener</h2>
 <p><code>--line-listen</code> still exists, but it is not the canonical production path.</p>
 <p>Use it only for development experiments where you explicitly want the agent process to poll LINE directly. The repo's current production-style ingress path is the worker-side bridge under:</p>

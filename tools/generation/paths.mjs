@@ -37,6 +37,6 @@ export const REPO_SUBSET = Object.freeze([
 ]);
 
 export const GENERATOR_VERSION = 'definition-site/1.0.0';
-export const VALIDATOR_VERSION = 'definition-validator/1.0.0';
+export const VALIDATOR_VERSION = 'definition-validator/1.1.0';
 export const SUMMARY_VERSION = '1';
 export const PACKAGE_FORMAT = 'definition-site-v1';

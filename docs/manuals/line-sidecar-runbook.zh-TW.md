@@ -110,7 +110,7 @@
 
 目前 sidecar 會：
 
-- 優先讀取 `ANTHROPIC_API_KEY`，並設定 `HighLevelLlm` / `LlmProxy` 為 `anthropic`、`claude-sonnet-4-6`
+- 優先讀取 `ANTHROPIC_API_KEY`，並設定 `HighLevelLlm` / `LlmProxy` 為 `anthropic`、`claude-sonnet-4-6`；LlmProxy 改用雲端供應者時（含 OpenAI-compatible fallback）一併關閉 `HighLevelExecutionModelPolicy`，代理改用 `LlmProxy:DefaultModel`
 
 - 若沒有 `ANTHROPIC_API_KEY`，才讀取這個檔案並注入 broker 的 `HighLevelLlm.ApiKey`
 
@@ -497,9 +497,9 @@ broker 現在支援三種 Google Drive 身分：
 
 補充：
 
-- `/proj` 與 `/ok` 需要 production 權限（會員層級，且管理員已開啟 production 任務）；基本註冊者會收到與 `/建立` 相同的權限不足回覆
+- `/proj`、`/ok`、`/revise`、訪談中的回答與 draft 確認（`y`）需要 production 權限（會員層級，且管理員已開啟 production 任務）；基本註冊者會收到與 `/建立` 相同的權限不足回覆，`/cancel` 不受限
 
-- `/ok` 只建立系統雛形 draft，使用者回 `y` 才建置，走與 `/建立` 相同的 draft 確認（專案名稱重查、升格閘、task、plan、handoff）
+- `/ok` 只建立系統雛形 draft，使用者回 `y` 才建置，走與 `/建立` 相同的 draft 確認（專案名稱重查、升格閘、task、plan、handoff）；回 `n` 或 draft 逾時後可再 `/ok` 或 `/revise`
 
 - 回覆只寫專案資料夾名、封裝檔名與相對於受管根目錄的工作區位置，不寫主機絕對路徑
 

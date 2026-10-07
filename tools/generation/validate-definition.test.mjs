@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { GOLDEN_EXAMPLE_PATH, VALIDATOR_VERSION } from './paths.mjs';
-import { LIMITS, validateRequest } from './validate-definition.mjs';
+import { LIMITS, MAX_REPORTED_ISSUES, validateRequest } from './validate-definition.mjs';
 
 const goldenText = readFileSync(GOLDEN_EXAMPLE_PATH, 'utf8');
 const golden = () => JSON.parse(goldenText);
@@ -262,4 +262,83 @@ test('the request envelope is strict about keys, page_ids and title', async () =
     assertRejected(await validateRequest({ template: golden(), page_ids: [] }), 'PAGE_IDS_INVALID');
     assertRejected(await validateRequest({ template: golden(), title: 'a\u0007b' }), 'TITLE_INVALID');
     assert.equal((await validateRequest({ template: golden(), page_ids: null, title: '聯絡人' })).ok, true);
+});
+
+test('datetime and file are closed in this slice and point to open substitutes', async () => {
+    for (const [type, substitute] of [['datetime', 'date'], ['file', 'text']]) {
+        const template = golden();
+        formFields(template)[4].type = type;
+        const error = assertRejected(await validateRequest({ template }), 'FIELD_TYPE_UNSUPPORTED', 'definitions.pages[2].definition.fields[4].type');
+        assert.match(error.hint, new RegExp(`Use "${substitute}" instead`));
+    }
+});
+
+test('programming type names are rejected with the matching field type in the hint', async () => {
+    for (const [type, substitute] of [['string', 'text'], ['boolean', 'checkbox'], ['integer', 'number']]) {
+        const template = golden();
+        formFields(template)[0].type = type;
+        const error = assertRejected(await validateRequest({ template }), 'FIELD_TYPE_UNSUPPORTED', 'fields[0].type');
+        assert.match(error.hint, new RegExp(`Use "${substitute}" instead`));
+    }
+});
+
+// 12 頁 × 60 欄，每個欄位多兩個未知鍵：1,440 筆相同性質的錯誤。
+function systematicErrorTemplate(fieldFor) {
+    const pages = Array.from({ length: LIMITS.maxPages }, (_, pageIndex) => ({
+        id: `page-${pageIndex}`,
+        definition: {
+            name: `Item${pageIndex}FormPage`,
+            type: 'form',
+            fields: Array.from({ length: LIMITS.maxFieldsPerPage }, (_, fieldIndex) => fieldFor(pageIndex, fieldIndex)),
+            api: { get: '/api/items', create: '/api/items', update: '/api/items' }
+        }
+    }));
+    return { kind: 'definition-template', version: '0.1.0', definitions: { pages } };
+}
+
+test('a systematic error is reported once with its count, inside the response budget', async () => {
+    const template = systematicErrorTemplate((pageIndex, fieldIndex) => ({
+        name: `field${fieldIndex}`,
+        type: 'text',
+        label: `欄位 ${fieldIndex}`,
+        placeholder: 'x',
+        helpText: 'y'
+    }));
+    const result = await validateRequest({ template });
+
+    assert.equal(result.ok, false);
+    assert.ok(result.total_errors >= LIMITS.maxPages * LIMITS.maxFieldsPerPage * 2, `total_errors ${result.total_errors}`);
+    assert.equal(result.truncated, false);
+    const unknown = result.errors.filter(entry => entry.code === 'UNKNOWN_KEY');
+    assert.equal(unknown.length, 1, JSON.stringify(result.errors));
+    assert.equal(unknown[0].path, 'definitions.pages[0].definition.fields[0].placeholder');
+    assert.match(unknown[0].message, /"placeholder", "helpText"/);
+    assert.match(unknown[0].message, /occurs at 1440 paths/);
+    assert.equal(result.errors.filter(entry => /Allowed keys:/.test(entry.hint)).length, 1, 'the allowed key list appears once');
+    for (const entry of result.errors) {
+        assert.deepEqual(Object.keys(entry).sort(), ['code', 'hint', 'message', 'path']);
+    }
+    assert.ok(Buffer.byteLength(JSON.stringify(result)) < 16 * 1024, `response is ${Buffer.byteLength(JSON.stringify(result))} bytes`);
+});
+
+test('many distinct errors are capped and flagged as truncated', async () => {
+    const template = systematicErrorTemplate((pageIndex, fieldIndex) => ({
+        name: `bad-${pageIndex}-${fieldIndex}`,
+        type: 'text',
+        label: `欄位 ${fieldIndex}`
+    }));
+    const result = await validateRequest({ template });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.errors.length, MAX_REPORTED_ISSUES);
+    assert.equal(result.truncated, true);
+    assert.ok(result.total_errors > MAX_REPORTED_ISSUES);
+    assert.ok(Buffer.byteLength(JSON.stringify(result)) < 64 * 1024, `response is ${Buffer.byteLength(JSON.stringify(result))} bytes`);
+});
+
+test('a passing result carries no truncation fields', async () => {
+    const result = await validateRequest({ template: golden() });
+    assert.equal(result.ok, true);
+    assert.equal('total_errors' in result, false);
+    assert.equal('truncated' in result, false);
 });

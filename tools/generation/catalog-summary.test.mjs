@@ -79,12 +79,19 @@ test('overview is the default section and field_types lists only open types', ()
     assert.ok(overview.content.page_definition.type.includes('list'));
     const fieldTypes = queryCatalog({ section: 'field_types' }, summary).content;
     const open = fieldTypes.types.map(entry => entry.type);
-    assert.equal(open.length, 22);
-    for (const closed of ['tel', 'slider', 'richtext', 'address']) {
+    assert.equal(open.length, 20);
+    for (const closed of ['tel', 'slider', 'richtext', 'address', 'datetime', 'file']) {
         assert.ok(!open.includes(closed));
         assert.ok(fieldTypes.not_supported.includes(closed));
-        assert.ok(fieldTypes.use_instead[closed]);
+        assert.ok(open.includes(fieldTypes.use_instead[closed]), `${closed} substitute must be open`);
     }
+    for (const [alias, type] of Object.entries(fieldTypes.not_field_types)) {
+        assert.ok(!open.includes(alias), `${alias} is not a field type`);
+        assert.ok(open.includes(type), `${alias} maps to an open field type`);
+    }
+    assert.equal(fieldTypes.not_field_types.string, 'text');
+    assert.equal(fieldTypes.not_field_types.boolean, 'checkbox');
+    assert.equal(fieldTypes.not_field_types.integer, 'number');
 });
 
 test('component lookups return one catalog entry or COMPONENT_NOT_FOUND', () => {

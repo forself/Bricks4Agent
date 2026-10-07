@@ -48,7 +48,7 @@ public static class PlanEndpoints
             if (!TryRequirePlanAccess(ctx, plan, broker, out var denied))
                 return denied;
 
-            return Results.Ok(ApiResponseHelper.Success(plan));
+            return Results.Ok(ApiResponseHelper.Success(ForCaller(ctx, plan)));
         });
 
         // ── 新增節點 ──
@@ -198,7 +198,7 @@ public static class PlanEndpoints
 
             return Results.Ok(ApiResponseHelper.Success(new
             {
-                plan,
+                plan = ForCaller(ctx, plan),
                 nodes = nodes.OrderBy(n => n.Ordinal).ToList(),
                 edges,
                 checkpoints,
@@ -220,6 +220,33 @@ public static class PlanEndpoints
     /// 計畫屬於某個任務：只允許該任務的擁有者（或管理員）操作。
     /// 計畫不存在時不在此判斷，維持各端點原本的「找不到」處理。
     /// </summary>
+    /// <summary>
+    /// 以 token 綁定的任務取得存取權、但不是提交者的呼叫者（例如被指派到這個任務的代理）看不到提交者的識別資料；
+    /// 管理員與提交者看到完整的計畫。
+    /// </summary>
+    private static Plan ForCaller(HttpContext ctx, Plan plan)
+    {
+        if (BrokerAuthorization.IsAdmin(ctx) ||
+            string.Equals(plan.SubmittedBy, RequestBodyHelper.GetPrincipalId(ctx), StringComparison.Ordinal))
+        {
+            return plan;
+        }
+
+        return new Plan
+        {
+            PlanId = plan.PlanId,
+            TaskId = plan.TaskId,
+            SubmittedBy = string.Empty,
+            Title = plan.Title,
+            Description = plan.Description,
+            StateValue = plan.StateValue,
+            TotalNodes = plan.TotalNodes,
+            CompletedNodes = plan.CompletedNodes,
+            CreatedAt = plan.CreatedAt,
+            UpdatedAt = plan.UpdatedAt
+        };
+    }
+
     private static bool TryRequirePlanAccess(HttpContext ctx, Plan? plan, IBrokerService broker, out IResult denied)
     {
         if (plan == null)

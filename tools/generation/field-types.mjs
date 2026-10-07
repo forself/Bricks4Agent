@@ -44,6 +44,8 @@ export function computeFieldTypeWhitelist(matrix = readJsonFile(MATRIX_PATH), pa
 /**
  * 交集內、但目前的執行期渲染路徑（DynamicPageRenderer + FieldResolver）在無後端原型中無法使用的型別。
  * 由 tools/scripts/definition-site-smoke.mjs 在瀏覽器逐一實測得出；修正對應元件或提供資料來源後再移除。
+ * datetime：輸入元件的值是 {date,time} 物件，明細頁顯示與再編輯的往返都還不支援。
+ * file：上傳元件沒有 getValue，表單不會收集也不會保存它的值。
  */
 export const RUNTIME_BLOCKED_FIELD_TYPES = Object.freeze({
     richtext: 'the field renderer cannot mount the rich text editor yet',
@@ -51,7 +53,9 @@ export const RUNTIME_BLOCKED_FIELD_TYPES = Object.freeze({
     image: 'the field renderer cannot mount the image viewer yet',
     address: 'needs a region data loader that a backend-less prototype does not have',
     addresslist: 'needs a region data loader that a backend-less prototype does not have',
-    organization: 'needs an organisation unit loader that a backend-less prototype does not have'
+    organization: 'needs an organisation unit loader that a backend-less prototype does not have',
+    datetime: 'the detail page and re-editing cannot show the combined date and time value yet',
+    file: 'the prototype form does not collect or keep file values'
 });
 
 /**
@@ -81,11 +85,27 @@ export const FIELD_TYPE_SUBSTITUTES = Object.freeze({
     geolocation: 'text',
     weather: 'text',
     richtext: 'textarea',
-    canvas: 'file',
-    image: 'file',
+    canvas: 'textarea',
+    image: 'text',
     address: 'textarea',
     addresslist: 'textarea',
-    organization: 'select'
+    organization: 'select',
+    datetime: 'date',
+    file: 'text'
+});
+
+/**
+ * 常見的程式語言型別名稱（不是欄位型別）對應的欄位型別：模型常寫成 string、boolean、integer，
+ * 被拒時的 hint 直接給出替代，不必再查一次型錄。
+ */
+export const COMMON_TYPE_ALIASES = Object.freeze({
+    string: 'text',
+    boolean: 'checkbox',
+    bool: 'checkbox',
+    integer: 'number',
+    int: 'number',
+    decimal: 'number',
+    float: 'number'
 });
 
 const TEXT_LIMITS = ['maxLength'];
@@ -114,7 +134,7 @@ export const FIELD_TYPE_NOTES = {
     canvas: { note: 'free drawing board', validation: [] },
     color: { note: 'colour picker', validation: [] },
     image: { note: 'image viewer', validation: [] },
-    file: { note: 'file picker; files stay in the browser in this prototype', validation: ITEM_LIMITS },
+    file: { note: 'file picker; the prototype form does not keep file values', validation: ITEM_LIMITS },
     address: { note: 'postal address with region selectors', validation: [] },
     addresslist: { note: 'repeatable postal addresses', validation: ITEM_LIMITS },
     chained: { note: 'dependent selects; not configurable in this slice, prefer select', validation: [] },

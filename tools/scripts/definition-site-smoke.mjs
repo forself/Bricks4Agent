@@ -339,6 +339,9 @@ async function allTypesScenario(browser, baseUrl, template) {
         const detailCount = await page.locator('.dynamic-detail__field').count();
         const expectedDetail = fields.filter(field => field.type !== 'hidden').length;
         check(`Detail renders ${expectedDetail} stored values for all types`, detailCount === expectedDetail, `got ${detailCount}`);
+        // 每種開放型別存下的值在明細頁都要顯示成文字（例如 {date,time} 這類物件值不得變成 [object Object]）。
+        const detailText = await page.locator('.dynamic-detail').innerText();
+        check('Detail shows every open type as text, never a raw object', !detailText.includes('[object'), detailText);
         audits.push(['all-types detail', await domAudit(page)]);
 
         await page.locator('.dynamic-detail__footer button', { hasText: '編輯' }).click();

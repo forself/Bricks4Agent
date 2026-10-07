@@ -128,7 +128,7 @@ public static class SessionEndpoints
                 return registration.Reject("credential_revoked", credential);
             }
 
-            var plannedGrants = BuildGrantPlan(task, role, capabilityCatalog);
+            var plannedGrants = BuildGrantPlan(task, role, capabilityCatalog, db);
             var grantedCapabilityIds = plannedGrants
                 .Select(grant => grant.CapabilityId)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -411,7 +411,7 @@ public static class SessionEndpoints
         return ip.IsIPv4MappedToIPv6 && System.Net.IPAddress.IsLoopback(ip.MapToIPv4());
     }
 
-    private static GrantPlanEntry[] BuildGrantPlan(BrokerTask task, Role role, ICapabilityCatalog capabilityCatalog)
+    private static GrantPlanEntry[] BuildGrantPlan(BrokerTask task, Role role, ICapabilityCatalog capabilityCatalog, BrokerDb db)
     {
         var descriptor = TaskRuntimeDescriptor.Parse(task.RuntimeDescriptor);
         var fallbackScope = string.IsNullOrWhiteSpace(task.ScopeDescriptor) ? "{}" : task.ScopeDescriptor;
@@ -423,7 +423,7 @@ public static class SessionEndpoints
                 .Select(template => new GrantPlanEntry(
                     template.CapabilityId,
                     template.ResolveScopeOverride(fallbackScope),
-                    template.ResolveQuota()))
+                    ResolvePlannedQuota(template, task.TaskId, db)))
                 .ToArray();
         }
 
@@ -439,6 +439,32 @@ public static class SessionEndpoints
         return GetDefaultCapabilities(role, capabilityCatalog)
             .Select(capabilityId => new GrantPlanEntry(capabilityId, fallbackScope, -1))
             .ToArray();
+    }
+
+    /// <summary>
+    /// 新 session 的配額。以任務累計（<c>quota_scope: task</c>）時，扣掉這個任務先前各 session 已經用掉的次數：
+    /// 已消耗配額的請求（分派過的 Dispatched、Succeeded、Failed）都算，所以代理容器重啟或 session 過期後重新註冊，
+    /// 不會拿到新的一份配額。其他情況維持每個 session 一份完整配額。
+    /// </summary>
+    internal static int ResolvePlannedQuota(TaskCapabilityGrantTemplate template, string taskId, BrokerDb db)
+    {
+        var quota = template.ResolveQuota();
+        if (quota < 0 || !template.IsTaskScopedQuota)
+            return quota;
+
+        var used = db.Scalar<long>(
+            @"SELECT COUNT(*) FROM execution_requests
+              WHERE task_id = @taskId AND capability_id = @capabilityId
+                AND execution_state IN (@dispatched, @succeeded, @failed)",
+            new
+            {
+                taskId,
+                capabilityId = template.CapabilityId,
+                dispatched = (int)ExecutionState.Dispatched,
+                succeeded = (int)ExecutionState.Succeeded,
+                failed = (int)ExecutionState.Failed
+            });
+        return (int)Math.Max(0, quota - used);
     }
 
     private static string[] GetDefaultCapabilities(Role role, ICapabilityCatalog capabilityCatalog)

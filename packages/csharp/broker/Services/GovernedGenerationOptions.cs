@@ -54,14 +54,32 @@ public sealed class GovernedGenerationOptions
     /// <summary>代理的模型回合上限（AGENT_MAX_ITERATIONS）。</summary>
     public int AgentMaxIterations { get; set; } = 12;
 
-    /// <summary>每個原型的頁數上限（寫進 generate 的 grant scope）。</summary>
-    public int MaxPages { get; set; } = 12;
+    /// <summary>
+    /// 每個原型的頁數上限（寫進 generate 的 grant scope）。
+    /// 生成器的驗證固定最多 <see cref="GeneratorMaxPages"/> 頁，所以設定值會限制在 1～<see cref="GeneratorMaxPages"/>。
+    /// </summary>
+    public int MaxPages { get; set; } = GeneratorMaxPages;
+
+    /// <summary>生成器驗證（tools/generation 的 LIMITS.maxPages）接受的最多頁數。</summary>
+    public const int GeneratorMaxPages = 12;
 
     /// <summary>交付與 watchdog 的檢查間隔（秒）。</summary>
     public int WatchdogIntervalSeconds { get; set; } = 10;
 
     /// <summary>broker 接受的 zip 大小上限（位元組）。</summary>
     public long MaxPackageBytes { get; set; } = 256L * 1024 * 1024;
+
+    /// <summary>
+    /// 全部使用者合計、同時進行中的受治理生成上限（預設 2）。
+    /// 要小於代理容器的 <c>MaxContainersPerType</c>，才不會讓生成占滿與 <c>/agents/spawn</c> 共用的代理名額。
+    /// </summary>
+    public int MaxConcurrentRuns { get; set; } = 2;
+
+    /// <summary>同一位使用者同時進行中的受治理生成上限（預設 1）。</summary>
+    public int MaxConcurrentRunsPerUser { get; set; } = 1;
+
+    /// <summary>已收下的產物交付時遇到例外的重試次數上限（含第一次）；用完就把任務標為失敗並通知使用者。</summary>
+    public int MaxDeliveryAttempts { get; set; } = 3;
 
     /// <summary>
     /// 解析後的輸出根目錄：未設定或不是絕對路徑時回傳 null（就緒檢查視為未就緒）。
@@ -81,9 +99,15 @@ public sealed class GovernedGenerationOptions
 
     public int ResolveAgentMaxIterations() => Math.Clamp(AgentMaxIterations, 1, 50);
 
-    public int ResolveMaxPages() => Math.Clamp(MaxPages, 1, 100);
+    public int ResolveMaxPages() => Math.Clamp(MaxPages, 1, GeneratorMaxPages);
 
     public TimeSpan WatchdogInterval => TimeSpan.FromSeconds(Math.Clamp(WatchdogIntervalSeconds, 1, 300));
+
+    public int ResolveMaxConcurrentRuns() => Math.Clamp(MaxConcurrentRuns, 1, 50);
+
+    public int ResolveMaxConcurrentRunsPerUser() => Math.Clamp(MaxConcurrentRunsPerUser, 1, 10);
+
+    public int ResolveMaxDeliveryAttempts() => Math.Clamp(MaxDeliveryAttempts, 1, 20);
 }
 
 /// <summary>受治理生成的三個能力（以 tool-spec 為唯一來源；這裡只有 id、route 與設計 §5 的配額）。</summary>

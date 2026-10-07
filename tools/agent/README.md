@@ -214,7 +214,7 @@ When the session holds the generation grants, the agent has three tools that map
 | `validate_definition` | `generation.definition.validate` | Validate a DefinitionTemplate; `ok: false` comes with structured errors to fix |
 | `generate_scaffold` | `generation.scaffold.generate` | Generate and package the prototype from the validated template; the broker decides the output location |
 
-For such a task (any generation grant, or task type `system_scaffold`) the system prompt adds the workflow (catalog, write, validate and fix, generate, report) and the limits taken from the grants: remaining quota per tool, the page limit and the iteration limit. It carries no secret, host path or output location. The payload stays `{ route, args, project_root }`.
+For such a task (any generation grant, or task type `system_scaffold`) the system prompt starts from a short generation base prompt (no component list and no project manual, since the manual's CLI examples and field type tables conflict with the catalog and the agent has no file tool) and adds the workflow (catalog, write, validate and fix, generate, report) and the limits taken from the grants: remaining quota per tool, the page limit and the iteration limit. It also explains that a validate result may be truncated (`truncated`, `total_errors`) and that a call failing with `No available worker` can be repeated with the same arguments. It carries no secret, host path or output location. The payload stays `{ route, args, project_root }`.
 
 ## Legacy Direct LINE Listener
 

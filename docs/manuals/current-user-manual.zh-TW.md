@@ -357,7 +357,7 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\l
 
 專案訪談用於更結構化地收集需求並產生 artifact。
 
-`/proj` 與 `/ok` 需要 production 權限：帳戶必須是會員（Tier 2），而且管理員已開啟 production 任務。基本註冊者（Tier 1）傳這兩個指令時，會收到與 `/建立` 相同的權限不足回覆，不會開始訪談，也不會建立 draft。
+`/proj`、`/ok`、`/revise` 與訪談中的回答需要 production 權限：帳戶必須是會員（Tier 2），而且管理員已開啟 production 任務。基本註冊者（Tier 1）會收到與 `/建立` 相同的權限不足回覆，不會開始訪談、不會產生審查文件，也不會建立 draft；訪談中途權限被收回時，仍可用 `/cancel` 結束。確認 draft 時（回 `y`）也會再檢查一次權限。
 
 | 指令 | 用途 |
 |---|---|
@@ -380,7 +380,7 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\l
 
 5. 用 `/ok`、`/revise` 或 `/cancel` 決定下一步。
 
-6. `/ok` 之後系統只建立系統雛形 draft 並列出摘要。回覆 `y` 才會建立 task / plan / handoff 並開始建置，回覆 `n` 取消。這一步與 `/建立` 的 draft 確認相同：專案名稱會再檢查一次，你的工作區若已有同名專案，系統會請你用 `#新名稱` 回覆。
+6. `/ok` 之後系統只建立系統雛形 draft 並列出摘要。回覆 `y` 才會建立 task / plan / handoff 並開始建置，回覆 `n` 取消。這一步與 `/建立` 的 draft 確認相同：專案名稱會再檢查一次，你的工作區若已有同名專案，系統會請你用 `#新名稱` 回覆。回覆 `n` 或 draft 逾時後，已批准的設計還在：可以再傳 `/ok` 重新建立 draft，或用 `/revise` 修訂。
 
 ### 8.6 使用者 Portal 前台
 

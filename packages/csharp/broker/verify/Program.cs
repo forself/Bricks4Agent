@@ -1894,6 +1894,11 @@ try
 
         var projectNamed = await coordinator.ProcessLineMessageAsync("line-user-a", "#VerifySite");
         AssertTrue(projectNamed.Draft?.ProjectName == "VerifySite", "project-name command updates production draft");
+        coordinator.ReviewLineUserRegistration("line-user-a", "demote", "verify demotion before confirmation");
+        var demotedConfirm = await coordinator.ProcessLineMessageAsync("line-user-a", "confirm");
+        AssertTrue(demotedConfirm.Error == "production_disabled" && demotedConfirm.CreatedTask == null, "a user demoted after the draft cannot confirm it");
+        AssertTrue(coordinator.GetLineDraft("line-user-a") != null, "the draft stays when confirmation is denied");
+        coordinator.ReviewLineUserRegistration("line-user-a", "promote", "verify production access");
         var confirmedDraft = await coordinator.ProcessLineMessageAsync("line-user-a", "confirm");
         AssertTrue(confirmedDraft.CreatedTask != null, "confirm creates broker task");
         using var runtimeDescriptorDoc = JsonDocument.Parse(confirmedDraft.CreatedTask!.RuntimeDescriptor);
@@ -2013,11 +2018,15 @@ try
         AssertTrue(interviewApproved.CreatedTask == null, "/ok does not create a task before confirmation");
         AssertTrue(!Directory.Exists(interviewApproved.Draft!.ManagedPaths.ProjectRoot), "/ok does not build the project before confirmation");
         AssertTrue(interviewApproved.FollowUpMessages != null && interviewApproved.FollowUpMessages.Contains("y"), "/ok draft exposes the y confirm follow-up");
+        var approvedInterview = await coordinatorProjectInterviewStateService.LoadTaskDocumentAsync("line", "line-interview-user", CancellationToken.None);
+        AssertTrue(approvedInterview.SessionState.CurrentPhase == ProjectInterviewPhase.AwaitBuildConfirmation, "/ok leaves the interview awaiting build confirmation");
         var interviewConfirmed = await coordinator.ProcessLineMessageAsync("line-interview-user", "y");
         AssertTrue(interviewConfirmed.CreatedTask?.TaskType == "system_scaffold", "confirming the /ok draft creates a system_scaffold task");
         AssertTrue(interviewConfirmed.Handoff != null, "confirming the /ok draft writes a handoff");
         AssertTrue(interviewConfirmed.Reply.Contains("已生成並封裝系統雛形", StringComparison.Ordinal), "confirming the /ok draft builds through the legacy scaffold path");
         AssertTrue(!interviewConfirmed.Reply.Contains(verifyAccessRoot, StringComparison.OrdinalIgnoreCase), "interview build reply does not expose host paths");
+        var builtInterview = await coordinatorProjectInterviewStateService.LoadTaskDocumentAsync("line", "line-interview-user", CancellationToken.None);
+        AssertTrue(builtInterview.SessionState.CurrentPhase == ProjectInterviewPhase.Confirmed, "the interview is confirmed once its build task exists");
 
         // Governed：確認 system_scaffold draft 後改由受控代理經生成能力產出；broker 程序內不寫出檔案，
         // 立即回覆「已受理」。前置條件不滿足時 fail-closed，不建立任務也不退回程序內生成。

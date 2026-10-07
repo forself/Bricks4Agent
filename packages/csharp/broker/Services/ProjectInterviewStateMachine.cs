@@ -7,9 +7,10 @@ public sealed class ProjectInterviewStateMachine
         {
             (ProjectInterviewPhase.Idle, ProjectInterviewCommand.StartProjectInterview)
                 => state with { CurrentPhase = ProjectInterviewPhase.CollectProjectName },
-            (ProjectInterviewPhase.AwaitUserReview, ProjectInterviewCommand.Approve)
-                => state with { CurrentPhase = ProjectInterviewPhase.Confirmed },
-            (ProjectInterviewPhase.AwaitUserReview, ProjectInterviewCommand.Revise)
+            // 批准只把設計交給建置確認（draft 等待 y）；建置任務建立後才以 BuildConfirmed 進入 Confirmed。
+            (ProjectInterviewPhase.AwaitUserReview or ProjectInterviewPhase.AwaitBuildConfirmation, ProjectInterviewCommand.Approve)
+                => state with { CurrentPhase = ProjectInterviewPhase.AwaitBuildConfirmation },
+            (ProjectInterviewPhase.AwaitUserReview or ProjectInterviewPhase.AwaitBuildConfirmation, ProjectInterviewCommand.Revise)
                 => state with { CurrentPhase = ProjectInterviewPhase.ReviseRequested },
             (_, ProjectInterviewCommand.Cancel)
                 => state with { CurrentPhase = ProjectInterviewPhase.Cancelled },
@@ -29,6 +30,8 @@ public sealed class ProjectInterviewStateMachine
                 => state with { CurrentPhase = ProjectInterviewPhase.CollectTemplateRequirements },
             (ProjectInterviewPhase.ReviseRequested, ProjectInterviewAdvanceReason.RevisionCaptured)
                 => state with { CurrentPhase = ProjectInterviewPhase.CollectTemplateRequirements },
+            (ProjectInterviewPhase.AwaitBuildConfirmation, ProjectInterviewAdvanceReason.BuildConfirmed)
+                => state with { CurrentPhase = ProjectInterviewPhase.Confirmed },
             _ => throw new InvalidOperationException($"Advance {reason} not allowed from {state.CurrentPhase}.")
         };
 }

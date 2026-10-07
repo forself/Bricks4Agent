@@ -104,7 +104,7 @@ File:
 
 Current sidecar behavior:
 
-- `start-sidecar-stack.ps1` prefers `ANTHROPIC_API_KEY` and configures broker `HighLevelLlm` / `LlmProxy` as `anthropic` with `claude-sonnet-4-6`
+- `start-sidecar-stack.ps1` prefers `ANTHROPIC_API_KEY` and configures broker `HighLevelLlm` / `LlmProxy` as `anthropic` with `claude-sonnet-4-6`; whenever LlmProxy is switched to a hosted provider (including the OpenAI-compatible fallback) it also turns off `HighLevelExecutionModelPolicy`, so agents use `LlmProxy:DefaultModel`
 
 - if `ANTHROPIC_API_KEY` is absent, it reads this file and injects the key into broker `HighLevelLlm.ApiKey`
 
@@ -486,9 +486,9 @@ Current happy-path sequence:
 
 Important notes:
 
-- `/proj` and `/ok` require the production permission (a member-tier account with production enabled by an administrator); a basic-tier account gets the same "cannot create production tasks" reply as `/建立`
+- `/proj`, `/ok`, `/revise`, interview answers and the draft confirmation (`y`) require the production permission (a member-tier account with production enabled by an administrator); a basic-tier account gets the same "cannot create production tasks" reply as `/建立`, while `/cancel` stays available
 
-- `/ok` only creates a system scaffold draft; nothing is built until the user replies `y`, which goes through the same draft confirmation as `/建立` (project-name re-check, promotion gate, task, plan, handoff)
+- `/ok` only creates a system scaffold draft; nothing is built until the user replies `y`, which goes through the same draft confirmation as `/建立` (project-name re-check, promotion gate, task, plan, handoff); after `n` or an expired draft the user can send `/ok` again or `/revise`
 
 - replies name the project folder, package file, and workspace relative to the managed root; they never contain absolute host paths
 

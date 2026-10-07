@@ -64,8 +64,10 @@ public sealed class LineGeneratedPackageDelivery : IGeneratedPackageDelivery
 /// 受治理生成的交付與 watchdog（hosted service；ingest 收下產物時會立即喚醒，否則依間隔輪詢）。
 ///
 /// - ingested：交付產物 → 任務 Completed → 撤銷代理的憑證與 session、停用主體 → 停止容器。
+///   交付途中丟出例外（例如逾時）只算一次嘗試，留到下一輪；用完 <see cref="GovernedGenerationOptions.MaxDeliveryAttempts"/> 次才標為失敗。
 /// - running／launching：超過期限，或代理已結束（有過 session、現在沒有有效的 session）卻沒有產物時，
 ///   停用代理、停止容器、任務標為 Failed，並以 LINE 通知使用者。
+/// 單一執行的例外（包含不是由服務停止造成的取消）不會中斷這一輪，排在後面的執行照常交付與檢查。
 /// 狀態轉換都經 <see cref="GovernedGenerationRunStore.TryUpdate"/>，與 ingest 互不覆寫；
 /// broker 重啟後仍由執行紀錄接手（容器清單遺失時以 worker id 找不到容器就略過停止）。
 /// </summary>
@@ -145,7 +147,7 @@ public sealed class GenerationDeliveryService : BackgroundService
                     else
                         await WatchAsync(run, cancellationToken);
                 }
-                catch (Exception ex) when (ex is not OperationCanceledException)
+                catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
                 {
                     _logger.LogError(ex, "Governed generation run for task {TaskId} could not be processed.", run.TaskId);
                 }
@@ -164,10 +166,25 @@ public sealed class GenerationDeliveryService : BackgroundService
         {
             delivery = await _delivery.DeliverAsync(run, cancellationToken);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
+            // 例外（包含逾時）只算這一次嘗試：未達上限時留在 ingested 等下一輪，達到上限才標為失敗並通知使用者。
             _logger.LogError(ex, "Generated package for task {TaskId} could not be delivered.", run.TaskId);
-            delivery = new GeneratedPackageDeliveryResult { Success = false, Message = "delivery_exception" };
+            var exhausted = false;
+            var stillIngested = _runs.TryUpdate(run.TaskId, Author, current =>
+            {
+                if (current.Status != GovernedGenerationRunStatus.Ingested)
+                    return false;
+                current.DeliveryAttempts += 1;
+                exhausted = current.DeliveryAttempts >= _options.ResolveMaxDeliveryAttempts();
+                return true;
+            });
+            if (stillIngested && exhausted)
+            {
+                await FailAsync(run, "delivery_failed",
+                    "系統雛形已生成，但交付給你時失敗。請聯絡管理員協助取回。", cancellationToken);
+            }
+            return;
         }
 
         if (!delivery.Success)
@@ -222,19 +239,47 @@ public sealed class GenerationDeliveryService : BackgroundService
         return sessions.All(session => session.Status != SessionStatus.Active || session.ExpiresAt <= now);
     }
 
-    private async Task FailAsync(GovernedGenerationRun run, string reason, string userMessage, CancellationToken cancellationToken)
+    /// <summary>
+    /// 管理員停止受治理生成的代理（<c>/agents/stop</c>）：仍在進行的執行標為失敗（stopped_by_admin）並通知使用者；
+    /// 不論執行是否已結束，都停用代理的主體、撤銷憑證與 session，並停止它的容器。沒有這個任務的執行紀錄時回傳 false。
+    /// </summary>
+    public async Task<bool> StopByAdminAsync(string taskId, CancellationToken cancellationToken = default)
+    {
+        var run = _runs.Get(taskId);
+        if (run == null)
+            return false;
+
+        var failed = await FailAsync(run, "stopped_by_admin",
+            "系統雛形生成已由管理員停止，這次任務已結束。", cancellationToken,
+            current => GovernedGenerationRunStatus.IsOpen(current.Status));
+        if (!failed)
+        {
+            _spawnService.DeactivateTaskAgent(taskId, TaskState.Failed, "Governed generation stopped by an administrator.", Author);
+            await StopContainerAsync(run, cancellationToken);
+        }
+
+        return true;
+    }
+
+    private async Task<bool> FailAsync(
+        GovernedGenerationRun run,
+        string reason,
+        string userMessage,
+        CancellationToken cancellationToken,
+        Func<GovernedGenerationRun, bool>? canFail = null)
     {
         // 先讀 session 再重讀紀錄：產物在這之間被收下時，紀錄已不是原狀態，這裡不會把它標為失敗。
+        canFail ??= current => current.Status == run.Status;
         var failed = _runs.TryUpdate(run.TaskId, Author, current =>
         {
-            if (current.Status != run.Status)
+            if (!canFail(current))
                 return false;
             current.Status = GovernedGenerationRunStatus.Failed;
             current.FailureReason = reason;
             return true;
         }, out var updated);
         if (!failed || updated == null)
-            return;
+            return false;
 
         _spawnService.DeactivateTaskAgent(run.TaskId, TaskState.Failed, $"Governed generation failed: {reason}.", Author);
         await StopContainerAsync(updated, cancellationToken);
@@ -249,6 +294,7 @@ public sealed class GenerationDeliveryService : BackgroundService
         }
 
         _logger.LogWarning("Governed generation failed: task={TaskId} reason={Reason}", run.TaskId, reason);
+        return true;
     }
 
     private async Task StopContainerAsync(GovernedGenerationRun run, CancellationToken cancellationToken)
@@ -267,7 +313,7 @@ public sealed class GenerationDeliveryService : BackgroundService
             if (!string.IsNullOrWhiteSpace(containerId))
                 await _containerManager.StopWorkerAsync(containerId, cancellationToken);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             // 容器可能已自行結束或 broker 重啟後不在清單中；憑證與 session 已撤銷，代理無法再呼叫 broker。
             _logger.LogWarning(ex, "Agent container for task {TaskId} could not be stopped.", run.TaskId);
