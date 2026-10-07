@@ -17,8 +17,11 @@ public static partial class GenerationRequest
     /// <summary>generate 唯一支援的產物格式。</summary>
     public const string SupportedPackage = "definition-site-v1";
 
-    /// <summary>max_pages 的允許範圍（生成器本身另有更小的頁數上限）。</summary>
-    public const int MaxPagesLimit = 100;
+    /// <summary>
+    /// max_pages 的允許範圍：與生成器驗證的頁數上限相同（tools/generation/validate-definition.mjs 的 LIMITS.maxPages），
+    /// broker 的 Generation:MaxPages 也限制在這個範圍內。
+    /// </summary>
+    public const int MaxPagesLimit = 12;
 
     [GeneratedRegex(SafeNamePattern, RegexOptions.CultureInvariant)]
     private static partial Regex SafeNameRegex();
@@ -116,6 +119,46 @@ public static partial class GenerationRequest
         return true;
     }
 
+    /// <summary>
+    /// 物件鍵長上限，與生成器驗證第 1 層的上限相同（tools/generation/validate-definition.mjs 的 LIMITS.maxKeyLength）。
+    /// 定義的鍵都是短名稱；worker 在轉交 CLI 之前先擋下過長的鍵。
+    /// </summary>
+    public const int MaxTemplateKeyLength = 128;
+
+    /// <summary>JSON 樹中是否有任何物件鍵長於 <paramref name="maxKeyLength"/>（迭代走訪，不遞迴）。</summary>
+    public static bool HasOverlongKey(JsonNode? root, int maxKeyLength = MaxTemplateKeyLength)
+    {
+        if (root == null)
+            return false;
+
+        var stack = new Stack<JsonNode>();
+        stack.Push(root);
+        while (stack.Count > 0)
+        {
+            switch (stack.Pop())
+            {
+                case JsonObject obj:
+                    foreach (var (key, value) in obj)
+                    {
+                        if (key.Length > maxKeyLength)
+                            return true;
+                        if (value != null)
+                            stack.Push(value);
+                    }
+                    break;
+                case JsonArray array:
+                    foreach (var item in array)
+                    {
+                        if (item != null)
+                            stack.Push(item);
+                    }
+                    break;
+            }
+        }
+
+        return false;
+    }
+
     /// <summary>可選的字串參數。值存在但不是字串或過長時回傳 false。</summary>
     public static bool TryGetString(JsonObject args, string name, int maxLength, out string? value)
     {
@@ -147,7 +190,7 @@ public sealed class GenerationScope
 
     /// <summary>
     /// 解析並嚴格驗證 scope：必須是 JSON 物件，且含格式正確的 <c>output_slot</c>、<c>package_name</c>、
-    /// <c>max_pages</c>（1～100 的整數）與 <c>package: "definition-site-v1"</c>。任何一項缺少或不符都拒絕。
+    /// <c>max_pages</c>（1～<see cref="GenerationRequest.MaxPagesLimit"/> 的整數）與 <c>package: "definition-site-v1"</c>。任何一項缺少或不符都拒絕。
     /// </summary>
     public static bool TryParse(string? scopeJson, out GenerationScope? scope, out string error)
     {

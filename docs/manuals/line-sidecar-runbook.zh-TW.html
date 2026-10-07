@@ -197,6 +197,22 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <h3>3.1.1 受治理生成（選用）</h3>
 <p><code>line-sidecar.ps1 up -GenerationMode Governed</code>（或 <code>restart</code>）會另外發布並以主機程序啟動 <code>generation-worker</code>（與其他 sidecar worker 相同），並把 broker 切到 <code>HighLevelCoordinator:Generation:SystemScaffoldMode = Governed</code>。之後確認過的系統雛形需求，改由 broker 啟動的受控代理經三個生成能力產出，不再在 broker 程序內生成。broker 與 worker 共用 <code>Generation:OutputRoot</code>，位置是 <code>.run\line-sidecar\data\generation-out</code>，在各使用者工作區之外。worker 執行的 node 取自 <code>B4A_NODE_PATH</code>（有設定時），否則用 PATH 上的 <code>node</code>。</p>
 <p>不加 <code>-GenerationMode</code>（或設為 <code>Legacy</code>）時行為不變。sidecar 上啟動的代理沿用已記載的 <code>AllowAgentDefaultNetwork</code> 例外（不在 internal 網路上），代理看到的需求文字有外流的可能；專用的 internal 代理網路列為後續。</p>
+<p>啟用前的準備（升級後也要重做第 1 項）：</p>
+<ol>
+<li>
+<p>以 <code>tools/agent/Containerfile</code> 重建 <code>bricks4agent-agent:latest</code>（在 repo 根目錄執行 <code>podman build -t bricks4agent-agent:latest -f tools/agent/Containerfile .</code>，使用 docker 時把 <code>podman</code> 換成 <code>docker</code>）。三個生成工具與生成用的 system prompt 都烤在這個映像裡；sidecar 直接使用本機既有的映像、不會自己建置，就緒檢查也不看映像版本。舊映像啟動的代理沒有這三個工具，每次生成都要等到代理結束或 watchdog 期限才失敗。</p>
+</li>
+<li>
+<p>容器執行環境（podman 或 docker，可用 <code>B4A_CONTAINER_RUNTIME</code> 指定）在 PATH 上，ContainerManager 因此啟用（或以 <code>B4A_CONTAINER_MANAGER_ENABLED</code> 明確開啟）。</p>
+</li>
+<li>
+<p>LlmProxy 已啟用：sidecar 在設定了 LLM 供應者的 API 金鑰時才啟用它。</p>
+</li>
+<li>
+<p>generation-worker 找得到 node：<code>B4A_NODE_PATH</code> 或 PATH 上的 <code>node</code>。</p>
+</li>
+</ol>
+<p>第 2、3 項不成立時，確認系統雛形會回「系統雛形生成暫不可用」且不建立任務。第 1、4 項不成立時就緒檢查看不出來（它不看映像版本，也不檢查 worker 能否執行 node），每次生成都要等到代理結束或 watchdog 期限才失敗，所以啟用前請先確認。</p>
 <p>要對執行中的 broker 手動啟動 worker：<code>run-worker.ps1 -Worker generation</code>（加 <code>-GenerationOutputRoot</code> 可改用其他輸出根目錄；broker 必須使用同一個）。</p>
 <h3>3.2 LINE outbound rate limit</h3>
 <p>line-worker 會對 <code>line.message.send</code> 與 <code>line.audio.send</code> 做 worker-local outbound rate limiting，key 為 recipient + capability。預設值在 <code>packages/csharp/workers/line-worker/appsettings*.json</code>：</p>

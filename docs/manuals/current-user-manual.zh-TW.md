@@ -366,7 +366,7 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\l
 | `/ok` | 確認目前設計，並建立系統雛形 draft（尚未建置） |
 | `y` / `n` | `/ok` 之後確認建置或取消 draft |
 | `/revise` | 要求修訂 |
-| `/cancel` | 取消訪談 |
+| `/cancel` | 取消訪談；`/ok` 之後還沒回 `y` 時，等待確認的建置 draft 也一併撤下，不會建置 |
 
 典型流程：
 
@@ -380,7 +380,7 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\l
 
 5. 用 `/ok`、`/revise` 或 `/cancel` 決定下一步。
 
-6. `/ok` 之後系統只建立系統雛形 draft 並列出摘要。回覆 `y` 才會建立 task / plan / handoff 並開始建置，回覆 `n` 取消。這一步與 `/建立` 的 draft 確認相同：專案名稱會再檢查一次，你的工作區若已有同名專案，系統會請你用 `#新名稱` 回覆。回覆 `n` 或 draft 逾時後，已批准的設計還在：可以再傳 `/ok` 重新建立 draft，或用 `/revise` 修訂。
+6. `/ok` 之後系統只建立系統雛形 draft 並列出摘要。回覆 `y` 才會建立 task / plan / handoff 並開始建置，回覆 `n` 取消。這一步與 `/建立` 的 draft 確認相同：專案名稱會再檢查一次，你的工作區若已有同名專案，系統會請你用 `#新名稱` 回覆。回覆 `n` 或 draft 逾時後，已批准的設計還在：可以再傳 `/ok` 重新建立 draft，或用 `/revise` 修訂。若這時用 `/cancel` 取消訪談，或用 `/proj` 重新開始訪談，等待確認的建置 draft 會一併撤下，之後回 `y` 不會建置。若在訪談之前還有一份等待確認的其他 draft（例如 `/建立` 留下的），`/ok` 會以系統雛形 draft 取代它，回覆中會註明被取代的是哪一份。
 
 ### 8.6 使用者 Portal 前台
 

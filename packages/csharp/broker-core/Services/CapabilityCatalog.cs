@@ -90,6 +90,17 @@ public class CapabilityCatalog : ICapabilityCatalog
     }
 
     /// <inheritdoc />
+    public int RevokeSessionGrants(string sessionId)
+    {
+        if (string.IsNullOrWhiteSpace(sessionId))
+            return 0;
+
+        return _db.Execute(
+            "UPDATE capability_grants SET status = @revoked WHERE session_id = @sessionId AND status = 0",
+            new { revoked = (int)GrantStatus.Revoked, sessionId });
+    }
+
+    /// <inheritdoc />
     public bool ConsumeQuota(string grantId)
     {
         // -1 = 無限配額

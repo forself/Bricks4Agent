@@ -81,8 +81,8 @@ function buildOverview() {
             name: 'JavaScript IdentifierName (letters incl. CJK, digits, _ or $; no hyphen or space); unique per page; not "id"',
             type: 'one of field_types',
             label: 'required plain text, max 100',
-            required: 'optional boolean',
-            default: 'optional string, number or boolean',
+            required: 'optional boolean; not available where field_types says required: not available',
+            default: 'optional; the allowed form depends on the type (field_types[].default)',
             options: 'select, radio, multiselect only: [{value,label}]',
             validation: 'optional; keys per field_types',
             component: 'optional; normally omit (the type selects the component)'
@@ -92,7 +92,7 @@ function buildOverview() {
             detail: 'read-only view of one record; needs api.get',
             form: 'create or edit one record; needs api.create; api.update enables editing; api.get loads the record'
         },
-        linking: 'Pages that share one api base path form one resource: list rows open its detail and form pages.',
+        linking: 'Pages that share one api base path form one resource: list rows open its detail and form pages. List and detail pages read the values the form saved by field name, so give every page of one resource the same api base path, the same field names and the same options.',
         rules: [
             'declarative data only: no code, HTML, expressions or lambdas',
             'unknown keys are rejected at every level',
@@ -101,12 +101,12 @@ function buildOverview() {
             'record ids are assigned by the store'
         ],
         limits: {
-            pages: LIMITS.maxPages,
+            pages: `${LIMITS.maxPages} at most; the task may set a lower page limit`,
             fields_per_page: LIMITS.maxFieldsPerPage,
             options_per_field: LIMITS.maxOptionsPerField,
             template_bytes: LIMITS.maxTemplateBytes
         },
-        errors: 'validate returns errors as {code, path, message, hint}; path points into the template, e.g. definitions.pages[1].definition.fields[3].type'
+        errors: 'validate returns errors as {code, path, message, hint}; path points into the template, e.g. definitions.pages[1].definition.fields[3].type; an error found at several paths is reported once, with paths listing the first few. warnings do not block generation but point at pages that will not work together'
     };
 }
 

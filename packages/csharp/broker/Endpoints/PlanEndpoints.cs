@@ -217,10 +217,6 @@ public static class PlanEndpoints
     }
 
     /// <summary>
-    /// 計畫屬於某個任務：只允許該任務的擁有者（或管理員）操作。
-    /// 計畫不存在時不在此判斷，維持各端點原本的「找不到」處理。
-    /// </summary>
-    /// <summary>
     /// 以 token 綁定的任務取得存取權、但不是提交者的呼叫者（例如被指派到這個任務的代理）看不到提交者的識別資料；
     /// 管理員與提交者看到完整的計畫。
     /// </summary>
@@ -247,6 +243,10 @@ public static class PlanEndpoints
         };
     }
 
+    /// <summary>
+    /// 計畫屬於某個任務：只允許該任務的擁有者（或管理員）操作。
+    /// 計畫不存在時不在此判斷，維持各端點原本的「找不到」處理。
+    /// </summary>
     private static bool TryRequirePlanAccess(HttpContext ctx, Plan? plan, IBrokerService broker, out IResult denied)
     {
         if (plan == null)

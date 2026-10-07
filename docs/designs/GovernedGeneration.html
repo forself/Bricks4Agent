@@ -33,7 +33,7 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 </li>
 </ul>
 <p>模式開關是 <code>HighLevelCoordinator:Generation:SystemScaffoldMode</code>，值為 <code>Legacy</code> 或 <code>Governed</code>。其他值視為設定錯誤：走 Governed 路徑並由就緒檢查拒絕，不會靜默退回 Legacy。</p>
-<p>產物是 DefinitionTemplate 驅動的多頁前端原型（list、detail、form 三種頁型），用瀏覽器內記憶體 store 讓頁面可以操作，不含後端。zip 的內容與外殼見 <a href="../../tools/generation/cli.mjs">tools/generation</a> 與 <a href="../../templates/definition-site/README.txt">templates/definition-site</a>。</p>
+<p>產物是 DefinitionTemplate 驅動的多頁前端原型（list、detail、form 三種頁型），用瀏覽器內記憶體 store 讓頁面可以操作，不含後端。zip 的內容與外殼見 <a href="../../tools/generation/cli.mjs">tools/generation</a> 與 <a href="../../templates/definition-site/README.txt">templates/definition-site</a>。Governed 模式的 draft 預覽照實說明這個產物（前端可操作原型，不含後端、資料庫與登入），不列 Legacy scaffold 的前端框架、後端、資料庫、登入與封裝格式。</p>
 <h2>2. 端到端流程</h2>
 <table>
 <thead>
@@ -149,7 +149,7 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <p><code>package_name</code> 只用英數、底線與連字號（中文等字元去掉，全部去掉時用 <code>prototype</code>）。交付給使用者的檔名仍沿用專案資料夾名：<code>{資料夾}-scaffold.zip</code>，同名檔案已存在時加上任務 id 的一段。</p>
 </li>
 <li>
-<p>配額以任務累計：grant 樣板帶 <code>quota_scope: "task"</code>，代理容器重啟或 session 過期後重新註冊時，新 session 只拿到這個任務尚未用掉的次數（已分派過的請求都算）。其他任務的 grant 維持每個 session 一份配額。</p>
+<p>配額以任務累計：grant 樣板帶 <code>quota_scope: "task"</code> 時，一個任務同時只有一個 session。註冊新 session 時，broker 在同一道鎖內撤銷同任務的其他 session（連同它們的授予與 session key），再以撤銷後的用量算新配額：除了被拒絕（Denied）的請求，其餘都算，包括已分派、仍在處理或等待審批的請求。所以任務所有 session 合計不超過樣板的配額，先註冊多個 session 也不會讓總量加倍；代理容器重啟或 session 過期後重新註冊，只拿到剩下的次數。其他任務的 grant 維持每個 session 一份配額。</p>
 </li>
 <li>
 <p>代理讀得到任務資料列（<code>/tasks/query</code>）、scope descriptor（隨 token 與 runtime spec）與 plan，所以受治理任務只放代理需要的資料：runtime descriptor 只有三個 grant、生成上限與可用時的 <code>llm</code>；scope 不帶 <code>path_scope</code>、<code>origin_user_id</code> 與 <code>execution_intent_document</code>；plan 描述不帶來源使用者。<code>/tasks/query</code>、<code>/plans/get</code>、<code>/plans/status</code> 對不是提交者、也不是管理員的呼叫者不回 <code>submitted_by</code>。handoff 帶受管路徑與使用者原文，讀取 ACL 只限系統，代理 session 經 context API 讀不到；broker 內部與管理端照常使用。</p>
@@ -212,13 +212,45 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 </tbody>
 </table>
 <p><code>string</code>、<code>boolean</code>、<code>integer</code> 等程式型別名稱不是欄位型別：被拒時 hint 直接給出 <code>text</code>、<code>checkbox</code>、<code>number</code>，型錄的 <code>field_types</code> 也列出這張對照。</p>
-<h3>3.2 驗證結果的大小</h3>
-<p>validate 的錯誤以 <code>{code, path, message, hint}</code> 回傳。相同的錯誤合併成一筆並在 message 註明出現次數（未知鍵依所在層級合併，允許鍵清單只列一次），合併後最多 50 筆；超過時結果帶 <code>truncated: true</code> 與合併前的 <code>total_errors</code>。generation-worker 的 validate 結果超過 <code>MaxResultBytes</code> 時改回截斷的結構化結果（仍是成功的呼叫），代理仍拿得到可修正的錯誤。</p>
+<p>開放型別的 <code>required</code>、限制鍵與 <code>default</code> 只接受執行期真的會生效的形式。型錄的 <code>field_types</code> 逐型別列出，<code>packages/javascript/browser/__tests__/page-generator/GenerationFieldRuntime.test.js</code> 在表單渲染器上逐一驗證型錄的宣稱：</p>
+<ul>
+<li>
+<p><code>required</code>：表單無法判斷是否為空的型別不開放，包括 checkbox、toggle、color、chained、list、personinfo、phonelist、socialmedia、student、hidden（勾選框永遠有值，列表類欄位會帶空白列）。寫了 <code>required: true</code> 時回 <code>REQUIRED_NOT_SUPPORTED</code>。</p>
+</li>
+<li>
+<p>限制鍵：文字類為 <code>maxLength</code>，number 為 <code>min</code>／<code>max</code>，列表類（list、personinfo、phonelist、socialmedia）只有 <code>maxItems</code>。<code>minItems</code> 不開放，因為元件只會預先建立空白列，表單不檢查列數。</p>
+</li>
+<li>
+<p><code>default</code>：text、email、textarea、hidden 為字串（不超過 <code>maxLength</code>）；number 為有限數字（在 <code>min</code>／<code>max</code> 之內）；checkbox、toggle 為布林；select、radio 為等於某個選項值的字串；date 為 <code>today</code> 或 YYYY-MM-DD；time 為 HH:MM。password、multiselect、color、列表類、chained、student 不開放 default。不符時回 <code>DEFAULT_INVALID</code> 或 <code>DEFAULT_NOT_ALLOWED</code>。</p>
+</li>
+<li>
+<p><code>student</code> 是「是否為在學學生」的勾選加上學校名稱，不是學號或學生姓名欄位；那兩者用 <code>text</code>。</p>
+</li>
+</ul>
+<h3>3.2 驗證結果的大小與內容</h3>
+<p>validate 的錯誤以 <code>{code, path, message, hint}</code> 回傳。相同的錯誤合併成一筆，message 註明出現次數，並以 <code>paths</code> 列出前 5 個路徑（<code>path</code> 是其中第一個）。未知鍵依所在層級合併，允許鍵清單只列一次；識別字錯誤的訊息帶有欄位名，以代碼與 hint 合併。合併後最多 50 筆，截斷時每個錯誤代碼至少保留一筆；超過時結果帶 <code>truncated: true</code> 與合併前的 <code>total_errors</code>。<code>validation</code> 中的未知鍵只以 <code>UNKNOWN_KEY</code> 回報一次；<code>name</code> 不是字串的欄位不再多報一筆識別字錯誤。</p>
+<p>第 1 層另有兩個上限，讓單次驗證的工作量與輸入大小成正比：物件鍵長超過 128 字元時回 <code>KEY_TOO_LONG</code> 並停止；收集到 200 筆錯誤時停止走訪並帶 <code>truncated: true</code>。path、message 與 hint 在建立時就截短。generation-worker 在轉交 CLI 之前也拒絕過長的鍵，node 子程序另有 V8 heap 上限（<code>Generation:MaxOldSpaceMegabytes</code>，預設 256）。</p>
+<p>第 7 層的跨頁檢查只發 warning，不擋生成。頁面以 api 路徑完全相等連結成同一資源，列表與明細依欄位名讀取表單存下的值，所以下列情況會讓原型的互動失效：</p>
+<ul>
+<li>
+<p>列表或明細頁沒有同路徑的表單（<code>RESOURCE_WITHOUT_FORM</code>），頁面永遠沒有資料；</p>
+</li>
+<li>
+<p>表單沒有同路徑的列表（<code>FORM_WITHOUT_LIST</code>），存下的資料不會列在任何地方（只能新增的表單可以忽略）；</p>
+</li>
+<li>
+<p>列表或明細的欄位不在同資源的表單中（<code>FIELD_NOT_IN_FORM</code>），該欄永遠是空的；</p>
+</li>
+<li>
+<p>同一資源中同名欄位的選項不一致（<code>OPTIONS_MISMATCH</code>），各頁顯示的標籤不同。</p>
+</li>
+</ul>
+<p>generation-worker 的 validate 結果超過 <code>MaxResultBytes</code> 時改回截斷的結構化結果（仍是成功的呼叫），代理仍拿得到可修正的錯誤。驗證器版本為 <code>definition-validator/1.2.0</code>，生成器版本為 <code>definition-site/1.1.0</code>。</p>
 <h2>4. 交給代理的工作項</h2>
 <p>handoff 的 <code>generation_request</code> 與 <code>AGENT_RUN</code> 帶同一份工作項：</p>
 <ul>
 <li>
-<p>標題、需求摘要、已確認的需求、scaffold 規格欄位（family、ui_shape、frontend、backend、database、auth、deployment 等）；</p>
+<p>標題、需求摘要、已確認的需求、scaffold 規格欄位（family 與 ui_shape）；Legacy scaffold 的技術棧欄位（前端框架、後端、資料庫、登入、部署）不適用於這個產物，不放進工作項；</p>
 </li>
 <li>
 <p>上限：頁數、可用頁型、各工具的配額、模型回合上限。</p>
@@ -348,6 +380,9 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <p><strong>Windows sidecar（正式部署）</strong>：<code>line-sidecar.ps1 up -GenerationMode Governed</code> 會發布並以主機程序啟動 generation-worker，把 broker 切到 Governed，並讓 broker 與 worker 共用 <code>.run\line-sidecar\data\generation-out</code>。代理容器沿用已記載的 <code>AllowAgentDefaultNetwork</code> 例外（不在 internal 網路上）。不加參數時行為不變。見 <a href="../manuals/line-sidecar-runbook.zh-TW.html">LINE sidecar runbook</a>。</p>
 </li>
 <li>
+<p><strong>升級與前置條件</strong>：三個生成工具、它們的能力對照與生成用的 system prompt 都在 <code>tools/agent</code> 裡，由 <code>tools/agent/Containerfile</code> 建進代理映像；sidecar 直接使用本機既有的 <code>bricks4agent-agent:latest</code>，不會自己建置，就緒檢查也不看映像版本。所以啟用 <code>-GenerationMode Governed</code> 之前（以及之後每次升級），要先以 <code>tools/agent/Containerfile</code> 重建 <code>bricks4agent-agent:latest</code>，否則舊映像的代理沒有這三個工具，每次生成都要等到代理結束或 watchdog 期限才失敗。其他前置條件：容器執行環境（podman 或 docker，<code>B4A_CONTAINER_RUNTIME</code>）可用且 ContainerManager 已啟用；LlmProxy 已啟用（sidecar 在設定了 LLM 供應者的 API 金鑰時啟用）；generation-worker 找得到 node（<code>B4A_NODE_PATH</code> 或 PATH）。</p>
+</li>
+<li>
 <p><strong>compose 測試堆疊</strong>：<code>--profile generation</code> 啟動 generation-worker，它只接 internal 的 <code>generation-net</code>；<code>generation-out</code> volume 由 worker 寫入、broker 唯讀掛載。broker 服務需要 <code>GENERATION_WORKER_AUTH_KEY_ID</code> 與 <code>GENERATION_WORKER_AUTH_SHARED_SECRET</code>（不論是否啟用 generation profile，up 與 down 都要）；既有的 env 檔只需補上這兩個變數，不必輪替其他金鑰。見 <a href="../manuals/agent-container-runbook.html">agent container runbook</a>。</p>
 </li>
 </ul>
@@ -420,28 +455,28 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <tr>
 <td>D10</td>
 <td><code>/proj</code> 權限閘</td>
-<td>獨立修正先合；<code>/proj</code> 起手與 <code>/ok</code> 兩處都檢查</td>
+<td>獨立修正先合；<code>/proj</code> 起手與 <code>/ok</code> 兩處都檢查。實作延伸到五個位置：<code>/proj</code> 起手、<code>/ok</code>、<code>/revise</code>、訪談中的回答與確認 draft（回 <code>y</code>）；<code>/cancel</code> 不設閘，降級後仍可結束訪談。審查後的修正（含 <code>AwaitBuildConfirmation</code> 階段）只在 <code>feat/governed-generation</code>，所以 PR-0 隨本分支一起合併，<code>fix/proj-gate</code> 停在最初的版本，不單獨合併</td>
 </tr>
 <tr>
 <td>D11</td>
 <td>file:// 無法開啟 ES module</td>
-<td>zip 附 <code>README.txt</code> 說明以本機 HTTP 伺服器開啟；託管預覽列為後續</td>
+<td>zip 附 <code>README.txt</code> 說明以只綁定本機（127.0.0.1）的 HTTP 伺服器開啟；託管預覽列為後續</td>
 </tr>
 </tbody>
 </table>
 <h2>12. 測試</h2>
 <ul>
 <li>
-<p>生成器與外殼：<code>npm run test:generation</code>（含 datetime、file 與程式型別名稱的拒絕與 hint、系統性錯誤合併後在大小預算內、大量不同錯誤的上限與 truncated）、<code>npm run test:definition-site:browser</code>。</p>
+<p>生成器與外殼：<code>npm run test:generation</code>（含 datetime、file 與程式型別名稱的拒絕與 hint、系統性錯誤合併後在大小預算內、大量不同錯誤的上限與 truncated 且每個代碼至少一筆、合併項目的 paths、鍵長上限與第 1 層錯誤收集上限的執行時間、依型別的 default 與 required、跨頁一致性 warning）、<code>npm run test:definition-site:browser</code>（含只能新增的表單連續送出兩筆）、Vitest 的 <code>GenerationFieldRuntime.test.js</code>（型錄宣稱的 required、限制鍵與 default 在表單渲染器上生效）。</p>
 </li>
 <li>
-<p>worker：<code>GenerationHandlerTests</code>（假 CLI 的邊界行為）、<code>GenerationCliContractTests</code>（真正的 CLI：zip 內容與 build 輸出逐位元組相同、兩次生成 sha256 相同）與 <code>DefinitionValidateTruncationTests</code>（validate 超過大小上限時回截斷的結構化結果）。</p>
+<p>worker：<code>GenerationHandlerTests</code>（假 CLI 的邊界行為，含過長的鍵不轉交 CLI、node 子程序帶 heap 上限）、<code>GenerationCliContractTests</code>（真正的 CLI：zip 內容與 build 輸出逐位元組相同、兩次生成 sha256 相同）與 <code>DefinitionValidateTruncationTests</code>（validate 超過大小上限時回截斷的結構化結果）。</p>
 </li>
 <li>
 <p>broker：<code>GenerationIngestTests</code>（路徑逃逸、連結、sha256 或大小不符、檔案遺失、slot 或請求 id 不符都失敗且不交付；worker 忙碌時有上限的等待）、<code>GenerationDeliveryServiceTests</code>（交付、期限、代理結束未產出、交付失敗、交付逾時不中斷整輪且有次數上限、Drive 網路錯誤或逾時改用簽章連結並寫入產物紀錄、管理員停止）、<code>GovernedGenerationLauncherTests</code>（grant、scope 與精簡的 runtime descriptor、模型供應者比對、名額、工作項與 <code>AGENT_RUN</code> 上限、啟動失敗與取消、就緒檢查、頁數上限）、<code>GenerationApprovalRenderTests</code>。</p>
 </li>
 <li>
-<p>整合：<code>GovernedGenerationTests</code>（確認後的任務、主體、grant 與代理啟動；代理 session 依序呼叫三個能力，稽核鏈 RECEIVED → DISPATCHED → SUCCEEDED 並帶 evidenceRef；交付後任務 Completed；沒有 grant 時 Denied；未就緒與啟動失敗時 fail-closed；並行確認只建立一個任務；同一使用者與全部的名額；代理 session 經 <code>/tasks/query</code>、<code>/runtime/spec</code>、context 與 plans 讀不到受管根目錄與使用者 id；<code>/agents/stop</code> 停止受治理代理；重新註冊時配額以任務累計；模型推薦依供應者採用）；<code>ProjectInterviewGateTests</code>（draft 建立後被降級時 <code>y</code> 被拒、<code>/revise</code> 與訪談回答的權限閘、<code>/ok</code> → <code>n</code> 或 draft 過期後可再 <code>/ok</code>、批准後仍可 <code>/revise</code>）。其中一個是程序內端到端案例：同一條路改由 generation-worker 真正的 handler 與 repo 中的 <code>tools/generation/cli.mjs</code> 處理 golden 範例（catalog → validate 一次失敗、依結構化錯誤修正 → generate），確認 broker 收下的 zip、證據文件與報告中的 manifest 逐檔一致，並完成交付；只省略 worker 與 broker 之間的 TCP frame。這個案例需要 node（<code>B4A_NODE_PATH</code> 或 PATH 上的 node）。</p>
+<p>整合：<code>GovernedGenerationTests</code>（確認後的任務、主體、grant 與代理啟動；代理 session 依序呼叫三個能力，稽核鏈 RECEIVED → DISPATCHED → SUCCEEDED 並帶 evidenceRef；交付後任務 Completed；沒有 grant 時 Denied；未就緒與啟動失敗時 fail-closed；並行確認只建立一個任務；同一使用者與全部的名額；代理 session 經 <code>/tasks/query</code>、<code>/runtime/spec</code>、context 與 plans 讀不到受管根目錄與使用者 id；<code>/agents/stop</code> 停止受治理代理；重新註冊或先註冊多個 session 時，所有 session 合計不超過任務的配額；模型推薦依供應者採用；Governed 的 draft 預覽不列 Legacy 技術棧；<code>/ok</code> → <code>/cancel</code> → <code>y</code> 不啟動代理）；<code>ProjectInterviewGateTests</code>（draft 建立後被降級時 <code>y</code> 被拒、<code>/revise</code> 與訪談回答的權限閘、<code>/ok</code> → <code>n</code> 或 draft 過期後可再 <code>/ok</code>、批准後仍可 <code>/revise</code>、<code>/ok</code> → <code>/cancel</code> 撤下建置 draft 且之後的 <code>y</code> 與一般文字都不建置、重新 <code>/proj</code> 撤下舊的建置 draft、<code>/ok</code> 取代其他來源的 draft 時明確告知）。其中一個是程序內端到端案例：同一條路改由 generation-worker 真正的 handler 與 repo 中的 <code>tools/generation/cli.mjs</code> 處理 golden 範例（catalog → validate 一次失敗、依結構化錯誤修正 → generate），確認 broker 收下的 zip、證據文件與報告中的 manifest 逐檔一致，並完成交付；只省略 worker 與 broker 之間的 TCP frame。這個案例需要 node（<code>B4A_NODE_PATH</code> 或 PATH 上的 node）。</p>
 </li>
 <li>
 <p><code>npm run validate:broker-scope</code>：Legacy 斷言保留；Governed 斷言確認回覆「已受理」、程序內沒有寫出檔案、未就緒時不建立任務。</p>

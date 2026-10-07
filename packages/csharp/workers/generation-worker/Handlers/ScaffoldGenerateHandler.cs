@@ -65,6 +65,9 @@ public sealed class ScaffoldGenerateHandler : ICapabilityHandler
             if (args["template"] is not JsonObject template)
                 return Fail("template is required and must be a JSON object.");
 
+            if (GenerationRequest.HasOverlongKey(template))
+                return Fail($"template contains an object key longer than {GenerationRequest.MaxTemplateKeyLength} characters.");
+
             if (!GenerationRequest.TryGetStringArray(args, "page_ids", 64, out var pageIds))
                 return Fail("page_ids must be an array of strings of at most 64 characters.");
 

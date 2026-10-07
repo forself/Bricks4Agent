@@ -54,8 +54,9 @@ Bricks4Agent's end state is an **AI agent service**: it takes requests from huma
 |---|---|---|
 | `.test-output/` | test output directory | delete after testing |
 | generated pages/projects under `out/` (or your `--output`) | `spa-cli.js` / `page-gen.js` | delete after testing |
-| `%TEMP%/b4a-gen*` (`b4a-gen-test-*`, `b4a-gen-truncate-*`, `b4a-gengov-*`, `b4a-gencontract-*`, `b4a-genworker-*`) | generation node:test and xUnit suites | removed by the tests; delete leftovers |
+| `%TEMP%/b4a-gen*` (`b4a-gen-test-*`, `b4a-gen-truncate-*`, `b4a-gengov-*`, `b4a-gencontract-*`, `b4a-genworker-*`, `b4a-gen-toolspec-*`) | generation node:test and xUnit suites | removed by the tests; delete leftovers |
 | `%TEMP%/broker_integration_*` (`.db`, `-shm`, `-wal`, and `broker_integration_access_*` directories) | integration test fixtures (`BrokerFixture`) | removed by the fixtures (retried); delete leftovers |
+| `%TEMP%/broker_test_*.db` (with `-shm`, `-wal`) | unit tests (`TestDb.CreateInMemory`) | deleted when the test process exits; delete leftovers |
 
 When adding tests that produce files: add the pattern to this table, ensure it is in `.gitignore`, and clean it up in the test.
 

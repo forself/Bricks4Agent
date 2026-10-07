@@ -34,7 +34,7 @@
     "properties": {
       "ok": { "type": "boolean" },
       "section": { "type": "string" },
-      "content": { "type": "string" },
+      "content": { "type": "object" },
       "catalog_sha256": { "type": "string" },
       "matrix_sha256": { "type": "string" },
       "summary_version": { "type": "string" },

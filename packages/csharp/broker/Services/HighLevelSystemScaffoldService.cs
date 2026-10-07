@@ -83,10 +83,18 @@ public sealed class HighLevelSystemScaffoldService
             $"已更新需求分析，第 {spec.IterationNumber} 次迭代摘要已整理。");
     }
 
-    public string BuildDraftReply(HighLevelTaskDraft draft)
+    /// <summary>
+    /// draft 預覽。<paramref name="governed"/> 為 true（受治理生成）時，產物是以元件庫生成的前端可操作原型：
+    /// 沒有後端、資料只存在瀏覽器分頁，所以不列前端框架、後端、資料庫、登入與封裝格式這些舊 scaffold 的欄位，
+    /// 也不列以它們為前提的假設與待補充項目。
+    /// </summary>
+    public string BuildDraftReply(HighLevelTaskDraft draft, bool governed = false)
     {
         var spec = draft.ScaffoldSpec ?? BuildSpec(draft, draft.OriginalMessage, isInitial: true);
         draft.ScaffoldSpec = spec;
+
+        if (governed)
+            return BuildGovernedDraftReply(draft, spec);
 
         var lines = new List<string>
         {
@@ -124,6 +132,41 @@ public sealed class HighLevelSystemScaffoldService
             lines.Add("待補充項目：");
             lines.AddRange(spec.OpenQuestions.Select(item => $"- {item}"));
         }
+
+        lines.Add(string.Empty);
+        lines.Add("下一步請直接回覆下方指令，或直接補充需求。");
+        return string.Join('\n', lines.Where(line => !string.IsNullOrWhiteSpace(line)));
+    }
+
+    /// <summary>受治理生成的產物說明（draft 預覽與測試共用）。</summary>
+    public const string GovernedProductDescription = "前端可操作原型（無後端，資料只存在瀏覽器分頁，重新整理即清空）";
+
+    private static string BuildGovernedDraftReply(HighLevelTaskDraft draft, HighLevelSystemScaffoldSpec spec)
+    {
+        var lines = new List<string>
+        {
+            "已建立系統雛形 draft。",
+            $"task_type: {draft.TaskType}",
+            $"project_name: {draft.ProjectName ?? "(not set)"}",
+            $"scaffold_family: {spec.ScaffoldFamily}",
+            $"產物: {GovernedProductDescription}",
+            "頁面: 以 Bricks4Agent 元件庫生成的列表、明細與表單頁，打包成 zip 交付",
+            $"iteration: {spec.IterationNumber}",
+            "目前已完成需求初步分析。你可以直接補充需求，或回覆下方指令。"
+        };
+
+        if (spec.ConfirmedRequirements.Count > 0)
+        {
+            lines.Add(string.Empty);
+            lines.Add("需求摘要：");
+            lines.AddRange(spec.ConfirmedRequirements.Select(item => $"- {item}"));
+        }
+
+        lines.Add(string.Empty);
+        lines.Add("說明：");
+        lines.Add("- 不含後端、資料庫與登入；需要這些功能時，原型只呈現對應的頁面與欄位。");
+        if (string.IsNullOrWhiteSpace(draft.ProjectName))
+            lines.Add("- 尚未提供專案名稱。");
 
         lines.Add(string.Empty);
         lines.Add("下一步請直接回覆下方指令，或直接補充需求。");

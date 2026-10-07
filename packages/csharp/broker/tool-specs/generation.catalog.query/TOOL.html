@@ -66,7 +66,7 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 </tbody>
 </table>
 <h2>Output</h2>
-<p>The generator's JSON: <code>ok</code>, <code>section</code>, <code>content</code>, <code>catalog_sha256</code>, <code>matrix_sha256</code> and <code>summary_version</code>. The summary is generated from <code>component-catalog.json</code> and <code>generator-support-matrix.json</code>; the two hashes identify the exact catalog it came from. A component that does not exist is a successful call with <code>ok: false</code> and the error code <code>COMPONENT_NOT_FOUND</code>.</p>
+<p>The generator's JSON: <code>ok</code>, <code>section</code>, <code>content</code> (a JSON object: the section, or one component entry), <code>catalog_sha256</code>, <code>matrix_sha256</code> and <code>summary_version</code>. The <code>overview</code> section states the page limit as 12 at most; the task's own page limit (the <code>max_pages</code> in its grants) may be lower. The summary is generated from <code>component-catalog.json</code> and <code>generator-support-matrix.json</code>; the two hashes identify the exact catalog it came from. A component that does not exist is a successful call with <code>ok: false</code> and the error code <code>COMPONENT_NOT_FOUND</code>.</p>
 <h2>Rules</h2>
 <ul>
 <li>

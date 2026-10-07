@@ -25,7 +25,8 @@ internal sealed class GovernedGenerationTestSupport : IDisposable
         Directory.CreateDirectory(OutputRoot);
         Directory.CreateDirectory(AccessRoot);
 
-        Db = Helpers.TestDb.CreateInMemory();
+        // 資料庫建在本測試自己的暫存根目錄下，Dispose 時連同目錄一起刪除
+        (Db, DatabasePath) = Helpers.TestDb.CreateIn(Root);
         Options = new GovernedGenerationOptions { OutputRoot = OutputRoot, DeadlineMinutes = 15 };
         Runs = new GovernedGenerationRunStore(Db);
         Workspace = new HighLevelLineWorkspaceService(Db, new HighLevelCoordinatorOptions { AccessRoot = AccessRoot });
@@ -37,6 +38,7 @@ internal sealed class GovernedGenerationTestSupport : IDisposable
     public string OutputRoot { get; }
     public string AccessRoot { get; }
     public BrokerDb Db { get; }
+    public string DatabasePath { get; }
     public GovernedGenerationOptions Options { get; }
     public GovernedGenerationRunStore Runs { get; }
     public HighLevelLineWorkspaceService Workspace { get; }
@@ -47,7 +49,24 @@ internal sealed class GovernedGenerationTestSupport : IDisposable
     public void Dispose()
     {
         Db.Dispose();
-        try { Directory.Delete(Root, recursive: true); } catch { }
+        Helpers.TestDb.Delete(DatabasePath);
+        for (var attempt = 0; attempt < 5; attempt++)
+        {
+            try
+            {
+                if (Directory.Exists(Root))
+                    Directory.Delete(Root, recursive: true);
+                return;
+            }
+            catch (Exception ex) when ((ex is IOException or UnauthorizedAccessException) && attempt < 4)
+            {
+                Thread.Sleep(50);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                return;
+            }
+        }
     }
 
     public void SeedUserProfile(string userId)

@@ -321,7 +321,7 @@ public class HighLevelCoordinator
                     var reply = PrepareReplyWithoutGuide(
                         profile,
                         string.Equals(draft.TaskType, "system_scaffold", StringComparison.OrdinalIgnoreCase)
-                            ? _systemScaffoldService.BuildDraftReply(draft)
+                            ? BuildSystemScaffoldDraftReply(draft)
                             : BuildCompactDraftConfirmationReply(draft));
                     SaveUserProfile(channel, userId, profile);
 
@@ -365,7 +365,7 @@ public class HighLevelCoordinator
                 _systemScaffoldService.ApplyRequirementRefinement(draft, trimmed);
                 SaveTaskDraft(channel, userId, draft);
                 UpdatePendingDraftSnapshot(profile, draft);
-                var reply = PrepareReplyWithoutGuide(profile, _systemScaffoldService.BuildDraftReply(draft));
+                var reply = PrepareReplyWithoutGuide(profile, BuildSystemScaffoldDraftReply(draft));
                 SaveUserProfile(channel, userId, profile);
 
                 return FinalizeResult(channel, userId, envelope, trustedParse, workflow, new HighLevelProcessResult
@@ -408,7 +408,7 @@ public class HighLevelCoordinator
             {
                 var pendingReply = PrepareReplyWithoutGuide(profile, BuildCompactPendingDraftReminder(draft));
                 if (string.Equals(draft.TaskType, "system_scaffold", StringComparison.OrdinalIgnoreCase))
-                    pendingReply = PrepareReplyWithoutGuide(profile, _systemScaffoldService.BuildDraftReply(draft));
+                    pendingReply = PrepareReplyWithoutGuide(profile, BuildSystemScaffoldDraftReply(draft));
                 SaveUserProfile(channel, userId, profile);
                 return FinalizeResult(channel, userId, envelope, trustedParse, workflow, new HighLevelProcessResult
                 {
@@ -443,7 +443,7 @@ public class HighLevelCoordinator
                 nextDraft.RequiresProjectName && string.IsNullOrWhiteSpace(nextDraft.ProjectName)
                     ? BuildCompactProjectNameRequestReply(nextDraft)
                     : string.Equals(nextDraft.TaskType, "system_scaffold", StringComparison.OrdinalIgnoreCase)
-                        ? _systemScaffoldService.BuildDraftReply(nextDraft)
+                        ? BuildSystemScaffoldDraftReply(nextDraft)
                         : BuildCompactDraftConfirmationReply(nextDraft));
             SaveUserProfile(channel, userId, profile);
 
@@ -703,6 +703,8 @@ public class HighLevelCoordinator
                     .ClearPendingOptions();
 
                 await _projectInterviewStateService.SaveTaskDocumentAsync(updated, cancellationToken);
+                // 重新開始訪談：先前訪談 /ok 留下、仍在等待 y 的建置 draft 屬於被取代的設計，一併撤下
+                DiscardPendingInterviewDraft(channel, userId, profile);
 
                 return new HighLevelProcessResult
                 {
@@ -770,32 +772,45 @@ public class HighLevelCoordinator
                 var approvedDocument = document.WithSessionState(approvedState).ClearPendingOptions();
                 await _projectInterviewStateService.SaveTaskDocumentAsync(approvedDocument, cancellationToken);
 
+                // 每位使用者只有一份等待確認的 draft。訪談進行中，其他來源（例如 /建立）的 draft 無法回 y 或 n，
+                // 所以 /ok 會取代它；回覆明確告知被取代的是哪一份，不靜默覆寫。
+                var replacedDraft = LoadTaskDraft(channel, userId);
+                if (replacedDraft != null && (replacedDraft.SourceInterviewVersion != null || IsExpired(replacedDraft)))
+                    replacedDraft = null;
+
                 var interviewDraft = CreateDraftFromInterview(channel, userId, profile, document);
                 SaveTaskDraft(channel, userId, interviewDraft);
                 UpdatePendingDraftSnapshot(profile, interviewDraft);
 
                 var awaitingProjectName = string.IsNullOrWhiteSpace(interviewDraft.ProjectName);
+                var approveReply = awaitingProjectName
+                    ? BuildCompactProjectNameRequestReply(interviewDraft)
+                    : BuildInterviewDraftReply(interviewDraft, document.CurrentVersion);
+                if (replacedDraft != null)
+                    approveReply = BuildReplacedDraftNotice(replacedDraft) + "\n\n" + approveReply;
                 return new HighLevelProcessResult
                 {
                     Mode = HighLevelRouteMode.Production,
-                    Reply = PrepareReplyWithoutGuide(
-                        profile,
-                        awaitingProjectName
-                            ? BuildCompactProjectNameRequestReply(interviewDraft)
-                            : BuildInterviewDraftReply(interviewDraft, document.CurrentVersion)),
+                    Reply = PrepareReplyWithoutGuide(profile, approveReply),
                     FollowUpMessages = awaitingProjectName
                         ? BuildProjectNameFollowUpMessages(interviewDraft)
                         : _systemScaffoldService.BuildDraftFollowUpMessages(),
                     Draft = interviewDraft,
-                    DecisionReason = awaitingProjectName
+                    DecisionReason = (awaitingProjectName
                         ? "project interview approved; project folder already exists, new project name required"
-                        : "project interview approved; system scaffold draft awaits confirmation"
+                        : "project interview approved; system scaffold draft awaits confirmation")
+                        + (replacedDraft != null ? "; an earlier pending draft was replaced" : string.Empty)
                 };
             }
 
             var nextState = _projectInterviewStateMachine.ApplyCommand(document.SessionState, command);
             var updatedDocument = document.WithSessionState(nextState).ClearPendingOptions();
             await _projectInterviewStateService.SaveTaskDocumentAsync(updatedDocument, cancellationToken);
+
+            // 取消訪談時，/ok 建立、仍在等待 y 的建置 draft 一併撤下：之後回 y 不會建置已取消的設計，
+            // 一般文字也不會被當成那份 draft 的需求補充。其他來源的 draft 不動。
+            var discardedBuildDraft = command == ProjectInterviewCommand.Cancel &&
+                                      DiscardPendingInterviewDraft(channel, userId, profile);
 
             var reply = command switch
             {
@@ -805,6 +820,9 @@ public class HighLevelCoordinator
                 ProjectInterviewCommand.Revise => BilingualProjectInterviewMessage(
                     "已要求修訂。請接著描述你要調整目前設計的哪一部分。",
                     "Revision requested. Continue by describing what to adjust in the current design."),
+                ProjectInterviewCommand.Cancel when discardedBuildDraft => BilingualProjectInterviewMessage(
+                    "目前的專案訪談任務已取消，等待確認的建置 draft 也已撤下，不會建置。",
+                    "The current project interview task has been cancelled, and the build draft that awaited confirmation was withdrawn."),
                 ProjectInterviewCommand.Cancel => BilingualProjectInterviewMessage(
                     "目前的專案訪談任務已取消。",
                     "The current project interview task has been cancelled."),
@@ -817,7 +835,8 @@ public class HighLevelCoordinator
             {
                 Mode = HighLevelRouteMode.Production,
                 Reply = PrepareReplyWithoutGuide(profile, reply),
-                DecisionReason = $"project interview command {command}"
+                DecisionReason = $"project interview command {command}",
+                DraftCleared = discardedBuildDraft
             };
         }
         catch (InvalidOperationException ex)
@@ -839,15 +858,27 @@ public class HighLevelCoordinator
     private static bool ProjectInterviewCommandRequiresProduction(ProjectInterviewCommand command)
         => command is ProjectInterviewCommand.StartProjectInterview or ProjectInterviewCommand.Approve or ProjectInterviewCommand.Revise;
 
-    /// <summary>撤下由訪談 /ok 建立、仍在等待 y 的建置 draft（其他來源的 draft 不動）。</summary>
-    private void DiscardPendingInterviewDraft(string channel, string userId, HighLevelUserProfile profile)
+    /// <summary>撤下由訪談 /ok 建立、仍在等待 y 的建置 draft（其他來源的 draft 不動）。有撤下時回傳 true。</summary>
+    private bool DiscardPendingInterviewDraft(string channel, string userId, HighLevelUserProfile profile)
     {
         var pending = LoadTaskDraft(channel, userId);
         if (pending?.SourceInterviewVersion == null)
-            return;
+            return false;
 
         DeleteDocument(BuildDraftDocumentId(channel, userId));
         ClearPendingDraftSnapshot(profile);
+        return true;
+    }
+
+    /// <summary>/ok 取代其他來源的 draft 時，回覆開頭的說明（只列任務類型與標題，不帶路徑）。</summary>
+    private static string BuildReplacedDraftNotice(HighLevelTaskDraft replaced)
+    {
+        var title = HighLevelReplyRedactor.SanitizeDetail(string.IsNullOrWhiteSpace(replaced.ProjectName) ? replaced.Summary : replaced.ProjectName);
+        if (title.Length > 60)
+            title = title[..60] + "…";
+        return BilingualProjectInterviewMessage(
+            $"注意：原本等待確認的 {replaced.TaskType} draft（{title}）已被這份系統雛形 draft 取代，不會建立。若仍需要，請之後重新送出那個指令。",
+            $"Note: the {replaced.TaskType} draft that awaited confirmation was replaced by this system scaffold draft and will not be built.");
     }
 
     /// <summary>
@@ -1398,7 +1429,7 @@ public class HighLevelCoordinator
             string.Join('\n', new[]
             {
                 $"設計 v{designVersion} 已確認，尚未開始建置。",
-                _systemScaffoldService.BuildDraftReply(draft),
+                BuildSystemScaffoldDraftReply(draft),
                 "回覆 y 確認建置，或回覆 n 取消。"
             }),
             $"Design v{designVersion} approved. A system scaffold draft was created; nothing has been built yet. Reply y to confirm the build, or n to cancel.");
@@ -2157,6 +2188,10 @@ public class HighLevelCoordinator
     private bool IsGovernedSystemScaffold(HighLevelTaskDraft draft)
         => string.Equals(draft.TaskType, "system_scaffold", StringComparison.OrdinalIgnoreCase) &&
            _options.Generation.UsesGovernedPath;
+
+    /// <summary>系統雛形 draft 的預覽：Governed 模式說明實際的產物（前端可操作原型），不列舊 scaffold 的技術棧。</summary>
+    private string BuildSystemScaffoldDraftReply(HighLevelTaskDraft draft)
+        => _systemScaffoldService.BuildDraftReply(draft, IsGovernedSystemScaffold(draft));
 
     /// <summary>
     /// 受治理生成：啟動受控代理後立即回覆「已受理」，結果之後以 LINE 通知與 portal 產物清單送達。

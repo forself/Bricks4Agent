@@ -156,6 +156,7 @@ public sealed class DefinitionValidateTruncationTests : IDisposable
     [Theory]
     [InlineData("{\"routes\":[\"validate_definition\"],\"max_pages\":\"12\"}")]
     [InlineData("{\"routes\":[\"validate_definition\"],\"max_pages\":0}")]
+    [InlineData("{\"routes\":[\"validate_definition\"],\"max_pages\":13}")]
     [InlineData("{\"routes\":[\"validate_definition\"],\"max_pages\":101}")]
     [InlineData("[]")]
     public async Task InvalidScopeMaxPages_IsRejected(string scope)

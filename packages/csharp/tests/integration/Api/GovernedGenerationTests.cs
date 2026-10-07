@@ -311,6 +311,43 @@ public sealed class GovernedGenerationTests : IClassFixture<GovernedGenerationFi
     }
 
     [Fact]
+    public async Task GovernedDraftPreview_DescribesTheFrontEndPrototype_WithoutTheLegacyStack()
+    {
+        var userId = await NewProductionUserAsync("line-gengov-preview");
+        var draft = await SendLineAsync(userId, "/建立 完整系統雛形 聯絡人管理 需要 API 後端與登入 #PreviewDemo");
+        var refined = await SendLineAsync(userId, "列表要能依類別篩選");
+
+        foreach (var reply in new[] { ReadString(draft, "reply")!, ReadString(refined, "reply")! })
+        {
+            reply.Should().Contain(HighLevelSystemScaffoldService.GovernedProductDescription);
+            foreach (var legacy in new[] { "frontend:", "backend:", "database:", "auth:", "package_format:", "aspnet_core_api", "ASP.NET Core", "SQLite" })
+                reply.Should().NotContain(legacy);
+        }
+    }
+
+    [Fact]
+    public async Task CancelledInterview_AfterApproval_StartsNoAgentWhenTheUserRepliesYes()
+    {
+        var userId = await NewProductionUserAsync("line-gengov-ok-cancel");
+        await SendLineAsync(userId, "/proj");
+        await SendLineAsync(userId, $"#CancelPortal{Guid.NewGuid():N}");
+        await SendLineAsync(userId, "2");
+        await SendLineAsync(userId, "3");
+        var approved = await SendLineAsync(userId, "/ok");
+        IsNullOrMissing(approved, "error").Should().BeTrue("the approve reply was {0}", approved);
+        Coordinator.GetLineDraft(userId).Should().NotBeNull();
+        var spawnsBefore = _fixture.Containers.Spawned.Count;
+
+        var cancelled = await SendLineAsync(userId, "/cancel");
+        ReadString(cancelled, "reply").Should().Contain("撤下");
+        var confirmed = await SendLineAsync(userId, "y");
+
+        IsNullOrMissing(confirmed, "created_task").Should().BeTrue();
+        TasksSubmittedBy(userId).Should().BeEmpty();
+        _fixture.Containers.Spawned.Count.Should().Be(spawnsBefore, "no agent starts for a cancelled design");
+    }
+
+    [Fact]
     public async Task ConcurrentConfirmations_OfOneDraft_CreateOneTaskAndOneAgent()
     {
         var userId = await NewProductionUserAsync("line-gengov-race");
@@ -472,19 +509,28 @@ public sealed class GovernedGenerationTests : IClassFixture<GovernedGenerationFi
         denied.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
 
+    private async Task<bool> ValidateSucceedsAsync(BrokerTestSession session)
+    {
+        var reply = await SubmitAsync(session, "generation.definition.validate", "validate_definition", new { template = GoldenLikeTemplate() });
+        return reply.StatusCode == HttpStatusCode.OK &&
+               BrokerJson.ReadString(reply.Body, "data", "execution_state") == "Succeeded";
+    }
+
+    private List<ContainerSession> ActiveSessionsOf(string taskId)
+        => _fixture.Db.Query<ContainerSession>(
+            "SELECT * FROM container_sessions WHERE task_id = @taskId AND status = @active",
+            new { taskId, active = (int)SessionStatus.Active });
+
     [Fact]
-    public async Task ReRegisteredAgent_GetsOnlyTheRemainingTaskQuota()
+    public async Task ReRegisteredAgent_GetsOnlyTheRemainingTaskQuota_AndTheOldSessionEnds()
     {
         var (_, task, spawn) = await StartGovernedRunAsync("line-gengov-quota", "QuotaDemo");
         var secret = spawn.SecretEnvironment["BROKER_REGISTRATION_SECRET"];
         var first = (await _client.RegisterAsync(task.AssignedPrincipalId!, task.TaskId, remoteAddress: LoopbackAddress, registrationSecret: secret)).Session!;
         for (var i = 0; i < 2; i++)
-        {
-            var validate = await SubmitAsync(first, "generation.definition.validate", "validate_definition", new { template = GoldenLikeTemplate() });
-            BrokerJson.ReadString(validate.Body, "data", "execution_state").Should().Be("Succeeded", "the validate response was {0}", validate);
-        }
+            (await ValidateSucceedsAsync(first)).Should().BeTrue();
 
-        // 容器重啟後以同一把註冊憑證再註冊：validate 只剩 6 - 2 次，其他能力不變。
+        // 容器重啟後以同一把註冊憑證再註冊：validate 只剩 6 - 2 次，其他能力不變；舊 session 與它的授予結束。
         var again = await _client.RegisterAsync(task.AssignedPrincipalId!, task.TaskId, remoteAddress: LoopbackAddress, registrationSecret: secret);
         again.StatusCode.Should().Be(HttpStatusCode.OK, "the second register response was {0}", again);
         var grants = _fixture.Db.Query<CapabilityGrant>(
@@ -494,6 +540,49 @@ public sealed class GovernedGenerationTests : IClassFixture<GovernedGenerationFi
         grants["generation.definition.validate"].Should().Be(4);
         grants["generation.catalog.query"].Should().Be(20);
         grants["generation.scaffold.generate"].Should().Be(2);
+
+        _fixture.Db.Get<ContainerSession>(first.SessionId)!.Status.Should().Be(SessionStatus.Revoked);
+        _fixture.Db.Query<CapabilityGrant>("SELECT * FROM capability_grants WHERE session_id = @sessionId", new { sessionId = first.SessionId })
+            .Should().OnlyContain(grant => grant.Status == GrantStatus.Revoked);
+        ActiveSessionsOf(task.TaskId).Select(session => session.SessionId).Should().Equal(again.Session!.SessionId);
+
+        // 所有 session 合計不超過任務的 6 次：舊 session 再也用不到，新 session 用完剩下的 4 次就停。
+        var succeeded = 2;
+        for (var i = 0; i < 8; i++)
+        {
+            if (await ValidateSucceedsAsync(first)) succeeded++;
+            if (await ValidateSucceedsAsync(again.Session!)) succeeded++;
+        }
+
+        succeeded.Should().Be(6);
+    }
+
+    [Fact]
+    public async Task SessionsRegisteredBeforeAnyUse_ShareOneTaskQuota()
+    {
+        var (_, task, spawn) = await StartGovernedRunAsync("line-gengov-quota-many", "QuotaManyDemo");
+        var secret = spawn.SecretEnvironment["BROKER_REGISTRATION_SECRET"];
+        var sessions = new List<BrokerTestSession>();
+        for (var i = 0; i < 3; i++)
+        {
+            var registered = await _client.RegisterAsync(task.AssignedPrincipalId!, task.TaskId, remoteAddress: LoopbackAddress, registrationSecret: secret);
+            registered.StatusCode.Should().Be(HttpStatusCode.OK, "register {0} was {1}", i, registered);
+            sessions.Add(registered.Session!);
+        }
+
+        // 一個任務同時只留最後註冊的 session；三個 session 輪流呼叫，合計仍只有 6 次成功。
+        ActiveSessionsOf(task.TaskId).Select(session => session.SessionId).Should().Equal(sessions[^1].SessionId);
+        var succeeded = 0;
+        for (var round = 0; round < 8; round++)
+        {
+            foreach (var session in sessions)
+            {
+                if (await ValidateSucceedsAsync(session))
+                    succeeded++;
+            }
+        }
+
+        succeeded.Should().Be(6);
     }
 
     [Theory]

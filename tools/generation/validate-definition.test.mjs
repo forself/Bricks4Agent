@@ -17,10 +17,20 @@ function assertRejected(result, code, pathFragment) {
     const error = errorAt(result, code);
     assert.ok(error, `expected ${code}, got ${JSON.stringify(result.errors)}`);
     if (pathFragment !== undefined) assert.ok(error.path.includes(pathFragment), `${code} path ${error.path} should include ${pathFragment}`);
-    for (const entry of result.errors) {
-        assert.deepEqual(Object.keys(entry).sort(), ['code', 'hint', 'message', 'path']);
-    }
+    for (const entry of result.errors) assertIssueShape(entry);
     return error;
+}
+
+// 每筆錯誤是 {code, path, message, hint}；合併的項目另有 paths（前幾個路徑，第一個等於 path）
+function assertIssueShape(entry) {
+    const keys = Object.keys(entry).sort();
+    if (keys.includes('paths')) {
+        assert.deepEqual(keys, ['code', 'hint', 'message', 'path', 'paths']);
+        assert.ok(Array.isArray(entry.paths) && entry.paths.length >= 1 && entry.paths.length <= 5);
+        assert.equal(entry.paths[0], entry.path);
+    } else {
+        assert.deepEqual(keys, ['code', 'hint', 'message', 'path']);
+    }
 }
 
 test('the golden example passes every layer', async () => {
@@ -315,25 +325,77 @@ test('a systematic error is reported once with its count, inside the response bu
     assert.match(unknown[0].message, /"placeholder", "helpText"/);
     assert.match(unknown[0].message, /occurs at 1440 paths/);
     assert.equal(result.errors.filter(entry => /Allowed keys:/.test(entry.hint)).length, 1, 'the allowed key list appears once');
-    for (const entry of result.errors) {
-        assert.deepEqual(Object.keys(entry).sort(), ['code', 'hint', 'message', 'path']);
-    }
+    assert.deepEqual(unknown[0].paths.slice(0, 2), [
+        'definitions.pages[0].definition.fields[0].placeholder',
+        'definitions.pages[0].definition.fields[0].helpText'
+    ]);
+    assert.equal(unknown[0].paths.length, 5);
+    for (const entry of result.errors) assertIssueShape(entry);
     assert.ok(Buffer.byteLength(JSON.stringify(result)) < 16 * 1024, `response is ${Buffer.byteLength(JSON.stringify(result))} bytes`);
 });
 
-test('many distinct errors are capped and flagged as truncated', async () => {
+test('many distinct errors are capped and flagged as truncated, keeping every error code', async () => {
+    // 每個欄位一種不同的未知型別（訊息各不相同，不會合併）；最後一頁另有一個保留頁 id，出現在所有型別錯誤之後
     const template = systematicErrorTemplate((pageIndex, fieldIndex) => ({
-        name: `bad-${pageIndex}-${fieldIndex}`,
-        type: 'text',
+        name: `field${fieldIndex}`,
+        type: `kind${pageIndex}x${fieldIndex}`,
         label: `欄位 ${fieldIndex}`
     }));
+    template.definitions.pages[LIMITS.maxPages - 1].id = 'nul';
     const result = await validateRequest({ template });
 
     assert.equal(result.ok, false);
     assert.equal(result.errors.length, MAX_REPORTED_ISSUES);
     assert.equal(result.truncated, true);
     assert.ok(result.total_errors > MAX_REPORTED_ISSUES);
+    assert.ok(result.errors.some(entry => entry.code === 'PAGE_ID_RESERVED'), 'a code that appears late still keeps one entry');
+    assert.equal(result.errors.filter(entry => entry.code === 'FIELD_TYPE_UNSUPPORTED').length, MAX_REPORTED_ISSUES - 1);
     assert.ok(Buffer.byteLength(JSON.stringify(result)) < 64 * 1024, `response is ${Buffer.byteLength(JSON.stringify(result))} bytes`);
+});
+
+test('a merged error lists the paths where it occurs', async () => {
+    const template = golden();
+    delete template.definitions.pages[0].definition.fields[0].label;
+    delete formFields(template)[1].label;
+    const result = await validateRequest({ template });
+    const missing = result.errors.filter(entry => entry.code === 'MISSING_KEY');
+    assert.equal(missing.length, 1);
+    assert.deepEqual(missing[0].paths, [
+        'definitions.pages[0].definition.fields[0].label',
+        'definitions.pages[2].definition.fields[1].label'
+    ]);
+    assert.match(missing[0].message, /occurs at 2 paths/);
+});
+
+test('fieldName/fieldType style fields are reported without a bogus identifier error', async () => {
+    const template = golden();
+    formFields(template)[0] = { fieldName: 'fullName', fieldType: 'text', label: '姓名' };
+    const result = await validateRequest({ template });
+    assert.equal(result.ok, false);
+    assert.ok(result.errors.some(entry => entry.code === 'UNKNOWN_KEY'));
+    assert.ok(result.errors.some(entry => entry.code === 'MISSING_KEY'));
+    assert.ok(!result.errors.some(entry => entry.code === 'IDENTIFIER_INVALID'), JSON.stringify(result.errors));
+});
+
+test('identifier errors on many fields merge into one entry with their paths', async () => {
+    const template = golden();
+    formFields(template).push({ name: 'a-b', type: 'text', label: '一' }, { name: 'c d', type: 'text', label: '二' });
+    const result = await validateRequest({ template });
+    const identifiers = result.errors.filter(entry => entry.code === 'IDENTIFIER_INVALID');
+    assert.equal(identifiers.length, 1);
+    assert.deepEqual(identifiers[0].paths, [
+        'definitions.pages[2].definition.fields[7].name',
+        'definitions.pages[2].definition.fields[8].name'
+    ]);
+});
+
+test('unknown validation keys are reported once as UNKNOWN_KEY, not again per key', async () => {
+    const template = golden();
+    formFields(template)[0].validation = { maxLength: 50, required: true, minLength: 2, pattern: '^a' };
+    const result = await validateRequest({ template });
+    assert.equal(result.ok, false);
+    assert.deepEqual(result.errors.map(entry => entry.code), ['UNKNOWN_KEY'], JSON.stringify(result.errors));
+    assert.match(result.errors[0].message, /"required", "minLength", "pattern"/);
 });
 
 test('a passing result carries no truncation fields', async () => {
@@ -341,4 +403,142 @@ test('a passing result carries no truncation fields', async () => {
     assert.equal(result.ok, true);
     assert.equal('total_errors' in result, false);
     assert.equal('truncated' in result, false);
+});
+
+// 第 1 層的鍵長上限：一個超長的鍵在任何位置都立即判為無效，不論其下有多少其他錯誤；
+// 執行時間與回應大小都有上限。
+test('layer 1 rejects an overlong key at once, however many other errors it carries', async () => {
+    const longKey = 'k'.repeat(LIMITS.maxKeyLength * 200);
+    const items = Array.from({ length: 6000 }, () => '{"__proto__":0}').join(',');
+    const text = `{"kind":"definition-template","version":"0.1.0","definitions":{"pages":[]},"${longKey}":[${items}]}`;
+    assert.ok(Buffer.byteLength(text) < LIMITS.maxTemplateBytes);
+    const started = process.hrtime.bigint();
+    const result = await validateRequest({ template: JSON.parse(text) });
+    const elapsedMs = Number(process.hrtime.bigint() - started) / 1e6;
+
+    assert.equal(result.ok, false);
+    assert.deepEqual(result.errors.map(entry => entry.code), ['KEY_TOO_LONG']);
+    assert.equal(result.errors[0].path, '');
+    assert.ok(!result.errors[0].message.includes(longKey.slice(0, 200)), 'the key itself is not echoed');
+    assert.ok(Buffer.byteLength(JSON.stringify(result)) < 4 * 1024);
+    assert.ok(elapsedMs < 2000, `validation took ${elapsedMs} ms`);
+});
+
+test('layer 1 accepts keys up to the limit and reports the path of an overlong nested key', async () => {
+    const template = golden();
+    formFields(template)[0]['x'.repeat(LIMITS.maxKeyLength + 1)] = 1;
+    const result = await validateRequest({ template });
+    assert.deepEqual(result.errors.map(entry => entry.code), ['KEY_TOO_LONG']);
+    assert.equal(result.errors[0].path, 'definitions.pages[2].definition.fields[0]');
+
+    const atLimit = golden();
+    formFields(atLimit)[0]['x'.repeat(LIMITS.maxKeyLength)] = 1;
+    const unknown = await validateRequest({ template: atLimit });
+    assert.deepEqual(unknown.errors.map(entry => entry.code), ['UNKNOWN_KEY'], 'a key at the limit reaches the key whitelist');
+});
+
+test('layer 1 stops collecting at its issue limit and marks the result as truncated', async () => {
+    const items = Array.from({ length: LIMITS.maxEnvelopeIssues * 3 }, () => '{"__proto__":0}').join(',');
+    const template = JSON.parse(`{"kind":"definition-template","version":"0.1.0","definitions":{"pages":[]},"extra":[${items}]}`);
+    const started = process.hrtime.bigint();
+    const result = await validateRequest({ template });
+    const elapsedMs = Number(process.hrtime.bigint() - started) / 1e6;
+
+    assert.equal(result.ok, false);
+    assert.equal(result.truncated, true);
+    assert.equal(result.total_errors, LIMITS.maxEnvelopeIssues);
+    const dangerous = result.errors.filter(entry => entry.code === 'DANGEROUS_KEY');
+    assert.equal(dangerous.length, 1, 'identical errors still merge into one entry');
+    assert.match(dangerous[0].message, new RegExp(`occurs at ${LIMITS.maxEnvelopeIssues} paths`));
+    assert.ok(elapsedMs < 2000, `validation took ${elapsedMs} ms`);
+});
+
+test('defaults must have the form each field type handles at runtime', async () => {
+    const reject = [
+        [{ type: 'checkbox', default: 'yes' }, 'DEFAULT_INVALID'],
+        [{ type: 'toggle', default: 1 }, 'DEFAULT_INVALID'],
+        [{ type: 'date', default: 'tomorrow' }, 'DEFAULT_INVALID'],
+        [{ type: 'date', default: '2026-02-30' }, 'DEFAULT_INVALID'],
+        [{ type: 'time', default: '9:30' }, 'DEFAULT_INVALID'],
+        [{ type: 'number', default: 'ten' }, 'DEFAULT_INVALID'],
+        [{ type: 'number', default: 200, validation: { max: 100 } }, 'DEFAULT_INVALID'],
+        [{ type: 'text', default: 5 }, 'DEFAULT_INVALID'],
+        [{ type: 'text', default: 'abcdef', validation: { maxLength: 3 } }, 'DEFAULT_INVALID'],
+        [{ type: 'select', options: [{ value: 'a', label: 'A' }], default: 'b' }, 'DEFAULT_INVALID'],
+        [{ type: 'radio', options: [{ value: 1, label: 'A' }, { value: 2, label: 'B' }], default: 1 }, 'DEFAULT_INVALID'],
+        [{ type: 'multiselect', options: [{ value: 'a', label: 'A' }], default: 'a' }, 'DEFAULT_NOT_ALLOWED'],
+        [{ type: 'phonelist', default: 'x' }, 'DEFAULT_NOT_ALLOWED'],
+        [{ type: 'color', default: '#ff0000' }, 'DEFAULT_NOT_ALLOWED'],
+        [{ type: 'password', default: 'secret' }, 'DEFAULT_NOT_ALLOWED']
+    ];
+    for (const [extra, code] of reject) {
+        const template = golden();
+        formFields(template).push({ name: 'extraField', label: '額外', ...extra });
+        assertRejected(await validateRequest({ template }), code, 'definitions.pages[2].definition.fields[7].default');
+    }
+
+    const accept = [
+        { type: 'checkbox', default: false },
+        { type: 'toggle', default: true },
+        { type: 'date', default: 'today' },
+        { type: 'date', default: '2026-01-31' },
+        { type: 'time', default: '09:30' },
+        { type: 'number', default: 2.5, validation: { min: 0, max: 10 } },
+        { type: 'text', default: 'abc', validation: { maxLength: 3 } },
+        { type: 'select', options: [{ value: 'a', label: 'A' }, { value: 'b', label: 'B' }], default: 'b' },
+        { type: 'radio', options: [{ value: 'a', label: 'A' }], default: 'a' },
+        { type: 'hidden', default: 'fixed' }
+    ];
+    for (const extra of accept) {
+        const template = golden();
+        formFields(template).push({ name: 'extraField', label: '額外', ...extra });
+        const result = await validateRequest({ template });
+        assert.equal(result.ok, true, `${JSON.stringify(extra)}: ${JSON.stringify(result.errors)}`);
+    }
+});
+
+test('required is rejected where the form cannot tell an empty value, and minItems is not offered', async () => {
+    for (const type of ['phonelist', 'personinfo', 'list', 'socialmedia', 'checkbox', 'toggle', 'student']) {
+        const template = golden();
+        formFields(template).push({ name: 'extraField', type, label: '額外', required: true });
+        assertRejected(await validateRequest({ template }), 'REQUIRED_NOT_SUPPORTED', 'definitions.pages[2].definition.fields[7].required');
+    }
+    const optional = golden();
+    formFields(optional).push({ name: 'extraField', type: 'phonelist', label: '電話', required: false, validation: { maxItems: 3 } });
+    assert.equal((await validateRequest({ template: optional })).ok, true);
+
+    const minItems = golden();
+    formFields(minItems).push({ name: 'extraField', type: 'phonelist', label: '電話', validation: { minItems: 2 } });
+    const error = assertRejected(await validateRequest({ template: minItems }), 'VALIDATION_KEY_UNSUPPORTED', 'fields[7].validation.minItems');
+    assert.match(error.hint, /maxItems/);
+});
+
+test('the golden example has no cross-page warnings', async () => {
+    const result = await validateRequest({ template: golden() });
+    assert.deepEqual(result.warnings, []);
+});
+
+test('layer 7 warns when pages of one resource do not line up', async () => {
+    const moved = golden();
+    moved.definitions.pages[2].definition.api = { get: '/api/people', create: '/api/people', update: '/api/people' };
+    const result = await validateRequest({ template: moved });
+    assert.equal(result.ok, true, 'cross-page checks only warn');
+    const withoutForm = result.warnings.filter(entry => entry.code === 'RESOURCE_WITHOUT_FORM').map(entry => entry.path);
+    assert.deepEqual(withoutForm, ['definitions.pages[0].definition.api', 'definitions.pages[1].definition.api'], JSON.stringify(result.warnings));
+    assert.ok(result.warnings.some(entry => entry.code === 'FORM_WITHOUT_LIST' && entry.path === 'definitions.pages[2].definition.api'),
+        JSON.stringify(result.warnings));
+
+    const renamed = golden();
+    renamed.definitions.pages[0].definition.fields[0].name = 'name';
+    const fieldResult = await validateRequest({ template: renamed });
+    assert.equal(fieldResult.ok, true);
+    assert.ok(fieldResult.warnings.some(entry => entry.code === 'FIELD_NOT_IN_FORM' && entry.path === 'definitions.pages[0].definition.fields[0].name'),
+        JSON.stringify(fieldResult.warnings));
+
+    const options = golden();
+    options.definitions.pages[1].definition.fields[3].options = [{ value: 'customer', label: '顧客' }];
+    const optionResult = await validateRequest({ template: options });
+    assert.equal(optionResult.ok, true);
+    assert.ok(optionResult.warnings.some(entry => entry.code === 'OPTIONS_MISMATCH' && entry.path === 'definitions.pages[1].definition.fields[3].options'),
+        JSON.stringify(optionResult.warnings));
 });

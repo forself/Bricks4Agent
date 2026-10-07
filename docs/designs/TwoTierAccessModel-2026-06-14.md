@@ -51,6 +51,8 @@ Status: **已實作 + 驗證(2026-06-14)** —— 模型/遮罩/註冊閘門/晉
 
 - 2026-10-07 補上:專案訪談的 `/proj` 起手與 `/ok` 也檢查 effective `AllowProduction`,被拒時的回覆與錯誤碼(`production_disabled`)和 `/建立` 相同;先前這兩個指令在權限閘之前處理,Basic 層也能觸發建置。
 
+- 2026-10-07 審查後擴大:effective `AllowProduction` 的檢查共有五個位置——`/proj` 起手、`/ok`、`/revise`、訪談進行中的回答(會產生並交付審查檔),以及確認 draft(回 `y`,在執行前重新檢查,draft 建立後才被降為 Basic 的使用者也會被拒,draft 保留)。`/cancel` 不設閘:訪談中途被降級的使用者仍可結束訪談(連同等待確認的建置 draft 一併撤下)。
+
 ### 註冊閘門(`TryHandleRegistrationGate`)
 
 - 新使用者:`deny_all` → 擋;否則 → Basic + Approved,放行。

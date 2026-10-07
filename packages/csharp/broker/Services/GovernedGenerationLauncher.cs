@@ -462,16 +462,12 @@ public sealed class GovernedGenerationLauncher
                 scaffold[key] = clean;
         }
 
+        // 只帶描述產物形態的欄位。舊 scaffold 的技術棧（前端框架、後端、資料庫、登入、部署）不適用於
+        // 受治理生成的產物（以元件庫生成、無後端的前端原型），不放進工作項。
         if (spec != null)
         {
             Put("family", spec.ScaffoldFamily);
             Put("ui_shape", spec.UiShape);
-            Put("frontend", spec.FrontendStack);
-            Put("ui_components", spec.UiComponentStrategy);
-            Put("backend", spec.BackendStack);
-            Put("database", spec.DatabaseStack);
-            Put("auth", spec.AuthMode);
-            Put("deployment", spec.DeploymentTarget);
         }
 
         var requirements = (spec?.ConfirmedRequirements ?? new List<string>())

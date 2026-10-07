@@ -33,6 +33,9 @@ public sealed class GenerationWorkerOptions
     /// <summary>CLI stderr 保留上限（位元組）；超過的部分丟棄，只用於診斷日誌。</summary>
     public int MaxStderrBytes { get; set; } = 64 * 1024;
 
+    /// <summary>node 子程序的 V8 heap 上限（MB，<c>--max-old-space-size</c>）。</summary>
+    public int MaxOldSpaceMegabytes { get; set; } = 256;
+
     /// <summary>catalog／validate 回傳給 broker 的 JSON 上限（位元組）。</summary>
     public int MaxResultBytes { get; set; } = 256 * 1024;
 
@@ -76,6 +79,8 @@ public sealed class GenerationWorkerOptions
             return "Generation timeouts must be positive.";
         if (MaxInputBytes <= 0 || MaxStdoutBytes <= 0 || MaxStderrBytes <= 0 || MaxResultBytes <= 0)
             return "Generation size limits must be positive.";
+        if (MaxOldSpaceMegabytes < 64)
+            return "Generation:MaxOldSpaceMegabytes must be at least 64.";
         return null;
     }
 }

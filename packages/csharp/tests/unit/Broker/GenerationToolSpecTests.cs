@@ -33,9 +33,20 @@ public sealed class GenerationToolSpecTests : IDisposable
         "type", "required", "properties", "items", "maxLength", "enum",
     };
 
-    private readonly BrokerDb _db = TestDb.CreateInMemory();
+    private readonly BrokerDb _db;
+    private readonly string _dbPath;
 
-    public void Dispose() => _db.Dispose();
+    public GenerationToolSpecTests()
+    {
+        (_db, _dbPath) = TestDb.CreateIn(Path.Combine(Path.GetTempPath(), $"b4a-gen-toolspec-{Guid.NewGuid():N}"));
+    }
+
+    public void Dispose()
+    {
+        _db.Dispose();
+        TestDb.Delete(_dbPath);
+        try { Directory.Delete(Path.GetDirectoryName(_dbPath)!, recursive: true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+    }
 
     private static string BrokerProjectDirectory()
     {

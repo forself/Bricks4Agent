@@ -72,7 +72,8 @@ public sealed class NodeGeneratorCli : IGeneratorCli
             result = await BoundedProcessRunner.RunAsync(new BoundedProcessRequest
             {
                 FileName = _options.NodePath,
-                Arguments = new[] { _options.CliPath, command },
+                // V8 heap 上限：單次呼叫的記憶體有固定上限，不會因異常輸入占滿主機
+                Arguments = new[] { $"--max-old-space-size={_options.MaxOldSpaceMegabytes}", _options.CliPath, command },
                 WorkingDirectory = _options.ToolsRoot,
                 Stdin = stdin,
                 Timeout = timeout,

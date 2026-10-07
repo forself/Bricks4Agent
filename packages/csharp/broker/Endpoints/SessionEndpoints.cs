@@ -128,7 +128,38 @@ public static class SessionEndpoints
                 return registration.Reject("credential_revoked", credential);
             }
 
-            var plannedGrants = BuildGrantPlan(task, role, capabilityCatalog, db);
+            // 授予在這裡規劃並建立。任務帶以任務累計的配額（quota_scope: task）時，一個任務同時只留一個 session：
+            // 在同一道鎖內撤銷同任務的其他 session（連同授予與 session key），再以撤銷後的用量算新配額，
+            // 所以同時註冊多個 session 不會讓任務的總配額加倍。並行的註冊依序進入，只有最後一個留下。
+            GrantPlanEntry[] plannedGrants;
+            if (UsesTaskScopedQuota(task))
+            {
+                lock (TaskScopedRegistrationGate)
+                {
+                    if (sessionService.GetSession(session.SessionId)?.Status != SessionStatus.Active)
+                    {
+                        keyStore.Remove(session.SessionId);
+                        return registration.Reject("session_superseded", credential);
+                    }
+
+                    var superseded = sessionService.RevokeOtherTaskSessions(
+                        taskId, session.SessionId, "Superseded by a newer registration for this task.", "session-register");
+                    foreach (var supersededSessionId in superseded)
+                    {
+                        keyStore.Remove(supersededSessionId);
+                        capabilityCatalog.RevokeSessionGrants(supersededSessionId);
+                    }
+
+                    plannedGrants = BuildGrantPlan(task, role, capabilityCatalog, db);
+                    CreateGrants(capabilityCatalog, task.TaskId, session, principalId, plannedGrants);
+                }
+            }
+            else
+            {
+                plannedGrants = BuildGrantPlan(task, role, capabilityCatalog, db);
+                CreateGrants(capabilityCatalog, task.TaskId, session, principalId, plannedGrants);
+            }
+
             var grantedCapabilityIds = plannedGrants
                 .Select(grant => grant.CapabilityId)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -147,18 +178,6 @@ public static class SessionEndpoints
             };
 
             var scopedToken = tokenService.GenerateToken(tokenClaims);
-
-            foreach (var grant in plannedGrants)
-            {
-                capabilityCatalog.CreateGrant(
-                    taskId,
-                    session.SessionId,
-                    principalId,
-                    grant.CapabilityId,
-                    grant.ScopeOverride,
-                    grant.Quota,
-                    session.ExpiresAt);
-            }
 
             if (task.State == TaskState.Created)
             {
@@ -411,6 +430,28 @@ public static class SessionEndpoints
         return ip.IsIPv4MappedToIPv6 && System.Net.IPAddress.IsLoopback(ip.MapToIPv4());
     }
 
+    /// <summary>以任務累計配額的註冊依序進行（見 register）。</summary>
+    private static readonly object TaskScopedRegistrationGate = new();
+
+    private static bool UsesTaskScopedQuota(BrokerTask task)
+        => TaskRuntimeDescriptor.Parse(task.RuntimeDescriptor).CapabilityGrants.Any(template => template.IsTaskScopedQuota);
+
+    private static void CreateGrants(
+        ICapabilityCatalog capabilityCatalog, string taskId, ContainerSession session, string principalId, IEnumerable<GrantPlanEntry> plannedGrants)
+    {
+        foreach (var grant in plannedGrants)
+        {
+            capabilityCatalog.CreateGrant(
+                taskId,
+                session.SessionId,
+                principalId,
+                grant.CapabilityId,
+                grant.ScopeOverride,
+                grant.Quota,
+                session.ExpiresAt);
+        }
+    }
+
     private static GrantPlanEntry[] BuildGrantPlan(BrokerTask task, Role role, ICapabilityCatalog capabilityCatalog, BrokerDb db)
     {
         var descriptor = TaskRuntimeDescriptor.Parse(task.RuntimeDescriptor);
@@ -442,9 +483,11 @@ public static class SessionEndpoints
     }
 
     /// <summary>
-    /// 新 session 的配額。以任務累計（<c>quota_scope: task</c>）時，扣掉這個任務先前各 session 已經用掉的次數：
-    /// 已消耗配額的請求（分派過的 Dispatched、Succeeded、Failed）都算，所以代理容器重啟或 session 過期後重新註冊，
-    /// 不會拿到新的一份配額。其他情況維持每個 session 一份完整配額。
+    /// 新 session 的配額。以任務累計（<c>quota_scope: task</c>）時，扣掉這個任務先前各 session 已經用掉或仍可能用掉的次數：
+    /// 除了被拒絕（Denied）的請求，其餘都算——已分派過的（Dispatched、Succeeded、Failed），以及仍在處理或等待審批的
+    /// （Received、Validated、Allowed、PendingApproval）。register 在同一道鎖內先撤銷同任務的其他 session 與授予，
+    /// 所以任務所有 session 合計不超過樣板的配額；代理容器重啟或 session 過期後重新註冊，也只拿到剩下的次數。
+    /// 其他情況維持每個 session 一份完整配額。
     /// </summary>
     internal static int ResolvePlannedQuota(TaskCapabilityGrantTemplate template, string taskId, BrokerDb db)
     {
@@ -455,14 +498,12 @@ public static class SessionEndpoints
         var used = db.Scalar<long>(
             @"SELECT COUNT(*) FROM execution_requests
               WHERE task_id = @taskId AND capability_id = @capabilityId
-                AND execution_state IN (@dispatched, @succeeded, @failed)",
+                AND execution_state <> @denied",
             new
             {
                 taskId,
                 capabilityId = template.CapabilityId,
-                dispatched = (int)ExecutionState.Dispatched,
-                succeeded = (int)ExecutionState.Succeeded,
-                failed = (int)ExecutionState.Failed
+                denied = (int)ExecutionState.Denied
             });
         return (int)Math.Max(0, quota - used);
     }

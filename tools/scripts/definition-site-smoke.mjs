@@ -4,6 +4,7 @@
 // 2. 以 Edge（playwright-core，沿用 studio smoke 的載入方式）逐一走訪每個路由，確認渲染出預期數量的欄位或欄。
 // 3. 記憶體資料流程：列表新增一筆 → 明細看得到 → 表單編輯後列表更新 → 刪除。
 // 4. 另以涵蓋本切片全部開放欄位型別的定義重跑一次表單、列表、明細，確認每種型別在瀏覽器中可渲染。
+// 5. 只能新增的表單（只有 api.create，沒有列表或明細）可以連續送出多筆，每次送出後回到空白的新增表單。
 // 全程 console error、pageerror、HTTP 錯誤、CSP 違規為 0；DOM 中 svg、<style>、inline handler 為 0。
 // 結束時刪除本次的 .test-output 子目錄（.test-output 若因此變空也一併刪除）。
 import { spawnSync } from 'node:child_process';
@@ -154,6 +155,31 @@ function buildAllTypesTemplate() {
                 page('items-list', 'ItemListPage', 'list', '項目列表', { list: '/api/items', delete: '/api/items' }),
                 page('item-detail', 'ItemDetailPage', 'detail', '項目明細', { get: '/api/items' }),
                 page('item-form', 'ItemFormPage', 'form', '編輯項目', { get: '/api/items', create: '/api/items', update: '/api/items' })
+            ]
+        }
+    };
+}
+
+function buildCreateOnlyTemplate() {
+    return {
+        kind: 'definition-template',
+        version: '0.1.0',
+        meta: { title: '意見回饋' },
+        definitions: {
+            pages: [
+                {
+                    id: 'feedback-form',
+                    definition: {
+                        name: 'FeedbackFormPage',
+                        type: 'form',
+                        description: '意見回饋',
+                        fields: [
+                            { name: 'subject', type: 'text', label: '主旨', required: true },
+                            { name: 'message', type: 'textarea', label: '內容' }
+                        ],
+                        api: { create: '/api/feedback' }
+                    }
+                }
             ]
         }
     };
@@ -355,6 +381,38 @@ async function allTypesScenario(browser, baseUrl, template) {
     reportAudits('All-types', audits, problems);
 }
 
+async function createOnlyScenario(browser, baseUrl) {
+    const { context, page, problems } = await openBrowserSession(browser, baseUrl);
+    const audits = [];
+    const toastTexts = () => page.evaluate(() => [...document.querySelectorAll('.toast')].map(node => node.textContent));
+    try {
+        await page.goto(`${baseUrl}/#/feedback-form`, { waitUntil: 'load' });
+        await waitForRoute(page, 'feedback-form');
+        audits.push(['create-only form', await domAudit(page)]);
+
+        for (const [index, subject] of ['First note', 'Second note'].entries()) {
+            await page.fill('.form-field[data-field="subject"] input', subject);
+            await page.getByRole('button', { name: '儲存' }).click();
+            await page.waitForFunction((count) => [...document.querySelectorAll('.toast')]
+                .filter(node => node.textContent.includes('已新增一筆資料')).length >= count, index + 1, { timeout: 10000 });
+            await waitForRoute(page, 'feedback-form');
+            const state = await page.evaluate(() => ({
+                hash: location.hash,
+                subject: document.querySelector('.form-field[data-field="subject"] input')?.value ?? null,
+                notice: [...document.querySelectorAll('.ds-notice')].filter(node => !node.hidden).map(node => node.textContent)
+            }));
+            check(`Create-only form saves record ${index + 1} and returns to an empty create form`,
+                state.hash === '#/feedback-form' && state.subject === '' && state.notice.length === 0, JSON.stringify(state));
+        }
+        const toasts = await toastTexts();
+        check('Create-only form never reports that it cannot edit', !toasts.some(text => text.includes('只能新增')), JSON.stringify(toasts));
+        audits.push(['create-only form after saves', await domAudit(page)]);
+    } finally {
+        await context.close();
+    }
+    reportAudits('Create-only', audits, problems);
+}
+
 function reportAudits(label, audits, problems) {
     const failedAudits = audits.filter(([, audit]) => !auditPasses(audit));
     const totals = audits.reduce((sum, [, audit]) => ({
@@ -397,7 +455,13 @@ try {
     check('All-types template builds through the CLI', allTypesBuild.status === 0 && allTypesBuild.result?.ok === true,
         `${allTypesBuild.status} ${JSON.stringify(allTypesBuild.result?.errors ?? null)}`);
 
-    if (goldenBuild.result?.ok && allTypesBuild.result?.ok) {
+    const createOnly = buildCreateOnlyTemplate();
+    const createOnlyOut = path.join(workRoot, 'create-only');
+    const createOnlyBuild = runBuild(createOnly, createOnlyOut, '意見回饋');
+    check('Create-only template builds through the CLI', createOnlyBuild.status === 0 && createOnlyBuild.result?.ok === true,
+        `${createOnlyBuild.status} ${JSON.stringify(createOnlyBuild.result?.errors ?? null)}`);
+
+    if (goldenBuild.result?.ok && allTypesBuild.result?.ok && createOnlyBuild.result?.ok) {
         browser = await chromium.launch({ channel: 'msedge', headless: !headed });
         const goldenServer = await createStaticServer(path.join(goldenOut, 'site'));
         servers.push(goldenServer.server);
@@ -406,6 +470,10 @@ try {
         const allTypesServer = await createStaticServer(path.join(allTypesOut, 'site'));
         servers.push(allTypesServer.server);
         await allTypesScenario(browser, allTypesServer.baseUrl, allTypes);
+
+        const createOnlyServer = await createStaticServer(path.join(createOnlyOut, 'site'));
+        servers.push(createOnlyServer.server);
+        await createOnlyScenario(browser, createOnlyServer.baseUrl);
     }
 } catch (error) {
     check('Smoke run completes without an exception', false, error?.stack || String(error));

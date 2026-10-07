@@ -41,7 +41,7 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <tr>
 <td><code>generation.definition.validate</code></td>
 <td><code>validate_definition</code></td>
-<td>轉呼叫 CLI 的 <code>validate</code>，原樣回傳 JSON；定義不通過時仍是成功的呼叫（<code>ok:false</code> 加結構化 errors），代理依錯誤修正。結果超過 <code>MaxResultBytes</code> 時改回前幾筆錯誤與警告、<code>total_errors</code> 與 <code>truncated: true</code>（仍是成功的呼叫）。grant scope 帶 <code>max_pages</code> 時，選取的頁數超過它也回 <code>ok:false</code> 與 <code>MAX_PAGES_EXCEEDED</code></td>
+<td>轉呼叫 CLI 的 <code>validate</code>，原樣回傳 JSON；定義不通過時仍是成功的呼叫（<code>ok:false</code> 加結構化 errors），代理依錯誤修正。結果超過 <code>MaxResultBytes</code> 時改回前幾筆錯誤與警告、<code>total_errors</code> 與 <code>truncated: true</code>（仍是成功的呼叫）。grant scope 帶 <code>max_pages</code>（1～12）時，選取的頁數超過它也回 <code>ok:false</code> 與 <code>MAX_PAGES_EXCEEDED</code>。定義中有長於 128 字元的物件鍵時不轉交 CLI，直接回失敗</td>
 </tr>
 <tr>
 <td><code>generation.scaffold.generate</code></td>
@@ -54,7 +54,7 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <h2>輸出位置、冪等與回傳內容</h2>
 <ul>
 <li>
-<p>輸出位置<strong>只取自 grant scope</strong>（broker 寫入）：<code>{Generation:OutputRoot}/{output_slot}/{requestId}/</code>。scope 必須含 <code>output_slot</code>、<code>package_name</code>（兩者只能是英數、底線、連字號，1～80 字）、<code>max_pages</code>（1～100 的整數）與 <code>package: "definition-site-v1"</code>，缺少或格式不符就拒絕。請求參數中任何路徑類欄位一律不採用。</p>
+<p>輸出位置<strong>只取自 grant scope</strong>（broker 寫入）：<code>{Generation:OutputRoot}/{output_slot}/{requestId}/</code>。scope 必須含 <code>output_slot</code>、<code>package_name</code>（兩者只能是英數、底線、連字號，1～80 字）、<code>max_pages</code>（1～12 的整數，與生成器驗證的頁數上限相同）與 <code>package: "definition-site-v1"</code>，缺少或格式不符就拒絕。請求參數中任何路徑類欄位一律不採用。</p>
 </li>
 <li>
 <p>冪等：同一 requestId 的 <code>result.json</code> 已存在，且 zip 的 sha256 與大小相符時，直接回傳同一結果（broker 逾時重派不會重複生成）；否則清空該 requestId 目錄後重做。worker 一次只處理一個請求（<code>MaxConcurrent=1</code>），同一請求的並行重派會等前一次完成後取用其結果。</p>
@@ -82,7 +82,7 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 </code></pre>
 <p><code>zip.path</code> 相對於輸出根目錄。broker 端依自己的 <code>Generation:OutputRoot</code> 解析，驗證路徑與 sha256 後才交付給使用者。</p>
 <h2>子程序</h2>
-<p>CLI 以 <code>node &lt;ToolsRoot&gt;/tools/generation/cli.mjs &lt;command&gt;</code> 執行：不經 shell、參數陣列、輸入只經 stdin、有逾時（catalog／validate 30 秒、build 120 秒）、stdout 超過上限即終止子程序並視為失敗、stderr 只寫進日誌。子程序的環境變數會移除 worker 憑證與其他密鑰類變數，以及 <code>NODE_OPTIONS</code>、<code>NODE_PATH</code>。</p>
+<p>CLI 以 <code>node &lt;ToolsRoot&gt;/tools/generation/cli.mjs &lt;command&gt;</code> 執行：不經 shell、參數陣列、輸入只經 stdin、有逾時（catalog／validate 30 秒、build 120 秒）、stdout 超過上限即終止子程序並視為失敗、stderr 只寫進日誌、V8 heap 有上限（<code>--max-old-space-size</code>，<code>Generation:MaxOldSpaceMegabytes</code>）。子程序的環境變數會移除 worker 憑證與其他密鑰類變數，以及 <code>NODE_OPTIONS</code>、<code>NODE_PATH</code>。</p>
 <h2>設定</h2>
 <table>
 <thead>
@@ -115,6 +115,10 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 <tr>
 <td><code>Generation:MaxStdoutBytes</code></td>
 <td>CLI 輸出上限，預設 4 MiB</td>
+</tr>
+<tr>
+<td><code>Generation:MaxOldSpaceMegabytes</code></td>
+<td>node 子程序的 V8 heap 上限（MB），預設 256，最小 64</td>
 </tr>
 <tr>
 <td><code>Worker:Auth:*</code></td>

@@ -201,6 +201,8 @@ public sealed class GovernedGenerationLauncherTests : IDisposable
         preparation.OutputSlot.Should().Be(task.TaskId);
         preparation.Request.Limits.MaxPages.Should().Be(12);
         preparation.Request.Scaffold["family"].Should().Be("admin_portal");
+        // 舊 scaffold 的技術棧（前端框架、後端、資料庫、登入、部署）不適用於受治理生成的產物，不放進工作項
+        preparation.Request.Scaffold.Keys.Should().BeSubsetOf(new[] { "family", "ui_shape" });
     }
 
     [Theory]

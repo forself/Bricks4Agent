@@ -110,42 +110,77 @@ export const COMMON_TYPE_ALIASES = Object.freeze({
 
 const TEXT_LIMITS = ['maxLength'];
 const NUMBER_LIMITS = ['min', 'max'];
-const ITEM_LIMITS = ['minItems', 'maxItems'];
+// 列表類欄位只開放 maxItems：元件依它限制可新增的列數。minItems 只會預先建立空白列，
+// 表單驗證不檢查列數也不檢查列內容，所以不列入。
+const ITEM_LIMITS = ['maxItems'];
 
 /**
- * 通用說明表。options 表示必須提供 options:[{value,label}]；validation 為可用的限制鍵。
- * 白名單內每個型別都必須在此有一筆（測試鎖定）。
+ * default 的可用形式（驗證器與型錄共用）。執行期的預設值處理見 page-generator 的 FieldResolver：
+ *   string  一般文字（文字類欄位與 hidden）
+ *   number  有限數字（number）
+ *   boolean true 或 false（checkbox、toggle 只認布林）
+ *   option  等於某個 option value 的字串（select、radio；數字選項值的預設值在執行期對不上）
+ *   date    "today" 或 YYYY-MM-DD（date）
+ *   time    HH:MM，24 小時制（time）
+ *   null    不開放 default（執行期會忽略或無法正確設定）
+ */
+export const DEFAULT_KINDS = Object.freeze(['string', 'number', 'boolean', 'option', 'date', 'time']);
+
+export const DEFAULT_KIND_DESCRIPTIONS = Object.freeze({
+    string: 'plain text',
+    number: 'finite number',
+    boolean: 'true or false',
+    option: 'one of the option values, written as a string',
+    date: '"today" or YYYY-MM-DD',
+    time: 'HH:MM (24-hour)'
+});
+
+/**
+ * 通用說明表。options 表示必須提供 options:[{value,label}]；validation 為可用的限制鍵；
+ * default 為可用的預設值形式（null 表示不開放）；required:false 表示表單無法判斷這種欄位是否為空，
+ * 不開放 required（例如勾選框永遠有值、列表類欄位會帶空白列）。
+ * 白名單內每個型別都必須在此有一筆（測試鎖定），且宣稱的限制鍵、預設值與 required 都有執行期測試。
  */
 export const FIELD_TYPE_NOTES = {
-    text: { note: 'single-line text', validation: TEXT_LIMITS },
-    email: { note: 'e-mail address text', validation: TEXT_LIMITS },
-    password: { note: 'masked text; never shown in list or detail', validation: TEXT_LIMITS },
-    number: { note: 'numeric input', validation: NUMBER_LIMITS },
-    textarea: { note: 'multi-line plain text', validation: TEXT_LIMITS },
-    date: { note: 'date picker', validation: [] },
-    time: { note: 'time picker', validation: [] },
-    datetime: { note: 'date plus time input', validation: [] },
-    select: { note: 'single choice dropdown', options: true, validation: [] },
-    multiselect: { note: 'multiple choice dropdown', options: true, validation: [] },
-    checkbox: { note: 'yes/no checkbox', validation: [] },
-    toggle: { note: 'on/off switch', validation: [] },
-    radio: { note: 'single choice radio group', options: true, validation: [] },
-    richtext: { note: 'rich text editor; output is sanitized', validation: [] },
-    canvas: { note: 'free drawing board', validation: [] },
-    color: { note: 'colour picker', validation: [] },
-    image: { note: 'image viewer', validation: [] },
-    file: { note: 'file picker; the prototype form does not keep file values', validation: ITEM_LIMITS },
-    address: { note: 'postal address with region selectors', validation: [] },
-    addresslist: { note: 'repeatable postal addresses', validation: ITEM_LIMITS },
-    chained: { note: 'dependent selects; not configurable in this slice, prefer select', validation: [] },
-    list: { note: 'repeatable short text rows', validation: ITEM_LIMITS },
-    personinfo: { note: 'repeatable person entries', validation: ITEM_LIMITS },
-    phonelist: { note: 'repeatable phone numbers', validation: ITEM_LIMITS },
-    socialmedia: { note: 'repeatable social media accounts', validation: ITEM_LIMITS },
-    organization: { note: 'organisation unit selector', validation: [] },
-    student: { note: 'student identity input', validation: [] },
-    hidden: { note: 'hidden value; not displayed', validation: [] }
+    text: { note: 'single-line text', validation: TEXT_LIMITS, default: 'string' },
+    email: { note: 'e-mail address text', validation: TEXT_LIMITS, default: 'string' },
+    password: { note: 'masked text; never shown in list or detail', validation: TEXT_LIMITS, default: null },
+    number: { note: 'numeric input', validation: NUMBER_LIMITS, default: 'number' },
+    textarea: { note: 'multi-line plain text', validation: TEXT_LIMITS, default: 'string' },
+    date: { note: 'date picker', validation: [], default: 'date' },
+    time: { note: 'time picker', validation: [], default: 'time' },
+    datetime: { note: 'date plus time input', validation: [], default: null },
+    select: { note: 'single choice dropdown', options: true, validation: [], default: 'option' },
+    multiselect: { note: 'multiple choice dropdown', options: true, validation: [], default: null },
+    checkbox: { note: 'yes/no checkbox', validation: [], default: 'boolean', required: false },
+    toggle: { note: 'on/off switch', validation: [], default: 'boolean', required: false },
+    radio: { note: 'single choice radio group', options: true, validation: [], default: 'option' },
+    richtext: { note: 'rich text editor; output is sanitized', validation: [], default: null },
+    canvas: { note: 'free drawing board', validation: [], default: null },
+    color: { note: 'colour picker', validation: [], default: null, required: false },
+    image: { note: 'image viewer', validation: [], default: null },
+    file: { note: 'file picker; the prototype form does not keep file values', validation: ITEM_LIMITS, default: null },
+    address: { note: 'postal address with region selectors', validation: [], default: null },
+    addresslist: { note: 'repeatable postal addresses', validation: ITEM_LIMITS, default: null },
+    chained: { note: 'dependent selects; not configurable in this slice, prefer select', validation: [], default: null, required: false },
+    list: { note: 'repeatable short text rows', validation: ITEM_LIMITS, default: null, required: false },
+    personinfo: { note: 'repeatable person entries (name, gender, age, id)', validation: ITEM_LIMITS, default: null, required: false },
+    phonelist: { note: 'repeatable phone numbers', validation: ITEM_LIMITS, default: null, required: false },
+    socialmedia: { note: 'repeatable social media accounts', validation: ITEM_LIMITS, default: null, required: false },
+    organization: { note: 'organisation unit selector', validation: [], default: null },
+    student: {
+        note: 'is-student flag plus school name (not a student ID or a student name; use text for those)',
+        validation: [],
+        default: null,
+        required: false
+    },
+    hidden: { note: 'hidden value; not displayed', validation: [], default: 'string', required: false }
 };
+
+/** 型別是否開放 required（表單能判斷這種欄位是否為空） */
+export function supportsRequired(type) {
+    return FIELD_TYPE_NOTES[type]?.required !== false;
+}
 
 export const OPTION_TYPES = new Set(
     Object.entries(FIELD_TYPE_NOTES).filter(([, info]) => info.options).map(([type]) => type)
@@ -162,6 +197,8 @@ export function describeFieldTypes(matrix = readJsonFile(MATRIX_PATH), allowedTy
         };
         if (info.options) entry.requires = 'options:[{value,label}] (1-100 items)';
         if (info.validation.length > 0) entry.validation = [...info.validation];
+        entry.default = info.default ? DEFAULT_KIND_DESCRIPTIONS[info.default] : 'not available';
+        if (info.required === false) entry.required = 'not available';
         entry.in_list = LIST_COLUMN_TYPES.has(type);
         return entry;
     });

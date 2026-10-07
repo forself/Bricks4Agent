@@ -46,6 +46,10 @@ public sealed class DefinitionValidateHandler : ICapabilityHandler
             if (args["template"] is not JsonObject template)
                 return Fail("template is required and must be a JSON object.");
 
+            // 定義的鍵都是短名稱；過長的鍵在轉交 CLI 之前擋下（CLI 的第 1 層也有相同的上限）。
+            if (GenerationRequest.HasOverlongKey(template))
+                return Fail($"template contains an object key longer than {GenerationRequest.MaxTemplateKeyLength} characters.");
+
             if (!GenerationRequest.TryGetStringArray(args, "page_ids", 64, out var pageIds))
                 return Fail("page_ids must be an array of strings of at most 64 characters.");
 

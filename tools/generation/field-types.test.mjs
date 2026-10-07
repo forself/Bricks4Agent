@@ -4,12 +4,14 @@ import {
     COMMON_TYPE_ALIASES,
     computeFieldTypeWhitelist,
     computeSliceFieldTypes,
+    DEFAULT_KINDS,
     describeFieldTypes,
     FIELD_TYPE_NOTES,
     FIELD_TYPE_SUBSTITUTES,
     loadPageGenFieldTypes,
     OPTION_TYPES,
-    RUNTIME_BLOCKED_FIELD_TYPES
+    RUNTIME_BLOCKED_FIELD_TYPES,
+    supportsRequired
 } from './field-types.mjs';
 
 const EXPECTED_INTERSECTION = [
@@ -95,4 +97,36 @@ test('field type descriptions carry the matrix default component', () => {
     assert.match(select.requires, /options/);
     assert.equal(entries.find(entry => entry.type === 'hidden').component, null);
     assert.equal(entries.length, 20);
+});
+
+test('repeatable list types offer maxItems only and no required, because empty rows count as values', () => {
+    for (const type of ['list', 'personinfo', 'phonelist', 'socialmedia']) {
+        assert.deepEqual(FIELD_TYPE_NOTES[type].validation, ['maxItems'], type);
+        assert.equal(supportsRequired(type), false, type);
+        assert.equal(FIELD_TYPE_NOTES[type].default, null, type);
+    }
+    for (const type of computeSliceFieldTypes().allowed) {
+        assert.ok(!FIELD_TYPE_NOTES[type].validation.includes('minItems'), `${type} must not claim minItems`);
+    }
+});
+
+test('every open type states its default form, and the catalog lists default and required per type', () => {
+    for (const type of computeSliceFieldTypes().allowed) {
+        const kind = FIELD_TYPE_NOTES[type].default;
+        assert.ok(kind === null || DEFAULT_KINDS.includes(kind), `${type} default kind ${kind}`);
+    }
+    const entries = describeFieldTypes();
+    const byType = Object.fromEntries(entries.map(entry => [entry.type, entry]));
+    assert.equal(byType.checkbox.default, 'true or false');
+    assert.equal(byType.select.default, 'one of the option values, written as a string');
+    assert.equal(byType.date.default, '"today" or YYYY-MM-DD');
+    assert.equal(byType.multiselect.default, 'not available');
+    assert.equal(byType.phonelist.required, 'not available');
+    assert.equal('required' in byType.text, false, 'required is listed only where it is not available');
+});
+
+test('the student type is described as an is-student flag, not a student id or name', () => {
+    assert.match(FIELD_TYPE_NOTES.student.note, /is-student flag/);
+    assert.match(FIELD_TYPE_NOTES.student.note, /not a student ID/);
+    assert.match(FIELD_TYPE_NOTES.student.note, /use text/);
 });

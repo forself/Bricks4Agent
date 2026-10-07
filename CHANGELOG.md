@@ -10,6 +10,29 @@ B4A 只收通用元件與通用能力；任何業務系統的專屬元件都不�
 
 ## 未發行
 
+### 修正：受治理生成的第二輪審查修正（2026-10-07）
+
+**預設行為變更**
+
+- 以任務累計的配額（`quota_scope: "task"`）不能再靠同時存在的多個 session 放大：一個任務同時只留一個 session。`sessions/register` 在同一道鎖內撤銷同任務的其他 session（連同授予與 session key），再以撤銷後的用量算新配額；除了被拒絕的請求，已分派、仍在處理或等待審批的請求都算。任務所有 session 合計不超過樣板的配額。介面變更：`ISessionService` 新增 `RevokeOtherTaskSessions`，`ICapabilityCatalog` 新增 `RevokeSessionGrants`；自行實作這兩個介面的程式要同步調整。
+- 專案訪談 `/ok` 之後送 `/cancel`，會一併撤下等待 `y` 的建置 draft（回覆會註明）：之後回 `y` 不會建置已取消的設計，一般文字也不會被當成那份 draft 的需求補充。以 `/proj` 重新開始訪談時也一樣。其他來源的 draft 不受影響。屬於 `/proj` 的範圍。
+- `/ok` 取代使用者原本等待確認的其他 draft（例如 `/建立` 留下的；訪談進行中它無法回 `y` 或 `n`）時，回覆開頭明確註明被取代的 draft，不再靜默覆寫。屬於 `/proj` 的範圍。
+- Governed 模式的系統雛形 draft 預覽說明實際的產物（前端可操作原型，不含後端、資料庫與登入），不再列出 Legacy scaffold 的前端框架、後端、資料庫、登入與封裝格式；交給代理的工作項也只帶 scaffold 的 family 與 ui_shape。
+- 生成器驗證（`definition-validator/1.2.0`）：`required`、限制鍵與 `default` 只接受執行期會生效的形式。表單無法判斷是否為空的型別（checkbox、toggle、color、chained、student、hidden 與 list、personinfo、phonelist、socialmedia 等列表類）寫 `required: true` 回 `REQUIRED_NOT_SUPPORTED`；列表類只開放 `maxItems`（`minItems` 不開放）；`default` 依型別檢查（字串、有限數字、布林、等於選項值的字串、`today` 或 YYYY-MM-DD、HH:MM），不符回 `DEFAULT_INVALID`，不開放的型別回 `DEFAULT_NOT_ALLOWED`。型錄的 `field_types` 逐型別列出 `default` 與不開放的 `required`；`student` 的說明改為「是否為在學學生加學校名稱」。
+- 驗證的跨頁一致性 warning（不擋生成）：列表或明細沒有同路徑的表單、表單沒有同路徑的列表、列表或明細的欄位不在同資源的表單中、同一資源同名欄位的選項不一致。型錄 overview 的 linking 說明同一資源的各頁要用相同的 api 路徑、欄位名與選項。
+- 驗證錯誤的回報：合併的項目附 `paths`（前 5 個路徑）；截斷時每個錯誤代碼至少保留一筆；識別字錯誤改以代碼與 hint 合併；`name` 不是字串的欄位不再多報一筆識別字錯誤；`validation` 中的未知鍵只以 `UNKNOWN_KEY` 回報一次。
+- 原型的 `README.txt` 改為只綁定本機的開啟方式（`python -m http.server 8000 --bind 127.0.0.1`、`npx http-server -a 127.0.0.1 -p 8000`，不再用 `npx --yes`）。生成器版本改為 `definition-site/1.1.0`。
+
+**修正**
+
+- 生成器驗證第 1 層限制物件鍵長（128 字元，超過即回 `KEY_TOO_LONG` 並停止）與收集的錯誤筆數（200 筆，達到時停止走訪並帶 `truncated: true`），path、message、hint 在建立時就截短：異常的輸入不再讓單次驗證長時間占用 generation-worker。generation-worker 在轉交 CLI 之前也拒絕過長的鍵，node 子程序加上 V8 heap 上限（`Generation:MaxOldSpaceMegabytes`，預設 256）。
+- 只有 `api.create` 的表單送出第一筆後留在新增模式並清空表單，可以接著送下一筆（先前導向不存在的編輯路由，再送出只會顯示「只能新增」）；讀不到紀錄端點時表單不再當成編輯模式。
+- generation-worker 的 `max_pages` 範圍收斂到 1～12（與生成器驗證的上限相同）。validate 與 catalog 的 tool-spec 補上 `total_errors`、`truncated`、`MAX_PAGES_EXCEEDED` 與 `paths`，catalog 的 `content` 改為物件；型錄 overview 的頁數上限註明以任務為準。
+- 單元測試的 `TestDb` 不再在 %TEMP% 留下 `broker_test_*.db`：生成相關的測試把資料庫建在自己的暫存目錄並在結束時刪除，其餘的在測試程序結束時刪除。
+- 文件：sidecar runbook（中英）與設計文件補上啟用 Governed 前要以 `tools/agent/Containerfile` 重建 `bricks4agent-agent:latest`，以及容器執行環境、LlmProxy 與 node 等前置條件；設計文件的 D10 與兩層權限模型文件補上實際的五個權限閘位置與 `/cancel` 的例外；PR-0 的最終行為隨 `feat/governed-generation` 一起合併，`fix/proj-gate` 不單獨合併。
+
+驗證入口：`npm run test:generation`、`npm run test:definition-site:browser`、`npm --prefix packages/javascript/browser run test:vitest`（GenerationFieldRuntime.test.js）、`dotnet test packages/csharp/tests/unit/Unit.Tests.csproj`（GenerationHandlerTests、DefinitionValidateTruncationTests、GovernedGenerationLauncherTests、GenerationCliContractTests）、`dotnet test packages/csharp/tests/integration/Integration.Tests.csproj`（GovernedGenerationTests、ProjectInterviewGateTests）、`npm run validate:agent-governed`。
+
 ### 修正：受治理生成與 `/proj` 的審查後修正（2026-10-07）
 
 **預設行為變更**
@@ -19,7 +42,7 @@ B4A 只收通用元件與通用能力；任何業務系統的專屬元件都不�
 - 同一位使用者的 draft 確認依序執行，並在鎖內重新讀取 draft：一份 draft 只會建立一個任務，重複的 `y` 回 `draft_not_pending`。
 - 受治理生成的名額：同一使用者同時只能有 `Generation:MaxConcurrentRunsPerUser`（預設 1）個進行中的生成（回 `generation_in_progress`），全部合計不超過 `Generation:MaxConcurrentRuns`（預設 2，要小於代理容器的 `MaxContainersPerType`）（回 `generation_busy`）；兩者都不建立任務，draft 保留。任務建立後的代理啟動不再跟著請求取消，失敗時一律把任務標為 Failed。
 - 受治理任務交給代理的資料不再帶主機路徑與發起使用者的識別資料：runtime descriptor 只保留三個 grant、生成上限與可用時的 `llm`；scope descriptor 拿掉 `origin_user_id` 與 `execution_intent_document`；handoff 改為只有系統可讀（代理 session 經 context API 讀不到，broker 內部與管理端照常使用）；plan 描述不含來源使用者。`/tasks/query`、`/plans/get` 與 `/plans/status` 對不是提交者、也不是管理員的呼叫者（例如被指派到任務的代理）不回 `submitted_by`。
-- 生成三個 grant 的配額改以任務累計（grant 樣板的 `quota_scope: "task"`）：代理容器重啟或 session 過期後重新註冊，只拿到這個任務尚未用掉的次數。其他任務的 grant 仍是每個 session 一份配額。
+- 生成三個 grant 的配額改以任務累計（grant 樣板的 `quota_scope: "task"`）：代理容器重啟或 session 過期後重新註冊，只拿到這個任務尚未用掉的次數。其他任務的 grant 仍是每個 session 一份配額。（同時存在的多個 session 共用同一份配額，由上方第二輪修正補上。）
 - 執行模型的推薦只在型錄項目標明的供應者（`HighLevelExecutionModelPolicy:Catalog[].Provider`）與 `LlmProxy:Provider` 相同時寫進受治理任務，否則代理用 `LlmProxy:DefaultModel`；先前推薦的本機模型會被送給 LlmProxy 目前的雲端供應者，每次生成都失敗。預設型錄的兩個項目標為 `ollama`；sidecar 把 LlmProxy 切到其他供應者時一併關閉執行模型建議。
 - 生成器的欄位型別再擋下 `datetime`（明細頁顯示與再編輯的往返未支援，改用 `date`）與 `file`（原型不保存檔案值，改用 `text`），實際開放 20 種；驗證器版本改為 `definition-validator/1.1.0`。`string`、`boolean`、`integer` 等程式型別名稱被拒時，hint 直接給出對應的欄位型別，型錄的 `field_types` 也列出這張對照。
 - `Generation:MaxPages` 限制在 1～12（生成器驗證的上限），先前可設到 100；validate 的 grant scope 也帶 `max_pages`，選取的頁數超過時在驗證就回 `MAX_PAGES_EXCEEDED`，不必等到 generate。
@@ -57,7 +80,7 @@ B4A 只收通用元件與通用能力；任何業務系統的專屬元件都不�
 **預設行為變更**
 
 - 專案訪談的 `/proj`（起手）與 `/ok` 和 `/建立` 走同一個權限判斷：effective `AllowProduction` 不成立（Basic 層一律如此）時回 `production_disabled`，回覆與 `/建立` 被拒時相同，不會開始訪談，也不會建立 draft。先前這兩個指令在權限閘之前處理，Basic 層也能走到建置。既有的訪談整合測試要先以會員身分開啟 production（測試 fixture 已改為先呼叫 `EnableLineProductionAsync`）。
-- `/ok` 不再當下建置。它把訪談標為 Confirmed，並把編譯出的專案定義轉成 `system_scaffold` draft，回覆摘要並請使用者回 `y` 確認或回 `n` 取消。回 `y` 後走與 `/建立` 相同的 draft 確認：專案名稱重查、升格閘、execution intent、task、plan、handoff，之後才生成與交付。使用者工作區已有同名專案資料夾時，draft 不帶專案名稱，改請使用者以 `#名稱` 補件。
+- `/ok` 不再當下建置。它讓訪談進入 `AwaitBuildConfirmation`（等待建置確認；確認 draft 建立任務之後才標為 Confirmed，見上方的審查後修正），並把編譯出的專案定義轉成 `system_scaffold` draft，回覆摘要並請使用者回 `y` 確認或回 `n` 取消。回 `y` 後走與 `/建立` 相同的 draft 確認：專案名稱重查、升格閘、execution intent、task、plan、handoff，之後才生成與交付。使用者工作區已有同名專案資料夾時，draft 不帶專案名稱，改請使用者以 `#名稱` 補件。
 - 高階回覆不帶主機絕對路徑。`?profile`、`/name`、`/id` 的回覆改寫 `workspace: line/<user>` 這類相對位置；code_gen、system_scaffold、site_rebuild 的完成回覆只寫 `project_folder`、相對的 `entry_file` 與 `package_file` 檔名；要求專案名稱的回覆不再列出工作區根目錄；生成失敗訊息中的絕對路徑只保留最後一段。回覆、後續訊息與診斷欄位在回傳前會把受管工作區根目錄底下的路徑改寫成相對名稱，portal 的結果紀錄顯示時也套用同樣的改寫。draft 與 plan 的描述改寫專案資料夾名，不再寫專案的絕對路徑。
 - 新增 `HighLevelReplyRedactor`（路徑改寫工具）與 `HighLevelCoordinator.RedactHostPaths`。
 - 整合測試的 `BrokerFixture` 改以 `UseSetting` 設定資料庫路徑、受管工作區根目錄與執行模型建議開關（`HighLevelExecutionModelPolicy:Enabled=false`，確認 draft 時不連本機模型）。這些值在 host 建置前就被讀取，先前以 `ConfigureAppConfiguration` 覆寫沒有生效，測試共用 bin 下的 `broker.db` 並寫入本機的受管工作區；結束時改為先釋放 SQLite 連線池再刪除暫存檔。

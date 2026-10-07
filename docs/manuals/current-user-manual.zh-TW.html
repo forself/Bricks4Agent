@@ -516,7 +516,7 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\l
 </tr>
 <tr>
 <td><code>/cancel</code></td>
-<td>取消訪談</td>
+<td>取消訪談；<code>/ok</code> 之後還沒回 <code>y</code> 時，等待確認的建置 draft 也一併撤下，不會建置</td>
 </tr>
 </tbody>
 </table>
@@ -538,7 +538,7 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\l
 <p>用 <code>/ok</code>、<code>/revise</code> 或 <code>/cancel</code> 決定下一步。</p>
 </li>
 <li>
-<p><code>/ok</code> 之後系統只建立系統雛形 draft 並列出摘要。回覆 <code>y</code> 才會建立 task / plan / handoff 並開始建置，回覆 <code>n</code> 取消。這一步與 <code>/建立</code> 的 draft 確認相同：專案名稱會再檢查一次，你的工作區若已有同名專案，系統會請你用 <code>#新名稱</code> 回覆。回覆 <code>n</code> 或 draft 逾時後，已批准的設計還在：可以再傳 <code>/ok</code> 重新建立 draft，或用 <code>/revise</code> 修訂。</p>
+<p><code>/ok</code> 之後系統只建立系統雛形 draft 並列出摘要。回覆 <code>y</code> 才會建立 task / plan / handoff 並開始建置，回覆 <code>n</code> 取消。這一步與 <code>/建立</code> 的 draft 確認相同：專案名稱會再檢查一次，你的工作區若已有同名專案，系統會請你用 <code>#新名稱</code> 回覆。回覆 <code>n</code> 或 draft 逾時後，已批准的設計還在：可以再傳 <code>/ok</code> 重新建立 draft，或用 <code>/revise</code> 修訂。若這時用 <code>/cancel</code> 取消訪談，或用 <code>/proj</code> 重新開始訪談，等待確認的建置 draft 會一併撤下，之後回 <code>y</code> 不會建置。若在訪談之前還有一份等待確認的其他 draft（例如 <code>/建立</code> 留下的），<code>/ok</code> 會以系統雛形 draft 取代它，回覆中會註明被取代的是哪一份。</p>
 </li>
 </ol>
 <h3>8.6 使用者 Portal 前台</h3>

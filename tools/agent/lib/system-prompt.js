@@ -264,7 +264,9 @@ Limits for this task:
 ${limits.join('\n')}
 If validation still fails when the validate_definition calls run out, stop and report the remaining errors
 instead of guessing. A validate result with truncated: true lists only the first errors (total_errors gives the
-count); errors that repeat across fields are reported once with the number of places they occur.
+count); errors that repeat across fields are reported once with the number of places they occur, and paths lists the
+first few places. Warnings do not block generation, but fix the ones that say pages of one resource do not line up:
+every page of a resource needs the same api base path, field names and options.
 Do not retry generate_scaffold with an unchanged template after it failed, with one exception: when a generation
 tool fails with "No available worker", the generation service was busy and the request did not run. Wait briefly,
 then call the same tool again with the same arguments.`;

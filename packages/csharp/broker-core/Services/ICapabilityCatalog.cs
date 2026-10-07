@@ -26,4 +26,9 @@ public interface ICapabilityCatalog
     /// 已過期、已撤銷或已耗盡的授予不會被恢復。回傳延長的筆數。
     /// </summary>
     int ExtendSessionGrants(string sessionId, DateTime expiresAt);
+
+    /// <summary>
+    /// 撤銷 session 仍為 Active 的授予（剩餘配額不能再被消耗，審批中的請求也拿不到授予）。回傳撤銷的筆數。
+    /// </summary>
+    int RevokeSessionGrants(string sessionId);
 }

@@ -314,6 +314,93 @@ public class ProjectInterviewGateTests : IClassFixture<BrokerFixture>
         revised.CurrentVersion.Should().BeGreaterThan(approvedVersion);
     }
 
+    [Fact]
+    public async Task CancelledInterview_WithdrawsTheBuildDraft_SoYesAndLaterTextBuildNothing()
+    {
+        var userId = $"line-proj-ok-cancel-{Guid.NewGuid():N}";
+        using (await _fixture.CompleteProjectInterviewToReviewAsync(userId)) { }
+        using (await _fixture.SendHighLevelLineTextAsync("/ok", userId)) { }
+        WithCoordinator(coordinator => coordinator.GetLineDraft(userId)).Should().NotBeNull();
+
+        using (var cancel = await _fixture.SendHighLevelLineTextAsync("/cancel", userId))
+        {
+            var data = cancel.RootElement.GetProperty("data");
+            IsNullOrMissing(data, "error").Should().BeTrue();
+            data.GetProperty("reply").GetString().Should().Contain("已取消").And.Contain("撤下");
+            data.GetProperty("draft_cleared").GetBoolean().Should().BeTrue();
+        }
+
+        WithCoordinator(coordinator => coordinator.GetLineDraft(userId)).Should().BeNull("y must not build a cancelled design");
+        (await _fixture.ReadProjectInterviewReviewAsync("line", userId)).SessionState.CurrentPhase
+            .Should().Be(ProjectInterviewPhase.Cancelled);
+
+        using (var confirm = await _fixture.SendHighLevelLineTextAsync("y", userId))
+        {
+            IsNullOrMissing(confirm.RootElement.GetProperty("data"), "created_task").Should().BeTrue();
+        }
+
+        using (var text = await _fixture.SendHighLevelLineTextAsync("請再加上一個報表頁", userId))
+        {
+            var data = text.RootElement.GetProperty("data");
+            IsNullOrMissing(data, "draft").Should().BeTrue("plain text no longer refines the withdrawn draft: {0}", data);
+            data.GetProperty("reply").GetString().Should().NotContain("已建立系統雛形 draft");
+        }
+
+        TasksSubmittedBy(userId).Should().BeEmpty();
+        WithCoordinator(coordinator => coordinator.GetLineDraft(userId)).Should().BeNull();
+    }
+
+    [Fact]
+    public async Task RestartedInterview_WithdrawsThePreviousBuildDraft()
+    {
+        var userId = $"line-proj-ok-restart-{Guid.NewGuid():N}";
+        using (await _fixture.CompleteProjectInterviewToReviewAsync(userId)) { }
+        using (await _fixture.SendHighLevelLineTextAsync("/ok", userId)) { }
+
+        using (await _fixture.SendHighLevelLineTextAsync("/proj", userId)) { }
+
+        WithCoordinator(coordinator => coordinator.GetLineDraft(userId)).Should().BeNull("the new interview supersedes the approved design");
+    }
+
+    [Fact]
+    public async Task Approve_ReplacingAnotherPendingDraft_SaysSo_AndCancelKeepsOtherDrafts()
+    {
+        var userId = $"line-proj-ok-replace-{Guid.NewGuid():N}";
+        await _fixture.EnableLineProductionAsync(userId);
+        using (var docDraft = await _fixture.SendHighLevelLineTextAsync("/建立 童話故事", userId))
+        {
+            GetProperty(docDraft.RootElement.GetProperty("data").GetProperty("draft"), "taskType").GetString().Should().Be("doc_gen");
+        }
+
+        using (await _fixture.CompleteProjectInterviewToReviewAsync(userId)) { }
+        WithCoordinator(coordinator => coordinator.GetLineDraft(userId))!.TaskType.Should().Be("doc_gen", "starting an interview keeps a draft from another source");
+
+        using var approve = await _fixture.SendHighLevelLineTextAsync("/ok", userId);
+        var data = approve.RootElement.GetProperty("data");
+
+        data.GetProperty("reply").GetString().Should().Contain("doc_gen draft").And.Contain("取代").And.Contain("已建立系統雛形 draft");
+        GetProperty(data.GetProperty("draft"), "taskType").GetString().Should().Be("system_scaffold");
+        WithCoordinator(coordinator => coordinator.GetLineDraft(userId))!.TaskType.Should().Be("system_scaffold");
+    }
+
+    [Fact]
+    public async Task CancelledInterview_KeepsADraftFromAnotherSource()
+    {
+        var userId = $"line-proj-cancel-keep-{Guid.NewGuid():N}";
+        await _fixture.EnableLineProductionAsync(userId);
+        using (await _fixture.SendHighLevelLineTextAsync("/建立 童話故事", userId)) { }
+        using (await _fixture.SendHighLevelLineTextAsync("/proj", userId)) { }
+
+        using (var cancel = await _fixture.SendHighLevelLineTextAsync("/cancel", userId))
+        {
+            var data = cancel.RootElement.GetProperty("data");
+            data.GetProperty("reply").GetString().Should().NotContain("撤下");
+            (data.TryGetProperty("draft_cleared", out var cleared) && cleared.ValueKind == JsonValueKind.True).Should().BeFalse();
+        }
+
+        WithCoordinator(coordinator => coordinator.GetLineDraft(userId))!.TaskType.Should().Be("doc_gen");
+    }
+
     private void ExpireDraft(string userId)
     {
         using var scope = _fixture.Factory.Services.CreateScope();

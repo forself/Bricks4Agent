@@ -159,6 +159,18 @@ public class SessionService : ISessionService
         return RevokeEach(sessions, reason, revokedBy);
     }
 
+    /// <inheritdoc />
+    public IReadOnlyList<string> RevokeOtherTaskSessions(string taskId, string keepSessionId, string reason, string revokedBy)
+    {
+        if (string.IsNullOrWhiteSpace(taskId))
+            return Array.Empty<string>();
+
+        var sessions = _db.Query<ContainerSession>(
+            "SELECT * FROM container_sessions WHERE task_id = @taskId AND session_id <> @keepSessionId AND status = 0",
+            new { taskId, keepSessionId = keepSessionId ?? string.Empty });
+        return RevokeEach(sessions, reason, revokedBy);
+    }
+
     private List<string> RevokeEach(IEnumerable<ContainerSession> sessions, string reason, string revokedBy)
     {
         var revoked = new List<string>();

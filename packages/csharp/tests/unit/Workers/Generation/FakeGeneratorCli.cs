@@ -57,6 +57,8 @@ internal sealed class FakeGeneratorCli : IDisposable
                 out({ ok: false, errors: [{ code: 'COMPONENT_NOT_FOUND', path: 'name', message: 'No such component.', hint: 'Use the overview section.' }] });
             } else if (mode === 'leak') {
                 out({ ok: true, section: 'component', content: `see ${toolsRoot}/tools`, catalog_sha256: 'a'.repeat(64), matrix_sha256: 'b'.repeat(64), summary_version: '1' });
+            } else if (mode === 'heap-check') {
+                out({ ok: true, section: 'overview', content: process.execArgv.join(' '), catalog_sha256: 'a'.repeat(64), matrix_sha256: 'b'.repeat(64), summary_version: '1' });
             } else if (mode === 'env-check') {
                 const names = Object.keys(process.env).filter((key) => /^WORKER_|SECRET|NODE_OPTIONS/i.test(key));
                 out({ ok: true, section: 'overview', content: names.join(','), catalog_sha256: 'a'.repeat(64), matrix_sha256: 'b'.repeat(64), summary_version: '1' });

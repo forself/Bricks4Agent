@@ -66,12 +66,38 @@ img { max-width:100%; height:auto; } blockquote { margin-left:0; padding-left:1r
 </tbody>
 </table>
 <h2>Output</h2>
-<p>The generator's JSON: <code>ok</code>, <code>errors</code>, <code>warnings</code>, <code>pages</code> (<code>id</code>, <code>type</code>, <code>field_count</code>), <code>validation_digest</code> and <code>validator_version</code>. Every error carries <code>code</code>, <code>path</code>, <code>message</code> and <code>hint</code>.</p>
-<p>A definition that fails validation is a successful call with <code>ok: false</code>, so the agent can correct the definition and validate again. Only internal failures (time-out, oversized output, generator crash) fail the execution.</p>
+<p>The generator's JSON: <code>ok</code>, <code>errors</code>, <code>warnings</code>, <code>pages</code> (<code>id</code>, <code>type</code>, <code>field_count</code>), <code>validation_digest</code> and <code>validator_version</code>. Every error and warning carries <code>code</code>, <code>path</code>, <code>message</code> and <code>hint</code>. An error found at several places is reported once: its message gives the count and <code>paths</code> lists the first five paths (<code>path</code> is the first of them).</p>
+<p>When errors or warnings were merged or cut, the result also carries:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>total_errors</code></td>
+<td>Number of errors before merging and cutting</td>
+</tr>
+<tr>
+<td><code>truncated</code></td>
+<td><code>true</code> when not every error is listed (at most 50 are; every error code keeps at least one entry)</td>
+</tr>
+<tr>
+<td><code>total_warnings</code>, <code>warnings_truncated</code></td>
+<td>The same for warnings</td>
+</tr>
+</tbody>
+</table>
+<p>The worker cuts a result that is larger than its <code>MaxResultBytes</code> the same way (first errors and warnings, <code>total_errors</code>, <code>truncated: true</code>); it is still a successful call.</p>
+<p>When the grant scope carries <code>max_pages</code> and the selected pages exceed it, the result is <code>ok: false</code> with the error code <code>MAX_PAGES_EXCEEDED</code> first. The page limit is at most 12.</p>
+<p>Warnings do not block generation. The cross-page warnings (<code>RESOURCE_WITHOUT_FORM</code>, <code>FORM_WITHOUT_LIST</code>, <code>FIELD_NOT_IN_FORM</code>, <code>OPTIONS_MISMATCH</code>) point at pages of one resource that do not share the api base path, field names or options, which breaks the prototype's list, detail and form flow.</p>
+<p>A definition that fails validation is a successful call with <code>ok: false</code>, so the agent can correct the definition and validate again. Only internal failures (time-out, oversized output, generator crash) and malformed input (for example an object key longer than 128 characters) fail the execution.</p>
 <h2>Rules</h2>
 <ul>
 <li>
-<p>The worker forwards only <code>template</code> and <code>page_ids</code> to the generator.</p>
+<p>The worker forwards only <code>template</code> and <code>page_ids</code> to the generator, and rejects a template with an object key longer than 128 characters before it runs the generator.</p>
 </li>
 <li>
 <p>Validation has no side effects. <code>generate_scaffold</code> runs the same checks before it writes anything.</p>

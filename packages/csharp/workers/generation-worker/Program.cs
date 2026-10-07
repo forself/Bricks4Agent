@@ -37,6 +37,7 @@ var generationOptions = new GenerationWorkerOptions
     QueryTimeout = TimeSpan.FromSeconds(config.GetValue("Generation:QueryTimeoutSeconds", 30)),
     BuildTimeout = TimeSpan.FromSeconds(config.GetValue("Generation:BuildTimeoutSeconds", 120)),
     MaxStdoutBytes = config.GetValue("Generation:MaxStdoutBytes", 4 * 1024 * 1024),
+    MaxOldSpaceMegabytes = config.GetValue("Generation:MaxOldSpaceMegabytes", 256),
 };
 
 var configurationError = generationOptions.Validate();

@@ -174,6 +174,8 @@ class PageView {
         const base = page.type === 'detail' ? this.api.get : (this.api.get || this.api.update);
         if (!base) {
             this.showNotice(t('noEndpoint'));
+            // 讀不到紀錄就不是在編輯它：表單維持新增模式，送出時不會被當成更新
+            this.recordId = null;
             return null;
         }
         try {
@@ -225,7 +227,9 @@ class PageView {
         const { links } = this.page;
         if (links.list) navigate(routeHref(links.list));
         else if (links.detail) navigate(routeHref(links.detail, record.id));
-        else navigate(routeHref(this.page.id, record.id));
+        else if (this.api.update) navigate(routeHref(this.page.id, record.id));
+        // 只能新增的表單（沒有列表、明細，也沒有 api.update）：留在新增模式並清空表單，可以接著送下一筆
+        else navigate(routeHref(this.page.id));
     }
 
     leaveForm() {

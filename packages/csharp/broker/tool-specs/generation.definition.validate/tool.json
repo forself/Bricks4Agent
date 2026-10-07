@@ -38,7 +38,11 @@
       "warnings": { "type": "array" },
       "pages": { "type": "array" },
       "validation_digest": { "type": "string" },
-      "validator_version": { "type": "string" }
+      "validator_version": { "type": "string" },
+      "total_errors": { "type": "integer" },
+      "truncated": { "type": "boolean" },
+      "total_warnings": { "type": "integer" },
+      "warnings_truncated": { "type": "boolean" }
     }
   },
   "source_policy": {
@@ -56,6 +60,6 @@
   "response_contract": {
     "must_include_ok": true,
     "must_include_structured_errors": true,
-    "result_wording": "A definition that fails validation is a successful call with ok:false; each error carries code, path, message and hint so the definition can be corrected and validated again."
+    "result_wording": "A definition that fails validation is a successful call with ok:false; each error carries code, path, message and hint (and paths when it occurs at several places) so the definition can be corrected and validated again. total_errors and truncated:true mean that not every error is listed; MAX_PAGES_EXCEEDED means the selected pages exceed the task's page limit."
   }
 }

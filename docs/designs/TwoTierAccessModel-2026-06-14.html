@@ -91,6 +91,9 @@ Status: <strong>已實作 + 驗證(2026-06-14)</strong> —— 模型/遮罩/註
 <li>
 <p>2026-10-07 補上:專案訪談的 <code>/proj</code> 起手與 <code>/ok</code> 也檢查 effective <code>AllowProduction</code>,被拒時的回覆與錯誤碼(<code>production_disabled</code>)和 <code>/建立</code> 相同;先前這兩個指令在權限閘之前處理,Basic 層也能觸發建置。</p>
 </li>
+<li>
+<p>2026-10-07 審查後擴大:effective <code>AllowProduction</code> 的檢查共有五個位置——<code>/proj</code> 起手、<code>/ok</code>、<code>/revise</code>、訪談進行中的回答(會產生並交付審查檔),以及確認 draft(回 <code>y</code>,在執行前重新檢查,draft 建立後才被降為 Basic 的使用者也會被拒,draft 保留)。<code>/cancel</code> 不設閘:訪談中途被降級的使用者仍可結束訪談(連同等待確認的建置 draft 一併撤下)。</p>
+</li>
 </ul>
 <h3>註冊閘門(<code>TryHandleRegistrationGate</code>)</h3>
 <ul>

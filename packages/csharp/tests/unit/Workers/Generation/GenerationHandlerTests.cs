@@ -225,6 +225,58 @@ public sealed class GenerationHandlerTests : IDisposable
     }
 
     [Fact]
+    public async Task OverlongTemplateKeys_AreRejectedWithoutRunningTheCli()
+    {
+        var fixture = NewFixture();
+        var template = Template();
+        template["pages"]![0]!.AsObject()[new string('k', GenerationRequest.MaxTemplateKeyLength + 1)] = 1;
+
+        var validate = new DefinitionValidateHandler(fixture.Options, fixture.Cli, NullLogger.Instance);
+        var (validateSuccess, _, validateError) = await validate.ExecuteAsync(RequestId, DefinitionValidateHandler.Route,
+            Payload(DefinitionValidateHandler.Route, new JsonObject { ["template"] = template.DeepClone() }), "{}", CancellationToken.None);
+        var (generateSuccess, _, generateError) = await Generate(fixture).ExecuteAsync(RequestId, ScaffoldGenerateHandler.Route,
+            GeneratePayload(template), Scope(), CancellationToken.None);
+
+        validateSuccess.Should().BeFalse();
+        validateError.Should().Contain("longer than 128");
+        generateSuccess.Should().BeFalse();
+        generateError.Should().Contain("longer than 128");
+        fixture.Invocations("validate").Should().Be(0);
+        fixture.Invocations("build").Should().Be(0);
+    }
+
+    [Fact]
+    public void HasOverlongKey_ChecksEveryNestedObject()
+    {
+        var atLimit = new JsonObject { ["a"] = new JsonArray(new JsonObject { [new string('k', GenerationRequest.MaxTemplateKeyLength)] = 1 }) };
+        var overLimit = new JsonObject { ["a"] = new JsonArray(new JsonObject { ["b"] = new JsonObject { [new string('k', GenerationRequest.MaxTemplateKeyLength + 1)] = null } }) };
+
+        GenerationRequest.HasOverlongKey(atLimit).Should().BeFalse();
+        GenerationRequest.HasOverlongKey(overLimit).Should().BeTrue();
+        GenerationRequest.HasOverlongKey(null).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Cli_RunsNodeWithAHeapLimit()
+    {
+        var fixture = NewFixture(options => options.MaxOldSpaceMegabytes = 192);
+        var handler = new CatalogQueryHandler(fixture.Options, fixture.Cli, NullLogger.Instance);
+
+        var (success, payload, error) = await handler.ExecuteAsync(RequestId, CatalogQueryHandler.Route,
+            Payload(CatalogQueryHandler.Route, new JsonObject { ["name"] = "heap-check" }), "{}", CancellationToken.None);
+
+        success.Should().BeTrue(error);
+        JsonNode.Parse(payload!)!["content"]!.GetValue<string>().Should().Contain("--max-old-space-size=192");
+    }
+
+    [Fact]
+    public void Options_RejectATooSmallHeapLimit()
+    {
+        var fixture = NewFixture(options => options.MaxOldSpaceMegabytes = 16);
+        fixture.Options.Validate().Should().Contain("MaxOldSpaceMegabytes");
+    }
+
+    [Fact]
     public async Task Validate_Timeout_StopsTheProcessAndFails()
     {
         var fixture = NewFixture(options => options.QueryTimeout = TimeSpan.FromSeconds(2));
@@ -423,6 +475,7 @@ public sealed class GenerationHandlerTests : IDisposable
         { Scope(maxPagesJson: "0"), "max_pages zero" },
         { Scope(maxPagesJson: "\"12\""), "max_pages string" },
         { Scope(maxPagesJson: "2.5"), "max_pages fraction" },
+        { Scope(maxPagesJson: "13"), "max_pages above the generator page limit" },
         { Scope(maxPagesJson: "101"), "max_pages too large" },
         { Scope(package: null), "package missing" },
         { Scope(package: "definition-site-v2"), "package unknown" },

@@ -7,8 +7,10 @@
 //   第 6 層 型錄：欄位型別白名單（交集扣掉執行期無法使用的型別）、明示元件、頁型與 components 欄位
 //   第 7 層 切片規則：api 基底路徑、頁 id 作檔名、保留名稱
 // 錯誤格式 { code, path, message, hint }；path 以 template 為根，例如 definitions.pages[1].definition.fields[3].type
-// 回給代理的錯誤有上限：相同的錯誤合併成一筆並註明出現次數，合併後最多 MAX_REPORTED_ISSUES 筆
-// （超過時 truncated:true，total_errors 為合併前的筆數），讓一個系統性錯誤不會產生數百 KB 的回應。
+// 回給代理的錯誤有上限：相同的錯誤合併成一筆並註明出現次數與前幾個路徑（paths），合併後最多
+// MAX_REPORTED_ISSUES 筆，截斷時每個錯誤代碼至少保留一筆（超過時 truncated:true，total_errors 為合併前的筆數），
+// 讓一個系統性錯誤不會產生數百 KB 的回應。第 1 層另限制物件鍵長與收集的錯誤筆數，path 在建立時就截短，
+// 讓單次驗證的工作量與輸入大小成正比。
 import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
@@ -26,15 +28,18 @@ import { canonicalJson, hasOwn, isPlainObject, sha256Hex } from './json-util.mjs
 import {
     COMMON_TYPE_ALIASES,
     computeSliceFieldTypes,
+    DEFAULT_KIND_DESCRIPTIONS,
     FIELD_TYPE_NOTES,
     FIELD_TYPE_SUBSTITUTES,
     OPTION_TYPES,
-    RUNTIME_BLOCKED_FIELD_TYPES
+    RUNTIME_BLOCKED_FIELD_TYPES,
+    supportsRequired
 } from './field-types.mjs';
 import {
     LIST_COLUMN_TYPES,
     PAGE_ID_PATTERN,
-    SUPPORTED_PAGE_TYPES
+    SUPPORTED_PAGE_TYPES,
+    pageEndpoint
 } from '../../templates/definition-site/site-model.js';
 
 const require = createRequire(import.meta.url);
@@ -47,7 +52,11 @@ export const LIMITS = Object.freeze({
     maxDepth: 16,
     maxNodes: 20000,
     maxStringLength: 2000,
-    maxTitleLength: 120
+    maxTitleLength: 120,
+    // 物件鍵長上限：定義的鍵都是短名稱；超過即視為無效輸入並立即停止
+    maxKeyLength: 128,
+    // 第 1 層最多收集的錯誤筆數；達到時停止走訪並標記 truncated
+    maxEnvelopeIssues: 200
 });
 
 export const API_PATH_PATTERN = /^\/api\/[a-z0-9/_-]+$/;
@@ -69,8 +78,25 @@ const CONTROL_PATTERN = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/;
 // 由驗證層產生、可能與更具體錯誤重複的泛用代碼
 const GENERIC_CODES = new Set(['STRUCTURE_INVALID', 'PAGEGEN_RULE', 'GENERATOR_REJECTED']);
 
+export const MAX_REPORTED_ISSUES = 50;
+const MAX_ISSUE_PATH_LENGTH = 300;
+const MAX_ISSUE_MESSAGE_LENGTH = 400;
+const MAX_ISSUE_HINT_LENGTH = 600;
+const MAX_LISTED_UNKNOWN_KEYS = 10;
+const MAX_LISTED_PATHS = 5;
+
+function clip(text, max) {
+    return typeof text === 'string' && text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
+
+// path、message、hint 在建立時就截短：之後的去重與合併都以截短後的值為鍵，大小有固定上限
 function makeError(code, errorPath, message, hint = '') {
-    return { code, path: errorPath, message, hint };
+    return {
+        code,
+        path: clip(errorPath, MAX_ISSUE_PATH_LENGTH),
+        message: clip(message, MAX_ISSUE_MESSAGE_LENGTH),
+        hint: clip(hint, MAX_ISSUE_HINT_LENGTH)
+    };
 }
 
 // ------------------------------------------------------------
@@ -96,8 +122,9 @@ const VALIDATION_SCHEMA = S.object({
     maxLength: S.integer({ min: 1, max: 100000 }),
     min: S.number(),
     max: S.number(),
+    // minItems 沒有任何型別開放（執行期不檢查列數）；保留在這裡，讓寫了它的定義得到具體的 hint
     minItems: S.integer({ min: 0, max: 1000 }),
-    maxItems: S.integer({ min: 0, max: 1000 })
+    maxItems: S.integer({ min: 1, max: 1000 })
 });
 const FIELD_SCHEMA = S.object({
     name: S.string({ max: 64, min: 1 }),
@@ -259,6 +286,12 @@ function scanEnvelope(template) {
     const errors = [];
     const stack = [{ value: template, depth: 1, path: '' }];
     let nodes = 0;
+    // 收集到上限就停止走訪：結果已經是 ok:false，其餘錯誤標記為 truncated
+    const add = (error) => {
+        errors.push(error);
+        return errors.length >= LIMITS.maxEnvelopeIssues;
+    };
+    const stopped = () => ({ errors, fatal: true, truncated: true });
     while (stack.length > 0) {
         const { value, depth, path: valuePath } = stack.pop();
         nodes += 1;
@@ -270,12 +303,13 @@ function scanEnvelope(template) {
         }
         if (value === null || typeof value === 'boolean') continue;
         if (typeof value === 'number') {
-            if (!Number.isFinite(value)) errors.push(makeError('NON_JSON_VALUE', valuePath, 'Numbers must be finite.'));
+            if (!Number.isFinite(value) && add(makeError('NON_JSON_VALUE', valuePath, 'Numbers must be finite.'))) return stopped();
             continue;
         }
         if (typeof value === 'string') {
-            if (value.length > LIMITS.maxStringLength) {
-                errors.push(makeError('STRING_TOO_LONG', valuePath, `Strings are limited to ${LIMITS.maxStringLength} characters.`));
+            if (value.length > LIMITS.maxStringLength
+                && add(makeError('STRING_TOO_LONG', valuePath, `Strings are limited to ${LIMITS.maxStringLength} characters.`))) {
+                return stopped();
             }
             continue;
         }
@@ -286,20 +320,25 @@ function scanEnvelope(template) {
             continue;
         }
         if (!isPlainObject(value)) {
-            errors.push(makeError('NON_JSON_VALUE', valuePath, 'Only JSON values are accepted.'));
+            if (add(makeError('NON_JSON_VALUE', valuePath, 'Only JSON values are accepted.'))) return stopped();
             continue;
         }
         const keys = Object.keys(value);
         for (let index = keys.length - 1; index >= 0; index -= 1) {
             const key = keys[index];
+            if (key.length > LIMITS.maxKeyLength) {
+                // 鍵名本身不放進錯誤，path 指向它所在的物件
+                errors.push(makeError('KEY_TOO_LONG', valuePath, `An object key is longer than ${LIMITS.maxKeyLength} characters.`, 'Use the documented key names only.'));
+                return { errors, fatal: true, truncated: false };
+            }
             const childPath = valuePath ? `${valuePath}.${key}` : key;
             if (DANGEROUS_KEYS.has(key)) {
-                errors.push(makeError('DANGEROUS_KEY', childPath, `Key "${key}" is not allowed anywhere in a definition.`, 'Remove the key.'));
+                if (add(makeError('DANGEROUS_KEY', childPath, `Key "${key}" is not allowed anywhere in a definition.`, 'Remove the key.'))) return stopped();
                 continue;
             }
             const descriptor = Object.getOwnPropertyDescriptor(value, key);
             if (!descriptor || descriptor.get || descriptor.set) {
-                errors.push(makeError('NON_JSON_VALUE', childPath, 'Only JSON data properties are accepted.'));
+                if (add(makeError('NON_JSON_VALUE', childPath, 'Only JSON data properties are accepted.'))) return stopped();
                 continue;
             }
             stack.push({ value: descriptor.value, depth: depth + 1, path: childPath });
@@ -335,7 +374,7 @@ function scanEnvelope(template) {
             }
         });
     }
-    return { errors, fatal: errors.some(error => error.code === 'DANGEROUS_KEY' || error.code === 'NON_JSON_VALUE') };
+    return { errors, fatal: errors.some(error => error.code === 'DANGEROUS_KEY' || error.code === 'NON_JSON_VALUE'), truncated: false };
 }
 
 // ------------------------------------------------------------
@@ -411,15 +450,19 @@ function layerPageGenRules(context, pages) {
     return errors;
 }
 
-function withoutExplicitComponents(definition) {
+// 第 5 層只看識別字：明示元件在第 6 層檢查；name 不是字串的欄位已由第 2 層回報（缺少或型別不符），
+// 不再交給生成器，否則會多出一筆以 "undefined" 為名的識別字錯誤
+function prepareForIdentifierCheck(definition) {
     const copy = { ...definition };
     delete copy.components;
     if (Array.isArray(copy.fields)) {
-        copy.fields = copy.fields.map(field => {
-            if (!isPlainObject(field)) return field;
-            const { component: _component, ...rest } = field;
-            return rest;
-        });
+        copy.fields = copy.fields
+            .filter(field => !isPlainObject(field) || typeof field.name === 'string')
+            .map(field => {
+                if (!isPlainObject(field)) return field;
+                const { component: _component, ...rest } = field;
+                return rest;
+            });
     }
     return copy;
 }
@@ -432,7 +475,7 @@ function layerIdentifiers(context, pages) {
     pages.forEach((entry, index) => {
         if (!isPlainObject(entry?.definition)) return;
         // 明示元件在第 6 層依型錄檢查；這裡只取生成器的識別字與保留字判斷
-        const definition = withoutExplicitComponents(entry.definition);
+        const definition = prepareForIdentifierCheck(entry.definition);
         const result = generator.generate(definition);
         let messages = Array.isArray(result.errors) ? result.errors.map(String) : [];
         if (messages.length === 0) return;
@@ -461,6 +504,59 @@ function layerIdentifiers(context, pages) {
 // ------------------------------------------------------------
 // 第 6 層：型錄
 // ------------------------------------------------------------
+
+const DATE_DEFAULT_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
+const TIME_DEFAULT_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+function isCalendarDate(text) {
+    const match = DATE_DEFAULT_PATTERN.exec(text);
+    if (!match) return false;
+    const [year, month, day] = match.slice(1).map(Number);
+    const date = new Date(Date.UTC(year, month - 1, day));
+    return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+}
+
+/**
+ * 依型別檢查 default（FIELD_TYPE_NOTES[type].default）。執行期只正確處理這些形式，
+ * 其他值會被忽略、對不上選項或存成型別不對的值。回傳錯誤或 null。
+ */
+function checkDefault(field, type, notes, defaultPath) {
+    const kind = notes?.default ?? null;
+    const value = field.default;
+    if (kind === null) {
+        return makeError('DEFAULT_NOT_ALLOWED', defaultPath, `default is not available for "${type}" fields.`, 'Remove default.');
+    }
+    const invalid = (detail) => makeError('DEFAULT_INVALID', defaultPath, `default for "${type}" must be ${DEFAULT_KIND_DESCRIPTIONS[kind]}${detail}.`, 'The field_types catalog section lists the default form for each type.');
+    switch (kind) {
+        case 'string': {
+            if (typeof value !== 'string') return invalid('');
+            const maxLength = isPlainObject(field.validation) ? field.validation.maxLength : undefined;
+            if (Number.isInteger(maxLength) && value.length > maxLength) return invalid(` of at most ${maxLength} characters (validation.maxLength)`);
+            return null;
+        }
+        case 'number': {
+            if (typeof value !== 'number' || !Number.isFinite(value)) return invalid('');
+            const limits = isPlainObject(field.validation) ? field.validation : {};
+            if ((typeof limits.min === 'number' && value < limits.min) || (typeof limits.max === 'number' && value > limits.max)) {
+                return invalid(' within validation.min and validation.max');
+            }
+            return null;
+        }
+        case 'boolean':
+            return typeof value === 'boolean' ? null : invalid('');
+        case 'option': {
+            const options = Array.isArray(field.options) ? field.options : [];
+            const matches = typeof value === 'string' && options.some(option => isPlainObject(option) && option.value === value);
+            return matches ? null : invalid('; option values that are numbers cannot be preselected');
+        }
+        case 'date':
+            return value === 'today' || (typeof value === 'string' && isCalendarDate(value)) ? null : invalid('');
+        case 'time':
+            return typeof value === 'string' && TIME_DEFAULT_PATTERN.test(value) ? null : invalid('');
+        default:
+            return invalid('');
+    }
+}
 
 function layerCatalog(context, pages) {
     const errors = [];
@@ -494,8 +590,18 @@ function layerCatalog(context, pages) {
             } else if (hasOwn(field, 'options')) {
                 errors.push(makeError('OPTIONS_NOT_ALLOWED', `${fieldPath}.options`, `Field type "${type}" does not take options.`, 'Use select, radio or multiselect for choices.'));
             }
+            const typeOpen = typeof type === 'string' && context.allowedFieldTypes.has(type);
+            if (typeOpen && field.required === true && !supportsRequired(type)) {
+                errors.push(makeError('REQUIRED_NOT_SUPPORTED', `${fieldPath}.required`, `required is not available for "${type}" fields.`, 'The form cannot tell whether this kind of field is empty, so required would never be enforced; remove it.'));
+            }
+            if (typeOpen && hasOwn(field, 'default')) {
+                const defaultError = checkDefault(field, type, notes, `${fieldPath}.default`);
+                if (defaultError) errors.push(defaultError);
+            }
             if (isPlainObject(field.validation) && notes) {
                 for (const key of Object.keys(field.validation)) {
+                    // 未知的鍵已由第 2 層以 UNKNOWN_KEY 回報，這裡只看已知的限制鍵是否適用於這個型別
+                    if (!hasOwn(VALIDATION_SCHEMA.props, key)) continue;
                     if (!notes.validation.includes(key)) {
                         errors.push(makeError('VALIDATION_KEY_UNSUPPORTED', `${fieldPath}.validation.${key}`, `validation.${key} does not apply to "${type}".`, notes.validation.length > 0 ? `Allowed: ${notes.validation.join(', ')}.` : 'This type takes no validation keys.'));
                     }
@@ -591,7 +697,69 @@ function layerSlice(pages) {
             warnings.push(makeError('LIST_NO_COLUMNS', `${base}.fields`, 'None of the list fields can be shown as a table column.', `Table columns support: ${[...LIST_COLUMN_TYPES].join(', ')}.`));
         }
     });
+    warnings.push(...checkResources(pages));
     return { errors, warnings };
+}
+
+function optionsSignature(options) {
+    return JSON.stringify(options.map(option => (isPlainObject(option) ? [option.value, option.label] : option)));
+}
+
+/**
+ * 跨頁一致性（只發 warning，不擋生成）。頁面之間的連結與外殼相同：以 pageEndpoint 算出的 api 路徑
+ * 完全相等才算同一資源；列表與明細依欄位名讀取表單存下的值，記憶體 store 每個路徑各存一份集合。
+ */
+function checkResources(pages) {
+    const warnings = [];
+    const entries = pages
+        .map((entry, index) => ({ entry, index, definition: entry?.definition }))
+        .filter(({ definition }) => isPlainObject(definition) && SUPPORTED_PAGE_TYPES.includes(definition.type))
+        .map(item => ({
+            ...item,
+            type: item.definition.type,
+            endpoint: pageEndpoint(item.definition.type, isPlainObject(item.definition.api) ? item.definition.api : null),
+            fields: Array.isArray(item.definition.fields) ? item.definition.fields.filter(field => isPlainObject(field) && typeof field.name === 'string') : []
+        }))
+        .filter(item => typeof item.endpoint === 'string');
+
+    for (const page of entries) {
+        const base = pagePath(page.index);
+        const sameResource = entries.filter(other => other !== page && other.endpoint === page.endpoint);
+        const forms = sameResource.filter(other => other.type === 'form');
+        if (page.type === 'list' || page.type === 'detail') {
+            if (forms.length === 0) {
+                warnings.push(makeError('RESOURCE_WITHOUT_FORM', `${base}.api`, `No form page uses the api path "${page.endpoint}", so this ${page.type} page never has records to show.`, 'Give the form page of this resource the same api base path as its list and detail pages.'));
+            } else {
+                const formNames = new Set(forms.flatMap(form => form.fields.map(field => field.name)));
+                page.fields.forEach((field) => {
+                    if (!formNames.has(field.name)) {
+                        const fieldIndex = page.definition.fields.indexOf(field);
+                        warnings.push(makeError('FIELD_NOT_IN_FORM', `${base}.fields[${fieldIndex}].name`, `Field "${field.name}" is not a field of the form page for "${page.endpoint}", so it is always empty.`, 'List and detail pages read the values the form saved by field name; use the same field names on every page of a resource.'));
+                    }
+                });
+            }
+        }
+        if (page.type === 'form' && !sameResource.some(other => other.type === 'list')) {
+            warnings.push(makeError('FORM_WITHOUT_LIST', `${base}.api`, `No list page uses the api path "${page.endpoint}", so records saved by this form are not listed anywhere.`, 'Add a list page with the same api base path, or ignore this for a create-only form.'));
+        }
+        // 同一資源中同名欄位的選項要一致：列表與明細以自己定義中的選項把值換成標籤
+        const firstWithOptions = new Map();
+        for (const candidate of [page, ...sameResource].sort((a, b) => a.index - b.index)) {
+            for (const field of candidate.fields) {
+                if (!Array.isArray(field.options) || firstWithOptions.has(field.name)) continue;
+                firstWithOptions.set(field.name, { page: candidate, signature: optionsSignature(field.options) });
+            }
+        }
+        page.fields.forEach((field) => {
+            if (!Array.isArray(field.options)) return;
+            const first = firstWithOptions.get(field.name);
+            if (first && first.page !== page && first.signature !== optionsSignature(field.options)) {
+                const fieldIndex = page.definition.fields.indexOf(field);
+                warnings.push(makeError('OPTIONS_MISMATCH', `${base}.fields[${fieldIndex}].options`, `Field "${field.name}" has different options than on page "${String(first.page.entry?.id ?? first.page.index)}" of the same resource.`, 'Use the same options for one field on every page of a resource; each page shows labels from its own options.'));
+            }
+        });
+    }
+    return warnings;
 }
 
 // ------------------------------------------------------------
@@ -656,27 +824,39 @@ function dedupe(errors) {
     });
 }
 
-export const MAX_REPORTED_ISSUES = 50;
-const MAX_ISSUE_PATH_LENGTH = 300;
-const MAX_ISSUE_MESSAGE_LENGTH = 400;
-const MAX_ISSUE_HINT_LENGTH = 600;
-const MAX_LISTED_UNKNOWN_KEYS = 10;
 const UNKNOWN_KEY_MESSAGE = /^Unknown key "(.*)"\.$/s;
 
-function clip(text, max) {
-    return typeof text === 'string' && text.length > max ? `${text.slice(0, max - 1)}…` : text;
-}
-
 // 未知鍵以所在層級（hint 列出的允許鍵）合併，不論鍵名：允許鍵清單每一種只列一次；
-// 其他錯誤在代碼、訊息與 hint 都相同時合併。
+// 識別字錯誤的訊息帶有欄位名，以代碼與 hint 合併；其他錯誤在代碼、訊息與 hint 都相同時合併。
+const MERGE_BY_HINT = new Set(['UNKNOWN_KEY', 'IDENTIFIER_INVALID']);
+
 function mergeKey(issue) {
-    return issue.code === 'UNKNOWN_KEY'
+    return MERGE_BY_HINT.has(issue.code)
         ? `${issue.code}\u0000${issue.hint}`
         : `${issue.code}\u0000${issue.message}\u0000${issue.hint}`;
 }
 
+// 截斷時先讓每個錯誤代碼保留第一筆，剩下的名額再依出現順序補滿；輸出維持原本的順序
+function selectWithinLimit(items, limit) {
+    if (items.length <= limit) return items;
+    const chosen = new Set();
+    const seenCodes = new Set();
+    for (const item of items) {
+        if (chosen.size >= limit) break;
+        if (seenCodes.has(item.code)) continue;
+        seenCodes.add(item.code);
+        chosen.add(item);
+    }
+    for (const item of items) {
+        if (chosen.size >= limit) break;
+        chosen.add(item);
+    }
+    return items.filter(item => chosen.has(item));
+}
+
 /**
- * 合併重複的錯誤並設上限。保留第一次出現的順序與路徑；合併的項目在 message 註明出現次數。
+ * 合併重複的錯誤並設上限。保留第一次出現的順序；合併的項目在 message 註明出現次數，
+ * 並以 paths 列出前幾個不同的路徑（path 仍是第一個）。
  * @returns {{ issues: object[], total: number, merged: boolean, truncated: boolean }}
  */
 export function compactIssues(issues, limit = MAX_REPORTED_ISSUES) {
@@ -685,33 +865,36 @@ export function compactIssues(issues, limit = MAX_REPORTED_ISSUES) {
         const key = mergeKey(issue);
         let group = groups.get(key);
         if (!group) {
-            group = { first: issue, count: 0, keys: [] };
+            group = { first: issue, count: 0, keys: new Set(), paths: [] };
             groups.set(key, group);
         }
         group.count += 1;
+        if (group.paths.length < MAX_LISTED_PATHS && !group.paths.includes(issue.path)) group.paths.push(issue.path);
         if (issue.code === 'UNKNOWN_KEY') {
             const name = UNKNOWN_KEY_MESSAGE.exec(issue.message)?.[1];
-            if (name !== undefined && !group.keys.includes(name)) group.keys.push(name);
+            if (name !== undefined) group.keys.add(name);
         }
     }
-    const merged = [...groups.values()].map(({ first, count, keys }) => {
+    const merged = [...groups.values()].map(({ first, count, keys, paths }) => {
         let message = first.message;
-        if (first.code === 'UNKNOWN_KEY' && keys.length > 1) {
-            const listed = keys.slice(0, MAX_LISTED_UNKNOWN_KEYS).map(name => `"${clip(name, 40)}"`).join(', ');
-            message = `Unknown keys ${listed}${keys.length > MAX_LISTED_UNKNOWN_KEYS ? ', ...' : ''}.`;
+        if (first.code === 'UNKNOWN_KEY' && keys.size > 1) {
+            const listed = [...keys].slice(0, MAX_LISTED_UNKNOWN_KEYS).map(name => `"${clip(name, 40)}"`).join(', ');
+            message = `Unknown keys ${listed}${keys.size > MAX_LISTED_UNKNOWN_KEYS ? ', ...' : ''}.`;
         }
         if (count > 1) {
-            message += ` The same error occurs at ${count} paths; path shows the first one.`;
+            message += ` The same error occurs at ${count} paths; paths lists the first ${paths.length}.`;
         }
-        return {
+        const entry = {
             code: first.code,
             path: clip(first.path, MAX_ISSUE_PATH_LENGTH),
             message: clip(message, MAX_ISSUE_MESSAGE_LENGTH),
             hint: clip(first.hint, MAX_ISSUE_HINT_LENGTH)
         };
+        if (count > 1) entry.paths = paths.map(item => clip(item, MAX_ISSUE_PATH_LENGTH));
+        return entry;
     });
     return {
-        issues: merged.slice(0, limit),
+        issues: selectWithinLimit(merged, limit),
         total: issues.length,
         merged: merged.length !== issues.length,
         truncated: merged.length > limit
@@ -719,14 +902,15 @@ export function compactIssues(issues, limit = MAX_REPORTED_ISSUES) {
 }
 
 // 把錯誤與警告放進結果：有合併或截斷時附上合併前的筆數（total_errors／total_warnings）與截斷旗標。
-function applyIssues(result, errors, warnings) {
+// collectionTruncated：第 1 層收集到上限後停止走訪，實際的錯誤比收集到的多。
+function applyIssues(result, errors, warnings, collectionTruncated = false) {
     const compactErrors = compactIssues(errors);
     const compactWarnings = compactIssues(warnings);
     result.errors = compactErrors.issues;
     result.warnings = compactWarnings.issues;
-    if (compactErrors.merged || compactErrors.truncated) {
+    if (compactErrors.merged || compactErrors.truncated || collectionTruncated) {
         result.total_errors = compactErrors.total;
-        result.truncated = compactErrors.truncated;
+        result.truncated = compactErrors.truncated || collectionTruncated;
     }
     if (compactWarnings.merged || compactWarnings.truncated) {
         result.total_warnings = compactWarnings.total;
@@ -790,7 +974,7 @@ export async function validateRequest(request, command = 'validate') {
     // 第 1 層
     const envelope = scanEnvelope(template);
     if (envelope.errors.length > 0) {
-        applyIssues(result, dedupe([...requestErrors, ...envelope.errors]), []);
+        applyIssues(result, dedupe([...requestErrors, ...envelope.errors]), [], envelope.truncated);
         result.validation_digest = computeDigest(context, template, requestedIds, true);
         return result;
     }
