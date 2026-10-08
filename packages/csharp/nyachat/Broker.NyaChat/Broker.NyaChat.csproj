@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <RootNamespace>Broker.NyaChat</RootNamespace>
@@ -17,7 +17,7 @@
     <!-- BrokerDb：NyaMemoryService / NyaAuditLogger 的文件導向儲存（BrokerCore 不依賴 broker → 無循環） -->
     <ProjectReference Include="..\..\broker-core\BrokerCore.csproj" />
     <!-- BaseOrm：nya_messages / nya_facts / nya_summaries / nya_topics 的 [Table] 映射 -->
-    <ProjectReference Include="..\..\database\BaseOrm\net8\BaseOrm.csproj" />
+    <ProjectReference Include="..\..\database\BaseOrm\net10\BaseOrm.csproj" />
   </ItemGroup>
 
   <ItemGroup>

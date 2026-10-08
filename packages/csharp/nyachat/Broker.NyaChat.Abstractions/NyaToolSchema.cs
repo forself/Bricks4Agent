@@ -19,7 +19,7 @@ public sealed class NyaToolSchema
     /// <summary>參數定義（多參數、型別、enum、required）。</summary>
     public IReadOnlyList<NyaToolParam> Parameters { get; init; } = Array.Empty<NyaToolParam>();
 
-    /// <summary>admin 分組標籤（"memory" / "transport" / "quant"…）。</summary>
+    /// <summary>admin 分組標籤（"memory" / "transport" / "search"…）。</summary>
     public string? Group { get; init; }
 
     /// <summary>預設是否啟用（合併 nya_tools.json / DB 的啟停狀態時的初始值）。</summary>

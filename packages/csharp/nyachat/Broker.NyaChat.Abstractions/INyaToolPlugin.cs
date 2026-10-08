@@ -7,7 +7,7 @@ namespace Broker.NyaChat.Abstractions;
 /// 「最大程度歡迎其他插件」的編譯器層級保證：外部插件作者只需引用本契約專案
 /// （<c>Broker.NyaChat.Abstractions</c>）、實作此介面，並以 <c>AddNyaTool&lt;T&gt;()</c> 一行註冊，
 /// 不會也無法碰到 Nya 內部實作或 broker 內部型別。
-/// 一個插件可暴露多個工具（例如量化插件同時有 get_price / place_order / portfolio）。
+/// 一個插件可暴露多個工具（例如交通插件同時有查路線、查班次、查即時位置）。
 /// </remarks>
 public interface INyaToolPlugin
 {

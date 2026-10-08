@@ -21,7 +21,7 @@ public sealed class NyaToolContext
     /// <summary>對話 / 話題識別（可選）。</summary>
     public string? ConversationId { get; init; }
 
-    /// <summary>Phase 4-A：本對話輪的全鏈路關聯 ID。插件發起 broker 側動作（TradingApprovalRequest）時沿用，使審批可反查原始對話。</summary>
+    /// <summary>Phase 4-A：本對話輪的全鏈路關聯 ID。插件發起 broker 側動作（例如需要審批的提案）時沿用，使審批可反查原始對話。</summary>
     public string TraceId { get; init; } = "";
 
     /// <summary>LLM tool_call 提供的原始參數 JSON（由插件自行反序列化為自身參數型別）。</summary>

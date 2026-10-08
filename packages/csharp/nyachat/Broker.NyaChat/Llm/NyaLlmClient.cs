@@ -56,7 +56,7 @@ public class NyaLlmClient
             throw new InvalidOperationException(
                 $"Chat task is routed to provider '{chatKey}' ({chatProvider.GetType().Name}) which does not " +
                 $"support tools (SupportsTools=false). Tool calling (function-calling closed loop) would be " +
-                $"silently disabled — unacceptable now that governed quant tools are mounted. " +
+                $"silently disabled — unacceptable now that governed tools are mounted. " +
                 $"Route the chat task to a tools-capable provider via NyaChat:LlmProfiles / TaskRouting.");
 
         _logger.LogInformation("[NyaLlmClient] Registered providers: {Keys}", string.Join(", ", map.Keys));
