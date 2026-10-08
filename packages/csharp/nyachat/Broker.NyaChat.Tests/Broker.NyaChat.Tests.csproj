@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    NyaChat 核心的獨立測試執行器。
+    只引用 NyaChat 與它本來就依賴的專案,不加任何 NuGet 套件;
+    Microsoft.Extensions.* 由 ASP.NET Core 共享框架提供。
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="..\Broker.NyaChat\Broker.NyaChat.csproj" />
+    <ProjectReference Include="..\Broker.NyaChat.Abstractions\Broker.NyaChat.Abstractions.csproj" />
+    <ProjectReference Include="..\..\broker-core\BrokerCore.csproj" />
+    <ProjectReference Include="..\..\database\BaseOrm\net10\BaseOrm.csproj" />
+  </ItemGroup>
+
+</Project>
