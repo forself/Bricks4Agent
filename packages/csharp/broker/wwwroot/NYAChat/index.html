@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+  <meta charset="utf-8">
+<link rel="stylesheet" href="/nya-theme.css">
+<link rel="stylesheet" href="/admin-shell.css">
+<script src="/admin-shell.js" defer></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NyaChat Admin</title>
+  <style>
+    :root {
+      --c-bg: var(--nya-bg);
+      --c-surface: var(--nya-surface);
+      --c-hover: #FAFBFA;
+      --c-border: var(--nya-border);
+      --c-border-soft: #E2E4E1;
+      --c-border-strong: var(--nya-strong);
+      --c-fg: var(--nya-fg);
+      --c-fg2: var(--nya-fg-mut);
+      --c-fg3: #9AA098;
+      --c-fg4: #C2C6C2;
+      --c-accent: var(--nya-green);
+      --c-accent-fg: var(--nya-green-dark);
+      --c-accent-soft: #F0F5EC;
+      --c-danger: var(--nya-red);
+      --c-danger-fg: #B71C1C;
+      --c-danger-soft: #FFF0F0;
+      --c-warn: var(--nya-yellow-txt);
+      --c-warn-soft: #FFFBF0;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+
+    body {
+      font-family: var(--font-sans);
+      font-size: 14px;
+      line-height: 1.4;
+      color: var(--c-fg);
+      background: var(--c-bg);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    #root { height: 100%; }
+
+    button, input, select, textarea { font-family: inherit; }
+
+    a { color: var(--c-accent-fg); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    p, h1, h2, h3 { margin: 0; }
+
+    .mono { font-family: var(--font-mono); font-feature-settings: "tnum" 1; }
+
+    code, pre, kbd, samp { font-family: var(--font-mono); font-size: 12px; }
+
+    kbd {
+      display: inline-block; padding: 0 5px; line-height: 18px;
+      border: 1px solid var(--c-border-strong); border-radius: 3px;
+      background: var(--c-surface); color: var(--c-fg2); font-size: 11px;
+    }
+
+    :focus-visible { outline: 2px solid var(--c-accent); outline-offset: 1px; }
+    input:focus-visible, select:focus-visible, textarea:focus-visible { outline: none; }
+
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-thumb { background: var(--c-border-strong); border-radius: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+
+    ::selection { background: var(--c-accent-soft); color: var(--c-fg); }
+
+    @keyframes nya-spin { to { transform: rotate(360deg); } }
+  </style>
+
+  <script>
+    window.MOCK_MODE = false;
+    window.__nyaReady = (async function () {
+      const ctl = new AbortController();
+      const timeout = setTimeout(() => ctl.abort(), 5000);
+      try {
+        const res = await fetch('/api/v1/local-admin/status', { credentials: 'include', signal: ctl.signal });
+        const json = await res.json();
+        if (!res.ok || !json.success || !json.data?.authenticated) {
+          location.replace('/line-admin.html');
+          return new Promise(() => {});
+        }
+        window.__nyaAuth = json.data;
+      } catch {
+        if (document.readyState === 'loading') await new Promise(resolve => document.addEventListener('DOMContentLoaded', resolve, { once: true }));
+        const root = document.getElementById('root');
+        const title = document.createElement('h2');
+        title.textContent = '無法連線至 Broker';
+        const link = document.createElement('a');
+        link.href = '/line-admin.html';
+        link.textContent = '前往登入';
+        root.replaceChildren(title, link);
+        return new Promise(() => {});
+      } finally { clearTimeout(timeout); }
+    })();
+  </script>
+
+  <script src="/vendor/react@18.3.1/react.development.js"
+    integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L"
+    crossorigin="anonymous"></script>
+  <script src="/vendor/react-dom@18.3.1/react-dom.development.js"
+    integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm"
+    crossorigin="anonymous"></script>
+  <script src="/vendor/babel-standalone@7.29.0/babel.min.js"
+    integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y"
+    crossorigin="anonymous"></script>
+</head>
+
+<body>
+  <div id="root" class="b4a-fill"></div>
+
+  <script type="text/babel" src="ui.jsx"></script>
+
+  <script type="text/babel" src="api.jsx"></script>
+
+  <script type="text/babel" src="components.jsx"></script>
+
+  <script type="text/babel" src="PageB.jsx"></script>
+  <script type="text/babel" src="PageHome.jsx"></script>
+  <script type="text/babel" src="PageC_misc.jsx"></script>
+  <script type="text/babel" src="PageC_facts.jsx"></script>
+  <script type="text/babel" src="PageC.jsx"></script>
+  <script type="text/babel" src="PageD.jsx"></script>
+  <script type="text/babel" src="PageE.jsx"></script>
+  <script type="text/babel" src="PageF.jsx"></script>
+  <script type="text/babel" src="PageG.jsx"></script>
+  <script type="text/babel" src="PageI.jsx"></script>
+
+  <script type="text/babel" src="App.jsx"></script>
+</body>
+
+</html>
