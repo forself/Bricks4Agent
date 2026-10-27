@@ -1,4 +1,5 @@
 using BrokerCore.Data;
+using BrokerCore.Models;
 using BrokerCore.Services;
 using FunctionPool.Container;
 using FunctionPool.Models;
@@ -9,29 +10,40 @@ namespace Broker.Services;
 /// <summary>
 /// Worker 健康綜合分數（0-100）。
 ///
-/// 把分散在 IWorkerRegistry / IAuditService / IContainerManager 三個源頭的資料
-/// 壓成一個能直接寫進報告 / dashboard 的單一指標。三個權重分量：
-///   - Heartbeat freshness 30%（距上次心跳幾秒）
-///   - Dispatch success rate 40%（過去 15min audit_events 的 SUCCEEDED 比例）
-///   - Resource pressure 30%（CPU% + mem% 平均）
+/// 三個權重分量，任一分量沒資料就不計入（剩下的重新加權）：
+///   - Heartbeat freshness 30%：距上次心跳幾秒，門檻依 FunctionPool:HeartbeatTimeoutSeconds 換算
+///   - Dispatch success rate 40%：過去 15 min execution_requests 中、該 worker 所提供能力的
+///     Succeeded / (Succeeded + Failed)。以「能力」歸屬而非逐一 worker（見 DispatchScore.Attribution）
+///   - Resource pressure 30%：CPU% + mem% 平均（需 ContainerManager 啟用）
 ///
-/// 狀態切點：healthy ≥80 / degraded 50-79 / critical &lt;50。
-/// 沒有對應資料的分量不會懲罰、會被踢出加權平均（避免「沒接 ContainerManager 就被算 0」）。
+/// 狀態切點：healthy ≥80 / degraded 50-79 / critical &lt;50；沒有任何 worker 時為 no_workers。
+///
+/// 2026-10 修正：原本的派發分量讀 audit_events 裡帶 worker_id 的 DISPATCH_* 事件，
+/// 但這個 repo 沒有任何程式會寫那種事件，所以這個分量永遠沒資料、分數實際上只看心跳。
+/// 改讀 BrokerService 一定會寫的 execution_requests。
 /// </summary>
 public class HealthScoreService
 {
     private readonly IWorkerRegistry _registry;
     private readonly BrokerDb _db;
     private readonly IContainerManager? _containerMgr;
+    private readonly TimeSpan _heartbeatTimeout;
+
+    /// <summary>沒有任何 worker 時的整體狀態；分數給 0，因為這不是「健康」。</summary>
+    public const string NoWorkersStatus = "no_workers";
 
     public HealthScoreService(
         IWorkerRegistry registry,
         BrokerDb db,
-        IContainerManager? containerMgr = null)
+        IContainerManager? containerMgr = null,
+        PoolConfig? poolConfig = null)
     {
         _registry = registry;
         _db = db;
         _containerMgr = containerMgr;
+        // 心跳門檻跟著 WorkerHealthMonitor 用的同一個逾時走，否則會出現「lost 標籤永遠到不了」：
+        // monitor 在逾時當下就把 worker 移出 registry，分數這邊若用更長的門檻就永遠看不到它。
+        _heartbeatTimeout = poolConfig?.HeartbeatTimeout ?? TimeSpan.FromSeconds(30);
     }
 
     public async Task<HealthScoreReport> ComputeAsync(CancellationToken ct = default)
@@ -41,23 +53,25 @@ public class HealthScoreService
 
         // 取一次 container stats（一次 docker stats 呼叫、避免 per-worker 重複查）
         IReadOnlyList<ContainerStats>? stats = null;
+        IReadOnlyList<ManagedContainer>? managed = null;
         if (_containerMgr != null)
         {
             try { stats = await _containerMgr.GetStatsAsync(ct); }
             catch { /* container runtime 不在 → resource 分量會被略過 */ }
+            try { managed = await _containerMgr.ListManagedAsync(ct); }
+            catch { /* 拿不到受管清單 → 退回以容器名稱比對 */ }
         }
 
-        // 過去 15 min 每個 capability 的 dispatch 成功/失敗計數
-        // 用 audit_events 反查（DISPATCH_SUCCEEDED / DISPATCH_FAILED 的 details JSON 裡有 worker_id）
+        // 過去 15 min 每個 capability 的執行成功/失敗計數（execution_requests 是 PEP 一定會寫的表）
         var since = now.AddMinutes(-15);
-        var dispatchByWorker = QueryDispatchStatsByWorker(since);
+        var statsByCapability = QueryExecutionStatsByCapability(since);
 
         var workerScores = new List<WorkerHealthScore>();
         foreach (var w in workers)
         {
-            var hb = ScoreHeartbeat(now - w.LastHeartbeat);
-            var dispatch = ScoreDispatch(dispatchByWorker.TryGetValue(w.WorkerId, out var ds) ? ds : default);
-            var resource = ScoreResource(stats, w.WorkerId);
+            var hb = ScoreHeartbeat(now - w.LastHeartbeat, _heartbeatTimeout);
+            var dispatch = ScoreDispatch(SumForCapabilities(statsByCapability, w.Capabilities));
+            var resource = ScoreResource(FindStatsForWorker(stats, managed, w.WorkerId));
 
             // 加權平均，跳過 null（沒資料的分量）
             var weighted = WeightedAvg(
@@ -78,15 +92,16 @@ public class HealthScoreService
             });
         }
 
+        // 沒有任何 worker 連上不是「健康」：原本這裡回 100 / healthy，等於最糟的狀態顯示成最好的分數。
         var overall = workerScores.Count > 0
             ? (int)Math.Round(workerScores.Average(w => (double)w.Score))
-            : 100;
+            : 0;
 
         return new HealthScoreReport
         {
             GeneratedAt    = now,
             OverallScore   = overall,
-            OverallStatus  = StatusFor(overall),
+            OverallStatus  = workerScores.Count > 0 ? StatusFor(overall) : NoWorkersStatus,
             WorkerCount    = workerScores.Count,
             HealthyCount   = workerScores.Count(w => w.Status == "healthy"),
             DegradedCount  = workerScores.Count(w => w.Status == "degraded"),
@@ -97,15 +112,41 @@ public class HealthScoreService
 
     // ── 分量計算 ─────────────────────────────────────────────────────────
 
-    private static HeartbeatScore ScoreHeartbeat(TimeSpan elapsed)
+    /// <summary>
+    /// fresh：未滿逾時的一半（預設心跳 5 秒一次，相當於漏了 3 次以內）
+    /// stale：逾時的一半到逾時之間
+    /// lost ：已達逾時（WorkerHealthMonitor 下一輪掃描就會把它移出 registry）
+    /// </summary>
+    public static HeartbeatScore ScoreHeartbeat(TimeSpan elapsed, TimeSpan timeout)
     {
         var sec = elapsed.TotalSeconds;
-        int score = sec < 30 ? 100 : sec < 60 ? 50 : 0;
-        var label = sec < 30 ? "fresh" : sec < 60 ? "stale" : "lost";
+        var half = timeout.TotalSeconds / 2;
+        var full = timeout.TotalSeconds;
+        int score = sec < half ? 100 : sec < full ? 50 : 0;
+        var label = sec < half ? "fresh" : sec < full ? "stale" : "lost";
         return new HeartbeatScore { Score = score, Label = label, AgeSeconds = (int)sec };
     }
 
-    private DispatchScore? ScoreDispatch((int succeeded, int failed) ds)
+    /// <summary>
+    /// 把 worker 提供的每個能力的計數加總。同一能力若有多個 worker、或由 broker 行程內執行
+    /// （FallbackDispatcher），計數無法再細分到個別 worker——這是 execution_requests 沒有
+    /// worker 欄位的限制，結果會標 Attribution="capability" 讓讀的人知道。
+    /// </summary>
+    public static (int succeeded, int failed) SumForCapabilities(
+        IReadOnlyDictionary<string, (int succeeded, int failed)> statsByCapability,
+        IEnumerable<string> capabilities)
+    {
+        int ok = 0, bad = 0;
+        foreach (var cap in capabilities.Distinct(StringComparer.Ordinal))
+        {
+            if (!statsByCapability.TryGetValue(cap, out var c)) continue;
+            ok += c.succeeded;
+            bad += c.failed;
+        }
+        return (ok, bad);
+    }
+
+    public static DispatchScore? ScoreDispatch((int succeeded, int failed) ds)
     {
         var total = ds.succeeded + ds.failed;
         if (total == 0) return null;  // 沒資料 → 不計入加權
@@ -121,16 +162,52 @@ public class HealthScoreService
             Score = score, Label = label,
             Succeeded = ds.succeeded, Failed = ds.failed,
             SuccessRatePct = Math.Round(rate, 1),
+            Attribution = "capability",
         };
     }
 
-    private static ResourceScore? ScoreResource(IReadOnlyList<ContainerStats>? stats, string workerId)
+    /// <summary>
+    /// 找出某個 worker 對應的容器資源統計。
+    ///
+    /// 2026-10 改寫。原本用「容器名稱包含 workerId 第一個 '-' 之前那段」寬鬆比對,但 ContainerManager
+    /// 的容器名稱是 <c>b4a-{type}-{workerId 前 12 字}</c>:workerId 一長,那段就超過 12 字而永遠比對不到,
+    /// 反之若很短又會誤配到別的容器。現在依序:
+    ///   1. ContainerManager 受管清單裡 WorkerId 相同的那筆 → 以容器 ID 對到統計(docker stats 給短 ID、
+    ///      受管清單存完整 ID,所以用前綴相符比對)
+    ///   2. 退回比對容器名稱是否以 <c>-{workerId 前 12 字}</c> 結尾(與 ContainerManager 的命名規則一致)
+    /// 都對不到就回 null:這個分量不計,而不是拿別人的容器數字充數。
+    /// </summary>
+    public static ContainerStats? FindStatsForWorker(
+        IReadOnlyList<ContainerStats>? stats,
+        IReadOnlyList<ManagedContainer>? managed,
+        string workerId)
     {
-        if (stats == null) return null;
-        // worker_id 跟 container_name 不一定完全對應；用「container_name 包含 worker_id 第一段」做寬鬆匹配
-        var prefix = workerId.Split('-')[0];   // e.g. trading-wkr-xxx → "trading"
-        var s = stats.FirstOrDefault(x =>
-            (x.ContainerName ?? "").Contains(prefix, StringComparison.OrdinalIgnoreCase));
+        if (stats == null || stats.Count == 0 || string.IsNullOrEmpty(workerId)) return null;
+
+        var containerId = managed?.FirstOrDefault(m =>
+            string.Equals(m.WorkerId, workerId, StringComparison.Ordinal) &&
+            !string.IsNullOrEmpty(m.ContainerId))?.ContainerId;
+        if (!string.IsNullOrEmpty(containerId))
+        {
+            var byId = stats.FirstOrDefault(s => SameContainerId(s.ContainerId, containerId));
+            if (byId != null) return byId;
+        }
+
+        var suffix = "-" + workerId[..Math.Min(12, workerId.Length)];
+        return stats.FirstOrDefault(s =>
+            (s.ContainerName ?? "").TrimStart('/').EndsWith(suffix, StringComparison.Ordinal));
+    }
+
+    /// <summary>短 ID(12 字)與完整 ID(64 字)視為同一個容器;太短的字串不算數,避免誤配。</summary>
+    private static bool SameContainerId(string? a, string? b)
+    {
+        if (string.IsNullOrEmpty(a) || string.IsNullOrEmpty(b)) return false;
+        if (Math.Min(a.Length, b.Length) < 12) return string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
+        return a.StartsWith(b, StringComparison.OrdinalIgnoreCase) || b.StartsWith(a, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static ResourceScore? ScoreResource(ContainerStats? s)
+    {
         if (s == null) return null;
         var avg = (s.CpuPercent + s.MemoryPercent) / 2.0;
         int score; string label;
@@ -161,32 +238,35 @@ public class HealthScoreService
     private static string StatusFor(int score)
         => score >= 80 ? "healthy" : score >= 50 ? "degraded" : "critical";
 
-    // ── audit_events 反查每 worker 的成功/失敗計數 ─────────────────────
+    // ── execution_requests 反查每個能力的成功/失敗計數 ─────────────────
+    // 只算 Succeeded / Failed：Denied 是政策拒絕，不是 worker 出問題，不該拉低 worker 的分數。
 
-    private Dictionary<string, (int succeeded, int failed)> QueryDispatchStatsByWorker(DateTime since)
+    private Dictionary<string, (int succeeded, int failed)> QueryExecutionStatsByCapability(DateTime since)
     {
-        // details JSON 裡有 worker_id；SQLite 的 JSON1 extension 可以 json_extract
-        // 預期 SQLite 已有 JSON1 builtin（since 3.38）—broker.db 的 .NET 10 SQLite provider 必含。
-        var rows = _db.Query<DispatchAggRow>(@"
+        var rows = _db.Query<ExecutionAggRow>(@"
 SELECT
-    json_extract(details, '$.worker_id') AS WorkerId,
-    SUM(CASE WHEN event_type LIKE '%_SUCCEEDED' THEN 1 ELSE 0 END) AS Succeeded,
-    SUM(CASE WHEN event_type LIKE '%_FAILED' OR event_type LIKE '%_DENIED' THEN 1 ELSE 0 END) AS Failed
-FROM audit_events
-WHERE occurred_at > @since
-  AND (event_type LIKE 'DISPATCH_%' OR event_type LIKE 'EXECUTION_%')
-  AND json_extract(details, '$.worker_id') IS NOT NULL
-GROUP BY WorkerId",
-            new { since });
+    capability_id AS CapabilityId,
+    SUM(CASE WHEN execution_state = @succeeded THEN 1 ELSE 0 END) AS Succeeded,
+    SUM(CASE WHEN execution_state = @failed    THEN 1 ELSE 0 END) AS Failed
+FROM execution_requests
+WHERE updated_at > @since
+  AND execution_state IN (@succeeded, @failed)
+GROUP BY capability_id",
+            new
+            {
+                since,
+                succeeded = (int)ExecutionState.Succeeded,
+                failed = (int)ExecutionState.Failed,
+            });
 
         return rows
-            .Where(r => !string.IsNullOrEmpty(r.WorkerId))
-            .ToDictionary(r => r.WorkerId!, r => (r.Succeeded, r.Failed));
+            .Where(r => !string.IsNullOrEmpty(r.CapabilityId))
+            .ToDictionary(r => r.CapabilityId!, r => (r.Succeeded, r.Failed), StringComparer.Ordinal);
     }
 
-    private class DispatchAggRow
+    private class ExecutionAggRow
     {
-        public string? WorkerId { get; set; }
+        public string? CapabilityId { get; set; }
         public int Succeeded { get; set; }
         public int Failed { get; set; }
     }
@@ -232,6 +312,8 @@ public class DispatchScore
     public int Succeeded { get; set; }
     public int Failed { get; set; }
     public decimal SuccessRatePct { get; set; }
+    /// <summary>"capability"：計數依能力歸屬，無法區分同能力的多個 worker 或行程內執行。</summary>
+    public string Attribution { get; set; } = "capability";
 }
 
 public class ResourceScore
