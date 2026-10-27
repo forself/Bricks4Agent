@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { project, unproject, distance, polygonContains, densityCells } from '../frontend/geometry.js';
@@ -51,7 +52,7 @@ test('opt-in local registry does not overwrite global names and rejects unknown 
 test('module manifests satisfy existing B4A schema and actual public methods', () => {
     for (const [name, Type] of Object.entries(classes)) {
         const manifest = JSON.parse(fs.readFileSync(new URL(`../frontend/${name}.manifest.json`, import.meta.url)));
-        const result = validateManifest(manifest, { browserRoot: new URL('../../../packages/javascript/browser/', import.meta.url).pathname,
+        const result = validateManifest(manifest, { browserRoot: fileURLToPath(new URL('../../../packages/javascript/browser/', import.meta.url)),
             registryNames: new Set(Object.keys(classes)), publicMethods: Object.getOwnPropertyNames(Type.prototype) });
         assert.deepEqual(result.errors, []);
     }
