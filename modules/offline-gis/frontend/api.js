@@ -10,6 +10,7 @@ export class GisApi {
         const url = new URL(path, this.base);
         if (url.origin !== this.base.origin || !url.pathname.startsWith(this.base.pathname)) throw new Error('Request must stay inside the configured GIS service');
         const response = await fetch(url, { signal, credentials: 'same-origin',
+            ...(blob ? { referrerPolicy: 'origin' } : {}),
             headers: { ...await this.headers(), ...(body ? { 'Content-Type': 'application/json' } : {}) },
             ...(body ? { method: 'POST', body: JSON.stringify(body) } : {}) });
         if (!response.ok) throw new Error(`GIS HTTP ${response.status}`);

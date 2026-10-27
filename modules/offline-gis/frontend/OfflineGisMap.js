@@ -17,7 +17,10 @@ export class OfflineGisMap extends Control {
         this.canvas = element('canvas', undefined, this.element); this.canvas.width = 960; this.canvas.height = 540;
         this.canvas.tabIndex = 0; this.canvas.setAttribute('aria-label', t('map'));
         this.status = element('output', '', this.element); this.status.setAttribute('aria-live', 'polite');
-        element('p', t('attribution'), this.element);
+        const attribution = element('p', undefined, this.element);
+        const osmCredit = element('a', t('attribution'), attribution);
+        osmCredit.href = 'https://www.openstreetmap.org/copyright';
+        osmCredit.rel = 'noopener noreferrer';
         if (this.options.fixture === true) element('strong', t('fixture'), this.element);
         this.listen(this.canvas, 'pointerdown', event => { this.start = [event.clientX, event.clientY]; this.canvas.setPointerCapture?.(event.pointerId); });
         this.listen(this.canvas, 'pointerup', event => {

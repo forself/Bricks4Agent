@@ -62,6 +62,7 @@ try {
     page.on('response', response => { if (response.url().includes('/tiles/') && response.status() === 200) tileResponses.push(response.url()); });
     await page.goto(base); await page.locator('canvas[data-point-count="0"]').waitFor();
     assert.equal(await page.locator('[data-tool-node="map"] canvas').count(), 1);
+    assert.equal(await page.locator('.offline-gis-map a[href="https://www.openstreetmap.org/copyright"]').count(), 1);
     assert.ok((await page.locator('body').textContent()).includes('FIXTURE'));
     await page.getByRole('textbox', { name: '查詢本地地址' }).fill('台北市測試路１號');
     await page.getByRole('button', { name: '查詢本地地址', exact: true }).click();

@@ -44,3 +44,9 @@ and Content-Type headers, and GET/POST preflight. Cookie CSRF policies are the
 host/service's responsibility. Anonymous mode, if offered by a service, cannot
 promise reliable per-user isolation. The service must derive record ownership
 from a trusted identity, never a caller-supplied owner field.
+
+For an OSM standard relay, tile fetches send the browser's accurate origin-only
+Referer (`referrerPolicy: origin`); the service must preserve it upstream and
+validate the client origin. The map displays a fixed visible link to OSM copyright.
+No tile URL/provider key is accepted from page JSON. Only interactive viewport
+requests are made; this component has no prefetch/offline-download facility.

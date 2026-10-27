@@ -58,7 +58,7 @@ test('module manifests satisfy existing B4A schema and actual public methods', (
 });
 test('adapter accepts an independently configured service and confines requests to it', async () => {
     const original = globalThis.fetch; const calls = [];
-    globalThis.fetch = async (url, options) => { calls.push({ url: url.href, options }); return { ok: true, json: async () => ({ candidates: [] }) }; };
+    globalThis.fetch = async (url, options) => { calls.push({ url: url.href, options }); return { ok: true, json: async () => ({ candidates: [] }), blob: async () => new Blob(['fixture']) }; };
     try {
         const api = new GisApi('https://service.example.test/custom/api/', { headers: () => ({ Authorization: 'Bearer test-only' }) });
         await api.search('台北1-1號');
@@ -68,6 +68,8 @@ test('adapter accepts an independently configured service and confines requests 
         await assert.rejects(api.request('https://other.example.test/'), /configured GIS service/);
         await assert.rejects(api.request('../private'), /configured GIS service/);
         assert.equal(calls.length, 1);
+        await api.tile(1, 0, 0);
+        assert.equal(calls[1].options.referrerPolicy, 'origin');
         for (const base of ['file:///tmp/', 'https://user:pass@example.test/api/', 'https://example.test/api/?token=bad']) assert.throws(() => new GisApi(base));
     } finally { globalThis.fetch = original; }
 });
