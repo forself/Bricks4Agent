@@ -1,0 +1,7 @@
+.offline-gis-control { padding: var(--cl-spacing-md, 1rem); color: var(--cl-text); background: var(--cl-bg); font-family: var(--cl-font-family); }
+.offline-gis-control button, .offline-gis-control input { font: inherit; margin: var(--cl-spacing-xs, .25rem); padding: var(--cl-spacing-xs, .25rem); color: var(--cl-text); background: var(--cl-bg-secondary); border: 1px solid var(--cl-border); border-radius: var(--cl-radius-sm); }
+.offline-gis-control button:focus-visible, .offline-gis-control input:focus-visible, .offline-gis-map canvas:focus-visible { outline: 2px solid var(--cl-primary); }
+.offline-gis-map canvas { display: block; width: 100%; max-width: 960px; aspect-ratio: 16 / 9; touch-action: none; border: 1px solid var(--cl-border); }
+.offline-gis-control output { display: block; }
+.offline-gis-control strong { color: var(--cl-warning); }
+.offline-gis-results { max-height: 8rem; overflow: auto; }

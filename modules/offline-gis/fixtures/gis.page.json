@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "name": "OfflineGisPage",
+  "type": "tool",
+  "description": "Explicit opt-in offline GIS; fixture data only",
+  "root": {
+    "type": "group", "id": "gis", "layout": { "mode": "stack" },
+    "children": [
+      { "type": "component", "id": "search", "component": "GisSearch", "options": {}, "events": { "onChange": "gis.search", "onSelect": "gis.locate" } },
+      { "type": "component", "id": "scope", "component": "GisScope", "options": {}, "events": { "onChange": "gis.mode" } },
+      { "type": "component", "id": "map", "component": "OfflineGisMap", "options": { "center": [121.56, 25.03], "zoom": 8, "fixture": true }, "events": { "onChange": "gis.marker", "onSelect": "gis.select" } },
+      { "type": "component", "id": "timeline", "component": "GisTimeline", "options": { "min": 0, "max": 4102444800000 }, "events": { "onChange": "gis.time" } }
+    ]
+  }
+}

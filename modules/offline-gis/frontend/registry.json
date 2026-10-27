@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "module_id": "offline-gis",
+  "scope": "instance-opt-in",
+  "runtime": "registry.js",
+  "components": [
+    { "name": "OfflineGisMap", "manifest": "OfflineGisMap.manifest.json" },
+    { "name": "GisSearch", "manifest": "GisSearch.manifest.json" },
+    { "name": "GisScope", "manifest": "GisScope.manifest.json" },
+    { "name": "GisTimeline", "manifest": "GisTimeline.manifest.json" }
+  ],
+  "capabilities": ["gis.read", "gis.write"],
+  "definition_validator": "B4A ToolPageDefinition plus tools/generate.mjs validateGis",
+  "global_registration": false
+}
