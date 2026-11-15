@@ -203,6 +203,22 @@ public static class SessionEndpoints
             }));
         }).WithBrokerAuthPolicy(BrokerAuthPolicy.SessionBootstrap);
 
+        // Read-only verification for a local backend. BrokerAuthMiddleware has already
+        // checked signature, lifetime, epoch, revocation and session binding.
+        sessions.MapGet("/verify", (HttpContext ctx) =>
+        {
+            ctx.Response.Headers.CacheControl = "no-store";
+            var claims = ctx.Items[BrokerAuthMiddleware.ClaimsKey] as ScopedTokenClaims;
+            if (claims == null) return Unauthorized("Active scoped token required.");
+            return Results.Ok(ApiResponseHelper.Success(new
+            {
+                principal_id = claims.PrincipalId,
+                task_id = claims.TaskId,
+                session_id = claims.SessionId,
+                role_id = claims.RoleId
+            }));
+        });
+
         // 心跳：延長 session 與它的授予，並換發同一 session 的新 token（新 jti）。
         // 舊 token 不撤銷、到期自然失效（排隊或並行中的請求仍可完成）；關閉或撤銷 session 則由 BrokerAuth 的 session 檢查立即生效。
         // 只接受 session 自己的加密通道（BrokerAuth 已確認通道與 token 屬於同一 session）。
