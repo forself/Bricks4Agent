@@ -5,6 +5,7 @@ import path from 'node:path';
 import test from 'node:test';
 
 import {
+    buildDirectoryInventory,
     buildLibraryContentManifest,
     PUBLISHED_LIBRARIES,
     verifyConsumerSnapshot,
@@ -22,6 +23,27 @@ function createFixture() {
     }
     return { root, browserRoot, libRoot, consumerRoot: path.dirname(libRoot) };
 }
+
+test('snapshot inventory uses stable UTF-8 byte order for mixed-language paths', () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), 'b4a-snapshot-order-'));
+    try {
+        writeFileSync(path.join(root, '全臺灣.png'), 'one');
+        writeFileSync(path.join(root, 'Changhua.png'), 'two');
+        const expectedPaths = ['Changhua.png', '全臺灣.png'];
+        const inventory = buildDirectoryInventory(root);
+        assert.deepEqual(inventory.entries.map((entry) => entry.path), expectedPaths);
+        const previousLocaleCompare = String.prototype.localeCompare;
+        try {
+            String.prototype.localeCompare = () => { throw new Error('locale-dependent comparison'); };
+            const repeated = buildDirectoryInventory(root);
+            assert.equal(repeated.digest, inventory.digest);
+        } finally {
+            String.prototype.localeCompare = previousLocaleCompare;
+        }
+    } finally {
+        rmSync(root, { recursive: true, force: true });
+    }
+});
 
 function writeSnapshot(libRoot, browserRoot, overrides = {}) {
     const snapshot = {
