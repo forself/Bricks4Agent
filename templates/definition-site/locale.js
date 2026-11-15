@@ -25,7 +25,12 @@ Locale.register('zh-TW', 'definitionSite', {
     saveFailed: '儲存失敗：{message}',
     deleteFailed: '刪除失敗：{message}',
     bootFailed: '原型載入失敗：{message}',
-    memoryNotice: '原型資料只保存在目前瀏覽器分頁的記憶體中。'
+    memoryNotice: '原型資料只保存在目前瀏覽器分頁的記憶體中。',
+    roleDenied: '測試角色沒有此操作權限。',
+    roleSelectLabel: '雛型測試角色',
+    formalNotice: 'Broker 驗證工作階段；資料範圍由核定政策附加於每次資料操作。',
+    sqliteNotice: '隔離的功能雛型：資料存於 SQLite，伺服器檢查角色範圍；測試角色切換不代表真實登入。',
+    browserNotice: '隔離的功能雛型：測試角色不代表真實登入或正式授權。資料保存在此瀏覽器。'
 });
 
 Locale.register('en', 'definitionSite', {
@@ -50,5 +55,10 @@ Locale.register('en', 'definitionSite', {
     saveFailed: 'Saving failed: {message}',
     deleteFailed: 'Deleting failed: {message}',
     bootFailed: 'The prototype failed to load: {message}',
-    memoryNotice: 'Prototype data is kept in this browser tab only.'
+    memoryNotice: 'Prototype data is kept in this browser tab only.',
+    roleDenied: 'The test role is not allowed to do this.',
+    roleSelectLabel: 'Prototype test role',
+    formalNotice: 'Broker-verified session; the approved policy scopes every data operation.',
+    sqliteNotice: 'Isolated functional prototype: data is stored in SQLite and the server enforces role scope; switching test roles is not a real sign-in.',
+    browserNotice: 'Isolated functional prototype: test roles are not a real sign-in or formal authorisation. Data is kept in this browser.'
 });

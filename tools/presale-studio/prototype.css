@@ -1,0 +1,22 @@
+/* Presale display polish layered over B4A components. All colors use theme tokens. */
+.ds-app .b4a-dt__th {
+    background-color: var(--cl-bg-secondary) !important;
+    color: var(--cl-text) !important;
+    border: 1px solid var(--cl-border-light) !important;
+    padding: 10px 8px !important;
+    font-size: 13px !important;
+    text-align: left !important;
+}
+.ds-app .b4a-dt__th-inner { justify-content: flex-start !important; }
+.ds-app .b4a-dt__td {
+    border: 1px solid var(--cl-border-light) !important;
+    padding: 10px 8px !important;
+    text-align: left !important;
+    font-size: 13px !important;
+}
+.ds-app .b4a-dt__tr { background: var(--cl-bg) !important; }
+.ds-app .b4a-dt__tr--even { background: var(--cl-bg-tertiary) !important; }
+.ds-app .b4a-dt .b4a-dt__tr:hover { background: var(--cl-bg-hover) !important; }
+.ds-plan-link{display:inline-flex;align-items:center;color:var(--cl-primary);font-size:13px;font-weight:700;text-decoration:none;padding:8px 10px;border:1px solid var(--cl-border);border-radius:8px;white-space:nowrap}.ds-plan-link:hover{background:var(--cl-bg-secondary)}
+.ds-role-select{margin:8px;padding:7px;border:1px solid var(--cl-border);border-radius:6px;background:var(--cl-bg);color:var(--cl-text)}
+.ds-page[data-can-update="false"] [data-legacy-action-host="edit"],.ds-page[data-can-delete="false"] [data-legacy-action-host="delete"]{display:none}
