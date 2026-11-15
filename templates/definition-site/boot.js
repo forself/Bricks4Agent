@@ -2,8 +2,8 @@
  * 定義網站外殼：hash 路由，每個路由一個 DynamicPageRenderer。
  *
  * 原始頁定義（definitions/{pageId}.json）保留 api；渲染用的定義經 PageDefinitionAdapter.toNewFormat
- * 轉換，api 呼叫則照 DefinitionRuntimePage 的作法讀原始定義，改接瀏覽器內的記憶體資料來源。
- * 原型不連任何後端；資料只存在目前分頁，重新整理即清空。
+ * 轉換，api 呼叫則照 DefinitionRuntimePage 的作法讀原始定義。
+ * Presale 套件使用同源 Node/SQLite 後端；一般定義網站仍可使用記憶體資料來源。
  */
 import Locale from './runtime/ui_components/i18n/index.js';
 import './locale.js';
@@ -101,6 +101,11 @@ class PageView {
         const section = createElement('section', 'ds-page');
         section.dataset.pageId = page.id;
         section.dataset.pageType = page.type;
+        if (this.store.role) {
+            section.dataset.canCreate = String(this.store.role.actions.includes('create'));
+            section.dataset.canUpdate = String(this.store.role.actions.includes('update'));
+            section.dataset.canDelete = String(this.store.role.actions.includes('delete'));
+        }
 
         const header = createElement('div', 'ds-page__header');
         header.appendChild(createElement('h2', 'ds-page__title', page.title));
@@ -116,7 +121,8 @@ class PageView {
         section.appendChild(body);
         this.host.replaceChildren(section);
 
-        if (page.type === 'list' && page.links.createForm) {
+        if (page.type === 'list' && page.links.createForm &&
+            (!this.store.role || this.store.role.actions.includes('create'))) {
             const create = new BasicButton({
                 type: BasicButton.TYPES.CUSTOM,
                 variant: 'primary',
@@ -207,6 +213,10 @@ class PageView {
 
     async save(values) {
         const editing = Boolean(this.recordId);
+        if (this.store.role && !this.store.role.actions.includes(editing ? 'update' : 'create')) {
+            ToastPanel.warning(t('roleDenied'));
+            return;
+        }
         if (editing && !this.api.update) {
             ToastPanel.warning(t('cannotEdit'));
             return;
@@ -265,6 +275,8 @@ class PageView {
     handleRowAction(action, row) {
         const id = row?.id;
         if (id === null || id === undefined) return;
+        if (this.store.role && !this.store.role.actions.includes(
+            action === 'view' ? 'read' : action === 'edit' ? 'update' : action)) return;
         if (action === 'view') {
             const detail = this.linkedPage('detail');
             if (detail) navigate(routeHref(detail.id, id));
@@ -413,10 +425,43 @@ async function boot() {
                 if (typeof value === 'string' && value !== '') collections.add(value);
             }
         }
-        const footer = createElement('footer', 'ds-footer', t('memoryNotice'));
-        main.after(footer);
-
-        new SiteApp({ model, store: new MemoryStore({ collections: [...collections] }), main, nav }).start();
+        const initialRows = site.demo_seed === 'demo-seed.json' && site.prototype_backend !== 'sqlite-formal'
+            ? await fetchJson('demo-seed.json') : {};
+        let store;
+        if (site.prototype_config === 'prototype-config.json') {
+            const config = await fetchJson('prototype-config.json');
+            if (site.prototype_backend === 'sqlite' || site.prototype_backend === 'sqlite-formal') {
+                const { RemotePrototypeStore, prototypeApiBase } = await import('./remote-store.mjs');
+                store = await RemotePrototypeStore.connect(config, prototypeApiBase(),
+                    { formal: site.prototype_backend === 'sqlite-formal' });
+            } else {
+                const { PrototypeStore } = await import('./prototype-store.mjs');
+                store = new PrototypeStore(config, initialRows);
+            }
+            if (site.prototype_backend !== 'sqlite-formal') {
+                const selector = createElement('select', 'ds-role-select');
+                selector.setAttribute('aria-label', t('roleSelectLabel'));
+                for (const role of config.roles) {
+                    const option = createElement('option', '', role.label);
+                    option.value = role.code;
+                    selector.append(option);
+                }
+                selector.value = store.role.code;
+                selector.addEventListener('change', async () => {
+                    try { await store.setRole(selector.value); location.reload(); }
+                    catch (error) { selector.value = store.role.code; console.error(error); }
+                });
+                nav.after(selector);
+            }
+            const footer = createElement('footer', 'ds-footer', t(site.prototype_backend === 'sqlite-formal'
+                ? 'formalNotice' : site.prototype_backend === 'sqlite' ? 'sqliteNotice' : 'browserNotice'));
+            main.after(footer);
+        } else {
+            store = new MemoryStore({ collections: [...collections], initialRows });
+            const footer = createElement('footer', 'ds-footer', t('memoryNotice'));
+            main.after(footer);
+        }
+        new SiteApp({ model, store, main, nav }).start();
     } catch (error) {
         main.dataset.routeState = 'error';
         main.replaceChildren(createElement('p', 'ds-notice ds-notice--error', t('bootFailed', { message: error.message })));

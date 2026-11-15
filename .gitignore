@@ -61,6 +61,8 @@ tools/*.png
 .dotnet/
 .run/
 .test-output/
+tools/presale-studio/.local-library/
+tools/presale-studio/manual-render/
 .superpowers/
 # 映像建置時由 tools/generation/catalog-summary.mjs --out 預先產生的型錄摘要
 tools/generation/catalog-summary.json

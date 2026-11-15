@@ -56,13 +56,27 @@ function matchesFilter(value, expected) {
 
 export class MemoryStore {
     /**
-     * @param {{ collections?: string[] }} options - 已知的 api 基底路徑
+     * @param {{ collections?: string[], initialRows?: Record<string, object[]> }} options - 已知的 api 基底路徑與示範資料
      */
-    constructor({ collections = [] } = {}) {
+    constructor({ collections = [], initialRows = {} } = {}) {
         this._collections = new Map();
         for (const base of collections) {
             if (typeof base === 'string' && base !== '') {
                 this._collections.set(normalizePath(base), { nextId: 1, rows: new Map() });
+            }
+        }
+        for (const [base, rows] of Object.entries(initialRows)) {
+            const collection = this._collections.get(normalizePath(base));
+            if (!collection || !Array.isArray(rows) || rows.length > MAX_RECORDS_PER_COLLECTION) {
+                throw new MemoryApiError(400, 'Invalid prototype seed collection');
+            }
+            for (const row of rows) {
+                if (!row || typeof row !== 'object' || Array.isArray(row) ||
+                    !Number.isSafeInteger(row.id) || row.id < 1 || collection.rows.has(String(row.id))) {
+                    throw new MemoryApiError(400, 'Invalid prototype seed record');
+                }
+                collection.rows.set(String(row.id), { id: row.id, ...cloneValue(stripId(row)) });
+                collection.nextId = Math.max(collection.nextId, row.id + 1);
             }
         }
     }

@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
@@ -44,7 +45,8 @@ export function buildDirectoryInventory(root, library = '') {
         }
     }
 
-    entries.sort((left, right) => left.path.localeCompare(right.path));
+    // The digest must not depend on the host's ICU locale or operating system.
+    entries.sort((left, right) => Buffer.compare(Buffer.from(left.path), Buffer.from(right.path)));
     const digest = createHash('sha256');
     for (const entry of entries) {
         digest.update(`${entry.path}\0${entry.bytes}\0${entry.sha256}\n`);

@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'self'">
+    <title>Bricks4Agent Presale 雛型工作台</title>
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="theme.css">
+    <link rel="stylesheet" href="palette.css">
+    <link rel="stylesheet" href="runtime/custom_components/custom-components.css">
+    <link rel="stylesheet" href="studio.css">
+</head>
+<body>
+    <header class="topbar">
+        <div class="brand"><span class="brand-mark">B4A</span><span>Bricks4Agent</span></div>
+        <span class="topbar-note">Presale 雛型工作台</span>
+    </header>
+    <main class="layout">
+        <aside class="rail" aria-label="工作流程">
+            <p class="eyebrow">工作流程</p>
+            <ol class="steps"><li>選情境</li><li>整理需求</li><li>確認範圍</li><li>規劃頁面</li><li>生成展示</li></ol>
+            <div class="rail-note"><strong>這份雛型能做什麼？</strong><p>產出可操作的清單、明細與表單，並附上訪談摘要、欄位映射及可交接的 JSON 文件。</p></div>
+            <div class="rail-note"><strong>展示資料</strong><p>產生後的雛型使用本機 SQLite；測試角色與資料範圍使用虛構身分，不連接真實帳號或資料庫。</p></div>
+        </aside>
+        <div class="workspace">
+            <div class="intro"><p class="eyebrow">從訪談到可操作雛型</p><h1>先把客戶說的話，變成看得見的系統。</h1><p>選一個接近的情境，調整資料區塊、欄位與角色；確認後即可生成可展示、可下載的雛型。</p></div>
+            <section class="card" aria-labelledby="scenario-title"><div class="section-heading"><span class="step-number">01</span><div><h2 id="scenario-title">選擇起點</h2><p>可以從課務系統、申請案件開始，也可以建立空白雛型。</p></div></div>
+                <div class="preset-grid" id="presets"></div>
+            </section>
+            <section class="card" aria-labelledby="overview-title"><div class="section-heading"><span class="step-number">02</span><div><h2 id="overview-title">這次想展示什麼？</h2><p>用業務語言描述即可。名稱會直接顯示在生成的畫面。</p></div></div>
+                <div class="overview-grid"><label>雛型名稱<input id="project-title" maxlength="80" autocomplete="off"></label><label>業務目標<input id="project-goal" maxlength="400" autocomplete="off" placeholder="例如：讓承辦人快速查找與維護課程"></label></div>
+            </section>
+            <section class="card" aria-labelledby="entities-title"><div class="section-heading"><span class="step-number">03</span><div><h2 id="entities-title">資料區塊與欄位</h2><p>每個資料區塊都會產生清單、明細、編輯表單三個畫面。</p></div></div>
+                <div id="entities" class="stack"></div><button id="add-entity" class="secondary" type="button">＋ 新增資料區塊</button>
+            </section>
+            <section class="card" aria-labelledby="roles-title"><div class="section-heading"><span class="step-number">04</span><div><h2 id="roles-title">角色與可見範圍</h2><p>測試畫面會用虛構身分執行範圍篩選；此處不代表正式登入或授權。</p></div></div>
+                <div id="roles" class="stack"></div><button id="add-role" class="secondary" type="button">＋ 新增角色</button>
+            </section>
+            <section class="card confirmation" aria-labelledby="confirm-title"><div class="section-heading"><span class="step-number">05</span><div><h2 id="confirm-title">核對訪談摘要</h2><p>請先與客戶核對名稱、欄位與角色，勾選後會產生可選的複合元件。</p></div></div>
+                <div id="readiness" class="readiness" role="status"></div>
+                <label class="checkline"><input id="confirmed" type="checkbox">我已核對這份雛型的需求與展示範圍</label>
+            </section>
+            <section id="planner-panel" class="card planner-panel" hidden aria-labelledby="planner-title"><div class="section-heading"><span class="step-number">06</span><div><h2 id="planner-title">拖拉規劃頁面</h2><p>複合元件可設定內部節點；獨立元件可建立查詢及資料異動流程，指定觸發元件、欄位對應與結果元件。</p></div></div>
+                <div class="planner-layout"><aside class="planner-palette" aria-label="可選元件"><h3>可選元件</h3><div id="component-palette"></div></aside><div class="planner-work"><div class="planner-work-head"><div><h3>頁面雛形</h3><p id="plan-count" class="helper"></p></div><button id="clear-plan" class="secondary" type="button">清空配置</button></div><div id="page-canvas" class="page-canvas" aria-label="頁面雛形畫布"></div><div class="planner-work-head"><h3>獨立元件資料流程</h3><div><label class="planner-setting">資料區塊<select id="flow-entity"></select></label><button id="add-flow" class="secondary" type="button">新增查詢流程</button><button id="add-create-flow" class="secondary" type="button">新增資料</button><button id="add-update-flow" class="secondary" type="button">修改資料</button><button id="add-delete-flow" class="secondary" type="button">刪除資料</button></div></div><div id="page-flows" class="canvas-settings"></div></div></div>
+                <div class="local-library"><div><h3>我的本地庫</h3><p class="helper">從畫布保存元件或整個頁面。再次使用時，先對應目前的資料區塊與欄位；庫內不保存展示資料或角色。</p></div><div class="library-save"><label>選擇畫布元件<select id="library-component-source"></select></label><label>保存名稱<input id="library-title" maxlength="60" placeholder="例如：課程查詢列"></label><button id="library-save-component" class="secondary" type="button">存入元件庫</button><button id="library-save-page" class="secondary" type="button">存入頁面庫</button></div><div><h4>已保存的元件</h4><div id="library-components" class="library-pages"></div></div><div><h4>已保存的頁面</h4><div id="library-pages" class="library-pages"></div></div><div id="library-mapping" class="library-mapping" hidden></div></div>
+            </section>
+            <section class="card" aria-labelledby="build-title"><div class="section-heading"><span class="step-number">07</span><div><h2 id="build-title">產生展示</h2><p>生成可操作資料畫面、頁面配置、複合元件定義與功能驗證結果。</p></div></div>
+                <div class="work-file"><div><strong>工作進度</strong><p class="helper">有效的修改會保存在這台電腦的瀏覽器；也可下載工作檔，稍後在此開啟。工作檔含訪談名稱與展示資料，請自行妥善保管。</p></div><button id="save-work" class="secondary" type="button">下載工作檔</button><label class="secondary work-file-open">開啟工作檔<input id="open-work" type="file" accept=".json,application/json"></label></div>
+                <div class="actions"><button id="generate" class="primary" type="button">產生雛型與交接文件</button><span id="status" role="status" aria-live="polite"></span></div>
+            </section>
+            <section id="result" class="card result" hidden aria-labelledby="result-title"><div class="section-heading"><span class="step-number">✓</span><div><h2 id="result-title">雛型已產生</h2><p id="result-count"></p></div></div>
+                <div class="result-actions"><a id="open-preview" class="primary link-button" target="_blank" rel="noopener">開啟資料畫面</a><a id="open-planned" class="secondary link-button" target="_blank" rel="noopener">開啟規劃頁面</a><a id="download" class="secondary link-button">下載雛型與交接文件</a></div>
+                <div class="preview-frame"><iframe id="preview" title="雛型預覽"></iframe></div>
+                <details><summary>檢視訪談與交接摘要</summary><pre id="review"></pre></details>
+            </section>
+        </div>
+    </main>
+    <script type="module" src="studio.js"></script>
+</body>
+</html>

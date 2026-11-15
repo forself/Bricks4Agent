@@ -49,6 +49,18 @@ test('memory store returns copies and refuses unknown endpoints', async () => {
     assert.equal({}.x, undefined);
 });
 
+test('presale seed starts with records and keeps the next id and endpoint boundary', async () => {
+    const store = new MemoryStore({
+        collections: ['/api/courses'],
+        initialRows: { '/api/courses': [{ id: 3, title: '演算法' }, { id: 8, title: '資料庫' }] }
+    });
+    assert.equal((await store.get('/api/courses')).total, 2);
+    assert.deepEqual(await store.post('/api/courses', { title: '網路' }), { id: 9, title: '網路' });
+    assert.throws(() => new MemoryStore({ collections: ['/api/courses'], initialRows: {
+        '/api/unknown': [{ id: 1, title: '錯誤' }]
+    } }), /Invalid prototype seed collection/);
+});
+
 test('memory store caps the records per collection', async () => {
     const store = new MemoryStore({ collections: ['/api/items'] });
     for (let i = 0; i < MAX_RECORDS_PER_COLLECTION; i += 1) await store.post('/api/items', { i });

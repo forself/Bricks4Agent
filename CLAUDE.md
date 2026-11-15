@@ -57,6 +57,9 @@ Bricks4Agent's end state is an **AI agent service**: it takes requests from huma
 | `%TEMP%/b4a-gen*` (`b4a-gen-test-*`, `b4a-gen-truncate-*`, `b4a-gengov-*`, `b4a-gencontract-*`, `b4a-genworker-*`, `b4a-gen-toolspec-*`) | generation node:test and xUnit suites | removed by the tests; delete leftovers |
 | `%TEMP%/broker_integration_*` (`.db`, `-shm`, `-wal`, and `broker_integration_access_*` directories) | integration test fixtures (`BrokerFixture`) | removed by the fixtures (retried); delete leftovers |
 | `%TEMP%/broker_test_*.db` (with `-shm`, `-wal`) | unit tests (`TestDb.CreateInMemory`) | deleted when the test process exits; delete leftovers |
+| `%TEMP%/b4a-presale-*` (built prototype packages with their `prototype.sqlite`), `b4a-sqlite-test-*`, `b4a-local-library-*`, `b4a-library-api-*`, `b4a-library-browser-*` | `test:presale-studio`, `test:presale-studio:browser`, and the workbench server (`npm run presale:studio`) | removed by the tests and when the server closes; a killed server leaves its `b4a-presale-*` packages — delete leftovers |
+| `tools/presale-studio/.local-library/` | presale workbench local template library (`npm run presale:studio`) | gitignored user data; delete to reset |
+| `%TEMP%/b4a-snapshot-test-*`, `b4a-snapshot-order-*` | `tools/scripts/lib/snapshot-integrity.test.mjs` | removed by the tests; delete leftovers |
 
 When adding tests that produce files: add the pattern to this table, ensure it is in `.gitignore`, and clean it up in the test.
 
