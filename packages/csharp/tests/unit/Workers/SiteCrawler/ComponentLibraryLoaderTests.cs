@@ -77,7 +77,7 @@ public class ComponentLibraryLoaderTests : IDisposable
 
         foreach (var component in manifest.Components)
         {
-            readme.Should().Contain($"`{component.Type}`");
+            readme.Should().Contain($"<code>{component.Type}</code>");
         }
     }
 

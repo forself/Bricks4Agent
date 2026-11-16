@@ -36,6 +36,11 @@ try {
     await page.locator('#library-save-page').click();
     await page.waitForFunction(() => [...document.querySelectorAll('#library-pages .library-entry')]
         .some(node => node.textContent.includes('我的查詢頁面')));
+    const exportedDownload = page.waitForEvent('download');
+    await page.locator('#library-export').click();
+    const download = await exportedDownload;
+    const bundlePath = await download.path();
+    assert.ok(bundlePath, 'local library export should finish as a downloadable JSON file');
     const catalog = await (await fetch(`${base}/api/library`)).json();
     assert.equal(catalog.items.length, 2);
 
@@ -48,7 +53,8 @@ try {
     const targetEntity = await page.locator('#library-mapping select').first().inputValue();
     const targetField = await page.locator('#library-mapping select').nth(1).inputValue();
     await page.locator('#library-mapping').getByRole('button', { name: '加入頁面畫布' }).click();
-    assert.equal(await page.locator('#page-canvas .canvas-item').count(), 1);
+    await page.waitForFunction(() => document.querySelectorAll('#page-canvas .canvas-item').length === 1);
+    await page.waitForFunction(() => document.querySelector('#library-mapping')?.hidden);
     await page.locator('#generate').click();
     await page.locator('#result').waitFor({ state: 'visible' });
     let href = await page.locator('#open-planned').getAttribute('href');
@@ -62,6 +68,7 @@ try {
     await page.locator('#library-mapping').waitFor({ state: 'visible' });
     page.once('dialog', dialog => { void dialog.accept(); });
     await page.locator('#library-mapping').getByRole('button', { name: '套用此頁面' }).click();
+    await page.waitForFunction(() => document.querySelector('#library-mapping')?.hidden);
     await page.locator('#generate').click();
     await page.waitForFunction(previous => document.querySelector('#open-planned')?.getAttribute('href') !== previous,
         href);
@@ -75,6 +82,15 @@ try {
     await page.waitForFunction(() => ![...document.querySelectorAll('#component-palette .palette-item')]
         .some(node => node.textContent.includes('我的查詢元件')));
     assert.equal((await (await fetch(`${base}/api/library`)).json()).items.length, 1);
+    page.once('dialog', dialog => { void dialog.accept(); });
+    await page.locator('#library-pages .library-entry').filter({ hasText: '我的查詢頁面' })
+        .getByRole('button', { name: '移除' }).click();
+    await page.waitForFunction(() => document.querySelectorAll('#library-pages .library-entry').length === 0);
+    await page.locator('#library-import-file').setInputFiles(bundlePath);
+    await page.waitForFunction(() => document.querySelectorAll('#library-components .library-entry').length === 1 &&
+        document.querySelectorAll('#library-pages .library-entry').length === 1);
+    await page.waitForFunction(() => document.querySelector('#status')?.textContent.includes('已匯入 2 個'));
+    assert.equal((await (await fetch(`${base}/api/library`)).json()).items.length, 2);
     assert.deepEqual(errors, []);
     process.stdout.write('Presale local library browser smoke passed: save, palette reuse, rebind, page generation.\n');
 } finally {

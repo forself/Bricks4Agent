@@ -70,6 +70,7 @@ export function buildLibraryContentManifest(browserRoot) {
             fileCount: inventory.fileCount,
             totalBytes: inventory.totalBytes,
             digest: inventory.digest,
+            entries: inventory.entries,
         };
         combined.update(`${library}\0${inventory.digest}\n`);
     }
@@ -79,6 +80,35 @@ export function buildLibraryContentManifest(browserRoot) {
         combinedDigest: combined.digest('hex'),
         libraries,
     };
+}
+
+export function compareManifestInventory(expectedEntries, actualInventory) {
+    if (!Array.isArray(expectedEntries)) {
+        return { equal: false, missing: actualInventory.entries.map(entry => entry.path),
+            extra: [], changed: [] };
+    }
+    const expectedByPath = new Map();
+    const invalid = [];
+    for (const entry of expectedEntries) {
+        if (!entry || Object.keys(entry).sort().join('|') !== 'bytes|path|sha256' ||
+            typeof entry.path !== 'string' || entry.path.startsWith('/') ||
+            entry.path.includes('\\') || entry.path.split('/').some(part => !part || part === '.' || part === '..') ||
+            !Number.isSafeInteger(entry.bytes) || entry.bytes < 0 || !/^[a-f0-9]{64}$/.test(entry.sha256) ||
+            expectedByPath.has(entry.path)) {
+            invalid.push(String(entry?.path ?? '(invalid path)'));
+            continue;
+        }
+        expectedByPath.set(entry.path, entry);
+    }
+    const actualByPath = new Map(actualInventory.entries.map(entry => [entry.path, entry]));
+    const missing = [], extra = [], changed = [...invalid];
+    for (const [file, expected] of expectedByPath) {
+        const actual = actualByPath.get(file);
+        if (!actual) missing.push(file);
+        else if (actual.sha256 !== expected.sha256 || actual.bytes !== expected.bytes) changed.push(file);
+    }
+    for (const file of actualByPath.keys()) if (!expectedByPath.has(file)) extra.push(file);
+    return { equal: !missing.length && !extra.length && !changed.length, missing, extra, changed };
 }
 
 export function compareInventories(source, published) {
@@ -124,6 +154,12 @@ export function verifyConsumerSnapshot({ browserRoot, consumerRoot, expectedTree
     const snapshot = JSON.parse(readFileSync(snapshotPath, 'utf8'));
     const errors = [];
     const details = {};
+    const policyTrimmed = typeof snapshot.publishPolicy === 'string' && snapshot.publishPolicy.length > 0;
+    const legacyFullSnapshot = !policyTrimmed && PUBLISHED_LIBRARIES.every((library) =>
+        snapshot.content?.libraries?.[library] &&
+        !Object.hasOwn(snapshot.content.libraries[library], 'entries'));
+    if (Object.hasOwn(snapshot, 'publishPolicy') && snapshot.publishPolicy !== null && !policyTrimmed)
+        errors.push('SNAPSHOT.json publish policy marker is invalid');
 
     const recordedTree = snapshot?.bricks4agent?.tree ?? '';
     if (snapshot?.bricks4agent?.dirty !== false) {
@@ -143,7 +179,16 @@ export function verifyConsumerSnapshot({ browserRoot, consumerRoot, expectedTree
         const published = buildDirectoryInventory(path.join(libRoot, library), library);
         const comparison = compareInventories(source, published);
         details[library] = comparison;
-        if (!comparison.equal) {
+        if (legacyFullSnapshot) {
+            details[library].manifest = { equal: true, legacy: true };
+        } else {
+            const expectedManifest = compareManifestInventory(snapshot.content?.libraries?.[library]?.entries, published);
+            details[library].manifest = expectedManifest;
+            if (!expectedManifest.equal) {
+                errors.push(`${library} does not match the file inventory recorded in SNAPSHOT.json: missing=${expectedManifest.missing.length}, extra=${expectedManifest.extra.length}, changed=${expectedManifest.changed.length}`);
+            }
+        }
+        if (policyTrimmed ? (comparison.extra.length > 0 || comparison.changed.length > 0) : !comparison.equal) {
             errors.push(`${library} differs: missing=${comparison.missing.length}, extra=${comparison.extra.length}, changed=${comparison.changed.length}`);
         }
     }

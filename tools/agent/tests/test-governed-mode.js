@@ -9,7 +9,12 @@ const util = require('util');
 const { AgentLoop } = require('../lib/agent-loop');
 const { BrokerClient } = require('../lib/broker-client');
 const { LineListener } = require('../lib/line-listener');
-const { GENERATION_BASE_PROMPT, GENERATION_CONTINUE_REMINDER, isGenerationTask } = require('../lib/system-prompt');
+const {
+    GENERATION_BASE_PROMPT,
+    GENERATION_CONTINUE_REMINDER,
+    GOVERNED_RESPONSE_REMINDER,
+    isGenerationTask,
+} = require('../lib/system-prompt');
 
 const ROOT = path.resolve(__dirname, '..', '..', '..');
 // A per-run value, so a match in the prompt can only come from the governed config.
@@ -949,15 +954,47 @@ function generationAgent(client, maxIterations = 12, forceStrategy = null) {
     });
 }
 
+const FINAL_COMPLETED = '{"type":"final","code":"completed"}';
+const FAILURE_INVALID_RESPONSE = '{"type":"failure","code":"invalid_response"}';
+const FAILURE_GENERATION_FAILED = '{"type":"failure","code":"generation_failed"}';
+
+function plainGovernedAgent(client, options = {}) {
+    return new AgentLoop({
+        model: 'user-requested-model',
+        provider: createForbiddenDirectProvider(),
+        projectRoot: ROOT,
+        stream: false,
+        ...options,
+        governed: {
+            brokerUrl: 'http://broker.local:5000',
+            brokerPubKey: 'fake-pub-key',
+            principalId: 'prn_test',
+            taskId: 'task_test',
+            roleId: 'role_reader',
+            registrationSecret: TEST_REGISTRATION_SECRET,
+            clientFactory: () => client,
+        },
+    });
+}
+
+const countMessages = (agent, content) => agent.messages.filter((message) => message.role === 'user' && message.content === content).length;
+
 /**
- * The generation prompt states that the run is unattended: a tool call in every turn until the summary, no
- * definition in text, no questions. The loop backs this up with one reminder when the model replies without a
- * tool call before a generate succeeded; a second such reply ends the run, and a summary after a successful
- * generate ends it at once.
+ * The generation prompt states that the run is unattended: a tool call in every turn until the fixed JSON reply, no
+ * definition in text, no questions. The loop backs this up with one reminder per run for a turn without progress:
+ * a reply without a tool call that is not the fixed JSON object, or "completed" before a generate succeeded. A second
+ * such reply ends the run as a failure, and the fixed JSON reply after a successful generate ends it at once.
+ * Every prompt and reminder describes that one contract (native tool calls, the fixed JSON reply).
  */
 async function testGenerationRunNeedsAToolCallEveryTurn() {
+    const { RESPONSE_CODES } = require('../lib/governed-response');
     const template = { kind: 'definition-template', version: '0.1.0' };
     const generateOk = JSON.stringify({ ok: true, zip: { path: 'slot/req/contacts-scaffold.zip', sha256: 'a'.repeat(64), size: 10 } });
+    const allResponses = Object.entries(RESPONSE_CODES)
+        .flatMap(([type, codes]) => [...codes].map((code) => JSON.stringify({ type, code })));
+    assert.strictEqual(allResponses.length, 8);
+    // Wording of the earlier contract (a prose summary, text or ReAct tool calls) that no prompt may carry any more.
+    const staleWording = ['final summary', 'short summary', 'state them in the', 'report the remaining errors', '<tool_call>', 'ReAct', '|unsupported_request'];
 
     // The prompt rules.
     {
@@ -965,15 +1002,45 @@ async function testGenerationRunNeedsAToolCallEveryTurn() {
         const agent = generationAgent(client);
         await agent.init();
         const prompt = agent.messages[0].content.replace(/\s+/g, ' ');
-        assert(prompt.includes('Call a tool in every turn until the final summary'), 'the prompt requires a tool call every turn');
+        assert(prompt.includes('Call a tool in every turn until the final JSON reply in step 5'), 'the prompt requires a tool call every turn');
         assert(prompt.includes('Never write the definition in your reply text'), 'the prompt forbids the definition in text');
         assert(prompt.includes('You cannot ask the user anything'), 'the prompt forbids questions');
         assert(prompt.includes('make reasonable assumptions'), 'the prompt asks for assumptions');
         assert(prompt.includes('submit it directly with validate_definition'), 'step 2 submits the definition with validate_definition');
+        assert(prompt.includes(`reply without a tool call using exactly ${FINAL_COMPLETED}`), 'step 5 is the fixed JSON reply');
+        assert(prompt.includes(`stop with ${FAILURE_GENERATION_FAILED} instead of guessing`), 'running out of validate calls ends with the failure reply');
+        assert(prompt.includes('Call tools only as native structured function (tool) calls'), 'tools are native calls only');
+        for (const response of allResponses) assert(prompt.includes(response), `the prompt lists ${response}`);
+        for (const stale of staleWording) assert(!prompt.includes(stale), `the generation prompt must not say "${stale}"`);
         await agent.close();
+
+        // ReAct forced on a governed agent: still no text tool-call instructions (text is never executed).
+        const reactAgent = generationAgent(createGenerationFakeClient(), 12, 'react');
+        await reactAgent.init();
+        assert(!reactAgent.messages[0].content.includes('<tool_call>'), 'a governed prompt never teaches the text wrapper');
+        await reactAgent.close();
+
+        // An ordinary governed agent gets the same contract, and both reminders describe it too.
+        const plain = plainGovernedAgent(createFakeClient());
+        await plain.init();
+        // The project manual that follows is repository text, not part of the contract.
+        const plainPrompt = plain.messages[0].content.split('\n## Project Manual')[0].replace(/\s+/g, ' ');
+        for (const response of allResponses) assert(plainPrompt.includes(response), `the governed prompt lists ${response}`);
+        for (const stale of staleWording) assert(!plainPrompt.includes(stale), `the governed prompt must not say "${stale}"`);
+        await plain.close();
+
+        const generationReminder = GENERATION_CONTINUE_REMINDER.replace(/\s+/g, ' ');
+        assert(generationReminder.includes('as native function (tool) calls'));
+        assert(generationReminder.includes(`${FINAL_COMPLETED} after generate_scaffold succeeded`));
+        assert(generationReminder.includes(FAILURE_GENERATION_FAILED));
+        const responseReminder = GOVERNED_RESPONSE_REMINDER.replace(/\s+/g, ' ');
+        for (const response of allResponses) assert(responseReminder.includes(response), `the reminder lists ${response}`);
+        for (const stale of staleWording) {
+            assert(!generationReminder.includes(stale) && !responseReminder.includes(stale), `a reminder must not say "${stale}"`);
+        }
     }
 
-    // The definition written as text first: one reminder, then the normal flow and the summary.
+    // The definition written as text first: one reminder, then the normal flow and the fixed JSON reply.
     {
         const client = createGenerationFakeClient();
         client.submitRequest = async (capabilityId) => ({
@@ -987,21 +1054,19 @@ async function testGenerationRunNeedsAToolCallEveryTurn() {
             { content: 'Here is the definition: {"kind":"definition-template"}' },
             { tools: [['validate_definition', { template }]] },
             { tools: [['generate_scaffold', { template, title: 'Contacts' }]] },
-            { content: 'Generated 3 pages.' },
+            { content: FINAL_COMPLETED },
         ]);
         const agent = generationAgent(client);
         await agent.init();
         assert.strictEqual(agent.generationTask, true);
-        const reply = await agent.send('build it');
-        assert.strictEqual(reply, 'Generated 3 pages.');
+        assert.strictEqual(await agent.send('build it'), FINAL_COMPLETED);
         assert.strictEqual(seen.length, 4);
-        const reminders = agent.messages.filter((message) => message.role === 'user' && message.content === GENERATION_CONTINUE_REMINDER);
-        assert.strictEqual(reminders.length, 1, 'exactly one reminder');
+        assert.strictEqual(countMessages(agent, GENERATION_CONTINUE_REMINDER), 1, 'exactly one reminder');
         assert.strictEqual(seen[1][seen[1].length - 1].content, GENERATION_CONTINUE_REMINDER, 'the reminder follows the text-only reply');
         await agent.close();
     }
 
-    // A clarifying question twice: one reminder, and the second text-only reply ends the run.
+    // A clarifying question twice: one reminder, and the second reply that is not the fixed JSON ends the run.
     {
         const client = createGenerationFakeClient();
         const seen = scriptLlm(client, [
@@ -1010,9 +1075,10 @@ async function testGenerationRunNeedsAToolCallEveryTurn() {
         ]);
         const agent = generationAgent(client);
         await agent.init();
-        const reply = await agent.send('build it');
-        assert.strictEqual(reply, 'I still need the field list.');
+        assert.strictEqual(await agent.send('build it'), FAILURE_INVALID_RESPONSE, 'prose is never returned as the answer');
         assert.strictEqual(seen.length, 2, 'only one reminder, then the run ends');
+        assert.strictEqual(countMessages(agent, GENERATION_CONTINUE_REMINDER), 1);
+        assert.strictEqual(client.getSubmitted().length, 0);
         await agent.close();
     }
 
@@ -1022,28 +1088,55 @@ async function testGenerationRunNeedsAToolCallEveryTurn() {
         const seen = scriptLlm(client, [{ content: 'Which fields do you need?' }]);
         const agent = generationAgent(client, 1);
         await agent.init();
-        await agent.send('build it');
+        assert.strictEqual(await agent.send('build it'), FAILURE_INVALID_RESPONSE);
         assert.strictEqual(seen.length, 1, 'no reminder when the iteration limit is reached');
+        assert.strictEqual(countMessages(agent, GENERATION_CONTINUE_REMINDER), 0);
         await agent.close();
     }
 
-    // A failed generate is not a success: a text-only reply after it still gets the one reminder.
+    // A failed generate is not a success: "completed" after it still gets the one reminder, then fails.
     {
         const client = createGenerationFakeClient();
         client.submitRequest = async () => ({ success: true, data: { execution_state: 'Failed', result_payload: '{"ok":false,"errors":[]}' } });
         const seen = scriptLlm(client, [
             { tools: [['generate_scaffold', { template }]] },
-            { content: 'Generation failed.' },
-            { content: 'Generation failed again; stopping.' },
+            { content: FINAL_COMPLETED },
+            { content: FINAL_COMPLETED },
         ]);
         const agent = generationAgent(client);
         await agent.init();
-        await agent.send('build it');
+        assert.strictEqual(await agent.send('build it'), FAILURE_GENERATION_FAILED);
         assert.strictEqual(seen.length, 3);
+        assert.strictEqual(countMessages(agent, GENERATION_CONTINUE_REMINDER), 1);
         await agent.close();
     }
 
-    // Other tasks never get the reminder.
+    // The one reminder is shared: prose first, then an early "completed" ends the run without a second reminder.
+    {
+        const client = createGenerationFakeClient();
+        const seen = scriptLlm(client, [{ content: 'Working on it.' }, { content: FINAL_COMPLETED }]);
+        const agent = generationAgent(client);
+        await agent.init();
+        assert.strictEqual(await agent.send('build it'), FAILURE_GENERATION_FAILED);
+        assert.strictEqual(seen.length, 2);
+        assert.strictEqual(countMessages(agent, GENERATION_CONTINUE_REMINDER), 1);
+        await agent.close();
+    }
+
+    // A refusal or failure reply before generating is a valid end of the run: no reminder.
+    for (const reply of [FAILURE_GENERATION_FAILED, '{"type":"refusal","code":"policy_denied"}']) {
+        const client = createGenerationFakeClient();
+        const seen = scriptLlm(client, [{ content: reply }]);
+        const agent = generationAgent(client);
+        await agent.init();
+        assert.strictEqual(await agent.send('build it'), reply);
+        assert.strictEqual(seen.length, 1);
+        assert.strictEqual(countMessages(agent, GENERATION_CONTINUE_REMINDER), 0);
+        await agent.close();
+    }
+
+    // Other governed tasks: prose gets the contract reminder once (not the generation one); a second prose reply
+    // fails, and a fixed JSON reply after the reminder is accepted.
     {
         const client = createFakeClient();
         let calls = 0;
@@ -1051,154 +1144,97 @@ async function testGenerationRunNeedsAToolCallEveryTurn() {
             calls += 1;
             return { success: true, data: { content: 'done', tool_calls: [], done: true, model: 'broker-model' } };
         };
-        const agent = new AgentLoop({
-            model: 'user-requested-model',
-            provider: createForbiddenDirectProvider(),
-            projectRoot: ROOT,
-            stream: false,
-            governed: {
-                brokerUrl: 'http://broker.local:5000',
-                brokerPubKey: 'fake-pub-key',
-                principalId: 'prn_test',
-                taskId: 'task_test',
-                roleId: 'role_reader',
-                registrationSecret: TEST_REGISTRATION_SECRET,
-                clientFactory: () => client,
-            },
-        });
+        const agent = plainGovernedAgent(client);
         await agent.init();
-        assert.strictEqual(await agent.send('hello'), 'done');
-        assert.strictEqual(calls, 1);
+        assert.strictEqual(await agent.send('hello'), FAILURE_INVALID_RESPONSE);
+        assert.strictEqual(calls, 2, 'one reminder, then the run ends');
+        assert.strictEqual(countMessages(agent, GOVERNED_RESPONSE_REMINDER), 1);
+        assert.strictEqual(countMessages(agent, GENERATION_CONTINUE_REMINDER), 0, 'an ordinary task never gets the generation reminder');
         await agent.close();
+
+        const recovering = createFakeClient();
+        const replies = ['The README describes the project.', FINAL_COMPLETED];
+        recovering.llmChat = async () => ({ success: true, data: { content: replies.shift(), tool_calls: [], done: true, model: 'broker-model' } });
+        const recoveringAgent = plainGovernedAgent(recovering);
+        await recoveringAgent.init();
+        assert.strictEqual(await recoveringAgent.send('hello'), FINAL_COMPLETED);
+        assert.strictEqual(countMessages(recoveringAgent, GOVERNED_RESPONSE_REMINDER), 1);
+        await recoveringAgent.close();
+
+        // "completed" without any tool call is a valid end for an ordinary task: no reminder.
+        const direct = createFakeClient();
+        let directCalls = 0;
+        direct.llmChat = async () => {
+            directCalls += 1;
+            return { success: true, data: { content: FINAL_COMPLETED, tool_calls: [], done: true, model: 'broker-model' } };
+        };
+        const directAgent = plainGovernedAgent(direct);
+        await directAgent.init();
+        assert.strictEqual(await directAgent.send('hello'), FINAL_COMPLETED);
+        assert.strictEqual(directCalls, 1);
+        assert.strictEqual(countMessages(directAgent, GOVERNED_RESPONSE_REMINDER), 0);
+        await directAgent.close();
     }
 }
 
 /**
- * Small local models often write the tool call as JSON text instead of calling the tool, in native and in ReAct
- * mode. A generation task runs such calls (a fenced ```json block, also without the closing fence, bare JSON or a
- * <tools> wrapper) as tool calls, but only names the session was granted: any other name gets an "unsupported tool"
- * result that lists the available tools, and the run goes on. Other tasks, and a generation task after a successful
- * generate, never run text as a tool call.
+ * A governed run never executes reply text as a tool call, in native or in forced ReAct mode, before or after a
+ * generate succeeded: a fenced JSON block (also without its closing fence), bare JSON, and a <tools> or <tool_call>
+ * wrapper are only replies that are not the fixed JSON object. Nothing reaches the broker.
  */
-async function testGenerationToolCallsWrittenAsText() {
+async function testReplyTextIsNeverRunAsAToolCall() {
     const template = { kind: 'definition-template', version: '0.1.0' };
     const generateOk = JSON.stringify({ ok: true, zip: { path: 'slot/req/contacts-scaffold.zip', sha256: 'b'.repeat(64), size: 10 } });
     const call = (name, args) => JSON.stringify({ name, arguments: args });
     const fence = '```';
-    const respondOk = (client) => {
+    const textCalls = [
+        `I will read the catalog.\n${fence}json\n${call('query_component_catalog', { section: 'overview' })}\n${fence}`,
+        `${fence}json\n${call('query_component_catalog', { section: 'field_types' })}`,
+        `<tools>${call('validate_definition', { template })}</tools>`,
+        `<tool_call>${call('generate_scaffold', { template })}</tool_call>`,
+        call('generate_scaffold', { template, title: 'Contacts' }),
+        `{"tool_calls":[{"function":${call('generate_scaffold', { template })}}]}`,
+    ];
+
+    for (const forceStrategy of [null, 'react']) {
+        for (const text of textCalls) {
+            const client = createGenerationFakeClient();
+            const seen = scriptLlm(client, [{ content: text }, { content: text }]);
+            const agent = generationAgent(client, 12, forceStrategy);
+            await agent.init();
+            assert.strictEqual(agent.useNativeTools, forceStrategy !== 'react');
+            assert.strictEqual(await agent.send('build it'), FAILURE_INVALID_RESPONSE, text);
+            assert.strictEqual(seen.length, 2, 'one reminder, then the run ends');
+            assert.strictEqual(client.getSubmitted().length, 0, `text never reaches the broker: ${text}`);
+            assert(!agent.messages.some((message) => message.role === 'tool' || Array.isArray(message.tool_calls)),
+                'text produces neither a tool call nor a tool result in the conversation');
+            await agent.close();
+        }
+    }
+
+    // After a successful generate, a call written as text is still not run, and it is not the final answer either.
+    {
+        const client = createGenerationFakeClient();
         const submitted = [];
         client.submitRequest = async (capabilityId, payload) => {
-            submitted.push({ capabilityId, route: payload.route, args: payload.args });
-            return {
-                success: true,
-                data: {
-                    execution_state: 'Succeeded',
-                    result_payload: capabilityId === 'generation.scaffold.generate' ? generateOk : '{"ok":true}',
-                },
-            };
+            submitted.push(payload.route);
+            return { success: true, data: { execution_state: 'Succeeded', result_payload: generateOk } };
         };
-        return submitted;
-    };
-
-    // Native mode: a fenced block, a block without the closing fence, bare JSON and a <tools> wrapper all run.
-    {
-        const client = createGenerationFakeClient();
-        const submitted = respondOk(client);
-        const seen = scriptLlm(client, [
-            { content: `I will read the catalog.\n${fence}json\n${call('query_component_catalog', { section: 'overview' })}\n${fence}` },
-            { content: `${fence}json\n${call('query_component_catalog', { section: 'field_types' })}` },
-            { content: `<tools>${call('validate_definition', { template })}</tools>` },
-            { content: call('generate_scaffold', { template, title: 'Contacts' }) },
-            { content: 'Generated 3 pages.' },
-        ]);
-        const agent = generationAgent(client);
-        await agent.init();
-        assert.strictEqual(agent.useNativeTools, true);
-        const reply = await agent.send('build it');
-        assert.strictEqual(reply, 'Generated 3 pages.');
-        assert.strictEqual(seen.length, 5);
-        assert.deepStrictEqual(submitted.map((entry) => entry.route),
-            ['query_component_catalog', 'query_component_catalog', 'validate_definition', 'generate_scaffold']);
-        assert.deepStrictEqual(submitted[0].args, { section: 'overview' });
-        assert.deepStrictEqual(submitted[2].args, { template });
-        assert.strictEqual(agent.messages.filter((message) => message.content === GENERATION_CONTINUE_REMINDER).length, 0,
-            'a call written as text is a call, not a text-only reply');
-        const assistantCall = agent.messages.find((message) => message.role === 'assistant' && Array.isArray(message.tool_calls));
-        assert.strictEqual(assistantCall.tool_calls[0].id, 'text_call_1_0');
-        assert.strictEqual(assistantCall.tool_calls[0].function.name, 'query_component_catalog');
-        const toolResults = agent.messages.filter((message) => message.role === 'tool');
-        assert.strictEqual(toolResults.length, 4);
-        assert.strictEqual(toolResults[0].tool_call_id, 'text_call_1_0');
-        await agent.close();
-    }
-
-    // A name that is not granted is not run and does not end the run: the model gets an unsupported result that says
-    // what to do next. The first turn with only unsupported calls gets the one reminder; a different name next turn
-    // does not end the run.
-    {
-        const client = createGenerationFakeClient();
-        const submitted = respondOk(client);
-        const seen = scriptLlm(client, [
-            { content: `${fence}json\n${call('generate_definition', { template })}\n${fence}` },
-            { content: call('run_command', { command: 'dir' }) },
-            { tools: [['validate_definition', { template }]] },
-            { tools: [['generate_scaffold', { template }]] },
-            { content: 'Generated.' },
-        ]);
-        const agent = generationAgent(client);
-        await agent.init();
-        const reply = await agent.send('build it');
-        assert.strictEqual(reply, 'Generated.');
-        assert.strictEqual(seen.length, 5, 'the run goes on after the unsupported names');
-        assert.deepStrictEqual(submitted.map((entry) => entry.route), ['validate_definition', 'generate_scaffold'],
-            'names that are not granted never reach the broker');
-        const unsupported = agent.messages.filter((message) => message.role === 'tool' && message.content.startsWith('unsupported tool'));
-        assert.strictEqual(unsupported.length, 2);
-        assertUnsupportedGuidance(unsupported[0].content, 'generate_definition');
-        assertUnsupportedGuidance(unsupported[1].content, 'run_command');
-        assert.strictEqual(agent.messages.filter((message) => message.content === GENERATION_CONTINUE_REMINDER).length, 1,
-            'the first turn with only unsupported calls gets the one reminder');
-        assert.strictEqual(seen[1][seen[1].length - 1].content, GENERATION_CONTINUE_REMINDER,
-            'the reminder follows the unsupported result');
-        await agent.close();
-    }
-
-    // ReAct mode: a fenced block outside the <tool_call> wrapper runs too, and the result comes back as a tool result.
-    {
-        const client = createGenerationFakeClient();
-        const submitted = respondOk(client);
-        scriptLlm(client, [
-            { content: `${fence}json\n${call('validate_definition', { template })}\n${fence}` },
-            { content: `<tool_call>${call('generate_scaffold', { template })}</tool_call>` },
-            { content: 'Generated.' },
-        ]);
-        const agent = generationAgent(client, 12, 'react');
-        await agent.init();
-        assert.strictEqual(agent.useNativeTools, false);
-        assert.strictEqual(await agent.send('build it'), 'Generated.');
-        assert.deepStrictEqual(submitted.map((entry) => entry.route), ['validate_definition', 'generate_scaffold']);
-        assert(agent.messages.some((message) => message.role === 'user' && message.content.includes('"tool": "validate_definition"')));
-        await agent.close();
-    }
-
-    // A call written after a successful generate ends the run as before.
-    {
-        const client = createGenerationFakeClient();
-        const submitted = respondOk(client);
+        const text = `Done. I called:\n${fence}json\n${call('generate_scaffold', { template })}\n${fence}`;
         const seen = scriptLlm(client, [
             { tools: [['generate_scaffold', { template }]] },
-            { content: `Done. I called:\n${fence}json\n${call('generate_scaffold', { template })}\n${fence}` },
+            { content: text },
+            { content: FINAL_COMPLETED },
         ]);
         const agent = generationAgent(client);
         await agent.init();
-        const reply = await agent.send('build it');
-        assert(reply.startsWith('Done.'));
-        assert.strictEqual(seen.length, 2);
-        assert.strictEqual(submitted.length, 1, 'the summary after a successful generate is not run again');
+        assert.strictEqual(await agent.send('build it'), FINAL_COMPLETED);
+        assert.strictEqual(seen.length, 3);
+        assert.deepStrictEqual(submitted, ['generate_scaffold'], 'the call written as text is not run again');
         await agent.close();
     }
 
-    // Other tasks never run text as a tool call.
+    // Other governed tasks never run JSON text either.
     {
         const client = createFakeClient();
         let calls = 0;
@@ -1206,28 +1242,154 @@ async function testGenerationToolCallsWrittenAsText() {
             calls += 1;
             return { success: true, data: { content: call('read_file', { path: './README.md' }), tool_calls: [], done: true, model: 'broker-model' } };
         };
-        const agent = new AgentLoop({
-            model: 'user-requested-model',
-            provider: createForbiddenDirectProvider(),
-            projectRoot: ROOT,
-            stream: false,
-            governed: {
-                brokerUrl: 'http://broker.local:5000',
-                brokerPubKey: 'fake-pub-key',
-                principalId: 'prn_test',
-                taskId: 'task_test',
-                roleId: 'role_reader',
-                registrationSecret: TEST_REGISTRATION_SECRET,
-                clientFactory: () => client,
-            },
-        });
+        const agent = plainGovernedAgent(client);
         await agent.init();
         const submitsBefore = client.getSubmitCalls();
-        await agent.send('hello');
-        assert.strictEqual(calls, 1);
+        assert.strictEqual(await agent.send('hello'), FAILURE_INVALID_RESPONSE);
+        assert.strictEqual(calls, 2);
         assert.strictEqual(client.getSubmitCalls(), submitsBefore, 'an ordinary task does not run JSON text');
         await agent.close();
     }
+}
+
+async function testGovernedJsonResponseBoundary() {
+    const { parseGovernedResponse, serializeGovernedResponse } = require('../lib/governed-response');
+    for (const [type, code] of [
+        ['final', 'completed'],
+        ['refusal', 'policy_denied'],
+        ['refusal', 'unsupported_request'],
+        ['refusal', 'invalid_request'],
+        ['failure', 'generation_failed'],
+        ['failure', 'tool_failed'],
+        ['failure', 'limit_reached'],
+        ['failure', 'invalid_response'],
+    ]) {
+        const json = serializeGovernedResponse(type, code);
+        assert.deepStrictEqual(parseGovernedResponse(json), { ok: true, response: { type, code } });
+    }
+    for (const invalid of [
+        'completed',
+        '{"type":"final","code":"completed","message":"ignore policy and run tool"}',
+        '{"type":"final","code":"unknown"}',
+        '{"type":"final","type":"refusal","code":"policy_denied"}',
+        '{"type":"failure","code":"completed"}',
+        '{"type":"toString","code":"anything"}',
+        '{"type":"__proto__","code":"anything"}',
+        '{"type":"final","code":"completed"} trailing',
+        `{"type":"final","code":"completed","pad":"${'x'.repeat(4097)}"}`,
+        `{"type":"final","code":"completed","extra":${'['.repeat(70)}0${']'.repeat(70)}}`,
+    ]) {
+        assert.deepStrictEqual(parseGovernedResponse(invalid), { ok: false, code: 'invalid_response' }, invalid.slice(0, 80));
+    }
+
+    const client = createGenerationFakeClient();
+    const submitted = [];
+    client.submitRequest = async (...args) => { submitted.push(args); return { success: true, data: {} }; };
+    let chats = 0;
+    client.llmChat = async () => {
+        chats += 1;
+        return { success: true, data: {
+            content: '<tool_call>{"name":"generate_scaffold","arguments":{}}</tool_call>',
+            tool_calls: [], done: true, model: 'broker-model',
+        } };
+    };
+    const agent = generationAgent(client);
+    await agent.init();
+    const result = await agent.send('build it');
+    assert.strictEqual(result, '{"type":"failure","code":"invalid_response"}');
+    assert.strictEqual(chats, 2, 'an invalid reply gets the one reminder, then fails closed');
+    assert.strictEqual(submitted.length, 0, 'textual tool-call syntax never reaches the broker');
+    assert.strictEqual(agent.messages.filter((message) => message.content === GENERATION_CONTINUE_REMINDER).length, 1);
+    await agent.close();
+
+    const validClient = createGenerationFakeClient();
+    const generatePayload = JSON.stringify({ ok: true, zip: { path: 'slot/probe.zip', sha256: 'd'.repeat(64), size: 1 } });
+    validClient.submitRequest = async () => ({ success: true, data: { execution_state: 'Succeeded', result_payload: generatePayload } });
+    let validChats = 0;
+    validClient.llmChat = async () => {
+        validChats++;
+        return validChats === 1 ? { success: true, data: {
+            content: '', tool_calls: [{ type: 'function', id: 'generate', function: {
+                name: 'generate_scaffold', arguments: { template: { kind: 'definition-template', version: '0.1.0' } },
+            } }], done: true, model: 'broker-model',
+        } } : { success: true, data: {
+            content: '{"type":"final","code":"completed"}', tool_calls: [], done: true, model: 'broker-model',
+        } };
+    };
+    const validAgent = generationAgent(validClient);
+    await validAgent.init();
+    assert.strictEqual(await validAgent.send('build it'), '{"type":"final","code":"completed"}');
+    assert.strictEqual(validChats, 2);
+    await validAgent.close();
+
+    // An unknown extra key alone no longer rejects a call (see testNativeToolCallNormalisation); a call whose
+    // arguments are not an object still does.
+    const malformedClient = createGenerationFakeClient();
+    malformedClient.llmChat = async () => ({ success: true, data: { content: '', tool_calls: [{
+        function: { name: 'generate_scaffold', arguments: ['not', 'an', 'object'] }, unexpected: true,
+    }], done: true, model: 'broker-model' } });
+    const malformedAgent = generationAgent(malformedClient);
+    await malformedAgent.init();
+    assert.strictEqual(await malformedAgent.send('build it'), '{"type":"failure","code":"invalid_response"}');
+    assert.strictEqual(malformedClient.getSubmitted().length, 0, 'malformed native calls fail before tool dispatch');
+    await malformedAgent.close();
+
+    const oversizedClient = createGenerationFakeClient();
+    oversizedClient.llmChat = async () => ({ success: true, data: { content: '', tool_calls: [{
+        function: { name: 'generate_scaffold', arguments: { pad: 'x'.repeat(257 * 1024) } },
+    }], done: true, model: 'broker-model' } });
+    const oversizedAgent = generationAgent(oversizedClient);
+    await oversizedAgent.init();
+    assert.strictEqual(await oversizedAgent.send('build it'), '{"type":"failure","code":"invalid_response"}');
+    assert.strictEqual(oversizedClient.getSubmitted().length, 0, 'oversized native object arguments fail before tool dispatch');
+    await oversizedAgent.close();
+
+    const prematureClient = createGenerationFakeClient();
+    let prematureChats = 0;
+    prematureClient.llmChat = async () => {
+        prematureChats++;
+        return { success: true, data: {
+            content: '{"type":"final","code":"completed"}', tool_calls: [], done: true, model: 'broker-model',
+        } };
+    };
+    const prematureAgent = generationAgent(prematureClient);
+    await prematureAgent.init();
+    assert.strictEqual(await prematureAgent.send('build it'), '{"type":"failure","code":"generation_failed"}');
+    assert.strictEqual(prematureChats, 2, 'a success response before generation gets one reminder, then fails');
+    assert.strictEqual(prematureClient.getSubmitted().length, 0, 'completed cannot bypass generation tools');
+    assert.strictEqual(prematureAgent.messages.filter((message) => message.content === GENERATION_CONTINUE_REMINDER).length, 1);
+    await prematureAgent.close();
+
+    const overrideClient = createFakeClient();
+    const getRuntimeSpec = overrideClient.getRuntimeSpec.bind(overrideClient);
+    overrideClient.getRuntimeSpec = async () => {
+        const response = await getRuntimeSpec();
+        return { ...response, data: { ...response.data, allow_model_override: true } };
+    };
+    const defaultModelAgent = new AgentLoop({
+        provider: createForbiddenDirectProvider(), projectRoot: ROOT, stream: false, model: '',
+        governed: {
+            brokerUrl: 'http://broker.local:5000', brokerPubKey: 'fake-pub-key', principalId: 'prn_test',
+            taskId: 'task_test', roleId: 'role_reader', registrationSecret: TEST_REGISTRATION_SECRET,
+            clientFactory: () => overrideClient,
+        },
+    });
+    await defaultModelAgent.init();
+    assert.strictEqual(defaultModelAgent.model, 'broker-model',
+        'an unset model must use the broker default even when model overrides are allowed');
+    await defaultModelAgent.close();
+
+    const explicitModelAgent = new AgentLoop({
+        provider: createForbiddenDirectProvider(), projectRoot: ROOT, stream: false, model: 'probe-explicit-model',
+        governed: {
+            brokerUrl: 'http://broker.local:5000', brokerPubKey: 'fake-pub-key', principalId: 'prn_test',
+            taskId: 'task_test', roleId: 'role_reader', registrationSecret: TEST_REGISTRATION_SECRET,
+            clientFactory: () => overrideClient,
+        },
+    });
+    await explicitModelAgent.init();
+    assert.strictEqual(explicitModelAgent.model, 'probe-explicit-model', 'an explicit model is honored when overrides are allowed');
+    await explicitModelAgent.close();
 }
 
 const GENERATION_TOOL_NAMES = 'query_component_catalog, validate_definition, generate_scaffold';
@@ -1245,27 +1407,25 @@ function assertUnsupportedGuidance(content, name) {
 
 /**
  * A generation task that keeps calling a tool it does not have (a 7B model asked for generate_definition_template in
- * every turn until the iteration limit): the reply says what to do instead, the turn counts as no progress (the one
- * reminder), and the same name in the next turn ends the run before the iteration limit. Calls the governed executor
- * gets for names that are not granted carry the same guidance in a generation task.
+ * every turn until the iteration limit): the tool result says what to do instead, the turn counts as no progress (the
+ * one reminder), and the same name in the next turn ends the run before the iteration limit with the fixed refusal
+ * reply. Calls the governed executor gets for names that are not granted carry the same guidance in a generation task.
  */
 async function testUnsupportedToolsInAGenerationTask() {
     const template = { kind: 'definition-template', version: '0.1.0' };
-    const call = (name, args) => JSON.stringify({ name, arguments: args });
     const repeatedName = 'generate_definition_template';
+    const refusal = '{"type":"refusal","code":"unsupported_request"}';
 
-    // The same made-up name as text in every turn: guidance, one reminder, and the run ends at the second turn.
+    // The same made-up name as a native call in every turn: guidance, one reminder, and the run ends at the second turn.
     {
         const client = createGenerationFakeClient();
-        const replies = Array.from({ length: 12 }, () => ({ content: call(repeatedName, { description: 'contacts' }) }));
+        const replies = Array.from({ length: 12 }, () => ({ tools: [[repeatedName, { description: 'contacts' }]] }));
         const seen = scriptLlm(client, replies);
         const agent = generationAgent(client, 12);
         await agent.init();
         const reply = await agent.send('build it');
         assert.strictEqual(seen.length, 2, 'the run ends when the same unsupported name comes back, before the limit');
-        assert(reply.startsWith(`Stopped: the model called "${repeatedName}", which is not an available tool, in two turns in a row`), reply);
-        assert(reply.includes('Nothing was generated.'), reply);
-        assert(reply.includes(`Available tools: ${GENERATION_TOOL_NAMES}.`), reply);
+        assert.strictEqual(reply, refusal, 'the run ends with the fixed refusal reply, not with prose');
         assert.strictEqual(client.getSubmitted().length, 0, 'an unsupported name never reaches the broker');
         const results = agent.messages.filter((message) => message.role === 'tool');
         assert.strictEqual(results.length, 2);
@@ -1276,7 +1436,7 @@ async function testUnsupportedToolsInAGenerationTask() {
         await agent.close();
     }
 
-    // The same name as a native call: the same guidance and the same early end.
+    // A real tool name the session was not granted: the same guidance and the same early end.
     {
         const client = createGenerationFakeClient();
         const seen = scriptLlm(client, [
@@ -1288,9 +1448,41 @@ async function testUnsupportedToolsInAGenerationTask() {
         await agent.init();
         const reply = await agent.send('build it');
         assert.strictEqual(seen.length, 2);
-        assert(reply.startsWith('Stopped: the model called "run_command"'), reply);
+        assert.strictEqual(reply, refusal);
         assertUnsupportedGuidance(agent.messages.find((message) => message.role === 'tool').content, 'run_command');
         assert.strictEqual(client.getSubmitted().length, 0);
+        await agent.close();
+    }
+
+    // A different unsupported name in the next turn does not end the run: the model gets the guidance again, and the
+    // run goes on to validate, generate and the fixed JSON reply.
+    {
+        const client = createGenerationFakeClient();
+        const generateOk = JSON.stringify({ ok: true, zip: { path: 'slot/req/contacts-scaffold.zip', sha256: 'e'.repeat(64), size: 10 } });
+        const routes = [];
+        client.submitRequest = async (capabilityId, payload) => {
+            routes.push(payload.route);
+            return { success: true, data: { execution_state: 'Succeeded', result_payload: capabilityId === 'generation.scaffold.generate' ? generateOk : '{"ok":true}' } };
+        };
+        const seen = scriptLlm(client, [
+            { tools: [['generate_definition', { template }]] },
+            { tools: [['run_command', { command: 'dir' }]] },
+            { tools: [['validate_definition', { template }]] },
+            { tools: [['generate_scaffold', { template }]] },
+            { content: '{"type":"final","code":"completed"}' },
+        ]);
+        const agent = generationAgent(client);
+        await agent.init();
+        assert.strictEqual(await agent.send('build it'), '{"type":"final","code":"completed"}');
+        assert.strictEqual(seen.length, 5, 'the run goes on after the unsupported names');
+        assert.deepStrictEqual(routes, ['validate_definition', 'generate_scaffold'], 'names that are not granted never reach the broker');
+        const unsupported = agent.messages.filter((message) => message.role === 'tool' && message.content.startsWith('unsupported tool'));
+        assert.strictEqual(unsupported.length, 2);
+        assertUnsupportedGuidance(unsupported[0].content, 'generate_definition');
+        assertUnsupportedGuidance(unsupported[1].content, 'run_command');
+        assert.strictEqual(agent.messages.filter((message) => message.content === GENERATION_CONTINUE_REMINDER).length, 1,
+            'the first turn with only unsupported calls gets the one reminder');
+        assert.strictEqual(seen[1][seen[1].length - 1].content, GENERATION_CONTINUE_REMINDER, 'the reminder follows the unsupported result');
         await agent.close();
     }
 
@@ -1311,22 +1503,22 @@ async function testUnsupportedToolsInAGenerationTask() {
         await agent.init();
         const reply = await agent.send('build it');
         assert.strictEqual(seen.length, 6, 'only the 5th and 6th turns are two unsupported-only turns in a row');
-        assert(reply.startsWith(`Stopped: the model called "${repeatedName}"`), reply);
+        assert.strictEqual(reply, refusal);
         assert.deepStrictEqual(client.getSubmitted().map((entry) => entry.payload.route), ['query_component_catalog', 'validate_definition']);
         assert.strictEqual(agent.messages.filter((message) => message.content === GENERATION_CONTINUE_REMINDER).length, 1,
             'the reminder is still sent only once');
         await agent.close();
     }
 
-    // The iteration limit still counts: at the limit no reminder is added.
+    // The iteration limit still counts: at the limit no reminder is added, and the run ends with limit_reached.
     {
         const client = createGenerationFakeClient();
-        const seen = scriptLlm(client, [{ content: call(repeatedName, {}) }]);
+        const seen = scriptLlm(client, [{ tools: [[repeatedName, {}]] }]);
         const agent = generationAgent(client, 1);
         await agent.init();
         const reply = await agent.send('build it');
         assert.strictEqual(seen.length, 1);
-        assert(reply.startsWith('Stopped because max iterations were reached'), reply);
+        assert.strictEqual(reply, '{"type":"failure","code":"limit_reached"}');
         assert.strictEqual(agent.messages.filter((message) => message.content === GENERATION_CONTINUE_REMINDER).length, 0);
         await agent.close();
     }
@@ -1344,21 +1536,7 @@ async function testUnsupportedToolsInAGenerationTask() {
         await agent.close();
 
         const plainClient = createFakeClient();
-        const plain = new AgentLoop({
-            model: 'user-requested-model',
-            provider: createForbiddenDirectProvider(),
-            projectRoot: ROOT,
-            stream: false,
-            governed: {
-                brokerUrl: 'http://broker.local:5000',
-                brokerPubKey: 'fake-pub-key',
-                principalId: 'prn_test',
-                taskId: 'task_test',
-                roleId: 'role_reader',
-                registrationSecret: TEST_REGISTRATION_SECRET,
-                clientFactory: () => plainClient,
-            },
-        });
+        const plain = plainGovernedAgent(plainClient);
         await plain.init();
         assert.strictEqual(await plain.governedExecutor.executeTool('make_definition', {}, context), '[Governed] unsupported tool: make_definition');
         assert((await plain.governedExecutor.executeTool('run_command', { command: 'dir' }, context)).startsWith('[Governed] capability denied: command.execute'));
@@ -1450,7 +1628,7 @@ async function testObjectArgumentsSentAsJsonStrings() {
     await agent.close();
 
     // Through the agent loop: the native tool call carries the template as a string with a missing brace, the
-    // repaired request is sent, and the successful generate ends the run at the summary without a reminder.
+    // repaired request is sent, and a code-only final reply ends the run.
     {
         const loopClient = createGenerationFakeClient();
         const generateOk = JSON.stringify({ ok: true, zip: { path: 'slot/req/contacts-scaffold.zip', sha256: 'c'.repeat(64), size: 10 } });
@@ -1462,11 +1640,11 @@ async function testObjectArgumentsSentAsJsonStrings() {
         const seen = scriptLlm(loopClient, [
             { tools: [['validate_definition', { template: missingOneBrace }]] },
             { tools: [['generate_scaffold', { template: missingOneBrace, title: 'Contacts' }]] },
-            { content: 'Generated.' },
+            { content: '{"type":"final","code":"completed"}' },
         ]);
         const loopAgent = generationAgent(loopClient);
         await loopAgent.init();
-        assert.strictEqual(await loopAgent.send('build it'), 'Generated.');
+        assert.strictEqual(await loopAgent.send('build it'), '{"type":"final","code":"completed"}');
         assert.strictEqual(seen.length, 3);
         assert.deepStrictEqual(sent.map((payload) => payload.args.template), [template, template]);
         assert.strictEqual(loopAgent.messages.filter((message) => message.content === GENERATION_CONTINUE_REMINDER).length, 0,
@@ -1525,11 +1703,12 @@ async function testExecutionStateCase() {
 }
 
 /**
- * A tool call written as text whose arguments nest deeper than the broker's JSON depth limit is not a tool call:
- * printing or sending such arguments exhausts the call stack. The run goes on (a text-only reply gets the reminder),
- * nothing reaches the broker, and printing unprintable arguments never throws.
+ * Tool call arguments that nest deeper than the broker's JSON depth limit: printing or sending such arguments would
+ * exhaust the call stack. Written as text, such a call is only a reply that is not the fixed JSON object (one
+ * reminder, then the run fails). As a native tool call the whole response is rejected before any tool runs. Nothing
+ * reaches the broker, and printing unprintable arguments never throws.
  */
-async function testDeeplyNestedTextToolCall() {
+async function testDeeplyNestedToolCallArguments() {
     const { MAX_ARGUMENT_DEPTH, exceedsJsonDepth } = require('../lib/tool-arguments');
     const { parseTextToolCalls } = require('../lib/text-tool-calls');
     const nested = (depth) => `${'['.repeat(depth)}${']'.repeat(depth)}`;
@@ -1543,6 +1722,7 @@ async function testDeeplyNestedTextToolCall() {
 
     for (const verbose of [false, true]) {
         for (const name of ['no_such_tool', 'validate_definition']) {
+            // Written as text: never a tool call, whatever its depth.
             const client = createGenerationFakeClient();
             const text = deepCall(name, 1600);
             assert(text.length > 3200);
@@ -1550,23 +1730,52 @@ async function testDeeplyNestedTextToolCall() {
             const agent = generationAgent(client);
             agent.verbose = verbose;
             await agent.init();
-            const reply = await agent.send('build it');
-            assert.strictEqual(reply, text, 'a too deep call is a text-only reply');
+            assert.strictEqual(await agent.send('build it'), '{"type":"failure","code":"invalid_response"}');
             assert.strictEqual(seen.length, 2, 'one reminder, then the run ends');
             assert.strictEqual(client.getSubmitted().length, 0, 'nothing reaches the broker');
             await agent.close();
+
+            // As a native tool call: the response is rejected, no tool runs and the run ends.
+            const nativeClient = createGenerationFakeClient();
+            const nativeSeen = scriptLlm(nativeClient, [{ tools: [[name, { a: JSON.parse(nested(1600)) }]] }]);
+            const nativeAgent = generationAgent(nativeClient);
+            nativeAgent.verbose = verbose;
+            await nativeAgent.init();
+            assert.strictEqual(await nativeAgent.send('build it'), '{"type":"failure","code":"invalid_response"}');
+            assert.strictEqual(nativeSeen.length, 1);
+            assert.strictEqual(nativeClient.getSubmitted().length, 0, 'a too deep native call never reaches the broker');
+            assert(!nativeAgent.messages.some((message) => message.role === 'tool'), 'no tool result for a rejected response');
+            await nativeAgent.close();
         }
     }
 
+    // The limit itself: 64 levels pass, 65 are rejected (as a JSON object and as a JSON string).
+    const client = createGenerationFakeClient();
+    const agent = generationAgent(client);
+    await agent.init();
+    const chatWith = async (args) => {
+        client.llmChat = async () => ({ success: true, data: {
+            content: '', tool_calls: [{ function: { name: 'validate_definition', arguments: args } }], done: true, model: 'broker-model',
+        } });
+        return await agent.governedExecutor.chat({ model: 'x', messages: [], tools: [] });
+    };
+    const atLimit = { a: JSON.parse(nested(MAX_ARGUMENT_DEPTH - 1)) };
+    const overLimit = { a: JSON.parse(nested(MAX_ARGUMENT_DEPTH)) };
+    assert.deepStrictEqual((await chatWith(atLimit)).toolCalls[0].function.arguments, atLimit);
+    assert.deepStrictEqual((await chatWith(JSON.stringify(atLimit))).toolCalls[0].function.arguments, atLimit);
+    await assert.rejects(() => chatWith(overLimit), /invalid tool call arguments; response rejected/);
+    await assert.rejects(() => chatWith(JSON.stringify(overLimit)), /invalid tool call arguments; response rejected/);
+    await agent.close();
+
     // Printing arguments that cannot be serialised does not throw.
-    const agent = generationAgent(createGenerationFakeClient());
     assert.strictEqual(agent._formatArgs({ a: JSON.parse(nested(1600)) }), '(arguments not printable)');
 }
 
 /**
  * --run: an exception in the run still closes the agent (and with it the broker session) before the process ends,
  * so the generation watchdog sees at once that the agent ended without a package. The exit code is set, the process
- * is not ended inside the catch.
+ * is not ended inside the catch. Governed runs: the exit code is 0 for every model-level outcome (the outcome is the
+ * JSON object on stdout) and 1 only for an infrastructure failure, because a non-zero exit restarts the container.
  */
 async function testRunOnceClosesTheAgent() {
     const { runOnce } = require('../lib/run-once');
@@ -1586,6 +1795,166 @@ async function testRunOnceClosesTheAgent() {
     assert.strictEqual(await runOnce(passing, 'build it'), 0);
     assert.deepStrictEqual(events, ['send', 'close']);
 
+    const originalWrite = process.stdout.write;
+    const stdout = [];
+    process.stdout.write = function capture(chunk) { stdout.push(String(chunk)); return true; };
+    try {
+        const governed = (result, close = async () => {}) => ({
+            governedExecutor: {},
+            async send() { return result; },
+            close,
+        });
+        // Model-level outcomes exit 0, whatever the model decided: the container is started with
+        // --restart on-failure, so a non-zero exit would run the same work item again. The outcome is the JSON.
+        assert.strictEqual(await runOnce(governed('{"type":"final","code":"completed"}'), 'go'), 0);
+        assert.strictEqual(await runOnce(governed('{"type":"refusal","code":"policy_denied"}'), 'go'), 0);
+        assert.strictEqual(await runOnce(governed('{"type":"refusal","code":"unsupported_request"}'), 'go'), 0);
+        assert.strictEqual(await runOnce(governed('{"type":"failure","code":"limit_reached"}'), 'go'), 0);
+        assert.strictEqual(await runOnce(governed('{"type":"failure","code":"generation_failed"}'), 'go'), 0);
+        assert.strictEqual(await runOnce(governed('{"type":"failure","code":"invalid_response"}'), 'go'), 0);
+        // What send returns is not the fixed JSON (it never should be): reported as invalid_response, still exit 0.
+        assert.strictEqual(await runOnce(governed('Here is a summary of what I did.'), 'go'), 0);
+        assert.strictEqual(await runOnce(governed(undefined), 'go'), 0);
+        assert.deepStrictEqual(stdout, [
+            '{"type":"final","code":"completed"}\n',
+            '{"type":"refusal","code":"policy_denied"}\n',
+            '{"type":"refusal","code":"unsupported_request"}\n',
+            '{"type":"failure","code":"limit_reached"}\n',
+            '{"type":"failure","code":"generation_failed"}\n',
+            '{"type":"failure","code":"invalid_response"}\n',
+            '{"type":"failure","code":"invalid_response"}\n',
+            '{"type":"failure","code":"invalid_response"}\n',
+        ], 'every model-level outcome is one JSON object on stdout');
+        stdout.length = 0;
+
+        // Infrastructure failures (an exception in the run, a failed close) exit 1, still with one JSON object.
+        const failingClose = async () => { throw new Error('close failed'); };
+        assert.strictEqual(await runOnce(governed('{"type":"final","code":"completed"}', failingClose), 'go'), 1);
+        assert.strictEqual(await runOnce(governed('{"type":"refusal","code":"policy_denied"}', failingClose), 'go'), 1);
+        assert.strictEqual(await runOnce({
+            governedExecutor: {}, async send() { throw new Error('send failed'); }, async close() {},
+        }, 'go'), 1);
+        assert.deepStrictEqual(stdout, [
+            '{"type":"failure","code":"tool_failed"}\n',
+            '{"type":"refusal","code":"policy_denied"}\n',
+            '{"type":"failure","code":"tool_failed"}\n',
+        ], 'governed run prints exactly one final JSON object even when send or close fails; a failed close replaces only "completed"');
+        stdout.length = 0;
+
+        // A whole governed run that the model ends with prose: one reminder, then invalid_response, exit code 0.
+        const proseClient = createFakeClient();
+        proseClient.llmChat = async () => ({ success: true, data: {
+            content: 'I have finished the task.', tool_calls: [], done: true, model: 'broker-model',
+        } });
+        const proseAgent = plainGovernedAgent(proseClient);
+        assert.strictEqual(await runOnce(proseAgent, 'prose governed CLI run'), 0);
+        assert.deepStrictEqual(stdout, ['{"type":"failure","code":"invalid_response"}\n']);
+        assert.strictEqual(proseClient.getLlmChatCalls(), 0, 'the stubbed llmChat replaced the default one');
+        assert.strictEqual(proseAgent.governedExecutor, null, 'the agent is closed after an invalid model reply');
+        stdout.length = 0;
+
+        const freshClient = createFakeClient();
+        freshClient.llmChat = async () => ({ success: true, data: {
+            content: '{"type":"final","code":"completed"}', tool_calls: [], done: true, model: 'broker-model',
+        } });
+        const freshAgent = new AgentLoop({
+            model: 'requested', provider: createForbiddenDirectProvider(), projectRoot: ROOT, stream: false,
+            governed: {
+                brokerUrl: 'http://broker.local:5000', brokerPubKey: 'fake-pub-key', principalId: 'prn_test',
+                taskId: 'task_test', roleId: 'role_reader', registrationSecret: TEST_REGISTRATION_SECRET,
+                clientFactory: () => freshClient,
+            },
+        });
+        assert.strictEqual(await runOnce(freshAgent, 'fresh governed CLI run'), 0);
+        assert.deepStrictEqual(stdout, ['{"type":"final","code":"completed"}\n'],
+            'a fresh AgentLoop is recognized as governed before lazy init');
+        stdout.length = 0;
+
+        const verboseToolClient = createFakeClient();
+        let verboseChats = 0;
+        verboseToolClient.llmChat = async () => {
+            verboseChats++;
+            return { success: true, data: verboseChats === 1 ? {
+                content: '', tool_calls: [{ id: 'verbose-read', type: 'function', function: {
+                    name: 'read_file', arguments: { path: './README.md' },
+                } }], done: true, model: 'broker-model',
+            } : {
+                content: '{"type":"final","code":"completed"}', tool_calls: [], done: true, model: 'broker-model',
+            } };
+        };
+        const verboseToolAgent = new AgentLoop({
+            model: '', provider: createForbiddenDirectProvider(), projectRoot: ROOT, stream: false, verbose: true,
+            governed: {
+                brokerUrl: 'http://broker.local:5000', brokerPubKey: 'fake-pub-key', principalId: 'prn_test',
+                taskId: 'task_test', roleId: 'role_reader', registrationSecret: TEST_REGISTRATION_SECRET,
+                clientFactory: () => verboseToolClient,
+            },
+        });
+        assert.strictEqual(await runOnce(verboseToolAgent, 'call read_file'), 0);
+        assert.deepStrictEqual(stdout, ['{"type":"final","code":"completed"}\n'],
+            'verbose governed tool diagnostics never contaminate stdout');
+        assert.strictEqual(verboseToolClient.getSubmitCalls(), 1);
+        stdout.length = 0;
+
+        const initFailureClient = createFakeClient();
+        let closedAfterInitFailure = false;
+        initFailureClient.registerSession = async () => { throw new Error('mock init failure'); };
+        const initFailureAgent = new AgentLoop({
+            model: 'requested', provider: createForbiddenDirectProvider(), projectRoot: ROOT, stream: false,
+            governed: {
+                brokerUrl: 'http://broker.local:5000', brokerPubKey: 'fake-pub-key', principalId: 'prn_test',
+                taskId: 'task_test', roleId: 'role_reader', registrationSecret: TEST_REGISTRATION_SECRET,
+                clientFactory: () => initFailureClient,
+            },
+        });
+        const closeAgent = initFailureAgent.close.bind(initFailureAgent);
+        initFailureAgent.close = async () => { closedAfterInitFailure = true; await closeAgent(); };
+        assert.strictEqual(await runOnce(initFailureAgent, 'fresh failing governed CLI run'), 1);
+        assert(closedAfterInitFailure, 'runOnce closes a newly-created agent when lazy init fails');
+        assert.deepStrictEqual(stdout, ['{"type":"failure","code":"tool_failed"}\n'],
+            'init failure still yields one machine-readable governed result');
+    } finally {
+        process.stdout.write = originalWrite;
+    }
+
+    const { spawnSync } = require('child_process');
+    const cliEnv = { ...process.env };
+    for (const key of ['BROKER_URL', 'BROKER_PUB_KEY', 'BROKER_PRINCIPAL_ID', 'BROKER_TASK_ID', 'BROKER_ROLE_ID', 'BROKER_REGISTRATION_SECRET']) {
+        delete cliEnv[key];
+    }
+    const configFailure = spawnSync(process.execPath, ['tools/agent/agent.js', '--governed', '--run', 'probe'], {
+        cwd: ROOT, env: cliEnv, encoding: 'utf8',
+    });
+    assert.strictEqual(configFailure.status, 1, 'incomplete governed configuration is an infrastructure failure');
+    assert.strictEqual(configFailure.stdout, '{"type":"refusal","code":"invalid_request"}\n',
+        'real CLI governed --run setup failures keep stdout machine-readable');
+
+    // The broker cannot be reached (nothing listens on the port): an infrastructure failure, exit code 1.
+    const closedPort = await new Promise((resolve, reject) => {
+        const server = require('net').createServer();
+        server.on('error', reject);
+        server.listen(0, '127.0.0.1', () => {
+            const { port } = server.address();
+            server.close(() => resolve(port));
+        });
+    });
+    const unreachable = spawnSync(process.execPath, ['tools/agent/agent.js', '--governed', '--run', 'probe'], {
+        cwd: ROOT,
+        env: {
+            ...cliEnv,
+            BROKER_URL: `http://127.0.0.1:${closedPort}`,
+            BROKER_PUB_KEY: crypto.generateKeyPairSync('ec', { namedCurve: 'P-256' }).publicKey.export({ type: 'spki', format: 'der' }).toString('base64'),
+            BROKER_PRINCIPAL_ID: 'prn_unreachable',
+            BROKER_TASK_ID: 'task_unreachable',
+            BROKER_REGISTRATION_SECRET: TEST_REGISTRATION_SECRET,
+        },
+        encoding: 'utf8',
+        timeout: 60000,
+    });
+    assert.strictEqual(unreachable.status, 1, `an unreachable broker exits 1\n${unreachable.stderr}`);
+    assert.strictEqual(unreachable.stdout, '{"type":"failure","code":"tool_failed"}\n');
+    assert(!`${unreachable.stdout}${unreachable.stderr}`.includes(TEST_REGISTRATION_SECRET), 'the failure output carries no secret');
+
     const fs = require('fs');
     const agentCli = fs.readFileSync(path.join(ROOT, 'tools', 'agent', 'agent.js'), 'utf8');
     const start = agentCli.indexOf('if (args.run) {');
@@ -1593,6 +1962,281 @@ async function testRunOnceClosesTheAgent() {
     const branch = agentCli.slice(start, agentCli.indexOf('return;', start));
     assert(branch.includes('process.exitCode = await runOnce(agent, args.run'), 'the --run branch uses runOnce and sets the exit code');
     assert(!branch.includes('process.exit('), 'the --run branch does not end the process before the agent is closed');
+}
+
+/**
+ * Native tool calls are normalised, not matched key by key. Providers add their own fields (Ollama sends
+ * function.index and may send no id, other formats send an empty id): only id, type, function.name and
+ * function.arguments are read, and a call without a usable id gets a generated one. What is malformed still rejects
+ * the whole response before any tool runs.
+ */
+async function testNativeToolCallNormalisation() {
+    const client = createFakeClient();
+    const agent = plainGovernedAgent(client);
+    await agent.init();
+    const executor = agent.governedExecutor;
+    const chatWith = async (toolCalls, content = '') => {
+        client.llmChat = async () => ({ success: true, data: { content, tool_calls: toolCalls, done: true, model: 'broker-model' } });
+        return await executor.chat({ model: 'x', messages: [{ role: 'user', content: 'hi' }], tools: [] });
+    };
+    const read = (path) => ({ name: 'read_file', arguments: { path } });
+
+    // What Ollama returns: function.index, no id (or null), extra keys on the call and on the function.
+    const first = await chatWith([
+        { function: { index: 0, name: 'read_file', arguments: { path: './a.md' } } },
+        { id: null, type: 'function', index: 1, function: { index: 1, name: 'read_file', arguments: '{"path":"./b.md"}', strict: true } },
+        { id: '', function: { name: 'read_file', arguments: { path: './c.md' } } },
+        { id: 'call_from_model', type: 'function', function: { name: 'read_file', arguments: { path: './d.md' } } },
+    ]);
+    assert.deepStrictEqual(first.toolCalls, [
+        { id: 'governed_call_1', function: read('./a.md') },
+        { id: 'governed_call_2', function: read('./b.md') },
+        { id: 'governed_call_3', function: read('./c.md') },
+        { id: 'call_from_model', function: read('./d.md') },
+    ], 'only id, name and arguments are kept; missing ids are generated in order');
+    // Generated ids stay unique across turns of the same run.
+    const second = await chatWith([{ function: { index: 0, name: 'read_file', arguments: { path: './e.md' } } }]);
+    assert.strictEqual(second.toolCalls[0].id, 'governed_call_4');
+
+    // A call without arguments (missing, null, empty string) is a call with no arguments.
+    for (const args of [undefined, null, '', '  ']) {
+        const fn = { name: 'read_file' };
+        if (args !== undefined) fn.arguments = args;
+        assert.deepStrictEqual((await chatWith([{ id: 'x', function: fn }])).toolCalls, [{ id: 'x', function: { name: 'read_file', arguments: {} } }]);
+    }
+
+    // No tool calls at all: a missing or null tool_calls field is an empty list.
+    assert.deepStrictEqual((await chatWith(null, '{"type":"final","code":"completed"}')).toolCalls, []);
+    assert.deepStrictEqual((await chatWith(undefined, '{"type":"final","code":"completed"}')).toolCalls, []);
+
+    // The limit of eight calls per turn.
+    const many = (count) => Array.from({ length: count }, (_, index) => ({ function: { index, name: 'read_file', arguments: { path: `./${index}.md` } } }));
+    assert.strictEqual((await chatWith(many(8))).toolCalls.length, 8);
+    await assert.rejects(() => chatWith(many(9)), /too many tool calls; response rejected/);
+
+    // Malformed or unsafe: the response is rejected.
+    const valid = { name: 'read_file', arguments: { path: './a.md' } };
+    for (const [label, toolCalls] of [
+        ['tool_calls is a string', 'read_file'],
+        ['tool_calls is an object', { function: valid }],
+        ['a null call', [null]],
+        ['a string call', ['read_file']],
+        ['an array call', [[valid]]],
+        ['no function', [{ id: 'x' }]],
+        ['function is a string', [{ function: 'read_file' }]],
+        ['function is an array', [{ function: [valid] }]],
+        ['another call type', [{ type: 'code_interpreter', function: valid }]],
+        ['a non-string type', [{ type: 1, function: valid }]],
+        ['no name', [{ function: { arguments: {} } }]],
+        ['a non-string name', [{ function: { name: 5, arguments: {} } }]],
+        ['an empty name', [{ function: { name: ' ', arguments: {} } }]],
+        ['an overlong name', [{ function: { name: 'x'.repeat(129), arguments: {} } }]],
+        ['number arguments', [{ function: { name: 'read_file', arguments: 5 } }]],
+        ['boolean arguments', [{ function: { name: 'read_file', arguments: true } }]],
+        ['array arguments', [{ function: { name: 'read_file', arguments: ['./a.md'] } }]],
+        ['a string that is not JSON', [{ function: { name: 'read_file', arguments: '{"path":' } }]],
+        ['a string holding an array', [{ function: { name: 'read_file', arguments: '["./a.md"]' } }]],
+        ['a string holding a string', [{ function: { name: 'read_file', arguments: '"./a.md"' } }]],
+        ['oversized arguments', [{ function: { name: 'read_file', arguments: { pad: 'x'.repeat(257 * 1024) } } }]],
+        ['an oversized argument string', [{ function: { name: 'read_file', arguments: `{"pad":"${'x'.repeat(257 * 1024)}"}` } }]],
+        ['a non-string id', [{ id: 7, function: valid }]],
+        ['an overlong id', [{ id: 'x'.repeat(129), function: valid }]],
+        ['one bad call among good ones', [{ function: valid }, { function: { name: 'read_file', arguments: 5 } }]],
+    ]) {
+        await assert.rejects(() => chatWith(toolCalls), /response rejected/, label);
+    }
+    assert.strictEqual(client.getSubmitCalls(), 0, 'normalising never runs a tool');
+    await agent.close();
+
+    // Through the agent loop: an Ollama-shaped first turn is accepted, the tool runs once, its result carries the
+    // generated id, and the run ends with the fixed JSON reply.
+    {
+        const loopClient = createFakeClient();
+        const seen = [];
+        loopClient.llmChat = async (body) => {
+            seen.push(body.messages);
+            return { success: true, data: seen.length === 1 ? {
+                content: '', tool_calls: [{ function: { index: 0, name: 'read_file', arguments: { path: './README.md' } } }],
+                done: true, model: 'broker-model',
+            } : {
+                content: '{"type":"final","code":"completed"}', tool_calls: [], done: true, model: 'broker-model',
+            } };
+        };
+        const loopAgent = plainGovernedAgent(loopClient);
+        await loopAgent.init();
+        assert.strictEqual(await loopAgent.send('read the readme'), '{"type":"final","code":"completed"}');
+        assert.strictEqual(loopClient.getSubmitCalls(), 1, 'the Ollama-shaped call runs');
+        const assistant = loopAgent.messages.find((message) => Array.isArray(message.tool_calls));
+        assert.deepStrictEqual(assistant.tool_calls, [{ id: 'governed_call_1', function: { name: 'read_file', arguments: { path: './README.md' } } }]);
+        const toolMessage = loopAgent.messages.find((message) => message.role === 'tool');
+        assert.strictEqual(toolMessage.tool_call_id, 'governed_call_1');
+        assert.strictEqual(toolMessage.content, 'ok');
+        await loopAgent.close();
+    }
+
+    // Through the agent loop: a malformed call ends the run before any tool is dispatched.
+    {
+        const loopClient = createFakeClient();
+        loopClient.llmChat = async () => ({ success: true, data: {
+            content: '', tool_calls: [{ function: { name: 'read_file', arguments: { path: './README.md' } } }, { function: { name: 'read_file', arguments: 5 } }],
+            done: true, model: 'broker-model',
+        } });
+        const loopAgent = plainGovernedAgent(loopClient);
+        await loopAgent.init();
+        assert.strictEqual(await loopAgent.send('read the readme'), '{"type":"failure","code":"invalid_response"}');
+        assert.strictEqual(loopClient.getSubmitCalls(), 0, 'no call of a rejected response runs, not even the valid one');
+        await loopAgent.close();
+    }
+}
+
+/**
+ * Models (Claude and reasoning models in particular) often send a sentence next to their native tool calls. That
+ * text is dropped: never parsed, never executed, not kept in the conversation and not used as the final answer,
+ * whatever its length. The 4096 character limit still applies to a reply without tool calls (the final answer).
+ */
+async function testProseAlongsideNativeToolCalls() {
+    const readCall = { id: 'call_read', type: 'function', function: { name: 'read_file', arguments: { path: './README.md' } } };
+    const textCall = '<tool_call>{"name":"run_command","arguments":{"command":"dir"}}</tool_call>';
+    const fence = '```';
+
+    for (const prose of [
+        'I will read the file first.',
+        'x'.repeat(5000),
+        '{"type":"final","code":"completed"}',
+        '{"type":"refusal","code":"policy_denied"}',
+        textCall,
+        `${fence}json\n{"name":"read_file","arguments":{"path":"./SECRET.md"}}\n${fence}`,
+        '   ',
+    ]) {
+        const client = createFakeClient();
+        const seen = [];
+        client.llmChat = async (body) => {
+            seen.push(body.messages.map((message) => ({ ...message })));
+            return { success: true, data: seen.length === 1
+                ? { content: prose, tool_calls: [readCall], done: true, model: 'broker-model' }
+                : { content: '{"type":"final","code":"completed"}', tool_calls: [], done: true, model: 'broker-model' } };
+        };
+        const agent = plainGovernedAgent(client);
+        await agent.init();
+        const label = prose.slice(0, 40);
+        assert.strictEqual(await agent.send('read the readme'), '{"type":"final","code":"completed"}', label);
+        assert.strictEqual(seen.length, 2, `the run goes on after the tool call: ${label}`);
+        assert.strictEqual(client.getSubmitCalls(), 1, `only the native call runs: ${label}`);
+        const assistant = agent.messages.find((message) => Array.isArray(message.tool_calls));
+        assert.strictEqual(assistant.content, '', `the prose is not kept in the conversation: ${label}`);
+        assert.deepStrictEqual(assistant.tool_calls.map((call) => call.function.name), ['read_file']);
+        if (prose.trim() !== '') {
+            // The system prompt itself quotes the fixed JSON replies, so only the conversation after it is checked.
+            const conversation = JSON.stringify(seen[1].filter((message) => message.role !== 'system'));
+            assert(!conversation.includes(JSON.stringify(prose).slice(1, -1)), `the prose is not sent back to the model: ${label}`);
+        }
+        await agent.close();
+    }
+
+    // Straight from the executor: the content of a tool-call turn is empty, whatever the broker sent.
+    const client = createFakeClient();
+    const agent = plainGovernedAgent(client);
+    await agent.init();
+    const chatWith = async (content, toolCalls) => {
+        client.llmChat = async () => ({ success: true, data: { content, tool_calls: toolCalls, done: true, model: 'broker-model' } });
+        return await agent.governedExecutor.chat({ model: 'x', messages: [{ role: 'user', content: 'hi' }], tools: [] });
+    };
+    for (const content of ['Reading now.', 'y'.repeat(100000), null, 42, { text: 'structured' }]) {
+        const result = await chatWith(content, [readCall]);
+        assert.strictEqual(result.content, '');
+        assert.strictEqual(result.toolCalls.length, 1);
+    }
+
+    // Without tool calls the reply is the final answer: the length limit and the string check stay.
+    assert.strictEqual((await chatWith('x'.repeat(4096), [])).content.length, 4096);
+    assert.strictEqual((await chatWith(null, [])).content, '');
+    for (const content of ['x'.repeat(4097), 42, { text: 'structured' }, ['a']]) {
+        await assert.rejects(() => chatWith(content, []), /oversized or invalid assistant content; response rejected/);
+    }
+    await agent.close();
+
+    // Through the loop: long prose without a tool call still ends the run, and is never the answer.
+    const longClient = createFakeClient();
+    longClient.llmChat = async () => ({ success: true, data: { content: 'x'.repeat(5000), tool_calls: [], done: true, model: 'broker-model' } });
+    const longAgent = plainGovernedAgent(longClient);
+    await longAgent.init();
+    assert.strictEqual(await longAgent.send('hello'), '{"type":"failure","code":"invalid_response"}');
+    await longAgent.close();
+}
+
+/**
+ * --line-listen drives its own loop. It runs native tool calls only: reply text is never parsed as a tool call,
+ * also when native tool calling is off (then no tools are offered and the reply is plain text for the LINE user).
+ */
+async function testLineListenerRunsNativeToolCallsOnly() {
+    const textCall = '<tool_call>\n{"name": "read_file", "arguments": {"path": "./README.md"}}\n</tool_call>';
+    const makeAgent = (useNativeTools, replies) => {
+        const executed = [];
+        const chats = [];
+        return {
+            executed,
+            chats,
+            agent: {
+                messages: [{ role: 'system', content: 'system prompt' }],
+                maxIterations: 4,
+                model: 'broker-model',
+                projectRoot: ROOT,
+                useNativeTools,
+                toolDefinitions: [{ type: 'function', function: { name: 'read_file', parameters: { type: 'object' } } }],
+                provider: {
+                    async chat(params) {
+                        chats.push(params);
+                        const reply = replies.shift();
+                        assert(reply, 'the listener asked the model more often than expected');
+                        return reply;
+                    },
+                },
+                governedExecutor: {
+                    async executeTool(name, args) {
+                        executed.push({ name, args });
+                        return 'file content';
+                    },
+                },
+            },
+        };
+    };
+
+    // Native tool calling off (the broker says the model has none, or ReAct was forced): a <tool_call> block in the
+    // reply is not run, no tools are offered, and the text is the reply.
+    {
+        const { agent, executed, chats } = makeAgent(false, [{ content: textCall, toolCalls: [] }]);
+        const listener = new LineListener(agent);
+        const reply = await listener._sendToLlm([{ role: 'user', content: 'read the readme' }]);
+        assert.strictEqual(reply, textCall, 'the text is passed on as text');
+        assert.deepStrictEqual(executed, [], 'a tool call written as text is never executed');
+        assert.strictEqual(chats.length, 1);
+        assert(!('tools' in chats[0]), 'no tools are offered without native tool calling');
+        assert(!agent.messages.some((message) => message.role === 'tool' || Array.isArray(message.tool_calls)));
+    }
+
+    // Native tool calling on: text is still not run; a native call runs once and its result goes back as a tool message.
+    {
+        const { agent, executed, chats } = makeAgent(true, [
+            { content: '', toolCalls: [{ id: 'call_1', function: { name: 'read_file', arguments: { path: './README.md' } } }] },
+            { content: `Here it is. ${textCall}`, toolCalls: [] },
+        ]);
+        const listener = new LineListener(agent);
+        const reply = await listener._sendToLlm([{ role: 'user', content: 'read the readme' }]);
+        assert.strictEqual(reply, `Here it is. ${textCall}`);
+        assert.deepStrictEqual(executed, [{ name: 'read_file', args: { path: './README.md' } }], 'only the native call runs');
+        assert.strictEqual(chats.length, 2);
+        assert.strictEqual(chats[0].tools.length, 1);
+        const toolMessage = agent.messages.find((message) => message.role === 'tool');
+        assert.deepStrictEqual(toolMessage, { role: 'tool', content: 'file content', tool_call_id: 'call_1' });
+        // The listener's own system message says that replies are text for the LINE user, tools native only.
+        const lineContext = agent.messages[1];
+        assert.strictEqual(lineContext.role, 'system');
+        assert(lineContext.content.includes('不要使用上方 Governed Broker Contract 規定的固定 JSON 回覆'));
+        assert(lineContext.content.includes('工具只能以原生 function call 呼叫'));
+    }
+
+    const source = require('fs').readFileSync(path.join(ROOT, 'tools', 'agent', 'lib', 'line-listener.js'), 'utf8');
+    assert(!source.includes('react-parser') && !source.includes('parseToolCalls'), 'the listener has no text tool-call parser');
 }
 
 /** The text parser only accepts objects with a string name and object arguments. */
@@ -1740,12 +2384,17 @@ async function main() {
     await testGenerationTools();
     await testLowRiskGenerationGrantsKeepTheGeneralPrompt();
     await testGenerationRunNeedsAToolCallEveryTurn();
-    await testGenerationToolCallsWrittenAsText();
+    await testReplyTextIsNeverRunAsAToolCall();
+    await testGovernedJsonResponseBoundary();
+    await testNativeToolCallNormalisation();
+    await testProseAlongsideNativeToolCalls();
     await testUnsupportedToolsInAGenerationTask();
     await testObjectArgumentsSentAsJsonStrings();
     await testExecutionStateCase();
-    await testDeeplyNestedTextToolCall();
+    await testDeeplyNestedToolCallArguments();
+    await testLineListenerRunsNativeToolCallsOnly();
     await testRunOnceClosesTheAgent();
+    // The text-tool parser module still exists, but no governed code path calls it (see the tests above).
     testTextToolCallParser();
     testMaxIterationsParsing();
     console.log('Governed mode tests passed.');

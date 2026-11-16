@@ -136,36 +136,23 @@ public class WorkerSession : IAsyncDisposable
                 await SendRegisterAckAsync(false, "", "Invalid register message", ct);
                 return;
             }
-            if (string.IsNullOrWhiteSpace(registerMsg.WorkerType) ||
-                string.IsNullOrWhiteSpace(registerMsg.KeyId) ||
-                string.IsNullOrWhiteSpace(registerMsg.Timestamp) ||
-                string.IsNullOrWhiteSpace(registerMsg.Nonce) ||
-                string.IsNullOrWhiteSpace(registerMsg.Signature))
+            if (string.IsNullOrWhiteSpace(registerMsg.WorkerType))
             {
-                await SendRegisterAckAsync(false, registerMsg.WorkerId, "Missing worker authentication fields", ct);
-                return;
-            }
-            if (!DateTimeOffset.TryParse(registerMsg.Timestamp, out var timestamp))
-            {
-                await SendRegisterAckAsync(false, registerMsg.WorkerId, "Invalid worker authentication timestamp", ct);
+                await SendRegisterAckAsync(false, registerMsg.WorkerId, "Missing worker type", ct);
                 return;
             }
 
-            var authDecision = _workerIdentityAuth.ValidateWorkerRegister(new WorkerRegisterAuthRequest
+            // WorkerAuth:Enforce=false 時不驗證 worker 身分（與 HTTP 端的 WorkerIdentityAuthMiddleware 一致），
+            // 因此以 -AllowUnauthenticated 啟動、不帶 key_id／signature 的 worker 仍可註冊。
+            // Enforce=true 時缺欄位、時間戳無效或簽章不符一律拒絕。
+            if (_workerIdentityAuth.IsEnforced)
             {
-                WorkerType = registerMsg.WorkerType,
-                KeyId = registerMsg.KeyId,
-                WorkerId = registerMsg.WorkerId,
-                Capabilities = registerMsg.Capabilities ?? new List<string>(),
-                MaxConcurrent = registerMsg.MaxConcurrent > 0 ? registerMsg.MaxConcurrent : 4,
-                Timestamp = timestamp,
-                Nonce = registerMsg.Nonce,
-                Signature = registerMsg.Signature
-            });
-            if (!authDecision.IsAuthorized)
-            {
-                await SendRegisterAckAsync(false, registerMsg.WorkerId, authDecision.Reason, ct);
-                return;
+                var authError = AuthenticateRegister(registerMsg);
+                if (authError != null)
+                {
+                    await SendRegisterAckAsync(false, registerMsg.WorkerId, authError, ct);
+                    return;
+                }
             }
 
             _workerId = registerMsg.WorkerId;
@@ -189,6 +176,38 @@ public class WorkerSession : IAsyncDisposable
             _logger.LogError(ex, "Worker session {Id}: register failed", Id);
             await SendRegisterAckAsync(false, "", $"Register error: {ex.Message}", ct);
         }
+    }
+
+    /// <summary>驗證 WORKER_REGISTER 的 worker 身分（僅在 WorkerAuth:Enforce=true 時呼叫）；通過回傳 null，否則回傳拒絕原因</summary>
+    private string? AuthenticateRegister(WorkerRegisterMessage registerMsg)
+    {
+        var missing = new List<string>();
+        if (string.IsNullOrWhiteSpace(registerMsg.KeyId)) missing.Add("key_id");
+        if (string.IsNullOrWhiteSpace(registerMsg.Timestamp)) missing.Add("timestamp");
+        if (string.IsNullOrWhiteSpace(registerMsg.Nonce)) missing.Add("nonce");
+        if (string.IsNullOrWhiteSpace(registerMsg.Signature)) missing.Add("signature");
+        if (missing.Count > 0)
+        {
+            return "Worker authentication is enforced (WorkerAuth:Enforce=true) but the registration is missing: "
+                + string.Join(", ", missing);
+        }
+        if (!DateTimeOffset.TryParse(registerMsg.Timestamp, out var timestamp))
+        {
+            return "Invalid worker authentication timestamp";
+        }
+
+        var authDecision = _workerIdentityAuth.ValidateWorkerRegister(new WorkerRegisterAuthRequest
+        {
+            WorkerType = registerMsg.WorkerType,
+            KeyId = registerMsg.KeyId,
+            WorkerId = registerMsg.WorkerId,
+            Capabilities = registerMsg.Capabilities ?? new List<string>(),
+            MaxConcurrent = registerMsg.MaxConcurrent > 0 ? registerMsg.MaxConcurrent : 4,
+            Timestamp = timestamp,
+            Nonce = registerMsg.Nonce,
+            Signature = registerMsg.Signature
+        });
+        return authDecision.IsAuthorized ? null : authDecision.Reason;
     }
 
     /// <summary>發送 WORKER_REGISTER_ACK</summary>

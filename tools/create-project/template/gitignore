@@ -17,6 +17,9 @@ appsettings.Development.json
 # 發佈=快照具體化進 dist\(node scripts/publish.mjs)——皆不入版控
 lib/
 dist/
+# publish 的暫存目錄(成功或失敗都會自行清除;行程被強制中止時可能殘留)
+.dist-staging-*/
+.dist-backup-*/
 
 # 腳手架位置(每機自有;解析順序 env B4A_ROOT > 此檔 > 同層搜尋)
 .b4a-root

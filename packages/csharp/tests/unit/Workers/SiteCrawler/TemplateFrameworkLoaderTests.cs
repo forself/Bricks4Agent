@@ -138,7 +138,7 @@ public class TemplateFrameworkLoaderTests : IDisposable
 
         foreach (var template in templates.Templates)
         {
-            readme.Should().Contain($"`{template.TemplateId}`");
+            readme.Should().Contain($"<code>{template.TemplateId}</code>");
         }
     }
 

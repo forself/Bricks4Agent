@@ -11,11 +11,13 @@ const path = require('path');
 const { pathToFileURL } = require('url');
 
 const {
+    FINAL_COMPLETED,
     ROOT,
     assertStackHardened,
     buildImages: buildStackImages,
     compose,
     containerEngine,
+    governedResponseLines,
     run,
 } = require('./lib/container-stack');
 
@@ -29,17 +31,6 @@ const images = [
 
 function stripAnsi(text) {
     return text.replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, '');
-}
-
-function extractAgentReplies(output) {
-    return stripAnsi(output)
-        .split(/\r?\n/)
-        .map((line) => {
-            // podman-compose prefixes lines with "[agent] |", docker compose with "agent-1 |"
-            const match = line.match(/(?:\[agent\]|\bagent[-_]\d+)\s+\|\s+>\s*(.+)$/);
-            return match ? match[1].trim() : '';
-        })
-        .filter(Boolean);
 }
 
 // compose 檔不附預設金鑰（${VAR:?...}）。每次執行在記憶體中產生一組新的金鑰，
@@ -174,7 +165,7 @@ async function main() {
         PYTHONUTF8: '1',
         STACK_MODEL: modelName,
         OLLAMA_BASE_URL: `http://${gatewayIp}:${proxy.port}`,
-        AGENT_RUN: 'Reply briefly that the broker-mediated Ollama stack completed.',
+        AGENT_RUN: 'This is a stack smoke test. Do not call a tool. Finish the run.',
     };
 
     try {
@@ -195,7 +186,6 @@ async function main() {
 
         const combinedOutput = `${upResult.stdout}\n${upResult.stderr}`;
         const plainOutput = stripAnsi(combinedOutput);
-        const agentReplies = extractAgentReplies(combinedOutput);
         assert(
             plainOutput.includes(modelName),
             `Expected stack output to include chosen Ollama model ${modelName}.\n${combinedOutput}`
@@ -208,9 +198,13 @@ async function main() {
             plainOutput.includes('[Governed] session closed'),
             `Expected governed session to close cleanly.\n${combinedOutput}`
         );
-        assert(
-            agentReplies.some((reply) => reply.length > 0),
-            `Expected agent to produce a non-empty model response.\n${combinedOutput}`
+        // The real model has to follow the governed contract: the agent's only stdout line is the fixed JSON
+        // reply. Exit code 0 alone does not show that (a reply that is not the fixed JSON also exits 0 and
+        // prints {"type":"failure","code":"invalid_response"}).
+        assert.deepStrictEqual(
+            governedResponseLines(combinedOutput, 'agent'),
+            [FINAL_COMPLETED],
+            `Expected the agent to print exactly ${FINAL_COMPLETED}.\n${combinedOutput}`
         );
         assert(
             !plainOutput.includes('Broker error') && !plainOutput.includes('API error'),

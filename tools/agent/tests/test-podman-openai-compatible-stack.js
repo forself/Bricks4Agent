@@ -9,11 +9,13 @@ const path = require('path');
 const { pathToFileURL } = require('url');
 
 const {
+    FINAL_COMPLETED,
     ROOT,
     assertStackHardened,
     buildImages: buildStackImages,
     compose,
     containerEngine,
+    governedResponseLines,
 } = require('./lib/container-stack');
 
 const engine = containerEngine();
@@ -39,8 +41,7 @@ async function main() {
         PYTHONIOENCODING: 'utf-8',
         PYTHONUTF8: '1',
         OPENAI_API_FORMAT: 'responses',
-        AGENT_RUN: 'Reply with the exact text STACK_OK.',
-        STACK_RESPONSE_TEXT: 'STACK_OK',
+        AGENT_RUN: 'This is a stack smoke test. Do not call a tool. Finish the run.',
     };
 
     try {
@@ -62,9 +63,11 @@ async function main() {
         );
 
         const combinedOutput = `${upResult.stdout}\n${upResult.stderr}`;
-        assert(
-            combinedOutput.includes('STACK_OK'),
-            `Expected agent output to include STACK_OK.\n${combinedOutput}`
+        // The mock upstream answers with the fixed governed reply; the agent prints it as its only stdout line.
+        assert.deepStrictEqual(
+            governedResponseLines(combinedOutput, 'agent'),
+            [FINAL_COMPLETED],
+            `Expected the agent to print exactly ${FINAL_COMPLETED}.\n${combinedOutput}`
         );
 
         await assertStackHardened(engine, composeFile, [], env, {

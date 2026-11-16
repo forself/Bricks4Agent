@@ -71,7 +71,7 @@ async function start() {
             if (!['create', 'update', 'delete'].includes(flow.operation)) continue;
             const button = builtinEntries.get(flow.trigger_instance_id)?.instance.element?.querySelector('button') ||
                 builtinEntries.get(flow.trigger_instance_id)?.instance.element;
-            if (button) button.disabled = site.prototype_backend !== 'sqlite' ||
+            if (button) button.disabled = !['sqlite', 'sqlite-formal'].includes(site.prototype_backend) ||
                 !store.role.actions.includes(flow.operation) || writeBusy.has(flow) ||
                 (flow.operation !== 'create' && !selectedByTable.has(flow.source_table_instance_id));
         }
@@ -406,7 +406,7 @@ async function start() {
     const runFlow = async flow => {
         const resource = resources.get(flow.entity_code);
         if (['create', 'update', 'delete'].includes(flow.operation)) {
-            if (site.prototype_backend !== 'sqlite') throw new Error('獨立元件寫入僅供展示資料雛型使用。');
+            if (!['sqlite', 'sqlite-formal'].includes(site.prototype_backend)) throw new Error('資料寫入需要 SQLite 後端。');
             if (!store.role.actions.includes(flow.operation)) throw new Error('目前角色沒有這項資料操作權限。');
             const id = flow.operation === 'create' ? null : selectedByTable.get(flow.source_table_instance_id);
             if (flow.operation !== 'create' && !id) throw new Error('請先在指定資料表選取一列。');

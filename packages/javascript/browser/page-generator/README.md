@@ -586,7 +586,7 @@ Tool 定義必須是純 JSON：
 }
 ```
 
-支援的 node 為 `group`、`component`、`tabs`、`slot`。JSON 只能引用已註冊元件、safe dotted state path 與 allowlisted event；函式、getter、raw HTML、prototype-sensitive key、未知 command 或未知 component 都會在 `init()` 前 fail closed。
+支援的 node 為 `group`、`component`、`tabs`、`slot`。`group.as` 可選 `div`（預設）、`main`、`nav`、`header`、`footer`、`section`、`article` 或 `aside`；其餘元素及未知屬性一律 fail closed。JSON 只能引用已註冊元件、safe dotted state path 與 allowlisted event；函式、getter、raw HTML、prototype-sensitive key、未知 command 或未知 component 都會在 `init()` 前 fail closed。
 
 ```javascript
 const page = new DynamicPageRenderer({

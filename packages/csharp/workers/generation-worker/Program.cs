@@ -22,9 +22,9 @@ using var loggerFactory = LoggerFactory.Create(builder =>
 var logger = loggerFactory.CreateLogger<WorkerHost>();
 var handlerLogger = loggerFactory.CreateLogger("GenerationWorker");
 
-var workerAuthType = config.GetValue<string>("Worker:Auth:WorkerType") ?? "generation-worker";
-var workerAuthKeyId = config.GetValue<string>("Worker:Auth:KeyId") ?? "";
-var workerAuthSharedSecret = config.GetValue<string>("Worker:Auth:SharedSecret") ?? "";
+var workerAuth = WorkerAuthSettings.Resolve(config.GetValue("Worker:Auth:AllowUnauthenticated", false),
+    config.GetValue<string>("Worker:Auth:WorkerType"), "generation-worker",
+    config.GetValue<string>("Worker:Auth:KeyId"), config.GetValue<string>("Worker:Auth:SharedSecret"));
 
 // ── 生成設定 ──
 // 輸出位置只由 Generation:OutputRoot 與 grant scope 決定；node 與生成器位置只由設定決定。
@@ -60,9 +60,9 @@ var options = new WorkerHostOptions
     // 一次只處理一個請求：生成是 CPU 與磁碟密集的確定性工作，並以 requestId 目錄做冪等。
     MaxConcurrent = 1,
     HeartbeatIntervalSeconds = config.GetValue("Worker:HeartbeatIntervalSeconds", 5),
-    WorkerType = workerAuthType,
-    WorkerAuthKeyId = workerAuthKeyId,
-    WorkerAuthSharedSecret = workerAuthSharedSecret
+    WorkerType = workerAuth.WorkerType,
+    WorkerAuthKeyId = workerAuth.KeyId,
+    WorkerAuthSharedSecret = workerAuth.SharedSecret
 };
 
 // ── 建立 WorkerHost ──

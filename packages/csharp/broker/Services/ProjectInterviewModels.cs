@@ -58,7 +58,24 @@ public sealed record ProjectInterviewSessionState(
         new(channel, userId, ProjectInterviewPhase.Idle, null, null, false);
 }
 
-public sealed record HighLevelProjectInterviewCommand(bool IsProjectInterview, ProjectInterviewCommand? Command);
+public sealed record HighLevelProjectInterviewCommand(
+    bool IsProjectInterview,
+    ProjectInterviewCommand? Command,
+    string? RevisionInput = null)
+{
+    /// <summary>
+    /// 依訪談現況決定這則訊息是不是訪談指令。parser 不知道訪談狀態，會把任何 <c>/revise 文字</c> 都讀成修訂；
+    /// 只有訪談已有可修訂的版本（<see cref="ProjectInterviewTaskDocument.HasRevisableVersion"/>）時它才是訪談修訂，
+    /// 否則不算訪談指令，訊息照加入修訂語法之前的路徑處理（進行中的訪談當作回答，沒有訪談時走 / 前綴的 production 流程）。
+    /// 不帶文字的 /revise 與其他指令不受影響。
+    /// </summary>
+    public HighLevelProjectInterviewCommand ResolveFor(ProjectInterviewTaskDocument document) =>
+        Command == ProjectInterviewCommand.Revise &&
+        !string.IsNullOrWhiteSpace(RevisionInput) &&
+        !document.HasRevisableVersion
+            ? new HighLevelProjectInterviewCommand(false, null)
+            : this;
+}
 
 public enum AssertionStatus
 {
@@ -120,6 +137,11 @@ public sealed record ProjectInterviewTaskDocument(
         and not ProjectInterviewPhase.Cancelled
         and not ProjectInterviewPhase.Failed
         and not ProjectInterviewPhase.Expired;
+
+    /// <summary>已有編譯完成、可用 /revise 修訂的版本：等待審查，或已批准但建置尚未確認。</summary>
+    public bool HasRevisableVersion =>
+        SessionState.CurrentPhase is ProjectInterviewPhase.AwaitUserReview or ProjectInterviewPhase.AwaitBuildConfirmation &&
+        CurrentProjectDefinition != null;
 
     public ProjectInterviewTaskDocument WithSessionState(ProjectInterviewSessionState sessionState) =>
         this with { SessionState = sessionState };

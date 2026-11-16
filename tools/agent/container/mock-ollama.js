@@ -5,7 +5,12 @@ const http = require('http');
 
 const port = Number(process.env.PORT || '11434');
 const model = process.env.MOCK_MODEL || 'stack-test-model';
-const responseText = process.env.MOCK_RESPONSE_TEXT || 'STACK_OK';
+// A governed agent accepts only the fixed JSON reply as its final answer (tools/agent/lib/governed-response.js),
+// so that is what this mock answers when the run is over. MOCK_RESPONSE_TEXT replaces it (for example with
+// prose, to see the agent reject a reply that is not the fixed JSON).
+const FINAL_COMPLETED = '{"type":"final","code":"completed"}';
+const FAILURE_TOOL_FAILED = '{"type":"failure","code":"tool_failed"}';
+const responseText = process.env.MOCK_RESPONSE_TEXT || FINAL_COMPLETED;
 const toolCall = process.env.MOCK_TOOL_CALL || '';
 const toolPath = process.env.MOCK_TOOL_PATH || 'README.html';
 // Generic tool args (JSON). Falls back to {path: toolPath} for read_file back-compat.
@@ -28,8 +33,10 @@ function parseJsonArray(name) {
 // (one call) is used as before.
 const toolSequence = parseJsonArray('MOCK_TOOL_SEQUENCE_JSON');
 // Optional proof that tools really ran: entry i is a substring (or an array of substrings)
-// that the i-th tool result must contain. When set, the final answer is
-// "<MOCK_RESPONSE_TEXT> TOOL_RESULT_VERIFIED" or "TOOL_RESULT_MISMATCH ..." with a snippet.
+// that the i-th tool result must contain. The agent prints nothing but the fixed JSON reply, so the
+// proof is in this mock's own log: "TOOL_RESULT_VERIFIED" on stdout and the normal final answer when
+// every result matches, otherwise "TOOL_RESULT_MISMATCH ..." with a snippet on stderr and the final
+// answer {"type":"failure","code":"tool_failed"}.
 const toolResultExpectations = parseJsonArray('MOCK_EXPECT_TOOL_RESULTS_JSON');
 
 function plannedSteps() {
@@ -60,10 +67,12 @@ function finalText(results) {
         const missing = actual === undefined ? expected : expected.filter((needle) => !actual.includes(needle));
         if (missing.length > 0) {
             const snippet = (actual === undefined ? '(no tool result)' : actual).replace(/\s+/g, ' ').slice(0, 400);
-            return `TOOL_RESULT_MISMATCH step=${index} missing=${JSON.stringify(missing)} result=${snippet}`;
+            console.error(`TOOL_RESULT_MISMATCH step=${index} missing=${JSON.stringify(missing)} result=${snippet}`);
+            return FAILURE_TOOL_FAILED;
         }
     }
-    return `${responseText} TOOL_RESULT_VERIFIED`;
+    console.log(`TOOL_RESULT_VERIFIED steps=${toolResultExpectations.length}`);
+    return responseText;
 }
 
 function readJson(req) {
@@ -118,20 +127,24 @@ const server = http.createServer(async (req, res) => {
             const results = toolResults(body);
             const next = steps[results.length];
             if (next && requestIncludesTool(body, next.name)) {
+                // The shape Ollama itself returns: function.index, and an id only in newer versions
+                // (here on every other step, so both variants pass through the broker and the agent).
+                const toolCall = {
+                    function: {
+                        index: 0,
+                        name: next.name,
+                        arguments: next.args,
+                    },
+                };
+                if (results.length % 2 === 0) {
+                    toolCall.id = `call_mock_${next.name}_${results.length}`;
+                }
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({
                     model: body.model || model,
                     message: {
                         content: '',
-                        tool_calls: [
-                            {
-                                id: `call_mock_${next.name}_${results.length}`,
-                                function: {
-                                    name: next.name,
-                                    arguments: next.args,
-                                },
-                            },
-                        ],
+                        tool_calls: [toolCall],
                         thinking: '',
                     },
                     total_duration: 1,

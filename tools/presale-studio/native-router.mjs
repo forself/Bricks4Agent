@@ -6,6 +6,9 @@ const MAX_URL_BYTES = 4096;
 const MAX_QUERY_PAIRS = 24;
 const MAX_QUERY_VALUE = 256;
 const DEFAULT_BODY_BYTES = 256 * 1024;
+const DEFAULT_JSON_NODES = 10_000;
+const MAX_JSON_NODES = 2_000_000;
+const STRUCTURE_LIMIT = 'JSON structure limit exceeded';
 
 export class RouteError extends Error {
     constructor(status, message) { super(message); this.status = status; }
@@ -19,7 +22,12 @@ export class NativeRouter {
             throw new TypeError('Route path must be exact or an anchored regular expression');
         if (!Array.isArray(methods) || !methods.length || methods.some(method =>
             !['GET', 'POST', 'PUT', 'DELETE'].includes(method)) ||
-            typeof kind !== 'string' || !['none', 'json'].includes(body) && typeof body !== 'function')
+            typeof kind !== 'string' || !['none', 'json'].includes(body) && typeof body !== 'function' &&
+            !(body && typeof body === 'object' && body.type === 'json' &&
+                Number.isSafeInteger(body.maxBytes) && body.maxBytes > 0 && body.maxBytes <= 8 * 1024 * 1024 &&
+                (body.maxNodes === undefined || Number.isSafeInteger(body.maxNodes) &&
+                    body.maxNodes > 0 && body.maxNodes <= MAX_JSON_NODES) &&
+                ['maxBytes|type', 'maxBytes|maxNodes|type'].includes(Object.keys(body).sort().join('|'))))
             throw new TypeError('Invalid route declaration');
         this.routes.push({ path, methods: [...new Set(methods)], kind, body, query, session });
         return this;
@@ -139,7 +147,7 @@ export function requireNoBody(req) {
         req.headers['transfer-encoding']) throw new RouteError(400, 'Request body is not allowed');
 }
 
-function rejectDuplicateJsonKeys(source) {
+function rejectDuplicateJsonKeys(source, maxNodes) {
     let index = 0, nodes = 0;
     const fail = () => { throw new RouteError(400, 'Invalid or ambiguous JSON'); };
     const spaces = () => { while (/[ \t\r\n]/.test(source[index] || '\0')) index++; };
@@ -156,7 +164,7 @@ function rejectDuplicateJsonKeys(source) {
         fail();
     };
     const value = depth => {
-        if (depth > 32 || ++nodes > 10_000) fail();
+        if (depth > 32 || ++nodes > maxNodes) throw new RouteError(400, STRUCTURE_LIMIT);
         spaces();
         if (source[index] === '{') {
             index++; spaces();
@@ -196,7 +204,7 @@ function rejectDuplicateJsonKeys(source) {
     if (index !== source.length) fail();
 }
 
-export async function readJsonBody(req, { maxBytes = DEFAULT_BODY_BYTES } = {}) {
+export async function readJsonBody(req, { maxBytes = DEFAULT_BODY_BYTES, maxNodes = DEFAULT_JSON_NODES } = {}) {
     const contentType = req.headers['content-type'] || '';
     if (!/^application\/json(?:;\s*charset=utf-8)?$/i.test(contentType))
         throw new RouteError(415, 'JSON content type required');
@@ -217,14 +225,18 @@ export async function readJsonBody(req, { maxBytes = DEFAULT_BODY_BYTES } = {}) 
     let value;
     try {
         const source = new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks));
-        rejectDuplicateJsonKeys(source);
+        rejectDuplicateJsonKeys(source, maxNodes);
         value = JSON.parse(source);
     }
-    catch { throw new RouteError(400, 'Invalid JSON'); }
+    catch (error) {
+        // 結構上限與語法錯誤分開回報，否則合法但過大的本文會被說成「不是 JSON」。
+        if (error instanceof RouteError && error.message === STRUCTURE_LIMIT) throw error;
+        throw new RouteError(400, 'Invalid JSON');
+    }
     if (!value || typeof value !== 'object' || Array.isArray(value))
         throw new RouteError(400, 'JSON object required');
     const visit = (item, depth, budget) => {
-        if (depth > 32 || --budget.remaining < 0) throw new RouteError(400, 'JSON structure limit exceeded');
+        if (depth > 32 || --budget.remaining < 0) throw new RouteError(400, STRUCTURE_LIMIT);
         if (typeof item === 'number' && !Number.isFinite(item)) throw new RouteError(400, 'Non-finite JSON number');
         if (!item || typeof item !== 'object') return;
         for (const [key, child] of Object.entries(item)) {
@@ -233,7 +245,7 @@ export async function readJsonBody(req, { maxBytes = DEFAULT_BODY_BYTES } = {}) 
             visit(child, depth + 1, budget);
         }
     };
-    visit(value, 0, { remaining: 10_000 });
+    visit(value, 0, { remaining: maxNodes });
     return value;
 }
 
@@ -243,6 +255,8 @@ export async function guardRoute(req, context, { query = [], body = 'none', auth
     const actor = authorize ? await authorize(req) : null;
     if (body === 'none') { requireNoBody(req); return { actor, body: null }; }
     if (body === 'json') return { actor, body: await readJsonBody(req) };
+    if (body && typeof body === 'object' && body.type === 'json')
+        return { actor, body: await readJsonBody(req, { maxBytes: body.maxBytes, maxNodes: body.maxNodes }) };
     throw new TypeError('Unknown route body policy');
 }
 

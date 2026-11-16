@@ -14,6 +14,9 @@ public sealed class WorkerIdentityAuthService
         _nonceStore = nonceStore;
     }
 
+    /// <summary>Whether worker identity verification is enforced (<c>WorkerAuth:Enforce</c>).</summary>
+    public bool IsEnforced => _options.Enforce;
+
     public string SignHttp(
         string workerType,
         string keyId,

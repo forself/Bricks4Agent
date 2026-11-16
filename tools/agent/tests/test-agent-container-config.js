@@ -463,12 +463,64 @@ assertIncludes('agent prompt prioritizes custom components', agentSystemPrompt, 
 assertIncludes('agent prompt names ui component runtime', agentSystemPrompt, './runtime/ui_components/index.js');
 assertIncludes('agent prompt names key components', agentSystemPrompt, 'BasicButton, ButtonGroup, FeatureCard');
 
+// A governed run ends with a fixed JSON reply (tools/agent/lib/governed-response.js), never with model text.
+// The stack defaults, the mock model servers and the stack tests' output parser follow that contract: a default
+// task that asks for "the exact text ..." or a mock that answers with prose would make every stack run end with
+// {"type":"failure","code":"invalid_response"}.
+{
+    const { FINAL_COMPLETED, governedResponseLines } = require('./lib/container-stack');
+    const { parseGovernedResponse } = require('../lib/governed-response');
+    assert.deepStrictEqual(parseGovernedResponse(FINAL_COMPLETED), { ok: true, response: { type: 'final', code: 'completed' } });
+
+    for (const composeFile of COMPOSE_FILES) {
+        const composeText = read(composeFile);
+        assertNotIncludes(`${composeFile} default task does not ask for a text reply`, composeText, 'exact text');
+        assertNotIncludes(`${composeFile} default task does not ask for a text reply`, composeText, 'Reply ');
+        assertNotIncludes(`${composeFile} mock default answer is not prose`, composeText, 'STACK_OK');
+        assertIncludes(`${composeFile} default task ends the run`, composeText, 'Do not call a tool. Finish the run.}"');
+    }
+    for (const mock of ['tools/agent/container/mock-ollama.js', 'tools/agent/container/mock-openai.js']) {
+        const mockSource = read(mock);
+        assertIncludes(`${mock} ends a run with the fixed governed reply`, mockSource, FINAL_COMPLETED);
+        assertNotIncludes(`${mock} has no prose default`, mockSource, 'STACK_OK');
+    }
+    const mockOllama = read('tools/agent/container/mock-ollama.js');
+    assertIncludes('mock-ollama reports a tool result mismatch as the fixed failure reply', mockOllama, '{"type":"failure","code":"tool_failed"}');
+    assertIncludes('mock-ollama sends the Ollama tool call shape', mockOllama, 'index: 0,');
+
+    // The parser the stack tests read the agent's result with: only a line that is exactly one governed reply,
+    // attributed to the agent service, counts (podman-compose "[agent] |", docker compose "agent-1 |").
+    const composeOutput = [
+        '[broker] | {"type":"final","code":"completed"}',
+        '[agent] | \u001b[36mℹ [Governed] session=ses_1\u001b[0m',
+        '[agent] | prompt quotes {"type":"final","code":"completed"} in a sentence',
+        '[agent] | {"type":"final","code":"completed"} and more',
+        '[agent] | {"type":"final","code":"completed"}',
+        'container-agent-1  | {"type":"failure","code":"invalid_response"}\r',
+        'agent_1 | {"type":"refusal","code":"policy_denied"}',
+        '{"type":"final","code":"completed"}',
+    ].join('\n');
+    assert.deepStrictEqual(governedResponseLines(composeOutput, 'agent'), [
+        FINAL_COMPLETED,
+        '{"type":"failure","code":"invalid_response"}',
+        '{"type":"refusal","code":"policy_denied"}',
+    ]);
+    assert.deepStrictEqual(governedResponseLines(composeOutput), [FINAL_COMPLETED], 'plain container logs: whole lines only');
+    assert.deepStrictEqual(governedResponseLines('ℹ [Governed] session closed\n'), []);
+
+    // Exit code contract of a governed --run: the container restarts on a non-zero exit, so the entrypoint and
+    // run-once keep model-level outcomes at exit code 0 (see tools/agent/lib/run-once.js).
+    const runOnceSource = read('tools/agent/lib/run-once.js');
+    assertNotIncludes('run-once does not map a refusal to a non-zero exit code', runOnceSource, "=== 'refusal' ? 2");
+    assertNotIncludes('agent.js does not exit 2 for a governed outcome', read('tools/agent/agent.js'), 'process.exitCode = 2');
+}
+
 const agentEndpoints = read('packages/csharp/broker/Endpoints/AgentEndpoints.cs');
 // /agents/spawn 與受治理生成共用 AgentContainerLauncher：環境變數、註冊憑證與容器啟動都在那裡組成。
 const agentLauncher = read('packages/csharp/broker/Services/AgentContainerLauncher.cs');
 assertIncludes('spawn defaults to non-legacy mode', agentLauncher, '["AGENT_LINE_LISTEN"] = "0"');
 assertIncludes('spawn has legacy opt-in flag', agentLauncher, '["AGENT_ENABLE_LEGACY_LINE_LISTEN"] = "1"');
-assertIncludes('spawn one-shot run fallback', agentLauncher, 'Reply with the exact text AGENT_READY.');
+assertIncludes('spawn one-shot run fallback', agentLauncher, 'This is a readiness check. Do not call a tool. Finish the run.');
 assertIncludes('spawn normalizes requested agent id', agentEndpoints, 'agentId = AgentSpawnService.NormalizeAgentId(agentId);');
 assertIncludes('spawn resolves configurable agent broker url', agentEndpoints, 'ResolveAgentBrokerUrl(body, configuration)');
 assertIncludes('spawn goes through the shared launcher', agentEndpoints, 'launcher.SpawnAsync(');

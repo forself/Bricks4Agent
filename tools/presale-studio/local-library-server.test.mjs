@@ -7,6 +7,7 @@ import path from 'node:path';
 import { starterDraft } from './model.mjs';
 import { defaultCandidateWiring, generateBindings, generateCandidates } from './page-planner.mjs';
 import { createPresaleServer } from './server.mjs';
+import { LocalTemplateLibrary } from './local-library.mjs';
 
 test('local library HTTP routes save, list, rebind and remove component and page JSON', async () => {
     const root = mkdtempSync(path.join(os.tmpdir(), 'b4a-library-api-'));
@@ -14,6 +15,11 @@ test('local library HTTP routes save, list, rebind and remove component and page
     server.listen(0, '127.0.0.1');
     await once(server, 'listening');
     const base = `http://127.0.0.1:${server.address().port}`;
+    const importedRoot = mkdtempSync(path.join(os.tmpdir(), 'b4a-library-api-import-'));
+    const importedServer = createPresaleServer({ libraryRoot: importedRoot });
+    importedServer.listen(0, '127.0.0.1');
+    await once(importedServer, 'listening');
+    const importedBase = `http://127.0.0.1:${importedServer.address().port}`;
     try {
         const draft = starterDraft('blank'), target = starterDraft('blank');
         draft.confirmed = true; target.confirmed = true;
@@ -33,6 +39,23 @@ test('local library HTTP routes save, list, rebind and remove component and page
         const page = await pagesResponse.json();
         const list = await (await fetch(`${base}/api/library`)).json();
         assert.deepEqual(new Set(list.items.map(item => item.kind)), new Set(['component', 'page']));
+        const exportedResponse = await fetch(`${base}/api/library/export`);
+        assert.equal(exportedResponse.status, 200);
+        assert.match(exportedResponse.headers.get('content-disposition'), /b4a-local-library\.json/);
+        const bundle = await exportedResponse.json();
+        assert.equal(bundle.schema_version, 1);
+        assert.equal(bundle.items.length, 2);
+        const importBundle = () => fetch(`${importedBase}/api/library/import`, { method: 'POST',
+            headers: { 'content-type': 'application/json', origin: importedBase }, body: JSON.stringify(bundle) });
+        const imported = await importBundle();
+        assert.equal(imported.status, 200);
+        assert.equal((await imported.json()).imported, 2);
+        assert.equal((await (await fetch(`${importedBase}/api/library`)).json()).items.length, 2);
+        assert.equal((await importBundle()).status, 409);
+        const unknownKey = await fetch(`${importedBase}/api/library/import`, { method: 'POST',
+            headers: { 'content-type': 'application/json', origin: importedBase },
+            body: JSON.stringify({ ...bundle, path: '../outside' }) });
+        assert.equal(unknownKey.status, 400);
         const generated = await (await post('/api/build', { draft, plan })).json();
         const agentText = await (await fetch(`${base}${generated.agent_palette_url}`)).text();
         const agentPalette = JSON.parse(agentText);
@@ -63,9 +86,60 @@ test('local library HTTP routes save, list, rebind and remove component and page
         assert.equal((await (await fetch(`${base}/api/library`)).json()).items.length, 1);
     } finally {
         server.close(); await once(server, 'close');
-        const resolved = path.resolve(root), temp = path.resolve(os.tmpdir());
-        if (!resolved.startsWith(`${temp}${path.sep}`) || !path.basename(resolved).startsWith('b4a-library-api-'))
-            throw new Error('Unexpected library test path');
-        rmSync(resolved, { recursive: true, force: true });
+        importedServer.close(); await once(importedServer, 'close');
+        for (const target of [root, importedRoot]) {
+            const resolved = path.resolve(target), temp = path.resolve(os.tmpdir());
+            if (!resolved.startsWith(`${temp}${path.sep}`) || !path.basename(resolved).startsWith('b4a-library-api'))
+                throw new Error('Unexpected library test path');
+            rmSync(resolved, { recursive: true, force: true });
+        }
+    }
+});
+
+test('a full 200-item library exported by the workbench can be imported back over HTTP', async () => {
+    const roots = [0, 1].map(() => mkdtempSync(path.join(os.tmpdir(), 'b4a-library-api-bulk-')));
+    const servers = roots.map(libraryRoot => createPresaleServer({ libraryRoot }));
+    for (const server of servers) { server.listen(0, '127.0.0.1'); await once(server, 'listening'); }
+    const [source, target] = servers.map(server => `http://127.0.0.1:${server.address().port}`);
+    try {
+        const draft = starterDraft('course');
+        draft.confirmed = true;
+        const candidates = generateCandidates(draft), bindings = generateBindings(draft);
+        const items = candidates.map((candidate, index) => {
+            const instance_id = `I_${String(index + 1).padStart(12, '0')}`;
+            return { kind: 'candidate', ref: candidate.registry_name, span: 12, instance_id,
+                wiring: defaultCandidateWiring(candidate, bindings[index], instance_id) };
+        });
+        const plan = { schema_version: 1, items };
+        const library = new LocalTemplateLibrary(roots[0]);
+        for (let index = 0; index < 200; index++)
+            library.save({ kind: 'page', title: `課程頁面 ${index + 1}`, draft, plan });
+        const exported = await fetch(`${source}/api/library/export`);
+        assert.equal(exported.status, 200);
+        const text = await exported.text();
+        const bundle = JSON.parse(text);
+        assert.equal(bundle.items.length, 200);
+        let nodes = 0;
+        JSON.stringify(bundle, (key, value) => { nodes++; return value; });
+        assert.ok(nodes > 10_000, 'the bundle must exceed the default JSON node budget to prove the route override');
+        const imported = await fetch(`${target}/api/library/import`, { method: 'POST',
+            headers: { 'content-type': 'application/json', origin: target }, body: text });
+        assert.equal(imported.status, 200, await imported.clone().text());
+        assert.equal((await imported.json()).imported, 200);
+        assert.equal((await (await fetch(`${target}/api/library`)).json()).items.length, 200);
+        // 其他路由仍套用預設節點上限。
+        const flood = await fetch(`${target}/api/build`, { method: 'POST',
+            headers: { 'content-type': 'application/json', origin: target },
+            body: JSON.stringify({ draft: { filler: Array.from({ length: 12_000 }, () => 0) } }) });
+        assert.equal(flood.status, 400);
+        assert.equal((await flood.json()).error, 'JSON structure limit exceeded');
+    } finally {
+        for (const server of servers) { server.close(); await once(server, 'close'); }
+        for (const root of roots) {
+            const resolved = path.resolve(root), temp = path.resolve(os.tmpdir());
+            if (!resolved.startsWith(`${temp}${path.sep}`) || !path.basename(resolved).startsWith('b4a-library-api-bulk-'))
+                throw new Error('Unexpected library test path');
+            rmSync(resolved, { recursive: true, force: true });
+        }
     }
 });

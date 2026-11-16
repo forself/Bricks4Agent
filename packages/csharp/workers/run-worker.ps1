@@ -14,6 +14,10 @@
 #
 # Credentials are provisioned by start-sidecar-stack.ps1 into
 # $env:BRICKS4AGENT_SECRETS_DIR\worker-auth.json (default C:\secure\Bricks4Agent).
+# Missing credentials fail closed. -AllowUnauthenticated is an explicit local
+# development opt-in: the worker registers without a key id or signature, which only a
+# broker with WorkerAuth.Enforce = false accepts (an enforcing broker rejects the registration).
+# Secrets are passed through the child environment, never argv.
 
 param(
     [Parameter(Mandatory = $true)]
@@ -21,7 +25,8 @@ param(
     [string]$Worker,
     [string]$BrokerHost = "localhost",
     [int]$BrokerPort = 7000,
-    [string]$GenerationOutputRoot = ""
+    [string]$GenerationOutputRoot = "",
+    [switch]$AllowUnauthenticated
 )
 
 $ErrorActionPreference = "Stop"
@@ -44,21 +49,23 @@ if (-not (Test-Path $projectPath)) {
 $secureSecretsRoot = if ($env:BRICKS4AGENT_SECRETS_DIR) { $env:BRICKS4AGENT_SECRETS_DIR } else { "C:\secure\Bricks4Agent" }
 $workerAuthStorePath = Join-Path $secureSecretsRoot "worker-auth.json"
 
-$authArgs = @()
+$credential = $null
 if (Test-Path $workerAuthStorePath) {
-    $credentials = @((Get-Content $workerAuthStorePath -Raw | ConvertFrom-Json) | ForEach-Object { $_ })
-    $credential = $credentials | Where-Object { $_.WorkerType -eq $selected.Type } | Select-Object -First 1
-    if ($null -ne $credential -and -not [string]::IsNullOrWhiteSpace($credential.SharedSecret)) {
-        $authArgs = @(
-            "--Worker:Auth:WorkerType=$($selected.Type)",
-            "--Worker:Auth:KeyId=$($credential.KeyId)",
-            "--Worker:Auth:SharedSecret=$($credential.SharedSecret)"
-        )
-    } else {
-        Write-Warning "No credential for '$($selected.Type)' in $workerAuthStorePath; starting without worker auth. Run the sidecar stack once to provision it."
+    try {
+        $credentials = @((Get-Content -LiteralPath $workerAuthStorePath -Raw | ConvertFrom-Json) | ForEach-Object { $_ })
+    } catch {
+        throw 'Cannot read a valid worker credential store.'
     }
-} else {
-    Write-Warning "Worker auth store not found at $workerAuthStorePath; starting without worker auth. Run the sidecar stack once to provision it."
+    $matches = @($credentials | Where-Object { $_.WorkerType -eq $selected.Type })
+    if ($matches.Count -gt 1) { throw 'Worker credential store contains duplicate worker identities.' }
+    if ($matches.Count -eq 1) { $credential = $matches[0] }
+}
+$hasAuth = $null -ne $credential -and
+    $credential.KeyId -is [string] -and $credential.SharedSecret -is [string] -and
+    -not [string]::IsNullOrWhiteSpace($credential.KeyId) -and
+    -not [string]::IsNullOrWhiteSpace($credential.SharedSecret)
+if (-not $hasAuth -and -not $AllowUnauthenticated) {
+    throw "No valid worker credential for '$($selected.Type)'. Provision worker-auth.json with the sidecar stack first. For isolated development only, use -AllowUnauthenticated explicitly."
 }
 
 $generationArgs = @()
@@ -78,8 +85,28 @@ $runArgs = @(
     "run", "--project", $projectPath, "--",
     "--Worker:BrokerHost=$BrokerHost",
     "--Worker:BrokerPort=$BrokerPort"
-) + $generationArgs + $authArgs
+) + $generationArgs
 
-Write-Host "Starting $($selected.Type) -> broker ${BrokerHost}:${BrokerPort} (auth: $(if ($authArgs.Count -gt 0) { 'enabled' } else { 'disabled' }))"
-& dotnet @runArgs
-exit $LASTEXITCODE
+# Workers strip the WORKER_ prefix and translate __ to configuration colons.
+# Keep credentials out of the command line, and restore the caller's environment.
+$authEnvironment = @{
+    'WORKER_Worker__Auth__WorkerType' = $selected.Type
+    'WORKER_Worker__Auth__KeyId' = $(if ($hasAuth) { [string]$credential.KeyId } else { '' })
+    'WORKER_Worker__Auth__SharedSecret' = $(if ($hasAuth) { [string]$credential.SharedSecret } else { '' })
+    'WORKER_Worker__Auth__AllowUnauthenticated' = $(if ($AllowUnauthenticated -and -not $hasAuth) { 'true' } else { 'false' })
+}
+$previousEnvironment = @{}
+try {
+    foreach ($name in $authEnvironment.Keys) {
+        $previousEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
+        [Environment]::SetEnvironmentVariable($name, $authEnvironment[$name], 'Process')
+    }
+    Write-Host "Starting $($selected.Type) -> broker ${BrokerHost}:${BrokerPort} (auth: $(if ($hasAuth) { 'enabled' } else { 'disabled (development)' }))"
+    & dotnet @runArgs
+    $workerExitCode = $LASTEXITCODE
+} finally {
+    foreach ($name in $previousEnvironment.Keys) {
+        [Environment]::SetEnvironmentVariable($name, $previousEnvironment[$name], 'Process')
+    }
+}
+exit $workerExitCode

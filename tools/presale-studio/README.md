@@ -12,6 +12,8 @@
 
 本地庫預設保存在工作台的 `tools/presale-studio/.local-library/`，重新啟動工作台仍可使用；它是此工作台的本機 JSON 模板庫，與原始碼中的 `packages/javascript/browser/custom_components/registry.json` 分開。每次保存會建立新的不可變項目，清單可個別移除。資料區塊有複合元件時，目標資料區塊須有相同數量且依序相同型別的欄位；其他頁面流程可以對應到欄位較多的區塊。這個限制會在選擇與套用時檢查，避免錯誤綁定。代理清單中的 `saved_templates` 僅含模板代碼、來源區塊與欄位代碼及型別，不含人類名稱或展示文字；代理若要套用，仍須提交完整欄位映射並通過同一驗證器。目前不提供跨電腦同步，也不會把本地庫自動發布到核心 B4A 元件套件。
 
+工作台也提供「匯出本地庫」下載版本化 JSON bundle，以及「匯入本地庫」選取檔案。匯入只接受目前版本與精確 schema，最多 200 項、整包 8 MB、單項 256 KB（以 9 個元件的課程頁面為例，每項約 17 KB，200 項約 3.2 MB）；本地庫超過 8 MB 時匯出會直接回報，不會產生匯不回來的檔案；逐筆驗證 SHA-256、record 與 page-plan 白名單後才會寫入。任何未知欄位、無效摘要、重複 ID、容量超限或既有 ID 衝突都會拒絕整批；衝突回覆 409，不會改寫既有項目或引用。匯出只含已保存的結構模板與欄位映射來源描述，不含訪談展示資料、角色或程式碼；不會執行匯入檔內容。
+
 按「產生雛型與交接文件」後，可瀏覽資料畫面及獨立的「頁面規劃」畫面，或下載 ZIP 交給團隊。課程欄位參考 CourseAffairs.Web 現有畫面，教師與教室為展示擴充，並非宣稱已實作完整課務需求。ZIP 內有 `site/`、原生 Node.js 後端 `backend/`、`package.json`、`review/interview.md`、`review/architecture.agent.json`、`review/labels.json`、`review/field-mapping.json`、`review/page-plan.json`、`review/custom-components/`、`report/manifest.json` 與 `report/functional-validation.json`。下載後解壓，在套件根目錄執行 `npm start`，再開啟 `http://127.0.0.1:3092/`；需 Node.js 22.13 以上版本。`node:sqlite` 在此版本仍會顯示實驗功能提示。SQLite 資料建立在套件的 `data/prototype.sqlite`，重啟服務後保留；不需要安裝執行期第三方套件。元件候選遵守 B4A 複合元件 JSON 格式，並通過既有定義驗證器；頁面配置只接受候選名單或固定 B4A 元件白名單，最多 24 個元件。
 
 `architecture.agent.json` 只含不透明代碼及白名單型別、操作與範圍；使用者文字僅保留在經人工確認的展示定義、名稱對照及複合元件中。此版本由結構化訪談表單確定性產生候選，未接入對話式 AI 訪談；不呼叫模型，也不會將訪談文字交給代理。配置頁中的查詢列可依指定欄位搜尋，編輯欄位組可選取、新增或修改記錄；它和清單、明細、表單頁共用 SQLite 資料。配置頁的「重設展示資料」會恢復原始樣本。後端以 `review/field-mapping.json` 的白名單代碼建立每個資料區塊的表，啟動時用 SQLite 欄位反射核對映射；JSON 欄位名稱及型別由共用規則驗證，SQL 值均參數化。測試角色的垂直及水平範圍在每次後端查詢與異動時與使用者篩選條件相交。預設主體與展示資料的 owner／unit／function 都是虛構值，與 CourseAffairs 真實組織資料無關。後端以 HttpOnly 工作階段記住測試角色，但任何使用者都能切換角色，所以這不是正式身分驗證。正式 IAM 與正式資料庫接入仍須另外設計。
@@ -26,9 +28,9 @@
 
 獨立元件使用 `page-plan.json` 的 `flows[]`。讀取流程指定資料區塊代碼、觸發元件 `instance_id` 與事件（或 `@page/load`）、`query`／`summary`／`lookup`、最多六個 `{input_instance_id, field_code, operator}` 條件，以及結果元件的 `instance_id`。`query` 只能送往 `DataTable`，`summary` 送往 `Text`，`lookup` 送往 `Dropdown`；資料表欄位及摘要計算只能使用同區塊已確認的欄位。開關條件在使用者第一次切換前視為未指定，切換後才會送出 `true` 或 `false`。
 
-寫入流程使用 `create`／`update`／`delete`，每條都要有未配置其他動作的獨立按鈕，以 `click` 觸發；新增與修改將獨立輸入元件對應到同區塊欄位代碼，新增必須涵蓋所有必填欄位。修改與刪除還須指定同區塊查詢流程的獨立資料表，並由使用者先在該表選取資料列；不能在頁面配置中填入任意記錄 ID。後端每次操作仍驗證角色權限與資料範圍，寫入後重新查詢資料表、摘要與選項。這條獨立元件寫入流程只在生成套件的展示 SQLite 模式啟用；正式模式的頁面按鈕會停用。正式模式原有的 API 授權規則另行生效，不因頁面配置自動開放權限。所有流程合計最多八條，同一輸入元件不能跨流程對應不同欄位；尚未替 134 個 B4A 元件全部定義資料接口。`npm run test:presale-studio:browser` 會用 Edge 驗證工作台設定、生成畫面、複合元件互動、獨立元件讀寫流程及儲存。
+寫入流程使用 `create`／`update`／`delete`，每條都要有未配置其他動作的獨立按鈕，以 `click` 觸發；新增與修改將獨立輸入元件對應到同區塊欄位代碼，新增必須涵蓋所有必填欄位。修改與刪除還須指定同區塊查詢流程的獨立資料表，並由使用者先在該表選取資料列；不能在頁面配置中填入任意記錄 ID。後端每次操作仍驗證目前模式的角色權限與資料範圍，寫入後重新查詢資料表、摘要與選項。展示模式依展示角色規則執行；正式模式只依 Broker 核驗主體與管理員核定的正式 policy 決定操作，頁面配置不會自行授與權限。所有流程合計最多八條，同一輸入元件不能跨流程對應不同欄位；尚未替 134 個 B4A 元件全部定義資料接口。`npm run test:presale-studio:browser` 會用 Edge 驗證展示模式的工作台設定、生成畫面、複合元件互動、獨立元件讀寫流程及儲存；`npm run test:presale-studio:formal-browser` 以 mock Broker 與隔離 SQLite 檢查正式模式讀寫、唯讀拒絕、撤銷工作階段拒絕及重啟讀回，不連正式資料庫。
 
-服務僅綁定 `127.0.0.1`。伺服器關閉時會刪除本次建立的暫存雛型；需留存請下載 ZIP。測試：`npm run test:presale-studio`。
+服務僅綁定 `127.0.0.1`。伺服器關閉時會刪除本次建立的暫存雛型；需留存請下載 ZIP。測試：`npm run test:presale-studio`；瀏覽器含本地庫儲存、下載與 JSON 往返：`node tools/presale-studio/library-browser-smoke.mjs`。
 
 Node.js 內建的 `node:http` 只提供 HTTP 伺服器。共用的 `native-router.mjs` 提供宣告式路由表及守衛，在兩個服務入口檢查本機 Host、重複敏感標頭、路徑編碼與遍歷、查詢鍵的白名單／型別／範圍、同源來源、JSON 媒體型別／容量／深度／重複鍵、每位址請求速率上限及安全回應標頭。`prototype-router.mjs` 宣告雛型 API 的方法、路徑、查詢與請求本文政策；`prototype-api.mjs` 處理請求與回應，工作台的生成、下載及靜態檔也在 `server.mjs` 以相同路由表宣告。沒有使用 Express 等第三方路由套件。這些入口檢查不能取代正式身分驗證、使用者授權或部署環境的網路防護。
 

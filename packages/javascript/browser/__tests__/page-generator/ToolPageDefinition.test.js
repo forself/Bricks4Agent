@@ -71,6 +71,23 @@ describe('validateToolPageDefinition', () => {
         expect(containsFunction(parsed)).toBe(false);
     });
 
+    it('accepts only the semantic group element allowlist and keeps div as the default', () => {
+        const allowed = ['div', 'main', 'nav', 'header', 'footer', 'section', 'article', 'aside'];
+        for (const as of allowed) {
+            const definition = createDefinition();
+            definition.root.as = as;
+            expect(validateToolPageDefinition(definition).valid, `${as} should be allowed`).toBe(true);
+        }
+
+        const unsupported = createDefinition();
+        unsupported.root.as = 'script';
+        expect(validateToolPageDefinition(unsupported).valid).toBe(false);
+
+        const dangerousAttribute = createDefinition();
+        dangerousAttribute.root.onclick = 'run()';
+        expect(validateToolPageDefinition(dangerousAttribute).valid).toBe(false);
+    });
+
     it('requires the fixed tool-page envelope', () => {
         const cases = [
             { key: 'schema_version', value: 2 },

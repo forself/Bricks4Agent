@@ -18,9 +18,9 @@ using var loggerFactory = LoggerFactory.Create(builder =>
 });
 
 var logger = loggerFactory.CreateLogger<WorkerHost>();
-var workerAuthType = config.GetValue<string>("Worker:Auth:WorkerType") ?? "transport-tdx";
-var workerAuthKeyId = config.GetValue<string>("Worker:Auth:KeyId") ?? string.Empty;
-var workerAuthSharedSecret = config.GetValue<string>("Worker:Auth:SharedSecret") ?? string.Empty;
+var workerAuth = WorkerAuthSettings.Resolve(config.GetValue("Worker:Auth:AllowUnauthenticated", false),
+    config.GetValue<string>("Worker:Auth:WorkerType"), "transport-tdx",
+    config.GetValue<string>("Worker:Auth:KeyId"), config.GetValue<string>("Worker:Auth:SharedSecret"));
 
 var options = new WorkerHostOptions
 {
@@ -29,9 +29,9 @@ var options = new WorkerHostOptions
     WorkerId = config.GetValue<string>("Worker:WorkerId") ?? $"transport-wkr-{Guid.NewGuid():N}"[..24],
     MaxConcurrent = config.GetValue("Worker:MaxConcurrent", 4),
     HeartbeatIntervalSeconds = config.GetValue("Worker:HeartbeatIntervalSeconds", 5),
-    WorkerType = workerAuthType,
-    WorkerAuthKeyId = workerAuthKeyId,
-    WorkerAuthSharedSecret = workerAuthSharedSecret
+    WorkerType = workerAuth.WorkerType,
+    WorkerAuthKeyId = workerAuth.KeyId,
+    WorkerAuthSharedSecret = workerAuth.SharedSecret
 };
 
 var host = new WorkerHost(options, logger);

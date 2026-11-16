@@ -24,6 +24,12 @@ Bricks4Agent's end state is an **AI agent service**: it takes requests from huma
 
 - Governed generation (DefinitionTemplate → multi-page prototype): `npm run test:generation` (node:test for `tools/generation/`: layered validation, catalog summary, deterministic build, CLI exit-code contract); `npm run test:definition-site:browser` builds the golden example into `.test-output/` and drives every route in Edge (hard-imports playwright-core from `../tim-web/poc`). Broker side: `GovernedGenerationTests` in the integration suite (one case runs the real generation-worker handlers and `tools/generation/cli.mjs` in process, so the integration suite needs node); design and settings in [GovernedGeneration.md](docs/designs/GovernedGeneration.md)
 
+- Project publish tooling (`tools/create-project`: publish policy, module analysis, upgrade tool, snapshot integrity): `npm run test:publish-policy`
+
+- Worker launcher credential handling (`packages/csharp/workers/run-worker.ps1`): `npm run test:worker-launcher`
+
+- Agent governed mode (native tool calls, fixed JSON final response, probe runner in mock mode): `npm run validate:agent-governed`
+
 - All SDK-style .NET 10 projects, with every warning treated as an error: `npm run test:dotnet10`
 
 - .NET tests: `dotnet test packages/csharp/tests/unit/Unit.Tests.csproj`, `dotnet test packages/csharp/tests/integration/Integration.Tests.csproj`, `dotnet test templates/spa/backend.Tests/SpaApi.Template.Tests.csproj`
@@ -57,9 +63,13 @@ Bricks4Agent's end state is an **AI agent service**: it takes requests from huma
 | `%TEMP%/b4a-gen*` (`b4a-gen-test-*`, `b4a-gen-truncate-*`, `b4a-gengov-*`, `b4a-gencontract-*`, `b4a-genworker-*`, `b4a-gen-toolspec-*`) | generation node:test and xUnit suites | removed by the tests; delete leftovers |
 | `%TEMP%/broker_integration_*` (`.db`, `-shm`, `-wal`, and `broker_integration_access_*` directories) | integration test fixtures (`BrokerFixture`) | removed by the fixtures (retried); delete leftovers |
 | `%TEMP%/broker_test_*.db` (with `-shm`, `-wal`) | unit tests (`TestDb.CreateInMemory`) | deleted when the test process exits; delete leftovers |
-| `%TEMP%/b4a-presale-*` (built prototype packages with their `prototype.sqlite`), `b4a-sqlite-test-*`, `b4a-local-library-*`, `b4a-library-api-*`, `b4a-library-browser-*` | `test:presale-studio`, `test:presale-studio:browser`, and the workbench server (`npm run presale:studio`) | removed by the tests and when the server closes; a killed server leaves its `b4a-presale-*` packages — delete leftovers |
+| `%TEMP%/b4a-presale-*` (built prototype packages with their `prototype.sqlite`), `b4a-sqlite-test-*`, `b4a-local-library-*`, `b4a-library-transfer-*`, `b4a-library-api-*`, `b4a-library-browser-*` | `test:presale-studio`, `test:presale-studio:browser`, `test:presale-studio:formal-browser`, and the workbench server (`npm run presale:studio`) | removed by the tests and when the server closes; a killed server leaves its `b4a-presale-*` packages — delete leftovers |
 | `tools/presale-studio/.local-library/` | presale workbench local template library (`npm run presale:studio`) | gitignored user data; delete to reset |
 | `%TEMP%/b4a-snapshot-test-*`, `b4a-snapshot-order-*` | `tools/scripts/lib/snapshot-integrity.test.mjs` | removed by the tests; delete leftovers |
+| `%TEMP%/b4a-publish-*` (fixture projects, including `b4a-publish-policy-*` and transient `.dist-staging-*` / `.dist-backup-*` inside them), `b4a-module-analysis-*`, `b4a-policy-json-*`, `b4a-trimmed-snapshot-*`, `b4a-legacy-snapshot-*`, `b4a-upgrade-test-*` | `npm run test:publish-policy` (`tools/create-project/tests/`) | removed by the tests; delete leftovers |
+| `%TEMP%/b4a-launcher-*` | `npm run test:worker-launcher` | removed by the test; delete leftovers |
+| `%TEMP%/b4a-deploy-*`, `b4a-site-rebuild-*` | unit tests (`AzureIisDeploymentRollbackTests`, `HighLevelSiteRebuildServiceTests`) | **not** removed by the tests (known leak) — delete after each unit run |
+| `tools/agent/probe-results/` (`.probe-runner-test-*` and probe run output) | `tools/agent/probe-runner.js`, `tools/agent/tests/test-probe-runner.js` | test directories are removed by the test; run output is gitignored — delete after reading |
 
 When adding tests that produce files: add the pattern to this table, ensure it is in `.gitignore`, and clean it up in the test.
 

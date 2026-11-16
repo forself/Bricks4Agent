@@ -18,6 +18,9 @@ const TEST_PRINCIPAL_ID = 'prn_dev_test';
 const TEST_TASK_ID = 'task_dev_test';
 const TEST_ROLE_ID = 'role_admin';
 const TEST_MODEL = 'proxy-test-model';
+// The only final answer a governed run accepts (tools/agent/lib/governed-response.js).
+const FINAL_COMPLETED = '{"type":"final","code":"completed"}';
+const OLLAMA_TOOL_CALL_PROBE = 'ollama-tool-call-shape-probe';
 // Seeded registration secret for this run (the broker stores only its hash).
 const TEST_REGISTRATION_SECRET = crypto.randomBytes(32).toString('base64url');
 const TEST_RUNTIME_DESCRIPTOR = JSON.stringify({
@@ -111,14 +114,24 @@ async function startFakeOllamaServer() {
             if (req.method === 'POST' && req.url === '/api/chat') {
                 const body = await readJson(req);
                 captured.chatBodies.push(body);
+                const last = Array.isArray(body.messages) ? body.messages[body.messages.length - 1] : null;
+                // The probe message gets what Ollama itself returns for a tool call: function.index, no id,
+                // and a sentence next to the call. Every other request ends the run with the fixed governed reply.
+                const message = last && last.role === 'user' && last.content === OLLAMA_TOOL_CALL_PROBE
+                    ? {
+                        content: 'I will read the file first.',
+                        tool_calls: [{ function: { index: 0, name: 'read_file', arguments: { path: 'README.md' } } }],
+                        thinking: '',
+                    }
+                    : {
+                        content: FINAL_COMPLETED,
+                        tool_calls: [],
+                        thinking: '',
+                    };
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({
                     model: body.model,
-                    message: {
-                        content: 'proxy upstream ok',
-                        tool_calls: [],
-                        thinking: '',
-                    },
+                    message,
                     total_duration: 1,
                     eval_count: 2,
                 }));
@@ -416,12 +429,26 @@ async function main() {
         const models = await agent.provider.listModels();
         assert.deepStrictEqual(models.map((item) => item.name), [TEST_MODEL]);
 
-        const reply = await agent.send('Say hello in one short sentence.');
-        assert.strictEqual(reply, 'proxy upstream ok');
+        // A governed run ends with the fixed JSON reply; the upstream's answer is passed through the broker unchanged.
+        const reply = await agent.send('This is a proxy test. Do not call a tool. Finish the run.');
+        assert.strictEqual(reply, FINAL_COMPLETED);
 
         assert.strictEqual(upstream.captured.chatBodies.length, 1);
         assert.strictEqual(upstream.captured.chatBodies[0].model, TEST_MODEL);
         assert.strictEqual(upstream.captured.chatBodies[0].stream, false);
+
+        // Ollama's own tool call shape passes the broker as it is (function.index, no id): the executor keeps
+        // the name and arguments, generates the id, and drops the sentence sent next to the call.
+        const shaped = await agent.provider.chat({
+            model: TEST_MODEL,
+            messages: [{ role: 'user', content: OLLAMA_TOOL_CALL_PROBE }],
+            tools: agent.getAvailableToolDefinitions(),
+        });
+        assert.deepStrictEqual(shaped.toolCalls, [
+            { id: 'governed_call_1', function: { name: 'read_file', arguments: { path: 'README.md' } } },
+        ]);
+        assert.strictEqual(shaped.content, '');
+        assert.strictEqual(upstream.captured.chatBodies.length, 2);
 
         const denied = await agent.governedExecutor.executeTool('run_command', { command: 'dir' }, {
             projectRoot: ROOT,

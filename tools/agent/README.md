@@ -196,6 +196,69 @@ This means the question is not only "may this agent read a file", but "may this 
 
 ### Governed-mode behavior
 
+- The broker response may request tools only through native structured `tool_calls`; JSON, XML, fenced blocks, or
+  prose that resembles a tool call is never parsed or executed. Tool names still have to match the session's granted
+  definitions, and arguments still pass the existing broker schema, capability and scope checks.
+- Native tool calls are normalised, not matched key by key: only `id`, `type`, `function.name` and
+  `function.arguments` are read, other keys a provider adds (Ollama's `function.index`, for example) are ignored, and
+  a call without an id gets a generated one (`governed_call_<n>`). A response is rejected as
+  `{"type":"failure","code":"invalid_response"}` when a call is malformed: `tool_calls` is not an array, there are
+  more than 8 calls, a call or its `function` is not an object, `type` is something other than `function`, the name
+  is missing or not a string, or the arguments are neither a JSON object nor a string holding one (or exceed 256 KiB
+  or the broker JSON depth limit).
+- Text a model sends next to native tool calls is dropped: it is not parsed, not kept in the conversation and not
+  used as the answer, whatever its length. The tool calls run as usual.
+- A turn without a native tool call must end with exactly `{"type":"final","code":"completed"}`, a paired
+  refusal code (`policy_denied`, `unsupported_request`, `invalid_request`), or a paired failure code
+  (`generation_failed`, `tool_failed`, `limit_reached`, `invalid_response`). The JSON object has exactly `type` and
+  `code`, is limited to 4096 characters and the broker JSON depth limit. The system prompt and both reminders build
+  this list from `lib/governed-response.js`, so the prompts and the parser cannot drift apart.
+- A reply that is neither a tool call nor that JSON object gets one reminder per run that restates the contract; a
+  second such reply (or the first one at the iteration limit) fails closed as
+  `{"type":"failure","code":"invalid_response"}`.
+- Governed `--run` prints only that final JSON object on stdout; diagnostics and progress go to stderr. The exit
+  code says whether the run itself worked, not what the model decided: `0` for every model-level outcome (`final`,
+  `refusal`, and `failure` including `invalid_response`), `1` only for an infrastructure failure (incomplete
+  governed configuration, the broker cannot be reached or refuses the registration, an exception, a failed session
+  close), in which case stdout still carries one JSON object. Agent containers are started with
+  `--restart on-failure`, so a non-zero exit runs the same work item again; a refusal or an invalid model reply must
+  therefore not exit non-zero. Read the JSON for the outcome. Local mode keeps its existing text and ReAct behavior.
+
+### Governed probe runner
+
+Run deterministic local protocol checks without a broker or model:
+
+```bash
+node tools/agent/probe-runner.js --mode mock --repeats 3
+node tools/agent/tests/test-probe-runner.js
+```
+
+The runner covers a no-tool instruction, component-catalog lookup, simple and complex component generation, and a
+multi-page generation flow. It creates a new
+`AgentLoop`, broker client, and governed session for every case attempt; it retains one JSON report per invocation in
+`tools/agent/probe-results/`. Mock and live reports carry different `mode` and `source` fields and are never mixed.
+The report records each response code, session id, actual task id/type, resolved broker model, grants/scopes, ordered
+tool route and argument hashes, the validated DefinitionTemplate digest, success rate and outcome consistency. A
+generation case is successful only when validation returned `ok: true` for the generated definition and generate returned a package digest; a
+catalog case requires a successful catalog tool result. A case whose required task type does not match the broker
+runtime stops before sending its prompt and records a configuration failure. Mock results validate runner wiring and
+repeatability; they do not count as model or broker results.
+
+For a live run, provide the broker registration environment and use a task whose grants and quotas permit all selected
+cases:
+
+```bash
+node tools/agent/probe-runner.js --mode live --repeats 3
+```
+
+The cases include both `analysis` and `system_scaffold` task types. A live invocation uses the one `BROKER_TASK_ID`
+provided, so select a matching task or run a single case at a time with `--case`, for example
+`--case component-generation-simple`. Generation cases call `generate_scaffold` and consume the configured task's
+shared quota/output slot. Pass `--model <name>` only to intentionally exercise an allowed override; otherwise the
+broker default is used and recorded as `resolvedModel`. Container
+broker-only network isolation is checked separately by the existing `node tools/agent/tests/test-podman-governed-stack.js`
+harness; a mock runner pass does not stand in for that container check.
+
 - `--provider`, `--api-key`, and `--host` are ignored in governed mode
 
 - `--list-models` goes through broker `/api/v1/llm/models`
@@ -214,9 +277,9 @@ When the session holds the generation grants, the agent has three tools that map
 | `validate_definition` | `generation.definition.validate` | Validate a DefinitionTemplate; `ok: false` comes with structured errors to fix |
 | `generate_scaffold` | `generation.scaffold.generate` | Generate and package the prototype from the validated template; the broker decides the output location |
 
-For such a task (task type `system_scaffold`, or a generate grant whose scope carries `output_slot`; an agent holding only the catalog or validate grant keeps the general prompt) the system prompt starts from a short generation base prompt (no component list and no project manual, since the manual's CLI examples and field type tables conflict with the catalog and the agent has no file tool) and adds the workflow (catalog, write, validate and fix, generate, report) and the limits taken from the grants: remaining quota per tool, the page limit and the iteration limit. It also explains that a validate result may be truncated (`truncated`, `total_errors`) and that a call failing with `No available worker` can be repeated with the same arguments. It carries no secret, host path or output location. The payload stays `{ route, args, project_root }`.
+For such a task (task type `system_scaffold`, or a generate grant whose scope carries `output_slot`; an agent holding only the catalog or validate grant keeps the general prompt) the system prompt starts from a short generation base prompt (no component list and no project manual, since the manual's CLI examples and field type tables conflict with the catalog and the agent has no file tool) and adds the workflow (catalog, write, validate and fix, generate, the fixed JSON reply) and the limits taken from the grants: remaining quota per tool, the page limit and the iteration limit. It also explains that a validate result may be truncated (`truncated`, `total_errors`) and that a call failing with `No available worker` can be repeated with the same arguments. It carries no secret, host path or output location. The payload stays `{ route, args, project_root }`.
 
-The run is unattended, so a generation task that replies without a tool call before a package was generated gets one reminder. Some models, small local ones in particular, write the call as JSON in the reply text in both native and ReAct mode; until a generate succeeds, a generation task runs such calls (a JSON code block, also one without its closing fence, bare JSON, or a `<tool_call>` or `<tools>` wrapper holding an object with a string `name` and an object `arguments` nested at most 64 levels deep) as tool calls. In a generation task a name the session was not granted, written as text or called as a tool, is not run: the model gets an "unsupported tool" result that says there is no such tool and no tool writes the definition, and that it should write the DefinitionTemplate itself following the catalog example, pass it to `validate_definition` and then call `generate_scaffold`. A turn whose calls all use such names counts as a turn without progress and gets the same single reminder; when the same name comes back in the next such turn, the run ends with a summary that says why, before the iteration limit. Other agents never run reply text as a tool call.
+The run is unattended, so a generation task gets one reminder for a turn without progress before a package was generated: a reply without a tool call that is not the fixed JSON object (prose, a question, the definition or a tool call written as text), `{"type":"final","code":"completed"}` before `generate_scaffold` succeeded, or a turn whose calls all use names the session was not granted. Reply text is never run as a tool call, in any mode: a call written as a JSON block, bare JSON or a `<tool_call>` wrapper only counts as a reply that is not the fixed JSON object. After the reminder, a second such reply ends the run with `{"type":"failure","code":"invalid_response"}`, and a second early `completed` with `{"type":"failure","code":"generation_failed"}`. In a generation task a tool call whose name the session was not granted is not run: the model gets an "unsupported tool" result that says there is no such tool and no tool writes the definition, and that it should write the DefinitionTemplate itself following the catalog example, pass it to `validate_definition` and then call `generate_scaffold`. When the same name comes back in the next turn that calls nothing else, the run ends with `{"type":"refusal","code":"unsupported_request"}` before the iteration limit (the reason is logged to stderr); at the iteration limit a run ends with `{"type":"failure","code":"limit_reached"}`.
 
 Before a governed tool request is sent, an argument declared as an object or array that arrives as a string (a model server passes the raw text on when the model's JSON is broken) is parsed and sent as the parsed value. For `validate_definition` and `generate_scaffold`, a string that only lacks closing brackets is repaired (only brackets outside strings count, and only closing brackets are added: where the next closer does not match, before a comma inside an object that is directly followed by `{` or `[`, or at the end) and the tool result carries an `agent_note` that says how many were added. A string that still does not parse is answered locally with `ARGUMENT_JSON_INVALID` (the parameter, the error position and about 60 characters around it) and is not sent to the broker. The broker's schema check, the validator and the full validation in generate remain the final check. A denied request comes back as `[Governed] request denied: <policy reason>`; when a tool's quota is used up the reason is `Grant quota exhausted.`. Printing tool arguments never throws, and `--run` closes the broker session also when the run fails, so the generation watchdog ends the task at once instead of at its deadline.
 
@@ -227,6 +290,8 @@ Before a governed tool request is sent, an argument declared as an object or arr
 Use it only for development experiments where you explicitly want the agent process to poll LINE directly. The repo's current production-style ingress path is the worker-side bridge under:
 
 - [packages/csharp/workers/line-worker/README.md](../../packages/csharp/workers/line-worker/README.md)
+
+The listener runs in governed mode only and drives its own loop. A reply without a tool call is sent to the LINE user as text, so the fixed JSON reply of governed `--run` does not apply here (the listener says so in its own system message); such a reply is limited to 4096 characters by the governed executor. Tools run only as native tool calls: reply text is never parsed as a tool call, and when the broker reports that the model has no native tool calling the listener offers no tools.
 
 ## Podman Container
 

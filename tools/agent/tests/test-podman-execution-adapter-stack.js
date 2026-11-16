@@ -17,11 +17,13 @@ const { execFileSync } = require('child_process');
 const { pathToFileURL } = require('url');
 
 const {
+    FINAL_COMPLETED,
     ROOT,
     assertStackHardened,
     buildImages: buildStackImages,
     compose,
     containerEngine,
+    governedResponseLines,
 } = require('./lib/container-stack');
 
 const engine = containerEngine();
@@ -101,8 +103,7 @@ async function main() {
         ]),
         // a cold `dotnet build` can take longer than the 30 s default dispatch timeout
         POOL_DISPATCH_TIMEOUT_SECONDS: process.env.POOL_DISPATCH_TIMEOUT_SECONDS || '240',
-        AGENT_RUN: 'Apply the available patch with apply_patch, build with run_build_test, then reply with the exact text EXEC_ADAPTER_OK.',
-        STACK_RESPONSE_TEXT: 'EXEC_ADAPTER_OK',
+        AGENT_RUN: 'Apply the available patch with apply_patch, build with run_build_test, then finish the run.',
         BROKER_ROLE_ID: process.env.BROKER_ROLE_ID || 'role_reader',
         BROKER_TASK_TYPE: process.env.BROKER_TASK_TYPE || 'analysis',
         LINE_CHANNEL_ACCESS_TOKEN: process.env.LINE_CHANNEL_ACCESS_TOKEN || 'stack-test-token',
@@ -123,7 +124,9 @@ async function main() {
         assert.strictEqual(up.code, 0, `${engine} compose up failed.\n${up.stderr}`);
 
         const out = `${up.stdout}\n${up.stderr}`;
-        assert(out.includes('EXEC_ADAPTER_OK'), `Expected EXEC_ADAPTER_OK in agent output.\n${out}`);
+        // The agent prints only the fixed governed reply; the mock ends the run with it when both tool results match.
+        assert.deepStrictEqual(governedResponseLines(out, 'agent'), [FINAL_COMPLETED],
+            `Expected the agent to print exactly ${FINAL_COMPLETED}.\n${out}`);
         assert(out.includes('[governed] apply_patch'), `Expected governed apply_patch in output.\n${out}`);
         assert(out.includes('[governed] run_build_test'), `Expected governed run_build_test in output.\n${out}`);
         assert(out.includes('TOOL_RESULT_VERIFIED') && !out.includes('TOOL_RESULT_MISMATCH'),

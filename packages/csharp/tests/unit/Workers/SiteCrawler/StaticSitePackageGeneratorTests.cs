@@ -527,13 +527,19 @@ public class StaticSitePackageGeneratorTests : IDisposable
     [Fact]
     public void Generate_WhenPackageDirectoryAlreadyExists_RemovesStaleFilesBeforeWriting()
     {
+        var document = ComponentSchemaValidatorTests.BuildValidDocument();
+        var generator = new StaticSitePackageGenerator();
+        // Only a directory previously created by this generator is replaceable.
+        generator.Generate(document, new StaticSitePackageOptions
+        {
+            OutputDirectory = tempRoot,
+            PackageName = "clean-site",
+            EnforceQualityGate = true,
+        });
         var staleDirectory = Path.Combine(tempRoot, "clean-site");
         Directory.CreateDirectory(Path.Combine(staleDirectory, "components", "generated"));
         File.WriteAllText(Path.Combine(staleDirectory, "old.txt"), "stale");
         File.WriteAllText(Path.Combine(staleDirectory, "components", "generated", "OldComponent.js"), "stale");
-        var document = ComponentSchemaValidatorTests.BuildValidDocument();
-        var generator = new StaticSitePackageGenerator();
-
         var result = generator.Generate(document, new StaticSitePackageOptions
         {
             OutputDirectory = tempRoot,
@@ -549,6 +555,24 @@ public class StaticSitePackageGeneratorTests : IDisposable
             "old.txt",
             "components/generated/OldComponent.js",
         ]);
+    }
+
+    [Fact]
+    public void Generate_WhenDirectoryIsNotOwned_LeavesItsFilesUntouched()
+    {
+        var directory = Path.Combine(tempRoot, "user-files");
+        Directory.CreateDirectory(directory);
+        var file = Path.Combine(directory, "notes.txt");
+        File.WriteAllText(file, "user content");
+        var generate = () => new StaticSitePackageGenerator().Generate(
+            ComponentSchemaValidatorTests.BuildValidDocument(), new StaticSitePackageOptions
+            {
+                OutputDirectory = tempRoot,
+                PackageName = "user-files",
+                EnforceQualityGate = true,
+            });
+        generate.Should().Throw<InvalidOperationException>().WithMessage("*Refusing to overwrite*");
+        File.ReadAllText(file).Should().Be("user content");
     }
 
     [Fact]

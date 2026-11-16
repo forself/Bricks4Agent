@@ -98,11 +98,11 @@ podman compose --env-file "$HOME/.bricks4agent/agent-stack.env" -f tools/agent/c
 
 The generator prints the exact path it wrote; it differs from the default when `BRICKS4AGENT_SECRETS_DIR` is set.
 
-The default stack uses the bundled mock upstream and should end with the agent printing `STACK_OK`.
+The default stack uses the bundled mock upstream and should end with the agent printing `{"type":"final","code":"completed"}` as its only stdout line (progress and diagnostics go to stderr). A governed run never prints model text: its result is that fixed JSON object, and the agent's exit code is `0` for every model-level outcome (also a refusal or `{"type":"failure","code":"invalid_response"}`) and `1` only for an infrastructure failure, so read the JSON line, not the exit code, to see how a run ended.
 
 The smoke stack disables broker RAG seeding and embeddings so it only verifies the governed agent, broker LLM proxy, and worker attachment path. This avoids accidental dependence on a host-side Ollama embedding server.
 
-The default `npm run validate:podman-governed-stack` run also configures the mock upstream to request `read_file` once, so the test covers the agent submitting a broker-governed capability request and the broker dispatching it to `file-worker`. The mock answers `STACK_OK TOOL_RESULT_VERIFIED` only when the tool result it receives through the broker contains text from `README.html`, so a passing run proves the file worker really read the file (the `[governed] read_file` log line alone is printed before the tool runs).
+The default `npm run validate:podman-governed-stack` run also configures the mock upstream to request `read_file` once, so the test covers the agent submitting a broker-governed capability request and the broker dispatching it to `file-worker`. The mock logs `TOOL_RESULT_VERIFIED` and ends the run with `{"type":"final","code":"completed"}` only when the tool result it receives through the broker contains text from `README.html`; otherwise it logs `TOOL_RESULT_MISMATCH` and ends the run with `{"type":"failure","code":"tool_failed"}`. A passing run therefore proves the file worker really read the file (the `[governed] read_file` log line alone is printed before the tool runs). The mock sends tool calls in Ollama's own shape (`function.index`, an id only on every other call).
 
 OpenAI-compatible stack:
 
@@ -213,7 +213,7 @@ Knowing a principal id and a task id is not enough to register a session: the re
 - Outside Development and Testing the broker refuses to start when `DevelopmentSeed` is enabled without a usable secret (at least 32 characters, not a placeholder). Rotating the stack secrets with `--force` replaces the seeded credential on the next broker start.
 - The kill switch stops running agents: every token issued before it stops working (a token renewed by a heartbeat keeps the epoch of the token it replaces, so a heartbeat in progress during the kill switch does not yield a working token), and an agent that gets the kill switch rejection stops for good (it does not register again, also not after its token has expired). It does not revoke credentials, so a process started afterwards, including a container restarted by its restart policy, can still register with a valid credential. To keep an agent from running again, stop or deactivate it, cancel its task, or revoke its credential (`/api/v1/admin/registration-credentials/revoke`). Revoking a credential also ends the sessions registered with it, so the agent can neither renew its session nor register again (a registration in progress when the credential is revoked is refused and leaves no session, and a heartbeat checks that the session's credential has not been revoked); revoking by `principal_id` and `task_id` ends every session of that task.
 - Revoking only a session (`/api/v1/admin/revoke` with `target_type` `session`) does not stop the agent: it registers again with its credential, which is still valid. Revoke the credential instead.
-- When the broker refuses to register the agent again, the agent stops for good: no more heartbeats, registrations or broker calls; `--run` exits with an error and the LINE listener exits with a non-zero code. Network errors are still retried.
+- When the broker refuses to register the agent again, the agent stops for good: no more heartbeats, registrations or broker calls; `--run` ends with a failure reply on stdout (a registration that is refused when the agent starts exits with code 1) and the LINE listener exits with a non-zero code. Network errors are still retried.
 - A seeded credential that an operator revoked stays revoked across broker restarts as long as the configured secret stays the same (the broker logs a warning at startup). To allow registration again, rotate the secret (`gen-stack-secrets.mjs --force`, then recreate the stack with `down -v`).
 
 ## Container Hardening
@@ -280,7 +280,7 @@ You can override the defaults with environment variables before starting the sta
 ```powershell
 $env:BROKER_PORT = '5500'
 $env:STACK_MODEL = 'llama3.1'
-$env:AGENT_RUN = 'Read README.md and summarize it in one sentence.'
+$env:AGENT_RUN = 'Read README.md, then finish the run.'
 podman compose --env-file "$HOME/.bricks4agent/agent-stack.env" -f tools/agent/container/compose.yml up --build --abort-on-container-exit --exit-code-from agent
 ```
 
@@ -294,13 +294,13 @@ Supported overrides:
 
 - `STACK_MODEL`
 
-- `STACK_RESPONSE_TEXT`
+- `STACK_RESPONSE_TEXT` (the mock's final answer; empty by default, which means the fixed governed reply `{"type":"final","code":"completed"}`. Any other text makes the agent end with `{"type":"failure","code":"invalid_response"}`)
 
 - `STACK_TOOL_CALL`
 
 - `STACK_TOOL_PATH`
 
-- `STACK_TOOL_ARGS_JSON`, `STACK_TOOL_SEQUENCE_JSON` (several tool calls in order) and `STACK_EXPECT_TOOL_RESULTS_JSON` (text each tool result must contain before the mock answers `TOOL_RESULT_VERIFIED`)
+- `STACK_TOOL_ARGS_JSON`, `STACK_TOOL_SEQUENCE_JSON` (several tool calls in order) and `STACK_EXPECT_TOOL_RESULTS_JSON` (text each tool result must contain before the mock logs `TOOL_RESULT_VERIFIED` and ends the run with the fixed governed reply)
 
 - `POOL_DISPATCH_TIMEOUT_SECONDS` (default `30`)
 

@@ -10,6 +10,11 @@ const ID = /^[a-f0-9]{32}$/;
 const TITLE = /^[^<>\u0000-\u001f\u007f]{1,60}$/;
 const MAX_ENTRIES = 200;
 const MAX_FILE_BYTES = 256 * 1024;
+// 200 項一般頁面（每項約 20 KB）排版後約 4 MB；8 MB 是 native-router 單一路由本文的上限。
+export const MAX_LIBRARY_BUNDLE_BYTES = 8 * 1024 * 1024;
+// 排版後 bundle 內每個 JSON 節點至少佔 9 位元組（縮排、值、逗號與換行），
+// 所以通過大小檢查的 bundle 節點數不會超過這個值；匯入路由用它取代預設的 10,000。
+export const MAX_LIBRARY_BUNDLE_NODES = 1_000_000;
 const own = (value, keys) => value && typeof value === 'object' && !Array.isArray(value) &&
     Object.keys(value).sort().join('|') === [...keys].sort().join('|');
 const digest = entry => createHash('sha256').update(JSON.stringify(entry)).digest('hex');
@@ -63,17 +68,19 @@ function validateRecord(entry) {
         typeof entry.title !== 'string' || !TITLE.test(entry.title) ||
         typeof entry.created_at !== 'string' || Number.isNaN(Date.parse(entry.created_at)) ||
         !own(entry.source, ['entities', 'candidate_refs']) ||
-        !Array.isArray(entry.source.entities) || !Array.isArray(entry.source.candidate_refs) ||
+        !Array.isArray(entry.source.entities) || entry.source.entities.length > 4 ||
+        !Array.isArray(entry.source.candidate_refs) || entry.source.candidate_refs.length > 12 ||
         !own(entry.plan, Object.hasOwn(entry.plan || {}, 'flows')
             ? ['schema_version', 'items', 'flows'] : ['schema_version', 'items']) ||
         entry.plan.schema_version !== 1 || !Array.isArray(entry.plan.items) ||
-        entry.plan.items.length > 24 || (entry.kind === 'component' && entry.plan.items.length !== 1))
+        entry.plan.items.length > 24 || (entry.kind === 'component' && entry.plan.items.length !== 1) ||
+        (entry.kind === 'page' && entry.plan.items.length < 1))
         throw new TypeError('本地庫檔案格式無效。');
     const entityCodes = new Set(), fieldCodes = new Set(), refs = new Set();
     for (const entity of entry.source.entities) {
         if (!own(entity, ['code', 'label', 'fields']) || !/^E_[A-F0-9]{12}$/.test(entity.code) ||
             entityCodes.has(entity.code) || typeof entity.label !== 'string' ||
-            !TITLE.test(entity.label) || !Array.isArray(entity.fields) || entity.fields.length > 24)
+            !TITLE.test(entity.label) || !Array.isArray(entity.fields) || entity.fields.length < 1 || entity.fields.length > 12)
             throw new TypeError('本地庫資料區塊無效。');
         entityCodes.add(entity.code);
         for (const field of entity.fields) {
@@ -93,7 +100,46 @@ function validateRecord(entry) {
             throw new TypeError('本地庫元件參照無效。');
         refs.add(ref.ref);
     }
+    const draft = { schema_version: 1, preset: 'blank', title: '本地庫項目', goal: '', confirmed: true,
+        entities: entry.source.entities.length ? entry.source.entities.map(entity => ({
+            code: entity.code, label: entity.label,
+            fields: entity.fields.map(({ code, label, type, required }) => ({ code, label, type, required })),
+            examples: []
+        })) : [{ code: 'E_000000000001', label: '未綁定資料',
+            fields: [{ code: 'F_000000000001', label: '保留欄位', type: 'text', required: false }], examples: [] }],
+        roles: [{ code: 'R_000000000001', label: '本地驗證角色', actions: ['read'], vertical: 'self', horizontal: 'same_unit' }] };
+    const bindings = new Map(generateBindings(draft).map(binding => [binding.ref, binding]));
+    for (const item of entry.plan.items) {
+        if (item?.kind !== 'candidate') continue;
+        const binding = bindings.get(item.ref);
+        const source = entry.source.candidate_refs.find(ref => ref.ref === item.ref);
+        if (!binding || !source || source.entity_code !== binding.entity_code || source.kind !== binding.kind)
+            throw new TypeError('本地庫頁面元件來源參照無效。');
+    }
+    validatePagePlan(entry.plan, generateCandidates(draft), draft);
     return entry;
+}
+
+export function validateLibraryBundle(bundle) {
+    const compact = JSON.stringify(bundle);
+    const pretty = `${JSON.stringify(bundle, null, 2)}\n`;
+    if (!own(bundle, ['schema_version', 'items']) || bundle.schema_version !== 1 ||
+        !Array.isArray(bundle.items) || bundle.items.length > MAX_ENTRIES ||
+        Buffer.byteLength(compact, 'utf8') > MAX_LIBRARY_BUNDLE_BYTES ||
+        Buffer.byteLength(pretty, 'utf8') > MAX_LIBRARY_BUNDLE_BYTES)
+        throw new TypeError('本地庫匯入檔格式無效或超過大小/項目上限。');
+    const ids = new Set();
+    for (const item of bundle.items) {
+        if (!own(item, ['digest', 'entry']) || typeof item.digest !== 'string' ||
+            !/^[a-f0-9]{64}$/.test(item.digest) || item.digest !== digest(item.entry))
+            throw new TypeError('本地庫項目摘要無效。');
+        const entry = validateRecord(item.entry);
+        if (ids.has(entry.id)) throw new TypeError('匯入檔含重複項目代碼。');
+        ids.add(entry.id);
+        if (Buffer.byteLength(`${JSON.stringify(item, null, 2)}\n`, 'utf8') > MAX_FILE_BYTES)
+            throw new TypeError('本地庫項目超過大小上限。');
+    }
+    return bundle;
 }
 
 export function applyLibraryEntry(entry, draft, mapping) {
@@ -162,6 +208,42 @@ export class LocalTemplateLibrary {
             .map(({ id, kind, title, created_at, source }) => ({ id, kind, title, created_at,
                 entity_labels: source.entities.map(entity => entity.label) }));
     }
+    exportBundle() {
+        const items = this.list().map(({ kind, id }) => {
+            const entry = this.get(kind, id);
+            return { digest: digest(entry), entry };
+        }).sort((left, right) => left.entry.kind < right.entry.kind ? -1
+            : left.entry.kind > right.entry.kind ? 1
+                : left.entry.id < right.entry.id ? -1 : left.entry.id > right.entry.id ? 1 : 0);
+        const bundle = { schema_version: 1, items };
+        if (Buffer.byteLength(`${JSON.stringify(bundle, null, 2)}
+`, 'utf8') > MAX_LIBRARY_BUNDLE_BYTES)
+            throw new TypeError('本地庫超過單一匯出檔 8 MB 上限；請先移除部分項目再匯出。');
+        return validateLibraryBundle(bundle);
+    }
+    importBundle(bundle) {
+        validateLibraryBundle(bundle);
+        if (this.list().length + bundle.items.length > MAX_ENTRIES)
+            throw new TypeError('匯入後會超過本地庫項目上限。');
+        const files = bundle.items.map(({ entry }) => this.path(entry.kind, entry.id));
+        const existingIds = new Set(this.list().map(item => item.id));
+        if (bundle.items.some(({ entry }, index) => existingIds.has(entry.id) || existsSync(files[index])))
+            throw new LibraryConflictError('匯入項目代碼已存在；請先移除衝突項目或在來源另存為新項目。');
+        const created = [];
+        try {
+            for (let index = 0; index < bundle.items.length; index++) {
+                const envelope = bundle.items[index];
+                const file = files[index];
+                writeFileSync(file, `${JSON.stringify(envelope, null, 2)}\n`, { encoding: 'utf8', flag: 'wx' });
+                created.push(file);
+            }
+        } catch (error) {
+            for (const file of created) unlinkSync(file);
+            if (error?.code === 'EEXIST') throw new LibraryConflictError('匯入項目代碼已存在；沒有變更本地庫。');
+            throw error;
+        }
+        return { imported: created.length, ids: bundle.items.map(item => item.entry.id) };
+    }
     agentCatalog() {
         return this.list().map(summary => {
             const entry = this.get(summary.kind, summary.id);
@@ -187,8 +269,10 @@ export class LocalTemplateLibrary {
         if (this.list().length >= MAX_ENTRIES) throw new TypeError('本地庫已達項目上限。');
         const entry = createLibraryEntry(input);
         const file = this.path(entry.kind, entry.id);
-        writeFileSync(file, `${JSON.stringify({ digest: digest(entry), entry }, null, 2)}\n`,
-            { encoding: 'utf8', flag: 'wx' });
+        const serialized = `${JSON.stringify({ digest: digest(entry), entry }, null, 2)}\n`;
+        if (Buffer.byteLength(serialized, 'utf8') > MAX_FILE_BYTES)
+            throw new TypeError('本地庫項目超過大小上限。');
+        writeFileSync(file, serialized, { encoding: 'utf8', flag: 'wx' });
         return { id: entry.id, kind: entry.kind, title: entry.title, created_at: entry.created_at };
     }
     remove(kind, id) {
@@ -197,4 +281,8 @@ export class LocalTemplateLibrary {
         unlinkSync(this.path(kind, id));
         return true;
     }
+}
+
+export class LibraryConflictError extends Error {
+    constructor(message) { super(message); this.name = 'LibraryConflictError'; }
 }

@@ -184,6 +184,24 @@ function findBareInteractive(root, records) {
 }
 
 describe('DynamicToolRenderer', () => {
+    it('renders allowlisted semantic group elements with the existing class and aria-label contract', async () => {
+        const definition = createDefinition([{ type: 'slot', id: 'workspace-slot' }]);
+        definition.root.as = 'main';
+        definition.root.aria_label = 'Main workspace';
+        const { renderer } = await createMountedRenderer({ definition, factory: createFactory().factory });
+        const host = renderer.getHost('root');
+
+        expect(host.tagName).toBe('MAIN');
+        expect(host.classList.contains('dynamic-tool__group')).toBe(true);
+        expect(host.getAttribute('aria-label')).toBe('Main workspace');
+
+        const { renderer: defaultRenderer } = await createMountedRenderer({
+            definition: createDefinition([{ type: 'slot', id: 'default-slot' }]),
+            factory: createFactory().factory,
+        });
+        expect(defaultRenderer.getHost('root').tagName).toBe('DIV');
+    });
+
     it('uses the official LazyComponentFactory by default for components and TabContainer', async () => {
         const { factory } = createFactory();
         officialFactoryCreate.mockImplementation(factory.create);

@@ -7,7 +7,8 @@ services:
     environment:
       PORT: "11434"
       MOCK_MODEL: "${STACK_MODEL:-stack-test-model}"
-      MOCK_RESPONSE_TEXT: "${STACK_RESPONSE_TEXT:-STACK_OK}"
+      # Empty: the mock ends the run with the fixed governed reply {"type":"final","code":"completed"}.
+      MOCK_RESPONSE_TEXT: "${STACK_RESPONSE_TEXT:-}"
       MOCK_TOOL_CALL: "${STACK_TOOL_CALL:-}"
       MOCK_TOOL_PATH: "${STACK_TOOL_PATH:-README.md}"
       MOCK_TOOL_ARGS_JSON: "${STACK_TOOL_ARGS_JSON:-}"
@@ -323,7 +324,7 @@ services:
       AGENT_VERBOSE: "${AGENT_VERBOSE:-0}"
       AGENT_LINE_LISTEN: "${AGENT_LINE_LISTEN:-0}"
       AGENT_LINE_POLL_INTERVAL: "${AGENT_LINE_POLL_INTERVAL:-3000}"
-      AGENT_RUN: "${AGENT_RUN:-Reply with the exact text STACK_OK.}"
+      AGENT_RUN: "${AGENT_RUN:-This is a stack smoke test. Do not call a tool. Finish the run.}"
     # No volumes: the repository is NOT mounted into the agent (§13.4). /workspace is an
     # empty directory baked into the image that only serves as the logical root the
     # broker grants are scoped to; every read and write goes through the broker. The
