@@ -159,17 +159,47 @@ public sealed class HighLevelCommandParser
         return Create(HighLevelInputKind.Conversation, rawMessage!, trimmed, string.Empty, trimmed, normalized);
     }
 
+    /// <summary>
+    /// 只看字面：任何 <c>/revise 文字</c> 都讀成帶修訂內容的 Revise。它是不是訪談修訂要看訪談狀態，
+    /// 呼叫端必須再用 <see cref="HighLevelProjectInterviewCommand.ResolveFor"/> 判定。
+    /// </summary>
     public HighLevelProjectInterviewCommand ParseProjectInterviewCommand(string? rawMessage)
     {
-        var normalized = Normalize(rawMessage ?? string.Empty);
+        var trimmed = (rawMessage ?? string.Empty).Trim();
+        var normalized = Normalize(trimmed);
+        if (TryReadRevisionInput(normalized, "/revise", out var revisionInput) ||
+            TryReadRevisionInput(normalized, "\uFF0Frevise", out revisionInput))
+        {
+            return new HighLevelProjectInterviewCommand(true, ProjectInterviewCommand.Revise, revisionInput);
+        }
+
         return normalized switch
         {
             "/proj" or "\uFF0Fproj" => new HighLevelProjectInterviewCommand(true, ProjectInterviewCommand.StartProjectInterview),
             "/ok" or "\uFF0Fok" => new HighLevelProjectInterviewCommand(true, ProjectInterviewCommand.Approve),
-            "/revise" or "\uFF0Frevise" => new HighLevelProjectInterviewCommand(true, ProjectInterviewCommand.Revise),
             "/cancel" or "\uFF0Fcancel" => new HighLevelProjectInterviewCommand(true, ProjectInterviewCommand.Cancel),
             _ => new HighLevelProjectInterviewCommand(false, null)
         };
+    }
+
+    private static bool TryReadRevisionInput(string normalized, string command, out string revisionInput)
+    {
+        if (string.Equals(normalized, command, StringComparison.Ordinal))
+        {
+            revisionInput = string.Empty;
+            return true;
+        }
+
+        if (normalized.Length > command.Length &&
+            normalized.StartsWith(command, StringComparison.Ordinal) &&
+            char.IsWhiteSpace(normalized[command.Length]))
+        {
+            revisionInput = normalized[command.Length..].Trim();
+            return true;
+        }
+
+        revisionInput = string.Empty;
+        return false;
     }
 
     public bool IsHelpCommand(string message)

@@ -104,8 +104,18 @@ public class AuditService : IAuditService
             if (ev.PreviousEventHash != expectedPrevHash)
                 return false;
 
+            // Check the stored content as well as the chain. A saved digest alone
+            // cannot detect changes to details after the event was recorded.
+            if (ev.PayloadDigest != ComputeSha256(ev.Details))
+                return false;
+
             // 重新計算 hash 並驗證
-            var hashInput = $"{ev.PreviousEventHash}|{ev.TraceId}|{ev.TraceSeq}|{ev.EventType}|{ev.PayloadDigest}|{ev.OccurredAt:O}";
+            // RecordEvent always writes UTC. SQLite may return a DateTime without
+            // its Kind, while other providers may materialize a local DateTime.
+            var occurredAtUtc = ev.OccurredAt.Kind == DateTimeKind.Unspecified
+                ? DateTime.SpecifyKind(ev.OccurredAt, DateTimeKind.Utc)
+                : ev.OccurredAt.ToUniversalTime();
+            var hashInput = $"{ev.PreviousEventHash}|{ev.TraceId}|{ev.TraceSeq}|{ev.EventType}|{ev.PayloadDigest}|{occurredAtUtc:O}";
             var expectedHash = ComputeSha256(hashInput);
             if (ev.EventHash != expectedHash)
                 return false;

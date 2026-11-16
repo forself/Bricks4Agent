@@ -62,6 +62,10 @@ public class BrokerFixture : IAsyncLifetime
                 // 並寫入本機真正的受管工作區。
                 builder.UseSetting("Database:Path", _tempDbPath);
                 builder.UseSetting("HighLevelCoordinator:AccessRoot", _tempAccessRoot);
+                // Workflow tests share TestServer's single "unknown" IP. Keep
+                // unrelated test cases from exhausting each other's IP window;
+                // BrokerHardeningMiddlewareTests exercises 429 enforcement.
+                builder.UseSetting("Broker:IpRateLimit:Enabled", "false");
                 // 確認 draft 時不向本機模型詢問執行模型建議
                 builder.UseSetting("HighLevelExecutionModelPolicy:Enabled", "false");
 

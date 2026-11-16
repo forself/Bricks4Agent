@@ -215,8 +215,9 @@ public class HighLevelCoordinator
             });
         }
 
-        var projectInterviewCommand = _commandParser.ParseProjectInterviewCommand(trimmed);
         var projectInterviewDocument = await _projectInterviewStateService.LoadTaskDocumentAsync(channel, userId, cancellationToken);
+        // `/revise 文字` 只有在訪談已有可修訂的版本時才是訪談修訂；否則照原本的路徑處理（見 ResolveFor）。
+        var projectInterviewCommand = _commandParser.ParseProjectInterviewCommand(trimmed).ResolveFor(projectInterviewDocument);
 
         if (projectInterviewCommand.IsProjectInterview && projectInterviewCommand.Command is { } command)
         {
@@ -242,6 +243,7 @@ public class HighLevelCoordinator
                 profile,
                 projectInterviewDocument,
                 command,
+                projectInterviewCommand.RevisionInput,
                 cancellationToken);
 
             SaveUserProfile(channel, userId, profile);
@@ -684,6 +686,7 @@ public class HighLevelCoordinator
         HighLevelUserProfile profile,
         ProjectInterviewTaskDocument document,
         ProjectInterviewCommand command,
+        string? revisionInput,
         CancellationToken cancellationToken)
     {
         profile.LastDecision = HighLevelRouteMode.Production.ToString();
@@ -718,20 +721,34 @@ public class HighLevelCoordinator
                 };
             }
 
-            if (command == ProjectInterviewCommand.Revise &&
-                document.SessionState.CurrentPhase is ProjectInterviewPhase.AwaitUserReview or ProjectInterviewPhase.AwaitBuildConfirmation &&
-                document.CurrentProjectDefinition != null)
+            if (command == ProjectInterviewCommand.Revise && document.HasRevisableVersion)
             {
-                // 已批准、尚未建置時改為修訂：先撤下等待確認的建置 draft，回 y 才不會建置舊版本。
-                DiscardPendingInterviewDraft(channel, userId, profile);
                 var revisedState = _projectInterviewStateMachine.ApplyCommand(document.SessionState, command);
                 var refreshedDocument = document.WithSessionState(revisedState);
+                if (!TryApplyProjectInterviewRevision(refreshedDocument, revisionInput, out refreshedDocument, out var revisionError))
+                {
+                    return new HighLevelProcessResult
+                    {
+                        Mode = HighLevelRouteMode.Production,
+                        Reply = PrepareReplyWithoutGuide(profile, revisionError),
+                        Error = "project_interview_revision_invalid",
+                        DecisionReason = "project interview revision input was rejected"
+                    };
+                }
+
                 var refreshedCompileResult = _projectInterviewProjectDefinitionCompiler.Compile(
                     document.CurrentVersion + 1,
                     BuildCompileAssertions(refreshedDocument.Assertions));
                 var refreshedCompiled = refreshedDocument.WithCompiledDefinition(
                     refreshedCompileResult.Version,
                     refreshedCompileResult.ProjectDefinition);
+
+                // 修訂內容已通過驗證與編譯：在產生與上傳審查檔（耗時、非同步）之前就撤下舊設計等待確認的建置 draft，
+                // 這段期間並行送達的 y 才不會建置舊版本。無效的修訂在上面已經返回，draft 不動。
+                // profile 立刻存檔：否則並行的確認會從還留在資料庫裡的 profile 快照把剛撤下的 draft 還原回來。
+                if (DiscardPendingInterviewDraft(channel, userId, profile))
+                    SaveUserProfile(channel, userId, profile);
+
                 var renderedRevision = await RenderProjectInterviewReviewAsync(
                     channel,
                     userId,
@@ -1105,16 +1122,14 @@ public class HighLevelCoordinator
         {
             if (selected.IsConservativeEscape)
             {
-                var conservativeReset = document.ClearPendingOptions();
-                await _projectInterviewStateService.SaveTaskDocumentAsync(conservativeReset, cancellationToken);
                 return new HighLevelProcessResult
                 {
                     Mode = HighLevelRouteMode.Production,
                     Reply = PrepareReplyWithoutGuide(
                         profile,
                         BilingualProjectInterviewMessage(
-                            "了解。請更精確地描述目標模板家族，我會重新收斂。",
-                            "Understood. Describe the target template family more precisely and I will narrow again.")),
+                            $"了解。這個訪談階段只接受明確候選，尚未確認模板。請從保留的選項中選一個：\n{RenderRestatementOptions(document.PendingOptions)}",
+                            $"Understood. This interview stage accepts explicit candidates and has not confirmed a template. Choose one of the retained options:\n{RenderRestatementOptions(document.PendingOptions)}")),
                     DecisionReason = "project interview conservative template option selected"
                 };
             }
@@ -1188,6 +1203,101 @@ public class HighLevelCoordinator
         projectName = string.Empty;
         return false;
     }
+
+    private bool TryApplyProjectInterviewRevision(
+        ProjectInterviewTaskDocument document,
+        string? revisionInput,
+        out ProjectInterviewTaskDocument revisedDocument,
+        out string errorReply)
+    {
+        revisedDocument = document;
+        errorReply = BilingualProjectInterviewMessage(
+            "修訂格式無效。請使用 /revise project_scale=tool_page 或 /revise template_family=crud_admin；可同時提供兩個欄位。只接受明確欄位和值，原設計與待確認 draft 均保留。",
+            "Invalid revision format. Use /revise project_scale=tool_page or /revise template_family=crud_admin; both fields may be supplied. Only explicit fields and values are accepted, and the current design and pending draft remain unchanged.");
+
+        if (string.IsNullOrWhiteSpace(revisionInput))
+            return true;
+
+        var requested = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var assignment in revisionInput.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries))
+        {
+            var separator = assignment.IndexOf('=');
+            if (separator <= 0 || separator != assignment.LastIndexOf('=') || separator == assignment.Length - 1)
+                return false;
+
+            var key = assignment[..separator];
+            var value = assignment[(separator + 1)..].ToLowerInvariant();
+            if (key is not ("project_scale" or "template_family") || !requested.TryAdd(key, value))
+                return false;
+        }
+
+        if (requested.Count == 0)
+            return false;
+
+        var currentScale = GetConfirmedInterviewValue(document.Assertions, "project_scale=");
+        var currentTemplate = GetConfirmedInterviewValue(document.Assertions, "template_family=");
+        var projectScale = requested.GetValueOrDefault("project_scale", currentScale);
+        var templateFamily = requested.GetValueOrDefault("template_family", currentTemplate);
+        // 從這裡開始格式是對的，被拒的原因是值：回覆要講值，不能說成格式無效。
+        if (projectScale is not ("tool_page" or "mini_app" or "structured_app"))
+        {
+            errorReply = BilingualProjectInterviewMessage(
+                "修訂未套用：project_scale 只接受 tool_page、mini_app 或 structured_app。原設計與待確認 draft 均保留。",
+                "Revision not applied: project_scale must be tool_page, mini_app or structured_app. The current design and pending draft remain unchanged.");
+            return false;
+        }
+
+        var compatibleTemplates = _projectInterviewTemplateCatalogService.NarrowByScale(projectScale);
+        var matchedTemplate = compatibleTemplates.FirstOrDefault(candidate =>
+            string.Equals(candidate.TemplateId, templateFamily, StringComparison.OrdinalIgnoreCase));
+        if (matchedTemplate == null)
+        {
+            var available = string.Join(", ", compatibleTemplates.Select(candidate => candidate.TemplateId));
+            errorReply = BilingualProjectInterviewMessage(
+                $"修訂未套用：project_scale={projectScale} 可用的 template_family 為 {available}，修訂後的組合不在其中。原設計與待確認 draft 均保留。",
+                $"Revision not applied: with project_scale={projectScale} the available template_family values are {available}, and the revised combination is not one of them. The current design and pending draft remain unchanged.");
+            return false;
+        }
+
+        // 寫入 assertion 的是目錄中的 template id，不是使用者輸入的字串。
+        if (requested.ContainsKey("template_family"))
+            requested["template_family"] = matchedTemplate.TemplateId;
+
+        var timestamp = DateTimeOffset.UtcNow;
+        var assertions = document.Assertions.ToList();
+        foreach (var (key, value) in requested)
+        {
+            var prefix = key + "=";
+            for (var index = 0; index < assertions.Count; index++)
+            {
+                var assertion = assertions[index];
+                if (assertion.Status == AssertionStatus.Confirmed &&
+                    assertion.Statement.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    assertions[index] = assertion with
+                    {
+                        Status = AssertionStatus.Superseded,
+                        UpdatedAt = timestamp
+                    };
+                }
+            }
+
+            assertions.Add(new ProjectInterviewAssertion(
+                Guid.NewGuid().ToString("N"),
+                $"{key}={value}",
+                AssertionStatus.Confirmed,
+                "user revised through explicit /revise field assignment",
+                timestamp));
+        }
+
+        revisedDocument = document with { Assertions = assertions };
+        return true;
+    }
+
+    private static string GetConfirmedInterviewValue(IReadOnlyList<ProjectInterviewAssertion> assertions, string prefix)
+        => assertions.LastOrDefault(assertion => assertion.Status == AssertionStatus.Confirmed &&
+            assertion.Statement.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))?.Statement[prefix.Length..]
+            ?? string.Empty;
 
     private IReadOnlyList<RestatementOption> BuildProjectScaleOptions()
         => new[]

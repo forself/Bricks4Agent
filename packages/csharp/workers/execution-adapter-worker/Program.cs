@@ -20,9 +20,9 @@ using var loggerFactory = LoggerFactory.Create(builder =>
 
 var logger = loggerFactory.CreateLogger<WorkerHost>();
 
-var workerAuthType = config.GetValue<string>("Worker:Auth:WorkerType") ?? "execution-adapter-worker";
-var workerAuthKeyId = config.GetValue<string>("Worker:Auth:KeyId") ?? "";
-var workerAuthSharedSecret = config.GetValue<string>("Worker:Auth:SharedSecret") ?? "";
+var workerAuth = WorkerAuthSettings.Resolve(config.GetValue("Worker:Auth:AllowUnauthenticated", false),
+    config.GetValue<string>("Worker:Auth:WorkerType"), "execution-adapter-worker",
+    config.GetValue<string>("Worker:Auth:KeyId"), config.GetValue<string>("Worker:Auth:SharedSecret"));
 
 // ── Worker 配置 ──
 var workspaceRoot = config.GetValue<string>("Worker:SandboxRoot") ?? ".";
@@ -38,9 +38,9 @@ var options = new WorkerHostOptions
     WorkerId = config.GetValue<string>("Worker:WorkerId") ?? $"exec-wkr-{Guid.NewGuid():N}"[..20],
     MaxConcurrent = config.GetValue("Worker:MaxConcurrent", 2),
     HeartbeatIntervalSeconds = config.GetValue("Worker:HeartbeatIntervalSeconds", 5),
-    WorkerType = workerAuthType,
-    WorkerAuthKeyId = workerAuthKeyId,
-    WorkerAuthSharedSecret = workerAuthSharedSecret
+    WorkerType = workerAuth.WorkerType,
+    WorkerAuthKeyId = workerAuth.KeyId,
+    WorkerAuthSharedSecret = workerAuth.SharedSecret
 };
 
 // ── 建立 WorkerHost ──

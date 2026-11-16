@@ -315,6 +315,182 @@ public class ProjectInterviewGateTests : IClassFixture<BrokerFixture>
     }
 
     [Fact]
+    public async Task ExplicitRevision_SupersedesChangedAssertionsAndCreatesANewVersion()
+    {
+        var userId = $"line-proj-explicit-revise-{Guid.NewGuid():N}";
+        using (await _fixture.CompleteProjectInterviewToReviewAsync(userId)) { }
+        var firstVersion = await _fixture.ReadProjectInterviewReviewAsync("line", userId);
+
+        using var revise = await _fixture.SendHighLevelLineTextAsync(
+            "/revise project_scale=tool_page template_family=content_showcase", userId);
+        var data = revise.RootElement.GetProperty("data");
+        IsNullOrMissing(data, "error").Should().BeTrue();
+
+        var revised = await _fixture.ReadProjectInterviewReviewAsync("line", userId);
+        revised.CurrentVersion.Should().Be(firstVersion.CurrentVersion + 1);
+        revised.SessionState.CurrentPhase.Should().Be(ProjectInterviewPhase.AwaitUserReview);
+        revised.CurrentProjectDefinition!.ProjectScale.Should().Be("tool_page");
+        revised.CurrentProjectDefinition.TemplateFamily.Should().Be("content_showcase");
+        revised.Assertions.Should().Contain(assertion => assertion.Statement == "project_scale=mini_app" && assertion.Status == AssertionStatus.Superseded);
+        revised.Assertions.Should().Contain(assertion => assertion.Statement == "template_family=member_portal" && assertion.Status == AssertionStatus.Superseded);
+        revised.Assertions.Should().Contain(assertion => assertion.Statement == "project_scale=tool_page" && assertion.Status == AssertionStatus.Confirmed);
+        revised.Assertions.Should().Contain(assertion => assertion.Statement == "template_family=content_showcase" && assertion.Status == AssertionStatus.Confirmed);
+    }
+
+    [Fact]
+    public async Task InvalidExplicitRevision_KeepsThePriorDocumentAndPendingBuildDraft()
+    {
+        var userId = $"line-proj-invalid-revise-{Guid.NewGuid():N}";
+        using (await _fixture.CompleteProjectInterviewToReviewAsync(userId)) { }
+        using (await _fixture.SendHighLevelLineTextAsync("/ok", userId)) { }
+        var originalDocument = await _fixture.ReadProjectInterviewReviewAsync("line", userId);
+        var originalDraft = WithCoordinator(coordinator => coordinator.GetLineDraft(userId));
+        originalDraft.Should().NotBeNull();
+
+        using var rejected = await _fixture.SendHighLevelLineTextAsync(
+            "/revise project_scale=unknown template_family=content_showcase", userId);
+        var rejectedData = rejected.RootElement.GetProperty("data");
+        rejectedData.GetProperty("error").GetString().Should().Be("project_interview_revision_invalid");
+        rejectedData.GetProperty("reply").GetString().Should().Contain("原設計").And.Contain("draft");
+
+        var unchanged = await _fixture.ReadProjectInterviewReviewAsync("line", userId);
+        unchanged.CurrentVersion.Should().Be(originalDocument.CurrentVersion);
+        unchanged.SessionState.CurrentPhase.Should().Be(ProjectInterviewPhase.AwaitBuildConfirmation);
+        unchanged.Assertions.Should().BeEquivalentTo(originalDocument.Assertions);
+        WithCoordinator(coordinator => coordinator.GetLineDraft(userId)!.DraftId).Should().Be(originalDraft!.DraftId);
+
+        using var accepted = await _fixture.SendHighLevelLineTextAsync(
+            "/revise project_scale=tool_page template_family=content_showcase", userId);
+        IsNullOrMissing(accepted.RootElement.GetProperty("data"), "error").Should().BeTrue();
+        WithCoordinator(coordinator => coordinator.GetLineDraft(userId)).Should().BeNull("only the successfully revised design replaces its old pending build draft");
+    }
+
+    [Fact]
+    public async Task ReviseWithText_WithoutAnInterview_StaysAnOrdinaryProductionRequest()
+    {
+        // 沒有訪談：/revise 文字 與其他 / 前綴的請求一樣建立待確認的 draft，不被當成訪談指令。
+        var userId = $"line-revise-no-interview-{Guid.NewGuid():N}";
+        await _fixture.EnableLineProductionAsync(userId);
+
+        using (var revise = await _fixture.SendHighLevelLineTextAsync("/revise 童話故事", userId))
+        {
+            var data = revise.RootElement.GetProperty("data");
+            IsNullOrMissing(data, "error").Should().BeTrue();
+            GetProperty(data.GetProperty("draft"), "taskType").GetString().Should().Be("doc_gen");
+            data.GetProperty("reply").GetString().Should().NotContain("/proj").And.NotContain("修訂");
+        }
+
+        var draft = WithCoordinator(coordinator => coordinator.GetLineDraft(userId));
+        draft.Should().NotBeNull();
+        draft!.SourceInterviewVersion.Should().BeNull();
+        var state = await _fixture.ReadProjectInterviewRequirementsAsync("line", userId);
+        state.SessionState.CurrentPhase.Should().Be(ProjectInterviewPhase.Idle);
+        state.CurrentVersion.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task ReviseWithText_AfterTheInterviewWasCancelled_StaysAnOrdinaryProductionRequest()
+    {
+        // 訪談走到審查後取消：文件裡還留著編譯過的版本，但已經沒有可修訂的訪談。
+        var userId = $"line-revise-cancelled-{Guid.NewGuid():N}";
+        using (await _fixture.CompleteProjectInterviewToReviewAsync(userId)) { }
+        using (await _fixture.SendHighLevelLineTextAsync("/cancel", userId)) { }
+        var cancelled = await _fixture.ReadProjectInterviewReviewAsync("line", userId);
+
+        using (var revise = await _fixture.SendHighLevelLineTextAsync("/revise project_scale=tool_page", userId))
+        {
+            var data = revise.RootElement.GetProperty("data");
+            IsNullOrMissing(data, "error").Should().BeTrue();
+            IsNullOrMissing(data, "draft").Should().BeFalse("the text is a production request again");
+        }
+
+        var after = await _fixture.ReadProjectInterviewReviewAsync("line", userId);
+        after.SessionState.CurrentPhase.Should().Be(ProjectInterviewPhase.Cancelled);
+        after.CurrentVersion.Should().Be(cancelled.CurrentVersion);
+        after.Assertions.Should().BeEquivalentTo(cancelled.Assertions);
+        WithCoordinator(coordinator => coordinator.GetLineDraft(userId))!.SourceInterviewVersion.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task ReviseWithText_BeforeAnyVersionExists_IsStillAnInterviewAnswer()
+    {
+        // 訪談進行中但還沒有可修訂的版本：和加入修訂語法之前一樣，當作這個階段的回答（這裡不是有效的選項）。
+        var userId = $"line-revise-mid-interview-{Guid.NewGuid():N}";
+        await _fixture.EnableLineProductionAsync(userId);
+        using (await _fixture.SendHighLevelLineTextAsync("/proj", userId)) { }
+        using (await _fixture.SendHighLevelLineTextAsync($"#MidRevise{Guid.NewGuid():N}", userId)) { }
+        using (await _fixture.SendHighLevelLineTextAsync("2", userId)) { }
+
+        using (var revise = await _fixture.SendHighLevelLineTextAsync("/revise project_scale=tool_page", userId))
+        {
+            var data = revise.RootElement.GetProperty("data");
+            IsNullOrMissing(data, "error").Should().BeTrue();
+            data.GetProperty("reply").GetString().Should().Contain("請先選一個明確的模板選項");
+        }
+
+        var state = await _fixture.ReadProjectInterviewReviewAsync("line", userId);
+        state.SessionState.CurrentPhase.Should().Be(ProjectInterviewPhase.NarrowTemplateFamily);
+        state.CurrentProjectDefinition.Should().BeNull();
+        state.Assertions.Should().Contain(assertion => assertion.Statement == "project_scale=mini_app" && assertion.Status == AssertionStatus.Confirmed);
+        WithCoordinator(coordinator => coordinator.GetLineDraft(userId)).Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData("/revise 把首頁改成藍色", "修訂格式無效")]
+    [InlineData("/revise project_scale", "修訂格式無效")]
+    [InlineData("/revise style_profile=dark", "修訂格式無效")]
+    [InlineData("/revise project_scale=unknown", "project_scale 只接受")]
+    // tool_page 沒有 member_portal：格式正確，錯在組合
+    [InlineData("/revise project_scale=tool_page", "project_scale=tool_page 可用的 template_family 為")]
+    [InlineData("/revise template_family=no_such_template", "project_scale=mini_app 可用的 template_family 為")]
+    public async Task RejectedRevision_WhileAwaitingReview_ReportsTheRevisionError_AndChangesNothing(string message, string expectedReply)
+    {
+        var userId = $"line-revise-rejected-{Guid.NewGuid():N}";
+        using (await _fixture.CompleteProjectInterviewToReviewAsync(userId)) { }
+        var original = await _fixture.ReadProjectInterviewReviewAsync("line", userId);
+
+        using (var rejected = await _fixture.SendHighLevelLineTextAsync(message, userId))
+        {
+            var data = rejected.RootElement.GetProperty("data");
+            data.GetProperty("error").GetString().Should().Be("project_interview_revision_invalid");
+            var reply = data.GetProperty("reply").GetString();
+            reply.Should().Contain(expectedReply).And.Contain("原設計");
+            if (!expectedReply.Contains("格式"))
+                reply.Should().NotContain("格式無效", "the format was fine; the value was not");
+            IsNullOrMissing(data, "draft").Should().BeTrue();
+        }
+
+        var unchanged = await _fixture.ReadProjectInterviewReviewAsync("line", userId);
+        unchanged.CurrentVersion.Should().Be(original.CurrentVersion);
+        unchanged.SessionState.CurrentPhase.Should().Be(ProjectInterviewPhase.AwaitUserReview);
+        unchanged.Assertions.Should().BeEquivalentTo(original.Assertions);
+        WithCoordinator(coordinator => coordinator.GetLineDraft(userId)).Should().BeNull("the text was not turned into a production draft");
+    }
+
+    [Fact]
+    public async Task ConservativeTemplateChoice_RetainsCandidatesAndCanContinue()
+    {
+        var userId = $"line-proj-conservative-{Guid.NewGuid():N}";
+        await _fixture.EnableLineProductionAsync(userId);
+        using (await _fixture.SendHighLevelLineTextAsync("/proj", userId)) { }
+        using (await _fixture.SendHighLevelLineTextAsync($"#Conservative{Guid.NewGuid():N}", userId)) { }
+        using (await _fixture.SendHighLevelLineTextAsync("2", userId)) { }
+
+        using var conservative = await _fixture.SendHighLevelLineTextAsync("4", userId);
+        conservative.RootElement.GetProperty("data").GetProperty("reply").GetString()
+            .Should().Contain("候選").And.Contain("內容展示型");
+        var waiting = await _fixture.ReadProjectInterviewReviewAsync("line", userId);
+        waiting.SessionState.CurrentPhase.Should().Be(ProjectInterviewPhase.NarrowTemplateFamily);
+        waiting.PendingOptions.Should().NotBeEmpty();
+
+        using var selected = await _fixture.SendHighLevelLineTextAsync("1", userId);
+        IsNullOrMissing(selected.RootElement.GetProperty("data"), "error").Should().BeTrue();
+        var reviewed = await _fixture.ReadProjectInterviewReviewAsync("line", userId);
+        reviewed.SessionState.CurrentPhase.Should().Be(ProjectInterviewPhase.AwaitUserReview);
+        reviewed.CurrentProjectDefinition!.TemplateFamily.Should().Be("content_showcase");
+    }
+
+    [Fact]
     public async Task CancelledInterview_WithdrawsTheBuildDraft_SoYesAndLaterTextBuildNothing()
     {
         var userId = $"line-proj-ok-cancel-{Guid.NewGuid():N}";

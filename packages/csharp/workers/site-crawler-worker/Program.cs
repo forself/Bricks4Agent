@@ -6,10 +6,6 @@ using SiteCrawlerWorker.Models;
 using SiteCrawlerWorker.Services;
 using WorkerSdk;
 
-const string DefaultWorkerType = "site-crawler-worker";
-const string DefaultWorkerAuthKeyId = "REPLACE_WITH_SITE_CRAWLER_WORKER_KEY_ID";
-const string DefaultWorkerAuthSharedSecret = "REPLACE_WITH_SITE_CRAWLER_WORKER_SHARED_SECRET";
-
 // `reconstruct` subcommand: run one crawl -> reconstruct-package locally, without a broker.
 // Exercises the same production SiteReconstructPackageHandler the broker path uses.
 //   dotnet run --project packages/csharp/workers/site-crawler-worker -- reconstruct --url <start-url> [--out <dir>] [...]
@@ -57,9 +53,15 @@ if (isReconstruct)
     return await RunReconstructCliAsync();
 }
 
-var workerAuthType = GetConfiguredValue("Worker:Auth:WorkerType", DefaultWorkerType);
-var workerAuthKeyId = GetConfiguredValue("Worker:Auth:KeyId", DefaultWorkerAuthKeyId);
-var workerAuthSharedSecret = GetConfiguredValue("Worker:Auth:SharedSecret", DefaultWorkerAuthSharedSecret);
+var workerAuth = WorkerAuthSettings.Resolve(
+    config.GetValue("Worker:Auth:AllowUnauthenticated", false),
+    config.GetValue<string>("Worker:Auth:WorkerType"),
+    "site-crawler-worker",
+    config.GetValue<string>("Worker:Auth:KeyId"),
+    config.GetValue<string>("Worker:Auth:SharedSecret"),
+    "REPLACE_WITH_SITE_CRAWLER_WORKER_KEY_ID",
+    "REPLACE_WITH_SITE_CRAWLER_WORKER_SHARED_SECRET",
+    whitespaceUsesFallback: true);
 
 var options = new WorkerHostOptions
 {
@@ -68,9 +70,9 @@ var options = new WorkerHostOptions
     WorkerId = GetConfiguredValue("Worker:WorkerId", $"site-crawler-wkr-{Guid.NewGuid():N}"[..24]),
     MaxConcurrent = config.GetValue("Worker:MaxConcurrent", 2),
     HeartbeatIntervalSeconds = config.GetValue("Worker:HeartbeatIntervalSeconds", 5),
-    WorkerType = workerAuthType,
-    WorkerAuthKeyId = workerAuthKeyId,
-    WorkerAuthSharedSecret = workerAuthSharedSecret
+    WorkerType = workerAuth.WorkerType,
+    WorkerAuthKeyId = workerAuth.KeyId,
+    WorkerAuthSharedSecret = workerAuth.SharedSecret
 };
 
 var host = new WorkerHost(options, logger);
