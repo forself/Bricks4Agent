@@ -19,6 +19,7 @@ const NODE_TYPES = new Set(['group', 'component', 'tabs', 'slot']);
 const LAYOUT_MODES = new Set(['stack', 'row', 'grid']);
 const LAYOUT_GAPS = new Set(['none', 'xs', 'sm', 'md', 'lg', 'xl']);
 const LAYOUT_ALIGNS = new Set(['start', 'center', 'end', 'stretch']);
+const GROUP_ELEMENTS = new Set(['div', 'main', 'nav', 'header', 'footer', 'section', 'article', 'aside']);
 const DANGEROUS_KEYS = new Set([
     '__proto__',
     'prototype',
@@ -35,7 +36,7 @@ const DANGEROUS_KEYS = new Set([
 ]);
 const RESERVED_OPTION_KEYS = new Set(['container', 'containerid', 'target', 'element', 'tabs', 'content']);
 const TOP_LEVEL_KEYS = new Set(['schema_version', 'name', 'type', 'description', 'root']);
-const GROUP_KEYS = new Set(['type', 'id', 'layout', 'class_names', 'aria_label', 'children']);
+const GROUP_KEYS = new Set(['type', 'id', 'as', 'layout', 'class_names', 'aria_label', 'children']);
 const COMPONENT_KEYS = new Set(['type', 'id', 'component', 'options', 'bindings', 'events']);
 const TABS_KEYS = new Set(['type', 'id', 'options', 'events', 'class_names', 'aria_label', 'tabs']);
 const SLOT_KEYS = new Set(['type', 'id', 'class_names', 'aria_label']);
@@ -320,6 +321,9 @@ function validateNode(node, path, errors, context, depth = 0) {
     }
 
     if (node.type === 'group') {
+        if (node.as !== undefined && !GROUP_ELEMENTS.has(node.as)) {
+            errors.push(`${path}.as must be one of: ${[...GROUP_ELEMENTS].join(', ')}.`);
+        }
         validateLayout(node.layout, `${path}.layout`, errors);
         validateClasses(node.class_names, `${path}.class_names`, errors);
         validateAriaLabel(node.aria_label, `${path}.aria_label`, errors);

@@ -41,6 +41,25 @@ describe('tool page generator integration', () => {
         expect(result.errors.length).toBeGreaterThan(0);
     });
 
+    it('carries validated semantic group tags into the static definition and rejects unsafe tags', () => {
+        const semantic = definition();
+        semantic.root = {
+            type: 'group',
+            id: 'main-content',
+            as: 'main',
+            aria_label: 'Main content',
+            children: [{ type: 'slot', id: 'content-slot' }],
+        };
+        const generated = new PageGenerator().generate(semantic);
+        expect(generated.errors).toEqual([]);
+        expect(generated.code).toContain('"as": "main"');
+
+        semantic.root.as = 'iframe';
+        const rejected = new PageGenerator().generate(semantic);
+        expect(rejected.code).toBeNull();
+        expect(rejected.errors.join(' ')).toMatch(/\.as/);
+    });
+
     it('keeps authored descriptions out of generated comments', () => {
         const source = definition();
         source.description = '*/\nglobalThis.injected = true;\n/*';

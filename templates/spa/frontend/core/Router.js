@@ -48,6 +48,11 @@ export class Router {
         this._listeners = [];
         this._beforeHooks = [];
         this._afterHooks = [];
+        this._navigationId = 0;
+        this._contentNavigationId = 0;
+        this._activePages = [];
+        this._activeHost = null;
+        this._pendingNavigationHosts = new Map();
     }
 
     /**
@@ -154,42 +159,58 @@ export class Router {
      * 處理路由變化
      */
     async _handleRouteChange() {
+        // _navigationId 只代表「最新提出的導航」：仍在守衛階段的導航被更新的請求取代即放棄。
+        // 內容區的擁有權（_contentNavigationId）要等導航通過守衛或確定為 404 才移交，
+        // 所以被守衛拒絕的導航不會拆掉仍在載入的頁面，也不會讓 loading 卡住。
+        const navigationId = ++this._navigationId;
         const path = this._getCurrentPath();
         const { pathname, query } = this._parsePath(path);
-
-        this.query = query;
 
         // 匹配路由
         const matchResult = this._matchRoute(pathname, this.routes);
 
         if (!matchResult) {
             // 404 處理
+            this._claimContent(navigationId);
+            this.query = query;
+            const previousPages = this._activePages;
+            this._activePages = [];
+            this._activeHost?.remove();
+            this._activeHost = null;
+            await this._destroyPages(previousPages);
+            if (navigationId !== this._contentNavigationId) return;
+            this.currentPage = null;
             this._handle404(pathname);
+            // 被取代的載入不會再清除 loading，由接手內容區的 404 負責
+            this.store?.set('loading', false);
             return;
         }
 
         const { route, params, parentRoutes } = matchResult;
-        this.params = params;
 
         // 執行前置守衛
         const from = this.currentRoute;
         const to = { path: pathname, params, query, meta: route.meta || {} };
 
         const canProceed = await this._runBeforeHooks(to, from);
-        if (!canProceed) return;
+        if (!canProceed || navigationId !== this._navigationId) return;
 
         // 執行路由級別的前置守衛
         if (route.beforeEnter) {
             const result = await route.beforeEnter(to, from);
-            if (result === false) return;
+            if (result === false || navigationId !== this._navigationId) return;
             if (typeof result === 'string') {
                 this.navigate(result);
                 return;
             }
         }
 
-        // 載入並渲染頁面
-        await this._loadPage(route, parentRoutes);
+        // 載入並渲染頁面（通過守衛後才接手內容區與 params/query）
+        this._claimContent(navigationId);
+        this.params = params;
+        this.query = query;
+        const loaded = await this._loadPage(route, parentRoutes, navigationId);
+        if (!loaded || navigationId !== this._contentNavigationId) return;
 
         // 更新當前路由
         this.currentRoute = route;
@@ -297,14 +318,24 @@ export class Router {
     /**
      * 載入頁面
      */
-    async _loadPage(route, parentRoutes) {
+    async _loadPage(route, parentRoutes, navigationId = this._contentNavigationId) {
+        const mountedPages = [];
+        let contentArea = null;
+        let navigationHost = null;
         try {
             this.store?.set('loading', true);
 
-            // 銷毀當前頁面
-            if (this.currentPage && this.currentPage.destroy) {
-                this.currentPage.destroy();
-            }
+            if (navigationId !== this._contentNavigationId) return false;
+            const previousPages = this._activePages;
+            this._activePages = [];
+            this.currentPage = null;
+            this._activeHost?.remove();
+            this._activeHost = null;
+            await this._destroyPages(previousPages);
+            if (navigationId !== this._contentNavigationId) return false;
+
+            contentArea = this.layout?.getContentArea?.();
+            if (!contentArea) return true;
 
             // 取得頁面元件
             let PageComponent = route.component;
@@ -314,6 +345,16 @@ export class Router {
                 const module = await PageComponent();
                 PageComponent = module.default || module;
             }
+            if (navigationId !== this._contentNavigationId) return false;
+
+            // Page mount contract: each navigation receives one connected host and may retain
+            // it for later rendering. The wrapper uses display:contents to avoid adding a layout box;
+            // its DOM presence is intentional, so selectors may see [data-router-navigation-host].
+            navigationHost = (contentArea.ownerDocument || document).createElement('div');
+            navigationHost.setAttribute('data-router-navigation-host', String(navigationId));
+            navigationHost.style.setProperty('display', 'contents');
+            contentArea.replaceChildren(navigationHost);
+            this._pendingNavigationHosts.set(navigationId, navigationHost);
 
             // 建立頁面實例
             const page = new PageComponent({
@@ -324,39 +365,76 @@ export class Router {
                 query: this.query,
                 meta: route.meta || {}
             });
+            mountedPages.push(page);
 
-            // 渲染到內容區
-            const contentArea = this.layout.getContentArea();
-            if (contentArea) {
-                contentArea.innerHTML = '';
-
-                // 處理巢狀路由
-                if (parentRoutes.length > 0) {
-                    await this._renderNestedRoutes(parentRoutes, page, contentArea);
-                } else {
-                    page.mount(contentArea);
-                }
+            // The host is already connected, but remains navigation-scoped until mount completes.
+            if (parentRoutes.length > 0) {
+                await this._renderNestedRoutes(parentRoutes, page, navigationHost, mountedPages, navigationId);
+            } else {
+                await page.mount(navigationHost);
             }
 
+            if (navigationId !== this._contentNavigationId) {
+                this._pendingNavigationHosts.delete(navigationId);
+                navigationHost.remove();
+                await this._destroyPages(mountedPages);
+                return false;
+            }
+
+            this._pendingNavigationHosts.delete(navigationId);
+            this._activeHost = navigationHost;
             this.currentPage = page;
+            this._activePages = mountedPages;
 
             // 更新頁面標題
             if (route.meta?.title) {
                 document.title = route.meta.title;
             }
 
+            return true;
         } catch (error) {
+            this._pendingNavigationHosts.delete(navigationId);
+            navigationHost?.remove();
+            await this._destroyPages(mountedPages);
+            if (navigationId !== this._contentNavigationId) return false;
             console.error('[Router] 載入頁面失敗:', error);
             this._handleError(error);
+            return false;
         } finally {
-            this.store?.set('loading', false);
+            if (navigationId === this._contentNavigationId) this.store?.set('loading', false);
+        }
+    }
+
+    async _destroyPages(pages) {
+        for (let index = pages.length - 1; index >= 0; index -= 1) {
+            try {
+                await pages[index]?.destroy?.();
+            } catch (error) {
+                console.error('[Router] 頁面清理失敗:', error);
+            }
+        }
+    }
+
+    /**
+     * 接手內容區：之後只有這次導航可以渲染頁面與變更 loading
+     */
+    _claimContent(navigationId) {
+        this._contentNavigationId = navigationId;
+        this._detachPendingNavigationHosts(navigationId);
+    }
+
+    _detachPendingNavigationHosts(currentNavigationId) {
+        for (const [navigationId, host] of this._pendingNavigationHosts) {
+            if (navigationId === currentNavigationId) continue;
+            host.remove();
+            this._pendingNavigationHosts.delete(navigationId);
         }
     }
 
     /**
      * 渲染巢狀路由
      */
-    async _renderNestedRoutes(parentRoutes, childPage, container) {
+    async _renderNestedRoutes(parentRoutes, childPage, container, mountedPages = [], navigationId = this._contentNavigationId) {
         let currentContainer = container;
 
         for (const parentRoute of parentRoutes) {
@@ -366,6 +444,7 @@ export class Router {
                 const module = await ParentComponent();
                 ParentComponent = module.default || module;
             }
+            if (navigationId !== this._contentNavigationId) return;
 
             const parentPage = new ParentComponent({
                 router: this,
@@ -376,7 +455,9 @@ export class Router {
                 meta: parentRoute.meta || {}
             });
 
-            parentPage.mount(currentContainer);
+            mountedPages.push(parentPage);
+            await parentPage.mount(currentContainer);
+            if (navigationId !== this._contentNavigationId) return;
 
             // 取得子路由出口
             const outlet = parentPage.getRouterOutlet?.() ||
@@ -388,7 +469,10 @@ export class Router {
         }
 
         // 渲染最終的子頁面
-        childPage.mount(currentContainer);
+        const childIndex = mountedPages.indexOf(childPage);
+        if (childIndex >= 0) mountedPages.splice(childIndex, 1);
+        mountedPages.push(childPage);
+        await childPage.mount(currentContainer);
     }
 
     /**

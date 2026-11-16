@@ -358,8 +358,8 @@ export class DynamicToolRenderer {
         }
     }
 
-    _createHost(node, className, parent) {
-        const host = this._document.createElement('div');
+    _createHost(node, className, parent, tagName = 'div') {
+        const host = this._document.createElement(tagName);
         host.classList.add(className);
         host.setAttribute('data-tool-node', node.id);
         host.id = `dynamic-tool-${this._sequence}-${node.id}`;
@@ -371,7 +371,7 @@ export class DynamicToolRenderer {
     }
 
     _renderGroup(node, parent) {
-        const host = this._createHost(node, 'dynamic-tool__group', parent);
+        const host = this._createHost(node, 'dynamic-tool__group', parent, node.as || 'div');
         const layout = node.layout || {};
         if (layout.mode) host.classList.add(`dynamic-tool--${layout.mode}`);
         if (layout.gap) host.classList.add(`dynamic-tool--gap-${layout.gap}`);
