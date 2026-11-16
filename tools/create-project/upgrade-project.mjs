@@ -6,8 +6,12 @@ import { existsSync, readFileSync, writeFileSync, copyFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+// 必須涵蓋 template/scripts 的每一支 .mjs:機制腳本彼此 import(b4a-lock、snapshot-integrity…)
+// 或以路徑 spawn(verify-sealed、module-analysis),漏列任何一支,升級後的專案就跑不起來。
+// tests/upgrade-project.test.mjs 會擋下漏列。
 const MECHANISM_FILES = [
-    'resolve-b4a.mjs', 'dev-link.mjs', 'sync-lib.mjs', 'publish.mjs', 'dev.mjs', 'verify-sealed.mjs'
+    'resolve-b4a.mjs', 'b4a-lock.mjs', 'dev-link.mjs', 'sync-lib.mjs', 'snapshot-integrity.mjs',
+    'publish.mjs', 'publish-policy.mjs', 'module-analysis.mjs', 'dev.mjs', 'verify-sealed.mjs'
 ];
 
 const args = process.argv.slice(2);

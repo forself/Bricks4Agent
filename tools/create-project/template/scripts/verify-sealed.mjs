@@ -3,8 +3,18 @@
 // 逐一解析:必須 (a) 不逃出 dist 根 (b) 目標檔案存在;另掃禁止樣式(腳手架外部路徑)。
 // 用法:node scripts/verify-sealed.mjs <distDir>
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import * as vm from 'node:vm';
 import path from 'node:path';
 import process from 'node:process';
+import { fileURLToPath } from 'node:url';
+
+if (typeof vm.SourceTextModule !== 'function') {
+    const resumed = spawnSync(process.execPath, ['--experimental-vm-modules', fileURLToPath(import.meta.url), ...process.argv.slice(2)], {
+        stdio: 'inherit', env: process.env,
+    });
+    process.exit(resumed.status ?? 1);
+}
 
 const distRoot = path.resolve(process.argv[2] || 'dist');
 if (!existsSync(distRoot)) { console.error('dist 不存在:' + distRoot); process.exit(2); }
@@ -12,6 +22,8 @@ if (!existsSync(distRoot)) { console.error('dist 不存在:' + distRoot); proces
 const FORBIDDEN = [/packages\/javascript\/browser/, /Bricks4Agent/];
 const violations = [];
 let filesScanned = 0, refsChecked = 0;
+const moduleAnalysisCache = new Map();
+const { analyzeJavaScriptModule } = await import('./module-analysis.mjs');
 
 function* walk(dir) {
     for (const name of readdirSync(dir)) {
@@ -21,23 +33,25 @@ function* walk(dir) {
     }
 }
 
-// JS 剝註解(JSDoc @type{import('...')} 之類非執行期引用不驗;整行 // 與 /* */ 區塊)
-function stripJsComments(s) {
-    return s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
-}
-
-// 各檔型的「字面相對引用」抽取器(變數組字串無法靜態解析者略過)
+// Use Node's module parser for import/export specifiers so comments and multiline syntax stay intact.
 function extractRefs(file, text) {
     const refs = [];
     const push = (m) => { if (m) refs.push(m); };
     if (file.endsWith('.js') || file.endsWith('.mjs')) {
-        text = stripJsComments(text);
-        for (const re of [
-            /(?:import|export)\s[^'"]*from\s*['"]([^'"]+)['"]/g,   // import ... from / export ... from
-            /import\s*\(\s*['"]([^'"]+)['"]\s*\)/g,                 // dynamic import('...')
-            /import\s*['"]([^'"]+)['"]/g,                           // side-effect import '...'
-            /new URL\(\s*['"]([^'"]+)['"]\s*,\s*import\.meta\.url/g // new URL('...', import.meta.url)
-        ]) for (const m of text.matchAll(re)) push(m[1]);
+        let analysis = moduleAnalysisCache.get(file);
+        if (!analysis) {
+            try { analysis = analyzeJavaScriptModule(text, file); }
+            catch (error) {
+                // 傳統 script(非 ES 模組,例如 sloppy 語法的舊程式)不可能有靜態 import/export;
+                // 能以 Script 編譯時沿用 2.1 的字面 import() 檢查,既有專案不因此無法發佈。
+                try { new vm.Script(text, { filename: file }); } catch { throw error; }
+                const code = text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+                analysis = { imports: [], dynamicImports: [...code.matchAll(/import\s*\(\s*['"]([^'"]+)['"]\s*\)/g)].map((m) => m[1]) };
+            }
+            moduleAnalysisCache.set(file, analysis);
+        }
+        refs.push(...analysis.imports, ...analysis.dynamicImports);
+        for (const m of text.matchAll(/new URL\(\s*['"]([^'"]+)['"]\s*,\s*import\.meta\.url/g)) push(m[1]);
     } else if (file.endsWith('.html')) {
         for (const m of text.matchAll(/(?:src|href)\s*=\s*["']([^"']+)["']/g)) push(m[1]);
     } else if (file.endsWith('.css')) {
@@ -58,7 +72,10 @@ for (const file of walk(distRoot)) {
     const text = readFileSync(file, 'utf8');
     const rel = path.relative(distRoot, file);
 
-    for (const ref of extractRefs(file, text)) {
+    let refs;
+    try { refs = extractRefs(file, text); }
+    catch (error) { violations.push(`[JavaScript 模組解析失敗] ${rel} → ${error.message}`); continue; }
+    for (const ref of refs) {
         if (skip(ref)) continue;
         // 禁止樣式只針對「實際引用」(全文掃會誤傷註解)
         if (FORBIDDEN.some(re => re.test(ref))) { violations.push(`[外部腳手架引用] ${rel} → ${ref}`); continue; }

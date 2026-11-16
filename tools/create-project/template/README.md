@@ -21,7 +21,8 @@
 ```powershell
 node scripts/dev-link.mjs     # 一次性:lib 轉 junction(建立專案時已自動執行)
 node scripts/dev.mjs          # http://127.0.0.1:8123/src/frontend/index.html
-node scripts/publish.mjs      # 發佈:dist\(快照 + SNAPSHOT.json 憑證 + 封閉性驗證)
+node scripts/publish.mjs      # 發佈:dist\(完整快照 + SNAPSHOT.json 憑證 + 封閉性驗證)
+# 實驗性裁剪：建立 publish-policy.json，或 node scripts/publish.mjs --policy <檔案>（限制見 docs/dev-and-publish.md）
 ```
 
 ## 規則
