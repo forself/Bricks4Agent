@@ -16,7 +16,8 @@ import { componentEvents } from './component-events.mjs';
 import { SqlitePrototypeBackend } from './sqlite-backend.mjs';
 import { DemoSessions, routePrototypeApi } from './prototype-api.mjs';
 import { guardRoute, inspectRequest, NativeRouter, RequestLimiter, RouteError, sendJson } from './native-router.mjs';
-import { applyLibraryEntry, LocalTemplateLibrary } from './local-library.mjs';
+import { applyLibraryEntry, LibraryConflictError, LocalTemplateLibrary,
+    MAX_LIBRARY_BUNDLE_BYTES, MAX_LIBRARY_BUNDLE_NODES } from './local-library.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
@@ -30,6 +31,9 @@ const WORKBENCH_ROUTES = new NativeRouter()
     .register({ path: /^\/api\/prototype\/(?<id>[a-f0-9]{32})(?:\/.*)?$/, methods: ['GET', 'POST', 'PUT', 'DELETE'], kind: 'prototype' })
     .register({ path: '/api/build', methods: ['POST'], kind: 'build', body: 'json' })
     .register({ path: '/api/library', methods: ['GET'], kind: 'library-list' })
+    .register({ path: '/api/library/export', methods: ['GET'], kind: 'library-export' })
+    .register({ path: '/api/library/import', methods: ['POST'], kind: 'library-import',
+        body: { type: 'json', maxBytes: MAX_LIBRARY_BUNDLE_BYTES, maxNodes: MAX_LIBRARY_BUNDLE_NODES } })
     .register({ path: '/api/library/apply', methods: ['POST'], kind: 'library-apply', body: 'json' })
     .register({ path: /^\/api\/library\/(?<libraryKind>component|page)$/, methods: ['POST'],
         kind: 'library-save', body: 'json' })
@@ -264,6 +268,15 @@ export function createPresaleServer({ libraryRoot = path.join(HERE, '.local-libr
             const { body } = await guardRoute(req, request, route);
             if (route.kind === 'library-list') return json(res, 200,
                 { schema_version: 1, items: getLibrary().list() });
+            if (route.kind === 'library-export') {
+                const bundle = getLibrary().exportBundle();
+                res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8',
+                    'Content-Disposition': 'attachment; filename="b4a-local-library.json"',
+                    'X-Content-Type-Options': 'nosniff' });
+                return res.end(JSON.stringify(bundle, null, 2) + '\n');
+            }
+            if (route.kind === 'library-import')
+                return json(res, 200, getLibrary().importBundle(body));
             if (route.kind === 'library-item') {
                 const item = getLibrary().get(route.params.libraryKind, route.params.id);
                 if (!item) return json(res, 404, { error: '本地庫項目不存在。' });
@@ -357,7 +370,8 @@ export function createPresaleServer({ libraryRoot = path.join(HERE, '.local-libr
                                 lookup: ['filters', 'target_instance_id', 'field_code'], create: ['values'],
                                 update: ['source_table_instance_id', 'values'],
                                 delete: ['source_table_instance_id'] },
-                            write: { mode: 'demo_only', trigger_component: 'BasicButton',
+                            write: { backends: ['sqlite', 'sqlite-formal'], formal_authorization: 'formal_policy',
+                                trigger_component: 'BasicButton',
                                 event: 'click', value_fields: ['input_instance_id', 'field_code'],
                                 max_values: 12, create_required_fields: 'all',
                                 source: { component: 'DataTable', query_operation: 'query',
@@ -384,6 +398,7 @@ export function createPresaleServer({ libraryRoot = path.join(HERE, '.local-libr
             return json(res, 404, { error: '找不到頁面。' });
         } catch (error) {
             const status = error instanceof RouteError ? error.status
+                : error instanceof LibraryConflictError ? 409
                 : error instanceof TypeError || error instanceof SyntaxError ? 400 : 500;
             return json(res, status, { error: status === 500 ? '產生雛型時發生錯誤。' : error.message });
         }

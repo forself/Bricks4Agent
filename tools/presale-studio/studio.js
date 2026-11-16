@@ -104,6 +104,38 @@ async function removeLibrary(item) {
     } catch (error) { showStatus(`無法移除：${error.message}`); }
 }
 
+async function exportLibrary() {
+    try {
+        const response = await fetch('/api/library/export');
+        if (!response.ok) {
+            const result = await response.json();
+            throw new Error(result.error || '本地庫匯出失敗。');
+        }
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const link = el('a');
+        link.href = url;
+        link.download = 'b4a-local-library.json';
+        document.body.append(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        showStatus('本地元件與頁面庫已匯出為 JSON 檔。');
+    } catch (error) { showStatus(`無法匯出本地庫：${error.message}`); }
+}
+
+async function importLibrary(file) {
+    try {
+        if (file.size > 8 * 1024 * 1024) throw new Error('匯入檔不得超過 8 MB。');
+        const bundle = JSON.parse(await file.text());
+        const result = await libraryRequest('/api/library/import', { method: 'POST',
+            headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(bundle) });
+        await refreshLibrary();
+        showStatus(`已匯入 ${result.imported} 個本地庫項目。`);
+    } catch (error) { showStatus(`無法匯入本地庫：${error.message}`); }
+    finally { $('library-import-file').value = ''; }
+}
+
 function compatibleEntity(source, target, entry) {
     if (entry.source.candidate_refs.some(ref => ref.entity_code === source.code))
         return source.fields.length === target.fields.length &&
@@ -215,6 +247,11 @@ async function openLibrary(kind, id) {
 
 $('library-save-component').addEventListener('click', () => { void saveLibrary('component'); });
 $('library-save-page').addEventListener('click', () => { void saveLibrary('page'); });
+$('library-export').addEventListener('click', () => { void exportLibrary(); });
+$('library-import-file').addEventListener('change', event => {
+    const file = event.currentTarget.files?.[0];
+    if (file) void importLibrary(file);
+});
 
 function persist() {
     let snapshot;

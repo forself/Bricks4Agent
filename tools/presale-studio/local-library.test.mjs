@@ -1,11 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { starterDraft } from './model.mjs';
 import { defaultCandidateWiring, generateBindings, generateCandidates, validatePagePlan } from './page-planner.mjs';
-import { applyLibraryEntry, createLibraryEntry, LocalTemplateLibrary } from './local-library.mjs';
+import { applyLibraryEntry, createLibraryEntry, LocalTemplateLibrary, MAX_LIBRARY_BUNDLE_BYTES,
+    validateLibraryBundle } from './local-library.mjs';
 
 function fixture() {
     const source = starterDraft('blank'), target = starterDraft('blank');
@@ -90,4 +92,58 @@ test('local library saves immutable JSON entries and removes only a selected ent
             throw new Error('Unexpected library test path');
         rmSync(resolved, { recursive: true, force: true });
     }
+});
+
+test('portable bundles validate every record before import and reject all id conflicts without partial writes', () => {
+    const roots = [0, 1, 2].map(() => mkdtempSync(path.join(os.tmpdir(), 'b4a-library-transfer-')));
+    try {
+        const { source, plan } = fixture();
+        const original = new LocalTemplateLibrary(roots[0]);
+        original.save({ kind: 'page', title: '移轉頁面', draft: source, plan });
+        const bundle = original.exportBundle();
+        const restored = new LocalTemplateLibrary(roots[1]);
+        assert.deepEqual(restored.importBundle(bundle).ids, bundle.items.map(item => item.entry.id));
+        assert.equal(restored.get('page', bundle.items[0].entry.id).title, '移轉頁面');
+
+        const invalid = structuredClone(bundle);
+        invalid.items.push({ ...invalid.items[0], entry: { ...invalid.items[0].entry, unexpected: true } });
+        assert.throws(() => new LocalTemplateLibrary(roots[2]).importBundle(invalid), /摘要|格式/);
+        assert.deepEqual(new LocalTemplateLibrary(roots[2]).list(), []);
+        const invalidPlan = structuredClone(bundle);
+        invalidPlan.items[0].entry.plan.items[0].unexpected = true;
+        invalidPlan.items[0].digest = createHash('sha256').update(JSON.stringify(invalidPlan.items[0].entry)).digest('hex');
+        assert.throws(() => new LocalTemplateLibrary(roots[2]).importBundle(invalidPlan), /頁面規劃含有未知元件/);
+        assert.deepEqual(new LocalTemplateLibrary(roots[2]).list(), []);
+        const invalidFlow = structuredClone(bundle);
+        invalidFlow.items[0].entry.plan.flows = [{ script: 'alert(1)' }];
+        invalidFlow.items[0].digest = createHash('sha256').update(JSON.stringify(invalidFlow.items[0].entry)).digest('hex');
+        assert.throws(() => new LocalTemplateLibrary(roots[2]).importBundle(invalidFlow), /流程|page-plan|無效|無法/);
+        assert.deepEqual(new LocalTemplateLibrary(roots[2]).list(), []);
+
+        const another = new LocalTemplateLibrary(path.join(roots[0], 'another'));
+        another.save({ kind: 'page', title: '新頁面', draft: source, plan });
+        const mixed = { schema_version: 1, items: [...bundle.items, ...another.exportBundle().items] };
+        assert.throws(() => restored.importBundle(mixed), /代碼已存在/);
+        assert.equal(restored.list().length, 1, 'a conflicting bundle must not import its non-conflicting item either');
+        assert.throws(() => restored.importBundle({ ...bundle, unexpected: 1 }), /格式/);
+        const badDigest = structuredClone(bundle);
+        badDigest.items[0].digest = '0'.repeat(64);
+        assert.throws(() => restored.importBundle(badDigest), /摘要無效/);
+    } finally {
+        for (const root of roots) {
+            const resolved = path.resolve(root), temp = path.resolve(os.tmpdir());
+            if (!resolved.startsWith(`${temp}${path.sep}`) || !path.basename(resolved).startsWith('b4a-library-transfer-'))
+                throw new Error('Unexpected library test path');
+            rmSync(resolved, { recursive: true, force: true });
+        }
+    }
+});
+
+test('portable bundles enforce item-count and serialized-size ceilings', () => {
+    const tooMany = { schema_version: 1, items: Array.from({ length: 201 }, () => ({ digest: '0'.repeat(64), entry: {} })) };
+    assert.throws(() => validateLibraryBundle(tooMany), /大小\/項目上限/);
+    const oversizedEntry = { payload: 'x'.repeat(MAX_LIBRARY_BUNDLE_BYTES) };
+    const oversized = { schema_version: 1, items: [{ entry: oversizedEntry,
+        digest: createHash('sha256').update(JSON.stringify(oversizedEntry)).digest('hex') }] };
+    assert.throws(() => validateLibraryBundle(oversized), /大小\/項目上限/);
 });

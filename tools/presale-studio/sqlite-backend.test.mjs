@@ -85,7 +85,7 @@ test('downloaded package starts its own native Node and SQLite service', async (
         server = createStandaloneServer(result.outDir);
         server.listen(0, '127.0.0.1');
         await once(server, 'listening');
-        const base = `http://127.0.0.1:${server.address().port}`;
+        let base = `http://127.0.0.1:${server.address().port}`;
         assert.equal((await fetch(`${base}/`)).status, 200);
         const resource = data.resource.api;
         assert.equal((await fetch(`${base}/api/prototype${resource}`)).status, 401);
@@ -123,6 +123,21 @@ test('downloaded package starts its own native Node and SQLite service', async (
         const badOrigin = await fetch(`${base}/api/prototype${resource}`, { method: 'POST',
             headers: { cookie, 'content-type': 'application/json', origin: 'http://outside.invalid' }, body: '{}' });
         assert.equal(badOrigin.status, 403);
+
+        server.close(); await once(server, 'close');
+        server = createStandaloneServer(result.outDir);
+        server.listen(0, '127.0.0.1'); await once(server, 'listening');
+        base = `http://127.0.0.1:${server.address().port}`;
+        const restartedLogin = await fetch(`${base}/api/prototype/demo/session`, { method: 'POST',
+            headers: { 'content-type': 'application/json', origin: base },
+            body: JSON.stringify({ role_code: data.roles[1].code }) });
+        assert.equal(restartedLogin.status, 200);
+        const restartedCookie = restartedLogin.headers.get('set-cookie').split(';')[0];
+        const persisted = await fetch(`${base}/api/prototype${resource}/query`, {
+            method: 'POST', headers: { cookie: restartedCookie, origin: base, 'content-type': 'application/json' },
+            body: '{}' });
+        assert.equal(persisted.status, 200);
+        assert.equal((await persisted.json()).total, 3, 'the downloaded package should read its committed SQLite write after restart');
     } finally {
         if (server) { server.close(); await once(server, 'close'); }
         rmSync(result.temporaryRoot, { recursive: true, force: true });

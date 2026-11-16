@@ -66,6 +66,26 @@ test('native JSON reader enforces media type, size and object shape', async () =
     await assert.rejects(readJsonBody(body('{}', { 'content-length': '3' })), error => error.status === 400);
 });
 
+test('JSON node budget is per route and reported apart from syntax errors', async () => {
+    const body = (value, headers = {}) => Object.assign(Readable.from([Buffer.from(value)]), {
+        headers: { 'content-type': 'application/json', ...headers }
+    });
+    const large = JSON.stringify({ items: Array.from({ length: 12_000 }, (_, index) => index) });
+    await assert.rejects(readJsonBody(body(large)),
+        error => error.status === 400 && error.message === 'JSON structure limit exceeded');
+    const parsed = await readJsonBody(body(large), { maxNodes: 20_000 });
+    assert.equal(parsed.items.length, 12_000);
+    await assert.rejects(readJsonBody(body(large.slice(0, -1)), { maxNodes: 20_000 }),
+        error => error.status === 400 && error.message === 'Invalid JSON');
+    const router = new NativeRouter();
+    router.register({ path: '/bulk', methods: ['POST'], kind: 'bulk',
+        body: { type: 'json', maxBytes: 1024, maxNodes: 20_000 } });
+    for (const policy of [{ type: 'json', maxBytes: 1024, maxNodes: 0 },
+        { type: 'json', maxBytes: 1024, maxNodes: 2_000_001 },
+        { type: 'json', maxBytes: 1024, maxNodes: 10, extra: true }])
+        assert.throws(() => router.register({ path: '/bad', methods: ['POST'], kind: 'bad', body: policy }), TypeError);
+});
+
 test('native request limiter bounds repeated requests without external packages', () => {
     const limiter = new RequestLimiter({ maxRequests: 2, windowMs: 60_000 });
     const req = request();
@@ -99,6 +119,12 @@ test('route guard composes origin, query, authentication and body checks', async
         authorize: () => ({ code: 'DEMO' }) });
     assert.equal(result.actor.code, 'DEMO');
     assert.deepEqual(result.body, { ok: true });
+    const limited = request('/items', { method: 'POST', headers: {
+        host: '127.0.0.1:3092', 'content-type': 'application/json' },
+        [Symbol.asyncIterator]: async function* () { yield Buffer.from('{"ok":true}'); } });
+    const limitedContext = inspectRequest(limited, response());
+    await assert.rejects(guardRoute(limited, limitedContext, { body: { type: 'json', maxBytes: 4 } }),
+        error => error.status === 413);
     await assert.rejects(guardRoute(request('/items', { method: 'DELETE', headers: {
         host: '127.0.0.1:3092', 'content-length': '2' } }),
     inspectRequest(request('/items'), response())), error => error.status === 400);
