@@ -19,7 +19,7 @@ public sealed class AgentLaunchRequest
 
     public bool Verbose { get; init; } = true;
 
-    /// <summary>單次執行的工作項（AGENT_RUN）；空白時代理只回 AGENT_READY。</summary>
+    /// <summary>單次執行的工作項（AGENT_RUN）；空白時代理不呼叫工具，直接以固定 JSON 回覆完成。</summary>
     public string? Run { get; init; }
 
     /// <summary>舊的 LINE 監聽模式（只限開發用途）；開啟時不帶 AGENT_RUN。</summary>
@@ -143,7 +143,7 @@ public sealed class AgentContainerLauncher
         else
         {
             environment["AGENT_RUN"] = string.IsNullOrWhiteSpace(request.Run)
-                ? "Reply with the exact text AGENT_READY."
+                ? "This is a readiness check. Do not call a tool. Finish the run."
                 : request.Run.Trim();
         }
 

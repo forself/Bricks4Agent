@@ -5,7 +5,9 @@ const http = require('http');
 
 const port = Number(process.env.PORT || '8080');
 const model = process.env.MOCK_MODEL || 'openai-proxy-dev';
-const responseText = process.env.MOCK_RESPONSE_TEXT || 'STACK_OK';
+// A governed agent accepts only the fixed JSON reply as its final answer (tools/agent/lib/governed-response.js).
+// MOCK_RESPONSE_TEXT replaces it (for example with prose, to see the agent reject a reply that is not the fixed JSON).
+const responseText = process.env.MOCK_RESPONSE_TEXT || '{"type":"final","code":"completed"}';
 const expectedApiKey = process.env.EXPECTED_API_KEY || '';
 
 function readJson(req) {

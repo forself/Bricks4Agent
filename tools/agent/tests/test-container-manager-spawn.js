@@ -8,7 +8,8 @@
 //     cap-drop ALL, no-new-privileges, pids and memory limits, no mounts, dedicated network);
 //   - the agent registers with the registration credential the broker issued for the spawn (handed over
 //     as a secret environment variable: present in the container, absent from its arguments and from
-//     the broker's responses and logs), loads the baked-in manual and completes one run;
+//     the broker's responses and logs), loads the baked-in manual and completes one run, whose only
+//     stdout line is the fixed governed reply {"type":"final","code":"completed"};
 //   - spawn input is constrained (broker_url, max_iterations, /workers/spawn refusals);
 //   - /agents/stop removes the container (rm -f -v) and revokes the agent's registration credential;
 //   - a second spawn of an agent whose container still exists fails without revoking that container's
@@ -28,7 +29,15 @@ const path = require('path');
 const { spawn } = require('child_process');
 
 const { BrokerClient } = require('../lib/broker-client');
-const { ROOT, assertContainerHardened, buildImages, containerEngine, run } = require('./lib/container-stack');
+const {
+    FINAL_COMPLETED,
+    ROOT,
+    assertContainerHardened,
+    buildImages,
+    containerEngine,
+    governedResponseLines,
+    run,
+} = require('./lib/container-stack');
 
 const engine = containerEngine();
 const hostAlias = engine === 'docker' ? 'host.docker.internal' : 'host.containers.internal';
@@ -36,7 +45,8 @@ const ADMIN_PRINCIPAL_ID = 'prn_spawn_admin';
 const ADMIN_TASK_ID = 'task_spawn_admin';
 const ADMIN_REGISTRATION_SECRET = crypto.randomBytes(32).toString('base64url');
 const TEST_MODEL = 'spawn-test-model';
-const READY_TEXT = 'AGENT_READY';
+// The work item of every spawn here: the fake model below ends the run at once with the fixed governed reply.
+const SMOKE_RUN = 'This is a spawn smoke test. Do not call a tool. Finish the run.';
 
 function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
@@ -68,7 +78,7 @@ async function startFakeOllama() {
                 const parsed = body ? JSON.parse(body) : {};
                 res.end(JSON.stringify({
                     model: parsed.model || TEST_MODEL,
-                    message: { content: READY_TEXT, tool_calls: [], thinking: '' },
+                    message: { content: FINAL_COMPLETED, tool_calls: [], thinking: '' },
                     total_duration: 1,
                     eval_count: 1,
                 }));
@@ -296,7 +306,7 @@ async function main() {
 
         const spawned = await adminPost(admin, '/api/v1/agents/spawn', {
             agent_id: canonicalAgentId,
-            run: `Reply with the exact text ${READY_TEXT}.`,
+            run: SMOKE_RUN,
             max_iterations: 100000,
         });
         assert.strictEqual(spawned.success, true, `agents/spawn failed: ${JSON.stringify(spawned)}\n${broker.logs.stdout.slice(-4000)}`);
@@ -367,7 +377,8 @@ async function main() {
         console.log(`[spawn] recorded ${engine} CLI call: ${runLines[0].trim()}`);
 
         assert(output.includes('Loading project manual: /app/AGENT.md'), `agent should load the baked-in manual\n${output}`);
-        assert(output.includes(READY_TEXT), `agent should complete one run\n${output}`);
+        assert.deepStrictEqual(governedResponseLines(output), [FINAL_COMPLETED],
+            `agent should complete one run and print only the fixed governed reply\n${output}`);
         assert(output.includes('[Governed] session closed'), `agent should close its session\n${output}`);
         console.log(`[spawn] ${engine} agent container ${containerId}: hardened, registered and completed a run.`);
 
@@ -395,7 +406,7 @@ async function main() {
         const restartCanonicalId = createdRestart.data.agent_id;
         const spawnedRestart = await adminPost(admin, '/api/v1/agents/spawn', {
             agent_id: restartCanonicalId,
-            run: `Reply with the exact text ${READY_TEXT}.`,
+            run: SMOKE_RUN,
         });
         assert.strictEqual(spawnedRestart.success, true, `agents/spawn failed: ${JSON.stringify(spawnedRestart)}`);
         restartContainerId = spawnedRestart.data.container_id;
@@ -406,6 +417,7 @@ async function main() {
         const firstOutput = `${firstLogs.stdout}\n${firstLogs.stderr}`;
         assert.strictEqual(firstInspect.State.ExitCode, 0, `restart agent (before the broker restart) exited with ${firstInspect.State.ExitCode}\n${firstOutput}`);
         assert.strictEqual(countOccurrences(firstOutput, '[Governed] session closed'), 1, `one completed run before the restart\n${firstOutput}`);
+        assert.deepStrictEqual(governedResponseLines(firstOutput), [FINAL_COMPLETED], `one governed reply before the restart\n${firstOutput}`);
         const restartSecretEntry = ((firstInspect.Config && firstInspect.Config.Env) || [])
             .find((entry) => entry.startsWith('BROKER_REGISTRATION_SECRET='));
         assert(restartSecretEntry, 'the restart agent container has BROKER_REGISTRATION_SECRET');
@@ -416,7 +428,7 @@ async function main() {
         // valid, so that container registers again after the broker restart below.
         await assert.rejects(() => adminPost(admin, '/api/v1/agents/spawn', {
             agent_id: restartCanonicalId,
-            run: `Reply with the exact text ${READY_TEXT}.`,
+            run: SMOKE_RUN,
         }), /Broker error 500/);
         const afterFailedSpawn = await adminPost(admin, '/api/v1/admin/registration-credentials/list', {
             principal_id: createdRestart.data.principal_id,
@@ -448,6 +460,8 @@ async function main() {
         assert.strictEqual(sessionIds.length, 2, `two registrations expected (before and after the restart)\n${secondOutput}`);
         assert.notStrictEqual(sessionIds[0], sessionIds[1], 'the agent registered a new session after the restart');
         assert.strictEqual(countOccurrences(secondOutput, '[Governed] session closed'), 2, `two completed runs expected\n${secondOutput}`);
+        assert.deepStrictEqual(governedResponseLines(secondOutput), [FINAL_COMPLETED, FINAL_COMPLETED],
+            `one governed reply per run expected\n${secondOutput}`);
         assert(!secondOutput.includes(restartSecret), 'the agent does not log the secret');
         assert(!broker.logs.stdout.includes(restartSecret) && !broker.logs.stderr.includes(restartSecret), 'the restarted broker does not log the secret');
         console.log(`[spawn] ${engine} agent container ${restartContainerId}: registered again after a broker restart (${sessionIds.join(' -> ')}).`);

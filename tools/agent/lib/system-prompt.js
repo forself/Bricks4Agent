@@ -3,6 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const { GENERATION_SCAFFOLD_CAPABILITY_ID, getToolDescriptions } = require('./tool-registry');
+const { RESPONSE_CODES } = require('./governed-response');
 const { logInfo, logWarn } = require('./utils');
 
 const MAX_AGENT_MD_CHARS_NATIVE = 8000;
@@ -28,13 +29,36 @@ description of a front-end prototype, and hand it to the broker-governed generat
 - Do not claim to have performed actions you did not actually perform.
 - Only use the routes, capabilities, and scopes explicitly granted.`;
 
-// 生成任務在還沒有成功生成前回了沒有工具呼叫的訊息時，agent loop 追加一次的提醒（之後再沒有工具呼叫就結束）。
-const GENERATION_CONTINUE_REMINDER = `Reminder: this task runs unattended and nothing has been generated yet. A reply
-without a tool call ends the task, and nobody will answer questions. Do not write the definition or questions as
-text: submit the DefinitionTemplate with validate_definition now (then generate_scaffold), and assume what the work
-item leaves open. Make each call as a function (tool) call, or inside the <tool_call> wrapper in ReAct mode; do not
-write the call as a JSON block in your reply text. Reply without a tool call again only if you cannot continue, for
-example when the validate_definition calls are used up; that reply is your final summary.`;
+/**
+ * 受治理模式唯一的回覆約定，所有提示與提醒共用這一段：工具只能用原生 function call；沒有工具呼叫的回覆
+ * 必須是 governed-response.js 定義的固定 JSON（type 與 code 的組合取自 RESPONSE_CODES，不另外列一份）。
+ */
+const GOVERNED_RESPONSE_OBJECTS = Object.entries(RESPONSE_CODES)
+    .flatMap(([type, codes]) => [...codes].map((code) => `  ${JSON.stringify({ type, code })}`))
+    .join('\n');
+const GOVERNED_RESPONSE_CONTRACT = `- Call tools only as native structured function (tool) calls. Text, JSON snippets, code fences and XML
+  wrappers in a reply are never executed as tool calls.
+- A reply without a tool call ends the task. It must be exactly one of these JSON objects and nothing else (no
+  prose, no code fence, no other keys, no paths, hashes or tool output):
+${GOVERNED_RESPONSE_OBJECTS}
+- Text sent next to a tool call is discarded, and nobody reads prose: never put a result, a question or a
+  summary in reply text.`;
+
+// 受治理的一般任務回了沒有工具呼叫、又不是固定 JSON 的訊息時，agent loop 追加一次的提醒（再一次就以失敗結束）。
+const GOVERNED_RESPONSE_REMINDER = `Reminder: your last reply was neither a tool call nor an accepted final reply, so it was ignored. This
+task runs unattended.
+${GOVERNED_RESPONSE_CONTRACT}
+Another reply that is neither a tool call nor one of these JSON objects ends the task as a failure.`;
+
+// 生成任務沒有進展的回合（回覆不是固定 JSON、還沒成功生成就回報完成、或只呼叫了沒有授予的工具）時，
+// agent loop 追加一次的提醒（再一次就以失敗結束）。
+const GENERATION_CONTINUE_REMINDER = `Reminder: this task runs unattended and nothing has been generated yet. Nobody will answer
+questions, and text in a reply is never executed: do not write the definition, a question or a tool call as
+text. Submit the DefinitionTemplate with validate_definition now (then generate_scaffold) as native function
+(tool) calls, and assume what the work item leaves open. Reply without a tool call only to end the task, with
+exactly one JSON object and nothing else: {"type":"final","code":"completed"} after generate_scaffold
+succeeded, or {"type":"failure","code":"generation_failed"} when you cannot continue, for example when the
+validate_definition calls are used up. Any other reply without a tool call ends the task as a failure.`;
 
 const MAX_ECHOED_TOOL_NAME = 64;
 
@@ -117,7 +141,7 @@ function buildSystemPrompt(options) {
         logInfo('No AGENT.md found near the project root');
     }
 
-    if (useReact) {
+    if (useReact && !governed) {
         parts.push(REACT_INSTRUCTIONS + toolDescriptions);
     }
 
@@ -223,8 +247,9 @@ ${JSON.stringify({
 ${runtimeSection}
 Behavioral constraints:
 - Never invent new capability IDs, routes, paths, or schemas.
-- If the required action is outside the granted capabilities or scope, say so explicitly.
+- If the required action is outside the granted capabilities or scope, end with {"type":"refusal","code":"policy_denied"}.
 - If there is no grant for an operation, do not imply it can be requested.
+${GOVERNED_RESPONSE_CONTRACT}
 - Use the broker contract exactly as provided above.`;
 }
 
@@ -284,12 +309,12 @@ function buildGenerationSection(governed, maxIterations) {
 This task generates a front-end prototype from a DefinitionTemplate. The broker-governed generation tools do the
 generation; you only write the definition. The task runs unattended and ends at your first reply that has no tool
 call, so:
-- Call a tool in every turn until the final summary in step 5. A reply without a tool call ends the task, and
+- Call a tool in every turn until the final JSON reply in step 5. A reply without a tool call ends the task, and
   nothing is generated if generate_scaffold has not succeeded yet.
 - Never write the definition in your reply text. Put it directly into the template argument of
   validate_definition and generate_scaffold.
 - You cannot ask the user anything and nobody will answer. When the work item is unclear or incomplete, make
-  reasonable assumptions that fit it, and state them in the final summary.
+  reasonable assumptions that fit it.
 Work in this order:
 1. query_component_catalog: read section "overview" first, then "field_types" and "example". Ask for
    section "component" with a name only when you need the details of one component.
@@ -302,13 +327,13 @@ Work in this order:
    and call validate_definition again with the corrected template. Do not generate until validation returns ok: true.
 4. generate_scaffold with the same template. Do not pass any output location: the broker decides where the
    package is written and delivers it to the user.
-5. Reply with a short summary without a tool call: the generated pages, the zip path and sha256 from the generate
-   result, and any assumptions you made. Then stop.
+5. After successful generation, reply without a tool call using exactly {"type":"final","code":"completed"}.
+   Do not repeat generated content, paths, hashes, assumptions, or tool output in the reply. Then stop.
 
 Limits for this task:
 ${limits.join('\n')}
 If validation still fails when the validate_definition calls run out (a call is denied with "Grant quota
-exhausted."), stop and report the remaining errors instead of guessing. A validate result with truncated: true lists only the first errors (total_errors gives the
+exhausted."), stop with {"type":"failure","code":"generation_failed"} instead of guessing. A validate result with truncated: true lists only the first errors (total_errors gives the
 count); errors that repeat across fields are reported once with the number of places they occur, and paths lists the
 first few places. Warnings do not block generation, but fix the ones that say pages of one resource do not line up:
 every page of a resource needs the same api base path, field names and options.
@@ -363,4 +388,6 @@ module.exports = {
     generationUnsupportedToolMessage,
     GENERATION_BASE_PROMPT,
     GENERATION_CONTINUE_REMINDER,
+    GOVERNED_RESPONSE_CONTRACT,
+    GOVERNED_RESPONSE_REMINDER,
 };

@@ -6,15 +6,17 @@ const {
     isGenerationTask,
     generationUnsupportedToolMessage,
     GENERATION_CONTINUE_REMINDER,
+    GOVERNED_RESPONSE_REMINDER,
 } = require('./system-prompt');
 const { parseToolCalls, stripToolCalls, formatToolResult } = require('./react-parser');
-const { parseTextToolCalls } = require('./text-tool-calls');
+const { parseGovernedResponse, serializeGovernedResponse } = require('./governed-response');
 const { colorize, bold, logInfo, logWarn, logError, logTool, formatDuration } = require('./utils');
 const { GovernedExecutor } = require('./governed-executor');
 
 class AgentLoop {
     constructor(options) {
-        this.model = options.model || 'llama3.1';
+        this.governedConfig = options.governed || null;
+        this.model = options.model || (this.governedConfig ? '' : 'llama3.1');
         this.provider = options.provider || null;
         this.directProvider = options.provider || null;
         this.projectRoot = options.projectRoot;
@@ -24,7 +26,6 @@ class AgentLoop {
         this.maxIterations = options.maxIterations || 20;
         this.forceStrategy = options.forceStrategy || null;
 
-        this.governedConfig = options.governed || null;
         this.governedExecutor = null;
 
         this.messages = [];
@@ -110,8 +111,10 @@ class AgentLoop {
 
         let iterations = 0;
         const startTime = Date.now();
-        // 生成任務：還沒有成功的 generate_scaffold 時遇到沒有工具呼叫的回合，追加一次提醒再繼續（仍受迭代上限約束）。
-        // 呼叫全部是沒有授予的名稱的回合也算沒有進展：同樣送出那一次提醒；同一個名稱在這種回合連續出現第二次時結束。
+        // 受治理模式下沒有進展的回合，整次執行只追加一次提醒再繼續（仍受迭代上限約束）：
+        // 沒有工具呼叫、內容又不是固定 JSON 回覆的回合（散文、寫成文字的工具呼叫；文字一律不解析、不執行）；
+        // 生成任務還沒有成功的 generate_scaffold 就回報完成的回合；
+        // 生成任務中呼叫全部是沒有授予的名稱的回合（同一個名稱在這種回合連續出現第二次時結束）。
         let generated = false;
         let reminded = false;
         let previousUnsupported = new Set();
@@ -132,8 +135,9 @@ class AgentLoop {
                 chatParams.tools = this.toolDefinitions;
             }
 
-            if (this.stream) {
-                process.stdout.write(colorize('\n> ', 'cyan'));
+            const displayStream = this.governedExecutor ? process.stderr : process.stdout;
+            if (this.stream && !this.governedExecutor) {
+                displayStream.write(colorize('\n> ', 'cyan'));
             }
 
             let result;
@@ -141,12 +145,12 @@ class AgentLoop {
             try {
                 result = await this.provider.chat({
                     ...chatParams,
-                    onToken: this.stream ? (token) => {
+                    onToken: this.stream && !this.governedExecutor ? (token) => {
                         if (heartbeatLine) {
-                            process.stdout.write('\r\x1b[K');
+                            displayStream.write('\r\x1b[K');
                             heartbeatLine = false;
                         }
-                        process.stdout.write(token);
+                        displayStream.write(token);
                     } : undefined,
                     onHeartbeat: (info) => {
                         this._handleHeartbeat(info, heartbeatLine, (value) => { heartbeatLine = value; });
@@ -154,51 +158,61 @@ class AgentLoop {
                 });
             } catch (e) {
                 if (heartbeatLine) {
-                    process.stdout.write('\r\x1b[K');
+                    displayStream.write('\r\x1b[K');
                 }
                 logError(`API error: ${e.message}`);
+                if (this.governedExecutor) {
+                    return serializeGovernedResponse('failure', 'invalid_response');
+                }
                 return `API error: ${e.message}`;
             }
 
-            if (this.stream) {
-                process.stdout.write('\n');
+            if (this.stream && !this.governedExecutor) {
+                displayStream.write('\n');
             }
 
             let toolCalls = [];
             if (this.useNativeTools) {
                 toolCalls = result.toolCalls || [];
-            } else {
+            } else if (!this.governedExecutor) {
                 toolCalls = parseToolCalls(result.content);
-            }
-
-            // 生成任務還沒生成時，模型把呼叫寫成內文的 JSON（native 與 ReAct 都可能）：改當成工具呼叫執行。
-            // 只限受治理的生成任務；名稱沒有授予的呼叫不執行，回一則 unsupported 結果讓模型改用可用的工具。
-            let textCalls = false;
-            if (toolCalls.length === 0 && this.generationTask && !generated) {
-                toolCalls = parseTextToolCalls(result.content).map((call, index) => ({
-                    id: `text_call_${iterations}_${index}`,
-                    function: { name: call.name, arguments: call.arguments },
-                }));
-                textCalls = toolCalls.length > 0;
-                if (textCalls) {
-                    logWarn(`Model wrote ${toolCalls.length} tool call(s) as text; running them as tool calls`);
-                }
             }
 
             if (toolCalls.length === 0) {
                 previousUnsupported = new Set();
+                if (this.governedExecutor) {
+                    // 受治理模式的最終回覆只有固定的 JSON；其他內容不解析成工具呼叫，也不當成答案。
+                    const parsed = parseGovernedResponse(result.content);
+                    const premature = parsed.ok && this.generationTask && !generated && parsed.response.type === 'final';
+                    if (parsed.ok && !premature) {
+                        if (this.verbose) {
+                            logInfo(`Completed in ${iterations} iterations, ${formatDuration(Date.now() - startTime)}`);
+                        }
+                        return JSON.stringify(parsed.response);
+                    }
+                    if (!reminded && iterations < this.maxIterations) {
+                        reminded = true;
+                        this.messages.push({ role: 'assistant', content: result.content });
+                        logWarn(premature
+                            ? 'Generation task replied with success before generating; sending one reminder'
+                            : '[Governed] reply is neither a native tool call nor the fixed JSON response; sending one reminder');
+                        this.messages.push({
+                            role: 'user',
+                            content: this.generationTask ? GENERATION_CONTINUE_REMINDER : GOVERNED_RESPONSE_REMINDER,
+                        });
+                        continue;
+                    }
+                    if (premature) {
+                        return serializeGovernedResponse('failure', 'generation_failed');
+                    }
+                    logWarn('[Governed] rejected non-contract model response');
+                    return serializeGovernedResponse('failure', 'invalid_response');
+                }
                 const content = this.useNativeTools
                     ? result.content
                     : stripToolCalls(result.content);
 
                 this.messages.push({ role: 'assistant', content });
-
-                if (this.generationTask && !generated && !reminded && iterations < this.maxIterations) {
-                    reminded = true;
-                    logWarn('Generation task replied without a tool call before generating; sending one reminder');
-                    this.messages.push({ role: 'user', content: GENERATION_CONTINUE_REMINDER });
-                    continue;
-                }
 
                 if (this.verbose) {
                     const elapsed = Date.now() - startTime;
@@ -231,8 +245,7 @@ class AgentLoop {
                 const toolArgs = fn.arguments || {};
 
                 // 先決定授權，再印參數：參數印不出來（例如巢狀過深）也不影響授權判斷與這一回合的進行。
-                // 生成任務中名稱沒有授予的呼叫（文字或 native）不執行，回可照做的說明。
-                // 文字呼叫只出現在生成任務（見上方），所以一般代理的行為不變。
+                // 生成任務中名稱沒有授予的呼叫不執行，回可照做的說明；一般代理的行為不變。
                 const unsupported = this.generationTask && !grantedNames.includes(toolName);
 
                 if (this.verbose) {
@@ -240,7 +253,7 @@ class AgentLoop {
                 }
 
                 const modeIcon = this.governedExecutor ? '[governed]' : '[local]';
-                console.log(colorize(`  ${modeIcon} ${toolName}(${this._formatArgs(toolArgs)})`, 'gray'));
+                console.error(colorize(`  ${modeIcon} ${toolName}(${this._formatArgs(toolArgs)})`, 'gray'));
 
                 let toolResult;
                 if (unsupported) {
@@ -287,6 +300,7 @@ class AgentLoop {
                         + `in two turns in a row, so the run ended before the iteration limit. Nothing was generated. `
                         + `Available tools: ${grantedNames.join(', ') || '(none)'}.`;
                     logWarn(summary);
+                    if (this.governedExecutor) return serializeGovernedResponse('refusal', 'unsupported_request');
                     return summary;
                 }
                 previousUnsupported = turnUnsupported;
@@ -301,33 +315,35 @@ class AgentLoop {
         }
 
         logWarn(`Reached max iterations (${this.maxIterations})`);
+        if (this.governedExecutor) return serializeGovernedResponse('failure', 'limit_reached');
         return 'Stopped because max iterations were reached. Increase --max-iterations if needed.';
     }
 
     _handleHeartbeat(info, heartbeatLine, setHeartbeatLine) {
+        const output = this.governedExecutor ? process.stderr : process.stdout;
         if (info.status === 'retry') {
             logWarn(`Retrying request, attempt ${info.attempt}...`);
             if (this.stream) {
-                process.stdout.write(colorize('\n> ', 'cyan'));
+                output.write(colorize('\n> ', 'cyan'));
             }
             return;
         }
         if (info.status === 'done') {
             if (heartbeatLine) {
-                process.stdout.write('\r\x1b[K');
+                output.write('\r\x1b[K');
                 setHeartbeatLine(false);
             }
             return;
         }
         if (info.status === 'verifying') {
             const indicator = colorize(`  ... verifying upstream (${info.noDataCount} checks)`, 'yellow');
-            process.stdout.write(`\r\x1b[K${indicator}`);
+            output.write(`\r\x1b[K${indicator}`);
             setHeartbeatLine(true);
             return;
         }
         if (info.status === 'stalled' || info.status === 'server_down') {
             if (heartbeatLine) {
-                process.stdout.write('\r\x1b[K');
+                output.write('\r\x1b[K');
                 setHeartbeatLine(false);
             }
             return;
@@ -346,10 +362,10 @@ class AgentLoop {
         const indicator = colorize(`  ...${label} (${secs}s)${extra}`, 'gray');
 
         if (this.stream && !heartbeatLine && info.sinceLastToken > 8000) {
-            process.stdout.write(indicator);
+            output.write(indicator);
             setHeartbeatLine(true);
         } else if (heartbeatLine) {
-            process.stdout.write(`\r\x1b[K${indicator}`);
+            output.write(`\r\x1b[K${indicator}`);
         }
     }
 

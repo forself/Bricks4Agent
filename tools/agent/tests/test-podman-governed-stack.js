@@ -4,8 +4,11 @@
 // Governed stack end-to-end (mock-ollama): agent -> broker -> file-worker read_file.
 // CONTAINER_ENGINE=docker runs it with docker / docker compose; the default is podman.
 //
-// Proof that the file was really read: the mock model only answers with TOOL_RESULT_VERIFIED
-// when the tool result it receives through the broker contains text from README.html
+// The agent's only stdout line is the fixed governed reply {"type":"final","code":"completed"}
+// (tools/agent/lib/governed-response.js); it never prints model text.
+// Proof that the file was really read: the mock model logs TOOL_RESULT_VERIFIED and ends the run with
+// that reply only when the tool result it receives through the broker contains text from README.html;
+// otherwise it logs TOOL_RESULT_MISMATCH and ends the run with {"type":"failure","code":"tool_failed"}
 // (the `[governed] read_file` log line is printed before the tool runs, so it proves nothing).
 //
 // Two search steps follow, with the agent tool's own arguments (pattern, directory, file_pattern):
@@ -24,11 +27,13 @@ const path = require('path');
 const { pathToFileURL } = require('url');
 
 const {
+    FINAL_COMPLETED,
     ROOT,
     assertStackHardened,
     buildImages: buildStackImages,
     compose,
     containerEngine,
+    governedResponseLines,
     inspectStack,
     serviceOf,
 } = require('./lib/container-stack');
@@ -91,8 +96,7 @@ async function main() {
         ...(await generateStackSecretsEnv()),
         PYTHONIOENCODING: 'utf-8',
         PYTHONUTF8: '1',
-        AGENT_RUN: 'Read README.md through the available tool, then reply with the exact text STACK_OK.',
-        STACK_RESPONSE_TEXT: 'STACK_OK',
+        AGENT_RUN: 'Read README.html through the available tool, run the two searches, then finish the run.',
         STACK_TOOL_SEQUENCE_JSON: JSON.stringify(TOOL_SEQUENCE),
         STACK_EXPECT_TOOL_RESULTS_JSON: JSON.stringify(TOOL_EXPECTATIONS),
         BROKER_ROLE_ID: process.env.BROKER_ROLE_ID || 'role_reader',
@@ -131,9 +135,11 @@ async function main() {
                 !combinedOutput.includes(env.BROKER_REGISTRATION_SECRET),
                 `The registration secret must not appear in any container output (${run} run).`
             );
-            assert(
-                combinedOutput.includes('STACK_OK'),
-                `Expected agent output to include STACK_OK (${run} run).\n${combinedOutput}`
+            // Exit code 0 only says the run itself worked; the outcome is the one JSON object on the agent's stdout.
+            assert.deepStrictEqual(
+                governedResponseLines(combinedOutput, 'agent'),
+                [FINAL_COMPLETED],
+                `Expected the agent to print exactly ${FINAL_COMPLETED} (${run} run).\n${combinedOutput}`
             );
             assert(
                 combinedOutput.includes('[governed] read_file'),

@@ -4,6 +4,7 @@
 const { AgentLoop } = require('./lib/agent-loop');
 const { AgentRepl } = require('./lib/repl');
 const { runOnce } = require('./lib/run-once');
+const { serializeGovernedResponse } = require('./lib/governed-response');
 const { StateMachine } = require('./lib/state-machine');
 const { buildCrudPipeline } = require('./lib/pipelines/crud-pipeline');
 const { runPipelines } = require('./lib/pipelines/pipeline-runner');
@@ -22,6 +23,7 @@ function parseArgs(argv) {
         validateOnly: false,
         force: false,
         model: 'llama3.1',
+        modelExplicit: false,
         host: null,
         provider: null,
         apiKey: null,
@@ -53,6 +55,7 @@ function parseArgs(argv) {
             case '--model':
             case '-m':
                 args.model = argv[++i] || args.model;
+                args.modelExplicit = true;
                 break;
             case '--host':
             case '-H':
@@ -240,7 +243,7 @@ function getGovernedConfig(args) {
 
 function createAgent(args, projectRoot, governedConfig, provider) {
     return new AgentLoop({
-        model: args.model,
+        model: governedConfig && !args.modelExplicit ? '' : args.model,
         provider,
         projectRoot,
         stream: args.stream,
@@ -285,6 +288,12 @@ async function main() {
         governedConfig = getGovernedConfig(args);
     } catch (e) {
         logError(e.message);
+        if (args.governed && args.run) {
+            // 設定不完整是基礎設施失敗：stdout 仍只寫一則固定 JSON，結束碼與其他基礎設施失敗相同（見 runOnce）。
+            process.stdout.write(`${serializeGovernedResponse('refusal', 'invalid_request')}\n`);
+            process.exitCode = 1;
+            return;
+        }
         process.exit(1);
     }
 
@@ -467,6 +476,7 @@ async function main() {
 
     if (args.run) {
         // 例外時也先關閉 session 再結束（見 runOnce）：只設定結束碼，不在 catch 中直接 process.exit。
+        // 結束碼 0 表示執行跑完（受治理模式的結果看 stdout 的 JSON），1 只表示基礎設施失敗。
         process.exitCode = await runOnce(agent, args.run, { verbose: args.verbose });
         return;
     }
@@ -498,5 +508,11 @@ async function main() {
 
 main().catch((e) => {
     logError(`Fatal error: ${e.message}`);
-    process.exit(1);
+    const argv = process.argv.slice(2);
+    if (argv.includes('--governed') && argv.includes('--run')) {
+        process.stdout.write(`${serializeGovernedResponse('failure', 'tool_failed')}\n`);
+        process.exitCode = 1;
+    } else {
+        process.exit(1);
+    }
 });

@@ -552,7 +552,7 @@ Podman governed stack 用於驗證「agent 不能直接拿工具或模型，只�
 npm run validate:podman-governed-stack
 ```
 
-預期能看到 deterministic `STACK_OK`，並覆蓋 broker-governed `read_file` 路徑。
+預期代理輸出的唯一一行 JSON 是 `{"type":"final","code":"completed"}`，並覆蓋 broker-governed `read_file` 路徑。
 
 ### 12.2 OpenAI-compatible stack
 

@@ -84,7 +84,7 @@ services:
       AGENT_MAX_ITERATIONS: "4"
       AGENT_NO_CONFIRM: "1"
       AGENT_VERBOSE: "${AGENT_VERBOSE:-1}"
-      AGENT_RUN: "${AGENT_RUN:-Reply briefly that the broker-mediated Ollama stack completed.}"
+      AGENT_RUN: "${AGENT_RUN:-This is a stack smoke test. Do not call a tool. Finish the run.}"
     # No volumes: the repository is NOT mounted into the agent (§13.4); /workspace is
     # an empty logical root baked into the image and the manual is /app/AGENT.md.
     restart: "no"

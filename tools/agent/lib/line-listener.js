@@ -245,6 +245,11 @@ class LineListener {
                 '• LINE 通訊（send_line_message/send_line_notification 等）',
                 '',
                 '如果使用者的問題不需要工具，直接回答即可。',
+                '',
+                '=== 回覆格式（LINE 對話專用） ===',
+                '這個模式下，沒有工具呼叫的回覆就是傳給 LINE 使用者的文字訊息：',
+                '請直接用文字回答，不要使用上方 Governed Broker Contract 規定的固定 JSON 回覆。',
+                '工具只能以原生 function call 呼叫；寫在回覆文字裡的 JSON、XML 或程式碼區塊不會被執行。',
             ].join('\n'),
         };
 
@@ -282,14 +287,10 @@ class LineListener {
                 return `LLM 錯誤: ${e.message}`;
             }
 
-            // 檢查是否有工具呼叫
-            let toolCalls = [];
-            if (this.agent.useNativeTools) {
-                toolCalls = result.toolCalls || [];
-            } else {
-                const { parseToolCalls } = require('./react-parser');
-                toolCalls = parseToolCalls(result.content);
-            }
+            // 檢查是否有工具呼叫：只接受模型以原生 function call 送出的呼叫。
+            // 回覆文字一律不解析成工具呼叫（JSON、<tool_call>、程式碼區塊都一樣）；
+            // 模型不支援原生工具呼叫時（useNativeTools 為 false）不提供工具，回覆只當成文字。
+            const toolCalls = this.agent.useNativeTools ? (result.toolCalls || []) : [];
 
             // 沒有工具呼叫 → 最終回覆
             if (toolCalls.length === 0) {
@@ -299,15 +300,11 @@ class LineListener {
             }
 
             // 有工具呼叫 → 執行並繼續
-            if (this.agent.useNativeTools) {
-                this.agent.messages.push({
-                    role: 'assistant',
-                    content: result.content || '',
-                    tool_calls: toolCalls,
-                });
-            } else {
-                this.agent.messages.push({ role: 'assistant', content: result.content });
-            }
+            this.agent.messages.push({
+                role: 'assistant',
+                content: result.content || '',
+                tool_calls: toolCalls,
+            });
 
             for (const call of toolCalls) {
                 const fn = call.function;
@@ -324,17 +321,9 @@ class LineListener {
                     { projectRoot: this.agent.projectRoot, noConfirm: true, verbose: this.verbose }
                 );
 
-                if (this.agent.useNativeTools) {
-                    const toolMsg = { role: 'tool', content: toolResult };
-                    if (call.id) toolMsg.tool_call_id = call.id;
-                    this.agent.messages.push(toolMsg);
-                } else {
-                    const { formatToolResult } = require('./react-parser');
-                    this.agent.messages.push({
-                        role: 'user',
-                        content: formatToolResult(toolName, toolResult),
-                    });
-                }
+                const toolMsg = { role: 'tool', content: toolResult };
+                if (call.id) toolMsg.tool_call_id = call.id;
+                this.agent.messages.push(toolMsg);
             }
         }
 

@@ -10,7 +10,14 @@ const {
 } = require('./tool-registry');
 const { logInfo, logWarn, logError, colorize } = require('./utils');
 const { isGenerationTask, generationUnsupportedToolMessage } = require('./system-prompt');
-const { attachArgumentNotes, coerceToolArguments, formatArgumentError } = require('./tool-arguments');
+const {
+    MAX_ARGUMENT_DEPTH,
+    attachArgumentNotes,
+    coerceToolArguments,
+    exceedsJsonDepth,
+    formatArgumentError,
+} = require('./tool-arguments');
+const { MAX_RESPONSE_LENGTH } = require('./governed-response');
 
 const BROKER_ROUTES = {
     register: '/api/v1/sessions/register',
@@ -36,6 +43,10 @@ const HEARTBEAT_MIN_INTERVAL_MS = 10 * 1000;
 // Answers to a register request that will not change by retrying (credential rejected, task no longer
 // active, role not allowed): the executor stops instead of registering again on every call.
 const FINAL_REGISTRATION_STATUSES = new Set([400, 401, 403]);
+const MAX_TOOL_CALLS_PER_TURN = 8;
+const MAX_TOOL_ARGUMENT_BYTES = 256 * 1024;
+const MAX_TOOL_NAME_LENGTH = 128;
+const MAX_TOOL_CALL_ID_LENGTH = 128;
 
 // Termination reason after the kill switch invalidated the token (see isKillSwitchRejection).
 const KILL_SWITCH_REASON = 'kill switch (system epoch advanced)';
@@ -58,6 +69,7 @@ class GovernedExecutor {
         this.client = null;
         this.sessionInfo = null;
         this.requestCounter = 0;
+        this.toolCallCounter = 0;
         this.capabilities = [];
         this.grants = [];
         this.allowedCapabilities = [];
@@ -177,7 +189,7 @@ class GovernedExecutor {
         const intent = this._describeIntent(toolName, args);
 
         if (this.verbose) {
-            console.log(colorize(`  [Governed] ${capabilityId} -> broker`, 'yellow'));
+            console.error(colorize(`  [Governed] ${capabilityId} -> broker`, 'yellow'));
         }
 
         try {
@@ -192,7 +204,7 @@ class GovernedExecutor {
             const state = String(result.data?.execution_state || '').toLowerCase();
             if (result.success === false || state === 'denied') {
                 const reason = result.data?.policy_reason || result.message || 'Request denied';
-                console.log(colorize(`  [Governed] denied: ${reason}`, 'red'));
+                console.error(colorize(`  [Governed] denied: ${reason}`, 'red'));
                 return `[Governed] request denied: ${reason}\ncapability: ${capabilityId}\ntool: ${toolName}`;
             }
 
@@ -202,7 +214,7 @@ class GovernedExecutor {
                     : JSON.stringify(result.data.result_payload);
 
                 if (this.verbose) {
-                    console.log(colorize('  [Governed] tool request succeeded', 'green'));
+                    console.error(colorize('  [Governed] tool request succeeded', 'green'));
                 }
                 return attachArgumentNotes(resultPayload, coerced.notes);
             }
@@ -275,8 +287,25 @@ class GovernedExecutor {
 
         const response = await this._callBroker((client) => client.llmChat(payload));
         const data = response?.data || {};
-        const content = readField(data, ['content'], '');
-        const toolCalls = normalizeToolCalls(readField(data, ['tool_calls', 'toolCalls'], []));
+        const toolCalls = normalizeToolCalls(
+            readField(data, ['tool_calls', 'toolCalls'], []),
+            () => `governed_call_${++this.toolCallCounter}`
+        );
+        let content = readField(data, ['content'], '');
+        if (toolCalls.length > 0) {
+            // Models often add a sentence next to their tool calls. That text is dropped here, whatever its
+            // length or type: it is never parsed, executed, kept in the conversation or used as the final answer.
+            if (typeof content === 'string' ? content.trim() !== '' : content !== null) {
+                logWarn('[Governed] dropped assistant text returned alongside native tool calls');
+            }
+            content = '';
+        } else {
+            // A turn without tool calls is the final answer: only the short fixed JSON reply is acceptable.
+            if (content === null) content = '';
+            if (typeof content !== 'string' || content.length > MAX_RESPONSE_LENGTH) {
+                throw new Error('[Governed] broker returned oversized or invalid assistant content; response rejected');
+            }
+        }
         const result = {
             content,
             toolCalls,
@@ -900,33 +929,78 @@ function normalizeGrant(grant) {
     };
 }
 
-function normalizeToolCalls(toolCalls) {
-    if (!Array.isArray(toolCalls)) {
+/**
+ * Native tool calls as the broker passes them on from the model provider. Providers differ in what they add
+ * (Ollama sends function.index and may send no id; other formats send an empty id), so only the fields the
+ * agent needs are read and everything else is ignored: id, type, function.name and function.arguments.
+ * A call without a usable id gets one from nextId. What is malformed or unsafe still rejects the whole
+ * response: a non-array, more than MAX_TOOL_CALLS_PER_TURN calls, a call or function that is not an object,
+ * a type other than "function", a missing or non-string name, arguments that are neither a JSON object nor
+ * a string holding one, and arguments that are too large or too deeply nested.
+ */
+function normalizeToolCalls(toolCalls, nextId) {
+    if (toolCalls === null || toolCalls === undefined) {
         return [];
+    }
+    if (!Array.isArray(toolCalls)) {
+        throw new Error('[Governed] broker returned invalid tool_calls; response rejected');
+    }
+    if (toolCalls.length > MAX_TOOL_CALLS_PER_TURN) {
+        throw new Error('[Governed] broker returned too many tool calls; response rejected');
     }
 
     return toolCalls.map((toolCall) => {
-        const fn = toolCall.function || {};
-        let args = fn.arguments || {};
-        if (typeof args === 'string') {
+        if (!isPlainObject(toolCall) || !isPlainObject(toolCall.function)) {
+            throw new Error('[Governed] broker returned malformed native tool call; response rejected');
+        }
+        if (toolCall.type !== undefined && toolCall.type !== null && toolCall.type !== 'function') {
+            throw new Error('[Governed] broker returned unsupported native tool call type; response rejected');
+        }
+        const name = toolCall.function.name;
+        if (typeof name !== 'string' || name.trim() === '' || name.length > MAX_TOOL_NAME_LENGTH) {
+            throw new Error('[Governed] broker returned invalid native tool call name; response rejected');
+        }
+
+        // No arguments at all (missing, null or an empty string) is a call without arguments.
+        let args = toolCall.function.arguments;
+        if (args === undefined || args === null || (typeof args === 'string' && args.trim() === '')) {
+            args = {};
+        } else if (typeof args === 'string') {
+            if (Buffer.byteLength(args, 'utf8') > MAX_TOOL_ARGUMENT_BYTES) {
+                throw new Error('[Governed] broker returned oversized tool arguments; response rejected');
+            }
             try {
                 args = JSON.parse(args);
             } catch (_) {
-                args = { _raw: args };
+                throw new Error('[Governed] broker returned invalid JSON tool arguments; response rejected');
             }
         }
-
-        const normalized = {
-            function: {
-                name: fn.name || '',
-                arguments: args,
-            },
-        };
-        if (toolCall.id) {
-            normalized.id = toolCall.id;
+        if (!isPlainObject(args) || exceedsJsonDepth(args, MAX_ARGUMENT_DEPTH)) {
+            throw new Error('[Governed] broker returned invalid tool call arguments; response rejected');
         }
-        return normalized;
+        let serializedArgs;
+        try { serializedArgs = JSON.stringify(args); } catch (_) {
+            throw new Error('[Governed] broker returned unserializable tool arguments; response rejected');
+        }
+        if (Buffer.byteLength(serializedArgs, 'utf8') > MAX_TOOL_ARGUMENT_BYTES) {
+            throw new Error('[Governed] broker returned oversized tool arguments; response rejected');
+        }
+
+        let id = toolCall.id;
+        if (id === undefined || id === null || id === '') {
+            id = nextId();
+        } else if (typeof id !== 'string' || id.length > MAX_TOOL_CALL_ID_LENGTH) {
+            throw new Error('[Governed] broker returned invalid native tool call id; response rejected');
+        }
+
+        return { id, function: { name, arguments: args } };
     });
+}
+
+function isPlainObject(value) {
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+    const prototype = Object.getPrototypeOf(value);
+    return prototype === Object.prototype || prototype === null;
 }
 
 function buildRouteUrl(baseUrl, routePath) {

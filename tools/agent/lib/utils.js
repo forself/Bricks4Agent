@@ -109,7 +109,7 @@ function truncateString(str, max) {
  * 印出帶前綴的訊息
  */
 function log(msg, color = 'reset') {
-    console.log(colorize(msg, color));
+    console.error(colorize(msg, color));
 }
 
 function logInfo(msg) { log(`ℹ ${msg}`, 'cyan'); }

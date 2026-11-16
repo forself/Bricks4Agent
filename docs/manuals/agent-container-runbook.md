@@ -42,7 +42,7 @@ Date: 2026-06-13
 node tools/agent/tests/test-podman-governed-stack.js
 ```
 
-驗證 `STACK_OK` + `[governed] read_file`——agent 不直連工具,經 broker 裁決執行 governed `read_file`。另外斷言 `TOOL_RESULT_VERIFIED`:mock 只有在經 broker 收到的工具結果含 `README.html` 內文時才回這個字串,證明 file-worker 真的讀到檔案(`[governed] read_file` 這行在工具執行前就印出,本身證明不了讀檔)。`up` 結束後再以 `inspect` 逐一檢查每個容器的加固(§8)。
+驗證代理輸出的唯一一行 JSON 是 `{"type":"final","code":"completed"}`,加上 `[governed] read_file`——agent 不直連工具,經 broker 裁決執行 governed `read_file`。另外斷言 mock 的日誌有 `TOOL_RESULT_VERIFIED`:mock 只有在經 broker 收到的工具結果含 `README.html` 內文時才記錄這個字串(不符時記錄 `TOOL_RESULT_MISMATCH` 並回 `failure/tool_failed`),證明 file-worker 真的讀到檔案(`[governed] read_file` 這行在工具執行前就印出,本身證明不了讀檔)。`up` 結束後再以 `inspect` 逐一檢查每個容器的加固(§8)。
 
 ### 3.2 本機 ollama(真實開源模型)
 
@@ -131,7 +131,7 @@ podman run --rm alpine wget -T 6 -q -S -O /dev/null https://api.openai.com/v1/mo
 podman network rm seal-probe
 ```
 
-mock stack 已實測:agent 在 `agent-net` 仍能註冊 session、經 broker 裁決跑 governed `read_file` → `STACK_OK`。ollama/openai stack 的網路拓樸相同(broker 在 `egress`、agent 在 `agent-net`),但因需 GPU/金鑰未在此機離線複驗——使用者跑這兩條時即同時驗證。
+mock stack 已實測:agent 在 `agent-net` 仍能註冊 session、經 broker 裁決跑 governed `read_file` 並完成(當時的斷言是 `STACK_OK`,2026-11-16 起改為固定 JSON 回覆)。ollama/openai stack 的網路拓樸相同(broker 在 `egress`、agent 在 `agent-net`),但因需 GPU/金鑰未在此機離線複驗——使用者跑這兩條時即同時驗證。
 
 ## 8. OS 層容器 hardening(§13,agent 自 2026-06-13;所有服務自 2026-10-05)
 
@@ -174,7 +174,7 @@ podman run --rm --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-pr
 # 預期:uid=10001 / rootfs:blocked / tmp:ok / CapEff:0000000000000000
 ```
 
-mock stack 已實測:套上述 hardening 後 agent 仍能完成 governed `read_file` → `STACK_OK`。2026-10-05 以 Docker 重測:所有服務加固後,file-worker 讀檔、adapter 套 patch 與 `dotnet build` 都通過。
+mock stack 已實測:套上述 hardening 後 agent 仍能完成 governed `read_file`(當時的斷言是 `STACK_OK`)。2026-10-05 以 Docker 重測:所有服務加固後,file-worker 讀檔、adapter 套 patch 與 `dotnet build` 都通過。
 
 ### 8.1 file-worker 的讀取面
 

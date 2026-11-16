@@ -125,9 +125,9 @@ npm run validate:container-spawn
 podman compose --env-file &quot;$HOME/.bricks4agent/agent-stack.env&quot; -f tools/agent/container/compose.yml up --build --abort-on-container-exit --exit-code-from agent
 </code></pre>
 <p>The generator prints the exact path it wrote; it differs from the default when <code>BRICKS4AGENT_SECRETS_DIR</code> is set.</p>
-<p>The default stack uses the bundled mock upstream and should end with the agent printing <code>STACK_OK</code>.</p>
+<p>The default stack uses the bundled mock upstream and should end with the agent printing <code>{"type":"final","code":"completed"}</code> as its only stdout line (progress and diagnostics go to stderr). A governed run never prints model text: its result is that fixed JSON object, and the agent's exit code is <code>0</code> for every model-level outcome (also a refusal or <code>{"type":"failure","code":"invalid_response"}</code>) and <code>1</code> only for an infrastructure failure, so read the JSON line, not the exit code, to see how a run ended.</p>
 <p>The smoke stack disables broker RAG seeding and embeddings so it only verifies the governed agent, broker LLM proxy, and worker attachment path. This avoids accidental dependence on a host-side Ollama embedding server.</p>
-<p>The default <code>npm run validate:podman-governed-stack</code> run also configures the mock upstream to request <code>read_file</code> once, so the test covers the agent submitting a broker-governed capability request and the broker dispatching it to <code>file-worker</code>. The mock answers <code>STACK_OK TOOL_RESULT_VERIFIED</code> only when the tool result it receives through the broker contains text from <code>README.html</code>, so a passing run proves the file worker really read the file (the <code>[governed] read_file</code> log line alone is printed before the tool runs).</p>
+<p>The default <code>npm run validate:podman-governed-stack</code> run also configures the mock upstream to request <code>read_file</code> once, so the test covers the agent submitting a broker-governed capability request and the broker dispatching it to <code>file-worker</code>. The mock logs <code>TOOL_RESULT_VERIFIED</code> and ends the run with <code>{"type":"final","code":"completed"}</code> only when the tool result it receives through the broker contains text from <code>README.html</code>; otherwise it logs <code>TOOL_RESULT_MISMATCH</code> and ends the run with <code>{"type":"failure","code":"tool_failed"}</code>. A passing run therefore proves the file worker really read the file (the <code>[governed] read_file</code> log line alone is printed before the tool runs). The mock sends tool calls in Ollama's own shape (<code>function.index</code>, an id only on every other call).</p>
 <p>OpenAI-compatible stack:</p>
 <pre><code class="language-powershell">podman compose --env-file &quot;$HOME/.bricks4agent/agent-stack.env&quot; -f tools/agent/container/compose.openai-compatible.yml up --build --abort-on-container-exit --exit-code-from agent
 </code></pre>
@@ -223,7 +223,7 @@ podman compose --env-file &quot;$HOME/.bricks4agent/agent-stack.env&quot; -f too
 <li>Outside Development and Testing the broker refuses to start when <code>DevelopmentSeed</code> is enabled without a usable secret (at least 32 characters, not a placeholder). Rotating the stack secrets with <code>--force</code> replaces the seeded credential on the next broker start.</li>
 <li>The kill switch stops running agents: every token issued before it stops working (a token renewed by a heartbeat keeps the epoch of the token it replaces, so a heartbeat in progress during the kill switch does not yield a working token), and an agent that gets the kill switch rejection stops for good (it does not register again, also not after its token has expired). It does not revoke credentials, so a process started afterwards, including a container restarted by its restart policy, can still register with a valid credential. To keep an agent from running again, stop or deactivate it, cancel its task, or revoke its credential (<code>/api/v1/admin/registration-credentials/revoke</code>). Revoking a credential also ends the sessions registered with it, so the agent can neither renew its session nor register again (a registration in progress when the credential is revoked is refused and leaves no session, and a heartbeat checks that the session's credential has not been revoked); revoking by <code>principal_id</code> and <code>task_id</code> ends every session of that task.</li>
 <li>Revoking only a session (<code>/api/v1/admin/revoke</code> with <code>target_type</code> <code>session</code>) does not stop the agent: it registers again with its credential, which is still valid. Revoke the credential instead.</li>
-<li>When the broker refuses to register the agent again, the agent stops for good: no more heartbeats, registrations or broker calls; <code>--run</code> exits with an error and the LINE listener exits with a non-zero code. Network errors are still retried.</li>
+<li>When the broker refuses to register the agent again, the agent stops for good: no more heartbeats, registrations or broker calls; <code>--run</code> ends with a failure reply on stdout (a registration that is refused when the agent starts exits with code 1) and the LINE listener exits with a non-zero code. Network errors are still retried.</li>
 <li>A seeded credential that an operator revoked stays revoked across broker restarts as long as the configured secret stays the same (the broker logs a warning at startup). To allow registration again, rotate the secret (<code>gen-stack-secrets.mjs --force</code>, then recreate the stack with <code>down -v</code>).</li>
 </ul>
 <h2 id="container-hardening">Container Hardening</h2>
@@ -313,7 +313,7 @@ node tools/agent/container/resolve-base-image-digests.mjs --check
 <p>You can override the defaults with environment variables before starting the stack:</p>
 <pre><code class="language-powershell">$env:BROKER_PORT = '5500'
 $env:STACK_MODEL = 'llama3.1'
-$env:AGENT_RUN = 'Read README.md and summarize it in one sentence.'
+$env:AGENT_RUN = 'Read README.md, then finish the run.'
 podman compose --env-file &quot;$HOME/.bricks4agent/agent-stack.env&quot; -f tools/agent/container/compose.yml up --build --abort-on-container-exit --exit-code-from agent
 </code></pre>
 <p>Required secrets have no defaults and are not overrides; see <a href="#secrets">Secrets</a> for the five broker key variables and, for <code>compose.yml</code>, the six worker credential variables.</p>
@@ -329,7 +329,7 @@ podman compose --env-file &quot;$HOME/.bricks4agent/agent-stack.env&quot; -f too
 <p><code>STACK_MODEL</code></p>
 </li>
 <li>
-<p><code>STACK_RESPONSE_TEXT</code></p>
+<p><code>STACK_RESPONSE_TEXT</code> (the mock's final answer; empty by default, which means the fixed governed reply <code>{"type":"final","code":"completed"}</code>. Any other text makes the agent end with <code>{"type":"failure","code":"invalid_response"}</code>)</p>
 </li>
 <li>
 <p><code>STACK_TOOL_CALL</code></p>
@@ -338,7 +338,7 @@ podman compose --env-file &quot;$HOME/.bricks4agent/agent-stack.env&quot; -f too
 <p><code>STACK_TOOL_PATH</code></p>
 </li>
 <li>
-<p><code>STACK_TOOL_ARGS_JSON</code>, <code>STACK_TOOL_SEQUENCE_JSON</code> (several tool calls in order) and <code>STACK_EXPECT_TOOL_RESULTS_JSON</code> (text each tool result must contain before the mock answers <code>TOOL_RESULT_VERIFIED</code>)</p>
+<p><code>STACK_TOOL_ARGS_JSON</code>, <code>STACK_TOOL_SEQUENCE_JSON</code> (several tool calls in order) and <code>STACK_EXPECT_TOOL_RESULTS_JSON</code> (text each tool result must contain before the mock logs <code>TOOL_RESULT_VERIFIED</code> and ends the run with the fixed governed reply)</p>
 </li>
 <li>
 <p><code>POOL_DISPATCH_TIMEOUT_SECONDS</code> (default <code>30</code>)</p>

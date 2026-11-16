@@ -16,6 +16,32 @@ const { isRootUserSpec } = require('../../container/container-user');
 const ROOT = path.resolve(__dirname, '..', '..', '..', '..');
 const SUPPORTED_ENGINES = ['podman', 'docker'];
 
+// The only final answer of a governed agent run that worked (tools/agent/lib/governed-response.js).
+const FINAL_COMPLETED = '{"type":"final","code":"completed"}';
+
+/**
+ * The governed agent's results in container output. A governed `--run` prints exactly one fixed JSON object
+ * on stdout and nothing else there (diagnostics go to stderr), so a line that is only such an object is the
+ * run's result. With `service`, only lines compose attributes to that service count: podman-compose prefixes
+ * them with "[agent] |", docker compose with "agent-1 |". Without it (plain `logs` of one container) the
+ * whole line must be the object. A JSON object quoted inside another log line (a prompt, for example) is
+ * not a result.
+ */
+function governedResponseLines(output, service = null) {
+    const line = '\\{"type":"[a-z]+","code":"[a-z_]+"\\}';
+    const pattern = service
+        ? new RegExp(`(?:\\[${service}\\]|\\b${service}[-_]\\d+)\\s+\\|\\s*(${line})\\s*$`)
+        : new RegExp(`^\\s*(${line})\\s*$`);
+    return String(output)
+        .replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, '')
+        .split(/\r?\n/)
+        .map((text) => {
+            const match = text.match(pattern);
+            return match ? match[1] : '';
+        })
+        .filter(Boolean);
+}
+
 function containerEngine(env = process.env) {
     const engine = String(env.CONTAINER_ENGINE || 'podman').trim().toLowerCase();
     if (!SUPPORTED_ENGINES.includes(engine)) {
@@ -164,12 +190,14 @@ async function assertStackHardened(engine, composeFile, profileArgs, env, option
 }
 
 module.exports = {
+    FINAL_COMPLETED,
     ROOT,
     assertContainerHardened,
     assertStackHardened,
     buildImages,
     compose,
     containerEngine,
+    governedResponseLines,
     inspectStack,
     run,
     serviceOf,

@@ -7,7 +7,8 @@ services:
     environment:
       PORT: "8080"
       MOCK_MODEL: "${STACK_MODEL:-openai-proxy-dev}"
-      MOCK_RESPONSE_TEXT: "${STACK_RESPONSE_TEXT:-STACK_OK}"
+      # Empty: the mock ends the run with the fixed governed reply {"type":"final","code":"completed"}.
+      MOCK_RESPONSE_TEXT: "${STACK_RESPONSE_TEXT:-}"
       EXPECTED_API_KEY: "${OPENAI_API_KEY:-dev-openai-key}"
     ports:
       - "127.0.0.1:${STACK_LLM_PORT:-8080}:8080"
@@ -111,7 +112,7 @@ services:
       AGENT_MAX_ITERATIONS: "4"
       AGENT_NO_CONFIRM: "1"
       AGENT_VERBOSE: "${AGENT_VERBOSE:-0}"
-      AGENT_RUN: "${AGENT_RUN:-Reply with the exact text STACK_OK.}"
+      AGENT_RUN: "${AGENT_RUN:-This is a stack smoke test. Do not call a tool. Finish the run.}"
     # No volumes: the repository is NOT mounted into the agent (§13.4); /workspace is
     # an empty logical root baked into the image and the manual is /app/AGENT.md.
     restart: "no"
